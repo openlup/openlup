@@ -3,6 +3,13 @@ import { createPostgresRenewalReservationPort } from "@openlup/platform/inventor
 import { createNativeRenewalCodec, createNativeSubscriptionBinding, createPostgresRenewalSettlementPort,
   createPostgresSandboxRenewalRail, createSandboxRenewalPolicy } from "@openlup/platform/subscriptions";
 
+function exitAfterParentLoss() {
+  // An interrupted test can leave the worker parked with an open PostgreSQL session.
+  process.exit(1);
+}
+process.once("disconnect", exitAfterParentLoss);
+if (!process.connected) exitAfterParentLoss();
+
 process.once("message", async ({ when, workerId, holdAfterDispatch, runtimeUrl, methodRef, population }) => {
   const pool = new pg.Pool({ connectionString: runtimeUrl });
   const now = () => when;
@@ -34,7 +41,7 @@ process.once("message", async ({ when, workerId, holdAfterDispatch, runtimeUrl, 
         const result = await rail.execute(input);
         if (holdAfterDispatch) {
           process.send({ stage: "acknowledged", executions, reads, externalAttemptRef: result.externalAttemptRef });
-          // Keep the installed run and its session lease open until the parent kills this process.
+          // Keep the installed run and its session lease open until interrupted.
           await new Promise(() => {});
         }
         return result;
@@ -55,5 +62,8 @@ process.once("message", async ({ when, workerId, holdAfterDispatch, runtimeUrl, 
     process.exitCode = 1;
     process.send({ error: error instanceof Error ? error.message : "normal renewal run failed" });
     await pool.end();
-  } finally { process.disconnect(); }
+  } finally {
+    process.off("disconnect", exitAfterParentLoss);
+    if (process.connected) process.disconnect();
+  }
 });

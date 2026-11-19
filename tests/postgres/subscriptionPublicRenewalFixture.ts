@@ -194,40 +194,55 @@ export async function freshRetryReadback(operationId: string, when: string) {
 
 export const normalRenewalWorkerPopulation = "g7-normal-process";
 
+async function normalRenewalWorkerDeadline<T>(work: Promise<T>, action: string, milliseconds: number): Promise<T> {
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([work, new Promise<never>((_, reject) => {
+      deadline = setTimeout(() => reject(new Error(`normal renewal worker did not ${action}`)), milliseconds);
+    })]);
+  } finally { clearTimeout(deadline); }
+}
+
 export async function withNormalRenewalWorker<T>(
-  input: { when: string; workerId: string; holdAfterDispatch?: boolean },
+  input: { when: string; workerId: string; stopAfterDispatch?: "SIGKILL" | "disconnect" },
   inspect: (message: unknown, pid: number | undefined) => Promise<T>,
-): Promise<{ value: T; signal: NodeJS.Signals | null }> {
+): Promise<T> {
   const entry = resolve(scratch, "normal-renewal-worker.mjs");
   copyFileSync(new URL("./subscriptionPublicRenewal.worker.mjs", import.meta.url), entry);
   const child = fork(entry, [], { cwd: scratch, execArgv: [], stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  // Node can report exit without emitting close after the parent disconnects IPC.
   const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
-    child.once("close", (code, signal) => resolve({ code, signal }));
+    child.once("exit", (code, signal) => resolve({ code, signal }));
   });
-  let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
-    const message = await new Promise<unknown>((resolve, reject) => {
+    const report = new Promise<unknown>((resolve, reject) => {
       child.once("message", message => {
         if (message && typeof message === "object" && "error" in message) reject(new Error(String(message.error)));
         else resolve(message);
       });
       child.once("error", reject);
       child.once("close", (code, signal) => reject(new Error(`normal renewal worker exited before reporting (${code ?? signal})`)));
-      deadline = setTimeout(() => {
-        reject(new Error("normal renewal worker did not finish"));
-        child.kill("SIGKILL");
-      }, 12_000);
-      child.send({ ...input, runtimeUrl, methodRef: facts.methodRef, population: normalRenewalWorkerPopulation }, error => { if (error) reject(error); });
+      child.send({ when: input.when, workerId: input.workerId, holdAfterDispatch: input.stopAfterDispatch !== undefined,
+        runtimeUrl, methodRef: facts.methodRef, population: normalRenewalWorkerPopulation }, error => { if (error) reject(error); });
     });
-    const value = await inspect(message, child.pid);
-    if (input.holdAfterDispatch) expect(child.kill("SIGKILL")).toBe(true);
-    const exit = await exited;
-    expect(exit).toEqual(input.holdAfterDispatch ? { code: null, signal: "SIGKILL" } : { code: 0, signal: null });
-    return { value, signal: exit.signal };
+    const message = await normalRenewalWorkerDeadline(report, "report", 8_000);
+    // Receiving the ACK ends its deadline. The inspection can run a second worker
+    // through its own report and exit deadlines while this worker still holds the lease.
+    const value = await normalRenewalWorkerDeadline(inspect(message, child.pid), "complete inspection", 20_000);
+    if (input.stopAfterDispatch === "SIGKILL") expect(child.kill("SIGKILL")).toBe(true);
+    if (input.stopAfterDispatch === "disconnect") {
+      expect(child.connected).toBe(true);
+      child.disconnect();
+    }
+    const exit = await normalRenewalWorkerDeadline(exited, "exit", 4_000);
+    if (input.stopAfterDispatch === "SIGKILL") expect(exit).toEqual({ code: null, signal: "SIGKILL" });
+    else expect(exit).toEqual({ code: input.stopAfterDispatch === "disconnect" ? 1 : 0, signal: null });
+    return value;
   } finally {
-    clearTimeout(deadline);
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-    await exited;
+    if (child.pid !== undefined) {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await normalRenewalWorkerDeadline(exited, "exit during cleanup", 4_000);
+    }
   }
 }
 

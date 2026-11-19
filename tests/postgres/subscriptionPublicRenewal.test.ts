@@ -92,12 +92,12 @@ it("waits for stock and resumes the same frozen obligation through the installed
   expect((await runtime.query("SELECT status FROM public.subscriptions WHERE id=$1", [f.subscriptionId])).rows[0].status).toBe("active");
 });
 
-it("resumes an acknowledged normal renewal after a worker is killed without dispatching again", async () => {
+it.each(["SIGKILL", "disconnect"] as const)("resumes an acknowledged normal renewal without redispatch after %s", async stopAfterDispatch => {
   const { subscriptionId } = await active();
   const operations = () => admin.query(`SELECT id, identity_key, state, operation_fingerprint, external_attempt_ref, scheduled_at,
     claimed_by, claim_generation, lease_expires_at FROM public.subscription_renewal_operations WHERE subscription_id=$1`, [subscriptionId]);
   const afterLease = (at: Date) => new Date(at.getTime() + 1).toISOString();
-  const { value: first, signal } = await withNormalRenewalWorker({ when: now, workerId: "before-crash", holdAfterDispatch: true }, async (message, pid) => {
+  const first = await withNormalRenewalWorker({ when: now, workerId: "before-crash", stopAfterDispatch }, async (message, pid) => {
     const { rows } = await operations();
     expect(rows).toEqual([expect.objectContaining({ state: "attempt_prepared", claimed_by: "before-crash", claim_generation: "1",
       external_attempt_ref: expect.stringContaining("sandbox-renewal:") })]);
@@ -108,7 +108,6 @@ it("resumes an acknowledged normal renewal after a worker is killed without disp
     });
     return { operation: rows[0], pid };
   });
-  expect(signal).toBe("SIGKILL");
   const { operation } = first;
   // The child exit and the database's release of its advisory lock are asynchronous.
   await transaction(async db => {
@@ -116,7 +115,7 @@ it("resumes an acknowledged normal renewal after a worker is killed without disp
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [normalRenewalWorkerPopulation]);
   });
 
-  const { value: reclaimed } = await withNormalRenewalWorker({ when: afterLease(operation.lease_expires_at), workerId: "after-crash" }, async (message, pid) => {
+  const reclaimed = await withNormalRenewalWorker({ when: afterLease(operation.lease_expires_at), workerId: "after-crash" }, async (message, pid) => {
     expect(pid).not.toBe(first.pid);
     expect(message).toMatchObject({ stage: "complete", result: { retries: [], renewals: [{ operationId: operation.id, status: "awaiting_provider" }] }, executions: 0, reads: 1 });
     const { rows } = await operations();
@@ -132,7 +131,7 @@ it("resumes an acknowledged normal renewal after a worker is killed without disp
     const { rows } = await operations();
     return rows;
   });
-  expect(completed.value).toEqual([expect.objectContaining({ ...operation, state: "succeeded",
+  expect(completed).toEqual([expect.objectContaining({ ...operation, state: "succeeded",
     claimed_by: "after-observation", claim_generation: "3", lease_expires_at: expect.any(Date) })]);
   expect((await admin.query(`SELECT event_key, outcome FROM public.subscription_renewal_outcomes
     WHERE renewal_operation_id=$1 ORDER BY event_key`, [operation.id])).rows).toEqual([
@@ -143,7 +142,7 @@ it("resumes an acknowledged normal renewal after a worker is killed without disp
     .toEqual([{ paid: 2 }]);
   expect((await admin.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [subscriptionId])).rows)
     .toEqual([{ next_cycle_at: new Date(days(operation.scheduled_at.toISOString(), facts.cadenceDays)) }]);
-}, 30_000);
+}, 45_000);
 
 async function parcel(orderId: string) {
   // Parcel facts use the bounded writer and the installation's synthetic port.
