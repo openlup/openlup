@@ -73,6 +73,15 @@ test('container demo startup privately creates a key once, reuses it, and refuse
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+const upsertPolicySetting = `INSERT INTO public.commerce_settings(key,value_text) VALUES($1,$2)
+        ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`;
+const installReminderSchedule = 'SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)';
+
+// The platform's PostgreSQL tests prove replace-on-conflict semantics for each allowed write.
+// A new installer statement needs a new entry in the corresponding list.
+const inventoryProtectionStatements = [upsertPolicySetting];
+const reminderScheduleStatements = [upsertPolicySetting, installReminderSchedule];
+
 const seedPriceCount = (config: typeof configurations[string]) => editorProducts(config).reduce((sum, product) => sum + product.permittedPurchaseModes.length, 0);
 
 function installation(identity = { login: 'demo_install', role: 'demo_install', marker: demonstrationMarker }) {
@@ -141,8 +150,9 @@ for (const config of Object.values(configurations)) {
     assert.equal(first.closed(), 1);
     assert.equal(first.calls[0]!.text, 'BEGIN');
     assert.equal(first.calls.at(-1)!.text, 'COMMIT');
-    assert.deepEqual(first.calls.map(call => call.text.trim())
-      .filter(text => /^(BEGIN|START\s+TRANSACTION|COMMIT|END|ROLLBACK|ABORT)\b/i.test(text)), ['BEGIN', 'COMMIT']);
+    for (const { text } of first.calls.slice(1, -1)) {
+      assert.doesNotMatch(text, /\b(?:BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION|END|SAVEPOINT|RELEASE|ABORT|PREPARE\s+TRANSACTION)\b/i);
+    }
     const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
     const reminders = first.calls.filter(call => call.values?.[0] === 'checkout_recovery_reminders');
     const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call) && call.text.startsWith('INSERT INTO public.'));
@@ -152,12 +162,14 @@ for (const config of Object.values(configurations)) {
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);
       assert.ok(call.values?.length);
     }
-    const upsert = /^INSERT\s+INTO\s+public\.commerce_settings\b[^;]+\bON\s+CONFLICT\b[^;]*\bDO\s+(UPDATE|NOTHING)\b[^;]*;?$/i;
-    const installer = /^SELECT\s+public\.(commerce|inventory)_\w+\(\s*\$1(?:\s*::\w+)?\s*,\s*\$2(?:\s*::\w+)?(?:\s*,[^;]+)?\s*\)\s*;?$/i;
-    for (const [calls, value] of [[protection, config.inventory.renewalProtection], [reminders, config.checkoutRecoveryReminders]] as const) {
+    for (const [calls, statements, value] of [
+      [protection, inventoryProtectionStatements, config.inventory.renewalProtection],
+      [reminders, reminderScheduleStatements, config.checkoutRecoveryReminders],
+    ] as const) {
       assert.equal(calls.length, 1);
       const { text, values } = calls[0]!;
-      assert.ok(upsert.test(text.trim()) || installer.test(text.trim()), 'policy installation must issue an upsert or a platform SQL function call');
+      assert.ok(statements.includes(text), 'policy installation must issue an allowed write');
+      assert.equal(values?.length, 2);
       assert.deepEqual(JSON.parse(String(values?.[1])), value);
     }
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));

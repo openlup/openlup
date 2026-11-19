@@ -292,7 +292,15 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
     return { name: metadata.name, version, filename: pack.filename, integrity: pack.integrity, sha256: createHash("sha256").update(bytes).digest("hex") };
   });
   const required = missing ? "new.mjs" : "fragments.ts", starter = "source/examples/neutral-store/";
-  const files = { "owned/store.config.ts": "export default '#3d6657';", "owned/fragments.ts": "export default 'offer-intro';", "owned/new.mjs": "export default true;", "test/candidate.test.mjs": `import {readFileSync} from 'node:fs'; readFileSync(new URL('../owned/${required}', import.meta.url));`, "browser/dev-loop.proof.ts": "import 'node:assert/strict';", ".gitignore": "node_modules/\npackage-lock.json\n" };
+  const files = {
+    "owned/store.config.ts": "export default '#3d6657';",
+    "owned/fragments.ts": "export default 'offer-intro';",
+    "owned/new.mjs": "export default true;",
+    "test/candidate.test.mjs": `import {readFileSync} from 'node:fs'; readFileSync(new URL('../owned/${required}', import.meta.url));`,
+    [reminderInstallationTest]: "import 'node:test';",
+    "browser/dev-loop.proof.ts": "import 'node:assert/strict';",
+    ".gitignore": "node_modules/\npackage-lock.json\n",
+  };
   for (const [path, bytes] of Object.entries(files)) write(starter + path, bytes);
   const ownership = { owned: Object.keys(files).filter(path => path.startsWith("owned/")), managed: ["ownership.json", "package.json", ...Object.keys(files).filter(path => !path.startsWith("owned/"))], generated: [], sourceOnly: [] };
   write(starter + "ownership.json", ownership); write(starter + "starter-release.json", {});
@@ -307,7 +315,9 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   const result = spawnSync(process.execPath, [join(source, "scripts/packages/exact-set-qualification.mjs"), "openlup-core-v" + version, commit, receipt, "--candidate", manifest], { cwd: source, env: { ...env, PATH: join(directory, "bin") + ":" + env.PATH }, encoding: "utf8", timeout: 180_000 });
   expect(existsSync(receipt), result.stderr).toBe(true); const evidence = JSON.parse(readFileSync(receipt, "utf8")); expect(result.status, result.stderr).toBe(missing ? 1 : 0);
   expect(evidence).toMatchObject({ mode: "candidate", verificationSource: "candidate, local digest-verified", result: missing ? "FAIL" : "PASS", upgrade: { result: missing ? "FAIL" : "PASS" } });
-  expect(evidence.upgrade.phases).toHaveLength(missing ? 7 : 8); expect(evidence.upgrade.phases.filter((phase: { result: string }) => phase.result !== "PASS")).toEqual([]);
+  expect(evidence.upgrade.phases).toHaveLength(missing ? 8 : 9);
+  expect(evidence.upgrade.phases).toContainEqual({ name: "reminder-test-reconciliation", result: "PASS" });
+  expect(evidence.upgrade.phases.filter((phase: { result: string }) => phase.result !== "PASS")).toEqual([]);
   if (!missing) for (const mode of ["candidate", "released"]) {
     const path = receipt + ".applications/1/input/package-lock.json", lock = JSON.parse(readFileSync(path, "utf8")); cpSync(join(packs, packages[0]!.filename), join(directory, "foreign.tgz"));
     lock.packages["node_modules/@openlup/core"].resolved = "file:" + (mode === "candidate" ? join(directory, "foreign.tgz") : join(packs, packages[0]!.filename)); writeFileSync(path, JSON.stringify(lock));
