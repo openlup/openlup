@@ -38,7 +38,7 @@ describe("carrier pickup booking action", () => {
 
   it("writes golden courier SOAP/evidence, then reconciles and sends email", async () => {
     const fake = bookingClient();
-    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<bookCourierResult><item>ORD-1</item></bookCourierResult>"));
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(bookingReceipt()));
     const sendEmail = vi.fn().mockResolvedValue(undefined);
     const action = createCarrierPickupBookingAction({ client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z", sendEmail });
 
@@ -55,7 +55,7 @@ describe("carrier pickup booking action", () => {
 
   it("records a fault as non-retryable already_booked provider evidence", async () => {
     const fake = bookingClient();
-    const message = "Supplemental provider context. ".repeat(12) + "Po przesy&#322;k&#281; o id SHIP-1 jest już zamówiony kurier";
+    const message = "Supplemental provider context. ".repeat(12) + "Po przesy&#322;k&#281; o id SHIP-1 jest&#160;już\nzamówiony kurier";
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(clientRefusalEnvelope(message), 500));
     const action = createCarrierPickupBookingAction({ client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z" });
 
@@ -110,7 +110,7 @@ describe("carrier pickup booking action", () => {
     await started.promise;
     expect(fake.pickup()).toMatchObject({ status: "pending" });
     await expect(Promise.race(bookings)).rejects.toMatchObject({ retryable: false });
-    response.resolve(xmlResponse("<orderId>ORD-1</orderId>"));
+    response.resolve(xmlResponse(bookingReceipt()));
     expect(await Promise.allSettled(bookings)).toEqual(expect.arrayContaining([{
       status: "fulfilled",
       value: expect.objectContaining({ courierOrderId: "ORD-1" }),
@@ -142,7 +142,7 @@ describe("carrier pickup booking action", () => {
 
   it("retains the claim if the carrier confirms but the outcome write fails", async () => {
     const fake = bookingClient({ failure: "outcome" });
-    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(bookingReceipt()));
     const action = createCarrierPickupBookingAction({
       client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
@@ -169,7 +169,7 @@ describe("carrier pickup booking action", () => {
   it("reclaims a refusal classified from the full carrier response", async () => {
     const fault = clientRefusalEnvelope();
     const fetchImpl = vi.fn().mockResolvedValueOnce(xmlResponse(" ".repeat(2_001) + fault, 500))
-      .mockResolvedValueOnce(xmlResponse("<orderId>ORD-1</orderId>"));
+      .mockResolvedValueOnce(xmlResponse(bookingReceipt()));
     const fake = bookingClient();
     const action = createCarrierPickupBookingAction({
       client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
@@ -192,6 +192,12 @@ describe("carrier pickup booking action", () => {
     ), 500],
     ["qualified fault field", clientRefusalEnvelope().replaceAll("faultcode", "SOAP-ENV:faultcode"), 500],
     ["processing instruction", "<?context unsupported?>" + clientRefusalEnvelope(), 500],
+    ["unqualified header", clientRefusalEnvelope().replace(
+      "<SOAP-ENV:Body>", "<SOAP-ENV:Header><context/></SOAP-ENV:Header><SOAP-ENV:Body>",
+    ), 500],
+    ["unqualified envelope attribute", clientRefusalEnvelope().replace(
+      "<SOAP-ENV:Envelope ", '<SOAP-ENV:Envelope context="unknown" ',
+    ), 500],
     ["unqualified fault code", clientRefusalEnvelope().replace("SOAP-ENV:Client", "Client"), 500],
   ])("keeps a %s outside the retry path", async (_case, body, status) => {
     const fake = bookingClient();
@@ -220,7 +226,7 @@ describe("carrier pickup booking action", () => {
 
   it("can retry a recorded local failure before dispatch", async () => {
     const fake = bookingClient({ failure: "shipments" });
-    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(bookingReceipt()));
     const action = createCarrierPickupBookingAction({
       client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
     });
@@ -234,7 +240,7 @@ describe("carrier pickup booking action", () => {
 
   it("reconciles a confirmed pickup after its window without another carrier call", async () => {
     const fake = bookingClient({ testerUpdateError: "write failed" });
-    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(bookingReceipt()));
     const sendEmail = vi.fn();
     const action = (now: string) => createCarrierPickupBookingAction({
       client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => now, sendEmail,
@@ -268,6 +274,27 @@ describe("carrier pickup booking action", () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["an isolated result", "<orderId>ORD-1</orderId>"],
+    ["a comment", bookingReceipt().replace("<item>ORD-1</item>", "<!-- <item>ORD-1</item> -->")],
+    ["incomplete XML", bookingReceipt().replace("</SOAP-ENV:Body>", "")],
+    ["inconsistent fault detail", clientRefusalEnvelope("<![CDATA[Incomplete]]>").replace(
+      "</SOAP-ENV:Fault>", "<detail><orderId>ORD-1</orderId></detail></SOAP-ENV:Fault>",
+    )],
+  ])("does not reconcile a booking from %s", async (_case, response) => {
+    const fake = bookingClient();
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(response));
+    const sendEmail = vi.fn();
+    const action = createCarrierPickupBookingAction({
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z", sendEmail,
+    });
+    await expect(action(input)).rejects.toMatchObject({ retryable: false });
+    expect(fake.pickup()).toMatchObject({ status: "indeterminate" });
+    expect(fake.testerStatus()).toBe("packing");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
   it("keeps legacy success without recorded confirmation out of local reconciliation", async () => {
     const fake = bookingClient({ existing: {
       status: "succeeded", retryable: null, courier_order_id: "ORD-1",
@@ -286,7 +313,7 @@ describe("carrier pickup booking action", () => {
 
   it("keeps a later status for the same shipment when reconciliation loses a race", async () => {
     const fake = bookingClient({ statusBeforeUpdate: "delivered" });
-    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(bookingReceipt()));
     const sendEmail = vi.fn();
     const action = createCarrierPickupBookingAction({
       client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z", sendEmail,
@@ -300,7 +327,7 @@ describe("carrier pickup booking action", () => {
 
   it.each(["before replay", "before update"])("refuses to mark a replacement shipment shipped %s", async when => {
     const fake = bookingClient({ testerUpdateError: "write failed" });
-    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<orderId>ORD-1</orderId>"));
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(bookingReceipt()));
     const sendEmail = vi.fn();
     const action = createCarrierPickupBookingAction({
       client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z", sendEmail,
@@ -437,5 +464,14 @@ function clientRefusalEnvelope(reason = "Invalid pickup window") {
     <SOAP-ENV:Body><SOAP-ENV:Fault>
       <faultcode>SOAP-ENV:Client</faultcode><faultstring>${reason}</faultstring>
     </SOAP-ENV:Fault></SOAP-ENV:Body>
+  </SOAP-ENV:Envelope>`;
+}
+
+// bookCourierOut in the provider's WebAPI v2 WSDL binds this SOAP Body result.
+function bookingReceipt() {
+  return `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="${CARRIER_NAMESPACE}">
+    <SOAP-ENV:Body><api:bookCourierResponse>
+      <bookCourierResult><item>ORD-1</item></bookCourierResult>
+    </api:bookCourierResponse></SOAP-ENV:Body>
   </SOAP-ENV:Envelope>`;
 }

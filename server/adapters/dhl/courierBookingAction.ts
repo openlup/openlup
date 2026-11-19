@@ -7,12 +7,13 @@ import {
   buildBookCourierEnvelope,
   callCarrierSoap,
   CARRIER_DISPLAY_NAME,
+  CARRIER_NAMESPACE,
   extractCarrierPickupOrderId,
   extractFault,
   sanitizeCarrierError,
   type CarrierAdminAuth,
 } from "../../infra/dhl/adminDhlSoap.js";
-import { readSoap11ClientRefusal } from "../../infra/soap11Fault.js";
+import { readSoap11Reply } from "../../infra/soap11Reply.js";
 import {
   classifyCarrierProviderMessage,
   loadCarrierShipperContact,
@@ -117,14 +118,17 @@ export function createCarrierPickupBookingAction(deps: {
       throw await recordProviderFailure(deps.client, pickupId, now(), sanitizeCarrierError(cause), "", "indeterminate");
     }
 
-    const fault = extractFault(response.text);
-    const cException = response.text.includes("<h1>CException</h1>")
-      ? response.text.match(/<p>(.*?)<\/p>/)?.[1] ?? "Server error"
-      : null;
-    const courierOrderId = extractCarrierPickupOrderId(response.text);
-    if (!response.ok || fault || cException || !courierOrderId) {
-      const confirmedRefusal = !cException && !courierOrderId && (response.ok || response.status === 500)
-        ? readSoap11ClientRefusal(response.text) : null;
+    const reply = readSoap11Reply(response.text, {
+      namespace: CARRIER_NAMESPACE, response: "bookCourierResponse", result: "bookCourierResult",
+    });
+    const courierOrderId = response.ok && reply?.kind === "accepted" ? reply.ids.join(", ") : null;
+    if (!courierOrderId) {
+      const fault = extractFault(response.text);
+      const cException = response.text.includes("<h1>CException</h1>")
+        ? response.text.match(/<p>(.*?)<\/p>/)?.[1] ?? "Server error"
+        : null;
+      const confirmedRefusal = reply?.kind === "client_refusal" && (response.ok || response.status === 500)
+        && !cException && !extractCarrierPickupOrderId(response.text) ? reply.reason : null;
       const status = confirmedRefusal ? "failed" : "indeterminate";
       const message = confirmedRefusal ?? fault ?? cException ?? (response.ok
         ? `${CARRIER_DISPLAY_NAME} nie zwrócił numeru zamówienia kuriera`

@@ -197,7 +197,7 @@ export function createCarrierSupportCode(timestamp: string, seed: string): strin
 }
 
 export function classifyCarrierProviderMessage(message: string) {
-  const match = message.match(/Po przesyłkę o id\s+([A-Z0-9-]+)\s+jest już zamówiony kurier/i);
+  const match = message.replace(/\s+/gu, " ").match(/Po przesyłkę o id\s+([A-Z0-9-]+)\s+jest już zamówiony kurier/i);
   return match ? { reason: "already_booked" as const, blockingShipmentId: match[1] } : null;
 }
 
