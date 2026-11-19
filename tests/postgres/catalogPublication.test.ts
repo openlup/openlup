@@ -3288,6 +3288,15 @@ it.each(["before creation", "after metadata", "before metadata"] as const)("firs
   }
 });
 
+it("first decision refuses create-product from a sealed revise draft", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.product.sharedContent.catalogAction = "revise";
+  const command = await save(payload, data.draftId, 1), before = await snapshot();
+  expect(await authority.decision(approvalCommand(command), actor))
+    .toEqual({ outcome: "validation_issue", reason: "catalog_action_conflict" });
+  expect(await snapshot()).toEqual(before);
+});
+
 it.each(["approve", "revoke"] as const)("first %s checks create-SKU against its authored document revision", async action => {
   const data = await draft(), payload = structuredClone(data.payload);
   const create = payload.publication.operations.find(operation => operation.op === "create_sku")!;

@@ -111,6 +111,9 @@ export function catalogPublicationClaim(record: CatalogDraftPublicationStoredRec
 }
 const equal = (a: unknown, b: unknown): boolean => publicationJson(a) === publicationJson(b);
 const need = (condition: unknown, reason: string): void => { if (!condition) publicationRefuse(reason); };
+function assertCatalogAction(payload: CatalogDraftPayloadV3, action: "create" | "revise") {
+  need(payload.product.sharedContent.catalogAction === action, "catalog_action_conflict");
+}
 const sealedPresentation = (presentation: CatalogPublicationFacts | null): CatalogPublicationFacts => presentation ?? {};
 
 type PublicationEligibility = Extract<PublicationOperation, { op: "set_eligibility" }>;
@@ -396,6 +399,7 @@ function publicationAuthorship({ record, payload, retainedSources, rules }: Publ
   function productOperation(operation: Extract<PublicationOperation, { productSlug: string }>) {
     need(operation.productSlug === slug, "catalog_publication_scope_expansion");
     if (operation.op === "create_product") {
+      assertCatalogAction(payload, "create");
       need(operation.productId === payload.product.id, "catalog_publication_v3_compile_product_conflict");
       let name: string | undefined;
       try { name = rules.identifyDocument(payload.product.sharedContent.document)?.name; }
@@ -520,7 +524,7 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
   need(input.record.productId === payload.product.id && input.record.status === "open" && input.record.payload.schemaVersion === 3, "catalog_publication_source_invalid");
   need(canonicalCatalogDraftJson(input.record.payload) === canonicalPayload, "catalog_publication_source_mismatch");
   if (product) need(product.id === payload.product.id && product.slug === slug && equal(product.type, payload.product.type), "catalog_publication_product_identity_conflict");
-  need((payload.product.sharedContent.catalogAction === "create") === (product === null), "catalog_action_conflict");
+  assertCatalogAction(payload, product === null ? "create" : "revise");
   if (product && payload.product.primarySkuId)
     need(product.primarySkuId === payload.product.primarySkuId, "current_primary_mismatch");
   const authoredDocument = payload.product.documentRevision;
