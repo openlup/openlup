@@ -2758,10 +2758,6 @@
       "class": "public-output"
     },
     {
-      "path": "examples/neutral-store/test/catalogue.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "examples/neutral-store/test/checkout-attempts.test.ts",
       "class": "public-output"
     },

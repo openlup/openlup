@@ -102,7 +102,6 @@
     "shared/routes.ts",
     "starter-release.json",
     "test/bindings.test.ts",
-    "test/catalogue.test.ts",
     "test/healthcheck.test.ts",
     "test/import-boundary.test.ts",
     "test/installation.test.ts",

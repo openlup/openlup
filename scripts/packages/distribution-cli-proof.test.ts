@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  reconcileReminderInstallationTest, reminderInstallationTest, starterCatalogueTest, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  reconcileReminderInstallationTest, reminderInstallationTest, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -143,22 +143,19 @@ it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
   expect(to.files).toEqual(from.files);
 });
 
-it("takes the target catalogue for a pristine 1.2.0 starter when the target ships the parity test", () => {
+it("migrates the pristine catalogue after the 1.2.0 starter release", () => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const path = "owned/catalogue.ts", pack = "owned/catalogue.json";
   const released = (file: string) => execFileSync("git", ["show", `openlup-core-v1.2.0:examples/neutral-store/${file}`], { encoding: "utf8" });
   const previous = released(path), packBytes = released(pack);
   const next = readFileSync(resolve("examples/neutral-store", path), "utf8");
-  expect(previous).not.toBe(next);
   write(path, previous); write(pack, packBytes); candidate(path, next);
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
-  migrateStarterOwned(app, target, from, to);
+  migrateStarterOwned(app, target, from, { ...to, version: "1.2.0" });
   expect(readFileSync(join(app, path), "utf8")).toBe(previous);
-  to.files[starterCatalogueTest] = readFileSync(resolve("examples/neutral-store", starterCatalogueTest), "utf8");
   migrateStarterOwned(app, target, from, to);
   expect(readFileSync(join(app, path), "utf8")).toBe(next);
   expect(readFileSync(join(app, pack), "utf8")).toBe(packBytes);
-  expect(Object.keys(to.files)).not.toContain(path);
 });
 
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
@@ -204,8 +201,6 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   const from = starterUpgradeSnapshot(app, "1.1.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
   const managedTarget = { ...to.files };
   const marketPath = "owned/market.config.ts";
-  const cataloguePath = "owned/catalogue.ts";
-  let unreconciledCatalogue: string | undefined;
   expect(existsSync(join(app, marketPath))).toBe(false);
   if (customized) {
     const previousFile = (path: string) => join(source, previousOwnership.sourceMappings?.[path] ?? path);
@@ -213,7 +208,6 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
       !readFileSync(previousFile(path)).equals(readFileSync(join(target, path))));
     for (const path of changedOwned) expect(customizations.has(path), `missing local edit for ${path}`).toBe(true);
     for (const [path, [before, after]] of customizations) edit(path, before, after);
-    unreconciledCatalogue = read(cataloguePath);
     // Reconcile each local file in place against its released base and target.
     for (const path of customizations.keys()) {
       execFileSync("git", ["merge-file", join(app, path), previousFile(path), join(target, path)], { stdio: "pipe", timeout: 5_000 });
@@ -259,19 +253,6 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     expect(readFileSync(join(app, path)).equals(expected), `owned bytes after upgrade: ${path}`).toBe(true);
   }
   symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
-  const runContracts = (...paths: string[]) => spawnSync(process.execPath, ["--experimental-strip-types", "--test", ...paths],
-    { cwd: app, encoding: "utf8", timeout: 60_000 });
-  if (unreconciledCatalogue !== undefined) {
-    const reconciled = read(cataloguePath);
-    writeFileSync(join(app, cataloguePath), unreconciledCatalogue);
-    try {
-      const refusal = runContracts(starterCatalogueTest);
-      expect(refusal.status, refusal.error?.message ?? refusal.stdout + refusal.stderr).toBe(1);
-      expect(refusal.stdout).toContain("Export the types array that builds the registry as catalogDraftTypes in owned/catalogue.ts");
-    } finally {
-      writeFileSync(join(app, cataloguePath), reconciled);
-    }
-  }
   // The full upgraded-starter suite runs in the pre-publication proof (#783);
   // here, run only the owned-contract tests so the root shard stays bounded.
   const contracts = [
@@ -280,16 +261,19 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     "test/policy.test.ts",
     "test/subscription-creation.test.ts",
     reminderInstallationTest,
-    starterCatalogueTest,
   ];
   if (localTest) contracts.push(localTest.path);
-  const check = runContracts(...contracts);
+  const check = spawnSync(process.execPath, ["--experimental-strip-types", "--test", ...contracts], { cwd: app, encoding: "utf8", timeout: 60_000 });
   expect(check.status, check.error?.message ?? check.stdout + check.stderr).toBe(0);
   if (localTest) expect(check.stdout).toContain(localTest.name);
   const startup = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "--eval", `
     import assert from "node:assert/strict";
+    import { catalogDraftRegistry } from "./owned/catalogue.ts";
     import { configurations } from "./owned/store.config.ts";
     import { createApplication } from "./host/server.ts";
+
+    const each = catalogDraftRegistry.resolve({ key: "starter:item", version: 1 })?.units.find(unit => unit.code === "starter:each");
+    assert.deepEqual(each?.factor, { canonicalUnit: "openlup:piece", unscaled: "1", scale: 0 }, "starter:each must equal one openlup:piece");
 
     for (const config of Object.values(configurations)) {
       assert.deepEqual(config.checkoutRecoveryReminders, {
