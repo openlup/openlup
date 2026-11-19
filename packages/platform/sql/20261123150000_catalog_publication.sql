@@ -180,6 +180,10 @@ BEGIN
   ) THEN
    RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514';
   END IF;
+  -- The document FK admits the relational reference before checking the manifest.
+  IF NEW.canonical_state::jsonb->'product'->'document'->>'id' IS DISTINCT FROM NEW.document_revision_id::text THEN
+   RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514';
+  END IF;
   RETURN NEW;
  END IF;
  IF TG_TABLE_NAME = 'catalog_product_document_revisions' THEN
@@ -209,9 +213,6 @@ BEGIN
   IF body->'schemaVersion' IS DISTINCT FROM '2'::jsonb OR body->'product'->>'id' IS DISTINCT FROM NEW.product_id::text
    OR jsonb_typeof(body->'skus') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
-  END IF;
-  IF body->'product'->'document'->>'id' IS DISTINCT FROM NEW.document_revision_id::text THEN
-   RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514';
   END IF;
  ELSIF TG_TABLE_NAME = 'catalog_sku_revisions' THEN
   IF body->>'id' IS DISTINCT FROM NEW.sku_id::text OR body->>'productId' IS DISTINCT FROM NEW.product_id::text
