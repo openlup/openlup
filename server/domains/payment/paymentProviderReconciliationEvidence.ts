@@ -34,8 +34,14 @@ export function terminalAmountMismatch(
   attempt: ClaimedPaymentAttempt,
   status: ProviderReconciliationStatus,
 ): string | null {
+  if (status.status === "succeeded" && status.amountMinor === null) {
+    return "provider_amount_missing";
+  }
   if (status.amountMinor !== null && status.amountMinor !== attempt.amountMinor) {
     return "provider_amount_mismatch";
+  }
+  if (status.status === "succeeded" && !status.currency?.trim()) {
+    return "provider_currency_missing";
   }
   if (status.currency && status.currency.toUpperCase() !== attempt.currency.toUpperCase()) {
     return "provider_currency_mismatch";

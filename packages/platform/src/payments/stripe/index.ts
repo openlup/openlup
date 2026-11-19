@@ -179,10 +179,13 @@ function neutralDecline(decline: NonNullable<PaymentExecutionResult["providerDec
 
 function readback(base: Pick<PaymentReadbackEnvelope, "identity" | "expectedMoney" | "purpose">,
   status: Awaited<ReturnType<ReturnType<typeof createStripePaymentReconciliationProvider>["readPayment"]>>): PaymentReadbackEnvelope {
-  if (status.status === "unknown" || status.amountMinor === null || !Number.isSafeInteger(status.amountMinor) || !status.currency) {
+  if (status.status === "unknown" || status.amountMinor === null || !Number.isSafeInteger(status.amountMinor) || !status.currency
+    || (status.status === "succeeded" && status.capturedAmountBasis !== "provider_capture_v1")) {
     return { ...base, kind: "unknown", reason: "indeterminate" };
   }
-  return { ...base, kind: status.status, observedMoney: { amountMinor: status.amountMinor, currency: status.currency }, providerOccurredAt: status.occurredAt };
+  return { ...base, kind: status.status, observedMoney: { amountMinor: status.amountMinor, currency: status.currency },
+    providerOccurredAt: status.occurredAt,
+    ...(status.capturedAmountBasis ? { capturedAmountBasis: status.capturedAmountBasis } : {}) };
 }
 
 /** Preserve donor money classifications in the neutral evidence union. */
@@ -244,9 +247,20 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
             ? (object.last_payment_error as { advice_code: string }).advice_code : undefined }) } : {}),
     };
   }
-  // The donor normalizer constructs this filtered carrier, never the raw body.
-  // Keep its reader dialect and provenance outside normalized event identity.
+  // The old Stripe receipt preferred the requested amount. This alternate
+  // identity is restricted to reading a completed historical receipt.
+  const priorAmount = object.amount ?? object.amount_received;
+  const historicalCaptureFingerprint = result.kind === "money" && result.outcome === "succeeded"
+    && typeof priorAmount === "number" && Number.isSafeInteger(priorAmount) && priorAmount > 0
+    && priorAmount !== result.money?.amountMinor && normalized.currency
+    ? createHash("sha256").update(JSON.stringify({ ...result,
+      money: { amountMinor: priorAmount, currency: normalized.currency } })).digest("hex")
+    : undefined;
+  // The donor normalizer constructs this filtered carrier outside event identity.
   return { ...result, fingerprint: createHash("sha256").update(JSON.stringify(result)).digest("hex"),
+    ...(historicalCaptureFingerprint ? { historicalCaptureFingerprint } : {}),
+    ...(result.kind === "money" && result.outcome === "succeeded" && result.money
+      ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     providerAuditPayload: normalized.rawPayload };
 }
 

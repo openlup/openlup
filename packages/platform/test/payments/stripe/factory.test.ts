@@ -1,9 +1,9 @@
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createStripePaymentAdapter, stripePaymentCapabilities, type StripePaymentAdapterConfig } from "../../../src/payments/stripe/index.js";
 import { mapStripeIntent, mapSetupIntent } from "../../../src/payments/stripe/intentMapper.js";
 import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceProjection.js";
-import { readMethodLifecycleEvent } from "../../../src/payments/index.js";
+import { createVerifiedPaymentIngress, readMethodLifecycleEvent } from "../../../src/payments/index.js";
 
 const timestamp = 1_800_000_000;
 const methodCases = [
@@ -19,7 +19,7 @@ function subject(intent = { id: "pi_fixture", status: "requires_action", amount:
   return { client, config, adapter: createStripePaymentAdapter(config) };
 }
 function event(type: string, object: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) {
-  return { id: "evt_fixture", type, created: timestamp, data: { object: { id: "pi_fixture", amount: 2599, currency: "eur", ...object } }, ...extra };
+  return { id: "evt_fixture", type, created: timestamp, data: { object: { id: "pi_fixture", amount: 2599, amount_received: 2599, currency: "eur", ...object } }, ...extra };
 }
 function signed(raw: unknown, at = timestamp, key = "fixture") {
   const rawBody = Buffer.from(typeof raw === "string" ? raw : JSON.stringify(raw));
@@ -204,7 +204,15 @@ describe("opt-in payment factory", () => {
   it("makes replay fingerprints independent of receipt time and never invents provider occurrence time", async () => {
     const { adapter } = subject(); const input = signed(event("payment_intent.succeeded", {}, { created: undefined }));
     const first = await adapter.verifyPort.verifyAndNormalize(input);
-    expect(first).toMatchObject({ providerOccurredAt: null });
+    expect(first).toMatchObject({ providerOccurredAt: null, capturedAmountBasis: "provider_capture_v1" });
+    if (first.kind !== "money") throw new Error("Expected verified capture");
+    const { fingerprint, providerAuditPayload, capturedAmountBasis, ...priorIdentity } = first;
+    expect(providerAuditPayload).toBeDefined();
+    expect(capturedAmountBasis).toBe("provider_capture_v1");
+    expect(fingerprint).toBe(createHash("sha256").update(JSON.stringify(priorIdentity)).digest("hex"));
+    expect(projectVerifiedEvidence(first, input, "require-evidence")).toMatchObject({ capturedAmountBasis });
+    const failed = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.payment_failed")));
+    expect(failed).not.toHaveProperty("capturedAmountBasis");
     expect(await adapter.verifyPort.verifyAndNormalize({ ...input, receivedAt: "2026-10-22T00:00:00Z" })).toEqual(first);
     expect(await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.payment_failed", {}, { created: undefined })))).not.toEqual(first);
   });
@@ -229,6 +237,28 @@ describe("opt-in payment factory", () => {
     };
     expect(await adapter.verifyPort.verifyAndNormalize(staleRotated)).toEqual({ kind: "refusal", reason: "stale" });
   });
+  it.each([500, undefined])("acknowledges a completed legacy receipt after collected money changes to %s", async amount_received => {
+    const { adapter } = subject();
+    const prior = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded")));
+    if (prior.kind !== "money") throw new Error("Expected verified legacy identity");
+    const delivery = signed(event("payment_intent.succeeded", { amount_received }));
+    const current = await adapter.verifyPort.verifyAndNormalize(delivery);
+    expect(current).toMatchObject({ historicalCaptureFingerprint: prior.fingerprint });
+    const findCompletedHistoricalCapture = vi.fn(async () => "prior-local-event");
+    const ingestPaymentEvent = vi.fn();
+    const applyPaymentResult = vi.fn();
+    const afterProcessed = vi.fn();
+    const operationalEvents = vi.fn();
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort,
+      paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult }, afterProcessed, operationalEvents });
+    expect(await ingress.receive(delivery)).toMatchObject({ status: 200, data: { replayed: true, paymentEventId: "prior-local-event" } });
+    expect(findCompletedHistoricalCapture).toHaveBeenCalledWith({ provider: "stripe", providerEventId: "evt_fixture",
+      providerPaymentId: "pi_fixture", legacyFingerprint: prior.fingerprint });
+    expect(ingestPaymentEvent).not.toHaveBeenCalled();
+    expect(applyPaymentResult).not.toHaveBeenCalled();
+    expect(afterProcessed).not.toHaveBeenCalled();
+    expect(operationalEvents).toHaveBeenCalledWith(expect.objectContaining({ name: "provider_payment_historical_capture_replay" }));
+  });
   it("preserves active checkout versus recovery read semantics and exact input references", async () => {
     const { adapter } = subject({ id: "pi_fixture", status: "requires_payment_method", amount: 2599, currency: "eur", client_secret: "transient_fixture" });
     const input = { identity: { provider: "stripe", providerPaymentRef: "pi_fixture", intentRef: "intent-a", attemptRef: "attempt-a" }, expectedMoney: request.money, purpose: "active_checkout" as const };
@@ -236,6 +266,14 @@ describe("opt-in payment factory", () => {
     expect(result).toMatchObject({ kind: "pending", purpose: "active_checkout", observedMoney: request.money });
     expect(result.identity).toBe(input.identity); expect(result.expectedMoney).toBe(input.expectedMoney);
     expect(await adapter.readbackPort.readPayment({ ...input, purpose: "recovery" })).toMatchObject({ kind: "failed", purpose: "recovery" });
+  });
+  it("keeps a provider success with zero collected money out of capture readback", async () => {
+    const intent = { id: "pi_fixture", status: "succeeded", amount: request.money.amountMinor, amount_received: 0,
+      currency: request.money.currency.toLowerCase(), client_secret: "transient_fixture" };
+    const { adapter } = subject(intent);
+    const identity = { provider: "stripe", providerPaymentRef: intent.id, intentRef: "intent-a", attemptRef: "attempt-a" };
+    await expect(adapter.readbackPort.readPayment({ identity, expectedMoney: request.money, purpose: "recovery" }))
+      .resolves.toEqual({ kind: "unknown", reason: "indeterminate", identity, expectedMoney: request.money, purpose: "recovery" });
   });
   it("refuses mismatched readback, keeps uncertainty, and omits incomplete exact absence", async () => {
     const { adapter, client } = subject();

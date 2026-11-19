@@ -171,6 +171,12 @@ certify a provider integration.
 
 ## Customer browser identity
 
+Checkout accepts an unlinked email for a new guest. For a repeat purchase
+with an email linked to an account, sign in first and enter the confirmed
+email of the signed-in account. If the first checkout was completed before you
+signed in, retrying the same request after linking your account returns the
+original order and payment attempt.
+
 After checkout, navigate to `/sign-in` (`/zaloguj-sie` in Polish). The accepted
 notice confirms neither account existence nor delivery. Follow the captured
 confirmation or enter its code; callback routes `/account/auth/callback` and

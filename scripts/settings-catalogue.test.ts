@@ -82,3 +82,21 @@ it("refuses unknown descriptor fields, including nested metadata, and a mismatch
     .toThrow("Unrecognized key");
   expect(() => parseSettingData(contents, "fulfillment")).toThrow("Descriptor does not belong to fulfillment");
 });
+
+it("imports unrelated operations when both settings carriers are unreadable", () => {
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    import fs from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    const readFileSync = fs.readFileSync;
+    fs.readFileSync = (path, ...options) => {
+      assert.doesNotMatch(String(path), /settings-(?:catalog|refusals)[.]json$/);
+      return readFileSync(path, ...options);
+    };
+    syncBuiltinESMExports();
+    const operations = await import("@openlup/platform/operations/server");
+    assert.equal(typeof operations.createAdminSettingsReadHandler, "function");
+    assert.equal(typeof operations.createPlatformControlPlanePort, "function");
+  `], { encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(0);
+});

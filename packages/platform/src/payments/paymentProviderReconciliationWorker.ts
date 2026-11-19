@@ -1,5 +1,6 @@
 import { tryReopenPreparedAbsence } from "./paymentProviderReconciliationAbsenceReopen.js";
 import {
+  CAPTURE_REVIEW_RESULT_KIND,
   applyResultKey,
   bucket,
   clamp,
@@ -244,6 +245,7 @@ export async function runPaymentProviderReconciliationWorker(
 
       if (applied.correctionStatus === "ignored") {
         result.ignored += 1;
+        if (applied.paymentResult.kind === CAPTURE_REVIEW_RESULT_KIND) result.manualReview += 1;
         continue;
       }
 

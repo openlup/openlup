@@ -1,3 +1,4 @@
+import { CAPTURE_REVIEW_RESULT_KIND, PROTECTED_FAILURE_RESULT_KIND } from "./paymentProviderReconciliationEvidence.js";
 import type { PaymentIngressPort, PaymentVerifyNormalizePort, RefundEvidencePolicy, VerifiedMethodEvidence, VerifiedPaymentEvidence } from "./contracts/evidence.js";
 import { projectVerifiedEvidence } from "./verifiedEvidenceProjection.js";
 const PAYMENT_WEBHOOK_EVENT_TYPES = [
@@ -22,6 +23,7 @@ export interface NormalizedProviderPaymentWebhook {
   paymentAttemptId?: string | null;
   amountMinor?: number | null;
   currency?: string | null;
+  capturedAmountBasis?: VerifiedPaymentEvidence["capturedAmountBasis"];
   occurredAt: string;
 
   refundKind?: "full" | "partial" | null;
@@ -40,6 +42,9 @@ export interface NormalizedProviderPaymentWebhook {
 }
 
 export interface PaymentWebhookControlPort {
+  findCompletedHistoricalCapture?(input: {
+    provider: string; providerEventId: string; providerPaymentId: string; legacyFingerprint: string;
+  }): Promise<string | null>;
   ingestPaymentEvent(input: NormalizedProviderPaymentWebhook): Promise<{
     paymentEventId: string;
     paymentIntentId: string | null;
@@ -53,7 +58,7 @@ export interface PaymentWebhookControlPort {
     resultStatus: "succeeded" | "failed" | "refunded" | "partially_refunded" | "disputed";
     occurredAt: string;
     failureReason: string | null;
-  }): Promise<{ replayed: boolean }>;
+  }): Promise<{ replayed: boolean; kind?: string }>;
 
   confirmSubscriptionActivation?(input: {
     idempotencyKey: string;
@@ -139,6 +144,24 @@ export function createVerifiedPaymentIngress({
     return res;
     async function processEvent(): Promise<void> {
     try {
+      if (verifiedEvidence.kind === "money" && verifiedEvidence.outcome === "succeeded"
+        && verifiedEvidence.provider === provider && verifiedEvidence.historicalCaptureFingerprint) {
+        const { providerEventId, providerPaymentRef, historicalCaptureFingerprint } = verifiedEvidence;
+        const control = createPorts ? (await createPorts({
+          provider, providerEventId, providerPaymentId: providerPaymentRef, eventType: "payment.succeeded",
+          paymentIntentId: verifiedEvidence.intentRef, paymentAttemptId: verifiedEvidence.attemptRef,
+          occurredAt: input.receivedAt, rawPayload: {},
+        })).paymentControlPort : paymentControlPort;
+        const paymentEventId = await control?.findCompletedHistoricalCapture?.({
+          provider, providerEventId, providerPaymentId: providerPaymentRef, legacyFingerprint: historicalCaptureFingerprint,
+        });
+        if (paymentEventId) {
+          operationalEvents({ name: "provider_payment_historical_capture_replay", domain: "payment", surface: "webhook",
+            details: { provider, providerPaymentId: providerPaymentRef, eventType: "payment.succeeded" } });
+          sendSuccess(res, { provider, providerEventId, paymentEventId, replayed: true });
+          return;
+        }
+      }
       try { event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy); }
       catch (error) {
         if (error instanceof Error && error.message === "payment_control_result_amount_mismatch") throw error;
@@ -165,7 +188,7 @@ export function createVerifiedPaymentIngress({
       const ingested = await ports.paymentControlPort.ingestPaymentEvent(event); if (ingested.occurredAt) event = { ...event, occurredAt: ingested.occurredAt };
       const resultStatus = mapResultStatus(event, refundEvidencePolicy);
       if (resultStatus && ingested.paymentIntentId && ports.paymentControlPort.applyPaymentResult) {
-        await ports.paymentControlPort.applyPaymentResult({
+        const applied = await ports.paymentControlPort.applyPaymentResult({
           idempotencyKey: `provider-webhook:${provider}:${event.providerEventId}:apply`,
           paymentIntentId: ingested.paymentIntentId,
           paymentEventId: ingested.paymentEventId,
@@ -173,6 +196,14 @@ export function createVerifiedPaymentIngress({
           occurredAt: event.occurredAt,
           failureReason: event.eventType === "payment.failed" ? "provider_webhook_failed" : null,
         });
+        if (applied.kind === CAPTURE_REVIEW_RESULT_KIND || applied.kind === PROTECTED_FAILURE_RESULT_KIND) {
+          sendSuccess(res, {
+            provider, providerEventId: event.providerEventId, paymentEventId: ingested.paymentEventId,
+            replayed: applied.replayed, acknowledged: true,
+            skipped: applied.kind === CAPTURE_REVIEW_RESULT_KIND ? "result_manual_review" : "result_protected_state",
+          });
+          return;
+        }
       } else if (isMoneyMoved(resultStatus) && !ingested.paymentIntentId && !ingested.replayed) {
         // Operator policy: payments should only originate at the storefront
         // checkout. A money-moved provider event (succeeded / refunded /

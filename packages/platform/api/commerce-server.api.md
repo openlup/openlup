@@ -9741,6 +9741,8 @@ export declare function createConfiguratorIntentPersistenceRpcPort<Request exten
     responseSchema: z.ZodType<Response>;
     decodeCommandResponse(data: unknown): Persistence;
     normalizePhoneToE164(phone: string, country: unknown): string | null;
+    /** Read one completed receipt with the current client's ownership proved by the adapter. */
+    readCompletedReceipt?(idempotencyKey: string): Promise<CompletedIntentRow | null>;
 }, identity?: ConfiguratorIntentPersistenceIdentity): ConfiguratorIntentPersistencePort<Request, Response> & CheckoutCommandPersistencePort<Command, Persistence>;
 export {};
 ```

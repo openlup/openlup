@@ -1,3 +1,5 @@
+import type { IdentityVerifierPort, VerifiedPrincipal } from "@openlup/platform/identity";
+import { readBearerToken } from "../../_lib/admin-domain/auth.js";
 import type { DataGatewayPort } from "../../../src/domains/platform-runtime/ports.js";
 import type { CheckoutCommandV1 } from "../../../src/domains/commerce/checkoutCommandContracts.js";
 import { CommerceRuntimeConflictError, type CheckoutCommandRuntimeResult } from "../../../src/domains/commerce/runtimePorts.js";
@@ -47,19 +49,18 @@ async function readBy(client: ReadClient, table: string, columns: string, column
   return row(data, table);
 }
 
-/** A changed operator setting cannot rewrite an already-issued payment attempt. */
-export async function assertNoRecordedOutcomeChange(
+/** Find the trusted simulator marker for an already-issued payment attempt. */
+async function readRecordedCheckoutOutcome(
   gateway: DataGatewayPort,
   command: CheckoutCommandV1,
-  configuredOutcome: Outcome,
-): Promise<boolean> {
+): Promise<Outcome | null> {
   return gateway.asService(async (service) => {
     const client = service as OutcomeReadClient;
     const { data, error } = await client.from("commerce_payment_attempts")
       .select("provider,request_payload,response_payload,idempotency_key")
       .eq("idempotency_key", preparedKey(command)).limit(2);
     if (error || !Array.isArray(data) || data.length > 1) throw new Error("reference_recorded_outcome_read_failed");
-    if (data.length === 0) return false;
+    if (data.length === 0) return null;
     const attempt = row(data[0], "reference_recorded_attempt");
     const request = row(attempt.request_payload, "reference_recorded_request");
     const payload = row(attempt.response_payload, "reference_recorded_response");
@@ -69,24 +70,22 @@ export async function assertNoRecordedOutcomeChange(
       (payload.outcome !== "captured" && payload.outcome !== "refused")) {
       throw new Error("reference_recorded_outcome_invalid");
     }
-    if (payload.outcome !== configuredOutcome) {
-      throw new CommerceRuntimeConflictError("Reference payment outcome differs from the recorded attempt");
-    }
-    return true;
+    return payload.outcome;
   });
 }
 
-/** A prepared provider attempt cannot be redispatched on replay. Revalidate
- * the original command fingerprint in its canonical persistence RPC, then
- * resume only the completed simulator attempt and finalized order receipts. */
-export async function resumeRecordedCheckout(
+/** A prepared provider attempt cannot be redispatched on replay. Prove
+ * ownership and the original command without reopening its persistence receipt. */
+async function resumeRecordedCheckout(
   gateway: DataGatewayPort,
   command: CheckoutCommandV1,
+  authenticatedUserId: string | null = null,
 ): Promise<CheckoutCommandRuntimeResult> {
   return gateway.asService(async (service) => {
     const client = service as ReadClient;
-    const persistence = await createSupabaseConfiguratorIntentPersistencePort(service as never).persistCheckoutCommand(command);
-    if (!persistence.replayed) throw new Error("reference_command_not_replayed");
+    const persistence = await createSupabaseConfiguratorIntentPersistencePort(service as never, { authenticatedUserId })
+      .replayCheckoutCommand(command);
+    if (!persistence) throw new CommerceRuntimeConflictError("Checkout could not be resumed");
     const finalizedReceipt = await client.from("commerce_idempotency_keys").select("status,response_payload")
       .eq("scope", "commerce.checkout_order_finalize").eq("idempotency_key", command.idempotencyKey).single();
     const draftReceipt = await client.from("commerce_idempotency_keys").select("status,response_payload")
@@ -238,6 +237,7 @@ export function createCapturedReferenceCheckoutHandler(input: {
   gateway: DataGatewayPort;
   outcome: Outcome;
   assertDisposable: () => Promise<void>;
+  verifyAccessToken: IdentityVerifierPort["verifyAccessToken"];
 }) {
   return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     try {
@@ -247,16 +247,36 @@ export function createCapturedReferenceCheckoutHandler(input: {
       sendBffError(res, "UPSTREAM_UNAVAILABLE", "Reference checkout is unavailable");
       return;
     }
+    const authorization = req.headers.authorization;
+    let principal: VerifiedPrincipal | null = null;
+    if (authorization !== undefined) {
+      const token = typeof authorization === "string" ? readBearerToken(req) : null;
+      try {
+        principal = token ? await input.verifyAccessToken(token) : null;
+      } catch {
+        sendBffError(res, "UPSTREAM_UNAVAILABLE", "Reference checkout is unavailable");
+        return;
+      }
+      if (!principal?.emailVerified || !principal.email) {
+        sendBffError(res, "UNAUTHORIZED", "Sign in again");
+        return;
+      }
+    }
+    const authenticatedUserId = principal?.principalId ?? null;
+    const verifiedEmail = principal?.email?.trim().toLowerCase();
     return input.gateway.asService((client) => {
-      const runtime = createLocalReferenceCheckoutRuntimePort(client);
+      const runtime = createLocalReferenceCheckoutRuntimePort(client, authenticatedUserId);
       return createReferenceCheckoutHandler({
         startCheckout: async (command) => {
-          const recorded = await assertNoRecordedOutcomeChange(input.gateway, command, input.outcome);
-          const started = recorded ? await resumeRecordedCheckout(input.gateway, command) : await runtime.startCheckoutCommand({
+          const recordedOutcome = await readRecordedCheckoutOutcome(input.gateway, command);
+          const started = recordedOutcome === null ? await runtime.startCheckoutCommand({
             command,
             paymentProvider: LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER,
             metadata: { source: "public-reference.no-egress.v1" },
-          });
+          }) : await resumeRecordedCheckout(input.gateway, command, authenticatedUserId);
+          if (recordedOutcome !== null && recordedOutcome !== input.outcome) {
+            throw new CommerceRuntimeConflictError("Reference payment outcome differs from the recorded attempt");
+          }
           return settleCapturedCheckout(input.gateway, command, started, (request) => runtime.applyPaymentResult(request));
         },
         checkRateLimit: (request, command) => checkAndRecordCheckoutAttempt({
@@ -274,7 +294,8 @@ export function createCapturedReferenceCheckoutHandler(input: {
             ],
           })
           : undefined,
-        admitProfile: (command) => command.mode === "subscription" && localReferenceCommandMatchesProfile(command),
+        admitProfile: (command) => command.mode === "subscription" && localReferenceCommandMatchesProfile(command)
+          && (verifiedEmail === undefined || command.customer.email.trim().toLowerCase() === verifiedEmail),
       })(req, res);
     });
   };

@@ -28,7 +28,7 @@ describe("normalize", () => {
     expect(normalize({
       id: "pi_ok",
       status: "succeeded",
-      amount: 1299,
+      amount: 1499,
       amount_received: 1299,
       currency: "eur",
     })).toMatchObject({
@@ -36,8 +36,34 @@ describe("normalize", () => {
       providerStatus: "succeeded",
       amountMinor: 1299,
       currency: "EUR",
+      capturedAmountBasis: "provider_capture_v1",
       failureReason: null,
     });
+  });
+
+  it.each([undefined, 12.5])("keeps successful readback money unknown when amount_received is %s", amount_received => {
+    const observed = normalize({
+      id: "pi_capture", status: "succeeded", amount: 1299, amount_received, currency: "eur",
+    });
+    expect(observed).toMatchObject({ status: "succeeded", amountMinor: null, configuredAmountMinor: 1299, currency: "EUR" });
+    expect(observed).not.toHaveProperty("capturedAmountBasis");
+  });
+
+  it("keeps an observed zero without attesting a successful capture", () => {
+    const observed = normalize({
+      id: "pi_capture", status: "succeeded", amount: 1299, amount_received: 0, currency: "eur",
+    });
+    expect(observed).toMatchObject({ status: "succeeded", amountMinor: 0, currency: "EUR" });
+    expect(observed).not.toHaveProperty("capturedAmountBasis");
+    expect(observed).not.toHaveProperty("configuredAmountMinor");
+  });
+
+  it("refuses a successful readback for a different provider intent", async () => {
+    const provider = createStripePaymentReconciliationProvider({ retrievePaymentIntent: async () => ({
+      id: "pi_other", status: "succeeded", amount: 1299, amount_received: 1299, currency: "eur",
+    }) });
+    await expect(provider.readPayment({ providerPaymentId: "pi_requested" }))
+      .rejects.toThrow("stripe_readback_payment_identity_mismatch");
   });
 
   it("maps off-session action-required states to terminal failure for dunning", () => {

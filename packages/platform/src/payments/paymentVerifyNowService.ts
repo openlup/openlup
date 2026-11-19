@@ -6,7 +6,7 @@ import type {
   PaymentProviderReconciliationProvider,
   ProviderReconciliationStatus,
 } from "./contracts/reconciliation.js";
-import { applyResultKey, evidencePayload, terminalAmountMismatch } from "./paymentProviderReconciliationEvidence.js";
+import { CAPTURE_REVIEW_RESULT_KIND, PROTECTED_FAILURE_RESULT_KIND, applyResultKey, evidencePayload, terminalAmountMismatch } from "./paymentProviderReconciliationEvidence.js";
 
 const LIVE_ATTEMPT_STATUSES = new Set(["sent_to_provider", "requires_action", "processing", "created"]);
 
@@ -17,7 +17,7 @@ const LIVE_ATTEMPT_STATUSES = new Set(["sent_to_provider", "requires_action", "p
  */
 export async function verifyPaymentAttemptNow(input: {
   snapshot: VerifiableAttemptSnapshot;
-  applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult">;
+  applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult" | "readCaptureReview">;
   providers: Partial<Record<string, PaymentProviderReconciliationProvider>>;
   now: () => Date;
   providerPaymentId?: string;
@@ -30,6 +30,9 @@ export async function verifyPaymentAttemptNow(input: {
   purpose?: ProviderReadPurpose;
 }): Promise<PaymentVerifyNowResult> {
   const { snapshot } = input;
+  if (await hasCommittedCaptureReview(snapshot, input.applyPort)) {
+    return { status: "manual_review", verified: true, applied: false, providerPaymentId: null, attempt: null };
+  }
   if (!LIVE_ATTEMPT_STATUSES.has(snapshot.attemptStatus)) {
     return { status: snapshot.attemptStatus, verified: false, applied: false, providerPaymentId: null, attempt: null };
   }
@@ -89,6 +92,13 @@ export async function verifyPaymentAttemptNow(input: {
     }),
   });
 
+  if (applied.correctionStatus === "ignored" && applied.paymentResult.kind === CAPTURE_REVIEW_RESULT_KIND) {
+    return { status: "manual_review", verified: true, applied: false, providerPaymentId, attempt };
+  }
+  if (applied.correctionStatus === "ignored" && applied.paymentResult.kind === PROTECTED_FAILURE_RESULT_KIND) {
+    return { status: "pending", verified: true, applied: false, providerPaymentId, attempt };
+  }
+
   return {
     status: providerStatus.status,
     verified: true,
@@ -96,6 +106,35 @@ export async function verifyPaymentAttemptNow(input: {
     providerPaymentId,
     attempt,
   };
+}
+
+export async function hasCommittedCaptureReview(
+  snapshot: VerifiableAttemptSnapshot,
+  port: Pick<PaymentProviderReconciliationPort, "readCaptureReview">,
+): Promise<boolean> {
+  const { captureReviewRequired, orderId, paymentIntentId, paymentAttemptId } = snapshot;
+  return captureReviewRequired ?? await port.readCaptureReview?.({ orderId, paymentIntentId, paymentAttemptId }) ?? false;
+}
+
+export function sameCanonicalAttempt(
+  before: VerifiableAttemptSnapshot,
+  after: VerifiableAttemptSnapshot | null,
+): after is VerifiableAttemptSnapshot {
+  return Boolean(after)
+    && after?.orderId === before.orderId
+    && after.orderClientId === before.orderClientId
+    && after.paymentIntentId === before.paymentIntentId
+    && after.paymentAttemptId === before.paymentAttemptId
+    && after.paymentId === before.paymentId
+    && after.provider === before.provider
+    && after.providerAttemptId === before.providerAttemptId
+    && after.providerSessionId === before.providerSessionId
+    && after.intentProviderPaymentId === before.intentProviderPaymentId
+    && after.intentStatus === before.intentStatus
+    && after.attemptStatus === before.attemptStatus
+    && after.amountMinor === before.amountMinor
+    && after.currency.toUpperCase() === before.currency.toUpperCase()
+    && after.localUpdatedAt === before.localUpdatedAt;
 }
 
 export function toClaimedAttemptShape(

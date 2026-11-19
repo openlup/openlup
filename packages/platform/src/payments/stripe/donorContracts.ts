@@ -59,6 +59,9 @@ export interface NormalizedProviderPaymentWebhook {
 export interface ProviderReconciliationStatus {
   status: "succeeded" | "failed" | "pending" | "unknown";
   providerStatus: string;
+  capturedAmountBasis?: "provider_capture_v1";
+  /** Configured amount for comparison when captured money is unavailable. */
+  configuredAmountMinor?: number;
   occurredAt: string | null;
   failureReason: string | null;
   amountMinor: number | null;

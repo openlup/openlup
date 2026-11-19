@@ -54,7 +54,7 @@ describe("payment ambiguity boundary characterization", () => {
     expect(unknown).toMatchObject({ unknown: 1, manualReview: 1, silenceOverdue: 1, corrected: 0 });
     expect(f.port.applyTerminalResult).not.toHaveBeenCalled();
     f.readPayment.mockResolvedValue({ ...reading, status: "succeeded", providerStatus: "succeeded",
-      occurredAt: "2026-10-20T10:01:00.000Z", amountMinor: 9000, currency: "XXX" });
+      occurredAt: "2026-10-20T10:01:00.000Z", amountMinor: 9000, currency: "XXX", capturedAmountBasis: "provider_capture_v1" });
     await f.run();
     expect(f.port.applyTerminalResult).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       expectedOrderId: "order-original", expectedPaymentIntentId: "intent-original", expectedPaymentAttemptId: "attempt-original",
@@ -62,15 +62,34 @@ describe("payment ambiguity boundary characterization", () => {
     }));
   });
 
-  it.each([{ amountMinor: 8999, currency: "XXX" }, { amountMinor: 9000, currency: "invalid" }])(
-    "refuses terminal money drift %j after an earlier ambiguous observation", async (money) => {
+  it("counts a committed capture review without counting a correction or failure", async () => {
+    const f = fixture();
+    f.port.claimStaleAttempts.mockResolvedValue([attempt]);
+    f.readPayment.mockResolvedValue({ ...reading, status: "succeeded", providerStatus: "succeeded",
+      occurredAt: NOW, amountMinor: 9000, currency: "XXX", capturedAmountBasis: "provider_capture_v1" });
+    f.port.applyTerminalResult.mockResolvedValue({ correctionStatus: "ignored", replayed: false,
+      paymentResult: { kind: "ignored_success_requiring_review" } });
+    expect(await f.run()).toMatchObject({ ignored: 1, manualReview: 1, corrected: 0, succeeded: 0, failures: 0 });
+    expect(f.port.recordEvidence).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ amountMinor: 8999, currency: "XXX" }, "provider_amount_mismatch"],
+    [{ amountMinor: 9000, currency: "invalid" }, "provider_currency_mismatch"],
+    [{ amountMinor: null, currency: "XXX" }, "provider_amount_missing"],
+    [{ amountMinor: 0, currency: "XXX" }, "provider_amount_mismatch"],
+    [{ amountMinor: 9000, currency: null }, "provider_currency_missing"],
+    [{ amountMinor: 9000, currency: " " }, "provider_currency_missing"],
+    [{ amountMinor: 9000, currency: "XXX", capturedAmountBasis: undefined }, "provider_capture_amount_unconfirmed"],
+  ] as const)(
+    "refuses incomplete or mismatched success money %j after an earlier ambiguous observation", async (money, reason) => {
       const f = fixture(); f.port.claimStaleAttempts.mockResolvedValue([attempt]);
       await f.run();
-      f.readPayment.mockResolvedValue({ ...reading, status: "succeeded", providerStatus: "succeeded", ...money });
+      f.readPayment.mockResolvedValue({ ...reading, status: "succeeded", providerStatus: "succeeded", capturedAmountBasis: "provider_capture_v1", ...money });
       const result = await f.run();
       expect(result).toMatchObject({ manualReview: 1, amountCurrencyMismatches: 1, corrected: 0 });
       expect(f.port.applyTerminalResult).not.toHaveBeenCalled();
       expect(f.port.recordEvidence.mock.calls[1][0]).toMatchObject({ correctionStatus: "failed",
-        payload: expect.objectContaining({ applied: false }) });
+        payload: expect.objectContaining({ applied: false, failureReason: reason }) });
     });
 });
