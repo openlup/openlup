@@ -55,6 +55,8 @@ export function createConfiguratorIntentPersistenceRpcPort<Request extends objec
     responseSchema: z.ZodType<Response>;
     decodeCommandResponse(data: unknown): Persistence;
     normalizePhoneToE164(phone: string, country: unknown): string | null;
+    /** Read one completed receipt with the current client's ownership proved by the adapter. */
+    readCompletedReceipt?(idempotencyKey: string): Promise<CompletedIntentRow | null>;
   },
   identity: ConfiguratorIntentPersistenceIdentity = { authenticatedUserId: null },
 ): ConfiguratorIntentPersistencePort<Request, Response> & CheckoutCommandPersistencePort<Command, Persistence> {
@@ -90,6 +92,12 @@ export function createConfiguratorIntentPersistenceRpcPort<Request extends objec
     async findCompletedIdentity(
       idempotencyKey: string,
     ): Promise<Response | null> {
+      if (bindings.readCompletedReceipt) {
+        const receipt = await bindings.readCompletedReceipt(idempotencyKey);
+        const parsed = bindings.responseSchema.safeParse(receipt?.response_payload);
+        return parsed.success ? parsed.data : null;
+      }
+
       // Read back the identity the RPC stored on the COMPLETED key. The RPC writes
       // the full response object into `response_payload`, so it validates against
       // the same schema persistIntent returns. A different/missing row -> null,
@@ -127,6 +135,11 @@ export function createConfiguratorIntentPersistenceRpcPort<Request extends objec
     // Receipt existence permits only read-only authentication. The
     // writing RPC reopens changed completed keys, so it must never run here.
     if (!idempotencyKey) throw cadenceRefusal(payload);
+    if (bindings.readCompletedReceipt) {
+      const receipt = await bindings.readCompletedReceipt(idempotencyKey);
+      if (!receipt?.response_payload) throw cadenceRefusal(payload);
+      return receipt;
+    }
     const { data, error } = await client.from("commerce_idempotency_keys").select("response_payload, request_fingerprint")
       .eq("scope", CONFIGURATOR_INTENT_SCOPE).eq("idempotency_key", idempotencyKey).eq("status", "completed").limit(1);
     if (error) throw mapRpcError(error);
