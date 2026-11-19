@@ -110,6 +110,12 @@ function reconcileSettingsPreviewGuide(app: string, target: string): void {
 
 /** Packaged pristine-file migrations, before the proof adds its owned customizations. */
 export function migrateStarterOwned(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
+  // The factor migration starts after 1.2.0. Synthetic starters can omit the catalogue.
+  const catalogue = "owned/catalogue.ts";
+  if (["1.1.0", "1.2.0"].includes(from.version) && !["1.0.0", "1.1.0", "1.2.0"].includes(to.version)
+    && existsSync(join(target, catalogue))) {
+    writeFileSync(join(app, catalogue), readFileSync(join(target, catalogue)));
+  }
   // The next set is not numbered yet. Its managed locale contract identifies
   // this migration without applying it to a released 1.1.0 or synthetic starter.
   if (from.version === "1.1.0" && to.version !== from.version && Object.hasOwn(to.files, "shared/locales.ts")) {
