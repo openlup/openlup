@@ -315,7 +315,7 @@ const cases: Case[] = [
     expected: reason("catalog_publication_source_mismatch") },
   { id: "D-064 receipt fingerprint is independent of the draft and head", arrange: data => { data.evidence!.drafts[0]!.receipt.fingerprint = "a".repeat(64); },
     expected: reason("catalog_publication_source_mismatch") },
-  { id: "D-065 valid receipt still requires the correct open-head owner", arrange: data => { data.evidence!.drafts[0]!.head!.productId = "wrong"; },
+  { id: "D-065 valid receipt still requires the correct open-head owner", arrange: data => { data.evidence!.drafts[0]!.head!.productId = "10000000-0000-4000-8000-000000000009"; },
     expected: reason("catalog_publication_draft_advanced") },
   { id: "D-032 G-5 enabling checks authored gross even when retained gross and gate are green", fixture: "revision",
     arrange: data => activate(data, "eligibility", false),
