@@ -296,17 +296,18 @@ describe("CI image mirror workflow controls", () => {
     expect([...writer.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]])).toEqual([
       ["actions/download-artifact", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"],
       ["actions/attest-build-provenance", "96278af6caaf10aea03fd8d33a09a777ca52d62f"],
+      ["actions/attest-build-provenance", "96278af6caaf10aea03fd8d33a09a777ca52d62f"],
       ["actions/upload-artifact", "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"],
     ]);
     expect(writer).not.toMatch(/\b(?:npm|npx|node)\b|actions\/checkout|secrets\.|^\s*(?:shell|container|services):/mu);
     const runs = writer.match(/^ {6}(?:- | {2})run:.*\n(?: {10}[^\n]*\n|\n)*/gmu) ?? [];
-    expect(runs).toHaveLength(2);
-    expect(runs[0]).not.toContain("${{");
+    expect(runs).toHaveLength(3);
+    expect(runs[1]).not.toContain("${{");
     // Seal the reviewed skopeo + shell/jq writer, including env and alternate YAML
     // run forms; shell allowlists cannot prove that candidate code stays inert.
     // Canonical workflow keys precede jobs, so this also seals inherited env,
     // permissions, triggers and concurrency. Defaults are refused above.
-    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("e417fbcd5b523279e7e2e3a88322314d6face06fc289e4ba329f7f18d6d531b5");
+    expect(createHash("sha256").update(source.split("\njobs:\n")[0]! + writer).digest("hex")).toBe("e2f36008bb459cf6d3320924331e2432881b7c0f3be13bf134213df0699bb61f");
   };
   it("publishes only successful qualification data without executing candidate code", () => assertPublisherControls(qualification));
   it.each([
@@ -323,7 +324,7 @@ describe("CI image mirror workflow controls", () => {
   it.each([
     ["permissions: {packages: write, attestations: write, id-token: write}", "permissions: {packages: write}"],
     ["actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f", "actions/attest-build-provenance@v3.2.0"],
-    [qualification.match(/ {6}- name: Verify the issued image attestation\n[\s\S]*?(?= {6}- name: Retain the final image publication receipt)/u)![0], ""],
+    [qualification.match(/ {6}- name: Verify the issued image and evidence attestations\n[\s\S]*?(?= {6}- name: Retain the final image publication receipt)/u)![0], ""],
     ["gh attestation verify ", "echo unverified "],
     ["needs: exact-set-qualification", "needs: registry-tutorial"],
     ["needs.exact-set-qualification.result == 'success'", "always()"],
@@ -458,7 +459,7 @@ describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
     expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/6"]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/8"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -512,13 +513,13 @@ describe("complete public CI", () => {
       "docker rm --force install-proof-postgres",
     ]);
   });
-  it("partitions complete root discovery across exactly six independent runners and fails closed", () => {
+  it("partitions complete root discovery across exactly eight independent runners and fails closed", () => {
     const shard = workflowJob("test-full-shard");
-    expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/6)");
+    expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/8)");
     const eventFence = workflowJob("typecheck").split("\n").find(line => line.startsWith("    if:"))!;
     expect(shard).toContain(eventFence);
     expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
-    expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 6\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6]\n");
+    expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
     expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
     expect(shard).toContain("          fetch-depth: 0\n");
@@ -656,8 +657,8 @@ describe("complete public CI", () => {
       expect(full.error).toBeUndefined();
       expect(full.status).toBe(0);
       expect(JSON.parse(readFileSync(log, "utf8"))).toEqual(["run"]);
-      for (const shard of [1, 2, 3, 4, 5, 6]) {
-        const args = ["run", `--shard=${shard}/6`];
+      for (const shard of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        const args = ["run", `--shard=${shard}/8`];
         const result = run(args, 29);
         expect(result.error).toBeUndefined();
         expect(result.status).toBe(29);
@@ -976,7 +977,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   it("scopes the test run to directories that still exist", () => {
     const scope = [...PUBLIC_TEST_SCOPE];
     expect(workflow).toContain("run: npm test");
-    expect(workflow.match(/run: npm test[^\n]*/gu)).toEqual(["run: npm test -- --shard=${{ matrix.shard }}/6"]);
+    expect(workflow.match(/run: npm test[^\n]*/gu)).toEqual(["run: npm test -- --shard=${{ matrix.shard }}/8"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(scope).toEqual(["api", "mcp", "scripts", "server", "src", "tests"]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...scope], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);

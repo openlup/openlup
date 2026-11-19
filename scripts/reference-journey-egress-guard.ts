@@ -118,7 +118,7 @@ const guardedNetConnect = ((...args: unknown[]) => {
 net.connect = guardedNetConnect;
 net.createConnection = guardedNetConnect;
 const originalSocketConnect = net.Socket.prototype.connect;
-net.Socket.prototype.connect = function guardedSocketConnect(...args: unknown[]) {
+net.Socket.prototype.connect = function guardedSocketConnect(this: net.Socket, ...args: unknown[]) {
   assertSocketAllowed("socket", args);
   return originalSocketConnect.apply(this, args as never);
 } as typeof net.Socket.prototype.connect;

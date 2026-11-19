@@ -2,9 +2,11 @@
 
 `@openlup/outbox` provides transactional PostgreSQL enqueue, at-least-once dispatch,
 lease-bound schedules and registry composition. The application supplies handlers,
-credentials and transaction ownership. This is a development preview with no stable
-API or universal exactly-once guarantee: pin an exact version and upgrade the
-`@openlup/*` set together.
+credentials and transaction ownership. Pin an exact version and upgrade the
+`@openlup/*` set together. The [stable API contract](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/stability.md#public-api)
+defines compatibility; unions and literal sets are open, additions are minor,
+and consumers must keep a default branch for unknown values.
+Dispatch provides no universal exactly-once guarantee.
 
 ```sh
 npm install --save-exact @openlup/core @openlup/outbox
@@ -17,18 +19,24 @@ export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(ex
 ```
 
 This CI-compiled example binds a store; the executor must commit each operation
-before resolving. Read [installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions) before use.
+before resolving. Read [installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions) before use.
 [AGENTS.md](AGENTS.md) explains application ownership and extension boundaries.
 Node 24 or newer is required. Declaration maps connect `dist/` declarations to
 shipped `src/`; JavaScript source maps are not shipped.
+
+The published `1.1.0` set is the first qualified stable npm set and image
+([qualification run](https://github.com/openlup/openlup/actions/runs/44263843134)).
+It includes the required owned-file migration, cadence widening and native
+forward 151. It supersedes `1.0.0`, which later passed qualification as an npm
+set without an image ([requalification run](https://github.com/openlup/openlup/actions/runs/44256496392)).
 
 ## Package Surface Maturity
 
 <!-- generated:maturity:outbox -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `.` | rail | experimental |
-| `./postgres` | rail | experimental |
+| `.` | rail | stable |
+| `./postgres` | rail | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:outbox -->
 
@@ -136,4 +144,4 @@ artifact evidence.
 
 ## Release notes
 
-Read [the changelog](CHANGELOG.md#0430) before upgrading the package set.
+Read [the changelog](CHANGELOG.md#100) before upgrading the package set.

@@ -3,6 +3,77 @@
 Status: maintainer page: how to change OpenLup. Reader guidance lives in the [OpenLup guide](../../packages/core/docs/guide/README.md); sections marked "Evidence" are frozen historical records.
 
 
+## Find the current SQL function definition
+
+From the repository root, print the portable manifest's baseline followed by its
+ordered forwards, then search declarations for the exact function name:
+
+```sh
+node --input-type=module -e 'import { readFileSync } from "node:fs"; const m = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")); for (const unit of [m.baseline, ...m.forward]) console.log(unit.file);'
+rg -n -i '^[[:blank:]]*CREATE[[:blank:]]+(OR[[:blank:]]+REPLACE[[:blank:]]+)?FUNCTION[[:blank:]]+(public\.)?subscription_auto_resume_due[[:blank:]]*\(' db/platform/migrations
+rg -n -i '^[[:blank:]]*DROP[[:blank:]]+FUNCTION[[:blank:]]+(IF[[:blank:]]+EXISTS[[:blank:]]+)?(public\.)?subscription_auto_resume_due[[:blank:]]*\(' db/platform/migrations
+```
+
+No matching DROP exits 1; that is not a declaration-search failure. Read complete
+statements, including multiline headers. Compare full signatures, not just names:
+overloads are separate functions. Follow CREATE/replacement and DROP statements
+in manifest order, ignoring files outside the selected chain. For qualified
+installations, select that generation's baseline/forwards through the manifest
+selection used by the runner. For a partly applied database, stop at its exact
+applied ledger prefix. Managed SQL has its own baseline and ordered forward
+chain; never mix the two rails. Calls, GRANTs and dated evidence do not identify
+the current definition.
+
+At this revision the last portable declaration of
+`subscription_auto_resume_due(integer,timestamptz)` is in
+[`20261114110000_payment_method_refs.sql`](../../db/platform/migrations/20261114110000_payment_method_refs.sql).
+Its date assignment takes `GREATEST(stored_next_cycle_at + pause_duration, p_now)`;
+it does not move the cycle earlier. Read its guards and writes as well as the
+assignment. Earlier declarations describe earlier prefixes. Verify behavior
+through the [pause-duration witness](../../tests/postgres/subscriptionPauseDuration.test.ts)
+and the [recorded-method witness](../../tests/postgres/paymentMethodRefsPgtap.test.ts),
+rather than requiring any particular textual spelling of the clamp.
+Installed readers follow the
+[package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
+
+## Native activation edit window
+
+The native `20261123120000_subscription_edit_window_activation.sql` forward adds
+an invoker activation entry point and commit helper with `_with_edit_window`
+suffixes. Their optional final integer defaults to NULL, which explicitly uses
+72, matching the column default; explicit input must be 1–720 and refuses
+with `subscription_activation_edit_window_invalid` before writes. The value is
+stored in the initial subscription INSERT. Existing rows, cycle dates and edit
+fences are unchanged. Completed activation replay retains the stored value.
+
+A defaulted overload of the existing name makes PostgreSQL reject legacy calls
+as ambiguous even with typed arguments. The distinct names preserve existing
+function identities. This forward never redefines or changes privileges on
+either predecessor: their bodies, owner, ACLs and search paths remain identical.
+Old activation and repair callers retain their existing behavior and column
+default of 72. Each new function contains its predecessor's body with the edit
+window input; the new entry point uses the new commit helper. Neither legacy
+function calls the new functions, and neither new function calls a predecessor.
+Both new functions use SECURITY INVOKER with the pinned `public, pg_catalog`
+search path. They revoke PUBLIC privileges, conditionally revoke anon and
+authenticated, and conditionally grant EXECUTE to service_role using the admitted
+constant `pg_roles` blocks. Opting in requires EXECUTE on both new functions;
+service_role receives it where present, and owner-run self-host installations
+have it as owner. The TypeScript binding calls the unchanged predecessor when
+`editWindowHours` is omitted. The starter always passes its owned
+`subscriptionCreation.editWindowHours`, including 72, so it opts in.
+The mirrored package SQL and three native manifest selections bind the same
+bytes; only current inventories are remeasured.
+
+The managed chain has no native `subscription_activate_from_captured_payment`
+equivalent. Its separate `subscription_activate_from_paid_checkout_order` uses
+managed payment intents and subscription composition; it still supplies 72.
+That separate boundary and its provisional/starter path are unchanged here.
+The [activation witness](../../tests/postgres/subscriptionActivationEditWindow.test.ts)
+proves default and legacy compatibility, zero-write refusal, frozen replay and
+the existing command edit fence. A 72-hour cutoff closes earlier than 24 hours,
+as the installed fence subtracts stored hours from the next cycle instant.
+
 ## Data ownership
 
 Native terminal replay replaces only `subscription_claim_due_renewal` while
@@ -30,7 +101,7 @@ describes the codec and retry duties.
 
 See [retained renewal storage](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#retained-renewal-storage).
 
-The preview source release deliberately ships an unbound database-type seam at
+The source tree deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
@@ -311,6 +382,94 @@ current catalogue head. Industry-specific managed catalogue columns are unaffect
 Unbind callers to roll back use; retain committed receipts/history and correct a
 price with a subsequent expected-base command.
 
+## Native catalogue publication
+
+`createPostgresCatalogPublication` supplies an unbound native authority. The new
+publication contracts, compiler and shared price transaction entry points are
+`@experimental`. Publication status and outcome unions grow by addition; removing,
+renaming or narrowing an existing value requires a major version. Its host
+provides fresh single-connection transactions, human authorization, installed
+document/derived-fact validators and transaction-local readiness adapters. Nothing
+mounts the authority or changes a capability flag. `authorize` mints an opaque
+publisher only for a human administrator; every command rechecks native membership
+before replay. `decision` persists alternating approve/revoke decisions against
+the exact candidate reference and digest. Publication requires approval; a later
+revocation leaves the publication and its original replay receipt intact.
+
+The writer revalidates immutable v3 inputs, applies their ordered effects and
+checks full native readback in one transaction. It takes catalogue locks only.
+Compensation reapplies explicit effects even when their retained values are
+unchanged. It preserves unaddressed facts; remaining projection drift rolls back
+the publication rather than silently refreshing those facts.
+Compatible complete-fact updates persist changed attributes, axes, gross mass and
+asset values without refreshing other retained fields.
+The native price boundary defaults to the price owner's transaction writer. It
+prelocks receipts before contexts and calls `applyInTransaction` once on that same
+executor, after catalogue effects and before readiness. Its adapter must throw on
+any child refusal; it cannot open or commit another transaction. Installed
+readiness adapters perform no external I/O or commerce locking. Media evidence
+is prepared before admission and verified against its immutable claim. Required
+evidence never defaults to ready.
+
+`publish` returns a version 2 receipt; `publication` adapts it to the existing
+publication port. `reads.current` checks projection drift. `reads.readback` and
+`readbackV2` read exact retained heads after subsequent publications. Full facts
+are paged with a product-bound high-water cursor. `receipt(scope, publisher)` and
+the publisher-bound `readPort` recover a lost response without republishing.
+History is bounded to 100 receipts per page. The unbound `reads.receipt` refuses
+because it has no human authority.
+
+`resolveRetained` requires both an opaque read scope and a host accepted-source
+authorizer. In one consistent read, that authorizer verifies the caller's account,
+order or fulfilment access and the persisted line binding. The resolver then
+matches the exact publication, document and SKU revision. Missing legacy binding
+refuses as `retained_revision_unavailable`; current facts cannot repair it. This
+read grants no fresh-sale admission. Hosts still own accepted-source persistence
+and the later acceptance fence.
+
+The additive `20261123170000_catalog_publication_reads` forward installs
+governed offer paging and an activation-readiness batch. It adds functions
+over existing publication rows and introduces no transfer relations. The
+readers share the publisher's lineage guard. Paging applies offer, active
+status and purchase-mode filters before the UUID limit and resolves immutable
+SKU and document evidence for the selected page. A continuation is valid only
+for the returned roster digest. Legacy rows without a governed head supply no
+membership evidence. The readiness batch requires a governed head and includes
+only requested SKUs. Installed readiness checks run in the same transaction.
+
+Publication preserves omitted SKU revisions unless an explicit compatible derived
+operation changes them. Material or inconclusive changes require successor SKU
+identity. A document change revalidates affected omitted siblings. Nonmass or
+missing net content refuses as `catalog_publication_mass_required_until_mc5`;
+the legacy net-weight projection requires positive integer grams from 1 through
+2,147,483,647. Fractional, zero, negative or out-of-range net content refuses as
+`catalog_publication_integral_grams_required` until versioned quantity readers
+arrive. Gross mass retains exact scaled storage; it is never rounded to integer
+grams. Count and volume publication journeys remain incomplete. Hard preparation
+requires a valid unit GTIN even for dark facts. Activation source admission checks
+gross mass against net content with exact arithmetic.
+
+Setting a product status to active requires an active primary SKU with at least one
+eligibility flag enabled. Publication enforces physical combination uniqueness
+across all statuses within its SKU roster. The forward preserves legacy draft
+combinations and issuer-scoped identifiers. Publication checks an incoming
+normalized GTIN against every live GTIN regardless of issuer. Document moves, product activation and membership admission recheck the
+current open source of each affected active, eligible SKU, including omitted rows.
+Explicit media evidence also requires a current open authored source, even without
+activation. Every explicit draft claim binds its stored command and fingerprint,
+including a claim naming the current draft.
+Structural readiness includes a transaction-local product check for presentation
+changes, even when the affected SKU set is empty. Price readiness uses the
+affected SKU set. Withdrawal-only publication can succeed while an untouched sibling's price is expired or the global gate is red.
+The global readiness gate runs when an eligibility operation enables a flag.
+An expected-head conflict precedes live-projection drift.
+Draft input retains its 1 MiB ceiling. Publication validation shares scalar and
+attribute rules while counting full UTF-8 envelopes: SKU facts 2 MiB, manifest
+16 MiB, receipt 8 MiB, history 16 MiB and full-fact page 8 MiB/100 items. It never
+truncates an item or regenerates legacy document bytes. All synchronous effects,
+including receipt, outbox and readback, roll back together. A later cache failure
+does not undo a committed publication.
+
 ## Compatible data transfer
 
 Governed catalogue lifecycle facts use publication/product/SKU version 3 beside
@@ -346,7 +505,11 @@ nonempty capabilities refuse capture. Restore authorizes each document pointer
 inside its existing transaction and consumes the authorization, keeping ordinary
 direct pointer changes refused. Existing readers ignore nullable publication
 facts; exact retained readers require the new history rather than inferring it
-from a legacy current row. The managed rail does not supply this feature. See
+from a legacy current row. The new uniqueness indexes only cover identities
+projected by publication. Legacy draft combination digests and issuer-scoped GTIN
+rows keep their existing rules. Publication still checks an incoming normalized
+GTIN against legacy and published identifiers in its transaction. The managed
+rail does not supply this feature. See
 [the package catalogue contract](../../packages/platform/README.md#catalog) for
 host composition, mass admission and the separately bound price writer.
 
@@ -570,7 +733,7 @@ matrix covers two v2 price plans, abandonment, resume and original replay.
 Apply schema first, then compatible v1/v2 readers before enabling authoring.
 Rollback stops new v2 writes and retains a reader for existing v2 history.
 The managed rail does not supply this feature; the
-[migration note](../../packages/platform/changes/lc1.md) records its managed design.
+[migration note](../../packages/platform/CHANGELOG.md#100) records its managed design.
 
 None of these four relations references `public.clients`, so no client
 absorption-policy entry applies. Revision `actor_id` is an opaque operator
@@ -764,6 +927,17 @@ foreign key or absorption duty. The parameterized
 [round-trip witness](../../tests/postgres/policyCloseDigest.test.ts) compares full
 rows and commerce continuity through restore and replay.
 
+The native `20261123160000_subscription_price_policy_close_provenance.sql`
+forward rejects direct inserts of finite revisions marked `closed_from_open`
+with `55000 subscription_price_policy_revision_close_provenance_requires_restore`.
+An open revision with the marker set still fails the existing window check.
+Use the matching connected-store restore implementation on upgraded targets.
+It enables the exception only while copying policy rows in the restore
+transaction and removes it before commit. The capability table must be empty
+at capture and restore boundaries and is excluded from the transfer packet.
+The forward requires no backfill and the stored digest and native reader
+contracts remain the same. The managed rail does not supply this guard.
+
 Managed divergence design: the managed rail does not supply this feature.
 A future twin adds the same marker and validated CHECK to the managed policy
 revision table, preserves existing RLS and grants, and updates the managed
@@ -794,7 +968,7 @@ The starter binds hold and release with a fresh human-admin and Commerce-operato
 
 ## Additive forward release path
 
-A development preview may append expand-only platform forwards to either chain:
+A release may append expand-only platform forwards to either chain:
 
 - Portable PostgreSQL: `db/platform/migrations/<14-digit-version>_<name>.sql`,
   with `config/platform-migration-manifest.json` preserving the baseline and all
@@ -883,8 +1057,10 @@ the new-cycle insertion guard uses `subscription_delivery_alignment_admission_re
 The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
 owns the static terms gate; the
 [admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
-owns delivery admission. The supplied boundary stops at the decorator, with no
-runner composer, factory or production entrypoint.
+owns delivery admission. The native composer
+[`createNativeSubscriptionBinding`](../../packages/platform/src/subscriptions/nativeSubscriptionBinding.ts)
+wraps its renewal store with that decorator, so a host composing the native
+runner through it gets delivery admission installed.
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
 receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
@@ -930,10 +1106,11 @@ remains binding.
 The direct truth store behind `paymentSchemaDescriptor` retains its invoker SQL
 and requires the host's existing executor and privileges.
 
-The source preview's additive sandbox-attempt forward
-`20261101222000_sandbox_payment_attempts.sql` adds two private tables and four
-bounded runtime routines. `payment_simulator_attempts` owns active dispatch,
-replay/fingerprint and synthetic method facts; `payment_simulator_observations`
+The published `@openlup/platform` package includes the sandbox simulator export and its
+matching native forward, `20261101222000_sandbox_payment_attempts.sql`. That
+additive forward adds two private tables and four bounded runtime routines.
+`payment_simulator_attempts` owns active dispatch, replay/fingerprint and
+synthetic method facts; `payment_simulator_observations`
 owns immutable simulated outcomes. The runtime has function execution only,
 with no direct access to either table. The forward explicitly revokes all table
 privileges from PUBLIC, anon, authenticated and service_role, removing
@@ -1148,7 +1325,7 @@ exclusion retain their existing contract.
 | Provider dispatch and customer delivery | Offline store proof supplies no live-provider or journey activation claim. The host owns provider reads, dispatch and financial-notice delivery. |
 
 `paymentSchemaDescriptor.absenceReopen` and `.cumulativeRefund` are supported
-for this complete installed chain. This is development-preview qualification,
+for this complete installed chain. This is database qualification,
 not provider activation. The [native attribution witnesses](../../tests/postgres/paymentReconciliationAttributionGap.test.ts),
 [pgTAP witnesses](../../tests/postgres/paymentReconciliationPgtap.test.ts) and
 [installed runtime-role PostgreSQL witnesses](../../tests/postgres/paymentReconciliationStore.test.ts)
@@ -2181,7 +2358,8 @@ lead. This classification check does not grant access: unlisted `block` and
 `retain` tables retain owner-only table ACLs and no column ACLs. Only listed
 census tables receive the exact census privilege exception.
 
-The [PostgreSQL catalogue witness](../../tests/postgres/nativeStoreForwardCatalog.test.ts)
+The PostgreSQL catalogue suite ([with `service_role`](../../tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts) and
+[without `service_role`](../../tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts))
 independently requires a new relation, migration ownership, enabled RLS,
 owner-only table ACL, exactly `client_id` SELECT for `service_role`, and exactly
 the named permissive SELECT policy with `true` and no check. With that role
@@ -2234,6 +2412,25 @@ installed FK targets, ordered keys, `confdeltype='r'`, default update/match
 actions, validation and non-deferrability, the primary key and check, while
 retaining every existing ownership, ACL and catalogue guard. This admission
 control adds no feature SQL, publication binding or catalogue capability.
+Four further closed new-table declarations admit successor storage only:
+`public.subscription_successor_proposals`,
+`public.subscription_successor_operations_v2`,
+`public.subscription_successor_wait_cases_v2`, and
+`public.subscription_successor_reservations_v2`. The complete declarations in
+[`NATIVE_SUCCESSOR_TABLE_SQL`](../../scripts/reviewed-platform-forward.ts)
+fix every column, type, nullability, default, ordered primary/unique key, CHECK
+and inline single-column `ON DELETE RESTRICT` reference. Only unquoted SQL
+words fold case; literal values and token kinds stay exact. No other action,
+shape or appended SQL gains admission. The independent
+[catalogue comparator](../../tests/postgres/nativeStoreForwardCatalog.shared.ts)
+checks installed columns and constraints, ordered FK keys and exact targets,
+RESTRICT, update/match/validation/deferrability, ordinary-table identity and
+RLS and column collation. Client-bearing shapes require blocking absorption
+classification. Only these four shapes may reference one another in the same slot; all
+other targets and keys must preexist. Owner/ACL, absorption classification and
+all generic catalogue guards still apply; only an explicitly listed absorption
+census may add its existing closed client-column grant and policy. No feature
+SQL, runtime grant, binding or capability is installed by this control.
 Any slot may also list exact complete ALTER TABLE texts in
 `existingTableStatements`. PostgreSQL checks target existence when applying the
 plain ALTER TABLE; IF EXISTS is refused. The closed actions are ADD COLUMN, named ADD CONSTRAINT
@@ -2309,12 +2506,13 @@ template, recipient and profile fingerprint; outbox completion is independent.
 See the [composition recipe](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#schedule-reminders-and-expire-abandoned-checkouts)
 for configured timing and transport-profile limits.
 
-`checkSupersets` entries declare table, constraint, column and values;
+`checkSupersets` entries declare table, constraint, column and either values or
+an integer range as described below;
 `uniqueSupersets` entries declare table, constraint, columns and nullsNotDistinct.
 The lexical validator checks only the slot's own SQL: exactly one adjacent
 DROP CONSTRAINT / ADD CONSTRAINT pair per entry, with the exact listed positive
-IN values (with an optional trailing `NOT VALID`) or plain UNIQUE columns and
-NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
+IN values or literal integer interval (with an optional trailing `NOT VALID`), or
+plain UNIQUE columns and NULLS NOT DISTINCT mode. Unlisted drops, non-adjacent pairs and mismatched
 additions refuse; the general expression grammar is unchanged. The protected real-PostgreSQL catalog control proves
 widening against the installed definition immediately before the slot: the old
 constraint must exist in the closed CHECK or UNIQUE shape, every old value or
@@ -2330,6 +2528,31 @@ and triggers remain protected. No historical SQL anchor is used for these
 entries. The issued account-consent `purposeCheck` retains its original preimage,
 values and refusal behavior unchanged.
 
+An integer-range `checkSupersets` entry replaces `values` with
+`range: { lower, upper }` and `beforeSha256`. Both endpoints must be literal
+signed 32-bit integers with lower ≤ upper. `beforeSha256` pins the exact
+`pg_get_constraintdef` text of the installed CHECK immediately before the slot,
+including any trailing `NOT VALID`. The existing table must be an ordinary table
+and the column must have PostgreSQL type `integer` (int4). The slot admits exactly
+one adjacent pair of plain `ALTER TABLE public.<table> DROP CONSTRAINT <name>;`
+and `ALTER TABLE public.<table> ADD CONSTRAINT <name> CHECK (<column> BETWEEN
+<lower> AND <upper>);`, with an optional trailing `NOT VALID`. The equivalent
+`CHECK (<column> >= <lower> AND <column> <= <upper>)` is also admitted. The
+migration runner applies the pair in one transaction; intervening statements,
+transaction control, conditional drops, CASCADE and extra ALTER actions refuse.
+
+The protected PostgreSQL catalog control verifies that the pinned old definition
+is this same inclusive interval on the same column and that the installed new
+range equals the declaration. New lower must be ≤ old lower, new upper must be
+≥ old upper, and at least one endpoint must widen strictly. Narrowing, unchanged
+ranges, missing or mismatched preimages, other columns/tables/constraint names,
+non-integer or computed bounds, casts in the forward and extra predicates refuse.
+Validation state must remain equal in both directions, including preserving
+`NOT VALID` without rechecking historical rows. Existing owner, table/column ACL,
+column and unrelated-constraint catalog protections still apply. This capability
+changes no installed CHECK by itself; feature SQL and its declarations land in a
+later change.
+
 `createdViews` entries declare a fresh qualified name and exact CREATE VIEW
 statement hash. Only plain unconditional creation is admitted, once per listed
 view. OR REPLACE and conditional existence forms refuse. PostgreSQL rejects a
@@ -2340,19 +2563,30 @@ Views gain no RLS or table-grant capability. The real catalog checks the declare
 new view inventory, ownership and owner-only privileges.
 
 `createdTriggers` entries name a fresh trigger, a qualified target table and the
-exact CREATE TRIGGER statement hash. The target must exist in the prefix or be
+exact trigger statement hash. The target must exist in the prefix or be
 created by an earlier plain CREATE TABLE in this same slot, owned by the migrator.
-Only BEFORE/AFTER INSERT, DELETE or UPDATE
+Ordinary triggers use BEFORE/AFTER INSERT, DELETE or UPDATE
 (with an optional OF column list), combined with OR, FOR EACH ROW and a
-zero-argument public function are admitted. That function must be created in the
+zero-argument public function. That function must be created in the
 same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
 path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
-allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
+allowed. WHEN, transition relations, statement-level and instead-of triggers,
 trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
 OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
 triggers and missing targets; the catalog witness proves prefix membership or
 earlier same-slot table creation and ownership,
 name freshness, enabled binding, events and owner-only function ACL.
+
+Static admission accepts pinned `CREATE CONSTRAINT TRIGGER` statements only for
+`AFTER` with one or more of `INSERT`, `UPDATE` and `DELETE` joined by `OR`, a qualified
+table and zero-argument trigger function from earlier in the slot or its prefix,
+and `DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION`, and refuses
+`BEFORE`, `INSTEAD OF`, `FOR EACH STATEMENT`, omitted row scope, `NOT DEFERRABLE`,
+`INITIALLY IMMEDIATE`, unknown or later targets, `WHEN`, `FROM`, `REFERENCING`,
+arguments and every other constraint-trigger form.
+The installed catalogue proof checks that exact trigger's events and table and
+function bindings, both deferral flags, and its own matching new constraint.
+A prefix trigger function must remain an unchanged invoker returning `trigger`.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
@@ -2459,7 +2693,8 @@ reviewers of that feature PR must assess the proof. This control cannot supply i
 The static checks above are a first gate for ordinary mistakes, not the boundary
 against deliberately evasive SQL. For function identity, security attribute,
 `search_path` and privileges, the truth is the required real-PostgreSQL
-[catalog test](../../tests/postgres/nativeStoreForwardCatalog.test.ts). It replays
+catalogue suite ([with `service_role`](../../tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts) and
+[without `service_role`](../../tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts)). Each file replays
 one chain, the legacy selection's manifest units in path order with earlier bound forwards
 applied cumulatively, and does not replay the `qualified-v2`, `qualified-admin` or
 operator-provisioned histories. With no bound forward it replays that chain once, so
@@ -2502,8 +2737,10 @@ operator a forward creates for another operand type cannot hide what it adds:
   default, replaces its TOAST relation and is refused: a known fail-closed limit,
   with a follow-up to compare TOAST relations without OID identity.
 - No constraint, one PostgreSQL ships included, is dropped or rewritten, a NOT NULL
-  excepted. Listed CHECKs retain their hash-bound old values in the positive IN
-  form PostgreSQL deparses. Listed UNIQUE replacements retain every old key
+  excepted. Listed value-list CHECKs retain their old values in the positive IN
+  form PostgreSQL deparses. Listed integer-range CHECKs bind the installed
+  definition's exact hash and strictly widen its inclusive int4 interval on the
+  same column, preserving validation state. Listed UNIQUE replacements retain every old key
   column and the exact declared new definition; their old indexes may be replaced.
   Other existing constraints and indexes keep the same protections.
 - The guard catalogs, each read whole, do not change: `pg_namespace`, `pg_authid`,
@@ -2528,7 +2765,9 @@ It runs with and without `service_role`, and its refusal cases include a functio
 header that hides its attribute list inside a quoted default and a file whose
 backslash makes the database run statements the static reader cannot see. A native-SQL change is
 refused when it also touches admission machinery, and the machinery includes the
-catalog test and these named files: `tests/postgres/nativeStoreForwardCatalog.test.ts`,
+catalog test and these named files:
+`tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts`,
+`tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts`, `tests/postgres/nativeStoreForwardCatalog.shared.ts`,
 `tests/helpers/postgresContainer.ts`, `vitest.config.ts`, `scripts/run-vitest.mjs`,
 `scripts/ci-test-scope.mjs`, `scripts/ci-image-pull.mjs`, `scripts/ci-image-mirror.mjs`,
 `scripts/disposable-docker.mjs`, `scripts/ci-vitest-duration-keys.ts`,
@@ -2807,7 +3046,7 @@ readback but never new or nonterminal claims. Apply this ordered forward before
 selecting that public replay behavior; the managed chain and separate adopter
 native copies require their own adoption rather than changing implicitly.
 
-The source preview's sandbox-attempt suffix adds nullable review metadata without
+The published native sandbox-attempt forward adds nullable review metadata without
 rewriting existing truth rows or changing the open/settled checks. Existing
 non-sandbox truth does not read or require simulator storage. New sandbox truth
 requires an exact durable server observation and active-attempt match; accepted
@@ -2862,7 +3101,7 @@ Do not claim complete privacy coverage. Privileged connected-store transfer
 retains exact documents, bindings and the existing command/support ledgers under
 whole-packet row/byte bounds and filtered-login refusal; it is not a subject
 privacy export. Root capture/restore additions ship no npm assets. The API remains
-a development-preview source candidate; full catalogue installation and explicit
+a source-only surface; full catalogue installation and explicit
 host composition are required, and managed definitions remain unchanged.
 
 The installed complete-catalogue entry preserves this lifecycle. Its generated
@@ -3264,14 +3503,17 @@ its byte-identical package SQL twin. N3 adds frozen waiting cases and stock-only
 refusal recovery. Uncaptured refusals rotate on the existing renewal operation
 `updated_at` selection stamp, so recovery failures before case creation cannot
 keep occupying a bounded page. Captured waits retain their case selection stamp.
-The seam subtracts hard commitments and fixed 14-day active
-subscription demand from new-purchase availability. Native safety and channel
-exposure remain zero. This is no advance reservation lifecycle or one-time
+The seam subtracts hard commitments and active subscription demand through the
+native horizon installed via `inventory_renewal_protection` (default 14 days)
+from new-purchase availability. The managed ATP contract remains fixed at 14 days.
+Native safety and channel exposure remain zero. This is no advance reservation
+lifecycle or one-time
 checkout write contract. The allocator alone uses the renewal exemption.
 
 For a separate native runtime role, the host must explicitly grant `EXECUTE` on
 `public.inventory_available_to_promise(text,text,timestamptz,boolean)` and its
-helper `public.inventory_channel_exposure_quantity(text,text)`, including for
+helpers `public.inventory_channel_exposure_quantity(text,text)` and
+`public.inventory_renewal_protection_days()`, including for
 roles that reserve renewals or call N3 deficits/admission/refusal recovery.
 New-purchase readers additionally need `EXECUTE` on
 `public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)`.
@@ -3281,8 +3523,23 @@ Alongside the caller's existing relation privileges, ATP requires `SELECT` on
 `subscription_renewal_terms`, `subscription_renewal_term_lines`,
 `subscription_renewal_operations` and `subscription_cycles` in `public`;
 new-purchase reads also require `SELECT` on `public.catalog_skus`.
-These invoker helpers have no shipped runtime grant. The allocator retains its
-existing ACL, and neither X nor Y calls ATP; their existing grants still apply.
+When upgrading a custom runtime role from the earlier grant list, apply exactly
+one additional grant after the policy migration and before resuming ATP calls
+(replace `runtime_role` with the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
+```
+
+Without it ATP fails with SQLSTATE `42501`, even when the policy is absent;
+permission failure never falls back to 14 days. The policy helper is
+`SECURITY DEFINER` with `search_path = pg_catalog, pg_temp` and reads the
+schema-qualified settings table, so ATP callers need no `SELECT` on
+`commerce_settings`. The TypeScript policy reader separately needs that `SELECT`
+to return the revision and days. The policy helper grants `EXECUTE` to
+`service_role`; the other invoker helpers have no shipped runtime grant.
+The allocator retains its existing ACL, and neither X nor Y calls ATP; their
+existing grants still apply.
 
 X restores released late-paid reservation lines to committed, non-expiring ATP
 holds once, returning from its immutable recovery receipt before further writes.
@@ -3657,12 +3914,11 @@ exists, and the metadata — and never `enabled`. An adopter who enabled a drain
 relying on it to bound their storage; one who disabled it is retaining evidence
 on purpose. Neither decision may be silently undone by re-running a forward.
 
-## Preview and stable posture
+## Stable schema policy
 
-Current migration and self-host material is evaluation-oriented. The stable-framework requirements
-must still prove versioned upgrades, N-1 compatibility, and the complete
-expand/compatible-deploy/backfill/contract path before a stable upgrade claim is
-made.
+The [database upgrade guide](../../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility)
+owns the 1.x schema commitment and bounded code-rollback proof. Installation
+recipes do not extend that evidence to another chain or application.
 
 ## Identity reference grants
 
@@ -4239,7 +4495,7 @@ refuses; managed verification remains unclaimed.
 The projection's whole-file SHA-256 is
 `b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9`.
 Its existing persisted channel enum accounts for exactly one `ui-12` count.
-The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
+The [neutrality owner](../../CONTRIBUTING.md#contribution-checks) admits
 only this exact package path, digest and 0-to-1 tuple with its matching baseline
 key. This preserves canonical bytes without admitting other package SQL,
 changing scanner patterns or raising any existing count.
@@ -4343,6 +4599,38 @@ The two stable definer snapshots grant execution only to `service_role`, with no
 new raw-table grants. Their [package composition](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#inspect-a-link-before-showing-recovery-controls)
 binds client ownership and separates expired inspection from payment authority.
 This forward contains no recreation writer or historical backfill.
+
+### Installed checkout reminder schedule
+
+The native `20261123140000_checkout_recovery_reminder_schedule.sql` forward
+replaces `commerce_enqueue_abandoned_cart_reminders(integer)` (current preimage:
+`20260818120000_checkout_recovery_lifecycle.sql`) and
+`commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)` (current
+preimage: `20261110100000_checkout_recovery_waves.sql`). Signatures, security,
+search paths, owners and ACLs are preserved; the integer-only checkout wrapper
+is unchanged. The new restricted SECURITY DEFINER
+`commerce_checkout_recovery_reminder_schedule()` validates the installed
+`checkout_recovery_reminders` setting with `search_path = pg_catalog, pg_temp`.
+Absence returns the historical 1/24/72 and 1/20 waves; malformed data raises
+`checkout_recovery_reminder_schedule_invalid` before writes. No policy is seeded
+and no pending event is rewritten. See the [reader contract](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
+for stage routes, timing precedence, predecessor gates and hour-derived keys.
+The [PostgreSQL witness](../../tests/postgres/checkoutRecoveryReminderSchedule.test.ts)
+compares both current preimages, payloads (apart from the new stage and random
+tokens), metadata, dedup keys, replay, function attributes and restricted access.
+
+Separate runtime roles retain their existing producer EXECUTE and relation
+privileges. Add this one EXECUTE grant before resuming the invoker abandoned-cart
+producer; the qualified service-role binding already receives it:
+
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_reminder_schedule() TO runtime_role;
+```
+
+The validator requires no caller settings SELECT. Missing EXECUTE raises `42501`
+even with an absent key. The TypeScript read helper separately needs settings
+SELECT to return the revision and full schedule. Installer-only writes and
+read-only starter drift checks follow the installed inventory policy pattern.
 
 ### Expired checkout preparation
 

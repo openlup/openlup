@@ -1,11 +1,11 @@
 # OpenLup Public Agent Guide
 
-Status: development-preview guidance.
+Status: current contributor guidance for stable 1.x.
 This root file is the single agent guide for this repository; edit it here.
 `docs/platform/AGENT_GUIDE.md` is a generated pointer to this file and the reader guide.
 
 OpenLup is a subscription-commerce platform. The platform's public tree is a platform monorepo; an adopter owns its own application, brand, content, local policy, and integrations.
-This guide governs work in that public tree only. It does not authorize releases, external mutations, or stable-framework claims.
+This guide governs work in that public tree only. It does not authorize releases or external mutations.
 An application that installs `@openlup/*` from npm follows its own `AGENTS.md`, started from the [adopter kit](docs/platform/adopter-kit/README.md).
 
 ## Orientation
@@ -110,7 +110,7 @@ platform rule it enforces and ships valid and invalid cases in
 pattern>'` to find every structural occurrence before and after a change, and
 add `--rewrite '<replacement>' --update-all` for a mechanical edit across the
 tree;
-[contribution checks](CONTRIBUTING.md#development-preview-checks) describe the rules and
+[contribution checks](CONTRIBUTING.md#contribution-checks) describe the rules and
 their exceptions.
 
 Use only the configuration and test fixtures supplied for the selected development profile. Do not place sensitive values in source, fixtures, logs, or documentation.
@@ -118,5 +118,8 @@ Follow [SECURITY.md](SECURITY.md) for reporting and handling a suspected vulnera
 
 ## Release posture
 
-The development preview is not a stable framework channel. Do not call a source checkout, preview artifact, extension seam, or self-host recipe stable or supported before the stable-framework requirements are complete.
+OpenLup 1.x follows the [stable compatibility policy](packages/core/docs/guide/reference/stability.md#public-api),
+the generated [subpath classifications](packages/core/docs/guide/reference/maturity.md),
+and the [installation support boundary](.github/INSTALL_SUPPORT_POLICY.md).
+Preserve those commitments; a source checkout or a recipe alone is not a supported release artifact.
 A release or activation needs its own explicit authorization and evidence; ordinary code changes do not create that authority.

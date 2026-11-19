@@ -8,22 +8,31 @@ export type CatalogOptionValue =
 export type CatalogDraftIssue = { path: string; code: string };
 export interface CatalogProductTypeRef { key: string; version: number }
 export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
-  units: { code: string; dimension: CatalogQuantityDimension; integral: boolean; factor?: CatalogUnitFactor }[];
+  units: { code: string; dimension: CatalogQuantityDimension; integral: boolean;
+    /** @experimental */
+    factor?: CatalogUnitFactor }[];
   netContentUnits: string[];
   dimensions: (
     | { key: string; kind: "choice"; values: string[] }
     | { key: string; kind: "quantity"; dimension: CatalogQuantityDimension; units: string[]; role?: "net_content" }
     | { key: string; kind: "boolean" }
   )[];
+  /** @experimental */
   attributes?: readonly AttributeDefinition[];
+  /** @experimental */
   axes?: readonly CatalogAxisDefinition[];
+  /** @experimental */
   validatorRef?: string;
+  /** @experimental */
   subscriptionProfileRef?: CatalogProductTypeRef;
+  /** @experimental */
   taxClass?: string;
+  /** @experimental */
   labels?: Readonly<Record<string, string>>;
   validateContent: (content: unknown) => readonly CatalogDraftIssue[];
 }
 /** Readonly authoring counterpart; the existing mutable definition API stays compatible. */
+/** @experimental */
 export type CatalogProductTypeInput = Omit<CatalogProductTypeDefinition, "units" | "netContentUnits" | "dimensions"> & {
   units: readonly CatalogProductTypeDefinition["units"][number][];
   netContentUnits: readonly string[];

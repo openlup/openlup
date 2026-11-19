@@ -1,6 +1,6 @@
 # Catalogue extension recipes
 
-Development preview, targeting the next package set. Use matching installed
+Experimental catalogue additions target the next package set. Use matching installed
 `@openlup/*` versions and Node 24. This offline tool checks definitions,
 references, exact quantities and supplied v1 draft facts. It grants no installation,
 migration, publication or activation authority. The minimal skeleton is a fictional
@@ -56,7 +56,7 @@ identical recheck command and evidence.
 
 ## New vertical
 
-Copy [the static skeleton](catalogue-pack-skeleton/catalogue.json):
+Copy [the static skeleton](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/catalogue.json):
 
 ```sh
 cp node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton/catalogue.json owned/catalogue.json

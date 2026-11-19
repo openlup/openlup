@@ -1,3 +1,6 @@
+import type { LocaleCopy } from '../shared/locales.ts';
+import type { RenewalNoticeText } from '../shared/renewal-config.ts';
+
 export const renewalNoticeCopy = {
   en: {
     paid: { subject: 'Order payment confirmed', order: 'Order', item: 'Item', quantity: 'Quantity',
@@ -29,4 +32,4 @@ export const renewalNoticeCopy = {
     addressNextParcel: 'Zmiana adresu dotyczy następnej paczki.',
     address: 'Zmiana przyszłego adresu nie przenosi paczki, która jest już przygotowywana.',
   },
-} as const;
+} satisfies LocaleCopy<RenewalNoticeText>;

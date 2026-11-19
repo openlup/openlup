@@ -5526,8 +5526,99 @@
         "dataStatements": []
       },
       {
+        "row": "CADENCE-S3",
+        "path": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+            "beforeSha256": "b57ff76022d478222166a787f5b519a0267ba2986e0be922a7f4088581ca548d",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+            "beforeSha256": "4fecbcac3f60d0c4edf525bbdad73644bdf2bbaaa6b116b2c5d283d830cb2655",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "checkSupersets": [
+          {
+            "table": "public.subscription_edit_quotes",
+            "constraint": "subscription_edit_quotes_cadence_check",
+            "column": "proposed_cadence_days",
+            "range": {
+              "lower": 1,
+              "upper": 3660
+            },
+            "beforeSha256": "79ff33c0c0b85ec4fbf96ccd2b7905b1c65b23d482107a3cfdaab622f1edc4aa"
+          }
+        ]
+      },
+      {
+        "row": "K6",
+        "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
+            "searchPath": "public, pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "K7-INVENTORY-RENEWAL-PROTECTION",
+        "path": "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+            "beforeSha256": "db3d06365a6893fa43151eb0416f2aa054f11be72d6d1deee14395e24bcb468d",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.inventory_renewal_protection_days()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "K8-CHECKOUT-RECOVERY-REMINDER-SCHEDULE",
+        "path": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.commerce_enqueue_abandoned_cart_reminders(integer)",
+            "beforeSha256": "18b834697f1351a8ea5128b59fc37d86d8ac8c83d744b44492120f7198e30b8f",
+            "searchPath": "pg_catalog"
+          },
+          {
+            "signature": "public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)",
+            "beforeSha256": "97d2efac3169e9b63683ccae466927cd95ea3994d8d01bc4920cab4426f98302",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_checkout_recovery_reminder_schedule()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalogue-lc2",
-        "path": "db/platform/migrations/20261122190000_catalog_publication.sql",
+        "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_price_setup_apply(text,text)",
@@ -5557,7 +5648,7 @@
             "searchPath": "pg_catalog, pg_temp"
           },
           {
-            "signature": "public.catalog_price_setup_apply_prelocked(jsonb)",
+            "signature": "public.catalog_price_setup_apply_prelocked(jsonb,boolean)",
             "searchPath": "pg_catalog, pg_temp"
           },
           {
@@ -5624,6 +5715,51 @@
             "sha256": "cbc785f78bc0f439dde31c000a546c52c3bf3a91e6782638d216adb38961a0c8"
           }
         ]
+      },
+      {
+        "row": "catalogue-clm",
+        "path": "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_price_policy_revisions_guard_insert()",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "subscription_price_policy_revisions_00_guard_insert",
+            "table": "public.subscription_price_policy_revisions",
+            "sha256": "9fa24f3f4d45568256de379358c76d2d8f751492c06cfcc177767bf5e5453bea"
+          }
+        ]
+      },
+      {
+        "row": "catalogue-lc2-r",
+        "path": "db/platform/migrations/20261123170000_catalog_publication_reads.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_publication_read_head()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_read_member(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_offer_memberships_page(text,uuid,integer,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_activation_readiness(text[],text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       },
       {
         "row": "catalogue-lc5",
@@ -8094,13 +8230,82 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261122190000_catalog_publication.sql",
-      "sha256": "567bca06147c40cbdac23df32c05591c7dc47c15053417d6bef5fec3342d15a1",
+      "path": "db/platform/migrations/20261122190000_subscription_cadence_bound.sql",
+      "sha256": "84d2313165d7408bdb439f474f1c70107aa46ee170ead65a13f79b249fdae0a8",
+      "functions": [
+        {
+          "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+          "beforeSha256": "b57ff76022d478222166a787f5b519a0267ba2986e0be922a7f4088581ca548d",
+          "afterSha256": "b7a39487ea9bbd498b022ec74da0db961c265fe632bd6193e8ea67d023aa3ef4"
+        },
+        {
+          "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "4fecbcac3f60d0c4edf525bbdad73644bdf2bbaaa6b116b2c5d283d830cb2655",
+          "afterSha256": "35bcc1e11ebc7ddd2d0b7c7d0e2e2bcf820d2167c9568089273940c830bf1cc6"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123120000_subscription_edit_window_activation.sql",
+      "sha256": "10f1718a5317a045b109470f0c016e11bdc93ed6c0c7c6b004897432537a322e",
+      "functions": [
+        {
+          "signature": "public.subscription_activation_commit_with_edit_window(public.subscription_activations,text,text,timestamptz,boolean,integer)",
+          "beforeSha256": null,
+          "afterSha256": "ee1321f80654bcb7a3f8fa46ee47950127554406bca6b6c803e2c686b52f2e94"
+        },
+        {
+          "signature": "public.subscription_activate_from_captured_payment_with_edit_window(text,uuid,text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "549bd5701142449bb97e5ec517a10f2909d4fe44400abb140dc15b1615ab740b"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql",
+      "sha256": "383b9a3fbac03c9a0ec5ab4fcb049dae2e121756f28c8de51933ffd3a8965834",
+      "functions": [
+        {
+          "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+          "beforeSha256": "db3d06365a6893fa43151eb0416f2aa054f11be72d6d1deee14395e24bcb468d",
+          "afterSha256": "271417d6788f0e55e36f55c3e7415c45d862e4f7a32520eeacbb91655a1a1c1b"
+        },
+        {
+          "signature": "public.inventory_renewal_protection_days()",
+          "beforeSha256": null,
+          "afterSha256": "4d1570aecc30219d65da01d175f2d87c95c1cc4caef9d803c0f9e20e803f74db"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
+      "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802",
+      "functions": [
+        {
+          "signature": "public.commerce_enqueue_abandoned_cart_reminders(integer)",
+          "beforeSha256": "18b834697f1351a8ea5128b59fc37d86d8ac8c83d744b44492120f7198e30b8f",
+          "afterSha256": "399e8c2e92302249949e5ced215990ec1a993e6f7203857d5e1523eaa24671fc"
+        },
+        {
+          "signature": "public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)",
+          "beforeSha256": "97d2efac3169e9b63683ccae466927cd95ea3994d8d01bc4920cab4426f98302",
+          "afterSha256": "3681c465358f7d630313ac731e2c4332147f4781944f9223d5bb4916192adbb6"
+        },
+        {
+          "signature": "public.commerce_checkout_recovery_reminder_schedule()",
+          "beforeSha256": null,
+          "afterSha256": "00d55d3287e673840aef40dbfdce17395b719ff72d6ea9bb9f1ef61a4233d22a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
+      "sha256": "76ea5098ca8e9f66515f5d6b5c34aaad6071d976a8b5250f48ef0e3a30ecb54a",
       "functions": [
         {
           "signature": "public.catalog_price_setup_apply(text,text)",
           "beforeSha256": "49e8cce6b3212d7200be5d57abb3a6e602affcf79f47e5a4c2cc6c1dd16048be",
-          "afterSha256": "211ba1f236248693a08e3d4d31fc39afed26455ef1add0e5c5aaea9adf7053ad"
+          "afterSha256": "c2593bc32320ca6a28b8640f039a910f2b2969570820f1de330bf683f7ed789c"
         },
         {
           "signature": "public.catalog_publication_immutable()",
@@ -8128,19 +8333,56 @@
           "afterSha256": "102ec2a2d272064222c34b4123ebafdeeecd17976d12d6a1b381380697eebea7"
         },
         {
-          "signature": "public.catalog_price_setup_apply_prelocked(jsonb)",
+          "signature": "public.catalog_price_setup_apply_prelocked(jsonb,boolean)",
           "beforeSha256": null,
-          "afterSha256": "92a691a50ee3b02ff0a21673a9defb318a78d1ad6d5e4bdc71d32471ad175d47"
+          "afterSha256": "4a617a3b9075dd05f0685a5984ccd5696a686e42dcceea3c0c34e5824617eca9"
         },
         {
           "signature": "public.catalog_price_setup_prelock(uuid,uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "a9be9f554f0ab8416f8d5f24fdf9b4f8fc1f9687830d0184cec8a4cb28bb99ab"
+          "afterSha256": "c051ef3a9e47cafc8e2d256e1537f6e6899cbb7748a0758764ad8006bb5279c8"
         },
         {
           "signature": "public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "42d9fd800b6c88134c548603302843f06856f1b34b93da76bcd23ffa93c21bb3"
+          "afterSha256": "155c3590a85ef6d29d508beec5bf4173eb28ca6a9a139d42edd0e8088b469ac4"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql",
+      "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96",
+      "functions": [
+        {
+          "signature": "public.subscription_price_policy_revisions_guard_insert()",
+          "beforeSha256": null,
+          "afterSha256": "e1c913dd167e61e420b0b8630608063891ab8a882fc75eacc962653f676fd0ce"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123170000_catalog_publication_reads.sql",
+      "sha256": "c58eb4f1f0a42343fc9311bd314af5ff62b1e1352b14ff8e468837d448f118be",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_read_head()",
+          "beforeSha256": null,
+          "afterSha256": "881661908d41dfa15896a4b427aed72ae560a4e39295c90d371cc6def923e8e0"
+        },
+        {
+          "signature": "public.catalog_publication_read_member(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "7372d5748680615ec691897cb63bb8bce06a177b9cc4871960e093e749f7e794"
+        },
+        {
+          "signature": "public.catalog_offer_memberships_page(text,uuid,integer,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "d0b2ac887f5032b653d74b1219f8eae4ad029ac329825e90e3a374c54f64b31d"
+        },
+        {
+          "signature": "public.catalog_publication_activation_readiness(text[],text)",
+          "beforeSha256": null,
+          "afterSha256": "5ae3d4ed64dbcd4e47aeca40b62bb797279a1165883c2d0d2463c0e0d839d96a"
         }
       ]
     },

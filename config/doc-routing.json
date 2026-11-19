@@ -17,7 +17,7 @@
         "*"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#contribution-checks"
     },
     {
       "id": "public-policy",
@@ -35,7 +35,7 @@
         ".github/workflows/**"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#contribution-checks"
     },
     {
       "id": "documentation",
@@ -48,9 +48,10 @@
     },
     {
       "id": "history",
-      "when": "Dated public implementation plans, with no runtime authority",
+      "when": "Dated public implementation plans and frozen documentation evidence, with no runtime authority",
       "paths": [
-        "docs/platform/plans/**"
+        "docs/platform/plans/**",
+        "docs/platform/history/**"
       ],
       "doc": "docs/platform/DOCUMENTATION.md",
       "anchor": "#authoring"
@@ -194,7 +195,7 @@
         "packages/*/changes/*.md"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#contribution-checks"
     },
     {
       "id": "core",
@@ -263,7 +264,7 @@
         "scripts/**"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#contribution-checks"
     },
     {
       "id": "tests",
@@ -273,7 +274,7 @@
         "src/test/**"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#contribution-checks"
     },
     {
       "id": "assets",
@@ -1189,7 +1190,7 @@
         "packages/core/MAINTAINERS.md"
       ],
       "doc": "CONTRIBUTING.md",
-      "anchor": "#development-preview-checks"
+      "anchor": "#contribution-checks"
     },
     {
       "id": "adapter-postgres-install",

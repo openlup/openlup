@@ -1,3 +1,5 @@
+import { quoteCopy } from '../owned/quote-copy.ts';
+import { market } from '../owned/market.config.ts';
 import { once } from 'node:events';
 import { createPostgresCommerceOmsPort } from '@openlup/platform/commerce/server/postgres';
 import { createPostgresBillingInvoiceStore, runNativeInvoiceIssueJob } from '@openlup/platform/invoicing';
@@ -21,29 +23,29 @@ import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
 
 test('a discounted first-subscription purchase settled through the sandbox', async ({ page }) => {
-  await page.goto(routes.builder.en);
+  await page.goto(routes.builder[market.defaultLocale]);
   await page.getByRole('spinbutton').first().fill('1');
-  await page.getByLabel(copy.en.purchaseMode, { exact: true }).selectOption('subscription');
-  await page.getByRole('button', { name: copy.en.addBox, exact: true }).click();
-  await page.getByRole('button', { name: copy.en.checkout, exact: true }).click();
-  await page.getByLabel(copy.en.email, { exact: true }).fill(`acquisition-${crypto.randomUUID()}@example.test`);
-  await page.getByLabel(copy.en.email, { exact: true }).blur();
-  await expect(page.locator('main')).toContainText('Second delivery:');
+  await page.getByLabel(copy[market.defaultLocale].purchaseMode, { exact: true }).selectOption('subscription');
+  await page.getByRole('button', { name: copy[market.defaultLocale].addBox, exact: true }).click();
+  await page.getByRole('button', { name: copy[market.defaultLocale].checkout, exact: true }).click();
+  await page.getByLabel(copy[market.defaultLocale].email, { exact: true }).fill(`acquisition-${crypto.randomUUID()}@example.test`);
+  await page.getByLabel(copy[market.defaultLocale].email, { exact: true }).blur();
+  await expect(page.locator('main')).toContainText(`${quoteCopy[market.defaultLocale].second}:`);
   await expect(page.locator('.summary')).toBeVisible();
-  await page.getByLabel(copy.en.termsAccept).check();
+  await page.getByLabel(copy[market.defaultLocale].termsAccept).check();
   const created = page.waitForResponse(response => response.url().endsWith('/api/actions/checkout.create'));
-  await page.getByRole('button', { name: copy.en.placeOrder, exact: true }).click();
+  await page.getByRole('button', { name: copy[market.defaultLocale].placeOrder, exact: true }).click();
   const result = await (await created).json();
   expect(result.ok).toBe(true);
-  await page.locator('main').getByRole('link', { name: copy.en.completion, exact: true }).click();
-  await page.getByRole('button', { name: copy.en.simulatePaid, exact: true }).click();
+  await page.locator('main').getByRole('link', { name: copy[market.defaultLocale].completion, exact: true }).click();
+  await page.getByRole('button', { name: copy[market.defaultLocale].simulatePaid, exact: true }).click();
   await expect(page.locator('main')).toContainText('paid');
 });
 
 test('quote and checkout refuse callers without acquisition capability by name', async ({ page }) => {
-  await page.goto(routes.builder.en);
+  await page.goto(routes.builder[market.defaultLocale]);
   const { config } = await (await page.request.get('/api/config')).json();
-  const payload = { locale: 'en',configuration: config.id,country: config.market.country,
+  const payload = { locale: market.defaultLocale,configuration: config.id,country: config.market.country,
     termsAccepted: true,termsRevision: config.legal.revision,email: 'capability@example.test',
     firstName: 'Example',lastName: 'Buyer',phone: '00000',line1: '1 Example Lane',city: 'Example',postalCode: '00000',
     cart: { schemaVersion: 1,configuration: config.id,mode: 'subscription',cadenceDays: config.offer.defaultCadenceDays,
@@ -79,7 +81,7 @@ test('owned offer admission refuses forged fresh checkout requests without durab
     (SELECT count(*) FROM public.clients) AS clients,
     (SELECT count(*) FROM public.commerce_order_draft_receipts) AS receipts`)).rows[0];
   const before = await snapshot();
-  const input = { locale: 'en',configuration: config.id,country: config.market.country,
+  const input = { locale: market.defaultLocale,configuration: config.id,country: config.market.country,
     termsAccepted: true,termsRevision: config.legal.revision,acquisitionCapability: 'subscription-acquisition.v1',
     email: 'forged-offer@example.test',firstName: 'Example',lastName: 'Buyer',phone: '00000',line1: '1 Example Lane',city: 'Example',postalCode: '00000' };
   for (const cart of [
@@ -96,7 +98,7 @@ async function purchase(page: Page): Promise<Purchase> {
   const email = `care-${randomUUID()}@example.test`;
   const accounts = createPostgresAccountLinkStore({ connectionString: material.runtimeUrl });
   try { await accounts.createAccount({ email, principalId: randomUUID(), acquisitionSource: 'local-demonstration', lifecycleStage: 'customer' }); } finally { await accounts.close(); }
-  const data = { email, locale: 'en', configuration: config.id, acquisitionCapability: 'subscription-acquisition.v1', country: config.market.country,
+  const data = { email, locale: market.defaultLocale, configuration: config.id, acquisitionCapability: 'subscription-acquisition.v1', country: config.market.country,
     termsAccepted: true, termsRevision: config.legal.revision, firstName: 'Example', lastName: 'Buyer', phone: '000000000',
     line1: '1 Example Lane', city: 'Example City', postalCode: '00000',
     cart: { schemaVersion: 1, configuration: config.id, mode: 'subscription', cadenceDays: config.offer.defaultCadenceDays,
@@ -212,7 +214,7 @@ async function ageCancellation(f: Purchase) {
     WHERE id=$1::uuid`, [f.subscriptionId]);
 }
 
-for (const locale of ['en', 'pl'] as const) {
+for (const locale of market.locales) {
   for (const preset of [undefined, '1_month', 'indefinite']) test(`${locale}: pause ${preset ?? 'default two weeks'} and manual resume`, async ({ page }) => {
     const f = await purchase(page); await signIn(page, f.email, locale); await pause(page, f, locale, preset);
     const window = (await runtime.query('SELECT pause_preset,ends_at,starts_at FROM public.subscription_pause_windows WHERE subscription_id=$1 AND resumed_at IS NULL', [f.subscriptionId])).rows[0];
@@ -285,15 +287,15 @@ for (const locale of ['en', 'pl'] as const) {
 }
 
 test('pause remains available during an open payment case and closes that case', async ({ page }) => {
-  const f = await purchase(page); const obligation = await failedRenewal(f); await signIn(page, f.email, 'en');
-  const card = cardFor(page, f); await expect(card.getByRole('button', { name: copy.en.careSkip, exact: true })).toBeDisabled();
-  await expect(card.getByRole('button', { name: copy.en.reschedule, exact: true })).toBeDisabled();
-  await expect(card.getByRole('button', { name: copy.en.carePause, exact: true })).toBeEnabled();
-  await pause(page, f, 'en');
+  const f = await purchase(page); const obligation = await failedRenewal(f); await signIn(page, f.email, market.defaultLocale);
+  const card = cardFor(page, f); await expect(card.getByRole('button', { name: copy[market.defaultLocale].careSkip, exact: true })).toBeDisabled();
+  await expect(card.getByRole('button', { name: copy[market.defaultLocale].reschedule, exact: true })).toBeDisabled();
+  await expect(card.getByRole('button', { name: copy[market.defaultLocale].carePause, exact: true })).toBeEnabled();
+  await pause(page, f, market.defaultLocale);
   expect((await runtime.query('SELECT status FROM public.subscription_dunning_cases WHERE id=$1', [obligation.caseId])).rows[0].status).toBe('paused');
 });
 test('clock-driven finite auto-resume captures the resumed confirmation once', async ({ page }) => {
-  const f = await purchase(page); await signIn(page, f.email, 'en'); await pause(page, f, 'en');
+  const f = await purchase(page); await signIn(page, f.email, market.defaultLocale); await pause(page, f, market.defaultLocale);
   // This care fixture supplies its own external carrier facts.
   await owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('care-parcels','simulator',true) ON CONFLICT DO NOTHING");
   const parcels = createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: 'care-parcels' });
@@ -318,20 +320,20 @@ test('clock-driven finite auto-resume captures the resumed confirmation once', a
   const at = new Date(clock).toISOString();
   const expectedNext = new Date(Math.max(previousNext + (window.ends_at.getTime() - window.starts_at.getTime()), clock));
   expect(expectedNext.getTime()).toBeGreaterThanOrEqual(clock);
-  await runCare('en', at);
+  await runCare(market.defaultLocale, at);
   expect(await state(f)).toEqual({ status: 'active', next_cycle_at: expectedNext });
   expect((await runtime.query('SELECT resumed_at FROM public.subscription_pause_windows WHERE subscription_id=$1', [f.subscriptionId])).rows[0].resumed_at).toEqual(new Date(at));
-  const message = await notice(f, 'subscription.resumed'); expect(message.subject).toBe(copy.en.careResumed);
-  await page.getByRole('button', { name: copy.en.careRead, exact: true }).click();
+  const message = await notice(f, 'subscription.resumed'); expect(message.subject).toBe(copy[market.defaultLocale].careResumed);
+  await page.getByRole('button', { name: copy[market.defaultLocale].careRead, exact: true }).click();
   await expect(cardFor(page, f).locator('[data-care-state]')).toHaveAttribute('data-care-state', 'active');
-  const nextDate = await cardFor(page, f).locator('p').filter({ hasText: `${copy.en.careNext}:` }).innerText();
-  expect(Date.parse(nextDate.slice(copy.en.careNext.length + 2))).toBe(expectedNext.getTime());
-  await runCare('en', at);
+  const nextDate = await cardFor(page, f).locator('p').filter({ hasText: `${copy[market.defaultLocale].careNext}:` }).innerText();
+  expect(Date.parse(nextDate.slice(copy[market.defaultLocale].careNext.length + 2))).toBe(expectedNext.getTime());
+  await runCare(market.defaultLocale, at);
   expect(await state(f)).toEqual({ status: 'active', next_cycle_at: expectedNext });
   expect(await history()).toEqual(delivered);
   expect((await messages()).filter(row => row.subscriptionId === f.subscriptionId && row.kind === 'subscription.resumed')).toHaveLength(1);
 });
-for (const locale of ['en', 'pl'] as const) for (const kind of ['subscription.renewal_upcoming', 'subscription.pause_reminder_due', 'subscription.renewal_at_risk']) {
+for (const locale of market.locales) for (const kind of ['subscription.renewal_upcoming', 'subscription.pause_reminder_due', 'subscription.renewal_at_risk']) {
   test(`${locale}: captured ${kind} targets the owned subscription through sign-in`, async ({ page }) => {
     const f = await purchase(page);
     if (kind === 'subscription.pause_reminder_due') {
@@ -361,7 +363,7 @@ for (const locale of ['en', 'pl'] as const) for (const kind of ['subscription.re
     if (kind === 'subscription.renewal_at_risk') await expect(cardFor(page, f).getByRole('heading', { name: copy[locale].carePayment })).toBeVisible();
   });
 }
-for (const locale of ['en', 'pl'] as const) test(`${locale}: default-ON winback records refusal and a host-authorized outcome, with confirmed reactivation`, async ({ page, context }) => {
+for (const locale of market.locales) test(`${locale}: default-ON winback records refusal and a host-authorized outcome, with confirmed reactivation`, async ({ page, context }) => {
   // The owner enables the existing delivery control in this disposable fixture; the host never seeds controls.
   await owner.query("INSERT INTO public.communication_delivery_controls(control_key,enabled) VALUES('subscriber-retention',true) ON CONFLICT(control_key) DO UPDATE SET enabled=true");
   const denied = await purchase(page); await signIn(page, denied.email, locale); await cancel(page, denied, locale, 'other', false); await ageCancellation(denied);
@@ -392,22 +394,22 @@ test('operator escalation uses configured recipients and narrow captured fields'
   const identity = createPostgresOperatorIdentityStore({ connectionString: material.ownerUrl });
   let operator: string;
   try { operator = (await identity.bootstrapFirstAdministrator({ email })).principalId; } finally { await identity.close(); }
-  await signIn(page, email, 'en', undefined, true);
+  await signIn(page, email, market.defaultLocale, undefined, true);
   await owner.query('INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)', [operator]);
   const recipients = createPostgresNotificationRecipientsPort({ connectionString: material.runtimeUrl }, { operatorId: operator });
   try {
     for (const address of [email, `second-${email}`]) await recipients.createNotificationRecipient({ email: address, name: null, notification_type: 'commerce_payment_critical', active: true });
-    const f = await purchase(page), obligation = await failedRenewal(f); await runCare('en');
+    const f = await purchase(page), obligation = await failedRenewal(f); await runCare(market.defaultLocale);
     const captured = (await messages()).filter(row => row.kind === 'operator_escalation' && row.caseId === obligation.caseId);
     expect(captured.length).toBe(2);
     for (const message of captured) { expect(message.token).toBeUndefined(); expect(message.recoveryUrl).toBeUndefined(); expect(message.body).toContain(String(obligation.caseId)); }
-    await page.goto(routes.admin.en);
+    await page.goto(routes.admin[market.defaultLocale]);
     const customer = page.locator('form').filter({ has: page.locator('[name=customerRef]') }).filter({ hasNot: page.locator('[name=caseRef]') }).last();
-    await customer.locator('[name=customerRef]').fill(f.clientId); await customer.getByRole('button', { name: copy.en.read, exact: true }).click();
+    await customer.locator('[name=customerRef]').fill(f.clientId); await customer.getByRole('button', { name: copy[market.defaultLocale].read, exact: true }).click();
     await expect(customer.locator('.action-result')).toContainText(String(obligation.caseId));
     const list = await recipients.listNotificationRecipients({ notification_type: 'commerce_payment_critical' });
     await recipients.updateNotificationRecipient({ recipientId: list.recipients[0]!.id, active: false });
-    const second = await purchase(page), next = await failedRenewal(second); await runCare('en');
+    const second = await purchase(page), next = await failedRenewal(second); await runCare(market.defaultLocale);
     expect((await messages()).filter(row => row.kind === 'operator_escalation' && row.caseId === obligation.caseId)).toHaveLength(2);
     expect((await messages()).filter(row => row.kind === 'operator_escalation' && row.caseId === next.caseId)).toHaveLength(1);
   } finally { await recipients.close(); }
@@ -518,7 +520,7 @@ async function issuedInvoice(orderId: string) {
   return (await runtime.query('SELECT id FROM public.accounting_documents WHERE order_id=$1', [orderId])).rows[0].id as string;
 }
 
-for (const locale of ['en', 'pl'] as const) {
+for (const locale of market.locales) {
   test(`${locale}: portal recovery waves retain both links and land on the exact order`, async ({ page, context }) => {
     const f = await pendingCheckout(page, locale);
     // Time-only fixture: the order and intent remain the ones created by checkout.
@@ -905,7 +907,7 @@ async function expiredCheckout(page: Page, locale: Locale, mode: 'one_time' | 's
   expect((await runtime.query('SELECT status FROM public.commerce_orders WHERE id=$1', [f.orderRef])).rows[0].status).toBe(mode === 'subscription' ? 'cancelled' : 'expired');
   return f;
 }
-for (const locale of ['en','pl'] as const) {
+for (const locale of market.locales) {
   test(`${locale}: recovery extension human holds replay, conflict, target and role admission`, async ({ page }) => {
     const f = await pendingCheckout(page, locale), actor = await portalOperator(page, locale);
     const key = randomUUID(), payload = { orderRef: f.orderRef.toUpperCase(), reason: 'manual_support', note: 'Example hold' };
@@ -1097,7 +1099,7 @@ for (const locale of ['en','pl'] as const) {
   });
 }
 
-for (const locale of ['en','pl'] as const) {
+for (const locale of market.locales) {
   test(`${locale}: operator operations cancel unpaid order with confirmation, exact replay and human authority`, async ({ page }) => {
     const f = await pendingCheckout(page, locale), actor = await portalOperator(page, locale);
     const input = { orderRef: f.orderRef.toUpperCase(), reason: 'Reviewed unpaid cancellation', confirmed: true };
@@ -1172,7 +1174,7 @@ for (const locale of ['en','pl'] as const) {
   });
 }
 
-for (const locale of ['en','pl'] as const) {
+for (const locale of market.locales) {
   test(`${locale}: returns portal owned paid request, canonical replay and customer refusals`, async ({ page, context }) => {
     const f = await pendingCheckout(page, locale);
     expect((await call(page, 'payment.simulate', { orderRef: f.orderRef, token: f.token, outcome: 'captured' })).ok).toBe(true);
@@ -1336,7 +1338,7 @@ async function shipmentPanel(page: Page, shipmentRef: string, locale: Locale) {
   await form.locator('[name=shipmentRef]').fill(shipmentRef.toUpperCase()); await form.getByRole('button', { name: copy[locale].read, exact: true }).click();
   const panel = page.locator('[data-shipment-controls]'); await expect(panel).toContainText(shipmentRef); return panel;
 }
-for (const locale of ['en','pl'] as const) {
+for (const locale of market.locales) {
   test(`${locale}: shipment operations confirmed label and handoff retain private evidence and consume exact stock once`, async ({ page, context }) => {
     const f = await shipmentSubject(page, locale), other = await shipmentSubject(page, locale);
     const reservations = async (id: string) => (await owner.query('SELECT id,status FROM public.fulfillment_inventory_reservations WHERE purchase_order_id=$1 ORDER BY id', [id])).rows;
@@ -1491,19 +1493,19 @@ async function preferencesCustomer(page: Page, locale: Locale) {
   return { principal, email, clientId: (await owner.query('SELECT id FROM public.clients WHERE principal_id=$1', [principal])).rows[0].id as string };
 }
 const savedAddressInput = (line1 = 'Saved Street 1') => ({ action: 'upsert', kind: 'shipping', label: 'Home', recipientName: null,
-  contactPhone: '123456789', line1, city: 'Example City', postalCode: '12345', country: 'ZZ', isDefault: false });
+  contactPhone: '12345678', line1, city: 'Example City', postalCode: 'AB1234', country: 'ZZ', isDefault: false });
 async function saveAddress(page: Page, input: Record<string, unknown> = savedAddressInput()) {
   const result = await call(page, 'account.addresses', input); expect(result.ok).toBe(true);
   const address = result.value.addresses.find((row: { line1: string }) => row.line1 === input.line1);
   if (!address) throw new Error('starter_saved_address_witness_missing'); return address;
 }
-for (const locale of ['en','pl'] as const) {
+for (const locale of market.locales) {
   test(`${locale}: account preferences address forms normalize, default, delete and retain separate-commit failure semantics`, async ({ page }) => {
     const f = await preferencesCustomer(page, locale); await page.goto(routes.account[locale]);
     const section = page.locator('#account-preferences'); await accessible(section);
     const form = section.locator('form').filter({ has: page.getByRole('heading', { name: copy[locale].addSavedAddress, exact: true }) });
-    await form.locator('[name=label]').fill('Home'); await form.locator('[name=contactPhone]').fill('123456789');
-    await form.locator('[name=line1]').fill('Saved Street 1'); await form.locator('[name=city]').fill('Example City'); await form.locator('[name=postalCode]').fill('12345');
+    await form.locator('[name=label]').fill('Home'); await form.locator('[name=contactPhone]').fill('1234 5678');
+    await form.locator('[name=line1]').fill('Saved Street 1'); await form.locator('[name=city]').fill('Example City'); await form.locator('[name=postalCode]').fill('ab 1234');
     await form.locator('[name=isDefault]').check();
     const request = page.waitForRequest(r => r.url().endsWith('/api/actions/account.addresses'));
     await form.getByRole('button', { name: copy[locale].save, exact: true }).click();
@@ -1511,7 +1513,7 @@ for (const locale of ['en','pl'] as const) {
     await expect(section.locator('[data-saved-address]')).toHaveCount(1);
     const book = await call(page, 'account.addresses', { action: 'read' }); expect(book.ok).toBe(true); expect(book.value.billingProfilesAvailable).toBe(true);
     expect(book.value.ordererProfiles).toEqual([]);
-    const first = book.value.addresses[0]; expect(first).toMatchObject({ recipientName: null, postalCode: '12-345', contactPhone: '+999123456789', isDefault: true });
+    const first = book.value.addresses[0]; expect(first).toMatchObject({ recipientName: null, postalCode: 'AB1234', contactPhone: '+99912345678', isDefault: true });
     expect((await call(page, 'account.addresses', { ...sent.postDataJSON(), line1: 'Changed replay input' }, key)).value.addresses[0].line1).toBe('Saved Street 1');
     const second = await saveAddress(page, { ...savedAddressInput('Other Street 2'), isDefault: true });
     const changed = await call(page, 'account.addresses', { action: 'read' });
@@ -1645,7 +1647,7 @@ for (const locale of ['en','pl'] as const) {
     const profile={fullName:'Example Billing Buyer',email:f.email,isDefault:true};
     const saved=await call(page,'account.billing',{action:'upsert',...profile});expect(saved.ok).toBe(true);
     const profileId=saved.value.ordererProfiles[0].profileId;
-    expect((await call(page,'account.addresses',{action:'upsert',kind:'billing',recipientName:'Example Billing Buyer',line1:'Billing Lane 1',line2:'Billing Unit 2',city:'Example',postalCode:'00000',country:configurations[material.id]!.market.country,isDefault:true})).ok).toBe(true);
+    expect((await call(page,'account.addresses',{action:'upsert',kind:'billing',recipientName:'Example Billing Buyer',line1:'Billing Lane 1',line2:'Billing Unit 2',city:'Example',postalCode:'AB1234',country:configurations[material.id]!.market.country,isDefault:true})).ok).toBe(true);
     const ordinary=await pendingCheckout(page,locale,'one_time',f.email);
     expect((await call(page,'payment.simulate',{orderRef:ordinary.orderRef,token:ordinary.token,outcome:'captured'})).ok).toBe(true);
     const ordinaryBuyer=(await runtime.query('SELECT public.customer_billing_buyer_read($1) AS buyer',[ordinary.orderRef])).rows[0].buyer;

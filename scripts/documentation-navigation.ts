@@ -13,7 +13,7 @@ export function renderAgentGuide(): string {
   return [
     "# OpenLup Public Agent Guide",
     "",
-    "Status: development-preview guidance.",
+    "Status: current contributor guidance for stable 1.x.",
     "",
     '<a id="architecture-rules"></a>',
     "The agent guide for this repository is the root [AGENTS.md](../../AGENTS.md).",
@@ -76,7 +76,7 @@ const mapLink = (path: string): string => posix.relative(posix.dirname(SOURCE_MA
 export function renderDocumentationSourceMap(state: DocumentationState): string {
   const lines = [
     "# Platform source map", "",
-    "Status: development-preview navigation, generated from the public ownership map.", "",
+    "Status: current navigation, generated from the public ownership map.", "",
     "Start with a responsibility below, then open its owner and the linked code.",
     "Descriptions are authored routing purposes. File and symbol inventories are structural",
     "navigation hints; neither establishes behavior, test results or profile availability.", "",

@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { z } from "zod";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { INVENTORY_MIGRATIONS, createInventoryBindings, createPostgresAdminInventoryPort, createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
+import { INVENTORY_MIGRATIONS, createInventoryBindings, createPostgresAdminInventoryPort, createPostgresRenewalReservationPort, createPostgresStockAvailability, installRenewalStockProtectionPolicy } from "@openlup/platform/inventory";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -227,7 +227,7 @@ it("requires explicit relation privileges under native invoker rights and refuse
       GRANT SELECT ON public.subscription_cycles, public.commerce_orders, public.commerce_settlement_intents,
         public.subscriptions, public.subscription_renewal_terms, public.subscription_renewal_term_lines TO inventory_runtime;
       GRANT EXECUTE ON FUNCTION public.inventory_available_to_promise(text,text,timestamptz,boolean),
-        public.inventory_channel_exposure_quantity(text,text) TO inventory_runtime`);
+        public.inventory_channel_exposure_quantity(text,text), public.inventory_renewal_protection_days() TO inventory_runtime`);
     await db.query("SET ROLE inventory_runtime");
     const held = await reserve(db).reserve(f.input);
     expect(held).toMatchObject({ reserved: true, status: "held", replayed: false });
@@ -235,4 +235,47 @@ it("requires explicit relation privileges under native invoker rights and refuse
     expect(await reserve(db).releaseReservation({ ...f.input, reason: "runtime_granted" })).toMatchObject({ reason: "released" });
     expect(await reserve(db).releaseReservation({ ...f.input, reason: "runtime_granted" })).toMatchObject({ replayed: true });
   } finally { await db.query("RESET ROLE"); db.release(); }
+});
+
+it("requires the helper EXECUTE upgrade for old ATP grants, without granting settings SELECT", async () => {
+  const f = await fixture(), db = await pool.connect();
+  const atp = () => db.query("SELECT public.inventory_available_to_promise($1,$2,$3,false) AS result", [f.source, f.sku, AT]);
+  try {
+    await db.query("BEGIN");
+    await db.query(`CREATE ROLE inventory_policy_runtime NOLOGIN;
+      GRANT SELECT ON public.fulfillment_stock_current, public.fulfillment_inventory_reservations,
+        public.fulfillment_inventory_reservation_lines, public.subscriptions, public.subscription_renewal_terms,
+        public.subscription_renewal_term_lines, public.subscription_renewal_operations, public.subscription_cycles,
+        public.catalog_skus TO inventory_policy_runtime;
+      GRANT EXECUTE ON FUNCTION public.inventory_available_to_promise(text,text,timestamptz,boolean),
+        public.inventory_channel_exposure_quantity(text,text),
+        public.inventory_new_purchase_stock_read(text,jsonb,timestamptz) TO inventory_policy_runtime;
+      DELETE FROM public.commerce_settings WHERE key='inventory_renewal_protection'`);
+    await db.query("UPDATE public.subscriptions SET next_cycle_at=$2::timestamptz+interval '15 days' WHERE id=$1", [f.subscription, AT]);
+    await db.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,
+      settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES ($1,'XXX',$2,'fixture',$3,'fixture')`, [f.subscription, f.source, AT]);
+    await db.query(`INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
+      VALUES ($1,1,$2,2,100)`, [f.subscription, f.sku]);
+    expect((await db.query(`SELECT prosecdef,proconfig FROM pg_catalog.pg_proc
+      WHERE oid='public.inventory_renewal_protection_days()'::regprocedure`)).rows)
+      .toEqual([{ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] }]);
+    await db.query("SET LOCAL ROLE inventory_policy_runtime; SAVEPOINT old_grants");
+    await expect(atp()).rejects.toMatchObject({ code: "42501", message: "permission denied for function inventory_renewal_protection_days" });
+    await db.query("ROLLBACK TO SAVEPOINT old_grants; RESET ROLE");
+    await db.query("GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO inventory_policy_runtime");
+    await db.query("SET LOCAL ROLE inventory_policy_runtime");
+    expect((await db.query("SELECT has_table_privilege(current_user,'public.commerce_settings','SELECT') AS allowed")).rows)
+      .toEqual([{ allowed: false }]);
+    expect((await db.query("SELECT public.inventory_renewal_protection_days() AS days")).rows).toEqual([{ days: 14 }]);
+    expect((await atp()).rows[0].result).toMatchObject({ available_quantity: 10, soft_subscription_demand_quantity: 0 });
+    const stock = createPostgresStockAvailability(db, { sourceKey: f.source, now: () => AT });
+    expect((await stock.readPort.read({ skus: [f.sku], horizonDays: 14, excludeOrderId: null })).size).toBe(1);
+    await expect(stock.readPort.read({ skus: [f.sku], horizonDays: 21, excludeOrderId: null })).rejects.toThrow("native_stock_read_options_unsupported");
+    await db.query("RESET ROLE");
+    await installRenewalStockProtectionPolicy(db, { revision: "runtime-upgrade", renewalProtectionDays: 21 });
+    await db.query("SET LOCAL ROLE inventory_policy_runtime");
+    expect((await db.query("SELECT public.inventory_renewal_protection_days() AS days")).rows).toEqual([{ days: 21 }]);
+    expect((await atp()).rows[0].result).toMatchObject({ available_quantity: 8, soft_subscription_demand_quantity: 2 });
+    expect((await stock.readPort.read({ skus: [f.sku], horizonDays: 21, excludeOrderId: null })).size).toBe(1);
+  } finally { await db.query("ROLLBACK"); db.release(); }
 });

@@ -4,9 +4,10 @@ OpenLup is subscription-first, open-source commerce for direct-to-consumer
 brands that sell physical products. This guide explains how to install,
 compose, extend, operate and upgrade the `@openlup/*` packages.
 
-**Status: development preview.** OpenLup does not yet offer a stable API, a
-supported full-platform installation or an upgrade guarantee. Pin exact
-versions and upgrade all `@openlup/*` packages together.
+**Status: stable 1.x.** Read the [API stability policy](reference/stability.md#public-api),
+[generated subpath classifications](reference/maturity.md) and
+[installation support boundary](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/.github/INSTALL_SUPPORT_POLICY.md).
+Pin exact versions and upgrade all `@openlup/*` packages together.
 
 ## Instructions for agents
 
@@ -68,6 +69,8 @@ versions and upgrade all `@openlup/*` packages together.
 - [Upgrading to 0.41.0](upgrade/v0-41-0.md)
 - [Upgrading to 0.42.0](upgrade/v0-42-0.md)
 - [Upgrading to 0.43.0](upgrade/v0-43-0.md)
+- [Upgrading to 1.0.0](upgrade/v1-0-0.md)
+- [Upgrading to 1.2.0](upgrade/v1-2-0.md)
 
 ### Concepts
 
@@ -123,7 +126,8 @@ versions and upgrade all `@openlup/*` packages together.
   `npm run docs:check -- --write` refreshes from the code.
 - Links between guide pages are relative. A link that leaves the guide is an
   absolute repository URL at the core release tag, which the same command
-  rewrites on a version change.
+  rewrites on a version change. Non-Markdown assets use those pinned repository
+  URLs too.
 
 How to change OpenLup itself is in
-[CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/CONTRIBUTING.md).

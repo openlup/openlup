@@ -52,7 +52,7 @@ test('extract creates an independent repository and refuses to overwrite an exis
     for (const file of ownership.demoData) assert.ok(ownership.owned.includes(file), file);
     assert.ok(ownership.owned.includes('owned/quote-shipping.ts'));
     assert.ok(ownership.owned.includes('owned/renewal-policy.ts'));
-    for (const file of ['host/quote-composition.ts', 'shared/config.ts', 'test/quote-shipping.test.ts']) {
+    for (const file of ['host/quote-composition.ts', 'shared/config.ts', 'test/quote-shipping.test.ts', 'test/subscription-creation.test.ts']) {
       assert.ok(ownership.managed.includes(file), file);
       assert.ok(!ownership.owned.includes(file), file);
     }
@@ -111,9 +111,39 @@ test('extract creates an independent repository and refuses to overwrite an exis
     await writeFile(resolve(target, 'owner.txt'), 'keep me');
     assert.throws(() => execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' }));
     assert.equal(await readFile(resolve(target, 'owner.txt'), 'utf8'), 'keep me');
+    await mkdir(resolve(target, 'bin')); await mkdir(resolve(target, 'package'));
+    await writeFile(resolve(target, 'bin/npm'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    for (const version of ['0.43.0', '0.43.0-rc.1', '1.0.0', '1.2.3', '1.0.0-rc.1', '1.0', '01.0.0']) {
+      const archives = [];
+      for (const name of ['core', 'outbox', 'platform']) {
+        await writeFile(resolve(target, 'package/package.json'), JSON.stringify({ name: `@openlup/${name}`, version }));
+        const archive = resolve(target, `${name}.tgz`); archives.push(archive);
+        execFileSync('tar', ['-czf', archive, 'package/package.json'], { cwd: target });
+      }
+      const run = () => execFileSync(process.execPath, ['lifecycle.mjs', 'candidate', ...archives],
+        { cwd: target, env: { PATH: `${target}/bin:/usr/bin:/bin` }, stdio: 'pipe' });
+      if (['1.0', '01.0.0'].includes(version)) assert.throws(run, error => String((error as { stderr?: Buffer }).stderr).includes('starter_candidate_identity_mismatch'));
+      else { run(); assert.ok(JSON.parse(await readFile(resolve(target, 'artifacts/identity.json'), 'utf8')).artifacts.every((item: { version: string }) => item.version === version)); }
+    }
   } finally {
     await rm(target, { recursive: true, force: true });
   }
+});
+
+test('a Polish-only owned market typechecks the extracted starter and passes its tests', async () => {
+  await mkdir(dirname(scratch), { recursive: true });
+  const target = await mkdtemp(scratch);
+  try {
+    execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' });
+    await writeFile(resolve(target, 'owned/market.config.ts'),
+      "export const market = { locales: ['pl'], defaultLocale: 'pl' } as const;\n");
+    // Reuse the source checkout's dependencies; extraction needs no new installation.
+    execFileSync('npm', ['run', 'typecheck'], { cwd: target, encoding: 'utf8', stdio: 'pipe' });
+    const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
+      cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},
+    });
+    assert.match(tests, /fail 0/);
+  } finally { await rm(target, { recursive: true, force: true }); }
 });
 
 const sha256 = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex');

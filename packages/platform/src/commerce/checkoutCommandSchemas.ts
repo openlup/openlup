@@ -6,6 +6,10 @@ export const REFERENCE_CHECKOUT_V1 = "commerce.reference_checkout.v1";
 
 const isoCurrencySchema = z.string().regex(/^[A-Z]{3}$/);
 
+// Transport representation bounds, independent of application offer policy.
+const MAX_CHECKOUT_LINE_QUANTITY = 99;
+const MAX_CHECKOUT_LINES = 50;
+
 export function createCheckoutCommandSchemas<IntentStatus extends z.ZodType<string>, AttemptStatus extends z.ZodType<string>>(schemas: { sku: z.ZodType<string, string>; paymentIntentStatus: IntentStatus; paymentAttemptStatus: AttemptStatus }) {
 const checkoutCommandV1Schema = z
   .object({
@@ -14,8 +18,8 @@ const checkoutCommandV1Schema = z
     mode: z.enum(["one_time", "subscription"]),
     lines: z.array(z.object({
       sku: schemas.sku,
-      quantity: z.number().int().positive().max(99),
-    }).strict()).min(1).max(50),
+      quantity: z.number().int().positive().max(MAX_CHECKOUT_LINE_QUANTITY),
+    }).strict()).min(1).max(MAX_CHECKOUT_LINES),
     customer: z.object({
       firstName: z.string().trim().min(1).max(80),
       lastName: z.string().trim().min(1).max(80),

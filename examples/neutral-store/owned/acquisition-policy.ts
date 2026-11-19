@@ -41,6 +41,14 @@ export const checkoutRecoverySchedule = { enabled: true, leaseSeconds: 120, batc
 /** Fictional demonstration address formats, including a numeric checksum mechanism. */
 export function savedAddressValidation(country: string) {
   return { country, countryAliases: ['example'], phonePrefix: customerAccountPolicy.phone.callingCode,
+    local: {
+      normalizePostalCode: (value: string) => value.replace(/\s/g, ''),
+      isValidPostalCode: (value: string) => /^[A-Z]{2}\d{4}$/.test(value),
+      normalizePhone: (value: string) => {
+        const digits = value.replace(/[\s()+-]/g, '');
+        return /^\d{8}$/.test(digits) ? `+999${digits}` : /^999\d{8}$/.test(digits) ? `+${digits}` : null;
+      },
+    },
     normalizeTaxId: (value: string | null) => (value ?? '').replace(/\D/g, '') || null,
     isValidTaxId: (value: string) => /^\d{10}$/.test(value)
       && [6,5,7,2,3,4,5,6,7].reduce((sum, weight, index) => sum + weight * Number(value[index]), 0) % 11 === Number(value[9]),

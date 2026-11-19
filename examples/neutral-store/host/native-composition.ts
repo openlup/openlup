@@ -7,11 +7,14 @@ import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
 import { isUuid } from './recurring-fence.ts';
-import { assertSubscriptionCare } from '../shared/renewal-config.ts';
+import { admitCareCommand, assertSubscriptionCare } from '../shared/renewal-config.ts';
 import { readAccountRenewal } from './account-renewal.ts';
 import { composeOperatorRecovery } from './operator-recovery.ts';
 import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
 import pg from 'pg';
+import type { StoreConfig } from '../shared/config.ts';
+import { readCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
+import { readRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
 import { createHash } from 'node:crypto';
 import { mkdir, appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -51,13 +54,27 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
 }
 
 /** Local demonstration only. All database connections use the restricted runtime URL. */
-export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
+export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
   const pool = new pg.Pool({ connectionString, max: 4 });
   try {
     const identity = (await pool.query(`SELECT session_user AS login, current_user AS role,
       rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user`)).rows[0];
     if (identity?.login !== 'starter_runtime' || identity.role !== 'starter_runtime'
       || identity.rolsuper !== false || identity.rolbypassrls !== false) throw new Error('starter_runtime_connection_required');
+    const installed = await readRenewalStockProtectionPolicy(pool);
+    const expected = config.inventory.renewalProtection;
+    if (installed.revision !== expected.revision || installed.renewalProtectionDays !== expected.renewalProtectionDays) {
+      throw new Error('starter_installed_policy_drift');
+    }
+    const reminders = await readCheckoutRecoveryReminderSchedule(pool);
+    const expectedReminders = config.checkoutRecoveryReminders;
+    if (reminders.revision !== expectedReminders.revision
+      || ['abandonedCart', 'checkoutRecovery'].some(key => {
+        const field = key as 'abandonedCart' | 'checkoutRecovery';
+        return reminders[field].length !== expectedReminders[field].length
+          || reminders[field].some((wave, i) => wave.stage !== expectedReminders[field][i]?.stage
+            || wave.afterHours !== expectedReminders[field][i]?.afterHours);
+      })) throw new Error('starter_installed_policy_drift');
     if (!(await pool.query("SELECT to_regprocedure('public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamp with time zone)') IS NOT NULL AS ready")).rows[0]?.ready)
       throw new Error('starter_billing_installation_required');
   } catch (error) { await pool.end(); throw error; }
@@ -265,6 +282,7 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
     const port = createPostgresSubscriptionCommands({
       lifecycleTerms: context.config.renewal.subscriptionCare.terms,
       retentionReasonCodes: context.config.renewal.subscriptionCare.retentionReasons,
+      admitSubscriptionCommand: facts => admitCareCommand(context.config.renewal.subscriptionCare, facts),
       async withTransaction(work) {
         const db = await pool.connect();
         try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
@@ -282,7 +300,6 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
         if (input.confirmedChargeTiming !== true) return refuse('subscription_command_charge_timing_not_confirmed');
         command = { ...base, action: input.action, confirmedChargeTiming: true }; break;
       case 'pause':
-        if (!['2_weeks', '1_month', 'indefinite'].includes(String(input.pausePreset))) return refuse('starter_input_invalid');
         command = { ...base, action: 'pause', pausePreset: String(input.pausePreset), reason,
           survey: input.survey as Extract<SubscriptionCommand, { action: 'pause' }>['survey'] ?? null,
           saveOffer: input.saveOffer as Extract<SubscriptionCommand, { action: 'pause' }>['saveOffer'] ?? null }; break;
@@ -296,9 +313,14 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
       default:
         command = { ...base, action: input.action as 'skip' | 'resume', reason, confirmedChargeTiming: input.confirmedChargeTiming === true };
     }
-    const result = await port.apply(command);
-    if ('supported' in result) return refuse(result.refusalCode);
-    if (result.outcome === 'refused') return refuse(result.reason);
-    return { ok: true, value: result, replayed: result.outcome === 'replayed' };
+    try {
+      const result = await port.apply(command);
+      if ('supported' in result) return refuse(result.refusalCode);
+      if (result.outcome === 'refused') return refuse(result.reason);
+      return { ok: true, value: result, replayed: result.outcome === 'replayed' };
+    } catch (error) {
+      if (error instanceof Error && ['starter_subscription_action_not_admitted', 'starter_pause_preset_not_admitted'].includes(error.message)) return refuse(error.message);
+      throw error;
+    }
   };
 }

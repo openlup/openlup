@@ -4,12 +4,10 @@ This starter is an application inside the OpenLup source repository, separate
 from its npm workspaces. It combines public package entries with application-owned
 configuration, browser pages and a local demonstration host.
 
-For an independent application, follow the
-[exact released-starter recipe](#start-from-an-exact-source-archive):
-download the 0.43.0 source archive and pinned input pair, extract with
-`--mode released`, run `npm ci`, then `./lifecycle up`. This development-preview
-application includes both one-time and subscription purchases. No local package
-packing or author checkout is needed.
+Start your application from the [1.1.0 demo store](https://github.com/openlup/demo-store)
+or use [release-matched starter inputs](../../docs/platform/DISTRIBUTION_EVIDENCE.md#released-starter-inputs)
+when available.
+This starter application includes both one-time and subscription purchases.
 
 Read the [guide](../../packages/core/docs/guide/README.md), follow the small
 [npm tutorial](../../packages/core/docs/guide/start/tutorial.md), or prepare an
@@ -18,7 +16,7 @@ Use [starter customization](../../packages/core/docs/guide/how-to/build/customiz
 [routes](../../packages/core/docs/guide/reference/starter-routes.md),
 [limits](../../packages/core/docs/guide/reference/limits.md) and
 [ownership](../../packages/core/docs/guide/concepts/starter-ownership.md) for reader guidance.
-The [execution record](docs/proof.md) retains development evidence.
+The [verification recipe](docs/proof.md) links current checks and archived development evidence.
 
 The headings below preserve existing links to moved guidance.
 
@@ -28,6 +26,9 @@ The headings below preserve existing links to moved guidance.
 The database-free preview does not compose native database actions.
 
 ## Current candidate
+
+The owned market registry in `owned/market.config.ts` selects `locales` and
+`defaultLocale`; supply copy for every configured locale.
 
 The installed native catalogue and account stores use the runtime connection.
 The composition root binds guest checkout, sandbox payment and customer
@@ -42,7 +43,9 @@ the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
 
 ## Start from an exact source archive
 
-This recipe selects `openlup-core-v0.43.0`, source commit
+Start from the [1.1.0 demo store](https://github.com/openlup/demo-store) or use
+the starter inputs that match your selected release when available. The recipe
+below is historical. It selects `openlup-core-v0.43.0`, source commit
 `6facc3e72441ade5813397f65ac7edbe34fd1d0f`, and input commit
 `87dadb251b27b72a18718b08ac39951dd4f1fdd0`. The exact
 [manifest](https://github.com/openlup/openlup/blob/87dadb251b27b72a18718b08ac39951dd4f1fdd0/examples/neutral-store/release-inputs/openlup-core-v0.43.0/manifest.json)
@@ -141,7 +144,7 @@ retains that rule.
 
 ## Extraction input contract
 
-For a released development-preview set, run from the matching source tree's root:
+For a released package set, run from the matching source tree's root:
 
 ```sh
 node examples/neutral-store/extract.mjs ../my-store --mode released \
@@ -266,6 +269,9 @@ sends the configured Host; any external health probe must also send that Host.
 
 `owned/store.config.ts`, `owned/copy.ts` and `owned/fragments.ts` own typed
 configuration, localized general copy and the named presentation fragments.
+Domain inputs include `owned/renewal.config.ts` (account actions, pause presets, cancellation offers and retry
+timing) and `owned/quote.config.ts`, composed in `owned/store.config.ts`. Follow
+[the business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
 `./lifecycle verify` and `./lifecycle upgrade` delegate to the installed public
 CLI when it exists. They refuse explicitly before that capability is shipped.
@@ -510,8 +516,9 @@ cannot exceed the native destination bounds. Browser fields use those same limit
 
 The owned `subscriptionOffers` input defines subscription cadences, defaults and
 per-SKU quantity rules; `offer.cadenceDays` is a derived UI projection. Configured
-days are whole numbers from 1 through 90. The starter refuses values above 90
-with `starter_database_cadence_limit` until the historical SQL limit is widened.
+days are whole numbers from 1 through 3660, using `MAX_CADENCE_DAYS` from
+`@openlup/core/subscription`. Apply the complete native migration catalogue,
+including `20261122190000_subscription_cadence_bound.sql`, before using longer cadences.
 Checkout admits at most 50 selected lines and
 99 units per line within the configured total. Stock and seeded unit prices fit
 PostgreSQL integers; each offered mode must have a positive seeded unit price.
@@ -567,8 +574,8 @@ from promised arrival; unavailable arrival promises remain explicitly unavailabl
 Effective address outcomes come from the owning native event. Other rich account
 sections keep their existing refusal.
 
-The [notice binder](host/lifecycle-notices.ts) renders configured English/Polish
-copy through the separately owned private capture module and M04 receipt owner.
+The [notice binder](host/lifecycle-notices.ts) renders copy for every
+configured locale through the separately owned private capture module and M04 receipt owner.
 It preserves one artifact and frozen token expiry per native notice command;
 access-grant references contain the native token UUID. The one-shot care command mounts the native lifecycle dispatcher with this binder. No parallel
 subscription-notice outbox handler is registered. The separate paid-order
@@ -592,7 +599,7 @@ reclaimed events reuse the original record. No real mail provider is active.
 Subject and summary labels live in the per-locale `paid` values in
 [owned notice copy](owned/renewal-copy.ts). Locale selection uses the same
 `renewal.notices.locale` and `countryLocales` as subscription notice copy.
-Both English and Polish copy must be complete and nonempty. All other email
+Copy for every configured locale must be complete and nonempty. All other email
 send methods refuse with `starter_paid_mail_method_not_selected`.
 
 ## Subscription care candidate
@@ -658,7 +665,8 @@ a delivery claim.
 `host/paid-mail.ts` composes the native job lease, first/final wave producer,
 canonical expiry and initial-checkout sweeps, reconciliation and the existing
 outbox handlers. Private messages reuse the atomic local capture protocol.
-Only confirmed capture in the selected profile qualifies the final wave.
+When the schedule has a first wave, only its confirmed capture in the selected
+profile qualifies the final wave; a last-only schedule has no predecessor gate.
 Checkout expiry links inspect the source and recovery lineage. Live pending-order
 links support original-order sandbox continuation payment. Dedicated token pay,
 exact cookie-authorized inline retry and the embedded-browser buyer-link control

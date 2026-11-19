@@ -7,12 +7,12 @@ operator handlers.
 ## Choose the imports
 
 Use `@openlup/platform/fulfillment/native` for native bindings and stores; see
-its [API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/fulfillment-native.api.md). Use
+its [API report](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/api/fulfillment-native.api.md). Use
 `@openlup/platform/fulfillment` for dispatch composition and captures,
 `@openlup/platform/fulfillment/contracts` for request and port types, and
 `@openlup/platform/composition` for contribution composition. Consult the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/fulfillment-contracts.api.md)
-and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/api/composition.api.md) for those inventories. Install the
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/api/fulfillment.api.md), [contracts report](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/api/fulfillment-contracts.api.md)
+and [composition report](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/api/composition.api.md) for those inventories. Install the
 [complete selected catalogue](../../upgrade/database-migrations.md#check-application-compatibility),
 including the native dispatch outcome routines, before selecting native commands.
 
@@ -175,7 +175,11 @@ provider reference can repair an interrupted acceptance through the existing ACK
 operation; intake never submits another order. Contradictory identities refuse.
 
 Keep original occurrence bytes in `intake.occurredAt`, separately from the
-normalized fact. Tracking passes those bytes to the existing arrival writer:
+normalized fact. Observation validation accepts minute precision, seconds or
+fractions, compact offsets and local timestamps, while rejecting impossible
+calendar dates. Validation does not rewrite the raw timestamp in a webhook's
+idempotency key. Acceptance as an observation does not establish arrival-time
+precision. Tracking passes those bytes to the existing arrival writer:
 explicit-zone values with seconds supply delivery time; compact offsets, minute
 precision, missing zones and missing original evidence use receipt time. Webhook retries retain
 those original bytes with the first envelope. A terminal tracking regression is
@@ -400,7 +404,7 @@ intrinsics to defeat their own certification is outside the threat model.
 Snapshots, closed schemas and captured intrinsics reduce accidental misuse;
 they are not an attestation.
 
-For adapter authors using this development preview, the experimental
+For adapter authors, the testing
 `@openlup/platform/fulfillment/testing` entry re-exports the existing runner and
 captured dispatch adapter. `createScriptedFulfillmentFake` supplies per-operation
 FIFO scripts with `enqueue`, `invoke`, `calls` and `assertDrained`. Enqueue copies

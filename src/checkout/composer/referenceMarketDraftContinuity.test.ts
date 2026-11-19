@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { beforeEach, expect, it } from "vitest";
+import { assert, beforeEach, expect, it } from "vitest";
 import { canonicalAddressKey } from "@openlup/platform/shipping";
 import { formatCurrencyMinor } from "../../lib/currency/formatMinor.js";
 import { createConfiguratorDraftPersistedState, getConfiguratorDraftStorageKey, PUBLIC_CONFIGURATOR_DRAFT_SCOPE, serializeConfiguratorIntent } from "./configuratorDraftCodec.js";
@@ -19,11 +19,17 @@ it("reloads permitted shipping identity, excludes invoice identity, and renders 
   const key = getConfiguratorDraftStorageKey(PUBLIC_CONFIGURATOR_DRAFT_SCOPE);
   const store = createConfiguratorDraftPersistedState(key);
   expect(store.save({ form: serializeConfiguratorIntent(data, PUBLIC_CONFIGURATOR_DRAFT_SCOPE), step: 1, maxStep: 1 })).toBe("saved");
-  const bytes = localStorage.getItem(key)!;
+  const bytes = localStorage.getItem(key);
+  assert.isNotNull(bytes);
   expect(bytes).not.toContain("private-example");
   expect(bytes).not.toContain("businessInvoice");
-  const restored = createConfiguratorDraftPersistedState(key).load()!;
+  const restored = createConfiguratorDraftPersistedState(key).load();
+  assert.isNotNull(restored);
   expect(restored.form).toMatchObject({ firstName: data.firstName, street: data.street, postalCode: data.postalCode, city: data.city, country: data.country, selectedDeliveryOptionId: data.pendingDeliveryOptionId });
+  assert.isDefined(restored.form.country);
+  assert.isDefined(restored.form.postalCode);
+  assert.isDefined(restored.form.city);
+  assert.isDefined(restored.form.street);
   const address = { kind: "shipping" as const, country: restored.form.country, postalCode: restored.form.postalCode, city: restored.form.city, line1: restored.form.street };
   expect(canonicalAddressKey(address, "example")).toBe(canonicalAddressKey({ ...address }, "example"));
   expect(formatCurrencyMinor(1490, { currency: "JPY", locale: "en-US" })).toBe("¥1,490");

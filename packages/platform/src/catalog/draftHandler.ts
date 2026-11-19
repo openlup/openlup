@@ -24,6 +24,7 @@ import { validateCatalogDraft, type CatalogDraftReadiness } from "./draftValidat
 export interface CatalogDraftHandlerDeps<Context, Record extends CatalogLifecycleStoredRecord = CatalogDraftRecord> {
   store: CatalogDraftStorePort<Record>;
   registry: CatalogProductTypeRegistry;
+  /** @experimental */
   attributeReferences?: CatalogAttributeReferencePort;
   authorizeOperator: (context: Context) => Promise<CatalogDraftOperator | null>;
 }

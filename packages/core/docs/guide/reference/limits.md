@@ -17,14 +17,73 @@ refusals while running it.
 The opt-in subscription reference does not demonstrate automatic renewals,
 fulfillment, failed-renewal recovery or the complete late-delivery journey.
 A renewal date is a planned charge date, not a delivery promise. Follow its
-[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
+[local evaluation recipe](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/docs/platform/SUBSCRIPTION_REFERENCE.md)
 for setup and buyer/account verification.
 
 To evaluate a source reference, choose an immutable release tag and follow that
 revision's README and release notes, including its toolchain and test
 prerequisites. A source build does not start a complete commerce application.
-See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/.github/INSTALL_SUPPORT_POLICY.md)
+See the [install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/.github/INSTALL_SUPPORT_POLICY.md)
 for the installation boundary.
+
+## Subscription cadence representation
+
+Fresh platform quotes, order drafts and editor results accept **1 through 3660
+whole days** (ten years). `MAX_CADENCE_DAYS` is exported from
+`@openlup/core/subscription`. This admission limit avoids timestamp and settlement
+integer overflows, with room for lateness. Applications choose offered cadences
+in owned configuration.
+
+Fresh checkout identity persistence, resume-draft writes and expired checkout
+recreation use the same limit before writes or provider calls. A readable stored
+cadence does not authorize fresh recovery work; recreation refuses it with
+`ExpiredCheckoutRecoveryError`, reason `cadence_limit_exceeded`.
+
+Checkout transport, resume/recovery/account reads, editor contexts, retained
+renewal terms and frozen snapshots preserve **1 through 2147483647** integer
+representation. Completed editor, native draft and renewal receipts replay before
+current limits, with ownership and fingerprint checks intact. Checkout command
+execution and saga fallback can quote before replay, so stored cadence above
+3660 can still refuse on those paths. This affects unreleased development data
+only and remains a follow-up. Fresh native renewal creation or
+starter graduation above 3660 returns `NativeRenewalCadenceError` with reason
+`cadence_limit_exceeded` and `maximumCadenceDays`; choose an executable cadence
+before starting a new renewal. Reading or replaying a frozen operation does not
+apply this new-admission limit.
+
+Managed checkout identity retries above the admission limit authenticate the
+complete canonical payload and verified subject against the stored fingerprint.
+The adapter reads the fingerprint and completed response together and returns
+that snapshot without entering the writer; conflicting retries cannot reopen
+the key.
+
+The current source candidate widens native actor and command previews and the
+edit-quote CHECK to **1..3660** through
+`20261122190000_subscription_cadence_bound.sql`. The starter uses the same bound.
+This forward is unreleased; apply the matching package's complete native
+catalogue before using longer cadences. The managed chain has no corresponding
+90-day cap and receives no migration in this change.
+
+## Quantity and line representation
+
+Checkout commands represent at most **99 units per line** and **50 lines**.
+The platform schema keeps these fixed bounds as private
+`MAX_CHECKOUT_LINE_QUANTITY` and `MAX_CHECKOUT_LINES` constants; they are not
+configurable package exports. The starter also retains its **100-unit cart**
+bound (`MAX_STARTER_OFFER_UNITS`). Owned business limits may be lower.
+
+In the current source candidate, startup refuses unsupported owned configuration:
+
+| Configuration above the representation bound | Startup code |
+| --- | --- |
+| `offer.maxUnits > 100`, or any subscription SKU quantity domain maximum above 99 | `starter_units_above_representation` |
+| `maximumBaseLines + maximumAddonLines > 50` in either subscription offer | `starter_lines_above_representation` |
+
+Exactly these bounds are accepted. Subscription `maximumUnits` is a separate
+aggregate business limit; it does not replace the per-SKU or line bounds.
+Lowering owned limits applies to fresh admission. Completed matching checkout
+receipts and authorized paid-order reads retain their stored result, with
+ownership and request fingerprint checks intact.
 
 ## Fulfillment execution limits
 
@@ -114,7 +173,7 @@ shadow, review or enforcement policy; a result alone authorizes no order or paym
 Starting the starter host without a runtime database connection leaves its
 native actions unbound. Its lifecycle supplies that connection for the local
 demonstration database; configuration health alone does not establish live
-operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/deploy/neutral-store/README.md)
+operations. The [local image quickstart](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/deploy/neutral-store/README.md)
 does not establish rollback after a schema or package upgrade. Follow the
 [database upgrade procedure](../upgrade/database-migrations.md) for that boundary.
 
@@ -134,7 +193,7 @@ paid orders awaiting subscription activation.
 ## Starter refusal responses
 
 The app’s `/limits` and `/ograniczenia` pages and unavailable-action buttons use the
-[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/shared/limits.ts).
+[canonical limits table](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/shared/limits.ts).
 A visible refusal button displays the code and explanation locally; it does not submit an operation.
 API refusals return an object such as `{"ok":false,"code":"host_binding_required"}`.
 Unknown operations return HTTP 404; other action refusals normally return HTTP 409 unless the handler supplies another status.
@@ -157,6 +216,34 @@ In the tables, “—” means the boundary has no dedicated refusal code.
 | Seed an unmarked database | The demonstration marker is required; the bootstrap also refuses a pre-existing unmarked database. | `starter_seed_demonstration_database_required` |
 | Keep demonstration sessions across a restart | Sessions live in the current process, have a bounded lifetime and disappear on restart. Issuance stops when the session store is full. | `starter_session_capacity_exceeded` at capacity |
 | Call an unbound operation | A missing host binding refuses. Customer and operator admission may refuse first. | `host_binding_required`; `customer_session_required` or `operator_required` before admission |
+
+## Sessions and private captures
+
+Demonstration sessions have a one-hour lifetime and a capacity of 1,000 in the
+current process; restarting loses them. Issuance at capacity refuses with
+`starter_session_capacity_exceeded`.
+
+The private developer mailbox uses git-ignored `.context` storage, with 0700
+directories and 0600 files. Tokens, recovery URLs and recipient email addresses
+require private filesystem access. Keep them out of application logs and
+recovery responses. A local capture is not evidence of external delivery.
+
+## Shipment projection limits
+
+Starter shipment list/detail reads use one repeatable-read, read-only snapshot
+after native human-admin authorization on each request. Unknown fields and
+invalid selectors refuse before shipment I/O. Reading a destination never
+prepares or pins a shipment; a pinned parcel retains its destination when the
+order's current destination changes.
+
+This reduced projection keeps the captured fulfillment client ID, parcel-line
+IDs and saved-address ID null. Provider kind and tracking number come from the
+same parcel-correlated reference; historical unknown namespaces remain null.
+Item reservation links are empty and reservation locations null. It supplies
+no contact revision, digest, correction target or baseline comparison. Missing
+required facts refuse rather than omit a selected shipment. Bind the separate
+[native operator reader](../how-to/build/fulfillment.md#bind-operator-commands-and-reads)
+when those recorded facts are needed.
 
 ## Subscription editors
 
@@ -189,7 +276,8 @@ Configured support appears as plain text with an account link; missing contact
 configuration is stated explicitly. Partner submission, operator list/transition
 and review read/submit/list/moderation need the runtime database connection.
 
-Intake enforces bounded requester and email quotas over a rolling window.
+Intake permits five requester attempts and three email attempts per 60-minute
+rolling window.
 Replay is checked before quotas. Repeated contact submissions conflict without
 a time-based deduplication expiry. Public success exposes only a case reference;
 contact details require the authorized operator view.
@@ -268,14 +356,19 @@ fails closed; denied attempts add no quota count. Both quota and identity
 records reset on process restart. Unpurchased-contact retention remains the
 application owner's duty.
 
-Purchase and sign-in share the configured email bound. Phone and postal-code
-fields share the native destination bounds. Cadences and the default use whole
-days within the accepted range; checkout bounds line count and units per line
-within the configured total. Stock and unit prices fit PostgreSQL integers, with
-positive prices for every offered mode. Tax legal-basis text and the trimmed,
-nonempty legal revision have bounded lengths. Consult the
-[maintainer configuration limits](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/docs/limits.md#interim-subscription-mode-price)
-for exact values. Configuration outside these bounds refuses before startup.
+Purchase and sign-in share `purchase.inputLimits.email`, capped at 160 characters;
+both demonstrations use 160. Phone and postal-code fields share the native
+destination bounds. `subscriptionOffers` owns cadences, defaults and per-SKU
+quantities; `offer.cadenceDays` is a derived UI projection. Configured days must
+be whole numbers from 1 through 3660 (`MAX_CADENCE_DAYS`). Invalid offer domains
+refuse with `starter_subscription_offer_invalid`, except values above the
+representation bounds, which use the named codes listed above; invalid projected choices
+refuse with `starter_offer_invalid`. Checkout admits at most 50 selected lines and
+99 units per line within the configured total. Stock and unit prices fit
+PostgreSQL integers, with positive prices for every offered mode. Tax legal-basis
+text is at most 200 characters; the shared legal revision is trimmed, nonempty
+and at most 64 characters. Configuration outside these bounds refuses before
+startup.
 
 ## Paid-order message capture
 

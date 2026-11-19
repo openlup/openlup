@@ -1,3 +1,4 @@
+import { resolveLocale as configuredLocale } from '../shared/locales.ts';
 import { createPostgresBuyerCheckoutLinkPort, createPostgresCheckoutRecoveryWaves, createPostgresOperatorCheckoutLinkStore, createOutboxCheckoutRecoveryEmailHandler, createOutboxCheckoutExpiredEmailHandler } from '@openlup/platform/commerce/server';
 import type { OrderPaymentLifecyclePort } from '@openlup/platform/commerce';
 import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
@@ -34,11 +35,11 @@ const refuse = async (): Promise<never> => { throw new Error('starter_paid_mail_
 /** Only the paid-email handler is registered; all other email methods refuse. */
 export function createPaidMailHost(input: { executor: SqlExecutor; config: StoreConfig; capture?: PrivateCapture }) {
   const { executor, config } = input;
-  assertRenewalConfig(config.renewal);
+  assertRenewalConfig(config.renewal, config.market.locales);
   const artifacts = createPaidMailArtifacts(input.capture ?? createPrivateCapture());
   const notices = config.renewal.notices;
   const resolveLocale = (country: string | null | undefined): Locale =>
-    (country ? notices.countryLocales?.[country.toUpperCase()] : undefined) ?? notices.locale;
+    configuredLocale((country ? notices.countryLocales?.[country.toUpperCase()] : undefined) ?? notices.locale, config.market);
   const recipientPort: OrderRecipientPort = {
     async resolve(orderUuid) {
       const row = (await executor.query(`SELECT c.email,c.first_name,c.country FROM public.commerce_orders o
@@ -80,7 +81,7 @@ export function createPaidMailHost(input: { executor: SqlExecutor; config: Store
         const order = (await executor.query('SELECT client_id FROM public.commerce_orders WHERE id=$1::uuid',
           [uuidFromOrderRef(send.orderId)])).rows[0];
         if (!order?.client_id) throw new Error('starter_paid_mail_identity_unavailable');
-        const locale = send.locale ?? notices.locale, copy = notices.copy[locale].paid;
+        const locale = configuredLocale(send.locale ?? notices.locale, config.market), copy = notices.copy[locale].paid;
         const body = [copy.subject, `${copy.order}: ${send.orderId}`,
           ...send.items.map(item => `${item.name} — ${copy.quantity}: ${item.quantity} — ${item.lineTotalLabel}`)];
         if (send.totals?.subtotalLabel != null) body.push(`${copy.subtotal}: ${send.totals.subtotalLabel}`);
@@ -102,7 +103,7 @@ export function createPaidMailHost(input: { executor: SqlExecutor; config: Store
   };
   const runtime: Parameters<typeof createOutboxOrderPaidEmailHandler<Locale>>[0]['runtime'] = {
     resolveLocale, genericItemLabel: locale => notices.copy[locale].paid.item,
-    formatMoney: (amountMinor, currency) => new Intl.NumberFormat(notices.locale, { style: 'currency', currency }).format(amountMinor / 100),
+    formatMoney: (amountMinor, currency) => new Intl.NumberFormat(resolveLocale(null), { style: 'currency', currency }).format(amountMinor / 100),
     presentPaidOrder: () => null,
     parseOutboxPayload: (schema, payload) => {
       const parsed = schema.safeParse(payload);
@@ -123,6 +124,11 @@ export function createPaidMailHost(input: { executor: SqlExecutor; config: Store
 }
 
 /** One bounded local checkout-recovery pass, using the installed job and outbox owners. */
+/** Explicit installed stage wins; payloads without a stage keep the historical hour rule. */
+export function checkoutRecoveryIsFinal(input: { reminderHours: number; stage?: 'first' | 'last' }): boolean {
+  return input.stage === undefined ? input.reminderHours > 1 : input.stage === 'last';
+}
+
 export async function runCheckoutRecovery(input: { executor: import('pg').Pool; config: StoreConfig; publicOrigin: string;
   capture?: PrivateCapture; now?: string; enabled?: boolean }) {
   const { executor, config } = input, at = input.now ?? new Date().toISOString(), schedule = checkoutRecoverySchedule;
@@ -140,7 +146,7 @@ export async function runCheckoutRecovery(input: { executor: import('pg').Pool; 
   const initial = await waves.sweepInitial(schedule.batchSize, new Date(Date.parse(at) - schedule.initialTimeoutSeconds * 1000).toISOString(), at);
   const reconciled = await waves.reconcile(schedule.batchSize, at);
   const locale = (country: string | null | undefined): Locale =>
-    (country ? config.renewal.notices.countryLocales?.[country.toUpperCase()] : undefined) ?? config.renewal.notices.locale;
+    configuredLocale((country ? config.renewal.notices.countryLocales?.[country.toUpperCase()] : undefined) ?? config.renewal.notices.locale, config.market);
   const recipients: OrderRecipientPort = { async resolve(id) {
     const row = (await executor.query(`SELECT c.email,c.first_name,c.country FROM public.commerce_orders o
       JOIN public.clients c ON c.id=o.client_id WHERE o.id=$1::uuid`, [id])).rows[0];
@@ -158,7 +164,7 @@ export async function runCheckoutRecovery(input: { executor: import('pg').Pool; 
   const key = (eventId: string) => `checkout-mail:${eventId}`;
   const send = async (send: { to: string; orderId: string; recoveryToken?: string | null; outboxEventId: string; locale?: Locale; signal: AbortSignal; linkSource?: string }, expired: boolean, final = false) => {
     send.signal.throwIfAborted();
-    const language = send.locale ?? locale(null), selected = copy[language];
+    const language = configuredLocale(send.locale ?? locale(null), config.market), selected = copy[language];
     const url = new URL(routes.completion[language], input.publicOrigin);
     if (send.recoveryToken) url.searchParams.set('token', send.recoveryToken);
     if (send.linkSource) url.searchParams.set('source', send.linkSource);
@@ -174,7 +180,7 @@ export async function runCheckoutRecovery(input: { executor: import('pg').Pool; 
   };
   const email: TransactionalEmailPort<Locale> = {
     findExistingSend: async (_template, eventId) => await capture.read(key(eventId)) !== null,
-    sendCheckoutRecovery: sendInput => send(sendInput, false, sendInput.reminderHours > 1),
+    sendCheckoutRecovery: sendInput => send(sendInput, false, checkoutRecoveryIsFinal(sendInput)),
     sendCheckoutExpiredNotice: sendInput => send(sendInput, true),
     sendReturnApprovedNotice: refuse, sendReturnRejectedNotice: refuse, sendOrderConfirmation: refuse,
     sendOrderPaidConfirmation: refuse, sendPaymentFailedNotice: refuse, sendOrderCanceledNotice: refuse,

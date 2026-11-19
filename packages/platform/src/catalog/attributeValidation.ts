@@ -26,6 +26,7 @@ export interface CatalogAttributeProjectionValue {
   date_value: string | null; ref_value: string | null; quantity_dimension: string | null;
   canonical_unit: string | null; canonical_value: string | null;
 }
+/** @experimental */
 const validatedAttributes: unique symbol = Symbol("validated catalog attributes");
 /** @experimental */
 export type CatalogAttributeValidation =
@@ -47,7 +48,9 @@ const decimalText = (unscaled: string, scale: number): string => scale === 0 ? u
 export function validateCatalogAttributes(
   definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort,
 ): Promise<CatalogAttributeValidation> { return validate(definition, input, references, 1_048_576); }
-/** Publication envelopes may exceed the draft aggregate limit; each attribute object retains its own 1 MiB cap. */
+/** Publication envelopes may exceed the draft aggregate limit; each attribute object retains its own 1 MiB cap.
+ * @experimental
+ */
 export function validateCatalogPublicationAttributes(
   definition: CatalogProductTypeInput, input: CatalogAttributeInput, references?: CatalogAttributeReferencePort,
 ): Promise<CatalogAttributeValidation> { return validate(definition, input, references, 16_777_216); }

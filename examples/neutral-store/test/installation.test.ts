@@ -117,8 +117,8 @@ for (const config of Object.values(configurations)) {
     const ids = [...seed.products, ...seed.skus, ...seed.priceLists, ...seed.prices].map(row => row.id);
     assert.equal(new Set(ids).size, ids.length);
     for (const [index, product] of config.offer.products.entries()) {
-      assert.equal(seed.products[index]!.name, product.name.en);
-      assert.equal(seed.products[index]!.description, product.description.en);
+      assert.equal(seed.products[index]!.name, product.name[config.market.defaultLocale]);
+      assert.equal(seed.products[index]!.description, product.description[config.market.defaultLocale]);
       const sku = seed.skus.find(row => row.sku === product.sku)!;
       assert.equal(sku.product_id, seed.products[index]!.id);
       const oneTime = seed.prices.find(row => row.variant_id === sku.id && row.mode === 'one_time')!;
@@ -146,12 +146,18 @@ for (const config of Object.values(configurations)) {
     for (const call of capabilities) assert.match(call.text, /VALUES\(pg_current_xact_id\(\),\$1,\$2,\$3\)/);
     const inserts = first.calls.filter(call => call.text.startsWith('INSERT INTO public.')
       && !call.text.startsWith('INSERT INTO public.catalog_publication_pointer_capabilities'));
-    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
+    assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 5);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);
       assert.match(call.text, /INSERT INTO public\.(catalog_products|catalog_skus|price_lists|price_entries|catalog_product_document_revisions|catalog_sku_identifiers|commerce_settings|subscription_price_policy_revisions|commerce_promotion_definitions)\b/);
       assert.ok(call.values?.length);
     }
+    const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
+    assert.equal(protection.length, 1);
+    assert.deepEqual(JSON.parse(String(protection[0]!.values?.[1])), config.inventory.renewalProtection);
+    const reminders = first.calls.filter(call => call.values?.[0] === 'checkout_recovery_reminders');
+    assert.equal(reminders.length, 1);
+    assert.deepEqual(JSON.parse(String(reminders[0]!.values?.[1])), config.checkoutRecoveryReminders);
     const registry = first.calls.filter(call => call.text.startsWith('INSERT INTO acquisition_private.'));
     assert.equal(registry.length, acquisitionAddresses.length);
     assert.match(registry[0]!.text, /\(source, reference, revision, provenance, active\)/);
@@ -273,4 +279,37 @@ test('an existing seed caller without a stock port uses the native writer and ro
   };
   await assert.rejects(applyDemoSeed(config,failed.binding),{ message: 'native_stock_refused' });
   assert.equal(failed.calls.at(-1)!.text,'ROLLBACK');
+});
+
+test('owned renewal priority validates before installation writes, independent of configuration ID', async () => {
+  for (const protection of [{ revision: '', renewalProtectionDays: 14 },
+    { revision: 'owned-1', renewalProtectionDays: 0 }, { revision: 'owned-1', renewalProtectionDays: 3661 },
+    { revision: 'owned-1', renewalProtectionDays: 1.5 }, { revision: 'owned-1', renewalProtectionDays: 14, extra: true }]) {
+    const config = structuredClone(Object.values(configurations)[0]!);
+    config.id = 'arbitrary-policy-fixture';
+    config.inventory.renewalProtection = protection;
+    const fixture = installation();
+    await assert.rejects(applyDemoSeed(config, fixture.binding), { message: 'inventory_renewal_protection_policy_invalid' });
+    assert.deepEqual(fixture.calls, []);
+  }
+});
+
+test('owned reminder schedule validates and installs independently of configuration identity', async () => {
+  for (const original of Object.values(configurations)) {
+    const config = structuredClone(original); config.id = 'arbitrary-reminder-owner';
+    config.checkoutRecoveryReminders = { revision: 'owned-48',
+      abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'gentle', afterHours: 24 }, { stage: 'last', afterHours: 48 }],
+      checkoutRecovery: [{ stage: 'last', afterHours: 48 }] };
+    const fixture = installation(); await applyDemoSeed(config, fixture.binding);
+    assert.deepEqual(JSON.parse(String(fixture.calls.find(call => call.values?.[0] === 'checkout_recovery_reminders')!.values?.[1])), config.checkoutRecoveryReminders);
+    for (const invalid of [{ ...config.checkoutRecoveryReminders, revision: '' },
+      { ...config.checkoutRecoveryReminders, checkoutRecovery: [] },
+      { ...config.checkoutRecoveryReminders, abandonedCart: [{ stage: 'last', afterHours: 0 }] },
+      { ...config.checkoutRecoveryReminders, abandonedCart: [{ stage: 'first', afterHours: 2 }, { stage: 'last', afterHours: 1 }] }]) {
+      config.checkoutRecoveryReminders = invalid as typeof config.checkoutRecoveryReminders;
+      const refused = installation();
+      await assert.rejects(applyDemoSeed(config, refused.binding), { message: 'checkout_recovery_reminder_schedule_invalid' });
+      assert.deepEqual(refused.calls, []);
+    }
+  }
 });

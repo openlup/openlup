@@ -85,6 +85,15 @@ in your own complete chain or the catalogue that already defines the routines.
 Applying both paths fails when the latter attempts to create existing functions.
 Importing `@openlup/platform/job-ledger` applies no SQL.
 
+### Enable governed catalogue reads
+
+Apply the catalogue publication reads forward before binding the experimental
+membership and activation-readiness methods. The forward adds read functions
+over the existing publication data and requires no backfill. Earlier readers
+can remain active during the upgrade. Use a trusted server connection with
+permission to execute the new routines, then start new paging sequences with a
+null cursor. The managed rail does not supply these reads.
+
 ## Inspect and apply
 
 1. Call `status()` to inspect the applied and pending canonical paths. It
@@ -118,6 +127,42 @@ whole selected chain is already installed. A pending dry-run does not certify
 the final inventory. Inventory rejection can occur after migrations have
 committed; it does not roll back the whole upgrade.
 
+### Session and ledger admission
+
+A trusted migration source may supply `assertSession` to observe host facts
+once under the advisory lock, after exact ledger-prefix admission and before
+status, dry-run or pending SQL. This callback neither provisions nor qualifies
+a hosted installation.
+
+Every source uses catalog-bound locks and admits only the canonical baseline
+ledger catalog shape before reading its exact prefix. The fingerprint stays
+exact except for numeric `pg_attver` column version markers in a nonempty,
+one-dimensional array starting at index 1; every other attribute option refuses.
+A pending unit locks an installed ledger before its first catalog read in that
+transaction and preserves the connection's isolation setting.
+
+## Find the current function definition
+
+Read the installed platform package's `sql/manifest.json`, selecting the same
+installation generation as the runner. Follow its baseline and ordered forwards,
+or the applied prefix reported by `status()` when investigating a database that
+is behind. Module SQL lists and a filename search alone do not establish the
+effective definition.
+
+Search for an anchored `CREATE FUNCTION` or `CREATE OR REPLACE FUNCTION`, then
+read the complete argument signature and body. Follow later replacements and
+`DROP FUNCTION` for that same signature in catalogue order. Overloads are separate
+functions; calls, grants and dated release notes are not declarations. Keep the
+installed package version separate from a different source checkout.
+
+For native `subscription_auto_resume_due(integer,timestamptz)`, the forward
+`20261114110000_payment_method_refs.sql` replaces earlier auto-resume definitions.
+Its assignment takes the later of the stored next cycle plus the actual pause
+duration and execution time. It never brings the next cycle earlier. Follow
+[timed pauses](../concepts/subscriptions.md#timed-pauses)
+for eligibility and effects; a textual search for a clamp is not an invariant
+proof.
+
 ## Check application compatibility
 
 A compatible change lets the application continue reading and writing its
@@ -127,15 +172,16 @@ new values or events it will consume. Install required schema additions before
 deploying code that depends on them, and update producers and dispatchers
 together before enabling newly introduced event flows.
 
-An incompatible change breaks a contract a running or rollback application
-depends on. Establish the required expand, compatible deployment, backfill and
-contract sequence before using it. Catalogue acceptance proves identities and
+Within 1.x, schema changes are additive: expand and backfill while preserving
+contracts used by running and rollback applications. Contraction, including
+removing or renaming an old shape, requires a major release. An incompatible
+change must establish its expand, compatible deployment, backfill and contract
+sequence before use. Catalogue acceptance proves identities and
 the selected object inventory, not old/new application compatibility, data
 backfill completion or a safe rollback. Reverting application files does not
 undo committed SQL or durable effects.
 
-This migration recipe provides no general upgrade guarantee. Verify the
-selected chain and application combination, including replay and refusal
+Verify the selected chain and application combination, including replay and refusal
 behavior. [Application file upgrades](./application-files.md) are a separate
 operation and execute no database work.
 
@@ -160,4 +206,8 @@ The existing 0.23-prefix invoicing backfill proof remains **historical** and
 separate. Contraction and adjacent-pair backfill remain **PARTIAL** until a real
 retirement ships, because the 0.41→0.42 pair has no object needed only by the
 older application. This proof adds no destructive migration, down-migration or
-new admission grammar, and does not establish a general rollback guarantee.
+new admission grammar. Code rollback is proved only for the qualified adjacent
+pair, selected PostgreSQL profile and retained reads, fresh writes, replay and
+subscription assertions on the unchanged upgraded schema. It does not undo SQL
+or durable effects, prove adjacent-pair backfill or contraction, or establish a
+general rollback guarantee.

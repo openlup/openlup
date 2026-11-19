@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ReadinessInput, ReadinessIssue, Contribution } from "./contracts.js";
 const name = z.string().min(1).max(240).regex(/^[a-zA-Z0-9@_./:-]+$/);
-const version = z.string().regex(/^0\.\d+\.\d+$/);
+const version = z.string().regex(/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/);
 const list = z.array(name).refine((items) => new Set(items).size === items.length);
 const moduleId = z.string().max(240).regex(/^[a-z0-9][a-z0-9-]*$/);
 const modules = z.array(moduleId).refine((items) => new Set(items).size === items.length);

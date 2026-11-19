@@ -39,8 +39,6 @@ const witnesses = [
   "W17_V5-1852_predicate_precedence_boundary",
   "W15_V5-1956_predicate_precedence_boundary",
   "W15_V5-1957_predicate_precedence_boundary",
-  "W15_V5-1958_predicate_precedence_boundary",
-  "W15_V5-1959_predicate_precedence_boundary",
   "W15_V5-1960_predicate_precedence_boundary",
   "W15_V5-1961_predicate_precedence_boundary",
   "W15_V5-1962_predicate_precedence_boundary",
@@ -116,6 +114,14 @@ it.each(witnesses)("%s", () => {
   const mutate = (data: CatalogPublicationCompileInput, name: string, patch: Record<string, unknown>) =>
     Object.assign(data.payload.publication.operations.find(operation => operation.op === name)!, patch);
   const cases: [string, (data: CatalogPublicationCompileInput) => void][] = [
+    ["catalog_publication_v3_active_primary_required", data => { data.payload.publication.operations.push({ op: "set_product_status", productSlug: "article", status: "active" }); }],
+    ["duplicate_combination", data => {
+      const second = structuredClone(data.payload.skus[0]); second.id = "20000000-0000-4000-8000-000000000002"; second.code = "SECOND";
+      second.identifiers = [{ scheme: "gs1:gtin", issuer: "example", value: "4006381333931", packagingLevel: "unit" }]; data.payload.skus.push(second);
+      const facts = { ...data.payload.product.sharedContent.publicationSkus[0], skuCode: "SECOND" }; data.payload.product.sharedContent.publicationSkus.push(facts);
+      data.payload.publication.operations.push({ op: "create_sku", skuId: second.id, productSlug: "article", documentRevisionNo: 1, ...facts },
+        { op: "create_identifier", skuCode: "SECOND", scheme: "gs1:gtin", issuer: "example", value: "4006381333931", packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null });
+    }],
     ["catalog_publication_source_invalid", data => { data.record.status = "abandoned"; }],
     ["catalog_publication_scope_expansion", data => { mutate(data, "create_product", { productSlug: "other" }); }],
     ["catalog_publication_v3_compile_product_conflict", data => { mutate(data, "create_product", { productId: "10000000-0000-4000-8000-000000000002" }); }],

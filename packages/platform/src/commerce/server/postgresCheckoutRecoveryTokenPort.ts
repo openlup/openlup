@@ -144,7 +144,7 @@ function subscriptionFacts(row: Record<string, unknown>, nativeMode: unknown) {
     .filter(value => value != null);
   if (modes.some(mode => mode !== "one_time" && mode !== "subscription")
     || new Set(modes).size > 1
-    || cadences.some(value => typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0)
+    || cadences.some(value => typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647)
     || new Set(cadences).size > 1) throw new Error("checkout_recovery_response_invalid");
   const subscription = nativeMode === "subscription_cycle" || modes.includes("subscription") || cadences.length > 0;
   if ((subscription && (modes.includes("one_time") || (modes.includes("subscription") && cadences.length === 0)))

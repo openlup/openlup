@@ -1,11 +1,12 @@
-# Development, diagnostics and preview releases
+# Development, diagnostics and releases
 
-Status: development-preview guidance.
+Status: current contributor guidance for stable 1.x.
 Audience and purpose: contributors and maintainers following a change from local
 verification through a pull request to a package release on npm, or to an
 optional source preview, which carries no package.
-The current channel is evaluation-only; this process does not establish a stable
-API, production deployment or supported adopter upgrade.
+The [stable API policy](../../packages/core/docs/guide/reference/stability.md#public-api)
+and [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md) define the
+release’s commitments. A successful contributor check alone does not qualify a deployment.
 
 ## Start with the right route
 
@@ -59,7 +60,7 @@ remain in [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diag
 | `node scripts/public-ci-neutrality.mjs --base-commit <full-base-sha>` and UI neutrality smoke | Tree-wide shrink-only neutrality and portable UI boundary; local and CI `self-check`. | Required. Use the exact event/comparison base, not a guessed latest main. |
 | Shared `scripts/packages/required-package-gates.ts` in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover each publishable workspace and its required scripts; cold-pack the current set, check all APIs, then run each owning required batch with the same artifacts. Core retains mechanical CI obligations and uses dependency-regression admission instead of the absolute release audit; Outbox owns schema/SQL/replay. | `install-packages` follows both builds in its own checkout, independently of root tests; the required `install-proof` aggregate also requires four browser shards consuming its verified manifest and tarballs. Local package preparation and tests remain serial because they share build outputs. Missing routes, artifacts or runtimes refuse. Future modules use the same semantic consumer proof; only SQL modules require a database. |
 | `npm --workspace @openlup/core run ci` | Package coverage, runtime imports, type smoke, API snapshots, docs, release checks and packed-consumer smoke; local and CI `install-proof`. | Standalone `ci` includes the full live audit. Required PR/queue proof uses the shared API phase plus `ci:required` and dependency-regression admission, with manifest/commit inputs. Manual mode still builds/packs; supplied mode executes the same assertions without repacking. Separate from root Vitest discovery. |
-| `npm run test:scoped` locally; `npm test -- --shard=N/6` in CI | Root Vitest; see [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) for discovery, selection and sharding. | Required `test` aggregates all six root shards and pgTAP and refuses failure, cancellation or skipped dependency jobs. Individually skipped cases remain missing proof. Package gates remain separate. |
+| `npm run test:scoped` locally; `npm test -- --shard=N/8` in CI | Root Vitest; see [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) for discovery, selection and sharding. | Required `test` aggregates all eight root shards and pgTAP and refuses failure, cancellation or skipped dependency jobs. Individually skipped cases remain missing proof. Package gates remain separate. |
 | `node scripts/public-ci-pgtap.mjs` | Shipped SQL tests against the committed managed baseline and forwards on the digest-pinned stock PostgreSQL 17 image with the [managed-compatibility adapter](../../tests/postgres/managed-compat/supabase.sql) and checksum-pinned pgTAP, pg_cron and `pg_prove` packages; local and CI `pgtap`. Requires Docker only: no Supabase CLI and no npm install. | Required in CI through the `test` aggregate; a raw diagnostic locally. Start, replay, cleanup failures and unexplained new failures block delivery under contribution rules. `node scripts/pgtap-parity.mjs` compares TAP logs, snapshots and fingerprints. |
 | `npm run build` and subscription-profile build | Install/build proof for reference profiles; local and CI `install-proof`. | Required. A build does not prove a browser journey, live provider or production deployment. |
 | `npm run check:dco-signoff -- <full-base-sha> <full-head-sha>` | Sign-off on the full commit range; local and CI `dco`. | Required. Empty ranges and malformed identities are not success evidence. |
@@ -96,7 +97,7 @@ runtime import or dependency; declaration checking remains enabled, and the
 installed NodeNext and browser/Bundler consumer proofs still apply.
 Playwright specifications and explicit database/browser reference evaluation do
 not become mandatory per-PR execution just because their files exist; follow
-[execution ownership](../../CONTRIBUTING.md#development-preview-checks) and the
+[execution ownership](../../CONTRIBUTING.md#contribution-checks) and the
 [selected subscription evaluation](SUBSCRIPTION_REFERENCE.md).
 
 ## Local maintainer layer
@@ -138,6 +139,11 @@ layer remain maintainer-controlled and outside the public tree.
 All required source and merge-group CI commands still run.
 
 ## Measuring delivery improvements
+
+Use the [manual agent regression procedure](plans/agent-dx-regression.md) as a
+pre-release measurement supplement to M19 A5. Its four tasks and local candidate
+rehearsals remain separate from the full blind adopter journey and
+[first-party consumer evidence](../../packages/core/docs/guide/reference/stability.md#release-evidence).
 
 Record measurements in the existing task evidence, with actual candidate,
 workflow run and attempt identities; no separate tracking service is needed.
@@ -240,17 +246,10 @@ is revoked, analysis may stop; it is not a new merge blocker in this pilot.
 
 ## Releasing a package
 
-While `@openlup/core` is below 1.0, the `@openlup/*` packages are released as
-one set, independently of source previews: one set version `0.N.P` from one
-commit, a tag `openlup-<package>-v<version>` per package at that commit, and
-every package republished in each set. A patch set only fixes; any API,
-behaviour or schema change, new package or shipped SQL is a minor set. The
-[package inventory](../../config/openlup-packages.json) determines the publishable
-set; the first set was core `0.12.0`. Source preview 11, which
-published `@openlup/core` `0.11.0` on the `preview` dist-tag, was the last
-lockstep cut that also published a package.
 The [versioning policy](../../.github/VERSIONING_AND_EOL.md#package-releases)
-owns release permissions, setup, detailed refusals and recovery. The sequence is:
+owns the coherent package set, version model, release permissions, setup,
+refusals and recovery. The [package inventory](../../config/openlup-packages.json)
+determines the publishable set. Source snapshots are separate. The sequence is:
 
 1. Before the bump, run `npm run release:docs-pass`, adding `-- --website <path>`
    when an openlup.com checkout is available, and attach its output to the
@@ -292,7 +291,9 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    ancestry, contexts, a byte-identical fresh source snapshot at the exact Git
    target, the set version of every publishable package and, for a
    patch set, each unchanged API snapshot. It cold-packs every package through
-   the shared inventory-based prerequisite route and scans every tarball, then
+   the shared inventory-based prerequisite route. Before release planning, a set
+   dispatch runs the adjacent starter upgrade against the retained, manifest-verified
+   local tarballs, then scans every tarball and
    decides each package by its tag, release and npm state, before protected
    `release` approval; dispatch itself is not approval. The release gate that
    decides ancestry, contexts and the tag's commit runs as it is at the dispatched
@@ -358,15 +359,15 @@ The source-preview descendant check retains its strict snapshot equality.
 
 ### Core release preparation
 
-The prepared `0.43.0` set removes provider trace columns from Core's shared
-fulfillment status-map JSON; adapter-owned dictionaries retain translation and
-existing status/customer-step results. Its reader guide covers Platform's seven
-new native migration slots 135–141, fulfillment composition, provider profiles
-and qualification limits. Upgrade all packages together and read
-[the set notes](../../packages/core/CHANGELOG.md#0430); Core introduces no schema migration.
-Size comparison uses the published `0.42.0` tarball; releases before `0.41.0`
+The prepared `1.0.0` set begins the stable compatibility line and adds experimental
+exact catalogue quantities, pricing helpers and registry observations, installed
+lookup improvements and offline catalogue guidance. Its reader guide covers
+Platform's nine native forwards at slots 142–150, explicit migration/backfill
+steps, the experimental base-price writer and code-rollback limits. Upgrade the complete set together and read
+[the set notes](../../packages/core/CHANGELOG.md#100); Core introduces no schema migration.
+Size comparison uses the published `0.43.0` tarball; releases before `0.42.0`
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
-npm publication.
+npm publication or exact-set qualification.
 
 The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
 Oversized constrained collections fail before per-element errors accumulate;
@@ -378,11 +379,12 @@ types for Zod's standard `URL` declaration; Core adds no runtime Node import.
 
 The reviewed release workflow owns provenance-backed publication; direct directory publishing refuses. New API and shipped SQL require the next minor set.
 
-The prepared `0.43.0` set republishes Outbox with unchanged runtime, exports and
-SQL, and an exact `@openlup/core@0.43.0` peer. Upgrade the complete set together;
-no Outbox schema migration is introduced. Read [0.43.0 notes](../../packages/outbox/CHANGELOG.md#0430).
-Releases before `0.41.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.42.0` tarball; preparation grants no
+The prepared `1.0.0` set declares Outbox's stable runtime subpaths and testing
+exclusion, with unchanged runtime, exports and SQL, and an exact
+`@openlup/core@1.0.0` peer. Upgrade the complete set together; no Outbox schema
+migration is introduced. Read [1.0.0 notes](../../packages/outbox/CHANGELOG.md#100).
+Releases before `0.42.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.43.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Cutting an optional source preview

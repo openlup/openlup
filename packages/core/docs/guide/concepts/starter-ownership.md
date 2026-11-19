@@ -3,6 +3,9 @@
 Use the starter's ownership inventory to decide which application files you
 customize and which updates need review.
 
+For a starter upgrade, follow the per-release owned-file migration linked from
+[Upgrade application files](../upgrade/application-files.md).
+
 ## Read the inventory
 
 `ownership.json` lists exact application-relative paths in `owned` and `managed`.
@@ -113,7 +116,7 @@ links for that order and expires at the earlier of its own lifetime or the
 order's recovery deadline. Payment prevents further payment through a link;
 other links still obey their expiry and revocation. Payment-case links rotate separately, invalidating their predecessor.
 
-Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/docs/ownership.md#application-ownership)
+Use the [recovery issuer contract](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/docs/ownership.md#application-ownership)
 for token construction and exact continuation, recovery and operator-link deadlines.
 
 A pending order can continue sandbox payment and retry a decline. Expired orders,
@@ -153,7 +156,7 @@ Purchase and sign-in share the bounded `purchase.inputLimits.email` setting;
 overlong purchase email
 refuses with `starter_email_invalid` before contact resolution. Checkout and
 subscription-address fields use the configured phone and postal limits within
-native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/docs/ownership.md#application-ownership)
+native destination bounds. The [configuration validator](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/docs/ownership.md#application-ownership)
 owns the exact limits. Browser field limits do not replace host validation.
 
 ## Paid-order messages and shipping
@@ -191,15 +194,17 @@ activation refuse recurring obligations, including for the matching owner.
 
 ## Account and operator authority
 
-`owned/acquisition-policy.ts` supplies account validation and checkout link and
-reminder timing. The host derives the actor from the accepted session and the
+`owned/acquisition-policy.ts` supplies account validation and checkout link
+timing; the installed `checkoutRecoveryReminders` schedule in
+`owned/store.config.ts` sets reminder hours and stages. The host derives the actor from the accepted session and the
 command key from the request. Caller-supplied identities and command keys in
 action bodies refuse. Account reads expose owned event metadata rather than
 private payloads. Profile writes and event appends have separate commits;
 correction requests retain their native append-only repeated-key behavior.
 
 The separate checkout-recovery mail entry selects only recovery and expiry
-handlers. A captured send's native receipt gates the final reminder; enqueueing
+handlers. When the schedule has a first stage, a captured send's native receipt gates the
+final reminder; enqueueing
 or skipping a send does not establish delivery. Paid messages and subscription
 notices use separate selections.
 
@@ -224,7 +229,7 @@ marking records an externally completed refund; it moves no money, sends no
 refund mail, creates no fiscal reversal and changes no subscription. Execute
 real refunds through their own owner. Invalid reasons, missing confirmation,
 stale status and conflicting commands refuse; native receipts own replay. Reasons
-use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/README.md#commerce-contracts).
+use the native trimmed-text boundary in the [order control schemas](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/README.md#commerce-contracts).
 
 Signed-in customers request returns for positive quantities from their own paid
 or fulfilled orders using configured reason codes. Keep the returned request
@@ -272,7 +277,7 @@ Detected embedded browsers show send and send-again controls only after verified
 continuation exists. Detection changes display, not authority. The cookie-only
 handler derives identity from claims, uses the saved checkout recipient and
 deduplicates sends within the configured time bucket. The
-[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
+[continuation composition](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/docs/ownership.md#sandbox-token-payment-and-exact-continuation)
 owns its duration. Confirmation survives panel
 remounts; failures offer retry. Delivery rechecks buyer authorization and captures
 the marked buyer link privately. Enqueue, capture and payment are separate facts.
@@ -311,8 +316,38 @@ shipment transaction commits and retain that wrapper's fail-soft policy.
 ## Saved addresses, billing and preferences
 
 The signed-in account can read, create, edit and delete its saved addresses.
-Native formatting and default clearing apply. Address writes, default clearing
-and account events have separate commits: reload after a failed save before
+Default clearing and the host's `CustomerSavedAddressValidationPolicy` apply.
+In the unreleased source candidate, `createCustomerSavedAddressRequestSchemas`
+from `@openlup/platform/shipping` accepts optional `local` callbacks:
+`normalizePostalCode`, `isValidPostalCode` and `normalizePhone`. They run only
+when the selected country resolves to the policy's `country`, including its
+aliases. Without `local`, the compatible built-in rules remain: five postal
+digits become `NN-NNN`; nine phone digits gain `phonePrefix`, and an existing
+prefix is retained. Removing those defaults is separate future work.
+
+The platform trims fields, collapses whitespace and uppercases postal input
+before local normalization, then validates the normalized postal result.
+Phone callbacks receive trimmed input with collapsed whitespace; a null result
+refuses a supplied phone, while an absent or blank phone stays null. Postal
+input and output remain bounded to 24 characters, phone input and local output
+to 64. Foreign postal rules and the 6–32 character foreign phone rule bypass
+the callbacks. Country aliases, field bounds and message keys remain platform
+mechanics. Callbacks must be effect-free: no I/O, authorization or mutable-state
+reads; normalization may run more than once per parse. A callback throw refuses
+its field with `messages.postalCode` or `messages.phone`, rather than escaping
+as a server error. Missing or nonfunction
+callbacks in a supplied `local` refuse schema creation with
+`saved_address_policy_invalid`.
+
+The current starter host imports `savedAddressValidation` from
+`owned/acquisition-policy.ts`. Its fictional country uses postal codes with two
+letters followed by four digits, and eight phone digits normalized with `+999`;
+edit that owned algorithm outside
+`StoreConfig` for another local format. These formats do not establish a real
+country or phone jurisdiction.
+
+Address writes, default clearing and account events have separate commits:
+reload after a failed save before
 retrying. An admitted command key returns the current book without another
 write. Deleting a missing or foreign row acknowledges zero deletions and returns
 only the caller's book; editing a foreign row refuses. Use by an active or paused

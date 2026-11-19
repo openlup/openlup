@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createPromotionQuoteAcceptance } from "../../src/promotions/index.js";
 import { acceptanceRequest, quoteSnapshot } from "./acceptanceFixtures.js";
 import {
   issuePromotionQuoteAcceptance,
@@ -29,6 +30,34 @@ const MUTATIONS: Array<[string, (input: MutationInput) => unknown]> = [
 afterEach(() => vi.restoreAllMocks());
 
 describe("promotion quote acceptance", () => {
+  it("binds explicit offer review without commercial adjustments and separates token purposes", () => {
+    const review = createPromotionQuoteAcceptance({
+      purpose: "offer-review",
+      projectRequest: (request: { promoCodes: string[]; revision: string; journey: string; delivery: string }) =>
+        ({ revision: request.revision, journey: request.journey, delivery: request.delivery }),
+    });
+    const ordinary = createPromotionQuoteAcceptance({ projectRequest: () => ({ revision: "a", journey: "j", delivery: "d" }) });
+    const adjusted = fixture().quote;
+    const quote = { ...adjusted, discounts: [], discountTotalGross: { ...adjusted.discountTotalGross, amountMinor: 0 } };
+    const request = { promoCodes: [], revision: "a", journey: "j", delivery: "d" };
+    const input = { request, quote, expectedTotal: quote.totalGross, keyring: { current: OLD_SECRET }, now: NOW };
+    const token = review.issuePromotionQuoteAcceptance(input)!;
+    expect(token).toBeTypeOf("string");
+    expect(ordinary.issuePromotionQuoteAcceptance(input)).toBeNull();
+    expect(review.verifyPromotionQuoteAcceptance({ ...input, token })).toBe(true);
+    for (const changed of [{ revision: "b" }, { journey: "other" }, { delivery: "other" }]) {
+      expect(review.verifyPromotionQuoteAcceptance({ ...input, token, request: { ...request, ...changed } })).toBe(false);
+    }
+    expect(review.verifyPromotionQuoteAcceptance({
+      ...input, token, quote: { ...quote, lines: quote.lines.map((line) => ({ ...line, sku: "different-item" })) },
+    })).toBe(false);
+    expect(ordinary.verifyPromotionQuoteAcceptanceWithOutcome({ ...input, token }).reason).toBe("signature_invalid");
+    const withPromotion = { ...input, quote: adjusted };
+    const promoToken = ordinary.issuePromotionQuoteAcceptance(withPromotion)!;
+    expect(promoToken).toBeTypeOf("string");
+    expect(review.verifyPromotionQuoteAcceptanceWithOutcome({ ...withPromotion, token: promoToken }).reason).toBe("signature_invalid");
+  });
+
   it("honors a signed quote through the 72h drain boundary but not at expiry", () => {
     const { request, quote } = fixture();
     const token = issuePromotionQuoteAcceptance({ request, quote, keyring: { current: OLD_SECRET }, now: NOW });

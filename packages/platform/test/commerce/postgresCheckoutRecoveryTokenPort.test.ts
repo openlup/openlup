@@ -18,6 +18,14 @@ function fixture(value: unknown, extra: Record<string, unknown> = {}) {
 }
 
 describe("PostgreSQL recovery state translation", () => {
+  it.each(["draft_context", "quote_context", "activation_cadence"])("reads historical %s cadence facts", async source => {
+    for (const days of [0, 1, 3660, 3661, 2_147_483_647, 2_147_483_648]) {
+      const extra = { [source]: source === "activation_cadence" ? days : { mode: "subscription", cadenceDays: days } };
+      const result = fixture({ ...base, mode: "subscription_cycle" }, extra).port.inspect("opaque-input");
+      if (days >= 1 && days <= 2_147_483_647) await expect(result).resolves.toMatchObject({ cadenceDays: days });
+      else await expect(result).rejects.toThrow("checkout_recovery_response_invalid");
+    }
+  });
   it.each([
     ["active", "active", "pending_payment", true, "continuation"],
     ["active", "active", "paid", false, "continuation"],

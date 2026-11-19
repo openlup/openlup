@@ -5,12 +5,16 @@ import { catalogPriceSetupApplyResultSchema, catalogPriceSetupPreviewResultSchem
 import type { CatalogPriceSetupRefusal } from "./contracts/catalogPriceSetup.js";
 import type { CatalogPriceSetupStorePort } from "./catalogPriceSetupHandler.js";
 
-/** The authenticated transaction's executor; publication may use its own connection. */
+/** The authenticated transaction's executor; publication may use its own connection.
+ * @experimental
+ */
 export interface CatalogPriceSetupQueryExecutor {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
 
-/** Session-bound SQL authority derives the actor; composition verifies the session. */
+/** Session-bound SQL authority derives the actor; composition verifies the session.
+ * @experimental
+ */
 export function createPostgresCatalogPriceSetupStore(client: CatalogPriceSetupQueryExecutor): CatalogPriceSetupStorePort {
   async function call(sql: string, values: unknown[], schema: typeof catalogPriceSetupApplyResultSchema | typeof catalogPriceSetupPreviewResultSchema) {
     try {
@@ -27,7 +31,9 @@ export function createPostgresCatalogPriceSetupStore(client: CatalogPriceSetupQu
   };
 }
 
-/** Explicit whitelist: arbitrary database text never reaches a caller. */
+/** Explicit whitelist: arbitrary database text never reaches a caller.
+ * @experimental
+ */
 export const CATALOG_PRICE_SETUP_HARD_REFUSALS = [
   "native_promotion_unverified", "native_cohort_unverified", "native_order_unverified", "native_agreement_unverified",
   "settlement_context_unverified", "native_promotion_domain_unverified", "native_price_domain_unverified",
@@ -36,7 +42,9 @@ export const CATALOG_PRICE_SETUP_HARD_REFUSALS = [
   "native_order_admission_unverified", "native_order_guard_unverified", "native_order_claim_guard_unverified",
 ] as const;
 
-/** Preserve refusal precedence, including hard evidence failures before/after writes. */
+/** Preserve refusal precedence, including hard evidence failures before/after writes.
+ * @experimental
+ */
 export function catalogPriceSetupRefusal(error: unknown): CatalogPriceSetupRefusal {
   const field = (key: string): unknown => error !== null && typeof error === "object" && key in error
     ? (error as Record<string, unknown>)[key] : undefined;
@@ -58,11 +66,15 @@ export function catalogPriceSetupRefusal(error: unknown): CatalogPriceSetupRefus
   return { outcome: "dependency_unavailable", reason: "store_unavailable" };
 }
 
-/** A refusal aborts the caller-owned publication transaction, including prior child effects. */
+/** A refusal aborts the caller-owned publication transaction, including prior child effects.
+ * @experimental
+ */
 export class CatalogPriceSetupTransactionError extends Error {
   constructor(readonly refusal: CatalogPriceSetupRefusal) { super(refusal.reason); }
 }
-/** The price owner keeps receipt/context ordering and binds opaque batches to this executor and actor. */
+/** The price owner keeps receipt/context ordering and binds opaque batches to this executor and actor.
+ * @experimental
+ */
 export function createCatalogPriceSetupTransactionWriter<Actor extends object>(resolveActor: (actor: Actor) => string) {
   const batches = new WeakMap<object, { db: CatalogPriceSetupQueryExecutor; actor: string; parent: string; value: unknown; commands: readonly CatalogPriceSetupCommand[] }>();
   const refuse = (reason: string): never => { throw new CatalogPriceSetupTransactionError({ outcome: "dependency_unavailable", reason }); };

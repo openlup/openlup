@@ -1,3 +1,4 @@
+import { market } from '../owned/market.config.ts';
 import { test as base, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -42,7 +43,7 @@ test('native support roster, catalogue administration, replay and operator admis
     });
     return response.json();
   };
-  const operatorLocale = (await (await page.request.get(`${baseURL}/api/config`)).json()).config.id === 'coffee' ? 'pl' : 'en';
+  const operatorLocale = market.defaultLocale;
   const signIn = async (kind: 'operator' | 'customer', email: string) => {
     if (kind === 'operator') {
       await page.goto(routes.admin[operatorLocale]);
@@ -70,7 +71,7 @@ test('native support roster, catalogue administration, replay and operator admis
       expect(await redemption.locator('[name=token]').evaluate(input => (input as HTMLInputElement).value.length === 0)).toBe(true);
     } else expect((await action('auth.verify', { token })).ok).toBe(true);
   };
-  for (const locale of ['en', 'pl'] as const) {
+  for (const locale of market.locales) {
     await page.goto(routes.admin[locale]);
     const forms = page.locator('#operator-sign-in form');
     await expect(forms.first().getByLabel(copy[locale].email, { exact: true })).toBeVisible();
@@ -130,12 +131,12 @@ test('native support roster, catalogue administration, replay and operator admis
   // Observe the exact native cause separately; the adapter intentionally erases it.
   expect(() => sql(`SELECT public.customer_support_search('${principal}', 'customer@example.test',0,10,'all')`, true))
     .toThrow(/communications_operator_inactive/);
-  await page.goto(routes.admin.en + '#customers');
+  await page.goto(routes.admin[market.defaultLocale] + '#customers');
   const customers = page.locator('#customers');
   await customers.locator('[name=query]').fill('customer@example.test');
-  await customers.getByRole('button', { name: copy.en.searchCustomer, exact: true }).click();
+  await customers.getByRole('button', { name: copy[market.defaultLocale].searchCustomer, exact: true }).click();
   await expect(customers).toContainText('customer_support_read_failed');
-  await expect(customers).toContainText(copy.en.supportRosterBody);
+  await expect(customers).toContainText(copy[market.defaultLocale].supportRosterBody);
   sql(`INSERT INTO public.platform_communication_operators (principal_id, active)
     VALUES ('${principal}'::uuid, true)
     ON CONFLICT (principal_id) DO UPDATE SET active = true, updated_at = now()`);
@@ -147,14 +148,14 @@ test('native support roster, catalogue administration, replay and operator admis
   });
   expect((await noSession.json()).code).toBe('operator_required');
   await anonymous.close();
-  await customers.getByRole('button', { name: copy.en.searchCustomer, exact: true }).click();
+  await customers.getByRole('button', { name: copy[market.defaultLocale].searchCustomer, exact: true }).click();
   await expect(customers).toContainText('customer@example.test');
   const search = await action('operator.customerSearch', { query: 'customer@example.test' });
   expect(search.ok).toBe(true);
   expect(search.value.candidates[0].subjectId).toBe(fixture.customer);
   const detailForm = customers.locator('form').nth(1);
   await detailForm.locator('[name=customerRef]').fill(fixture.customer);
-  await detailForm.getByRole('button', { name: copy.en.read, exact: true }).click();
+  await detailForm.getByRole('button', { name: copy[market.defaultLocale].read, exact: true }).click();
   await expect(detailForm.locator('.action-result')).toContainText('customer@example.test');
   const countConnections = () => Number(sql(`SELECT count(*) FROM pg_stat_activity WHERE usename='starter_runtime'`));
   const before = countConnections();
@@ -174,16 +175,16 @@ test('native support roster, catalogue administration, replay and operator admis
   const originalConfig = JSON.stringify(config);
   const code = `demo-${randomUUID()}`;
   const command = (data: Record<string, unknown>, key?: string) => action('operator.bundleCommand', { bundleCode: code, ...data }, key);
-  await page.goto(routes.admin.en + '#catalogue');
+  await page.goto(routes.admin[market.defaultLocale] + '#catalogue');
   const panel = page.locator('#catalogue');
-  await expect(panel).toContainText(copy.en.catalogAuthoringBody);
-  const create = panel.locator('form').filter({ has: page.getByRole('button', { name: copy.en.bundleDraft, exact: true }) });
+  await expect(panel).toContainText(copy[market.defaultLocale].catalogAuthoringBody);
+  const create = panel.locator('form').filter({ has: page.getByRole('button', { name: copy[market.defaultLocale].bundleDraft, exact: true }) });
   await create.locator('[name=bundleCode]').fill(code);
   await create.locator('[name=title]').fill('Fictional operator bundle');
-  await create.getByRole('button', { name: copy.en.bundleDraft, exact: true }).click();
+  await create.getByRole('button', { name: copy[market.defaultLocale].bundleDraft, exact: true }).click();
   await expect(create.locator('.action-result')).toContainText(code);
   const replay = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.bundleCommand'));
-  await create.getByRole('button', { name: copy.en.bundleDraft, exact: true }).click();
+  await create.getByRole('button', { name: copy[market.defaultLocale].bundleDraft, exact: true }).click();
   expect((await (await replay).json()).replayed).toBe(true);
   expect((await command({ action: 'set_composition', components: [] })).code).toBe('starter_input_invalid');
   expect((await command({ action: 'activate', actorRef: randomUUID() })).code).toBe('starter_input_invalid');
@@ -196,18 +197,18 @@ test('native support roster, catalogue administration, replay and operator admis
     await form.getByRole('button', { name: label, exact: true }).click();
     expect((await (await response).json()).ok).toBe(true);
   };
-  await submitBundleForm(copy.en.bundleComposition, { components: JSON.stringify([
+  await submitBundleForm(copy[market.defaultLocale].bundleComposition, { components: JSON.stringify([
     { sku: config.offer.products[0].sku, quantity: 1, isAddon: false },
   ]) });
   expect((await command({ action: 'set_target_price', amountMinor: -1 })).code).toBe('starter_input_invalid');
-  await submitBundleForm(copy.en.bundleTarget, { amountMinor: String(config.offer.products[0].unitPrice.amountMinor) });
-  await submitBundleForm(copy.en.bundleActivate);
+  await submitBundleForm(copy[market.defaultLocale].bundleTarget, { amountMinor: String(config.offer.products[0].unitPrice.amountMinor) });
+  await submitBundleForm(copy[market.defaultLocale].bundleActivate);
   const read = panel.locator('form').first();
   await read.locator('[name=bundleCode]').fill(code);
-  await read.getByRole('button', { name: copy.en.read, exact: true }).click();
+  await read.getByRole('button', { name: copy[market.defaultLocale].read, exact: true }).click();
   await expect(read.locator('.action-result')).toContainText('active');
   const list = panel.locator('section.panel').first();
-  await list.getByRole('button', { name: copy.en.readStatus, exact: true }).click();
+  await list.getByRole('button', { name: copy[market.defaultLocale].readStatus, exact: true }).click();
   await expect(list).toContainText(code);
   const detail = await action('operator.bundle', { bundleCode: code });
   expect(detail.ok).toBe(true);
@@ -227,14 +228,14 @@ test('native support roster, catalogue administration, replay and operator admis
   const draftForm = draftPanel.locator('form').nth(1);
   const draftId = await draftForm.locator('[name=draftId]').inputValue();
   const draftCreated = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
-  await draftForm.getByRole('button', { name: copy.en.save, exact: true }).click();
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
   const created = await (await draftCreated).json();
   expect(created.ok).toBe(true);
   expect(created.value.outcome).toBe('committed');
   expect(created.value.record.actorId).toBe(principal);
   expect(sql(`SELECT count(*) FROM public.catalog_products WHERE id='${created.value.record.productId}'::uuid`)).toBe('0');
   const draftReplay = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
-  await draftForm.getByRole('button', { name: copy.en.save, exact: true }).click();
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
   expect((await (await draftReplay).json()).replayed).toBe(true);
   const draftRead = await action('operator.catalogDrafts', { action: 'get', draftId });
   expect(draftRead.value.record.revision).toBe(1);

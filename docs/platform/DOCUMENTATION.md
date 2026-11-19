@@ -1,6 +1,6 @@
 # Documentation maintenance
 
-Status: development-preview guidance.
+Status: current contributor guidance for stable 1.x.
 Audience and purpose: contributors maintaining public navigation and behavior
 guidance.
 
@@ -63,11 +63,18 @@ repository root or a package root. `npm run oss:published-tree -- --policy`
 refuses any other placement, so contributor and adopter guidance never mix.
 
 A test file is a falsifier to inspect, not a recorded passing result. Keep
-development-preview limits visible and do not infer framework support from
+release and profile limits visible and do not infer installation support from
 source availability. Release-specific instructions belong with the selected
 immutable release; see the [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md).
 
 ## Ownership
+
+The source-release contract derives stable posture for the canonical activation
+identity and retains development-preview, unstable posture for local fixtures.
+Historical `openlup-source-preview/N` tag names remain unchanged identifiers;
+the contract snapshot binds the selected tree through the existing preparation
+generator. Descendant releases preserve repository and evidence-class identity;
+the validator admits the transition from historical preview to stable posture.
 
 Review coverage helpers use the existing tooling owner in CONTRIBUTING.
 The catalogue attribute validator, reference port, pure projection preparation
@@ -83,7 +90,7 @@ class grouping, exact input fingerprints and refusal of partial outcome claims;
 its BOM section owns committed inventory and verified artifact identity. The
 publication catalogue includes their helpers, wrappers, witnesses and the one
 generated outcome file. README evaluation paths and installation policy retain
-preview and sandbox-payment limits. Generated navigation grants no execution,
+profile and sandbox-payment limits. Generated navigation grants no execution,
 installation, publication or support qualification.
 
 The hosted S3 task and storage witness are public source outputs. The runner
@@ -248,6 +255,13 @@ Release preparation inventories core, outbox and platform changelog histories as
 public source documentation. These verbatim archives remain outside the npm
 artifacts; each packed changelog retains the current and two previous releases.
 The release guide owns the rolling rule and package READMEs retain API ownership.
+
+Frozen starter proof/limit records and the former platform README release notes
+live under `history/`, outside the npm artifacts. Markdown archive links are rebased; the complete
+proof text attachment retains every original byte and command. Current verification remains in the
+[starter recipe](../../examples/neutral-store/docs/proof.md); limits and public
+composition contracts remain in the installed reader guide. The history route
+does not replace those semantic owners.
 
 Fulfillment routing covers the complete `fulfillment*.api.md` report family,
 including the opt-in example report, under the existing architecture owner.
@@ -435,6 +449,8 @@ Both pack checkers enforce a separate `guide` sub-budget from core's
 the total tarball limits also apply.
 The `docs:check` script of each publishable package runs the
 [documentation contract](../../packages/core/scripts/documentation-contract.ts).
+Guide Markdown pages link relatively to one another; non-Markdown assets use
+repository URLs pinned to the Core release, with target existence still checked.
 Core runs it inside its `ci:required`; the root test suite runs it for outbox and
 platform, so a required check covers all three. This root-suite enforcement of
 outbox and platform `docs:check` depends on

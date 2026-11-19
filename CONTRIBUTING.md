@@ -1,8 +1,8 @@
 # Contributing to OpenLup
 
-OpenLup is in development preview. Contributions are welcome, but a source
-checkout is not yet a stable framework release, a supported installation, or an
-upgrade contract. The later stable-framework gate owns those commitments.
+OpenLup 1.x has a [stable compatibility contract](packages/core/docs/guide/reference/stability.md#public-api).
+Contributions preserve that contract and the [support policy](.github/INSTALL_SUPPORT_POLICY.md);
+a source checkout alone is not a supported installation.
 
 Start with the [platform documentation](docs/platform/README.md), then read the
 [public agent guide](docs/platform/AGENT_GUIDE.md) before changing a platform
@@ -12,7 +12,7 @@ request does not automatically promote its subject to an official module.
 
 For documentation changes, use the short [public writing profile and page
 template](docs/platform/README.md#write-or-update-a-page). State which reader
-and current preview it serves, verify commands from the stated working directory,
+and release or profile it serves, verify commands from the stated working directory,
 and separate current behavior from proposals or dated history. Correct the
 owning page in the same contribution as a changed public contract; a link check
 alone does not establish that an install or feature works.
@@ -94,7 +94,7 @@ its users or operators can observe.
    package's tests join the required test selection, so required CI runs them
    while the package is still unreleased. As with `packages/outbox`, extend the
    root Vitest configuration so `npm test` discovers the new package tests;
-   the six hosted shards feed the required `test` aggregate.
+   the eight hosted shards feed the required `test` aggregate.
 3. **Refactor in later pull requests.** Each refactoring pull request keeps the
    witness unchanged. A refactor changes nothing a consumer can observe:
    results, side effects, ordering, errors and fault modes, operational logs,
@@ -112,7 +112,17 @@ its users or operators can observe.
    adapter bindings only. It keeps its own persisted names and maps the
    package's neutral names in its adapter.
 
-## Development-preview checks
+<a id="development-preview-checks"></a>
+
+## Contribution checks
+
+Release tooling shares one coherent-set version rule: `0.N.P` with N at least
+1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1, without leading zeros or a
+prerelease. Patch sets compare API snapshots with the latest earlier patch in
+the same major and minor; an API change still requires a minor or major set.
+Within a stable major, the unprivileged preflight before approval refuses removed
+export names against the latest earlier release App tag in that major; a removal
+needs a major set.
 
 [Development, diagnostics and preview releases](docs/platform/DEVELOPMENT_AND_RELEASE.md)
 explains CI triggers, diagnostics and release mechanics. The commands below
@@ -338,7 +348,7 @@ Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
 release workflows pin Node 24.21.0, which bundles npm 11.19.0, so newer Node 24
 releases cannot change npm beneath the existing assertions. `.nvmrc` pins the same
 24.21.0 runtime locally; the npm contract is unchanged. From
-the root of a materialized development-preview tree, these are the commands the
+the root of a materialized public source tree, these are the commands the
 mechanical/diagnostic jobs of [Published Tree CI](.github/workflows/published-tree-ci.yml)
 run; each comment names its job. The inherited `native-review` job additionally
 checks exact-candidate admission when the maintainer enables `OPENLUP_NATIVE_QUEUE`;
@@ -366,7 +376,7 @@ consumer imports both optional subpaths with ambient I/O disabled and no SDK.
 Focused loopback transport tests fence every socket except their disposable
 local listener; they never establish provider-account readiness.
 
-Required root `test` accepts only success from all six `test-full-shard` jobs;
+Required root `test` accepts only success from all eight `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
 The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
@@ -545,13 +555,26 @@ node scripts/verify-local.mjs --plan --pgtap
 Planning is read-only and works on an unreviewed, dirty task worktree without
 dependencies, a broker or scanner. It lists each phase's command, environment,
 owner, reason, prerequisites, resource profile and corresponding CI context.
-It does not select fewer mandatory phases, run checks, establish native review
-or create verification evidence. Output paths are placeholders until execution.
+It also observes the selected Node/npm/scanner versions, installed compiler
+version against the lockfile, comparison and scan history, cleanliness and profile
+overrides and Docker availability. Shallow scan history stays unknown. Each state
+has a next command; the planned install phase prepares an absent compiler. The
+resource broker remains optional. These bounded read-only probes install
+nothing and start no builds, tests or containers.
+It does not select fewer mandatory phases, execute verification, establish native
+review or create verification evidence. Exit 0 means the comparison scope is
+known, even when an observed prerequisite is blocked. Output paths are
+placeholders until execution.
 An unreadable Git comparison reports unknown scope, retains all obligations and
 exits 2; recover the missing history or valid stack pin before execution.
 The candidate's changed paths describe committed changes only; `clean: false`
 also warns of pending working-tree changes. Package discovery and bounded root
 tooling selection remain with their existing owners, not a second selector.
+
+The separate advisory `npm run preflight` reports cheap checks and changed-test
+discovery before package preparation. Confirmed package/browser suites retain
+their owning runner; an unconfirmed changed test reports `WARN` with a discovery
+next step and remains missing execution proof. Every applicable check still runs.
 
 For optional local feedback after committing and recording the required native
 reviews, run the full local command set with `node scripts/verify-local.mjs` from
@@ -610,9 +633,9 @@ node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
 # test: omit bounded tooling fixtures whose inputs are untouched, including dirty files.
 npm run test:scoped
-# Hosted test-full-shard runs six parallel independent installations, each with:
+# Hosted test-full-shard runs eight parallel independent installations, each with:
 # node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE points to runner temp)
-# npm test -- --shard=N/6 (N = 1, 2, 3, 4, 5, 6)
+# npm test -- --shard=N/8 (N = 1, 2, 3, 4, 5, 6, 7, 8)
 # pgtap (Docker required; no Supabase CLI or npm install)
 node scripts/public-ci-pgtap.mjs
 ```
@@ -792,6 +815,16 @@ Use the pinned Node version in [.nvmrc](.nvmrc), npm 11.19.0 and the committed l
 
 #### Run and inspect
 
+For SQL investigations, use the
+[current-definition recipe](docs/platform/DATA_AND_MIGRATIONS.md#find-the-current-sql-function-definition):
+anchor `CREATE [OR REPLACE] FUNCTION`, follow manifest baseline/forward order,
+and compare full signatures and later `DROP FUNCTION` statements. A caller or
+an earlier migration is not the effective definition. Check behavior and replay
+at the owning witness; a textual `GREATEST` match alone proves no invariant.
+
+For a read-only prerequisite check before setup, use the
+[verification plan](#required-and-raw-checks).
+
 After `npm ci`, use:
 
 ```sh
@@ -891,7 +924,7 @@ only after the original callback drains. Missing Docker or PostgreSQL fails the
 witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
-Hosted `test-full-shard` jobs run `npm test -- --shard=N/6` in six independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+Hosted `test-full-shard` jobs run `npm test -- --shard=N/8` in eight independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard
@@ -1010,7 +1043,7 @@ retry and other startup errors, and preserves a named volume and another
 container. Cross-run reclamation is limited to the labelled dead-owner contract
 above; it never authorizes pruning unlabeled resources or a live owner's stack.
 
-Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
+Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. Tests under `tests/postgres/` have a 60-second test floor, preserving any larger derived or explicit per-test budget; their hook budgets are unchanged. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 
@@ -1138,7 +1171,10 @@ integrity. `-- --out <dir>` implies `--pack`. It keeps each publishable
 package's tarball in an empty directory, with a `packages-manifest.json` of
 their versions and digests. `-- --release-tag openlup-<package>-v<version>`
 packs only that publishable package and requires its manifest version to be
-`<version>`. The command publishes nothing;
+`<version>`. The command publishes nothing. Set-release dispatch separately runs the
+[adjacent starter upgrade proof](docs/platform/DISTRIBUTION_EVIDENCE.md#interrupted-adjacent-set-starter-upgrade)
+against those retained digest-verified local packs before release planning;
+post-publication provenance and qualification checks still run separately.
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) describes how
 the protected release approval leads to direct OIDC publication.
 
@@ -1328,9 +1364,9 @@ cannot ship them past their announced removal.
 Platform modules are contributed package-first: a reusable module becomes an
 `@openlup/*` package with documented extension seams, and the reference
 application consumes that package. Source-only changes are for the reference
-application and documentation. While `@openlup/core` is below 1.0, the
-packages are released as one set, independently of source previews: one set
-version `0.N.P` from one commit, with each package tagged
+application and documentation. The
+packages are released as one coherent set, independently of source previews: one set
+version `MAJOR.MINOR.PATCH` from one commit, with each package tagged
 `openlup-<package>-v<version>` at that commit and republished in every set. A
 reviewed pull request, either release preparation alone or an explicitly approved
 bounded implementation-and-set-bump contribution, runs
@@ -1413,8 +1449,8 @@ hash list. Merging preparation still grants no release authority.
 
 The [install support policy](.github/INSTALL_SUPPORT_POLICY.md) and
 [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md) describe
-what the preview can and cannot demonstrate. They do not turn a preview checkout
-into a stable or supported artifact.
+the supported installation and the limits of source-publication evidence.
+A checkout that builds does not by itself become a supported artifact.
 
 ## Pull requests
 
@@ -1461,6 +1497,13 @@ that required CI and the change's own review would miss.
    `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`.
    Before `prepare`, run `npm run preflight` and have it green, or explain each
    `WARN` in the task record. Full local verification is optional.
+
+   A PR that adds or changes a starter-owned file or its owned-file contract must
+   include the packaged starter migration in a Core fragment and matching steps
+   in `scripts/packages/distribution-cli-proof.ts`, with regression evidence in
+   its test. Describe pristine replacement, customized reconciliation, startup
+   refusals and any explicit installed-policy step. Release preparation consumes
+   the fragment into the next reader upgrade guide. Leave released sections intact.
 3. **Describe the task in the PR description.** Record the finite outcome, scope
    and exclusions, acceptance criteria, risk, actual delivery authority and
    evidence. Keep this record current through fixes and handoffs.

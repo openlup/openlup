@@ -1,6 +1,6 @@
 # Communications integration signature adapter
 
-Status: development-preview guidance. The package owns the signature algorithm;
+Status: current integration guidance. The package owns the signature algorithm;
 this directory provides the server-facing compatibility import and its focused
 refusal witness.
 

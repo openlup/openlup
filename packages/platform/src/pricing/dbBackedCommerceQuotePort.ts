@@ -1,4 +1,5 @@
 import type { ShippingTerms } from "../shipping/index.js";
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
 import type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
 import type { PricingResolverPort } from "@openlup/core/pricing";
@@ -12,6 +13,7 @@ import { assertSubscriptionCheapest, buildSkuIndex, calculateIncludedVat, eligib
 import { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
 import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
 import { catalogFactsForQuoteLine, projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
+import { invalidOfferPricing, resolveOneTimeOfferPricing } from "./oneTimeOfferPricing.js";
 
 export interface QuotePromotionResult {
   discounts: CommerceQuoteDiscount[];
@@ -64,7 +66,14 @@ export function createDbBackedCommerceQuotePort<
       request: Request,
       options?: CreateQuoteOptions,
     ): Promise<Omit<CreateQuoteResponse, "quote"> & { quote: Omit<CreateQuoteResponse["quote"], "context"> & { context: Context & { pricingPolicy?: PricingPolicySnapshot; shippingTerms?: ShippingTerms; acquisitionTerms?: ResolvedAcquisitionTerms } } }> {
+      const cadenceDays = request.cadenceDays;
+      if (cadenceDays != null && (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > MAX_CADENCE_DAYS)) {
+        throw new CommerceQuoteError("cadence_limit_exceeded",
+          `Choose a subscription cadence from 1..${MAX_CADENCE_DAYS} days before requesting a fresh quote`,
+          { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: MAX_CADENCE_DAYS });
+      }
       const atTime = now();
+      const offer = resolveOneTimeOfferPricing(options?.oneTimeOfferPricing, request, currency, isStrictD1Quote);
       const skuIndex = await buildSkuIndex(quoteCatalogReadPort);
       const pricedLines = await Promise.all(request.lines.map(async (requestLine) => {
         const entry = skuIndex.get(requestLine.sku);
@@ -137,8 +146,11 @@ export function createDbBackedCommerceQuotePort<
           oneTime,
           vatRateBps: taxProfile.vatRateBps,
         });
-        const unitPriceGrossMinor = toGrossMinor(resolved, taxProfile.vatRateBps);
+        const allocated = offer?.bySku.get(requestLine.sku);
+        const unitPriceGrossMinor = allocated?.unitGrossMinor ?? toGrossMinor(resolved, taxProfile.vatRateBps);
         const baseUnitGrossMinor = oneTime ? toGrossMinor(oneTime, taxProfile.vatRateBps) : unitPriceGrossMinor;
+        if (allocated && (oneTime?.amountKind !== "gross" || unitPriceGrossMinor > baseUnitGrossMinor
+          || !Number.isSafeInteger(baseUnitGrossMinor * requestLine.quantity))) throw invalidOfferPricing();
         const grossMinor = unitPriceGrossMinor * requestLine.quantity;
         const tax = calculateIncludedVat(grossMinor, taxProfile.vatRateBps);
         const pricingComponents = buildLineBreakdown({
@@ -149,9 +161,10 @@ export function createDbBackedCommerceQuotePort<
           matched_tier_min_qty: resolved.matchedMinQty,
           mode_at_line: modeAtLine,
           mode_resolved_via_fallback: resolved.mode === "any",
+          ...(allocated ? { bundle_allocated_discount_minor: baseUnitGrossMinor * requestLine.quantity - grossMinor } : {}),
         }).map((component) => mapPricingComponent(component, "line"));
         const catalogFacts = isStrictD1Quote
-          ? catalogFactsForQuoteLine(true, entry.item, resolved, oneTime!, modeAtLine, atTime, currency, unitPriceGrossMinor, grossMinor, toGrossMinor(oneTime!, taxProfile.vatRateBps), strictResolution?.policy)
+          ? catalogFactsForQuoteLine(true, entry.item, resolved, oneTime!, modeAtLine, atTime, currency, unitPriceGrossMinor, grossMinor, toGrossMinor(oneTime!, taxProfile.vatRateBps), strictResolution?.policy, offer?.priceReference)
           : undefined;
         return {
           line: {

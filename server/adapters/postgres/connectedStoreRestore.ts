@@ -376,6 +376,10 @@ export async function restoreConnectedNativeStore(input: {
       const orderAcceptances: string[] = [];
       for (const table of order) {
         const rows = source.get(table)!;
+        if (table === "subscription_price_policy_revisions") {
+          // Only the policy copy may retain the provenance of a guarded close.
+          await client.query("INSERT INTO public.subscription_price_policy_restore_capabilities VALUES (pg_catalog.pg_current_xact_id())");
+        }
         const b = packet.compatible.tables.find(value => value.table === table);
         // Classic subscriptions, their events and accepted-reference carriers use
         // the locked owner path after exact trigger and schema inspection;
@@ -437,6 +441,9 @@ export async function restoreConnectedNativeStore(input: {
               AND (pg_catalog.to_jsonb(o)-'catalog_acceptance')=(pg_catalog.to_jsonb(x)-'catalog_acceptance')
             RETURNING o.id`, [row]);
           if (updated.rows.length !== 1) fail("target_conflict", "commerce_orders");
+        }
+        if (table === "subscription_price_policy_revisions") {
+          await client.query("DELETE FROM public.subscription_price_policy_restore_capabilities WHERE transaction_id=pg_catalog.pg_current_xact_id()");
         }
         if (table === "payment_provider_attempts") for (const state of source.get("payment_provider_states")!.rows) {
           const updated = await client.query(`UPDATE public.payment_provider_states s
@@ -653,7 +660,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     catalog_publications: ["catalog_publications_record_admit"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
     catalog_product_document_revisions: ["catalog_document_publication_record_admit"],
     // These guards retain final intervals and recompute the same definition digest.
-    subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
+    subscription_price_policy_revisions: ["subscription_price_policy_revisions_00_guard_insert", "subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_acceptance_admit"], commerce_order_items: ["trg_commerce_order_items_line_sum"],

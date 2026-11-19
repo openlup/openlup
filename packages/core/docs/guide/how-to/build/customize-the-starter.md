@@ -6,19 +6,22 @@ change reaches its structure or workflow.
 
 ## Prepare the application
 
-The starter is separate application source; installing npm packages does not
-create it. For the released **0.43.0 development preview**, use Node 24,
-npm 11.19.0, Git, curl and tar. Start in a directory with no application named
-`my-store`; the extractor refuses a nonempty destination.
+Start from the 1.1.0 demo store (`openlup/demo-store` on GitHub) or use
+release-matched starter inputs when available. The starter is separate
+application source that you can customize in your own repository.
 
-This recipe selects source commit `6facc3e72441ade5813397f65ac7edbe34fd1d0f`
-(`openlup-core-v0.43.0`) and the manifest/lock pair from input commit
+For the historical **0.43.0 starter recipe** below, use Node 24, npm 11.19.0,
+Git, curl and tar. Start in a directory with no application named `my-store`.
+The extractor refuses a nonempty destination.
+
+This historical recipe selects the 0.43.0 source commit
+`6facc3e72441ade5813397f65ac7edbe34fd1d0f` and the manifest/lock pair from input commit
 `87dadb251b27b72a18718b08ac39951dd4f1fdd0`. The inputs were added after the release;
 they are ordinary public source files, not release assets. Keep the pair and
 source revision together. No author checkout, workspace install or package
 packing is needed.
 
-Use the [repository's released-starter entry](https://github.com/openlup/openlup#run-the-starter-store)
+Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
 for the download commands in `examples/neutral-store/README.md`, under “Start
 from an exact source archive”. Those commands download the exact source archive
 and both inputs at the commits above. In the download directory, after unpacking
@@ -42,6 +45,12 @@ manifest revision, complete package set, npm integrities and lock root, but does
 not verify archive origin or package provenance. Follow the
 [adoption identity checks](../../start/adopt-from-npm.md#compare-at-first-adoption-and-upgrade)
 for those separate obligations.
+
+The release preflight also uses candidate extraction with retained, complete
+local packs verified by their manifest and SHA-256/SHA-512 digests. That mode
+admits local resolutions only for the verified set entries and records
+`candidate, local digest-verified`; it does not weaken the released recipe
+above or establish published provenance.
 
 A mismatch refuses with `starter_release_*`; a nonempty destination refuses
 with `starter_extract_directory_not_empty`. Stop and check the selected source
@@ -77,7 +86,7 @@ node --experimental-strip-types host/server.ts
 ```
 
 This host does not compose the database-backed actions. Pass `--configuration`
-and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/host/server.ts)
+and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/server.ts)
 owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 [edit loop](#edit-and-refresh) while changing the presentation.
 
@@ -132,19 +141,134 @@ required settings when adding a configuration:
 | Setting | Required content |
 | --- | --- |
 | `documents.sandbox` | An `enabled` boolean and a nonempty `providerRef` |
-| `returns.reasons` | Nonempty choices with unique codes and English and Polish labels |
-| `orderControls.holdReasons` | Nonempty choices with unique native hold reason codes and English and Polish labels |
+| `returns.reasons` | Nonempty choices with unique codes and labels for every configured locale |
+| `orderControls.holdReasons` | Nonempty choices with unique native hold reason codes and labels for every configured locale |
 
 Invalid document, return or hold settings refuse with
-`starter_order_controls_configuration_invalid`. A control being absent from a
+`starter_order_controls_configuration_invalid`, except a missing or blank
+return or hold label for a configured locale, which refuses with
+`starter_locale_copy_missing`. A control being absent from a
 page does not make its configuration optional.
+
+In the current source candidate, set `market.locales` and `market.defaultLocale`
+in `owned/market.config.ts`, composed by `owned/store.config.ts`; the starter
+derives its `Locale` type and required copy locales from this registry. The list
+must be nonempty and unique (`starter_locales_invalid`), use only platform-supported
+`en`/`pl` (`starter_locale_unsupported`), and contain the default
+(`starter_default_locale_invalid`). Supply every configured locale in UI, product,
+email and notice copy; startup refuses missing or blank text with
+`starter_locale_copy_missing`, naming the key and locale. A Polish-only registry
+`{ locales: ['pl'], defaultLocale: 'pl' }` works; requests fall back to the configured
+default, and notice preferences outside the list do too. Restart after editing.
+Adding a platform language requires a separate audit of durable SQL constraints.
+
+## Keep business configuration owned
+
+In the current source candidate for the next release after 1.1.0, set
+`subscriptionCreation: { editWindowHours: 72 }` in `owned/store.config.ts` to
+choose the edit cutoff for newly activated subscriptions. Startup requires an
+integer from 1 through 720 and refuses with
+`starter_subscription_creation_invalid`; the supplied default is 72. Ordinary
+checkout, acquisition and recovered checkout activation pass this trusted host
+value, including when it equals 72, so the starter opts in to the new SQL
+functions and their EXECUTE requirement. It freezes on each subscription row,
+so changing configuration leaves existing subscriptions unchanged.
+See [activation and edit windows](../../concepts/subscriptions.md#freeze-the-edit-window-at-activation)
+for the required native migration and cutoff semantics.
+
+The source starter also owns `checkoutRecoveryReminders` in `owned/store.config.ts`:
+abandoned-cart stages default to `first` at 1h, `gentle` at 24h and `last` at 72h;
+checkout recovery defaults to `first` at 1h and `last` at 20h. The explicit
+installation step installs this schedule; startup reads it and refuses
+`starter_installed_policy_drift` on revision, stage or hour differences. After
+editing, deliberately reinstall before starting. See [reminder stages and
+hours](checkout-recovery.md#install-reminder-stages-and-hours) for the unreleased
+migration, runtime grant and independent checkout-window limits.
+
+In the current source candidate, keep one owned configuration entry per domain,
+such as `owned/renewal.config.ts` or `owned/quote.config.ts`, and compose it in
+`owned/store.config.ts`. Browser and host read that same input. Managed policy
+helpers hold selection and validation mechanics, with business values in owned
+files. `shared/policy.ts` supplies `set`, `range` and text `choice(default, ...allowed)`;
+`assertChoice` checks a nonempty, duplicate-free subset of the domain vocabulary
+whose default belongs to that subset. These helpers remain starter-local.
+
+Use static data for maps, sets, ranges, windows and ladders. Use a side-effect-free
+callback only for an algorithm that normalizes or refuses input; it must not
+authorize, write or read mutable state. Keep such callbacks in an owned module
+imported by the host, outside `StoreConfig`. Each domain assertion runs once
+from `assertConfig` at startup and refuses invalid data or unsupported database
+bounds with a named error code.
+
+For saved-address formats in the current source candidate, edit
+`savedAddressValidation` in `owned/acquisition-policy.ts`, already imported by
+the host. Its `local` callbacks accept fictional postal codes with two letters
+followed by four digits and phones with eight digits for the configured country
+(`ZZ` in the demonstration).
+Keep those algorithms outside `StoreConfig`; the platform retains country
+aliases, length bounds, foreign formats and field messages. Callback throws
+refuse the affected field. See [saved-address policy and defaults](../../concepts/starter-ownership.md#saved-addresses-billing-and-preferences).
+
+## Configure cancellation offers
+
+In the current source candidate, edit `subscriptionCare.retention` in
+`owned/renewal.config.ts`, composed through `renewal` in `owned/store.config.ts`:
+
+```ts
+const retention = {
+  offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' },
+  defaultOffer: 'pause',
+} as const;
+```
+
+These defaults preserve the starter's existing offers. Every other configured
+reason uses `defaultOffer`. Keys must belong to `retentionReasons`; values and
+the default must be `skip`, `reschedule` or `pause`. `assertRetention`, called
+from `assertConfig`, refuses unknown keys or kinds with
+`starter_retention_configuration_invalid`. The browser uses the same map for
+the displayed offer and its submitted kind. Reason codes, accepted-offer IDs
+and native command authorization keep their existing meaning.
+
+## Configure account actions and pauses
+
+In the unreleased source candidate, `renewal.subscriptionCare` is composed from
+`owned/renewal.config.ts`. Its `actions.active`, `actions.paused` and
+`actions.cancelled` lists choose account controls; `whilePaymentBlocked` and
+`whilePaymentExpired` narrow those choices during payment recovery. Use only
+`skip`, `slide`, `order_now`, `pause`, `cancel`, `resume` and `reactivate`.
+Empty lists disable choices. Unknown or duplicate actions and missing lists
+refuse startup with `starter_subscription_actions_invalid`.
+
+Set `pausePresets` with the starter-local `choice(default, ...allowed)` helper.
+The native preset vocabulary is `2_weeks`, `1_month` and `indefinite`; durations
+still come from owned lifecycle `terms`. `assertChoice` refuses an empty,
+duplicate or unknown selection, or a default outside it, with
+`starter_pause_presets_invalid`. Both pause forms offer `allowed`. The account
+pause form preselects `default` (`2_weeks` in the demonstration); the
+cancellation save offer preselects `retention.pausePreset` (`1_month`), which
+must be allowed and falls back to `default` when omitted.
+
+The managed host binds the same data through
+[command admission](../../concepts/subscriptions.md#admit-account-commands).
+Fresh disabled actions throw `starter_subscription_action_not_admitted` and
+unavailable presets throw `starter_pause_preset_not_admitted` before any write;
+the host returns these named refusals. Completed matching receipts replay even
+after you remove a choice. Restart after changing owned configuration; no
+installation write is needed. Keep managed host, shared and account-page files
+unchanged when customizing these values.
+
+Native state and payment fences still apply. Reactivation keeps its own payment
+and confirmation checks and remains available for a cancelled subscription
+despite historical account payment messages. The starter's saved-address
+selector is a separate port, outside this action vocabulary. No skip-count
+limit is introduced.
 
 ## Configure subscription offers
 
 In the current source candidate, edit `subscriptionOffers` in
 `owned/store.config.ts`. The released archive above retains its original behavior;
 these additions need the matching source candidate and admission ports.
-The managed typed helper accepts sets and stepped ranges:
+The managed `shared/policy.ts` helper accepts sets and stepped ranges:
 
 ```text
 { days: set(28, 56), defaultDays: 28, minimumBaseUnits: 6,
@@ -164,6 +288,14 @@ and `preferredDays` distinguish acquisition choices and visible recommendations
 within `days`. Defaults and recommendations never grant admission. One-time
 purchases keep their own purchase-mode and cart limits.
 
+Startup accepts `offer.maxUnits` up to 100 and each SKU quantity domain up to
+99; exceeding either refuses with `starter_units_above_representation`.
+In each subscription offer, `maximumBaseLines + maximumAddonLines` may total
+50; exceeding it refuses with `starter_lines_above_representation`.
+These are fixed [representation bounds](../../reference/limits.md#quantity-and-line-representation);
+choose lower business limits in owned configuration. Completed receipts and
+paid-order reads remain valid after those limits are lowered.
+
 The same input derives checkout choices, editor candidates and quantity controls,
 and admits the full resulting set through the classic, exact and sized ports.
 Changing cadence preserves quantities. Existing active commitments remain as
@@ -172,9 +304,11 @@ commands still require current rules, authentication, locks and quote/fact guard
 Graduation retains its own cadence and must admit the purchased lines separately.
 
 Reapply the demonstration installation and restart after changing the servicing
-minimum; runtime admission refuses installed-minimum drift. The current starter
-refuses configuration above 90 days because historical SQL still has that limit.
-Wider package DTOs alone do not establish database support for longer cadences.
+minimum; runtime admission refuses installed-minimum drift. The current source
+starter admits whole-day cadences from 1 through `MAX_CADENCE_DAYS` (3660).
+Apply the complete native catalogue, including
+`20261122190000_subscription_cadence_bound.sql`, before using longer cadences.
+This forward is unreleased; use the matching installed package's migration guide.
 
 ## Compose shipping quotes
 
@@ -231,24 +365,20 @@ transaction on that same session). These are trusted server dependencies,
 never request fields. The hook runs under both the population advisory lock
 and ledger claim, before `finishJobRun`.
 
-For pause after exhaustion, follow the [subscription policy recipe](../../concepts/subscriptions.md#pause-a-subscription-after-failed-renewal-retries-are-exhausted).
-Authorize candidate selection through your own trusted evidence. Inside
-`withTransaction`, lock in native order and re-read current cycle, subscription,
-payment/recovery and retry facts. Use `isDunningLadderExhausted` with the same
-cadence that recorded the failures; a null retry alone is insufficient. A
-1/3/7-day backoff is `[24, 72, 168]` hours after each preceding failure, not
-absolute days from the first failure. The population lease does not fence
-customer recovery, so the result of the native pass alone cannot authorize a
-pause. Skip repaired or changed cycles.
+For pause after exhaustion, copy the complete transaction-bound
+[`owned/renewal-policy.ts` recipe](../../concepts/subscriptions.md#pause-a-subscription-after-failed-renewal-retries-are-exhausted),
+derived from the PostgreSQL witness `neutralStoreRenewalPolicy.test.ts`.
+It includes native lock order, durable recheck, replay keys and refusal rollback.
+Authorize candidate selection through trusted application evidence. The
+population lease does not fence customer recovery; a native pass result or a
+null retry alone cannot authorize a pause. Read the
+[retry-timing boundary](../../concepts/subscriptions.md#durable-retry-timing)
+before selecting a cadence: `retryBackoffHours` reaches fresh native failure
+recording, while provider-result recording still uses the SQL default ladder.
 
-Construct commands inside that transaction with `withTransaction: work => work(db)`
-using its callback connection and your trusted lifecycle terms. Do not start a
-nested transaction or commit independently. Give each policy decision a durable
-command key and repeat its exact payload on replay. Throw on a refused or
-unsupported pause so the host rolls back the entire policy transaction, including
-bookkeeping. An exception escapes the hook and marks the run failed; native work
-already committed before the hook remains committed. A later run can retry the
-policy. Keep providers and platform SQL outside this callback's policy contract.
+An exception escapes the hook and marks the run failed; native work already
+committed before the hook remains committed. A later run can retry the policy.
+Keep provider execution and SQL definition changes outside this callback.
 
 From the extracted application with selected packages installed, run
 `node --experimental-strip-types --test test/renewal-policy.test.ts test/renewal.test.ts`.
@@ -423,16 +553,16 @@ Unchanged copied bytes alone do not establish working behavior. See
 
 ## Protect local sessions and messages
 
-Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/host/sessions.ts)
+Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/sessions.ts)
 owns expiry and capacity; a full store refuses with
 `starter_session_capacity_exceeded`. Customer ownership and operator membership are rechecked against
 native stores. Replace this session storage for a production application.
 
 The demonstration captures sign-in messages privately rather than sending mail.
 Read `identity.jsonl` through the application container's filesystem as its
-`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/host/native-composition.ts)
+`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/native-composition.ts)
 defines its private location.
-The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/examples/neutral-store/host/native-composition.ts)
+The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/native-composition.ts)
 creates the file with owner-only permissions. Access exposes sign-in tokens; keep it
 private. HTTP serves only built assets, not the mailbox.
 
@@ -552,7 +682,12 @@ they install no timer or HTTP endpoint. An existing scheduler may invoke them.
 Messages are captured locally, which does not establish delivery to recipients.
 
 `owned/renewal.config.ts` controls renewal enablement, population, retry timing,
-batch limits and leases. Renewal is disabled by default; paid-order mail still
+batch limits and leases. Startup requires exactly three `retryBackoffHours`
+entries or refuses with `starter_database_retry_budget`: database guards exhaust
+on attempt four. This does not install a provider ladder; provider-recorded
+failures retain the SQL default `[24,72,168]` hours described under
+[durable retry timing](../../concepts/subscriptions.md#durable-retry-timing).
+Renewal is disabled by default; paid-order mail still
 runs in that case. Keep renewal and care lease durations within the validator's
 bounds. The native job ledger and session exclusion prevent overlapping renewal
 or care invocations for the same selection.
@@ -561,3 +696,14 @@ For recovery links, pass `--port` when the host uses a nondefault port;
 a configured `publicOrigin` takes precedence. Care links also use that configured
 origin when present. Keep the [retention and consent limits](../../reference/limits.md#subscription-care)
 in view when selecting care behavior.
+
+For the next minor source candidate, own `inventory.renewalProtection` in
+`owned/store.config.ts` (`{ revision: 'starter-1', renewalProtectionDays: 14 }`
+in each demo configuration). Its explicit installation step installs that policy;
+application startup only reads it and refuses with `starter_installed_policy_drift`
+when either the revision or days differ. Change the owned value, deliberately run
+the installation step with installation authority, then restart. An absent database
+key has revision `default`, so it does not match `starter-1` until installed.
+See [native stock priority](../../concepts/checkout.md#native-stock-priority) for
+validation, privileges and the request horizon contract. This candidate addition
+does not alter the historical 0.43.0 recipe above.

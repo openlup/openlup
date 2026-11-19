@@ -285,26 +285,11 @@ describe("extracted-root documentation contract", () => {
     );
   });
 
-  it.each([
-    [".github/pull_request_template.md", "Stable API changes require review.", "retired stable API claim"],
-    [".github/ISSUE_TEMPLATE/bug_report.yml", "description: public package subpath", "retired public package-subpath claim"],
-    [".github/ISSUE_TEMPLATE/documentation_problem.yml", "description: public package subpath", "retired public package-subpath claim"],
-    [".github/pull_request_template.md", "Surface: stable headline", "retired stable headline claim"],
-    [".github/ISSUE_TEMPLATE/feature_request.yml", "label: Adopter evidence", "retired adopter-evidence claim"],
-  ])("rejects retired package-contribution language in %s", (path, source, violation) => {
-    const root = fixture("# Fixture\n");
-    const target = join(root, path);
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, source);
-
-    expect(() => check(root)).toThrow(`${path}: ${violation}`);
-  });
-
-  it("allows an explicit negation of a retired contribution claim", () => {
+  it("allows stable API and explicit first-party evidence language", () => {
     const root = fixture("# Fixture\n");
     const target = join(root, ".github", "pull_request_template.md");
     mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, "This is not a stable API change.\n");
+    writeFileSync(target, "Stable API changes to a public package subpath require review. First-party adopter evidence does not claim independent adoption.\n");
 
     expect(() => check(root)).not.toThrow();
   });
@@ -759,6 +744,17 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(missing)).toThrow("targets a path missing from the repository");
     const inward = guideFixture(`# Guide\n\n[Self](${repositoryLink("packages/core/docs/guide/README.md")})\n`);
     expect(() => checkGuide(inward)).toThrow("points into the guide; use a relative link");
+  });
+
+  it("accepts pinned guide JSON assets while retaining tag and existence checks", () => {
+    const path = "packages/core/docs/guide/fixtures/catalogue.json";
+    const roots = guideFixture(`# Guide\n\n[Pack](${repositoryLink(path)})\n`, { "fixtures/catalogue.json": "{}\n" });
+    expect(() => checkGuide(roots)).not.toThrow();
+    const page = join(roots.core, "docs/guide/README.md");
+    writeFileSync(page, `# Guide\n\n[Pack](${repositoryLink(path, "openlup-core-v1.0.0")})\n`);
+    expect(() => checkGuide(roots)).toThrow("must pin openlup-core-v1.2.3");
+    writeFileSync(page, `# Guide\n\n[Missing](${repositoryLink(path + ".missing")})\n`);
+    expect(() => checkGuide(roots)).toThrow("targets a path missing from the repository");
   });
 
   it("refuses a stale generated region and --write regenerates it from release gates", () => {

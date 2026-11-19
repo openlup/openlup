@@ -151,7 +151,7 @@ it('paid sized renewal receipts include the frozen parcel note while classic rec
       const input=JSON.parse(readFileSync(0,'utf8')),config=input.config;
       process.chdir(input.directory);
       const pool=new pg.Pool({connectionString:input.url}),accounts=createPostgresAccountLinkStore({connectionString:input.url});
-      const bindings=await composeNativeBindings(input.url,createOriginPolicy(config,3210),{current:'paid-mail-fixture-acceptance-key-00000000000000'});
+      const bindings=await composeNativeBindings(input.url,createOriginPolicy(config,3210),config,{current:'paid-mail-fixture-acceptance-key-00000000000000'});
       const results=[];
       try {
         for (const sized of [true,false]) {
@@ -278,9 +278,9 @@ it('unpaid and cancelled orders produce no paid message, while every other send 
 
 it('copy validation refuses a missing locale and an empty subject', () => {
   const missing = config(); Reflect.deleteProperty(missing.renewal.notices.copy, 'pl');
-  expect(() => assertRenewalConfig(missing.renewal)).toThrow('starter_renewal_configuration_invalid');
+  expect(() => assertRenewalConfig(missing.renewal)).toThrow('starter_locale_copy_missing: renewal.notices.copy');
   const empty = config(); empty.renewal.notices.copy.en.paid.subject = '  ';
-  expect(() => assertRenewalConfig(empty.renewal)).toThrow('starter_renewal_configuration_invalid');
+  expect(() => assertRenewalConfig(empty.renewal)).toThrow('starter_locale_copy_missing: renewal.notices.copy.paid.subject (en)');
 });
 
 it('the paid artifact preserves atomic bytes and refuses corrupt identities without exposing private content', async () => {
@@ -309,7 +309,7 @@ async function realPurchase(directory: string, owned: StoreConfig): Promise<stri
     import {createOriginPolicy} from ${JSON.stringify(new URL('../../examples/neutral-store/host/origin-policy.ts', import.meta.url).href)};
     import {dispatchAction} from ${JSON.stringify(new URL('../../examples/neutral-store/host/bindings.ts', import.meta.url).href)};
     const {url,config}=JSON.parse(readFileSync(0,'utf8'));
-    const bindings=await composeNativeBindings(url,createOriginPolicy(config,4319));
+    const bindings=await composeNativeBindings(url,createOriginPolicy(config,4319),config);
     const context=()=>({config,commandKey:randomUUID(),actor:{customerRef:null,operatorRef:null,
       requesterKey:createHash('sha256').update(randomUUID()).digest('hex'),requestOrigin:'http://localhost:4319'}});
     try {

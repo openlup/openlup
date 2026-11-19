@@ -459,7 +459,9 @@ and [default conformance tests](../../packages/platform/test/communications/cont
 The measured B2 contracts entry is 8,210 B minified+gzip under the unchanged
 11,776 B cap; this is a local built-entry measurement, not release admission.
 
-### Native communications operations (development preview)
+<a id="native-communications-operations-development-preview"></a>
+
+### Native communications operations
 
 The server entry `@openlup/platform/communications` additionally exports
 `createPostgresDeliveryReconciliationPort`, `createPostgresCommunicationSyncStore`,
@@ -541,7 +543,7 @@ opt-in browser profile adds no npm entry or UI package export.
 
 Source contributors record notable changes in package changelog fragments;
 release preparation assembles the shipped CHANGELOG. Follow the
-[public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
+[public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#contribution-checks).
 
 ## Invoicing contracts
 
@@ -848,8 +850,9 @@ execution; only selected entry points grant service-role execution. The scoped
 automatic-reminder ACL without admitting operator/buyer flows. No raw table grant
 is added.
 
-Existing payload wave labels `1` and `20` identify first/final content; offsets
-remain separate scheduling inputs.
+With no installed `checkout_recovery_reminders` setting, payload wave labels `1`
+and `20` identify first/final content and offsets remain separate scheduling
+inputs; an installed schedule sets custom hours and explicit `stage` values.
 
 Evidence (historical record, 2026-11-13):
 

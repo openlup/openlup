@@ -5,12 +5,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before filing, read `.github/SUPPORT.md` and
-        `.github/INSTALL_SUPPORT_POLICY.md`. During development preview there is
-        no full-platform candidate or supported install. State whether the report
-        concerns a bounded public check/reference or an incomplete capability.
-        After stable, only the exact released BOM/artifact install path carries
-        support.
+        Before filing, read [support](https://github.com/openlup/openlup/blob/main/.github/SUPPORT.md)
+        and the [installation support policy](https://github.com/openlup/openlup/blob/main/.github/INSTALL_SUPPORT_POLICY.md).
+        The supported 1.x installation combines the npm starter, PostgreSQL and
+        the qualified application image at the exact release/BOM versions and
+        digest. State whether the report reproduces on that composition,
+        concerns a bounded public check/reference, or needs a missing capability.
 
   - type: input
     id: version
@@ -26,8 +26,8 @@ body:
       label: Reproduction scope
       options:
         - Bounded public check or read-only reference
-        - Incomplete platform capability (no full candidate path exists yet)
-        - Supported stable artifact (only after a stable release exists)
+        - Incomplete platform capability
+        - Supported stable release/BOM composition
     validations:
       required: true
 

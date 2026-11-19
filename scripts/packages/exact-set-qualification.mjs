@@ -1,4 +1,4 @@
-/** Qualify a published set through the shared starter consumer proof. */
+/** Prove published sets and digest-verified candidate starter upgrades through the shared consumer. */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
@@ -9,7 +9,7 @@ import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
 import { previousPublishedSet, proveDistributionCliConsumer } from './distribution-cli-proof.ts';
-import { assertInstalledPackages, isolatedConsumerEnv } from './pack-manifest-input.ts';
+import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -41,7 +41,7 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
   const run = (name, args, cwd = extracted) => process.stdout.write(execute(name, args, cwd));
   const lockHash = () => sha256(readFileSync(join(extracted, "package-lock.json")));
   try {
-    if (released) assert.equal(released.mode, "released", "Unknown starter consumer input mode");
+    if (released) assert(["released", "candidate"].includes(released.mode), "Unknown starter consumer input mode");
     if (!released) {
       // Copied tests run once, in the extracted application below; the source run keeps the rest.
       const ownership = JSON.parse(readFileSync(join(starter, "ownership.json"), "utf8"));
@@ -60,7 +60,7 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
     assert.equal(metadata.workspaces, undefined);
     if (released) {
       run("git", ["ls-files", "--error-unmatch", "package-lock.json"]);
-      assert.equal(lockHash(), released.lockfileSha256, "Released starter lock changed before installation");
+      assert.equal(lockHash(), released.lockfileSha256, "Starter lock changed before installation");
       run("npm", ["ci", "--ignore-scripts", "--no-audit", "--fund=false"]);
     } else {
       assert(packInstalled, "Candidate starter needs locked dependency tarballs");
@@ -98,8 +98,8 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
     released?.verifyInstalled();
     for (const args of [["test"], ["run", "typecheck"], ["run", "build"]]) run("npm", args);
     run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
-    if (released) assert.equal(lockHash(), released.lockfileSha256, "qualification changed committed lock");
-    console.log((released ? "Neutral starter released consumer PASS: " : "Neutral starter required cold-consumer addition PASS: ") + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
+    if (released) assert.equal(lockHash(), released.lockfileSha256, "starter proof changed committed lock");
+    console.log((released ? "Neutral starter " + (released.mode === "candidate" ? "candidate, local digest-verified" : "released") + " consumer PASS: " : "Neutral starter required cold-consumer addition PASS: ") + ((performance.now() - started) / 1000).toFixed(3) + " seconds");
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
@@ -147,21 +147,27 @@ export function qualificationReceipt(tag, commit, runnerImage = { image: env.Ima
   return { schemaVersion: 1, setVersion: tag.slice(14), tag, tagCommit: commit, runnerImage, startedAt: new Date().toISOString(), endedAt: null, result: 'FAIL', extraction: null, packages: [], checks: [] };
 }
 
-function prepareReleasedStarter(receipt, temporary, run) {
+function prepareReleasedStarter(receipt, temporary, run, candidateManifest = undefined) {
   const { tag, tagCommit: expectedCommit } = receipt;
-  assert.equal(run('git', ['rev-parse', `refs/tags/${tag}^{commit}`]).trim(), expectedCommit, 'release tag commit mismatch');
+  const revision = candidateManifest ? expectedCommit : `refs/tags/${tag}`;
+  assert.equal(run('git', ['rev-parse', `${revision}^{commit}`]).trim(), expectedCommit, 'source commit mismatch');
   const archive = join(temporary, 'source.tar'), source = join(temporary, 'source'); mkdirSync(source);
-  run('git', ['archive', '--format=tar', `--output=${archive}`, `refs/tags/${tag}`]);
+  run('git', ['archive', '--format=tar', `--output=${archive}`, revision]);
   run('tar', ['-xf', archive, '-C', source]);
   const starter = join(source, 'examples/neutral-store'), input = join(temporary, 'input'); mkdirSync(input);
   const inventory = json(join(source, 'config/openlup-packages.json')).packages.filter(entry => entry.publish);
+  const packs = candidateManifest && readCurrentPackManifest(source, candidateManifest, expectedCommit);
   const application = json(join(starter, 'package.json'));
   for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-    for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = receipt.setVersion;
+    for (const name of Object.keys(application[section] ?? {})) if (name.startsWith('@openlup/')) application[section][name] = packs ? `file:${packs.get(name).path}` : receipt.setVersion;
   }
   writeFileSync(join(input, 'package.json'), JSON.stringify(application));
   run('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--fund=false'], input);
   const lockfile = join(input, 'package-lock.json'), lock = json(lockfile);
+  if (packs) for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+    for (const name of Object.keys(lock.packages[''][section] ?? {})) if (packs.has(name)) lock.packages[''][section][name] = receipt.setVersion;
+  }
+  if (packs) { for (const pack of packs.values()) lock.packages[`node_modules/${pack.name}`].resolved = `file:${pack.path}`; writeFileSync(lockfile, JSON.stringify(lock, null, 2) + '\n'); }
   const packages = inventory.map(({ name, directory }) => {
     const metadata = json(join(source, directory, 'package.json'));
     assert.equal(metadata.version, receipt.setVersion, `${name}: source version mismatch`);
@@ -171,13 +177,13 @@ function prepareReleasedStarter(receipt, temporary, run) {
   });
   const manifest = join(input, 'manifest.json');
   writeFileSync(manifest, JSON.stringify({ schemaVersion: 2, commit: expectedCommit, packages }));
-  const mode = readFileSync(join(starter, 'extract.mjs'), 'utf8').includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
+  const mode = packs ? 'candidate' : readFileSync(join(starter, 'extract.mjs'), 'utf8').includes('const releasedExtractionSchemaVersion = 2;') ? 'released' : 'reconstructed';
   const extracted = join(temporary, 'application');
   run(process.execPath, [join(root, 'examples/neutral-store/extract.mjs'), extracted, '--source', starter,
-    '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', manifest, '--lockfile', lockfile,
+    '--mode', mode, '--set-version', receipt.setVersion, '--source-revision', expectedCommit, '--manifest', packs ? resolve(candidateManifest) : manifest, '--lockfile', lockfile,
     ...(mode === 'reconstructed' ? ['--reason', 'Release tag predates versioned starter extraction.'] : [])]);
   receipt.extraction = json(join(extracted, '.starter-origin.json'));
-  return { application: extracted, packages };
+  return { application: extracted, packages, source };
 }
 
 export function auditInstalledRelease(application, run) {
@@ -187,8 +193,9 @@ export function auditInstalledRelease(application, run) {
 
 function proveReleasedStarter(receipt, input, run, environment) {
   const { application, packages } = input;
-  proveNeutralStarterConsumer(root, { mode: 'released', application, environment, run,
+  proveNeutralStarterConsumer(root, { mode: receipt.mode ?? 'released', application, environment, run,
     lockfileSha256: receipt.extraction.lockfileSha256, packages: packages.map(({ name }) => name), verifyInstalled() {
+      if (receipt.mode === 'candidate') { receipt.packages = [...readCurrentPackManifest(input.source, receipt.candidateManifest, receipt.tagCommit).values()]; return; }
       const audit = auditInstalledRelease(application, run);
       receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, receipt.tagCommit);
     }
@@ -240,8 +247,9 @@ export function assertSbomPackages(sbom, packages) {
   for (const { name } of packages) if (!seen.has(name)) refuse(`sbom_package_missing: ${name}`);
 }
 
-export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false, canary = false) {
-  const receipt = upgrade || schema || bom || canary ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = false, schema = false, bom = false, canary = false, candidateManifest = undefined) {
+  const receipt = !candidateManifest && (upgrade || schema || bom || canary) ? json(receiptPath) : qualificationReceipt(tag, expectedCommit);
+  if (candidateManifest) { assert(upgrade && !schema && !bom && !canary, 'candidate requires adjacent upgrade only'); Object.assign(receipt, { mode: 'candidate', verificationSource: 'candidate, local digest-verified', candidateManifest: resolve(candidateManifest) }); }
   const applicationsPath = resolve(receiptPath + '.applications');
   if (canary) {
     const qualified = receipt.result === 'PASS';
@@ -318,7 +326,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
     return run();
   }
   if (upgrade) {
-    assert(receipt.result === 'PASS' && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'exact-set qualification must pass first');
+    assert((candidateManifest || receipt.result === 'PASS') && receipt.tag === tag && receipt.tagCommit === expectedCommit, 'exact-set qualification must pass first');
     receipt.result = 'FAIL'; receipt.endedAt = null;
     receipt.upgrade = { result: 'FAIL', startedAt: new Date().toISOString(), phases: [], checks: [] };
     writeFileSync(receiptPath, JSON.stringify(receipt, null, 2) + '\n');
@@ -332,7 +340,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
     check.result = 'PASS'; return output;
   };
   try {
-    if (env.OPENLUP_REGISTRY_READY !== undefined && env.OPENLUP_REGISTRY_READY !== 'true') refuse('published set not visible on npm');
+    if (!candidateManifest && env.OPENLUP_REGISTRY_READY !== undefined && env.OPENLUP_REGISTRY_READY !== 'true') refuse('published set not visible on npm');
     assert.equal(process.version, 'v24.21.0');
     assert.equal(run('npm', ['--version']).trim(), '11.19.0');
     if (upgrade) {
@@ -343,11 +351,11 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       run('git', ['fetch', '--no-tags', '--depth=1', 'origin', `refs/tags/${previousTag}:refs/tags/${previousTag}`]);
       const pair = receipt.upgrade;
       pair.from = qualificationReceipt(previousTag, run('git', ['rev-parse', `${previousTag}^{commit}`]).trim());
-      pair.to = qualificationReceipt(tag, expectedCommit);
+      pair.to = candidateManifest ? { ...receipt, upgrade: undefined, checks: [] } : qualificationReceipt(tag, expectedCommit);
       const releases = [pair.from, pair.to];
       const inputs = releases.map((release, index) => {
         const directory = join(temporary, String(index)); mkdirSync(directory);
-        const input = prepareReleasedStarter(release, directory, run);
+        const input = prepareReleasedStarter(release, directory, run, index === 1 ? candidateManifest : undefined);
         proveReleasedStarter(release, input, run, environment);
         return input;
       });
@@ -385,10 +393,10 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const [tag, commit, receipt, mode] = process.argv.slice(2);
-  if (process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
+  const [tag, commit, receipt, mode, candidateManifest] = process.argv.slice(2);
+  if (!(process.argv.length === 7 && mode === '--candidate') && process.argv.length !== 5 && !(process.argv.length === 6 && ['--upgrade', '--schema-upgrade', '--bom', '--canary'].includes(mode))) refuse('use release-tag full-tag-commit receipt-path');
   // Finish module evaluation before recovery imports this module; incomplete work exits nonzero.
   process.exitCode = 1;
-  Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade', mode === '--schema-upgrade', mode === '--bom', mode === '--canary'))
+  Promise.resolve(qualifyReleasedSet(tag, commit, receipt, mode === '--upgrade' || mode === '--candidate', mode === '--schema-upgrade', mode === '--bom', mode === '--canary', candidateManifest))
     .then(() => { process.exitCode = 0; }, error => { console.error(error); });
 }

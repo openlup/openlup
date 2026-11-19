@@ -1,8 +1,11 @@
-/** Application-owned commercial domains. Defaults and preferred choices never widen admission. */
-export type Numbers = { kind: 'set'; values: readonly number[] }
-  | { kind: 'range'; min: number; max: number; step: number };
-export const set = (...values: number[]): Numbers => ({ kind: 'set', values });
-export const range = (min: number, max: number, step: number): Numbers => ({ kind: 'range', min, max, step });
+import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
+import { contains, choices, maximum, type Numbers } from './policy.ts';
+export { set, range, contains, choices, maximum, type Numbers } from './policy.ts';
+
+// Mirror checkoutCommandSchemas.ts's private transport bounds for startup validation.
+const MAX_CHECKOUT_LINE_QUANTITY = 99;
+const MAX_CHECKOUT_LINES = 50;
+
 export interface SubscriptionOffer {
   days: Numbers;
   checkoutDays?: Numbers;
@@ -16,12 +19,6 @@ export interface SubscriptionOffer {
   bySku: Readonly<Record<string, readonly { days: Numbers; quantities: Numbers }[]>>;
 }
 export type SubscriptionOffers = { classic: SubscriptionOffer; sized: SubscriptionOffer };
-export const contains = (domain: Numbers, value: number): boolean => Number.isSafeInteger(value) && (domain.kind === 'set'
-  ? domain.values.includes(value) : value >= domain.min && value <= domain.max && (value-domain.min)%domain.step === 0);
-export const maximum = (domain: Numbers): number => domain.kind === 'set' ? Math.max(...domain.values) : domain.max;
-export function choices(domain: Numbers): number[] {
-  return domain.kind === 'set' ? [...domain.values] : Array.from({ length: Math.floor((domain.max-domain.min)/domain.step)+1 }, (_, index) => domain.min+index*domain.step);
-}
 export function quantityChoices(offer: SubscriptionOffer, sku: string, days: number): number[] {
   if (!contains(offer.days,days)) return [];
   return [...new Set((Object.hasOwn(offer.bySku,sku) ? offer.bySku[sku]! : [])
@@ -47,8 +44,7 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
     } else if (![domain.min,domain.max,domain.step].every(positive) || domain.max < domain.min) invalid();
   };
   numbers(offer.days);
-  // The current starter database still has the historical 90-day SQL boundary.
-  if (maximum(offer.days) > 90) throw new Error('starter_database_cadence_limit');
+  if (maximum(offer.days) > MAX_CADENCE_DAYS) invalid();
   for (const domain of [offer.checkoutDays,offer.preferredDays]) if (domain) {
     numbers(domain); if (maximum(domain) > maximum(offer.days)) invalid();
     if (choices(domain).some(day => !contains(offer.days,day))) invalid();
@@ -57,13 +53,16 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
   if (!contains(offer.days,offer.defaultDays) || !contains(offer.checkoutDays ?? offer.days,offer.defaultDays)
     || ![offer.minimumBaseUnits,offer.maximumUnits,offer.maximumBaseLines,offer.maximumAddonLines].every(positive)
     || offer.maximumUnits < offer.minimumBaseUnits) invalid();
+  if (offer.maximumBaseLines + offer.maximumAddonLines > MAX_CHECKOUT_LINES) {
+    throw new Error('starter_lines_above_representation');
+  }
   for (const [sku,rules] of Object.entries(offer.bySku)) {
     if (!skus.includes(sku) || !rules.length) invalid();
     const seen = new Set<number>();
     for (const rule of rules) {
       numbers(rule.days); numbers(rule.quantities);
       if (maximum(rule.days) > maximum(offer.days)) invalid();
-      if (maximum(rule.quantities) > 99) invalid();
+      if (maximum(rule.quantities) > MAX_CHECKOUT_LINE_QUANTITY) throw new Error('starter_units_above_representation');
       for (const day of choices(rule.days)) {
         if (!contains(offer.days,day) || seen.has(day)) invalid();
         seen.add(day);

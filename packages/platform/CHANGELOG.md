@@ -3,12 +3,302 @@
 Notable changes to this public-source workspace package are recorded here.
 “Unreleased” means no npm version carries the change yet; immutable OpenLup
 source previews may already ship some changes, and their release notes say
-which. Declaration snapshots track candidate drift, not a stable API or
-SemVer promise. This file keeps the current release and the two previous ones;
+which. Stable APIs follow SemVer from 1.0.0; experimental symbols and test-support
+subpaths retain their declared limits. This file keeps the current release and the two previous ones;
 earlier releases are recorded verbatim in `packages/platform/CHANGELOG-HISTORY.md`
 in the source repository.
 
 ## [Unreleased]
+
+## [1.2.0]
+
+- Publishable on the npm `latest` dist-tag as `1.2.0`, from tag
+  `openlup-platform-v1.2.0`.
+
+Unreleased; next minor. API classification: additive stable commerce/server
+install/read helpers and commerce/contracts schedule type; additive optional
+stage and widened reminder-hour inputs on existing communications contracts.
+Native reminder producers read an installed `checkout_recovery_reminders`
+schedule. Stage selects tone independently of hours. Absence preserves the
+historical waves; old payloads render identically. Unknown stages follow each
+handler's existing payload refusal. No new subpath or reminder planner is added.
+
+Migration:
+
+Apply `20261123140000_checkout_recovery_reminder_schedule.sql` through the native
+migration runner before using the new helpers. Both producers retain their
+signatures, security, search paths, owners and ACLs. The integer-only checkout
+wrapper is unchanged. The new restricted SECURITY DEFINER validator pins
+`search_path = pg_catalog, pg_temp`, qualifies its settings read, revokes PUBLIC
+and conditionally revokes anon/authenticated and grants service_role EXECUTE.
+Malformed JSON, extra/missing keys, blank revision, empty arrays, duplicate or
+unknown stages, nonincreasing/nonpositive/noninteger hours or a missing final
+`last` refuse with `checkout_recovery_reminder_schedule_invalid` before writes.
+The maximum hour is 2147483647. The managed chain is unchanged.
+
+Before (host-owned timing and legacy content):
+```ts
+const recovery = createPostgresCheckoutRecoveryWaves(runtimeDb, { profile: 'capture' });
+const vars = { ...emailVars, reminderHours: 20 };
+```
+
+After (explicit install, then runtime read and stage-aware content):
+```ts
+import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule }
+  from '@openlup/platform/commerce/server';
+await installCheckoutRecoveryReminderSchedule(installationDb, { revision: 'store-1',
+  abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'gentle', afterHours: 24 }, { stage: 'last', afterHours: 48 }],
+  checkoutRecovery: [{ stage: 'first', afterHours: 1 }, { stage: 'last', afterHours: 48 }] });
+const installed = await readCheckoutRecoveryReminderSchedule(runtimeDb);
+const recovery = createPostgresCheckoutRecoveryWaves(runtimeDb,
+  { profile: 'capture', checkoutSeconds: 72 * 3600 });
+const vars = { ...emailVars, reminderHours: 48, stage: 'last' as const };
+```
+
+Reads never install. The TypeScript reader needs settings SELECT; enqueue uses
+the restricted SQL validator without requiring settings SELECT. Custom runtime
+roles must retain their existing producer and relation privileges.
+
+Before (separate runtime producer grants):
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_enqueue_abandoned_cart_reminders(integer),
+  public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz) TO runtime_role;
+```
+
+After applying the migration, add exactly one grant:
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_reminder_schedule() TO runtime_role;
+```
+
+Qualified service-role bindings already receive it. Missing EXECUTE fails with
+SQLSTATE `42501`, even with an absent setting; it never silently defaults.
+
+Before (fixed SQL waves):
+```sql
+FOREACH wave IN ARRAY ARRAY[1,20] LOOP
+```
+
+After (strictly validated installed waves):
+```sql
+FOR entry IN SELECT value FROM jsonb_array_elements(
+  public.commerce_checkout_recovery_reminder_schedule()->'checkoutRecovery') LOOP
+```
+
+Default dedup keys remain byte-identical. Custom waves derive keys by the same
+hour spelling: `abandoned_<hours>h:<order-id>` and
+`checkout_recovery:<hours>h:<order-id>`. Abandoned event types retain stage routes
+1h/24h/72h. Legacy counter names count their corresponding stages. Final waves
+retain the preceding-stage processed gate for abandoned carts and first-wave
+confirmed-acceptance gate for checkout recovery; a lone `last` has no predecessor.
+With an installed key, hours override legacy request offsets; absence retains
+those offsets. Existing request-policy validation of legacy offsets (including
+defaults) still applies. Checkout expiry, consent, payment activity and token deadlines
+remain independent. Changing hours changes dedup identity and never rewrites
+pending events or tokens; coordinate installation with in-flight reminders.
+
+The source starter owns the schedule and installs only in its explicit install
+step. Startup compares revision, stages and hours and refuses
+`starter_installed_policy_drift` without writing. Existing starter applications
+must add the owned input and install it deliberately.
+
+Next minor release: add optional `CheckoutReservationLifetimePolicy` to
+`reservationPolicyFor` and `normalizedTtlMinutes` in the stable inventory subpath.
+Positive integer bounds up to 5270400 minutes (ten years) must satisfy `minMinutes <= defaultMinutes <= maxMinutes`;
+each call refuses invalid policy with `reservation_policy_invalid`. Omission
+preserves the 1440–2160-minute clamp and 1440-minute fallback exactly.
+
+Calculated expiry is persisted when a purchase reservation is created. Policy
+changes do not rewrite stored expiry; matching replay retains the original
+command expiry, reservation identity and current status. Native SQL still
+requires finite future expiry for fresh holds, with its existing 30-minute
+fallback for null. No SQL, starter composition or existing reservation changes.
+
+Migration: no change is required. Before:
+`reservationPolicyFor(input)` and `normalizedTtlMinutes(value)`. After:
+`reservationPolicyFor(input, policy?)` and `normalizedTtlMinutes(value, policy?)`
+with optional `CheckoutReservationLifetimePolicy`; existing calls keep the same
+results. To configure, pass `{ minMinutes, maxMinutes, defaultMinutes }`, for
+example `{ minMinutes: 1440, maxMinutes: 2160, defaultMinutes: 1440 }` for the
+current behaviour.
+
+Unreleased; next minor. Add `RenewalStockProtectionPolicy` and typed install/read
+helpers to the stable inventory subpath, with the type also in inventory/contracts.
+Native ATP reads the installed `inventory_renewal_protection` commerce setting.
+Absence preserves 14 days with revision `default`; malformed JSON, extra/missing
+keys, blank revision or noninteger/out-of-range days refuse with
+`inventory_renewal_protection_policy_invalid`. Request horizons must match installed
+days; `native_stock_read_options_unsupported` remains the mismatch refusal.
+
+Migration:
+
+Apply the native forward `20261123130000_inventory_renewal_protection_policy.sql`
+through the migration runner before composing the new helpers. The forward retains
+ATP's signature, language, volatility, invoker security, search path, owner and ACL.
+It adds a restricted SECURITY DEFINER validator with the exact pinned
+`search_path = pg_catalog, pg_temp`, a schema-qualified settings read, PUBLIC
+revocation and conditional role revokes/service-role EXECUTE. ATP callers no
+longer need SELECT on `commerce_settings`. The TypeScript policy reader still
+needs that SELECT to return revision and days. No settings seed or subscription
+lifecycle rewrite is performed. The managed adapter and SQL chain retain their
+fixed 14-day contract.
+
+Before (custom runtime role, alongside its relation privileges):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_available_to_promise(text,text,timestamptz,boolean),
+  public.inventory_channel_exposure_quantity(text,text) TO runtime_role;
+```
+
+Keep these and any existing new-purchase-reader EXECUTE grant. They alone now
+fail with SQLSTATE `42501` on ATP, even with an absent policy.
+
+After applying the policy migration and before resuming ATP calls, add exactly
+one grant, substituting the host's role for `runtime_role`:
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
+```
+
+Qualified service-role bindings already receive this EXECUTE grant. Missing
+permission never silently falls back to 14 days; every admitted role uses the
+same installed stock policy.
+
+Before (host):
+```ts
+const input = { skus: ['ITEM'], horizonDays: 14, excludeOrderId: null };
+await stock.readPort.read(input);
+```
+
+After (explicit installation, then runtime composition):
+```ts
+import { installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy }
+  from '@openlup/platform/inventory';
+// Install step only, on the host's write-capable connection:
+await installRenewalStockProtectionPolicy(installationDb,
+  { revision: 'store-1', renewalProtectionDays: 21 });
+// Runtime only reads:
+const policy = await readRenewalStockProtectionPolicy(runtimeDb);
+await stock.readPort.read({ skus: ['ITEM'],
+  horizonDays: policy.renewalProtectionDays, excludeOrderId: null });
+```
+
+Before (SQL horizon):
+```sql
+s.next_cycle_at <= p_as_of + interval '14 days'
+```
+
+After (installed horizon, validated once per ATP statement):
+```sql
+s.next_cycle_at <= p_as_of + make_interval(days => (SELECT days FROM policy))
+-- policy materializes public.inventory_renewal_protection_days().
+```
+
+The source starter owns `inventory.renewalProtection` and installs it only through
+its explicit installation step. Startup checks revision and days, refusing
+`starter_installed_policy_drift` rather than writing. Existing applications must
+add this owned input and install it deliberately. Unrelated raw editor settings
+remain unchanged; the private package helper is not an adopter API.
+
+- Add optional `CustomerSavedAddressValidationPolicy.local` callbacks through
+  the existing stable `@openlup/platform/shipping` subpath. This additive stable
+  API change requires the next minor release. No new subpath is introduced.
+- Hosts may normalize and validate their local postal format and normalize or
+  refuse their local phone format. Callbacks apply only to the selected local
+  country (including aliases), must be effect-free and cannot perform I/O or
+  authorization. A throw refuses the affected field with its existing policy
+  message. Schema creation rejects missing or nonfunction local callbacks with
+  `saved_address_policy_invalid`.
+- Omitting `local` preserves the compatible five-digit postal and nine-digit /
+  configured-prefix phone behavior. Platform length bounds, normalization order,
+  aliases, foreign-country handling and message keys remain in force. Removing
+  the compatible defaults is separate future work; no migration is required.
+
+Migration: no change is required. Before: `CustomerSavedAddressValidationPolicy`
+had `country`, `countryAliases`, `phonePrefix`, tax callbacks and `messages`.
+After: it also accepts optional `local: { normalizePostalCode(value),
+isValidPostalCode(value), normalizePhone(value) }`; omitting it keeps the
+current behaviour.
+
+### Added
+
+- Let hosts pass authoritative, exact one-time offer allocations to the strict quote engine. Price component lines before promotions, shipping and tax while retaining independently read retail reference prices. Server quote snapshots carry versioned private offer-price provenance.
+- Add opt-in explicit offer review to existing signed quote acceptance, including quotes without code, shipping or acquisition adjustments. A bound checkout offer can require that review.
+
+Migration: no database migration. Existing callers keep their price, provenance and token behavior. Opt-in hosts must authorize the offer, resolve the full allocation on the server, sign and verify the same offer revision and checkout context, and re-resolve terms at acceptance. The server-only `catalog_facts_v3` variant is emitted for offers that opt in. Exhaustive TypeScript switches over `CatalogFactsProvenance` should handle the new variant even when the host leaves offer pricing disabled. Older authoritative quote snapshots continue to parse.
+
+Unreleased; next minor. Add stable `SubscriptionCommandAdmission` in the existing
+subscriptions/contracts subpath and optional `admitSubscriptionCommand` on the
+native command binding. Omitting it preserves existing behavior. Fresh preview
+and apply evaluate effect-free owned policy after ownership, key locking and
+receipt/fingerprint replay, before translation, pricing or writes. Thrown named
+errors propagate with no durable refusal receipt. Native lifecycle, payment and
+delivery fences remain unconditional. Completed matching commands replay after
+policy narrows; payload conflicts still refuse before admission.
+
+Admission reads payment facts in a fresh statement after acquiring the
+subscription lock. Use READ COMMITTED (READ UNCOMMITTED has the same PostgreSQL
+behavior); fresh admission refuses REPEATABLE READ and SERIALIZABLE with
+`subscription_command_admission_isolation_unsupported` before the callback or
+writes. Completed receipts still replay before this check.
+
+The source starter owns account action lists and pause choices in
+`owned/renewal.config.ts`. The account pause form preselects the preset default
+(`2_weeks` in the demo) and the cancellation save offer keeps its own
+`retention.pausePreset` (`1_month`), so starter defaults are unchanged.
+
+Migration: no SQL, schema or installed-policy changes. This additive stable API
+requires the next minor set, not a 1.0.x patch; no release is prepared here.
+Opt in through host composition; never place the callback in a browser payload
+or perform I/O from it. When upgrading starter application files, add
+`subscriptionCare.actions` and `pausePresets` to the owned input. Invalid lists
+or defaults refuse startup. A removed choice affects fresh work only.
+
+- Unreleased, for the next release after 1.1.0: native purchase activation accepts
+  optional `editWindowHours` (integer 1–720), validated with
+  `subscription_activation_edit_window_invalid` before database access. Omission
+  retains the installed 72-hour default. The value freezes on the created
+  subscription; configuration changes and completed replay preserve existing rows.
+- Existing native activation/repair signatures and ACLs remain unchanged. New
+  separately named invoker SQL functions contain their predecessor bodies with
+  the new input and pinned `public, pg_catalog` search paths. The forward never
+  redefines or changes privileges on the predecessors. New functions revoke
+  PUBLIC/anon/authenticated and grant EXECUTE to service_role where present.
+  Managed checkout activation remains a separate unchanged boundary.
+
+Migration: Apply the complete packaged native chain including
+`20261123120000_subscription_edit_window_activation.sql` before supplying the new
+input. Opting in requires EXECUTE on both new functions (granted to service_role
+where present; owner-run self-host installations have it as owner). Old callers
+that omit it call the unchanged predecessor with its existing privileges.
+The starter owns
+`subscriptionCreation.editWindowHours` (default 72) and validates it at startup
+with `starter_subscription_creation_invalid`; all initial activation routes pass
+it, including 72, and therefore opt in.
+
+## [1.1.0]
+
+- Publishable on the npm `latest` dist-tag as `1.1.0`, from tag
+  `openlup-platform-v1.1.0`.
+
+Widen native subscription edit-quote CHECK, actor preview and command preview
+cadence admission to 1..3660 whole days, matching `MAX_CADENCE_DAYS` in Core.
+The two current function definitions change only their upper cadence bound;
+headers, security, search paths, ownership, ACLs and replay behavior stay intact.
+The validated CHECK uses the reviewed integer-range superset capability.
+
+Migration: apply the complete selected native catalogue through
+`20261122190000_subscription_cadence_bound.sql` before using longer cadences.
+The forward replaces the validated CHECK and takes the usual table DDL lock;
+plan installation around concurrent edits. No stored rows change. The managed
+chain has no corresponding cap and receives no migration. Do not downgrade
+history; unbind longer offers if rolling back application composition.
+Checkout-command and saga-fallback replay above 3660 remains a follow-up for
+unreleased development data. No release or activation is included.
+
+## [1.0.0]
+
+- Publishable on the npm `latest` dist-tag as `1.0.0`, from tag
+  `openlup-platform-v1.0.0`.
 
 - Add optional effect-free `admitSubscriptionTerms` to classic, exact and sized
   subscription editor ports. It checks the full normalized base/add-on set with
@@ -28,6 +318,566 @@ is supplied. Check date representation for the selected operation.
 Add native live-SKU quantities and an explicit owner-only bounded backfill driver.
 
 Migration: apply the complete native catalogue through `20261122110000_catalog_quantities.sql`, then call `backfillCatalogNetContent` with the install executor and batch size. Old grams and readers stay unchanged; the managed rail does not supply this feature.
+
+Add optional effect-free full-result admission to the existing classic, exact
+and sized editor ports. Supply nominal and effective cadence separately; run
+before pricing and writes, including frozen-price edits. Completed receipt
+replay precedes mutable limits and admission while fingerprint conflicts refuse.
+Absent callback preserves behavior.
+
+Cadence admission is superseded by [subscription-cadence-bound.md](#100):
+fresh quotes, drafts and editor results accept 1..3660 whole days. Transport,
+stored data and completed receipts retain PostgreSQL integer representation
+bounds. Historical generic SQL bundle/lifecycle paths retain their 90-day guards
+pending a separate forward.
+
+Migration: no SQL or core changes. Compose the optional callback in the host and
+validate resulting dates; starter offer derivation and activation remain separate.
+
+- Clarify the offline fulfillment conformance failure for missing provider
+  selection: `prepare(providerRef:null)` must return `selection_required` before
+  I/O. The expected refusal and zero-I/O requirement are unchanged.
+
+Add readonly catalogue pack descriptors, typed v1 draft authoring, declarative metadata, shared definition issues and server-computed definition/manifest digests. Catalogue quantity types now re-export Core's identical shape.
+
+Migration: additive catalog and catalog/contracts exports. Existing definitions remain valid; v1 command bytes and quantity/option helpers are unchanged. Invalid definitions retain invalid_catalog_type_definition and now carry their first structured issue. Pack results are recursively readonly. Typed SKU options follow each product's selected dimensions, including a closed empty shape, while preserving all inline v1 SKU fields. Explicit CatalogPackDraft annotations use the second type parameter for the selected keys; list quantity unit references are checked recursively. Inherited draft fields accept readonly identifiers and asset references as well as mutable arrays. Descriptor objects are closed at authoring boundaries; retain literal reference keys when declaring arrays separately. Quantity dimensions follow their declared units. The Node catalogPackIssues helper reports closed pack shape and reference issues through the shared definition validator. Pass readonly authored drafts through catalogDraftPayloadSchema.parse before assigning them to mutable v1 draft/command DTOs. Import the runtime CATALOG_CONFORMANCE_RULES record from @openlup/platform/catalog; catalog/contracts exports the conformance codes and rule shapes as types only, keeping checker prose out of the browser bundle. Attribute values remain outside v1 drafts. No installation, publication, SQL or activation; target package set 0.44.0.
+
+- Mark unbound catalogue extension symbols `@experimental`; retain the
+  starter's consumed product-type input without the tag.
+
+Migration: no runtime, signature, export or database change. The added TSDoc tags
+identify experimental symbols for compatibility guidance; existing readers keep
+their contracts.
+
+### Added
+
+Versioned catalogue draft payload v2, resume and stateless candidate previews.
+
+Migration: apply the complete native catalogue through position 147 before
+using v2 commands. `CatalogDraftPayload`, `CatalogDraftCommand` and their existing
+schemas retain v1 behavior. New `CatalogDraftPayloadV2` and command schemas carry
+typed attribute data and complete immediate positive gross one-time base-price
+commands at minimum quantity one, including the wholly-null or wholly-set
+expected entry ID and amount. A zero new amount refuses. Unknown payload and
+command versions refuse; later versions cannot reinterpret or rewrite v2 bytes.
+There are no price writes in this change.
+
+Opt in with `createPostgresCatalogDraftStoreV2` and `createCatalogDraftHandlerV2`;
+the original factories retain v1 admission and result types. These new factories return
+`CatalogDraftStoredRecord` / `CatalogDraftStoredApplyResult`, whose payload is the
+explicit v1-or-v2 union. Version-specific schemas remain available. `draftsFor`
+adds definition-typed v2 attributes and required-key checking; the wire schema
+and handler still save incomplete drafts, reporting publication readiness issues.
+The async `validateCatalogDraftV2` reuses the attribute owner and optional reference
+resolver. Old v1 consumers keep their exact canonical command and receipt bytes.
+Stop v2 authoring before rolling back readers; old latest-record readers refuse
+v2 records. Retain schema and history, and keep a compatible reader to access v2.
+
+The v2-only `resume` command copies an abandoned draft's payload into an open
+revision under the same retained reservations. Original abandonment receipts
+still replay exactly, and legacy revise on an abandoned head still refuses.
+No backfill or history rewrite occurs. All four draft relations remain
+authoritative retained transfer data in their existing order and privacy class;
+the round-trip matrix now covers v2 price plans and resume history. No new
+relation, client foreign key or absorption class is needed.
+
+`createCatalogCandidateService` prepares read-only previews through explicitly
+supplied authorized readers. Its reference encodes the immutable draft revision
+and expected publication identity, or known unpublished state. Reconstructing
+resolves and compares the whole head including documentDigest, compares installed
+and composed definition digests, and hashes the parsed canonical payload,
+definition evidence and expected head. The caller's head and candidate digest
+are checked by `compareCandidate`; missing price validation leaves a blocking
+issue for price-bearing drafts. Publication must run reconstruction and refusal
+of all issues inside its own transaction. No candidate table/cache, publisher
+constructor, publication binding or capability activation is added.
+
+Managed divergence design: the managed rail does not supply this feature.
+A future twin replaces the existing managed draft apply routine with the same
+version discrimination, retained receipts and resume semantics on its four
+existing draft relations. It derives the actor from verified session membership,
+retains their RLS/default-deny browser access and operator-session checks for
+drafts. Publication retains its separate human-admin boundary and excludes
+service credentials. Native
+owner/runtime invoker authorization maps to managed routine grants plus RLS;
+no native-only authorization role semantics are introduced. No live product/SKU
+column, including industry-specific nullable fields, is changed or relaxed here.
+
+- Add draft payload v3 for ordered publication operations, explicit eligibility,
+  immutable provenance/media claims and explicit document-derived SKU cache
+  effects. Freeze the shared-content extraction envelope and include every new
+  field and operation order in candidate reconstruction/digests. Saving a draft
+  executes no operation; publication and runtime capabilities remain unbound.
+
+Migration: upgrade to the explicit `createPostgresCatalogDraftStoreV3` and
+`createCatalogDraftHandlerV3` readers before authoring payload/commands v3.
+`CatalogDraftPublicationStored*` is the additive v1/v2/v3 union; existing v1 and
+v2 DTOs, parsers, handlers and adapters retain their version boundaries and exact
+canonical bytes, fingerprints and original receipt replay. Unknown versions
+refuse. The self-contained candidate-reference format remains v1 and resolves
+immutable v3 data without an additional candidate table. V3 prices use the
+unchanged positive gross one-time/minimum-one command; no scheduling, tier,
+context-version or zero-price extensions are added.
+
+The native forward expands only draft apply admission on the four existing
+retained draft relations. Abandon/resume retains reservations and payloads;
+there is no backfill, new relation or change to transfer order, privacy or
+absorption classes. Stop v3 authoring before rolling readers back; retain a
+compatible reader for v3 history. No live catalogue, price, subscription, order
+or delivery fact is changed.
+
+`sharedContent` has a closed versioned envelope for action, document,
+presentation, memberships, requested modes and complete authored SKU facts;
+installed validators own the opaque data within it. Provenance for the current
+draft resolves from its persisted receipt rather than recursively embedding its
+own fingerprint. Retained provenance uses an explicit immutable tuple and a
+matching evidence claim. The publisher still verifies every claim and operation;
+these input contracts provide no authorization or external readiness guarantee.
+
+Managed divergence design: the managed rail does not supply this feature.
+A future twin expands the managed draft apply routine on its existing heads,
+revisions, receipts and reservations, deriving the actor from verified session
+membership and preserving RLS, operator access and default-deny browser writes.
+The native invoker's owner/runtime grants have an equivalent managed routine
+and RLS expression; no native-only authorization semantics are introduced.
+No product/SKU column is changed; industry-specific food-column relaxation
+remains with the later reader/adoption boundary.
+
+Adds an unbound native immediate base-price writer, validated preview/apply/readback
+use case, PostgreSQL store and portable receipt/command contracts under pricing.
+The command retains the draft-v2/v3 price-operation grammar and exact canonical
+bytes. Later context, scheduling and list-lifecycle command extensions remain
+reserved for a new payload version.
+
+Migration: install the complete native catalogue through position 150,
+`20261122180000_catalog_base_price_writer`, after the native readiness-input unit.
+Old price readers continue reading ordinary price entries. New callers explicitly
+bind a verified human administrator's session to the store and handler; the SQL
+derives the actor, serializes receipt before price context, compares the expected
+base and atomically closes/inserts at one database statement instant. No capability
+is activated. Readiness reads native financial, agreement and audited cohort
+evidence; missing proof hard-refuses independently of ordinary readiness reasons.
+The existing global reason-membership aggregation defect remains unchanged: a
+second invalid SKU can remain hidden by an already present aggregate price-shape
+reason. This writer changes no agreed subscription money or schedule.
+
+The catalogue-local receipt relation is authoritative transfer data. Retain its
+exact fingerprints, actor metadata and responses with price history; no customer
+foreign key or client-absorption rule is added. Rollback means unbinding callers;
+retain committed history and receipts, and use a later expected-base command to
+correct a price. Do not delete evidence or downgrade a live database.
+
+Managed divergence design: a managed twin would use the existing managed
+`price_lists`, `price_entries`, subscription, promotion and operational evidence
+tables, plus a separately admitted catalogue receipt relation. Managed RLS must
+deny direct receipt/price writes and expose bounded execution only to verified
+active human administrators, excluding machine and revoked principals. Reconcile
+the managed role/administrator authority with its incumbent policies; authorization
+does not depend on a native-only role. The native readiness-input mapping and its
+audited never-populated baseline delta require their managed equivalents. Existing
+industry-specific catalogue columns are untouched; this price-only change needs
+no relaxation. The managed rail does not supply this feature.
+
+Stable 1.0 coordination (CD-S1-1): all new catalogue base-price writer symbols,
+including contracts, schemas, handler/store ports and factories, canonical command
+serialization and refusal helpers, are marked `@experimental` from their introduction.
+They are outside the 1.0.0 SemVer promise. Existing catalogue readers retain their
+current status. New result/kind unions and the hard-refusal reason tuple grow by
+addition only (D3); no existing union member is removed or renamed.
+
+Add unbound native offer-policy readiness inputs for the catalogue price writer.
+Existing subscriptions receive the legacy policy pair and a default-false fixture
+marker; future ordinary inserts default to pending acquisition. Installation
+records immutable marking-time count, membership fingerprint and database time.
+The separately audited, parameterless service capture inserts its baseline once.
+The audited-zero admission is a deliberate platform-forced delta: “a fresh install
+has nothing to protect.” It requires genuine empty marking provenance; a populated
+marking becoming empty retains the empty-baseline refusal.
+
+Migration: Apply the complete native migration catalogue. Old readers ignore the
+additive evidence columns. New price-writer integration must call the read-only
+input checks on its transaction before and after provisional prices, propagate
+hard domain/provenance refusals, and retain ordinary acquisition reasons.
+Graduation and edits that can preserve old quotes retain the governing purchase
+order provenance; an event name never turns those copies into independent quotes.
+Audit
+the complete legacy non-fixture cohort, including paused and cancelled rows,
+before explicitly invoking `commerce_capture_offer_policy_v2_legacy_baseline()`
+through the existing service SQL boundary. Installation and transfer never
+capture a baseline. Capture replay returns the original audit. Transfer carries
+marking and baseline bytes, reconciling only the actual pristine target marking
+row. Code rollback leaves the additive evidence and immutable audit in place;
+never reset a baseline to make a failed comparison pass. No capability is enabled,
+no application is composed, and no agreement is repriced or rescheduled.
+
+Managed divergence design: A managed twin would reuse its existing
+`public.subscriptions` policy/fixture columns and
+`public.commerce_offer_policy_rollout_baselines`, add marking provenance and
+implement the input checks over its managed promotions, prices, orders and
+agreements. Its incumbent service grants and RLS need separate reviewed
+reconciliation: marking must remain owner-written and immutable to ordinary
+service DML; baselines need service SELECT/INSERT with browser and UPDATE/DELETE
+denial, while capture retains the service authorization boundary. The same
+semantics are expressible through managed ACLs and RLS, including explicit
+handling of bypass roles. No food-column relaxation applies: this change authors
+no product or SKU shape.
+The managed rail does not supply this feature.
+
+### Fixed
+
+Preserve policy digests across a revision close.
+
+Migration: additive native catalogue position 146 adds `closed_from_open` to
+`subscription_price_policy_revisions`. The existing one-time NULL-to-finite
+close sets it atomically without changing any original digest input or digest.
+This single bit is sufficient because the guard admits no other close shape.
+The byte-identical package asset is part of the complete migration catalogue.
+
+Updated native readers verify the original tuple and serve the shortened
+half-open window. `SubscriptionPricePolicyRevision.closedFromOpen` is optional;
+legacy inputs keep their exact canonical bytes. Already-shortened legacy rows
+whose stored tuple cannot verify refuse with
+`subscription_price_policy_original_tuple_unverified`. No backfill guesses the
+original tuple or replaces a historical digest. Apply schema first, upgrade
+readers next, and verify retained history before enabling any later writer.
+Old readers retain unchanged-tuple behavior but refuse newly closed revisions;
+after a close, rollback must retain the new verifier. Keep schema and rows.
+
+The marker follows the existing AUTHORITATIVE policy capture/restore class and
+ordering, including byte-exact restore and replay. No new table, client foreign
+key, absorption or privacy-erasure duty is added. Subscription agreements,
+renewal terms and operations, orders, quantities and cycle dates are unchanged.
+This repair ships unbound: no scheduler, closing command, capability or activation.
+
+Managed divergence design: the managed rail does not supply this feature.
+Its future twin adds the same marker and validated CHECK to managed
+`subscription_price_policy_revisions`, preserving RLS and existing grants.
+Administrative write grants and RLS express the native owner-only mutation
+boundary; browser roles cannot close revisions or write the marker. The twin
+must update its reader and guard together and prove original-digest verification,
+shortened-window serving and legacy refusal. No native-only authorization role
+is required and no food-column relaxation applies to this policy-only forward.
+
+Add opt-in catalogue definition/quantity/v1-draft checks, explicit refusal
+fixtures and installed recipes with a copied stationery skeleton. Attribute/projection and combination fixtures reuse their owners; taxonomy, tax,
+profile and promotion semantics remain explicitly pending.
+
+Migration: Additive tooling for the next package set. Old imports and v1 canonical
+bytes remain unchanged. The new Node-only `@openlup/platform/catalog/testing`
+subpath and `openlup catalogue check --packs ./owned/catalogue.json --json` require
+explicit JSON fixture text; the supplied file is never imported. No database migration, installation,
+host wiring, publication or capability activation occurs. Upgrade all packages as
+one exact set; an offline PASS is scoped evidence only.
+
+Quantity fixture type references now use the shared `catalogProductTypeRefIssues`
+owner before resolution; malformed keys/versions report existing definition codes.
+Refusal capability keys must be own string keys, and pack versions share the
+installer's existing positive bounded integer rule. Valid inputs are unchanged;
+malformed fixtures and pack versions that could pass offline now refuse.
+
+Integrate attribute validation/projection and V2 combination owners into the
+offline catalogue checker. Replace executable subjects with JSON text and the
+copied executable skeleton with one static JSON fixture. Reference and refusal
+observations are checked without invoking caller code; retained identities are
+derived from fixture options and prove no persisted bytes or history.
+
+Migration: For the unreleased 0.44.0 set, migrate module-based callers to
+`await runCatalogExtensionConformance(JSON.stringify(subjectData))` and CLI files
+to `openlup catalogue check --packs ./owned/catalogue.json --json`. Omit
+`validateContent`; requested application content validation is unavailable (2).
+Replace refusal callbacks with `observedCode` and `zeroEffects` records, reference
+ports with resolution rows, and retained identity bytes with options. The single
+entry retains report fields, deterministic ordering and the five CLI exits.
+No SQL, publication, subscription changes or capability activation occurs.
+
+Primitive quantity fields are admitted before owner handoff. Only deliberate
+owner input errors in the checker's explicit code allowlist become input refusals
+(exit 1 at the input path). All other owner exceptions propagate unchanged;
+the direct promise rejects and the CLI returns 74 with raw errors withheld.
+Default failure is 74; only the tagged `JSON.parse` site gives 64. Integrity codes
+are never input-denial codes and propagate to CLI 74. API signatures, SQL and
+release caps are unchanged by this checker repair.
+
+Add native-only immutable catalogue definitions, install receipts, tax-class keys
+and nullable product type bindings. Export the explicit install-role installer,
+read-only registry probe and opt-in catalogue-write guard. Target set 0.44.0;
+no runtime capability is activated.
+
+Migration: apply the complete selected native catalogue including
+`20261122100000_catalog_definition_binding.sql`, then explicitly call
+`installCatalogDefinitions(installExecutor, pack)` with the native migration-owner
+executor. Existing rows stay NULL-bound legacy, with no backfill or inferred
+mapping. Old readers ignore the new nullable product columns; new readers treat
+NULL as not mapped and follow the composite FK for installed versions. Managed-to-native
+retained transfer supplies NULL only when a source binding column is absent;
+provided values and all other missing-column refusals are preserved. SKUs
+inherit the product type. `model_binding_state` is omitted because it would
+repeat NULL-ness before publication is introduced. Keep installed old versions
+in code while any product references them. Rolling code back leaves additive
+storage and immutable install history intact; do not delete versions or undo SQL.
+
+Applications can supply the probe result as `ReadinessInput.catalogRegistry` in
+`createVerificationInput()` for `openlup verify --app`, and wrap catalogue writes
+with `createCatalogDefinitionWriteGuard`. No existing store is automatically
+rebound. The probe needs SELECT on both catalogue tables through table ownership
+or a BYPASSRLS read role with row security inactive on both tables. Active row
+security makes the observation incomplete, including empty visible results; a
+missing definition remains a binding with a NULL installed digest. Either yields
+existing `unknown` readiness and makes the guard refuse before the write.
+Host calls after migrations, the net-content backfill driver and boot
+readiness are deferred to the later V2 reader/composition stage. Explicit
+type-upgrade mappings remain part of publication; this slice adds no reader V2
+or publication transaction.
+
+Managed divergence design: the managed rail does not supply this feature.
+A managed twin needs the three definition/install/tax-key tables, nullable product
+references and their complete-reference check, composite FK and index. Restrict
+installation to an administrative migration principal and expose only the read
+access the composed observer needs through grants and RLS. Runtime has no
+installer EXECUTE, direct definition writes or migration-owner membership.
+A same-table immutability trigger and invoker routine have managed equivalents;
+no native-only authorization semantics are required. This slice changes no constraints
+on `net_weight_g`, `pet_type`, `kcal_per_unit`, `requires_pet_profile` or
+`feeding_grams_per_unit`. Alternative quantity readers and managed nullability
+changes stay with the V2 reader stage. Definitions and receipts contain no customer foreign
+keys or personal data, and transfer carries all three relations as AUTHORITATIVE metadata.
+
+Add native-only nullable physical quantities on live SKUs and the explicit
+install-role `backfillCatalogNetContent(installExecutor, {batchSize})` driver.
+Target set 0.44.0; no capability or runtime composition is activated.
+
+Migration: apply the complete selected native catalogue through
+`20261122110000_catalog_quantities.sql`, then explicitly drain the backfill with
+the migration-owner executor and a positive integer `batchSize`. The migration
+itself does not backfill data. The driver converts positive legacy grams exactly
+to mass / scale 0 / `openlup:g`, preserves native zero as unknown and never
+replaces existing net content or infers gross mass. Interrupted runs resume;
+replay is a no-op. Gross dimension is explicit to reject non-mass values at the
+storage boundary. SQL checks complete groups, positive stored coefficients and
+scale 0–12, leaving unit admission to the later publisher and installed unit
+metadata. PostgreSQL `numeric(40,0)` coerces inputs before CHECK evaluation;
+trusted writers enforce decimal-string integrality before sending values.
+
+Old readers continue reading the unchanged non-null `net_weight_g`. V2 readers,
+the checked compatibility projection, nullability change and host migration
+wiring arrive in the later reader/composition stage. The new export is additive
+and requires explicit invocation; it is not a runtime writer. Rollback leaves
+nullable columns and converted content intact; do not reverse migration data.
+No subscription agreement, quantity, price or schedule is changed.
+
+Transfer carries all new columns in existing AUTHORITATIVE `catalog_skus` rows
+with unchanged restore order. No new customer reference, absorption policy or
+personal-data contributor is needed. Managed-to-native retained mapping fills
+only absent fields with NULL and preserves supplied values and existing
+refusals, including the exact-number guard.
+
+Managed divergence design: the managed rail does not supply this feature.
+The managed `catalog_skus` twin adds the same nullable groups and CHECKs, retaining
+table grants and RLS. Its administrative migration principal runs an equivalent
+owner-restricted invoker batch; runtime principals (including service, operator
+and browser roles) receive no backfill EXECUTE or migration-principal membership.
+The native design uses no authorization construct that managed grants and RLS
+cannot express. Existing `pet_type`, `net_weight_g` and `kcal_per_unit` are mandatory
+without defaults, `requires_pet_profile` has a default and
+`feeding_grams_per_unit` is already nullable. Their non-food relaxation belongs
+to the later reader stage; this forward changes none of them.
+
+Add native-only attribute storage and the single rebuildable SKU-keyed
+projection. Target set 0.44.0; everything remains unbound.
+
+Migration: apply the complete selected native catalogue through
+`20261122120000_catalog_attributes.sql` (position 144). Products and SKUs gain
+nullable `attribute_values` JSONB, checked as objects with an independent
+1,048,576-byte PostgreSQL rendered-text ceiling. Existing canonical JSON depth
+and byte safety checks remain at the owner boundary; the later V2 draft retains
+its separate aggregate canonical-byte ceiling. These byte measures differ.
+Existing rows keep NULL, opaque documents remain unchanged, and no default or
+backfill infers values. Old readers ignore the nullable columns; future V2
+readers consume typed values with publication evidence. V1 DTOs and canonical
+bytes are unchanged. Rollback leaves the expansion and data intact; do not drop
+populated columns or reverse the migration.
+
+The projection key distinguishes SKU, publication revision, attribute key,
+definition version and ordinal. There is no premature publication FK, synthetic
+revision, second attribute store or generation seed. The table is RLS-enabled
+with owner-only access and no runtime grants. Decimal/quantity exactness must be
+checked before future SQL writes because PostgreSQL numeric can coerce inputs.
+Value validation and pure preparation, publication/digests/atomicity, generation
+switching, serving and restore rebuilding remain pending. No capability flips,
+writer bindings or subscription agreement changes are supplied.
+
+Transfer retains product/SKU values as AUTHORITATIVE and classifies the
+projection REBUILDABLE: count-only capture, no carried rows, empty-target restore
+and no stale rows on replay. Managed retained mapping fills only absent new
+columns with NULL before supplied rows, retaining exact-number and other
+refusals. Free text/reference values may contain personal data and follow the
+sensitive retained stream. No direct clients FK means no new absorption census
+row; no new subject-erasure claim is made.
+
+Managed divergence design: the managed rail does not supply this feature.
+The managed twin adds nullable `attribute_values` JSONB on `catalog_products` and
+`catalog_skus`, equivalent object/rendered-byte CHECKs, and one projection table
+with the same key/index layout. Existing authoritative table grants and RLS
+remain. The administrative migration principal maintains the projection;
+runtime projection access remains denied pending a later explicit grant/RLS
+policy, and browser roles have no direct projection writes. Native ownership
+adds no authorization policy that managed grants and RLS cannot express.
+Relaxation of existing food-mandatory columns remains the later reader stage.
+
+Add the unbound catalogue attribute owner validator, injected allowlisted batch
+reference resolution and pure preparation for the single SKU-keyed projection.
+Supplied malformed values refuse; required values/locales are publication
+readiness issues. Each product/SKU attribute object independently fits the 1 MiB
+PostgreSQL-rendered text storage ceiling, including separator spaces and UTF-8
+string bytes. Numeric exponent expansion is conservatively bounded; admitted
+attribute shapes are counted exactly. Oversized objects refuse with
+`attribute_storage_too_large` and the product/SKU owner path. The aggregate
+canonical JSON safety bound remains separate. Each projected text slot also fits
+2,048 UTF-8 bytes, including whole localized maps and list scalars, independently
+of facet/filter flags. This conservative composite-index budget on the qualified
+8 KiB-page PostgreSQL profile refuses with `attribute_projection_text_too_large`
+before insertion; it does not depend on compressibility. Signed decimals remain strings, and Core quantity conversion
+refuses inexact or overflowing canonical numeric values before SQL.
+
+Migration: additive server exports and shared conformance codes only. Existing
+V1 drafts, DTOs, canonical bytes and readers are unchanged. Compose the new owner
+with installed definitions explicitly; do not pass attribute values to V1 drafts.
+Old readers ignore the nullable storage introduced separately. Future V2 readers
+must consume publication evidence. Shared conformance guidance and installed
+recipe links include all new attribute codes beside the offline checker's codes.
+The checker still checks definitions, exact quantities and v1 drafts only;
+attribute-value/projection checker integration remains pending. No SQL, data backfill, runtime writer or
+serving switch is included; rolling back this helper cannot rebuild or publish
+stored values. LC1/LC2 still own validation/digest/atomic publication integration,
+and later serving/restore work owns shadow generations and rebuilding.
+
+The L1 required-locale witness proves readiness and the admission predicate;
+it does not prove an actual publish has zero effects. Managed storage enablement
+remains absent: the managed rail does not supply this feature. All capabilities
+remain unbound; subscription agreements are unaffected.
+
+Add unbound native variant axes and V2 combination identity preparation for target
+package set 0.44.0. No catalogue consumer or capability is activated.
+
+Migration: apply the complete selected native catalogue through
+`20261122130000_catalog_variant_axes.sql` (position 145). Products gain nullable
+`variant_axes text[]` in declared display order. SKUs gain nullable object-checked
+`option_values`, `canonical_option_bytes` and a 32-byte-checked
+`combination_digest`. Existing rows keep NULL: no default, inferred mapping,
+empty combination or legacy digest is manufactured. Old readers ignore these
+nullable fields; future V2 readers require publication evidence. The additive
+code rollback leaves these columns, identities and data intact; do not drop
+populated columns or reverse the migration. Existing UUIDs, codes, ownership,
+history and legacy constraints remain.
+
+The active-SKU partial unique index uses only `(product_id, combination_digest)`
+with `status='active' AND combination_digest IS NOT NULL`, independently of
+product state or type. SQL enforces storage and uniqueness; it does not certify
+that caller-supplied bytes are canonical. `canonicalizeCatalogCombinationV2`
+computes versioned canonical bytes and SHA-256 server-side from installed
+definitions and complete selected options, using Core exact arithmetic and
+explicit unit factors. Labels and display order do not enter combination
+identity. Existing `canonicalCatalogOption`, v1 draft bytes and replay are
+unchanged. `classifyCatalogCombinationConflictV2` distinguishes duplicate bytes
+from a digest collision; neither case merges identities.
+V2 quantity options use Core's exact decimal grammar and canonical bounds after
+conversion/normalization, allowing equivalent padded coefficients up to 52 input
+digits. The v1 wire schema retains its 40-digit coefficient ceiling. Canonical
+integer overflow and precision loss still refuse; strict option-field closure
+is preserved.
+The shared conformance rule record includes the combination owner's codes and
+links them to the installed axis/unit recipes. The offline checker keeps its
+definitions, quantity fixtures and v1-draft scope; V2 combination fixtures and
+publication are not activated by these links.
+
+`validateCatalogCombinationChangesV2` is pure LC2 preparation over authoritative
+retained facts and incoming options, with no client digest input. It preserves
+omitted SKUs and withdrawal facts, requires a new SKU for an existing mapped
+identity change, and refuses occupied active combinations. The 10,000-SKU
+payload bound is separate from configured product capacity (default 50,000),
+counting retained and incoming identities without enumerating combinations.
+The publisher must bind definitions, enforce human authority, lock and validate
+within its transaction, enforce persisted incremental capacity and record
+immutable history. Explicit legacy conversion and the 15,768-SKU incremental
+publication witnesses remain LC2 integration obligations. Direct owner SQL
+uniqueness/concurrency witnesses are preparatory substrate, not a publish API.
+See the canonical catalogue extension agreements and lock order; this change
+adds no locking runtime, commerce caller, trigger or independently committing
+publisher. Referenced identity keys must never be changed in place.
+
+The new fields ride existing AUTHORITATIVE product/SKU capture entries and
+restore order. Managed retained mapping initializes only absent fields to NULL,
+preserves supplied fields and keeps existing refusals. The round-trip matrix
+compares every field, bytes, legacy NULLs and axis order after restore/replay.
+Text/options follow the sensitive retained stream. No new relation, client FK,
+absorption entry or privacy-erasure claim is introduced.
+
+Managed divergence design: the managed rail does not supply this feature.
+Its twin adds the same nullable columns to `catalog_products` and `catalog_skus`,
+with equivalent object and 32-byte CHECKs,
+and active-SKU partial uniqueness while preserving existing managed grants and
+RLS. Restrictive administrative writer grants and RLS can express the same
+authorization as native ownership; browser roles receive no direct identity
+writes. Existing format/content uniqueness remains until generic publication
+parity is proven. Food-column relaxation remains a later migration. The public
+release retains this divergence and supplies no managed activation.
+
+Distinguish combination identity integrity failures from incoming SKU identity
+changes in the unbound V2 combination owner for target package set 0.44.0.
+
+Migration: handle the additive `combination_identity_integrity_failed` code for
+inconsistent authoritative option identity evidence and colliding derived
+digests. An incoming mapped identity change still reports
+`sku_identity_change_requires_new_sku`. The earlier `combination_digest_collision`
+code remains in the exported union and guidance record for compatibility;
+`validateCatalogCombinationChangesV2` now reports the new integrity code for
+that condition. Refusal conditions, validation order and all other behavior stay
+unchanged. No SQL migration, writer activation or capability change is required.
+
+Declare per-subpath stable, experimental and test-support policies for the coherent 1.0.0 package set. Stable APIs follow SemVer with open unions and literal sets; symbols tagged `@experimental` remain outside the stable promise. Consumer evidence is explicitly first-party.
+
+Migration: keep a default branch for unknown union and literal-set values. Check the generated maturity table for experimental and test-support subpaths before upgrading. No runtime behavior or package export changes.
+
+Bound fresh subscription quotes, order drafts and editor results to 1..3660
+whole days (ten years), using the shared browser-shareable `MAX_CADENCE_DAYS`
+export from `@openlup/core/subscription`. Adopters choose offered cadences in
+owned configuration.
+
+Checkout command/intent transport, resume, recovery and account reads, editor
+contexts, retained renewal terms and frozen renewal snapshots keep PostgreSQL
+integer representation bounds (1..2147483647). Editor and native draft
+completed receipts replay before current limits; SQL ownership and fingerprint
+checks still refuse changed payloads. Fresh edits also check the resulting
+cadence when inherited from stored data. Classic historical price comparisons
+use retained billing facts rather than submitting old cadences for a fresh quote.
+
+Fresh native renewal snapshots and starter graduation above 3660 refuse with
+`NativeRenewalCadenceError`, reason `cadence_limit_exceeded`, the observed value
+and `maximumCadenceDays`; choose an executable cadence before starting a new
+renewal. Historical frozen operations remain readable and replayable. Quantity,
+revision and money bounds are unchanged.
+
+Identity persistence admits fresh cadence before its writing RPC. Historical
+completed retries authenticate a single read snapshot of the stored response and
+the writer's canonical JSONB fingerprint, including the route-verified identity,
+and refuse changed payloads without reopening the key. Fresh quote execution and unfinished resume writes
+also admit cadence before dependencies; expired recreation checks both stored
+cadences before provider I/O and returns `cadence_limit_exceeded`.
+
+Fresh work is bounded at 1..3660 whole days. Replay of completed commands above
+3660 is preserved on editor, native draft and renewal paths, but is not guaranteed
+on the checkout-command and saga-fallback paths: checkout command execution
+quotes before identity and draft replay, and `commercePaidOrderOrchestration`
+re-quotes before draft replay when no quote is supplied. Those two paths remain
+a follow-up. No published version admitted cadence above 120 days; PR4a's
+widening is unreleased, so no released data can contain values above 3660.
+
+Fresh subscription future-terms commands admit supplied cadence/plan days after
+receipt replay and before host translation or native preview/apply dispatch,
+so an out-of-range preview cannot persist a refusal receipt.
+
+Migration: no SQL changes. Existing 90-day SQL guards and the starter's
+`starter_database_cadence_limit` refusal above 90 remain pending a separate slice.
 
 ## [0.43.0]
 
@@ -115,62 +965,3 @@ Historical contacts, reservations, modes, acceptance proofs and arrival facts ar
 Intake uses sequential page numbers, not opaque cursors; polling-only providers refuse webhook intake. Empty collections prove no absence. Human holds, terminal provider exceptions and evidence without usable chronology require manual handling. Native reads refuse missing destination/line snapshots. Replaying incomplete webhook transport metadata may replace polling-enriched nullable reference fields. Resolve missing or conflicting historical associations and evidence through authorized recovery; no inferred parcel, chronology or stock is supplied.
 
 Offline certification checks honestly built fixtures and contract results; deliberate accessor, proxy or overridden-intrinsic manipulation to defeat the caller's own certification is outside its threat model. It is not an attestation of durable host behavior. Absence auto-reopen stays off by default and later dispatch requires explicit due-reopen consumption. Refund creation remains separate; refund evidence does not pause or cancel subscription service. Experimental services remain inert until explicitly composed.
-
-## [0.42.0]
-
-- Publishable on the npm `latest` dist-tag as `0.42.0`, from tag
-  `openlup-platform-v0.42.0`.
-
-- Add explicit native payment-method collection, reusable-reference storage, lifecycle delivery and recorded health, with scoped repair and recovery authority that freezes at dispatch. Historical mirrors are never promoted to charging evidence automatically. Retry admission and dispatch freeze bind the exact provider-method row and lock its recovery token through commit. Retry selection and preparation respect quarantine; real renewal/provider history cannot fall back to sandbox compatibility. Completed sandbox attachments with current sandbox terms preserve their lane when only the initial paid checkout used another channel; recorded references, including inactive rows, still select strict authority. Reminder production reads bounded method facts under runtime privileges; spent repair authority does not block later automatic rungs, and active expiring methods remain eligible for renewal reminders.
-
-Migration: install the complete selected native chain through `20261114110000_payment_method_refs.sql` before composing collection or recorded-method readers. For host-composed native subscriptions without recorded refs and with real-provider history, retry, recovery, reactivation, auto-resume and upcoming reminders refuse or remain ineligible until the host records refs with `payment_method_ref_upsert` from verified evidence. Original renewal charging retains its previous method and mandate evidence behavior when no recorded reference exists, even with real-provider history. Once any reference row exists, every reader uses strict recorded authority, regardless of its status or active state. Account-support health follows the lifecycle classification even without a reference. Explicit sandbox subscriptions retain their behavior. Existing labels and token rows are not backfilled; obtain a new authorized token when recovery context is absent, select a host-authenticated setup lane and preserve outstanding retry authority. Setup callers must retain one trimmed 8–180 character idempotency key; formerly accepted short or oversized keys now refuse before ownership lookup or provider I/O.
-
-- Correlate initial-order provider history before selecting sandbox compatibility; account health and lifecycle admission select strict authority for that history even without a reference. Original renewal evidence reads preserve their previous behavior until a reference is recorded; recorded rows in any state prevent fallback in every reader. Setup requests trim the key and enforce its 8–180 character contract before ownership lookup or provider I/O.
-
-- Add native durable provider attempts, immutable verified ingress, replay receipts and separate payment identities. Preparation commits before provider execution; acknowledgement finalizes the same row, and unresolved or superseded attribution refuses before settlement effects.
-- Add PostgreSQL persistence, webhook and recovery evidence factories. Enable only the prepared durable store capability; method setup, absence reopening and cumulative refund retain their existing limits. Historical rows are never reconstructed automatically.
-- Record correlated provider renewal failures as immutable attempt-bound retry receipts before financial truth ingestion. Reuse one settlement transition and retain native obligation scheduling; provider dunning case, notice, token handoff and real renewal binding await later composition.
-- Record an expiry after a decline on the same renewal attempt as a replay-safe escalation, retaining the existing failure receipt, retry stage and schedule.
-
-Migration: install the complete selected native chain through `20261114100000_payment_provider_attempt_store.sql` before composing the ports. Hosts provide recorded provider authority and verified adapters. A refund does not pause or cancel a subscription; offline evidence does not activate a provider or a hosted journey.
-
-Unpaid-order cancellation terminalizes provider payment authority. Recoverable
-one-time and initial-subscription declines include a live checkout recovery
-token in the delayed payment-failed notice. Inline response-loss replay reads
-the durable transition without fresh method or purchase context.
-
-Add the native PostgreSQL reconciliation port, atomic exact-attempt application,
-attributed failure handoff, proof-backed absence reopen receipts and cumulative
-refund evidence. Install the complete migration chain; absence auto-reopen stays
-off, and immutable prepared dispatch receipts still require explicit due-reopen
-consumption before later host execution.
-
-Refunds preserve original settlement money, subscription service and paid-cycle
-history. The native `commerce.order.refunded` event remains status-only;
-financial customer messaging uses `commerce.order.refund_processed`, gated by
-accepted same-currency evidence. Historical unattributed attempts and dunning
-cases retain named refusal paths. Refund creation and provider activation are
-outside this change.
-
-A correlated failed webhook hands off dunning independently of its financial
-result kind. If the direct result committed first, the handoff uses its original
-attempt-bound failure receipt; duplicate delivery does not repeat money, retry
-stages, recovery authority or notices.
-
-- Add explicit card provider composition over native PostgreSQL payment, method-reference, reconciliation and retry owners. Prepared requests commit before dispatch; uncertain/replayed requests never dispatch again. Customer, client, order and save-card inputs and redacted finalization facts pass through the neutral factory additively.
-- Bind timestamped verified ingress, immutable failure rungs, attributed dunning, recorded method replacement and evidence-gated cumulative refunds. Preserve provider time separately from first receipt; untimestamped card provider readback remains ambiguous.
-- Validate addressed recorded-method authority before renewal dispatch, keep untimestamped native source/return carriers absent, replay finalized SCA refusals through the durable refusal owner, and acknowledge exact-attempt refusals for superseded or unresolved success events using their durable attribution, including unresolved redelivery after finalization.
-- Keep default sandbox bindings and existing managed exports. The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. The supplied portable composition selects card provider only; live activation and the second reference provider's portable composition remain separate.
-
-Migration: Install the complete native catalogue through `20261114120000_payment_reconciliation_refund_evidence.sql`, then explicitly compose the payment rail and renewal webhook/lifecycle/retry ports together. Historical method refs require owner-authorized registration; no automatic backfill is supplied. No SQL migration is added.
-
-Known limits for the complete set: The native rail supports the two reference payment providers; a third provider needs the provider-profile refactor. The second reference provider's portable composition and the provider-profile refactor are deferred to a later set. Provider qualification is limited to fake-client proof; no live provider qualification is claimed. The starter still selects sandbox payments by default.
-
-## [0.41.0]
-
-- Publishable on the npm `latest` dist-tag as `0.41.0`, from tag
-  `openlup-platform-v0.41.0`.
-
-- Add the experimental `payments/testing` subpath with the existing conformance runner and a provider-neutral scripted transport fake. Optional safety fixtures exercise capability/refusal parity, network ambiguity, signed webhook replay, invalid money, partial amounts and chargebacks without live access. Existing adapter behavior and imports remain unchanged.
-- Reserve the measured platform artifact budget for the next payments implementation part; individual feature rows share these caps.
-Migration: `runPaymentAdapterConformance` now takes `readonly PaymentAdapterTestSubject[]`. That named type is the previous subject with its `verification` fixtures plus an optional `safety` member, so existing callers compile and run unchanged and need no action.

@@ -1,33 +1,38 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Pool } from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
+import { Pool, type PoolClient } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createPostgresCatalogPublication, readPostgresCatalogMembershipPage, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
   type CatalogPublicationDependencies } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
-import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
+import type { CatalogPublicationManifestV2, CatalogPublishedSku, CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { setFixtureCatalogDocument } from "../helpers/storeJourney.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
+const publicationReadsForward = "db/platform/migrations/20261123170000_catalog_publication_reads.sql";
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 let db: Pool;
 let priceDb: Pool;
 const priceList = randomUUID(), anchorSku = randomUUID();
 const admin = randomUUID();
-const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }],
-  netContentUnits: ["openlup:g"], dimensions: [], axes: [], attributes: [{ key: "details", scope: "variant" as const,
+const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false, factor: { canonicalUnit: "openlup:g" as const, unscaled: "1", scale: 0 } }],
+  netContentUnits: ["openlup:g"], dimensions: [{ key: "pack_size", kind: "quantity" as const, dimension: "mass" as const, units: ["openlup:g"] }, { key: "axis_flag", kind: "boolean" as const }], axes: [{ key: "pack_size", attributeKey: "pack_size" }, { key: "axis_flag", attributeKey: "axis_flag" }], attributes: [{ key: "pack_size", scope: "variant" as const, valueType: { kind: "quantity" as const, dimension: "mass" as const, units: ["openlup:g"] }, required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }, { key: "details", scope: "variant" as const,
     valueType: { kind: "list" as const, item: { kind: "text" as const, maxLength: 1900 }, min: 0, max: 300 }, required: false,
-    cardinality: { min: 0, max: 300 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
+    cardinality: { min: 0, max: 300 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} },
+    { key: "reference", scope: "variant" as const, valueType: { kind: "reference" as const, allowlist: ["example:asset"] }, required: false,
+      cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} },
+    { key: "product_flag", scope: "product" as const, valueType: { kind: "boolean" as const }, required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} },
+    { key: "axis_flag", scope: "variant" as const, valueType: { kind: "boolean" as const }, required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
   validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
 const registry = createCatalogProductTypeRegistry([definition]);
 let authority: ReturnType<typeof createPostgresCatalogPublication<null>>;
 let actor: NonNullable<Awaited<ReturnType<typeof authority.authorize>>>;
 let paged: { data: Awaited<ReturnType<typeof draft>>; head: CatalogHeadRef };
 let foreignPublished: { data: Awaited<ReturnType<typeof draft>>; head: CatalogHeadRef };
-function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows: Record<string, unknown>[]) => void | Promise<void>): CatalogPublicationDependencies<null> {
+function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows: Record<string, unknown>[], values?: unknown[]) => void | Promise<void>): CatalogPublicationDependencies<null> {
   return { registry, transactions: { async run(work) { const client = await db.connect();
-    try { await client.query("BEGIN"); await client.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`); const result = await work({ async query(sql, values) { const result = await client.query(sql, values); await afterQuery?.(sql, client, result.rows); return result; } }); await client.query("COMMIT"); return result; }
+    try { await client.query("BEGIN"); await client.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`); const result = await work({ async query(sql, values) { const result = await client.query(sql, values); await afterQuery?.(sql, client, result.rows, values); return result; } }); await client.query("COMMIT"); return result; }
     catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true, userId: admin, role: "admin", isMachineActor: false }),
     rules: { canonicalizeDocument: canonicalCatalogDraftJson, deriveSkuFacts: (document) => ({ derived: (document as { derived: number }).derived }),
@@ -47,22 +52,38 @@ beforeAll(async () => {
   db = new Pool({ connectionString: container.connectionString }); pools.push(db);
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
   for (const unit of [manifest.baseline, ...manifest.forward]) {
-    if (unit.file === "db/platform/migrations/20261122190000_catalog_publication.sql") break;
+    if (unit.file === "db/platform/migrations/20261123150000_catalog_publication.sql") break;
     await db.query(readFileSync(unit.file, "utf8"));
   }
-  await db.query(readFileSync("db/platform/migrations/20261122190000_catalog_publication.sql", "utf8"));
+  await db.query(readFileSync("db/platform/migrations/20261123150000_catalog_publication.sql", "utf8"));
+  await db.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS");
+  // Service execution must come from the forward's grant. Keep direct browser-role defaults to exercise their revokes.
+  await db.query("ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon, authenticated");
+  await db.query(readFileSync(publicationReadsForward, "utf8"));
+  await db.query("ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated");
   await installCatalogDefinitions(db, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication@example.invalid')", [admin]);
   await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
   authority = createPostgresCatalogPublication(dependencies()); actor = (await authority.authorize(null))!;
   const data = await draft(); let receipt = await commit(data.publication);
-  for (let revision = 1; revision <= 100; revision++) receipt = await commit(await incrementalSku(data, receipt.head, revision));
+  for (let revision = 1; revision <= 1; revision++) receipt = await commit(await incrementalSku(data, receipt.head, revision));
   paged = { data, head: receipt.head };
   const other = await draft(), otherReceipt = await commit(other.publication); foreignPublished = { data: other, head: otherReceipt.head };
   const priceContainer = await runPostgresContainer({ name: `catalog-publication-prices-${process.pid}`, password: "synthetic-catalog-publication" }); containers.push(priceContainer);
   if (!await waitForPostgresTcpReady(priceContainer.connectionString)) throw new Error("Price publication witnesses require real PostgreSQL");
   priceDb = new Pool({ connectionString: priceContainer.connectionString }); pools.push(priceDb);
-  for (const unit of [manifest.baseline, ...manifest.forward]) await priceDb.query(readFileSync(unit.file, "utf8"));
+  for (const unit of [manifest.baseline, ...manifest.forward]) {
+    const sql = readFileSync(unit.file, "utf8");
+    if (unit.file !== publicationReadsForward) {
+      await priceDb.query(sql);
+      continue;
+    }
+    // The helper revokes must also work when the installer grants service execution by default.
+    await priceDb.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOBYPASSRLS");
+    await priceDb.query("ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO service_role");
+    await priceDb.query(sql);
+    await priceDb.query("ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM service_role");
+  }
   await installCatalogDefinitions(priceDb, { id: "example:publication", namespace: "example", version: 1, openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] });
   await priceDb.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication-prices@example.invalid')", [admin]);
   await priceDb.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [admin]);
@@ -87,7 +108,7 @@ async function save(payload: CatalogDraftPayloadV3, draftId: string, expectedRev
 async function approve(publication: CatalogPublishCommand, target = authority, capability = actor, commandKey = `approve:${publication.commandKey}`) {
   const decision = { schemaVersion: 2 as const, action: "approve" as const, productId: publication.productId, commandKey,
     candidateRef: publication.candidateRef, candidateDigest: publication.candidateDigest, reason: "Verified exact candidate" };
-  const result = await target.decision(decision, capability); expect(result.outcome).toBe("committed"); return decision;
+  const result = await target.decision(decision, capability); expect(result.outcome, JSON.stringify(result)).toBe("committed"); return decision;
 }
 async function commit(publication: CatalogPublishCommand, target = authority, capability = actor) {
   await approve(publication, target, capability);
@@ -96,17 +117,17 @@ async function commit(publication: CatalogPublishCommand, target = authority, ca
   if (!("receipt" in result)) throw new Error(JSON.stringify(result));
   return result.receipt;
 }
-async function draft(requestedSlug?: string) {
-  const productId = randomUUID(), skuId = randomUUID(), draftId = randomUUID(), revisionId = randomUUID(), slug = requestedSlug ?? `article-${productId}`;
+async function draft(requestedSlug?: string, requestedCode?: string, skuId: string = randomUUID()) {
+  const productId = randomUUID(), draftId = randomUUID(), revisionId = randomUUID(), slug = requestedSlug ?? `article-${productId}`;
   const document = { schemaVersion: 1, id: "example:document", revisionNo: 1, productSlug: slug, derived: 12 }, canonicalText = canonicalCatalogDraftJson(document);
   const digest = createHash("sha256").update(canonicalText).digest("hex");
-  const facts = { skuCode: `SKU-${skuId}`, title: "Synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
+  const facts = { skuCode: requestedCode ?? `SKU-${skuId}`, title: "Synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
   const gtin = nextGtin();
   const payload: CatalogDraftPayloadV3 = { schemaVersion: 3, product: { id: productId, type: { key: definition.key, version: 1 }, slug,
-    primarySkuId: skuId, dimensions: [], documentRevision: { id: revisionId, productId, revisionNo: 1, schemaId: "example:document.v1", documentRef: "example:document", sourceRef: "example:source", digest },
+    primarySkuId: skuId, dimensions: ["pack_size"], documentRevision: { id: revisionId, productId, revisionNo: 1, schemaId: "example:document.v1", documentRef: "example:document", sourceRef: "example:source", digest },
     sharedContent: { schemaVersion: 1, catalogAction: "create", document, presentation: { routePath: { en: `/${slug}` } }, publicationSkus: [facts],
       offerMemberships: [{ skuCode: facts.skuCode, offerVersion: "example:offer", admitted: false }], requestedModes: [{ skuCode: facts.skuCode, modes: [] }] } },
-    skus: [{ id: skuId, productId, code: facts.skuCode, options: {}, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
+    skus: [{ id: skuId, productId, code: facts.skuCode, options: { pack_size: { kind: "quantity", value: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 } } }, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
       identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }] }],
     publication: { kind: "release", evidence: {}, operations: [
       { op: "create_product", productId, productSlug: slug, name: "Synthetic article" },
@@ -140,7 +161,8 @@ async function revise(data: Awaited<ReturnType<typeof draft>>, head: CatalogHead
 async function incrementalSku(data: Awaited<ReturnType<typeof draft>>, head: CatalogHeadRef, revision: number) {
   const payload = structuredClone(data.payload), skuId = randomUUID(), skuCode = `SKU-${skuId}`, gtin = nextGtin();
   payload.product.sharedContent.catalogAction = "revise"; delete payload.product.primarySkuId;
-  payload.skus[0] = { ...payload.skus[0], id: skuId, code: skuCode, identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }] };
+  const quantity = { dimension: "mass" as const, unit: "openlup:g", unscaled: String(100 + revision), scale: 0 };
+  payload.skus[0] = { ...payload.skus[0], id: skuId, code: skuCode, netContent: quantity, options: { pack_size: { kind: "quantity", value: quantity } }, identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }] };
   const facts = { ...payload.product.sharedContent.publicationSkus[0], skuCode };
   payload.product.sharedContent.publicationSkus = [facts]; payload.product.sharedContent.offerMemberships = []; payload.product.sharedContent.requestedModes = [];
   payload.publication.operations = [
@@ -431,7 +453,7 @@ it.each([
   const data = await draft(); await commit(data.publication);
   for (const table of ["catalog_publications", "catalog_sku_revisions", "catalog_operator_receipts", "catalog_publication_decisions"])
     await expect(db.query(`UPDATE public.${table} SET ${table === "catalog_publications" || table === "catalog_publication_decisions" ? "id=id" : table === "catalog_sku_revisions" ? "id=id" : "command_key=command_key"}`)).rejects.toMatchObject({ code: "55000" });
-  for (const signature of ["public.catalog_price_setup_prepare(text,text)", "public.catalog_price_setup_apply_prelocked(jsonb)",
+  for (const signature of ["public.catalog_price_setup_prepare(text,text)", "public.catalog_price_setup_apply_prelocked(jsonb,boolean)",
     "public.catalog_price_setup_prelock(uuid,uuid,jsonb)", "public.catalog_price_setup_apply_in_transaction(uuid,uuid,jsonb)"])
     expect((await db.query("SELECT has_function_privilege('authenticated',$1,'EXECUTE') AS allowed", [signature])).rows).toEqual([{ allowed: false }]);
   const role = `publication_reader_${process.pid}`, client = await db.connect();
@@ -508,7 +530,7 @@ it("separates the native price-only 64-character ceiling from dark structural re
   const before = await snapshot();
   let staged = false;
   const stagedAuthority = createPostgresCatalogPublication(dependencies(async (sql, executor) => {
-    if (staged || !sql.startsWith("UPDATE public.catalog_skus SET publication_facts")) return;
+    if (staged || !sql.startsWith("UPDATE public.catalog_skus SET publication_facts=$2::jsonb,attribute_values=")) return;
     staged = true;
     // A SQL identity is broader than hard authored preparation. Test the native
     // price-only guard independently, on otherwise complete real native rows.
@@ -526,7 +548,6 @@ it("separates the native price-only 64-character ceiling from dark structural re
 });
 it.each([
   ["net", "fractional", "15", 1], ["net", "zero", "0", 0], ["net", "negative", "-1", 0], ["net", "out_of_range", "2147483648", 0],
-  ["gross", "fractional", "15", 1], ["gross", "zero", "0", 0], ["gross", "negative", "-1", 0], ["gross", "out_of_range", "10000000000000000000000000000000000000000", 0],
 ] as const)("catalog_publication_refuses_%s_%s_mass", async (kind, _case, unscaled, scale) => {
   const data = await draft(), payload = structuredClone(data.payload);
   payload.skus[0][kind === "net" ? "netContent" : "grossMass"] = { dimension: "mass", unit: "openlup:g", unscaled, scale };
@@ -536,15 +557,12 @@ it.each([
   expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_integral_grams_required" });
   expect(await snapshot()).toEqual(before);
 });
-it("catalog_publication_preserves_integer_grams_at_native_boundaries", async () => {
-  const data = await draft(), payload = structuredClone(data.payload);
-  payload.skus[0].netContent = { dimension: "mass", unit: "openlup:g", unscaled: "2147483647", scale: 0 };
-  payload.skus[0].grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "9999999999999999999999999999999999999999", scale: 0 };
-  const receipt = await commit(await save(payload, data.draftId, 1));
-  expect((await db.query("SELECT net_weight_g,net_content_unscaled::text AS net,gross_mass_unscaled::text AS gross FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows)
-    .toEqual([{ net_weight_g: 2147483647, net: "2147483647", gross: "9999999999999999999999999999999999999999" }]);
-  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", items: [{ facts: { netContent: payload.skus[0].netContent, grossMass: payload.skus[0].grossMass } }] });
-});
+describe("bounded publication pagination", () => {
+  beforeAll(async () => {
+    let receipt = { head: paged.head };
+    for (let revision = 2; revision <= 100; revision++) receipt = await commit(await incrementalSku(paged.data, receipt.head, revision));
+    paged.head = receipt.head;
+  }, postgresSetupTimeoutMs);
 it("paginates full facts and freezes history at a product-bound high water", async () => {
   const first = await authority.readbackV2(paged.head);
   expect(first.outcome).toBe("page"); if (first.outcome !== "page") throw new Error("Missing first page");
@@ -562,6 +580,7 @@ it("paginates full facts and freezes history at a product-bound high water", asy
   expect(remainder.receipts).toHaveLength(1); expect(remainder.nextCursor).toBeNull();
   expect(history.receipts.every(receipt => receipt.head.revision < later.head.revision)).toBe(true);
   expect(await authority.readbackV2(paged.head)).toEqual(first);
+});
 });
 // The native matrix is shared by conservative constraint/lifecycle aliases.
 it.each([
@@ -1033,45 +1052,6 @@ it.each([
   expect(await unavailable.readbackV2(paged.head)).toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
 });
 
-// Opaque presentation checks and localized uniqueness belong to the installed adapter.
-it.each([
-  "W09_V5-1717_predicate_precedence_boundary",
-  "W09_V5-1718_predicate_precedence_boundary",
-  "W09_V5-1719_predicate_precedence_boundary",
-  "W09_V5-1720_predicate_precedence_boundary",
-  "W09_V5-1721_predicate_precedence_boundary",
-  "W09_V5-1722_predicate_precedence_boundary",
-  "W09_V5-1723_predicate_precedence_boundary",
-  "W09_V5-1724_predicate_precedence_boundary",
-  "W09_V5-1725_predicate_precedence_boundary",
-  "W09_V5-1726_predicate_precedence_boundary",
-  "W09_V5-1727_predicate_precedence_boundary",
-  "W09_V5-1729_predicate_precedence_boundary",
-  "W09_V5-1730_predicate_precedence_boundary",
-  "W09_V5-1731_predicate_precedence_boundary",
-  "W09_V5-1732_predicate_precedence_boundary",
-  "W09_V5-1733_predicate_precedence_boundary",
-  "W09_V5-1734_predicate_precedence_boundary",
-  "W09_V5-1735_predicate_precedence_boundary",
-  "W09_V5-1736_predicate_precedence_boundary"
-])("%s", async () => {
-  const data = await draft(), payload = structuredClone(data.payload);
-  const route = (foreignPublished.data.payload.product.sharedContent.presentation.routePath as { en: string }).en;
-  payload.product.sharedContent.presentation = { routePath: { en: route } };
-  const presentation = payload.publication.operations.find(op => op.op === "set_product_presentation")!;
-  if (presentation.op === "set_product_presentation") presentation.presentation = payload.product.sharedContent.presentation;
-  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
-  let observed = false;
-  const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async (executor, state, requirePrice) => {
-    expect(requirePrice).toBe(false); observed = true;
-    const rows = (await executor.query("SELECT id FROM public.catalog_products WHERE id<>$1 AND publication_facts->'presentation'->'routePath'->>'en'=$2", [state.product.id, route])).rows;
-    return { ready: rows.length === 0, reasons: rows.length ? ["localized_route_duplicate"] : [] };
-  } });
-  const capability = (await target.authorize(null))!;
-  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_activation_readiness_failed" });
-  expect(observed).toBe(true); expect(await snapshot()).toEqual(before);
-});
-
 // Dark inputs may be staged; activation still requires exact immutable media evidence.
 it.each([
   "W18_V5-0166_predicate_precedence_boundary",
@@ -1267,15 +1247,6 @@ it("rejects a decision replay body whose candidate or reason does not match its 
   }
 });
 
-it("catalog_publication_dark_primary_preserves_structural_readiness", async () => {
-  const data = await draft(), payload = structuredClone(data.payload);
-  payload.publication.operations.push({ op: "set_product_status", productSlug: payload.product.slug!, status: "active" });
-  const receipt = await commit(await save(payload, data.draftId, 1));
-  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", product: { status: "active" },
-    items: [{ facts: { status: "draft", sellableStandalone: false, sellableInSubscription: false } }] });
-  expect((await db.query("SELECT public.catalog_publication_sku_reasons($1,false) AS reasons", [data.skuId])).rows[0].reasons).toEqual([]);
-});
-
 
 // These fixtures use LC3/LC3P's real native inputs. The zero-cohort baseline is
 // the audited, never-populated installation invariant, not fabricated readiness.
@@ -1310,14 +1281,16 @@ async function inPriceDatabase(work: () => Promise<void>) {
   const previous = db; db = priceDb;
   try { await work(); } finally { db = previous; }
 }
-function realPriceAuthority(connection?: import("pg").PoolClient, afterQuery?: Parameters<typeof dependencies>[0]) {
+function realPriceAuthority(connection?: import("pg").PoolClient, afterQuery?: Parameters<typeof dependencies>[0], verifyMedia?: CatalogPublicationDependencies<null>["verifyMedia"]) {
   const deps = dependencies(afterQuery);
   if (connection) deps.transactions = { async run(work) {
     await connection.query("SAVEPOINT publication_test");
-    try { const result = await work(connection); await connection.query("RELEASE SAVEPOINT publication_test"); return result; }
+    try { const result = await work({ async query(sql, values) {
+      const result = await connection.query(sql, values); await afterQuery?.(sql, connection, result.rows, values); return result;
+    } }); await connection.query("RELEASE SAVEPOINT publication_test"); return result; }
     catch(error) { await connection.query("ROLLBACK TO SAVEPOINT publication_test"); throw error; }
   } };
-  return createPostgresCatalogPublication({ ...deps,
+  return createPostgresCatalogPublication({ ...deps, ...(verifyMedia ? { verifyMedia } : {}),
     readiness: async (executor,state,requirePrice) => {
       const reasons: string[] = [];
       for (const sku of state.skus) {
@@ -1433,9 +1406,6 @@ it.each(["W20_V5-1701_predicate_precedence_boundary",
   "W20_V5-2166_predicate_precedence_boundary",
   "W20_V5-2167_predicate_precedence_boundary",
   "W20_V5-2169_predicate_precedence_boundary"]) ("%s", async () => inPriceDatabase(async () => { await priceActivationMatrix(); }));
-
-it.each(["W21_V5-1706_predicate_precedence_boundary",
-  "W21_V5-1707_predicate_precedence_boundary"]) ("%s", async () => inPriceDatabase(async () => { await priceActivationMatrix(); }));
 
 it.each(["W22_V5-2173_predicate_precedence_boundary",
   "W22_V5-2174_predicate_precedence_boundary",
@@ -1587,3 +1557,2004 @@ it("catalog_publication_parent_replay_never_reruns_prices",async()=>inPriceDatab
   expect(await target.publish(data.publication,actor)).toEqual({outcome:"replayed",receipt});expect(priceCalls).toBe(calls);expect(await snapshot()).toEqual(before);
   expect((await db.query("SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1 AND active",[data.skuId])).rows).toEqual([{unit_price_minor:1500}]);
 }));
+
+
+it("cycle1 draft physical combinations are unique independent of status", async () => {
+  const data = await draft(), first = await commit(data.publication), payload = structuredClone(data.payload), sku = structuredClone(payload.skus[0]);
+  sku.id = randomUUID(); sku.code = `SKU-${sku.id}`;
+  const gtin = nextGtin(); sku.identifiers = [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }];
+  payload.skus = [sku]; delete payload.product.primarySkuId; payload.product.sharedContent.catalogAction = "revise";
+  const facts = { ...payload.product.sharedContent.publicationSkus[0], skuCode: sku.code };
+  payload.product.sharedContent.publicationSkus = [facts]; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  payload.publication.operations = [{ op: "create_sku", productSlug: payload.product.slug!, documentRevisionNo: 1, skuId: sku.id, ...facts },
+    { op: "create_identifier", skuCode: sku.code!, scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null }];
+  const command = await save(payload, data.draftId, 1, first.head); await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "duplicate_combination" });
+  expect(await snapshot()).toEqual(before);
+});
+it("cycle1 expected head precedes live drift", async () => {
+  const data = await draft(), first = await commit(data.publication), command = await revise(data, first.head);
+  await approve(command);
+  await db.query("UPDATE public.catalog_products SET name='Live drift' WHERE id=$1", [data.productId]);
+  const before = await snapshot();
+  expect(await authority.publish({ ...command, expectedHead: null }, actor)).toEqual({ outcome: "conflict", reason: "head_conflict" });
+  expect(await snapshot()).toEqual(before);
+});
+it("cycle1 scaled gross mass round trips exactly", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.skus[0].grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "1005", scale: 1 };
+  const receipt = await commit(await save(payload, data.draftId, 1));
+  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", items: [{ facts: { grossMass: payload.skus[0].grossMass } }] });
+  expect((await db.query("SELECT gross_mass_unscaled::text AS unscaled,gross_mass_scale AS scale FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows).toEqual([{ unscaled: "1005", scale: 1 }]);
+});
+it.each([["cycle1 retained omitted activation source advanced refuses", "advanced"], ["cycle1 retained omitted activation source abandoned refuses", "abandoned"],
+  ["W15_V5-1958_predicate_precedence_boundary", "advanced"], ["W15_V5-1959_predicate_precedence_boundary", "advanced"]] as const)("%s", async (_name, mode) => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, data = await priceDraft();
+  const first = await commit(data.publication, target, capability), payload = structuredClone(data.payload);
+  payload.product.sharedContent.catalogAction = "revise"; delete payload.product.primarySkuId; payload.skus = [];
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  const document = { ...payload.product.sharedContent.document, revisionNo: 2 }, canonicalText = canonicalCatalogDraftJson(document);
+  const digest = createHash("sha256").update(canonicalText).digest("hex"), revisionId = randomUUID();
+  payload.product.sharedContent.document = document;
+  payload.product.documentRevision = { ...payload.product.documentRevision!, id: revisionId, revisionNo: 2, digest };
+  payload.publication.operations = [
+    { op: "register_document_revision", productSlug: payload.product.slug!, revisionId, revisionNo: 2, documentRef: "example:document", sourceRef: "example:source", canonicalText, digest, provenance: { source: "current_draft" } },
+    { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 },
+  ];
+  const command = await save(payload, data.draftId, 2, first.head);
+  if (mode === "abandoned") {
+    const text = canonicalCatalogDraftJson({ schemaVersion: 3, action: "abandon", draftId: data.draftId, commandKey: "close-source", expectedRevision: 3 });
+    expect((await db.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS value", [text,createHash("sha256").update(text).digest("hex")])).rows[0].value.outcome).toBe("committed");
+  }
+  await approve(command, target, capability); const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  expect(await snapshot()).toEqual(before);
+}));
+async function withdrawalUnderRed() { await inPriceDatabase(async () => {
+  const data = await priceDraft(), payload = structuredClone(data.payload), second = structuredClone(payload.skus[0]);
+  second.id = randomUUID(); second.code = `SKU-${second.id}`;
+  second.netContent = { dimension: "mass", unit: "openlup:g", unscaled: "101", scale: 0 };
+  second.options = { pack_size: { kind: "quantity", value: second.netContent } };
+  const gtin = nextGtin(); second.identifiers = [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }];
+  second.priceOperations = [{ ...second.priceOperations![0], variantId: second.id, commandKey: `price:${second.id}` }];
+  payload.skus.push(second);
+  const facts = { ...payload.product.sharedContent.publicationSkus[0], skuCode: second.code };
+  payload.product.sharedContent.publicationSkus.push(facts);
+  payload.product.sharedContent.requestedModes.push({ skuCode: second.code!, modes: ["one_time"] });
+  payload.product.sharedContent.offerMemberships.push({ skuCode: second.code!, offerVersion: "example:offer", admitted: true });
+  payload.publication.operations.push({ op: "create_sku", skuId: second.id, productSlug: payload.product.slug!, documentRevisionNo: 1, ...facts },
+    { op: "create_identifier", skuCode: second.code!, scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null },
+    { op: "set_offer_membership", skuCode: second.code!, offerVersion: "example:offer", admitted: true },
+    { op: "set_sku_metadata", skuCode: second.code!, logisticsRef: "example:logistics" },
+    { op: "set_eligibility", skuCode: second.code!, sellableStandalone: true, sellableInSubscription: false },
+    { op: "set_sku_status", skuCode: second.code!, status: "active" });
+  const initial = await save(payload, data.draftId, 2), target = realPriceAuthority(), capability = (await target.authorize(null))!;
+  const first = await commit(initial, target, capability), withdrawal = structuredClone(payload);
+  withdrawal.product.sharedContent.catalogAction = "revise";
+  withdrawal.skus = [withdrawal.skus[0]]; delete withdrawal.skus[0].priceOperations;
+  withdrawal.product.sharedContent.publicationSkus = [withdrawal.product.sharedContent.publicationSkus[0]];
+  withdrawal.product.sharedContent.requestedModes = [{ skuCode: withdrawal.skus[0].code!, modes: [] }];
+  withdrawal.publication.operations = [{ op: "set_eligibility", skuCode: withdrawal.skus[0].code!, sellableStandalone: false, sellableInSubscription: false }];
+  const command = await save(withdrawal, data.draftId, 3, first.head), connection = await db.connect();
+  try {
+    await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+    await connection.query("UPDATE public.price_entries SET valid_to=statement_timestamp()-interval '1 microsecond' WHERE variant_id=$1 AND valid_to IS NULL", [second.id]);
+    await connection.query("UPDATE public.platform_job_controls SET last_status='failed' WHERE job_name='platform-watchdog'");
+    expect((await connection.query("SELECT public.commerce_offer_policy_v2_readiness() AS value")).rows[0].value.ready).toBe(false);
+    expect((await connection.query("SELECT public.catalog_price_setup_preview($1,$2,NULL) AS value", [second.id, priceList])).rows[0].value.currentCount).toBe(0);
+    const readinessReads: string[] = [];
+    const scoped = realPriceAuthority(connection, sql => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) readinessReads.push(sql); }), actor = (await scoped.authorize(null))!;
+    const receipt = await commit(command, scoped, actor);
+    expect(readinessReads).toEqual([]);
+    expect(receipt.head.revision).toBe(2);
+    expect((await connection.query("SELECT id,sellable_standalone FROM public.catalog_skus WHERE product_id=$1 ORDER BY id", [data.productId])).rows).toEqual([
+      { id: data.skuId, sellable_standalone: false }, { id: second.id, sellable_standalone: true },
+    ].sort((a,b) => a.id.localeCompare(b.id)));
+  } finally { await connection.query("ROLLBACK"); connection.release(); }
+}); }
+it("cycle1 withdrawal under real red readiness ignores an untouched expired sibling", withdrawalUnderRed);
+
+it.each(["draft", "active", "archived"] as const)("cycle1 native physical combination collision refuses %s", async status => {
+  const data = await draft(); await commit(data.publication);
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await expect(client.query(`INSERT INTO public.catalog_skus SELECT (jsonb_populate_record(NULL::public.catalog_skus,
+      to_jsonb(s)||jsonb_build_object('id',$2::text,'sku',$3::text,'status',$4::text))).* FROM public.catalog_skus s WHERE id=$1::uuid`,
+      [data.skuId,randomUUID(),`SKU-${randomUUID()}`,status])).rejects.toMatchObject({ code: "23505", constraint: "catalog_skus_publication_combination_key" });
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it("cycle1 affected source requires authored gross mass before simultaneous withdrawal", async () => inPriceDatabase(async () => {
+  const data = await priceDraft(), target = realPriceAuthority(), capability = (await target.authorize(null))!;
+  const first = await commit(data.publication, target, capability), payload = structuredClone(data.payload);
+  payload.product.sharedContent.catalogAction = "revise"; delete payload.skus[0].grossMass; delete payload.skus[0].priceOperations;
+  payload.product.sharedContent.requestedModes = [{ skuCode: payload.skus[0].code!, modes: [] }];
+  const document = { ...payload.product.sharedContent.document, revisionNo: 2 }, canonicalText = canonicalCatalogDraftJson(document);
+  const digest = createHash("sha256").update(canonicalText).digest("hex"), revisionId = randomUUID();
+  payload.product.sharedContent.document = document; payload.product.documentRevision = { ...payload.product.documentRevision!, id: revisionId, revisionNo: 2, digest };
+  payload.publication.operations = [
+    { op: "register_document_revision", productSlug: payload.product.slug!, revisionId, revisionNo: 2, documentRef: "example:document", sourceRef: "example:source", canonicalText, digest, provenance: { source: "current_draft" } },
+    { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 },
+    { op: "set_eligibility", skuCode: payload.skus[0].code!, sellableStandalone: false, sellableInSubscription: false },
+  ];
+  const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_gross_mass_required" });
+  expect(await snapshot()).toEqual(before);
+}));
+
+it("cycle1 native reader grammar keeps revision key and cursor boundaries", async () => {
+  const productId = randomUUID(), publicationId = randomUUID(), documentDigest = "a".repeat(64);
+  for (const revision of [1, 2_147_483_647])
+    expect(await authority.readbackV2({ publicationId, revision, documentDigest })).toEqual({ outcome: "unsupported", reason: "catalog_publication_absent" });
+  for (const revision of [0, -1, 1.5, 2_147_483_648])
+    expect(await authority.readbackV2({ publicationId, revision, documentDigest })).toEqual({ outcome: "validation_issue", reason: "catalog_publication_query_invalid" });
+  for (const commandKey of ["x", "x".repeat(240)]) expect(await authority.receipt({ productId, commandKey }, actor)).toEqual({ outcome: "absent" });
+  for (const commandKey of ["", " ", " x", "x ", "x".repeat(241)])
+    expect(await authority.receipt({ productId, commandKey }, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_query_invalid" });
+  for (const [highWater, before, valid] of [[1, 0, true], [2_147_483_647, 2_147_483_647, true], [0, 0, false],
+    [2_147_483_648, 0, false], [1, -1, false], [2_147_483_647, 2_147_483_648, false], [1, 2, false]] as const) {
+    const cursor = Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "history", productId, highWater, before })).toString("base64url");
+    expect(await authority.reads.history(productId, cursor)).toMatchObject(valid ? { outcome: "page", receipts: [], nextCursor: null }
+      : { outcome: "validation_issue", reason: "candidate_invalid" });
+  }
+});
+it("cycle1 native command grammar keeps candidate reason and change boundaries", async () => {
+  const data = await draft(), before = await snapshot();
+  const decision = { schemaVersion: 2 as const, action: "approve" as const, productId: data.productId, commandKey: "decision:bounds",
+    candidateRef: "?", candidateDigest: data.publication.candidateDigest, reason: "x" };
+  for (const length of [0, 1, 200, 201]) {
+    const candidateRef = "?".repeat(length), reason = length >= 1 && length <= 200 ? "candidate_invalid" : "catalog_publication_command_invalid";
+    expect(await authority.publish({ ...data.publication, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason });
+    expect(await authority.decision({ ...decision, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason });
+  }
+  for (const candidateRef of [`v1:${"-".repeat(36)}@1/unpublished`, `v1:${data.draftId}@2147483648/unpublished`]) {
+    expect(await authority.publish({ ...data.publication, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+    expect(await authority.decision({ ...decision, candidateRef }, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+  }
+  for (const length of [0, 1, 1000, 1001])
+    expect(await authority.decision({ ...decision, reason: "x".repeat(length) }, actor)).toEqual({ outcome: "validation_issue",
+      reason: length >= 1 && length <= 1000 ? "candidate_invalid" : "catalog_publication_command_invalid" });
+  for (const expectedRevision of [-1, 0, 2_147_483_646, 2_147_483_647])
+    expect(await authority.publish({ ...data.publication, changes: [{ variantId: data.skuId, expectedRevision, state: "active" }] }, actor))
+      .toEqual({ outcome: "validation_issue", reason: expectedRevision >= 0 && expectedRevision <= 2_147_483_646 ? "catalog_publication_approval_required" : "catalog_publication_command_invalid" });
+  for (const count of [10_000, 10_001])
+    expect(await authority.publish({ ...data.publication, changes: Array.from({ length: count }, () => ({ variantId: data.skuId, expectedRevision: 0, state: "active" as const })) }, actor))
+      .toEqual({ outcome: "validation_issue", reason: count === 10_000 ? "catalog_publication_approval_required" : "catalog_publication_command_invalid" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native receipt observation accepts a one-character SKU and rejects empty transport facts", async () => {
+  const data = await draft(undefined, "X"), receipt = await commit(data.publication), before = await snapshot();
+  expect(receipt.changes[0].sku).toBe("X");
+  expect(await authority.receipt({ productId: data.productId, commandKey: data.publication.commandKey }, actor)).toEqual({ outcome: "found", receipt });
+  const damaged = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts")) for (const row of rows) {
+      const result = row.result as typeof receipt;
+      row.result = { ...result, changes: result.changes.map(change => ({ ...change, sku: "" })) };
+    }
+  }));
+  const capability = (await damaged.authorize(null))!;
+  expect(await damaged.receipt({ productId: data.productId, commandKey: data.publication.commandKey }, capability))
+    .toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native publication rolls back primitive null and code-less adapter errors", async () => {
+  const data = await draft(); await approve(data.publication); const before = await snapshot();
+  const codeLess = new Proxy({}, { has: () => false, get: () => { throw new Error("Unrequested synthetic error field"); } });
+  for (const error of [null, undefined, false, 17, "Synthetic adapter outage", {}, new Error("Synthetic adapter outage"), codeLess]) {
+    const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async () => { throw error; } });
+    const capability = (await target.authorize(null))!;
+    await expect(target.publish(data.publication, capability)).resolves.toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+    expect(await snapshot()).toEqual(before);
+  }
+});
+
+it.each(["candidate", "live"] as const)("cycle1 native expected head independently binds the %s head", async mismatch => {
+  const data = await draft(), first = await commit(data.publication), second = await commit(await revise(data, first.head));
+  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise";
+  payload.product.sharedContent.presentation = { routePath: { en: `/third-${data.productId}` } };
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  const command = await save(payload, data.draftId, 2, first.head); await approve(command); const before = await snapshot();
+  expect(await authority.publish({ ...command, expectedHead: mismatch === "candidate" ? second.head : first.head }, actor))
+    .toEqual({ outcome: "conflict", reason: "head_conflict" });
+  expect(await snapshot()).toEqual(before);
+});
+it("cycle1 native actor membership response refuses extra rows", async () => {
+  const data = await draft(); await approve(data.publication); const before = await snapshot(); let injected = false;
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.includes("platform_human_membership_is_administrator")) { rows.push({ ...rows[0] }); injected = true; }
+  }));
+  const capability = (await target.authorize(null))!;
+  expect(await target.publish(data.publication, capability)).toEqual({ outcome: "unauthorized", reason: "publisher_not_authorized" });
+  expect(injected).toBe(true); expect(await snapshot()).toEqual(before);
+});
+it("cycle1 native current load rejects corrupt manifest transport fields", async () => {
+  const data = await draft(); await commit(data.publication); const before = await snapshot();
+  const faults: ((rows: Record<string, unknown>[]) => void)[] = [
+    rows => { rows.push(structuredClone(rows[0])); },
+    rows => { (rows[0].publication as Record<string, unknown>).product_id = randomUUID(); },
+    rows => { (rows[0].publication as Record<string, unknown>).digest = "c".repeat(64); },
+    rows => { const publication = rows[0].publication as Record<string, unknown>, manifest = JSON.parse(publication.canonical_state as string); manifest.product.id = randomUUID(); publication.canonical_state = canonicalCatalogDraftJson(manifest); publication.digest = createHash("sha256").update(publication.canonical_state as string).digest("hex"); },
+    rows => { const documents = rows[0].documents as Record<string, unknown>[]; documents[0].source_ref = "example:foreign"; },
+    rows => { const documents = rows[0].documents as Record<string, unknown>[]; documents[0].canonical_text = "{}"; },
+    rows => { const publication = rows[0].publication as Record<string, unknown>; publication.canonical_state = ` ${publication.canonical_state as string} `; },
+  ];
+  for (const fault of faults) {
+    let injected = false;
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT (SELECT to_jsonb(h)")) { fault(rows); injected = true; }
+    }));
+    expect(await target.reads.current(data.productId)).toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+    expect(injected).toBe(true);
+  }
+  expect(await snapshot()).toEqual(before);
+});
+it("cycle1 native historical load never fabricates absent lineage", async () => {
+  const data = await draft(), receipt = await commit(data.publication), before = await snapshot(); let injected = false;
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.startsWith("SELECT (SELECT to_jsonb(h)")) { rows[0].publication = null; rows[0].live_product = null; injected = true; }
+  }));
+  expect(await target.reads.readback(receipt.head)).toEqual({ outcome: "unsupported", reason: "publication_not_supported" });
+  expect(injected).toBe(true); expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native publish names incomplete document and SKU transport refusals", async () => {
+  const data = await draft(), first = await commit(data.publication), command = await revise(data, first.head); await approve(command); const before = await snapshot();
+  const faults: [string, (row: Record<string, unknown>) => void][] = [
+    ["catalog_publication_document_invalid", row => { row.documents = []; }],
+    ["catalog_publication_document_invalid", row => { (row.documents as Record<string, unknown>[])[0].source_ref = "example:foreign"; }],
+    ["catalog_publication_document_invalid", row => { (row.documents as Record<string, unknown>[])[0].canonical_text = "{}"; }],
+    ["catalog_publication_sku_revision_invalid", row => { row.revisions = []; }],
+    ["catalog_publication_sku_revision_invalid", row => { (row.revisions as Record<string, unknown>[])[0].id = randomUUID(); }],
+    ["catalog_publication_sku_revision_invalid", row => { (row.revisions as Record<string, unknown>[])[0].full_facts = 0; }],
+    ["catalog_publication_sku_revision_invalid", row => { const revision = (row.revisions as Record<string, unknown>[])[0], facts = JSON.parse(revision.full_facts as string); facts.title = "Changed transport title"; revision.full_facts = canonicalCatalogDraftJson(facts); }],
+    ["catalog_publication_sku_revision_invalid", row => { (row.revisions as Record<string, unknown>[])[0].digest = "c".repeat(64); }],
+    ["catalog_publication_sku_revision_invalid", row => { const revision = (row.revisions as Record<string, unknown>[])[0]; revision.full_facts = ` ${revision.full_facts as string} `; }],
+    ["catalog_publication_sku_revision_invalid", row => { (row.revisions as Record<string, unknown>[])[0].sku_id = randomUUID(); }],
+    ["catalog_publication_sku_revision_invalid", row => { (row.revisions as Record<string, unknown>[])[0].revision = 2; }],
+  ];
+  for (const [reason, fault] of faults) {
+    let injected = false;
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT (SELECT to_jsonb(h)")) { fault(rows[0]); injected = true; }
+    }));
+    const capability = (await target.authorize(null))!;
+    expect(await target.publish(command, capability)).toEqual({ outcome: "dependency_unavailable", reason });
+    expect(injected).toBe(true); expect(await snapshot()).toEqual(before);
+  }
+});
+
+it("cycle1 native legacy readback retains A exactly after B changes live projections", async () => {
+  const data = await draft(), first = await commit(data.publication), retained = await authority.reads.readback(first.head);
+  expect(retained).toMatchObject({ outcome: "found", head: first.head });
+  const second = await commit(await revise(data, first.head));
+  expect(await authority.reads.readback(first.head)).toEqual(retained);
+  expect(await authority.reads.current(data.productId)).toMatchObject({ outcome: "found", head: second.head });
+});
+it("cycle1 native current read refuses every mismatched live projection field", async () => {
+  const data = await draft(); await commit(data.publication); const before = await snapshot();
+  const faults: ((row: Record<string, unknown>) => void)[] = [row => { row.live_product = null; },
+    row => { (row.live_skus as unknown[]).pop(); }, row => { (row.live_skus as unknown[]).push(structuredClone((row.live_skus as unknown[])[0])); }];
+  for (const [field, value] of Object.entries({ publication_facts: {}, slug: "other", name: "Other", status: "archived", primary_sku_id: randomUUID(), current_document_revision_id: randomUUID() }))
+    faults.push(row => { (row.live_product as Record<string, unknown>)[field] = value; });
+  for (const [field, value] of Object.entries({ id: randomUUID(), publication_facts: {}, sku: "OTHER", title: "Other", status: "archived",
+    sellable_standalone: true, sellable_in_subscription: true, min_order_qty: 2, is_addon: true }))
+    faults.push(row => { (row.live_skus as Record<string, unknown>[])[0][field] = value; });
+  for (const fault of faults) {
+    let injected = false;
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT (SELECT to_jsonb(h)")) { fault(rows[0]); injected = true; }
+    }));
+    expect(await target.reads.current(data.productId)).toEqual({ outcome: "conflict", reason: "head_conflict" });
+    expect(injected).toBe(true);
+  }
+  expect(await snapshot()).toEqual(before);
+});
+it("cycle1 native loaded SKU identity matches the manifest despite a correlated transport digest", async () => {
+  const data = await draft(); await commit(data.publication); const before = await snapshot();
+  for (const field of ["id", "productId"]) {
+    let injected = false;
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (!sql.startsWith("SELECT (SELECT to_jsonb(h)")) return;
+      const row = rows[0], revision = (row.revisions as Record<string, unknown>[])[0], facts = JSON.parse(revision.full_facts as string);
+      facts[field] = randomUUID(); revision.full_facts = canonicalCatalogDraftJson(facts);
+      revision.digest = createHash("sha256").update(revision.full_facts as string).digest("hex");
+      const publication = row.publication as Record<string, unknown>, manifest = JSON.parse(publication.canonical_state as string);
+      manifest.skus.find((reference: { revisionId: string }) => reference.revisionId === revision.id).digest = revision.digest;
+      publication.canonical_state = canonicalCatalogDraftJson(manifest); publication.digest = createHash("sha256").update(publication.canonical_state as string).digest("hex");
+      injected = true;
+    }));
+    expect(await target.reads.current(data.productId)).toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+    expect(injected).toBe(true);
+  }
+  expect(await snapshot()).toEqual(before);
+});
+
+
+it("catalog_publication_preserves_integer_grams_at_native_boundaries", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.skus[0].netContent = { dimension: "mass", unit: "openlup:g", unscaled: "2147483647", scale: 0 };
+  payload.skus[0].grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "9999999999999999999999999999999999999999", scale: 0 };
+  const receipt = await commit(await save(payload, data.draftId, 1));
+  expect((await db.query("SELECT net_weight_g,net_content_unscaled::text AS net,gross_mass_unscaled::text AS gross FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows)
+    .toEqual([{ net_weight_g: 2147483647, net: "2147483647", gross: "9999999999999999999999999999999999999999" }]);
+  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", items: [{ facts: { netContent: payload.skus[0].netContent, grossMass: payload.skus[0].grossMass } }] });
+});
+
+
+// Opaque presentation checks and localized uniqueness belong to the installed adapter.
+it.each([
+  "W09_V5-1717_predicate_precedence_boundary",
+  "W09_V5-1718_predicate_precedence_boundary",
+  "W09_V5-1719_predicate_precedence_boundary",
+  "W09_V5-1720_predicate_precedence_boundary",
+  "W09_V5-1721_predicate_precedence_boundary",
+  "W09_V5-1722_predicate_precedence_boundary",
+  "W09_V5-1723_predicate_precedence_boundary",
+  "W09_V5-1724_predicate_precedence_boundary",
+  "W09_V5-1725_predicate_precedence_boundary",
+  "W09_V5-1726_predicate_precedence_boundary",
+  "W09_V5-1727_predicate_precedence_boundary",
+  "W09_V5-1729_predicate_precedence_boundary",
+  "W09_V5-1730_predicate_precedence_boundary",
+  "W09_V5-1731_predicate_precedence_boundary",
+  "W09_V5-1732_predicate_precedence_boundary",
+  "W09_V5-1733_predicate_precedence_boundary",
+  "W09_V5-1734_predicate_precedence_boundary",
+  "W09_V5-1735_predicate_precedence_boundary",
+  "W09_V5-1736_predicate_precedence_boundary"
+])("%s", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  const route = (foreignPublished.data.payload.product.sharedContent.presentation.routePath as { en: string }).en;
+  payload.product.sharedContent.presentation = { routePath: { en: route } };
+  const presentation = payload.publication.operations.find(op => op.op === "set_product_presentation")!;
+  if (presentation.op === "set_product_presentation") presentation.presentation = payload.product.sharedContent.presentation;
+  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
+  let observed = false;
+  const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async (executor, state, requirePrice) => {
+    expect(requirePrice).toBe(false); observed = true;
+    const rows = (await executor.query("SELECT id FROM public.catalog_products WHERE id<>$1 AND publication_facts->'presentation'->'routePath'->>'en'=$2", [state.product.id, route])).rows;
+    return { ready: rows.length === 0, reasons: rows.length ? ["localized_route_duplicate"] : [] };
+  } });
+  const capability = (await target.authorize(null))!;
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
+  expect(observed).toBe(true); expect(await snapshot()).toEqual(before);
+});
+
+
+it("cycle1 active product requires an active eligible primary", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.publication.operations.push({ op: "set_product_status", productSlug: payload.product.slug!, status: "active" });
+  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_active_primary_required" });
+  expect(await snapshot()).toEqual(before);
+});
+
+
+it.each(["W21_V5-1706_predicate_precedence_boundary",
+  "W21_V5-1707_predicate_precedence_boundary"]) ("%s", withdrawalUnderRed);
+
+it("cycle1 native projection failures distinguish live drift from an executor outage", async () => {
+  const data = await draft(), first = await commit(data.publication), command = await revise(data, first.head); await approve(command);
+  const failed = createPostgresCatalogPublication(dependencies(sql => { if (sql.startsWith("SELECT p.publication_facts=")) throw new Error("Synthetic projection executor outage"); }));
+  expect(await failed.reads.current(data.productId)).toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+  const original = (await db.query("SELECT net_weight_g FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows[0].net_weight_g;
+  try {
+    await db.query("UPDATE public.catalog_skus SET net_weight_g=net_weight_g+1 WHERE id=$1", [data.skuId]); const before = await snapshot();
+    expect(await authority.reads.current(data.productId)).toEqual({ outcome: "conflict", reason: "head_conflict" });
+    expect(await authority.publish(command, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_live_drift" });
+    expect(await snapshot()).toEqual(before);
+  } finally { await db.query("UPDATE public.catalog_skus SET net_weight_g=$2 WHERE id=$1", [data.skuId, original]); }
+});
+it("cycle1 native publication replay refuses another real human and malformed receipt columns", async () => {
+  const data = await draft(); await commit(data.publication);
+  const other = randomUUID(); await db.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,$2)", [other, `${other}@example.invalid`]);
+  await db.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [other]);
+  const otherAuthority = createPostgresCatalogPublication({ ...dependencies(), authorizeHuman: async () => ({ ok: true, userId: other, role: "admin", isMachineActor: false }) });
+  const otherActor = (await otherAuthority.authorize(null))!; const before = await snapshot();
+  expect(await otherAuthority.publish(data.publication, otherActor)).toEqual({ outcome: "unauthorized", reason: "catalog_publication_operator_mismatch" });
+  for (const mode of ["extra row", "kind", "fingerprint"]) {
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (!sql.startsWith("SELECT * FROM public.catalog_operator_receipts")) return;
+      if (mode === "extra row") rows.push(structuredClone(rows[0]));
+      if (mode === "kind") rows[0].kind = "approve";
+      if (mode === "fingerprint") rows[0].fingerprint = "c".repeat(64);
+    }));
+    const capability = (await target.authorize(null))!;
+    expect(await target.publish(data.publication, capability)).toEqual(mode === "extra row"
+      ? { outcome: "unauthorized", reason: "catalog_publication_operator_mismatch" }
+      : { outcome: "conflict", reason: "catalog_publication_command_key_reused" });
+  }
+  expect(await snapshot()).toEqual(before);
+});
+it("cycle1 native decision replay binds every receipt identity field", async () => {
+  const data = await draft(), decision = await approve(data.publication), before = await snapshot();
+  for (const changed of [{ productId: randomUUID() }, { commandKey: "other:decision" }, { fingerprint: "c".repeat(64) },
+    { actorId: randomUUID() }, { action: "revoke" }, { candidateRef: "other" }, { candidateDigest: "c".repeat(64) }, { reason: "Other reason" }]) {
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts") && rows[0]) Object.assign(rows[0].result as object, changed);
+    }));
+    const capability = (await target.authorize(null))!;
+    expect(await target.decision(decision, capability)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
+    expect(await snapshot()).toEqual(before);
+  }
+});
+
+it("cycle1 native receipt recovery never substitutes a later real publication body", async () => {
+  const data = await draft(), first = await commit(data.publication), second = await commit(await revise(data, first.head)), before = await snapshot();
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts") && rows[0]?.command_key === first.commandKey)
+      rows[0].result = { ...second, commandKey: first.commandKey, fingerprint: first.fingerprint };
+  }));
+  const capability = (await target.authorize(null))!;
+  expect(await target.receipt({ productId: data.productId, commandKey: first.commandKey }, capability))
+    .toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
+  expect(await target.publish(data.publication, capability)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native B receipt metadata stays bound to its real publication and predecessor A", async () => {
+  const data = await draft(), first = await commit(data.publication), command = await revise(data, first.head), second = await commit(command), before = await snapshot();
+  for (const field of ["missing", "extra", "revision", "document_digest", "digest", "committed_at", "previous_id", "previous_revision", "previous_document_digest"]) {
+    let injected = false;
+    const target = createPostgresCatalogPublication(dependencies(async (sql, executor, rows) => {
+      if (!sql.startsWith("SELECT p.revision,p.digest,d.digest AS document_digest")) return;
+      if (field === "missing") rows.length = 0;
+      else if (field === "extra") rows.push(structuredClone(rows[0]));
+      else if (field === "committed_at") rows[0].committed_at = (await executor.query("SELECT to_char(($1::timestamptz+interval '1 microsecond') AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value", [rows[0].committed_at])).rows[0].value;
+      else if (field === "revision" || field === "previous_revision") rows[0][field] = Number(rows[0][field]) + 1;
+      else rows[0][field] = field === "previous_id" ? randomUUID() : "c".repeat(64);
+      injected = true;
+    }));
+    const capability = (await target.authorize(null))!;
+    expect(await target.receipt({ productId: data.productId, commandKey: second.commandKey }, capability))
+      .toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
+    expect(injected).toBe(true); expect(await snapshot()).toEqual(before);
+  }
+  const scoped = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.startsWith("SELECT * FROM public.catalog_operator_receipts")) rows[0].scope_id = randomUUID();
+  }));
+  expect(await scoped.receipt({ productId: data.productId, commandKey: second.commandKey }, (await scoped.authorize(null))!))
+    .toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_receipt_invalid" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native candidate binds product version and referenced publication head", async () => {
+  const data = await draft(), other = await draft(), first = await commit(data.publication), next = await revise(data, first.head), before = await snapshot();
+  const command = { schemaVersion: 2 as const, action: "approve" as const, productId: data.productId, commandKey: "candidate:binding",
+    candidateRef: next.candidateRef, candidateDigest: next.candidateDigest, reason: "Verify candidate identity" };
+  expect(await authority.decision({ ...command, candidateRef: other.publication.candidateRef, candidateDigest: other.publication.candidateDigest }, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+  expect(await authority.decision({ ...command, candidateRef: next.candidateRef.replace(`/${first.head.publicationId}@${first.head.revision}`, `/${first.head.publicationId}@${first.head.revision + 1}`) }, actor))
+    .toEqual({ outcome: "conflict", reason: "head_conflict" });
+  for (const count of [0, 2]) {
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT p.id,p.revision,d.digest FROM public.catalog_publications")) {
+        if (count === 0) rows.length = 0; else rows.push(structuredClone(rows[0]));
+      }
+    }));
+    expect(await target.decision(command, (await target.authorize(null))!)).toEqual({ outcome: "conflict", reason: "head_conflict" });
+  }
+  for (const version of [1, 2]) {
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT public.catalog_draft_record")) {
+        const record = rows[0].record as { payload: Record<string, unknown> };
+        delete record.payload.publication; record.payload.schemaVersion = version;
+      }
+    }));
+    expect(await target.decision(command, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+  }
+  expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native candidate refuses missing validator and changed installed definition evidence", async () => {
+  const data = await draft(), before = await snapshot();
+  const command = { schemaVersion: 2 as const, action: "approve" as const, productId: data.productId, commandKey: "candidate:definition",
+    candidateRef: data.publication.candidateRef, candidateDigest: data.publication.candidateDigest, reason: "Verify installed definition" };
+  const absent = createPostgresCatalogPublication({ ...dependencies(), registry: createCatalogProductTypeRegistry([]) });
+  expect(await absent.decision(command, (await absent.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_definition_drift" });
+  for (const mode of ["missing", "extra", "changed"] as const) {
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT definition_digest FROM public.catalog_type_versions")) {
+        if (mode === "missing") rows.length = 0;
+        else if (mode === "extra") rows.push(structuredClone(rows[0]));
+        else rows[0].definition_digest = "c".repeat(64);
+      }
+    }));
+    expect(await target.decision(command, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_definition_drift" });
+  }
+  const withoutValidator = { ...definition, validatorRef: undefined };
+  const target = createPostgresCatalogPublication({ ...dependencies(), registry: createCatalogProductTypeRegistry([withoutValidator]) });
+  expect(await target.decision(command, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_definition_drift" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native publication locks and verifies its installed active tax class", async () => {
+  const taxDefinition = { ...definition, key: "example:taxed-article", taxClass: "example:publication-tax" };
+  await installCatalogDefinitions(db, { id: "example:publication-tax", namespace: "example", version: 1, openlupRange: "^1.0.0", capabilities: { publish: false }, types: [taxDefinition], taxClasses: [{ key: taxDefinition.taxClass }] });
+  const data = await draft(), payload = structuredClone(data.payload); payload.product.type.key = taxDefinition.key;
+  const command = await save(payload, data.draftId, 1);
+  command.candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(payload)).update(",")
+    .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: catalogDefinitionDigest(taxDefinition) }])).update(",null]").digest("hex");
+  const target = createPostgresCatalogPublication({ ...dependencies(), registry: createCatalogProductTypeRegistry([taxDefinition]) }), capability = (await target.authorize(null))!;
+  await approve(command, target, capability);
+  const before = await snapshot();
+  for (const count of [0, 2]) {
+    const damaged = createPostgresCatalogPublication({ ...dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT key FROM public.catalog_tax_classes")) { if (count === 0) rows.length = 0; else rows.push(structuredClone(rows[0])); }
+    }), registry: createCatalogProductTypeRegistry([taxDefinition]) });
+    const identity = (await damaged.authorize(null))!;
+    expect(await damaged.publish(command, identity)).toEqual({ outcome: "validation_issue", reason: "catalog_tax_class_unavailable" });
+    expect(await snapshot()).toEqual(before);
+  }
+  await db.query("UPDATE public.catalog_tax_classes SET status='retired' WHERE key=$1", [taxDefinition.taxClass]);
+  try { expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_tax_class_unavailable" }); }
+  finally { await db.query("UPDATE public.catalog_tax_classes SET status='active' WHERE key=$1", [taxDefinition.taxClass]); }
+  expect(await snapshot()).toEqual(before);
+  expect(await target.publish(command, capability)).toMatchObject({ outcome: "committed", receipt: { productId: data.productId } });
+});
+
+it("cycle1 native draft admission binds every claim identity and the open current head", async () => {
+  const data = await draft(), missing = structuredClone(data.payload);
+  missing.publication.evidence.drafts = [{ draftId: randomUUID(), revision: 2, commandKey: "missing:claim", fingerprint: "c".repeat(64) }];
+  const command = await save(missing, data.draftId, 1); await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  expect(await snapshot()).toEqual(before);
+  const closed = await draft(), abandon = canonicalCatalogDraftJson({ schemaVersion: 3, action: "abandon", draftId: closed.draftId, commandKey: "close:current", expectedRevision: 1 });
+  expect((await db.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [abandon, createHash("sha256").update(abandon).digest("hex")])).rows[0].result.outcome).toBe("committed");
+  const abandoned = { ...closed.publication, candidateRef: `v1:${closed.draftId}@2/unpublished` };
+  await approve(abandoned); const closedBefore = await snapshot();
+  expect(await authority.publish(abandoned, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  expect(await snapshot()).toEqual(closedBefore);
+});
+
+it("cycle1 native retained source claims bind product command and fingerprint", async () => {
+  const data = await draft(), first = await commit(data.publication), command = await revise(data, first.head); await approve(command);
+  const before = await snapshot();
+  for (const changed of [{ commandKey: "other:source" }, { fingerprint: "c".repeat(64) }]) {
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (sql.startsWith("SELECT public.catalog_draft_record") && (rows[0]?.record as { revision?: number } | undefined)?.revision === 1)
+        Object.assign(rows[0].record as object, changed);
+    }));
+    expect(await target.publish(command, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+    expect(await snapshot()).toEqual(before);
+  }
+  const foreign = await draft(), record = (await db.query("SELECT public.catalog_draft_record($1,1) AS record", [foreign.draftId])).rows[0].record;
+  const local = await draft(), payload = structuredClone(local.payload);
+  payload.publication.evidence.drafts = [{ draftId: record.draftId, revision: record.revision, commandKey: record.commandKey, fingerprint: record.fingerprint }];
+  const foreignClaim = await save(payload, local.draftId, 1); await approve(foreignClaim); const claimedBefore = await snapshot();
+  expect(await authority.publish(foreignClaim, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+  expect(await snapshot()).toEqual(claimedBefore);
+});
+
+it.each(["eligibility", "membership"] as const)("cycle1 native omitted %s withdrawal preserves its source refusal before activation admission", async mode => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, target, capability);
+  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = [];
+  payload.publication.operations = mode === "eligibility" ? [{ op: "set_eligibility", skuCode: data.payload.skus[0].code!, sellableStandalone: false, sellableInSubscription: false }]
+    : [{ op: "set_offer_membership", skuCode: data.payload.skus[0].code!, offerVersion: "example:offer", admitted: false }];
+  const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: mode === "eligibility" ? "catalog_publication_eligibility_source_mismatch" : "catalog_publication_membership_source_mismatch" });
+  expect(await snapshot()).toEqual(before);
+}));
+
+it.each(["draft eligible", "active ineligible"] as const)("cycle1 native document move excludes an omitted %s SKU from activation source admission", async mode => inPriceDatabase(async () => {
+  const reads: unknown[][] = [], target = realPriceAuthority(undefined, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); }), capability = (await target.authorize(null))!, data = await priceDraft(), initial = structuredClone(data.payload);
+  if (mode === "draft eligible") initial.publication.operations = initial.publication.operations.filter(operation => operation.op !== "set_sku_status");
+  let head = (await commit(await save(initial, data.draftId, 2), target, capability)).head, revision = 3;
+  if (mode === "active ineligible") {
+    const withdrawal = structuredClone(initial); delete withdrawal.skus[0].priceOperations; withdrawal.product.sharedContent.catalogAction = "revise";
+    withdrawal.product.sharedContent.requestedModes = [{ skuCode: withdrawal.skus[0].code!, modes: [] }];
+    withdrawal.publication.operations = [{ op: "set_eligibility", skuCode: withdrawal.skus[0].code!, sellableStandalone: false, sellableInSubscription: false }];
+    head = (await commit(await save(withdrawal, data.draftId, revision++, head), target, capability)).head;
+  }
+  const payload = structuredClone(initial); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  const document = { ...payload.product.sharedContent.document, revisionNo: 2 }, canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex"), revisionId = randomUUID();
+  payload.product.sharedContent.document = document; payload.product.documentRevision = { ...payload.product.documentRevision!, id: revisionId, revisionNo: 2, digest };
+  payload.publication.operations = [
+    { op: "register_document_revision", productSlug: payload.product.slug!, revisionId, revisionNo: 2, documentRef: "example:document", sourceRef: "example:source", canonicalText, digest, provenance: { source: "current_draft" } },
+    { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 },
+  ];
+  reads.length = 0;
+  expect((await commit(await save(payload, data.draftId, revision, head), target, capability)).head.revision).toBe(head.revision + 1);
+  expect(reads).toEqual([[data.skuId, false], [data.skuId, false]]);
+}));
+
+it.each(["membership", "product activation"] as const)("cycle1 native omitted active eligible source must be current for %s", async mode => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, target, capability);
+  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  payload.publication.operations = mode === "membership" ? [{ op: "set_offer_membership", skuCode: data.payload.skus[0].code!, offerVersion: "example:offer", admitted: true }]
+    : [{ op: "set_product_status", productSlug: payload.product.slug!, status: "active" }];
+  const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  expect(await snapshot()).toEqual(before);
+}));
+
+it("cycle1 native presentation alone does not reactivate an omitted eligible SKU", async () => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, target, capability);
+  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  payload.product.sharedContent.presentation = { routePath: { en: "/changed-presentation" } };
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  expect((await commit(await save(payload, data.draftId, 2, first.head), target, capability)).head.revision).toBe(2);
+}));
+
+it.each(["document", "product", "archive"] as const)("cycle1 native omitted activation admission keeps %s scope refusal precedence", async mode => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, target, capability);
+  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  payload.publication.operations = mode === "document" ? [{ op: "move_document_pointer", productSlug: "other-product", documentRevisionNo: 1 }]
+    : [{ op: "set_product_status", productSlug: mode === "product" ? "other-product" : payload.product.slug!, status: mode === "archive" ? "archived" : "active" }];
+  const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: mode === "archive" ? "catalog_publication_v3_compile_sku_archived" : "catalog_publication_scope_expansion" });
+  expect(await snapshot()).toEqual(before);
+}));
+
+it("cycle1 native incremental dark SKU runs structural readiness for its affected set", async () => inPriceDatabase(async () => {
+  const reads: unknown[][] = [], target = realPriceAuthority(undefined, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); });
+  const capability = (await target.authorize(null))!, data = await draft(), first = await commit(data.publication, target, capability);
+  reads.length = 0;
+  const command = await incrementalSku(data, first.head, 1);
+  const skuId = (await db.query("SELECT public.catalog_draft_record($1,2) AS record", [data.draftId])).rows[0].record.payload.skus[0].id;
+  const receipt = await commit(command, target, capability);
+  expect(reads).toEqual([[skuId, false], [skuId, false]]);
+  expect((await target.readbackV2(receipt.head))).toMatchObject({ outcome: "page", items: expect.any(Array) });
+  const payload = (await db.query("SELECT public.catalog_draft_record($1,2) AS record", [data.draftId])).rows[0].record.payload as CatalogDraftPayloadV3;
+  const skuCode = payload.skus[0].code!;
+  payload.product.sharedContent.offerMemberships = [{ skuCode, offerVersion: "example:offer", admitted: true }];
+  payload.publication.operations = [{ op: "set_offer_membership", skuCode, offerVersion: "example:offer", admitted: true }];
+  reads.length = 0;
+  await commit(await save(payload, data.draftId, 2, receipt.head), target, capability);
+  expect(reads).toEqual([[skuId, false], [skuId, false]]);
+}));
+
+it("cycle1 native new SKU activation checks only its affected structural and price set", async () => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, target, capability);
+  const payload = structuredClone(data.payload), sku = structuredClone(payload.skus[0]), gtin = nextGtin();
+  sku.id = randomUUID(); sku.code = `SKU-${sku.id}`; sku.netContent = { dimension: "mass", unit: "openlup:g", unscaled: "101", scale: 0 };
+  sku.options = { pack_size: { kind: "quantity", value: sku.netContent } }; sku.identifiers = [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }];
+  sku.priceOperations = [{ ...sku.priceOperations![0], variantId: sku.id, commandKey: `price:${sku.id}` }];
+  payload.skus = [sku]; delete payload.product.primarySkuId; payload.product.sharedContent.catalogAction = "revise";
+  const facts = { ...payload.product.sharedContent.publicationSkus[0], skuCode: sku.code };
+  payload.product.sharedContent.publicationSkus = [facts]; payload.product.sharedContent.offerMemberships = [{ skuCode: sku.code!, offerVersion: "example:offer", admitted: true }];
+  payload.product.sharedContent.requestedModes = [{ skuCode: sku.code!, modes: ["one_time"] }];
+  payload.publication.operations = [
+    { op: "create_sku", skuId: sku.id, productSlug: payload.product.slug!, documentRevisionNo: 1, ...facts },
+    { op: "create_identifier", skuCode: sku.code!, scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null },
+    { op: "set_offer_membership", skuCode: sku.code!, offerVersion: "example:offer", admitted: true },
+    { op: "set_sku_metadata", skuCode: sku.code!, logisticsRef: "example:logistics" },
+    { op: "set_eligibility", skuCode: sku.code!, sellableStandalone: true, sellableInSubscription: false },
+    { op: "set_sku_status", skuCode: sku.code!, status: "active" },
+  ];
+  const command: CatalogPublishCommand = { ...await save(payload, data.draftId, 2, first.head), changes: [{ variantId: sku.id, expectedRevision: 0, state: "active" }] };
+  const connection = await db.connect();
+  try {
+    await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+    expect((await connection.query("SELECT public.commerce_offer_policy_v2_readiness() AS value")).rows[0].value).toMatchObject({ ready: true, reasons: [] });
+    const reads: unknown[][] = [], scoped = realPriceAuthority(connection, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); }), identity = (await scoped.authorize(null))!;
+    await approve(command, scoped, identity); const before = await snapshot(connection);
+    for (const changes of [[{ variantId: randomUUID(), expectedRevision: 0, state: "active" as const }], [{ variantId: sku.id, expectedRevision: 0, state: "withdrawn" as const }]]) {
+      expect(await scoped.publish({ ...command, changes }, identity)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_variant_state_mismatch" });
+      expect(await snapshot(connection)).toEqual(before);
+    }
+    expect(await scoped.publish(command, identity)).toMatchObject({ outcome: "committed", receipt: { head: { revision: 2 } } });
+    expect(reads).toEqual([[sku.id, false], [sku.id, false], [sku.id, true], [sku.id, true]]);
+  } finally { await connection.query("ROLLBACK"); connection.release(); }
+}));
+
+it("cycle1 native archiving an ineligible product skips activation readiness", async () => inPriceDatabase(async () => {
+  const reads: string[] = [], target = realPriceAuthority(undefined, sql => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(sql); });
+  const capability = (await target.authorize(null))!, data = await draft(), first = await commit(data.publication, target, capability);
+  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  payload.publication.operations = [{ op: "set_offer_membership", skuCode: data.payload.skus[0].code!, offerVersion: "example:offer", admitted: false },
+    { op: "set_product_status", productSlug: payload.product.slug!, status: "archived" }];
+  reads.length = 0;
+  expect((await commit(await save(payload, data.draftId, 1, first.head), target, capability)).head.revision).toBe(2);
+  expect(reads).toEqual([]);
+}));
+
+it("cycle1 native eligibility alone requires prices without a structural operation", async () => inPriceDatabase(async () => {
+  const reads: unknown[][] = [], target = realPriceAuthority(undefined, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); });
+  const capability = (await target.authorize(null))!, data = await priceDraft(), initial = structuredClone(data.payload);
+  initial.product.sharedContent.requestedModes = [{ skuCode: initial.skus[0].code!, modes: [] }];
+  initial.publication.operations = initial.publication.operations.filter(operation => operation.op !== "set_eligibility" && operation.op !== "set_sku_status");
+  const first = await commit(await save(initial, data.draftId, 2), target, capability), payload = structuredClone(initial);
+  payload.product.sharedContent.catalogAction = "revise"; delete payload.skus[0].priceOperations;
+  payload.product.sharedContent.requestedModes = [{ skuCode: payload.skus[0].code!, modes: ["one_time"] }];
+  payload.publication.operations = [{ op: "set_eligibility", skuCode: payload.skus[0].code!, sellableStandalone: true, sellableInSubscription: false }];
+  reads.length = 0;
+  await commit(await save(payload, data.draftId, 3, first.head), target, capability);
+  expect(reads).toEqual([[data.skuId, true], [data.skuId, true]]);
+}));
+
+it("cycle1 native membership admission rechecks the eligible SKU price without enabling eligibility", async () => inPriceDatabase(async () => {
+  const reads: unknown[][] = [], target = realPriceAuthority(undefined, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); });
+  const capability = (await target.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, target, capability), payload = structuredClone(data.payload);
+  payload.product.sharedContent.catalogAction = "revise"; delete payload.skus[0].priceOperations;
+  payload.product.sharedContent.offerMemberships = [{ skuCode: payload.skus[0].code!, offerVersion: "example:second-offer", admitted: true }];
+  payload.publication.operations = [{ op: "set_offer_membership", skuCode: payload.skus[0].code!, offerVersion: "example:second-offer", admitted: true }];
+  reads.length = 0;
+  await commit(await save(payload, data.draftId, 2, first.head), target, capability);
+  expect(reads).toEqual([[data.skuId, false], [data.skuId, false], [data.skuId, true], [data.skuId, true]]);
+}));
+
+it("cycle1 native readiness shape refusals precede business red and keep inclusive bounds", async () => {
+  const data = await draft(); await approve(data.publication); const before = await snapshot();
+  const invalid: unknown[] = [{ ready: "true", reasons: [] }, { reasons: [] }, { ready: false, reasons: "a" },
+    { ready: false, reasons: Array.from({ length: 101 }, (_, index) => `r${index}`) }, { ready: false, reasons: ["a", "a"] },
+    { ready: false, reasons: [false] }, { ready: false, reasons: ["private detail"] }, { ready: false, reasons: ["a".repeat(161)] }];
+  for (const result of invalid) {
+    const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async () => result as { ready: boolean; reasons: string[] } });
+    expect(await target.publish(data.publication, (await target.authorize(null))!)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_readiness_invalid" });
+    expect(await snapshot()).toEqual(before);
+  }
+  for (const reasons of [[], ["a"], ["a".repeat(160)], Array.from({ length: 100 }, (_, index) => `r${index}`)]) {
+    const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async () => ({ ready: false, reasons }) });
+    expect(await target.publish(data.publication, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
+    expect(await snapshot()).toEqual(before);
+  }
+  expect(await authority.publish(data.publication, actor)).toMatchObject({ outcome: "committed" });
+});
+
+it("cycle1 native structural readiness refuses missing duplicate and red SQL responses", async () => {
+  const data = await draft(); await approve(data.publication); const before = await snapshot();
+  for (const mode of ["missing", "duplicate", "red"] as const) {
+    const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+      if (!sql.startsWith("SELECT public.catalog_publication_sku_reasons")) return;
+      if (mode === "missing") rows.length = 0;
+      else if (mode === "duplicate") rows.push(structuredClone(rows[0]));
+      else rows[0].reasons = ["document_revision_missing"];
+    }));
+    expect(await target.publish(data.publication, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
+    expect(await snapshot()).toEqual(before);
+  }
+});
+
+it("cycle1 native candidate validation refuses invalid fields and unrelated missing facts", async () => {
+  const data = await draft(), first = await commit(data.publication);
+  for (const field of ["attribute", "slug"] as const) {
+    const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise";
+    if (field === "attribute") payload.skus[0].attributes = { not_installed: "value" }; else delete payload.product.slug;
+    payload.publication.operations = [{ op: "set_product_presentation", productSlug: data.payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+    const command = await save(payload, data.draftId, field === "attribute" ? 1 : 2, first.head); await approve(command); const before = await snapshot();
+    expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+    expect(await snapshot()).toEqual(before);
+  }
+  const initial = await draft(), payload = structuredClone(initial.payload); delete payload.product.primarySkuId;
+  const command = await save(payload, initial.draftId, 1); await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native document pointer can return to an intermediate immutable revision", async () => {
+  const data = await draft(); let head = (await commit(data.publication)).head;
+  let second: CatalogDraftPayloadV3 | undefined;
+  for (const revisionNo of [2, 3]) {
+    const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise";
+    const document = { ...payload.product.sharedContent.document, revisionNo }, canonicalText = canonicalCatalogDraftJson(document), digest = createHash("sha256").update(canonicalText).digest("hex"), revisionId = randomUUID();
+    payload.product.sharedContent.document = document; payload.product.documentRevision = { ...payload.product.documentRevision!, id: revisionId, revisionNo, digest };
+    payload.publication.operations = [
+      { op: "register_document_revision", productSlug: payload.product.slug!, revisionId, revisionNo, documentRef: "example:document", sourceRef: "example:source", canonicalText, digest, provenance: { source: "current_draft" } },
+      { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: revisionNo },
+    ];
+    head = (await commit(await save(payload, data.draftId, revisionNo - 1, head))).head;
+    if (revisionNo === 2) second = structuredClone(payload);
+  }
+  const payload = second!; payload.publication.operations = [{ op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 }];
+  const receipt = await commit(await save(payload, data.draftId, 3, head));
+  expect(receipt.head).toMatchObject({ revision: 4, documentDigest: payload.product.documentRevision!.digest });
+  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", product: { document: payload.product.documentRevision } });
+});
+
+it("cycle1 native explicit inactive media refuses an advanced recorded SKU source", async () => {
+  const data = await draft(), initial = structuredClone(data.payload);
+  initial.skus[0].assetRefs = ["example:original-asset"]; initial.product.sharedContent.presentation = { mediaRef: "example:original-media" };
+  const presentation = initial.publication.operations.find(operation => operation.op === "set_product_presentation")!;
+  if (presentation.op === "set_product_presentation") presentation.presentation = initial.product.sharedContent.presentation;
+  const first = await commit(await save(initial, data.draftId, 1));
+  await incrementalSku({ ...data, payload: initial }, first.head, 2);
+  const next = (await db.query("SELECT public.catalog_draft_record($1,3) AS record", [data.draftId])).rows[0].record.payload as CatalogDraftPayloadV3;
+  next.skus.push(structuredClone(initial.skus[0])); next.product.sharedContent.publicationSkus.push(structuredClone(initial.product.sharedContent.publicationSkus[0]));
+  next.product.sharedContent.presentation = { mediaRef: "example:later-media" };
+  next.publication.operations.push({ op: "set_product_presentation", productSlug: next.product.slug!, presentation: next.product.sharedContent.presentation });
+  const second = await commit(await save(next, data.draftId, 3, first.head));
+  const retained = await authority.readbackV2(second.head);
+  if (!("items" in retained)) throw new Error(JSON.stringify(retained));
+  expect(new Set(retained.items.map(item => item.facts.source.revision)).size).toBe(2);
+  const payload = structuredClone(next); payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.presentation = { mediaRef: "example:current-presentation" };
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  payload.publication.evidence.media = [{ skuCode: initial.skus[0].code!, mediaRef: "example:original-media", assetRefs: ["example:original-asset"], revisionDigest: first.publicationDigest }];
+  const command = await save(payload, data.draftId, 4, second.head); await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_draft_advanced" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it.each(["command", "fingerprint"] as const)("cycle1 native explicit current draft claim rejects an altered %s", async field => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.publication.evidence.drafts = [{ draftId: data.draftId, revision: 2, commandKey: field === "command" ? "other:command" : "draft:2", fingerprint: "c".repeat(64) }];
+  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("cycle1 native unknown media SKU retains the named evidence refusal", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.publication.evidence.media = [{ skuCode: "MISSING", mediaRef: "example:missing", assetRefs: [], revisionDigest: "a".repeat(64) }];
+  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_evidence_mismatch" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it.each(["reference", "assets"] as const)("cycle1 native activation binds verified media to the applied %s", async field => inPriceDatabase(async () => {
+  const initialTarget = realPriceAuthority(), initialActor = (await initialTarget.authorize(null))!, data = await priceDraft(false), initial = structuredClone(data.payload), skuCode = initial.skus[0].code!;
+  initial.skus[0].assetRefs = ["panel"]; initial.product.sharedContent.presentation = { mediaRef: "example:before" };
+  initial.product.sharedContent.offerMemberships[0].admitted = true;
+  for (const operation of initial.publication.operations) {
+    if (operation.op === "set_product_presentation") operation.presentation = initial.product.sharedContent.presentation;
+    if (operation.op === "set_offer_membership") operation.admitted = true;
+  }
+  const first = await commit(await save(initial, data.draftId, 2), initialTarget, initialActor), payload = structuredClone(initial);
+  payload.product.sharedContent.catalogAction = "revise"; delete payload.skus[0].priceOperations;
+  payload.product.sharedContent.requestedModes = [{ skuCode, modes: ["one_time"] }];
+  if (field === "reference") payload.product.sharedContent.presentation = { mediaRef: "example:after" }; else delete payload.skus[0].assetRefs;
+  payload.publication.operations = [{ op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false }];
+  const proof = { skuCode, mediaRef: String(payload.product.sharedContent.presentation.mediaRef), assetRefs: payload.skus[0].assetRefs ?? [], revisionDigest: first.publicationDigest };
+  payload.publication.evidence.media = [proof];
+  const target = realPriceAuthority(undefined, undefined, async (_executor, supplied) => canonicalCatalogDraftJson(supplied) === canonicalCatalogDraftJson(proof));
+  const capability = (await target.authorize(null))!, command = await save(payload, data.draftId, 3, first.head); await approve(command, target, capability); const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_media_readiness_unproven" });
+  expect(await snapshot()).toEqual(before);
+}));
+
+it.each([2_147_483_646, 2_147_483_647])("cycle1 native publication revision boundary from %i", async revision => {
+  const data = await draft(), first = await commit(data.publication), publicationId = randomUUID();
+  // Seed an admitted native edge directly; do not manufacture billions of events.
+  await db.query(`INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at)
+    SELECT $1,product_id,$2,id,draft_id,draft_revision,$3,candidate_digest,document_revision_id,canonical_state,digest,actor_id,clock_timestamp()
+    FROM public.catalog_publications WHERE id=$4`, [publicationId, revision, `fixture:revision:${publicationId}`, first.head.publicationId]);
+  await db.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [data.productId, publicationId, revision]);
+  const head = { ...first.head, publicationId, revision };
+  expect(await authority.reads.current(data.productId)).toMatchObject({ outcome: "found", head });
+  const command = await revise(data, head); await approve(command); const before = await snapshot();
+  const result = await authority.publish(command, actor);
+  if (revision === 2_147_483_646) {
+    expect(result).toMatchObject({ outcome: "committed", receipt: { head: { revision: 2_147_483_647 } } });
+    expect((await db.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows).toEqual([{ revision: 2_147_483_647 }]);
+  } else {
+    expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_revision_limit" });
+    expect(await snapshot()).toEqual(before);
+  }
+});
+
+it("cycle1 native unknown activation SKU keeps its early source refusal", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.publication.operations = [{ op: "set_eligibility", skuCode: "MISSING", sellableStandalone: true, sellableInSubscription: false }];
+  const command = await save(payload, data.draftId, 1); await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_operation_source_missing" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it.each(["direct media", "resumed activation", "resumed media"] as const)("cycle1 native media cannot borrow an unmaterialized SKU from a retained product draft: %s", async mode => {
+  const data = await draft(), initial = structuredClone(data.payload), pending = structuredClone(initial.skus[0]), gtin = nextGtin();
+  pending.id = randomUUID(); pending.code = `PENDING-${pending.id}`;
+  pending.netContent = { dimension: "mass", unit: "openlup:g", unscaled: "101", scale: 0 };
+  pending.options = { pack_size: { kind: "quantity", value: pending.netContent } };
+  pending.identifiers = [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }]; pending.assetRefs = ["pending-asset"];
+  initial.skus.push(pending); initial.product.sharedContent.publicationSkus.push({ ...initial.product.sharedContent.publicationSkus[0], skuCode: pending.code });
+  initial.product.sharedContent.presentation = { mediaRef: "example:pending-media" };
+  const presentation = initial.publication.operations.find(operation => operation.op === "set_product_presentation")!;
+  if (presentation.op === "set_product_presentation") presentation.presentation = initial.product.sharedContent.presentation;
+  const first = await commit(await save(initial, data.draftId, 1));
+  expect((await db.query("SELECT id FROM public.catalog_skus WHERE id=$1", [pending.id])).rows).toEqual([]);
+  const payload = structuredClone(initial); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  payload.product.sharedContent.presentation = { mediaRef: "example:changed-presentation" };
+  if (mode !== "direct media") {
+    payload.skus = [structuredClone(initial.skus[0])];
+    payload.product.sharedContent.publicationSkus = [structuredClone(initial.product.sharedContent.publicationSkus[0])];
+  }
+  payload.publication.operations = mode === "resumed activation"
+    ? [{ op: "set_eligibility", skuCode: pending.code, sellableStandalone: true, sellableInSubscription: false }]
+    : [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  if (mode !== "resumed activation") payload.publication.evidence.media = [{ skuCode: pending.code, mediaRef: "example:pending-media", assetRefs: ["pending-asset"], revisionDigest: first.publicationDigest }];
+  const command = mode === "direct media" ? await save(payload, data.draftId, 2, first.head) : await saveResumed(payload, data.draftId, 2, first.head);
+  await approve(command); const before = await snapshot();
+  expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason: mode === "resumed activation" ? "catalog_publication_operation_source_missing" : "catalog_publication_media_evidence_mismatch" });
+  expect(await snapshot()).toEqual(before);
+});
+
+async function saveResumed(payload: CatalogDraftPayloadV3, draftId: string, expectedRevision: number, head: CatalogHeadRef | null, wrongCommand = false) {
+  const revision = expectedRevision + 3, commandKey = `resume:${revision}`;
+  const resume = { schemaVersion: 3, action: "resume", draftId, commandKey, expectedRevision: revision - 1 };
+  const fingerprint = createHash("sha256").update(canonicalCatalogDraftJson(resume)).digest("hex");
+  payload.publication.evidence.drafts = [{ draftId, revision, commandKey: wrongCommand ? "other:command" : commandKey, fingerprint }];
+  const saved = await save(payload, draftId, expectedRevision, head);
+  for (const command of [{ schemaVersion: 3, action: "abandon", draftId, commandKey: `abandon:${revision}`, expectedRevision: revision - 2 }, resume]) {
+    const text = canonicalCatalogDraftJson(command);
+    const result = (await db.query("SELECT public.catalog_draft_apply($1,$2,'operator:synthetic') AS result", [text, createHash("sha256").update(text).digest("hex")])).rows[0].result;
+    expect(result.outcome, JSON.stringify(result)).toBe("committed");
+    expect(result.record.payload).toEqual(payload);
+    if (command.action === "resume") expect(result.record).toMatchObject({ revision, status: "open", commandKey, fingerprint });
+  }
+  return { ...saved, commandKey: `publish:resumed:${revision}`, candidateRef: `v1:${draftId}@${revision}/${head ? `${head.publicationId}@${head.revision}` : "unpublished"}` };
+}
+it.each([false, true])("cycle1 native resumed claim independently binds its current command: altered=%s", async wrongCommand => {
+  const data = await draft(), payload = structuredClone(data.payload), command = await saveResumed(payload, data.draftId, 1, null, wrongCommand);
+  await approve(command); const before = await snapshot();
+  const result = await authority.publish(command, actor);
+  if (wrongCommand) {
+    expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_source_mismatch" });
+    expect(await snapshot()).toEqual(before);
+  } else expect(result).toMatchObject({ outcome: "committed", receipt: { changes: [{ draftRef: { draftId: data.draftId, revision: 4 } }] } });
+});
+
+it("cycle1 native price writes require their SKU in the compiled materialized roster", async () => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, data = await priceDraft(false), first = await commit(data.publication, target, capability);
+  const payload = structuredClone(data.payload), pending = structuredClone(payload.skus[0]), gtin = nextGtin();
+  delete payload.skus[0].priceOperations;
+  pending.id = randomUUID(); pending.code = `PENDING-${pending.id}`;
+  pending.netContent = { dimension: "mass", unit: "openlup:g", unscaled: "101", scale: 0 }; pending.options = { pack_size: { kind: "quantity", value: pending.netContent } };
+  pending.identifiers = [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }];
+  pending.priceOperations = [{ ...pending.priceOperations![0], variantId: pending.id, commandKey: `price:${pending.id}` }];
+  payload.skus.push(pending); payload.product.sharedContent.publicationSkus.push({ ...payload.product.sharedContent.publicationSkus[0], skuCode: pending.code });
+  payload.product.sharedContent.catalogAction = "revise"; payload.product.sharedContent.presentation = { routePath: { en: "/pending-price-roster" } };
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  const command = await save(payload, data.draftId, 2, first.head); await approve(command, target, capability); const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_price_parent_mismatch" });
+  expect(await snapshot()).toEqual(before);
+}));
+
+it("cycle1 native receipts distinguish product-only changes and SKU withdrawals", async () => {
+  const data = await draft(), first = await commit(data.publication);
+  expect(first.changes).toMatchObject([{ variantId: data.skuId, variantRevision: 1, state: "draft" }]);
+  const second = await commit(await revise(data, first.head)); expect(second.changes).toEqual([]);
+  const third = await commit(await incrementalSku(data, second.head, 2));
+  const payload = (await db.query("SELECT public.catalog_draft_record($1,3) AS record", [data.draftId])).rows[0].record.payload as CatalogDraftPayloadV3;
+  const sku = payload.skus[0];
+  expect(third.changes).toMatchObject([{ variantId: sku.id, variantRevision: 1, state: "draft" }]);
+  payload.publication.operations = [{ op: "set_sku_status", skuCode: sku.code!, status: "archived" }];
+  const fourth = await commit(await save(payload, data.draftId, 3, third.head));
+  expect(fourth.changes).toMatchObject([{ variantId: sku.id, variantRevision: 2, state: "withdrawn" }]);
+  const current = await authority.reads.current(data.productId);
+  expect(current).toMatchObject({ outcome: "found", head: fourth.head, observations: expect.arrayContaining([
+    expect.objectContaining({ variantId: data.skuId, variantRevision: 1, state: "draft" }),
+    expect.objectContaining({ variantId: sku.id, variantRevision: 2, state: "withdrawn" }),
+  ]) });
+  expect(await authority.receipt({ productId: data.productId, commandKey: fourth.commandKey }, actor)).toEqual({ outcome: "found", receipt: fourth });
+});
+
+it("cycle1 native repeated pointer operation consumes no unused capability", async () => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  payload.publication.operations.push({ op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 1 });
+  const receipt = await commit(await save(payload, data.draftId, 1));
+  expect((await db.query("SELECT id FROM public.catalog_product_document_revisions WHERE product_id=$1", [data.productId])).rows).toHaveLength(1);
+  expect((await db.query("SELECT * FROM public.catalog_publication_pointer_capabilities WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page" });
+});
+
+it("cycle1 native projection detects an unexpected SKU before persisting the head", async () => {
+  const data = await draft(); await approve(data.publication); const before = await snapshot(); let injected = false;
+  const target = createPostgresCatalogPublication(dependencies(async (sql, executor) => {
+    if (!sql.startsWith("SELECT to_char(clock_timestamp()")) return;
+    await executor.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status) VALUES($1,$2,$3,'Unexpected native SKU','draft')", [randomUUID(), data.productId, `UNEXPECTED-${randomUUID()}`]);
+    injected = true;
+  }));
+  expect(await target.publish(data.publication, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" });
+  expect(injected).toBe(true); expect(await snapshot()).toEqual(before);
+});
+
+it.each(["facts", "logistics", "membership", "status", "eligibility", "untouched", "mixed"] as const)("cycle1 native compensation reapplies only its explicit %s effect", async mode => inPriceDatabase(async () => {
+  const initialTarget = realPriceAuthority(), initialActor = (await initialTarget.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, initialTarget, initialActor);
+  const payload = structuredClone(data.payload), skuCode = payload.skus[0].code!;
+  delete payload.skus[0].priceOperations; payload.product.sharedContent.catalogAction = "revise"; payload.publication.kind = "compensation";
+  payload.publication.operations = mode === "logistics" ? [{ op: "set_sku_metadata", skuCode, logisticsRef: "example:logistics" }]
+    : mode === "membership" ? [{ op: "set_offer_membership", skuCode, offerVersion: "example:offer", admitted: true }]
+    : mode === "status" ? [{ op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false }, { op: "set_sku_status", skuCode, status: "active" }]
+    : mode === "eligibility" ? [{ op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false }]
+    : mode === "untouched" ? [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }]
+    : [{ op: "set_derived_sku_facts", skuCode, documentRevisionNo: 1, netContent: payload.skus[0].netContent!, facts: { derived: 12 } }];
+  const command = await save(payload, data.draftId, 2, first.head), connection = await db.connect();
+  try {
+    await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+    const path = mode === "logistics" ? ["logisticsRef"] : mode === "membership" ? ["memberships"] : mode === "status" ? ["status"] : mode === "eligibility" ? ["sellableStandalone"] : ["facts", "derived"];
+    const value = mode === "logistics" ? "example:wrong" : mode === "membership" ? [{ offerVersion: "example:offer", admitted: false }] : mode === "status" ? "archived" : mode === "eligibility" ? false : 13;
+    await connection.query("UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,$2::text[],$3::jsonb) WHERE id=$1", [data.skuId, path, canonicalCatalogDraftJson(value)]);
+    if (mode === "mixed") await connection.query("UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{logisticsRef}','\"example:wrong\"'::jsonb) WHERE id=$1", [data.skuId]);
+    const target = realPriceAuthority(connection), capability = (await target.authorize(null))!; await approve(command, target, capability);
+    const before = await snapshot(connection), result = await target.publish(command, capability);
+    if (mode === "untouched" || mode === "mixed") {
+      expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" });
+      expect(await snapshot(connection)).toEqual(before);
+    } else {
+      expect(result).toMatchObject({ outcome: "committed", receipt: { head: { revision: 2 }, changes: [] } });
+      expect((await connection.query("SELECT publication_facts FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows[0].publication_facts)
+        .toMatchObject({ facts: { derived: 12 }, logisticsRef: "example:logistics", memberships: [{ offerVersion: "example:offer", admitted: true }], status: "active", sellableStandalone: true });
+    }
+  } finally { await connection.query("ROLLBACK"); connection.release(); }
+}));
+
+it.each(["presentation", "untouched status", "untouched presentation", "untouched attributes", "untouched axes"] as const)("cycle1 native compensation preserves unaddressed product %s drift", async mode => {
+  const data = await draft(), first = await commit(data.publication), payload = structuredClone(data.payload);
+  payload.product.sharedContent.catalogAction = "revise"; payload.publication.kind = "compensation";
+  payload.publication.operations = mode === "untouched presentation" ? [{ op: "set_primary_sku", productSlug: payload.product.slug!, skuCode: payload.skus[0].code! }]
+    : [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  const command = await save(payload, data.draftId, 1, first.head); await approve(command);
+  const connection = await db.connect();
+  try {
+    await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+    if (mode === "untouched attributes") await connection.query("UPDATE public.catalog_products SET attribute_values='{\"unexpected\":true}' WHERE id=$1", [data.productId]);
+    else if (mode === "untouched axes") await connection.query("UPDATE public.catalog_products SET variant_axes=ARRAY['unexpected'] WHERE id=$1", [data.productId]);
+    else await connection.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,$2::text[],$3::jsonb) WHERE id=$1", [data.productId,
+      mode === "untouched status" ? ["status"] : ["presentation"], canonicalCatalogDraftJson(mode === "untouched status" ? "archived" : { wrong: true })]);
+    const target = realPriceAuthority(connection), capability = (await target.authorize(null))!, before = await snapshot(connection);
+    const result = await target.publish(command, capability);
+    if (mode === "presentation") expect(result).toMatchObject({ outcome: "committed" });
+    else { expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" }); expect(await snapshot(connection)).toEqual(before); }
+  } finally { await connection.query("ROLLBACK"); connection.release(); }
+});
+
+it.each(["old transaction", "current foreign"] as const)("cycle1 native pointer cleanup never consumes another capability: %s", async mode => inPriceDatabase(async () => {
+  const target = realPriceAuthority(), capability = (await target.authorize(null))!, other = await priceDraft();
+  await commit(other.publication, target, capability);
+  const data = await priceDraft(); await approve(data.publication, target, capability);
+  const documentId = other.payload.product.documentRevision!.id, sentinel = "c".repeat(64), connection = await db.connect();
+  let oldTransaction: string | undefined;
+  try {
+    if (mode === "old transaction") oldTransaction = (await db.query("INSERT INTO public.catalog_publication_pointer_capabilities VALUES(pg_current_xact_id(),$1,$2,$3) RETURNING transaction_id::text", [other.productId, documentId, sentinel])).rows[0].transaction_id;
+    await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+    if (mode === "current foreign") await connection.query("INSERT INTO public.catalog_publication_pointer_capabilities VALUES(pg_current_xact_id(),$1,$2,$3)", [other.productId, documentId, sentinel]);
+    const local = realPriceAuthority(connection), localActor = (await local.authorize(null))!, before = await snapshot(connection), result = await local.publish(data.publication, localActor);
+    if (mode === "current foreign") { expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_pointer_capability_unconsumed" }); expect(await snapshot(connection)).toEqual(before); }
+    else { expect(result).toMatchObject({ outcome: "committed" }); expect((await connection.query("SELECT * FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=$1::xid8 AND command_fingerprint=$2", [oldTransaction, sentinel])).rows).toHaveLength(1); }
+  } finally {
+    await connection.query("ROLLBACK"); connection.release();
+    if (oldTransaction) await db.query("DELETE FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=$1::xid8 AND product_id=$2 AND revision_id=$3 AND command_fingerprint=$4", [oldTransaction, other.productId, documentId, sentinel]);
+  }
+}));
+
+it.each(["other transaction", "other document"] as const)("cycle1 native pointer cleanup binds the matching scope: %s", async mode => inPriceDatabase(async () => {
+  const initial = realPriceAuthority(), initialActor = (await initial.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, initial, initialActor);
+  const oldDocument = data.payload.product.documentRevision!.id, payload = structuredClone(data.payload);
+  const content = { ...payload.product.sharedContent.document, revisionNo: 2 }, canonicalText = canonicalCatalogDraftJson(content), digest = createHash("sha256").update(canonicalText).digest("hex");
+  const document = { ...payload.product.documentRevision!, id: randomUUID(), revisionNo: 2, digest };
+  const registration = payload.publication.operations.find(operation => operation.op === "register_document_revision")!;
+  if (registration.op !== "register_document_revision") throw new Error("Missing registration fixture");
+  payload.product.documentRevision = document; payload.product.sharedContent.document = content; payload.product.sharedContent.catalogAction = "revise"; delete payload.skus[0].priceOperations;
+  payload.publication.operations = [{ ...registration, revisionId: document.id, revisionNo: 2, canonicalText, digest }, { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 }];
+  const command = await save(payload, data.draftId, 2, first.head); await approve(command, initial, initialActor);
+  const fingerprint = createHash("sha256").update(canonicalCatalogDraftJson([command, admin])).digest("hex"), oldTransaction = (await db.query("SELECT xmin::text AS transaction FROM public.catalog_publications WHERE id=$1", [first.head.publicationId])).rows[0].transaction;
+  const connection = await db.connect(); let injected = false;
+  try {
+    await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+    const target = realPriceAuthority(connection, async (sql, executor) => {
+      if (!sql.startsWith("INSERT INTO public.catalog_product_document_revisions")) return;
+      injected = true;
+      await executor.query("INSERT INTO public.catalog_publication_pointer_capabilities VALUES(coalesce($1::xid8,pg_current_xact_id()),$2,$3,$4)",
+        [mode === "other transaction" ? oldTransaction : null, data.productId, mode === "other document" ? oldDocument : document.id, fingerprint]);
+    }), capability = (await target.authorize(null))!, before = await snapshot(connection), result = await target.publish(command, capability);
+    expect(injected, JSON.stringify(result)).toBe(true);
+    if (mode === "other document") { expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_pointer_capability_unconsumed" }); expect(await snapshot(connection)).toEqual(before); }
+    else { expect(result).toMatchObject({ outcome: "committed", receipt: { fingerprint } }); expect((await connection.query("SELECT * FROM public.catalog_publication_pointer_capabilities WHERE transaction_id=$1::xid8 AND product_id=$2 AND revision_id=$3 AND command_fingerprint=$4", [oldTransaction, data.productId, document.id, fingerprint])).rows).toHaveLength(1); }
+  } finally { await connection.query("ROLLBACK"); connection.release(); }
+}));
+
+it.each(["facts", "title", "net content", "gross mass", "attributes", "assets", "clean"] as const)("cycle1 compensation changes metadata without refreshing %s", async mode => inPriceDatabase(async () => {
+  const initial = realPriceAuthority(), initialActor = (await initial.authorize(null))!, data = await priceDraft(), first = await commit(data.publication, initial, initialActor);
+  const payload = structuredClone(data.payload); payload.product.sharedContent.catalogAction = "revise"; payload.publication.kind = "compensation";
+  delete payload.skus[0].priceOperations; payload.skus[0].logisticsRef = "example:changed-logistics";
+  payload.publication.operations = [{ op: "set_sku_metadata", skuCode: payload.skus[0].code!, logisticsRef: payload.skus[0].logisticsRef }];
+  const command = await save(payload, data.draftId, 2, first.head); await approve(command, initial, initialActor);
+  const connection = await db.connect();
+  try {
+    await connection.query("BEGIN"); await connection.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: admin })]);
+    if (mode === "facts" || mode === "title") await connection.query("UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,$2::text[],$3::jsonb) WHERE id=$1", [data.skuId, mode === "facts" ? ["facts", "derived"] : ["title"], canonicalCatalogDraftJson(mode === "facts" ? 13 : "Unaddressed cache drift")]);
+    if (mode === "net content") await connection.query("UPDATE public.catalog_skus SET net_content_unscaled=101 WHERE id=$1", [data.skuId]);
+    if (mode === "gross mass") await connection.query("UPDATE public.catalog_skus SET gross_mass_unscaled=201 WHERE id=$1", [data.skuId]);
+    if (mode === "attributes") await connection.query("UPDATE public.catalog_skus SET attribute_values='{\"details\":[\"Unaddressed\"]}'::jsonb WHERE id=$1", [data.skuId]);
+    if (mode === "assets") await connection.query("UPDATE public.catalog_skus SET asset_ref='asset:unaddressed' WHERE id=$1", [data.skuId]);
+    const target = realPriceAuthority(connection), capability = (await target.authorize(null))!, before = await snapshot(connection), result = await target.publish(command, capability);
+    if (mode !== "clean") { expect(result).toEqual({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" }); expect(await snapshot(connection)).toEqual(before); }
+    else { expect(result).toMatchObject({ outcome: "committed", receipt: { changes: [{ variantId: data.skuId, variantRevision: 2 }] } }); expect((await connection.query("SELECT publication_facts->>'logisticsRef' AS ref FROM public.catalog_skus WHERE id=$1", [data.skuId])).rows).toEqual([{ ref: "example:changed-logistics" }]); }
+  } finally { await connection.query("ROLLBACK"); connection.release(); }
+}));
+
+it("cycle1 complete facts persist compatible attributes gross mass and assets", async () => {
+  const deps = dependencies(), target = createPostgresCatalogPublication({ ...deps, rules: { ...deps.rules, classifySkuChange: () => "compatible" },
+    readiness: async (executor, state, requirePrice) => {
+      const reasons: string[] = [];
+      for (const sku of state.skus) reasons.push(...(await executor.query("SELECT public.catalog_publication_sku_reasons($1,$2) AS reasons", [sku.id, requirePrice])).rows[0].reasons as string[]);
+      return { ready: reasons.length === 0, reasons };
+    } }), capability = (await target.authorize(null))!, data = await draft(), payload = structuredClone(data.payload);
+  payload.product.dimensions.push("axis_flag"); payload.skus[0].options.axis_flag = { kind: "boolean", value: true };
+  payload.product.attributes = { product_flag: false }; payload.skus[0].attributes = { details: ["Before"], axis_flag: true }; payload.skus[0].grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "200", scale: 0 };
+  const first = await commit(await save(payload, data.draftId, 1), target, capability);
+  payload.product.sharedContent.catalogAction = "revise"; payload.product.dimensions.reverse(); payload.product.attributes = { product_flag: true }; payload.skus[0].attributes = { details: ["After"], axis_flag: true };
+  payload.skus[0].grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "201", scale: 0 }; payload.skus[0].assetRefs = ["asset:compatible"];
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  const second = await commit(await save(payload, data.draftId, 2, first.head), target, capability);
+  expect(await target.readbackV2(second.head)).toMatchObject({ outcome: "page", product: { axes: ["axis_flag", "pack_size"], attributes: { product_flag: true } }, items: [{ facts: { attributes: { details: ["After"] }, grossMass: { unscaled: "201" }, assetRefs: ["asset:compatible"] } }] });
+  expect((await db.query("SELECT p.variant_axes AS axes,p.attribute_values AS product_attributes,s.attribute_values AS sku_attributes,s.gross_mass_unscaled::text,s.asset_ref FROM public.catalog_products p JOIN public.catalog_skus s ON s.product_id=p.id WHERE p.id=$1", [data.productId])).rows)
+    .toEqual([{ axes: ["axis_flag", "pack_size"], product_attributes: { product_flag: true }, sku_attributes: { details: ["After"], axis_flag: true }, gross_mass_unscaled: "201", asset_ref: "asset:compatible" }]);
+});
+
+it.each(["opaque", "numeric"] as const)("cycle1 native identifiers preserve non-GTIN %s values and a nonfirst primary", async kind => {
+  const data = await draft(), payload = structuredClone(data.payload), second = structuredClone(payload.skus[0]);
+  second.id = randomUUID(); second.code = `SKU-${second.id}`; second.netContent = { ...second.netContent!, unscaled: "101" };
+  second.options = { pack_size: { kind: "quantity", value: second.netContent } };
+  const gtin = nextGtin(); second.identifiers = [{ scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1 }];
+  payload.skus.push(second);
+  const facts = { skuCode: second.code!, title: "Second synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
+  payload.product.sharedContent.publicationSkus.push(facts); payload.product.sharedContent.requestedModes.push({ skuCode: second.code!, modes: [] });
+  const primary = payload.skus.reduce((left, right) => left.id > right.id ? left : right), value = kind === "opaque" ? `opaque:${randomUUID()}` : primary.identifiers![0].value;
+  primary.identifiers!.push({ scheme: "example:opaque", issuer: "example:issuer", value, packagingLevel: "unit", quantity: 1 });
+  payload.product.primarySkuId = primary.id;
+  payload.publication.operations = payload.publication.operations.filter(operation => operation.op !== "set_primary_sku");
+  payload.publication.operations.push({ op: "create_sku", productSlug: payload.product.slug!, documentRevisionNo: 1, skuId: second.id, ...facts },
+    { op: "create_identifier", skuCode: second.code!, scheme: "gs1:gtin", issuer: "example", value: gtin, packagingLevel: "unit", quantity: 1, isPrimary: true, label: null, sourceRef: null },
+    { op: "create_identifier", skuCode: primary.code!, scheme: "example:opaque", issuer: "example:issuer", value, packagingLevel: "unit", quantity: 1, isPrimary: false, label: "Synthetic opaque identifier", sourceRef: null },
+    { op: "set_primary_sku", productSlug: payload.product.slug!, skuCode: primary.code! });
+  const receipt = await commit(await save(payload, data.draftId, 1));
+  expect((await db.query("SELECT primary_sku_id FROM public.catalog_products WHERE id=$1", [data.productId])).rows).toEqual([{ primary_sku_id: primary.id }]);
+  expect((await db.query("SELECT catalog_sku_id,identifier_kind,normalized_value,scheme FROM public.catalog_sku_identifiers WHERE scheme='example:opaque' AND catalog_sku_id=ANY($1::uuid[])", [payload.skus.map(sku => sku.id)])).rows)
+    .toEqual([{ catalog_sku_id: primary.id, identifier_kind: "other", normalized_value: value, scheme: "example:opaque" }]);
+  expect(await authority.readbackV2(receipt.head)).toMatchObject({ outcome: "page", product: { primarySkuId: primary.id } });
+});
+
+it("cycle1 native document registration reuses an exact prepared revision", async () => {
+  const data = await draft(), first = await commit(data.publication), payload = structuredClone(data.payload), content = { ...payload.product.sharedContent.document, revisionNo: 2 };
+  const canonicalText = canonicalCatalogDraftJson(content), digest = createHash("sha256").update(canonicalText).digest("hex"), document = { ...payload.product.documentRevision!, id: randomUUID(), revisionNo: 2, digest };
+  payload.product.sharedContent.catalogAction = "revise"; payload.product.sharedContent.document = content; payload.product.documentRevision = document;
+  payload.publication.operations = [{ op: "register_document_revision", productSlug: payload.product.slug!, revisionId: document.id, revisionNo: 2, documentRef: document.documentRef, sourceRef: document.sourceRef, canonicalText, digest, provenance: { source: "current_draft" } }, { op: "move_document_pointer", productSlug: payload.product.slug!, documentRevisionNo: 2 }];
+  const command = await save(payload, data.draftId, 1, first.head), record = (await db.query("SELECT public.catalog_draft_record($1,2) AS value", [data.draftId])).rows[0].value;
+  const provenance = { draftId: record.draftId, draftRevision: record.revision, draftCommandKey: record.commandKey, draftFingerprint: record.fingerprint };
+  await db.query("INSERT INTO public.catalog_product_document_revisions(id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text) VALUES($1,$2,2,$3,$4,$5::text::jsonb,$6,$7::jsonb,$8,$5)", [document.id, data.productId, document.schemaId, document.documentRef, canonicalText, document.sourceRef, canonicalCatalogDraftJson(provenance), digest]);
+  const receipt = await commit(command);
+  expect(receipt.head.documentDigest).toBe(digest);
+  expect((await db.query("SELECT id FROM public.catalog_product_document_revisions WHERE product_id=$1 AND revision_no=2", [data.productId])).rows).toEqual([{ id: document.id }]);
+});
+
+async function nativePublicationSqlRow(): Promise<Record<string, unknown>> {
+  const data = foreignPublished.data, payload = structuredClone(data.payload);
+  payload.product.sharedContent.catalogAction = "revise"; payload.publication.kind = "compensation"; payload.skus = []; delete payload.product.primarySkuId;
+  payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+  const revision = (await db.query("SELECT revision FROM public.catalog_draft_heads WHERE draft_id=$1", [data.draftId])).rows[0].revision;
+  const command = await save(payload, data.draftId, revision, foreignPublished.head); await approve(command);
+  const row = (await db.query("SELECT to_jsonb(p) AS value FROM public.catalog_publications p WHERE id=$1", [foreignPublished.head.publicationId])).rows[0].value as Record<string, unknown>;
+  return { ...row, id: randomUUID(), revision: 2, previous_id: row.id, draft_revision: revision + 1, candidate_ref: command.candidateRef,
+    candidate_digest: command.candidateDigest, committed_at: (await db.query("SELECT clock_timestamp()::text AS value")).rows[0].value };
+}
+
+it.each(["zero revision", "max revision", "zero draft revision", "max absent draft revision", "short candidate digest", "nonhex candidate digest", "manifest bound", "manifest overflow", "manifest digest", "manifest object", "manifest schema", "manifest product", "manifest roster"] as const)("cycle1 native publication SQL admission: %s", async mode => {
+  const row: Record<string, unknown> = await nativePublicationSqlRow();
+  let rejection: Record<string, string> | null = null;
+  if (mode === "zero revision") { row.revision = 0; rejection = { code: "23514", constraint: "catalog_publications_revision_check" }; }
+  if (mode === "max revision") row.revision = 2_147_483_647;
+  if (mode === "zero draft revision") { row.draft_revision = 0; rejection = { code: "23514", constraint: "catalog_publications_draft_revision_check" }; }
+  if (mode === "max absent draft revision") { row.draft_revision = 2_147_483_647; rejection = { code: "23503" }; }
+  if (mode === "short candidate digest" || mode === "nonhex candidate digest") { row.candidate_digest = (mode === "short candidate digest" ? "a".repeat(63) : "g".repeat(64)); rejection = { code: "23514", constraint: "catalog_publications_candidate_digest_check" }; }
+  const state = JSON.parse(row.canonical_state as string);
+  if (mode === "manifest bound" || mode === "manifest overflow") {
+    state.product.content.document.zzPadding = "";
+    const bytes = 16_777_216 + (mode === "manifest overflow" ? 1 : 0);
+    state.product.content.document.zzPadding = "x".repeat(bytes - Buffer.byteLength(JSON.stringify(state)));
+    row.canonical_state = JSON.stringify(state); expect(Buffer.byteLength(row.canonical_state as string)).toBe(bytes);
+    if (mode === "manifest overflow") rejection = { code: "23514", constraint: "catalog_publications_canonical_state_check" };
+  }
+  if (mode === "manifest object") { row.canonical_state = "[]"; rejection = { code: "23514", message: "catalog_publication_state_invalid" }; }
+  if (mode === "manifest schema") { state.schemaVersion = 1; row.canonical_state = JSON.stringify(state); rejection = { code: "23514", message: "catalog_publication_state_invalid" }; }
+  if (mode === "manifest product") { state.product.id = randomUUID(); row.canonical_state = JSON.stringify(state); rejection = { code: "23514", message: "catalog_publication_state_invalid" }; }
+  if (mode === "manifest roster") { state.skus = {}; row.canonical_state = JSON.stringify(state); rejection = { code: "23514", message: "catalog_publication_state_invalid" }; }
+  row.digest = createHash("sha256").update(row.canonical_state as string).digest("hex");
+  if (mode === "manifest digest") { row.digest = `${(row.digest as string)[0] === "a" ? "b" : "a"}${(row.digest as string).slice(1)}`; rejection = { code: "23514", message: "catalog_publication_digest_mismatch" }; }
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const insert = client.query("INSERT INTO public.catalog_publications SELECT (jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb)).*", [JSON.stringify(row)]);
+    if (rejection) await expect(insert).rejects.toMatchObject(rejection); else expect((await insert).rowCount).toBe(1);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it.each(["canonical mismatch", "digest mismatch", "nonobject", "legacy null"] as const)("cycle1 native document SQL admission: %s", async mode => {
+  const client = await db.connect(), value = { schemaVersion: 1, derived: 12, zzFixture: randomUUID() };
+  const canonical = mode === "nonobject" ? "13" : canonicalCatalogDraftJson(value), payload = mode === "canonical mismatch" ? canonicalCatalogDraftJson({ ...value, derived: 13 }) : canonical;
+  const digest = createHash("sha256").update(canonical).digest("hex"), wrongDigest = `${digest[0] === "a" ? "b" : "a"}${digest.slice(1)}`;
+  try {
+    await client.query("BEGIN");
+    const insert = client.query(`INSERT INTO public.catalog_product_document_revisions(id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text)
+      SELECT $1,product_id,revision_no+1,schema_id,document_ref,$2::jsonb,source_ref,provenance,$3,$4 FROM public.catalog_product_document_revisions WHERE id=$5`,
+    [randomUUID(), payload, mode === "digest mismatch" ? wrongDigest : digest, mode === "legacy null" ? null : canonical, foreignPublished.data.payload.product.documentRevision!.id]);
+    if (mode === "legacy null") expect((await insert).rowCount).toBe(1);
+    else await expect(insert).rejects.toMatchObject(mode === "canonical mismatch" ? { code: "23514", constraint: "catalog_document_canonical_text_check" } : { code: "23514", message: mode === "digest mismatch" ? "catalog_publication_digest_mismatch" : "catalog_publication_state_invalid" });
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it.each(["zero", "maximum", "foreign publication"] as const)("cycle1 native head SQL admission: %s", async mode => {
+  const row = await nativePublicationSqlRow(), client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    if (mode === "maximum") {
+      row.revision = 2_147_483_647;
+      await client.query("INSERT INTO public.catalog_publications SELECT (jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb)).*", [JSON.stringify(row)]);
+      expect((await client.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=2147483647 WHERE product_id=$1", [row.product_id, row.id])).rowCount).toBe(1);
+    } else await expect(client.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=$3 WHERE product_id=$1", [row.product_id, mode === "foreign publication" ? paged.head.publicationId : foreignPublished.head.publicationId, mode === "zero" ? 0 : paged.head.revision]))
+      .rejects.toMatchObject(mode === "zero" ? { code: "23514", constraint: "catalog_publication_heads_revision_check" } : { code: "23503" });
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it.each(["zero revision", "max revision", "facts bound", "facts overflow", "facts digest", "facts object", "facts SKU", "facts product", "foreign SKU", "foreign publication"] as const)("cycle1 native SKU revision SQL admission: %s", async mode => {
+  const row = (await db.query("SELECT to_jsonb(r) AS value FROM public.catalog_sku_revisions r WHERE publication_id=$1 LIMIT 1", [foreignPublished.head.publicationId])).rows[0].value as Record<string, unknown>;
+  row.id = randomUUID(); row.revision = 2;
+  let rejection: Record<string, string> | null = null;
+  if (mode === "zero revision") { row.revision = 0; rejection = { code: "23514", constraint: "catalog_sku_revisions_revision_check" }; }
+  if (mode === "max revision") row.revision = 2_147_483_647;
+  const facts = JSON.parse(row.full_facts as string);
+  if (mode === "facts bound" || mode === "facts overflow") {
+    facts.facts.zzPadding = ""; const bytes = 2_097_152 + (mode === "facts overflow" ? 1 : 0);
+    facts.facts.zzPadding = "x".repeat(bytes - Buffer.byteLength(JSON.stringify(facts)));
+    row.full_facts = JSON.stringify(facts); expect(Buffer.byteLength(row.full_facts as string)).toBe(bytes);
+    if (mode === "facts overflow") rejection = { code: "23514", constraint: "catalog_sku_revisions_full_facts_check" };
+  }
+  if (mode === "facts object") { row.full_facts = "[]"; rejection = { code: "23514", message: "catalog_publication_state_invalid" }; }
+  if (mode === "facts SKU") { facts.id = randomUUID(); row.full_facts = JSON.stringify(facts); rejection = { code: "23514", message: "catalog_publication_sku_revision_invalid" }; }
+  if (mode === "facts product") { facts.productId = randomUUID(); row.full_facts = JSON.stringify(facts); rejection = { code: "23514", message: "catalog_publication_sku_revision_invalid" }; }
+  if (mode === "foreign SKU") { row.sku_id = paged.data.skuId; facts.id = row.sku_id; row.full_facts = JSON.stringify(facts); rejection = { code: "23503" }; }
+  if (mode === "foreign publication") { row.publication_id = paged.head.publicationId; rejection = { code: "23503" }; }
+  row.digest = createHash("sha256").update(row.full_facts as string).digest("hex");
+  if (mode === "facts digest") { row.digest = `${(row.digest as string)[0] === "a" ? "b" : "a"}${(row.digest as string).slice(1)}`; rejection = { code: "23514", message: "catalog_publication_digest_mismatch" }; }
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const insert = client.query("INSERT INTO public.catalog_sku_revisions SELECT (jsonb_populate_record(NULL::public.catalog_sku_revisions,$1::jsonb)).*", [JSON.stringify(row)]);
+    if (rejection) await expect(insert).rejects.toMatchObject(rejection); else expect((await insert).rowCount).toBe(1);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it.each(["one kind", "max kind", "empty kind", "padded kind", "long kind", "one key", "max key", "empty key", "padded key", "long key", "short fingerprint", "nonhex fingerprint", "empty object", "primitive result", "result bound", "result overflow"] as const)("cycle1 native receipt SQL admission: %s", async mode => {
+  const row = (await db.query("SELECT to_jsonb(r) AS value FROM public.catalog_operator_receipts r WHERE kind='publish' AND publication_id=$1", [foreignPublished.head.publicationId])).rows[0].value as Record<string, unknown>;
+  row.command_key = `constraint:${randomUUID()}`;
+  let rejection: Record<string, string> | null = null;
+  if (mode.endsWith("kind")) {
+    row.kind = mode === "one kind" ? "x" : mode === "max kind" ? "x".repeat(80) : mode === "empty kind" ? "" : mode === "padded kind" ? " publish " : "x".repeat(81);
+    if (["empty kind", "padded kind", "long kind"].includes(mode)) rejection = { code: "23514", constraint: "catalog_operator_receipts_kind_check" };
+  }
+  if (mode.endsWith("key")) {
+    row.command_key = mode === "one key" ? "x" : mode === "max key" ? "x".repeat(240) : mode === "empty key" ? "" : mode === "padded key" ? " key " : "x".repeat(241);
+    if (["empty key", "padded key", "long key"].includes(mode)) rejection = { code: "23514", constraint: "catalog_operator_receipts_command_key_check" };
+  }
+  if (mode === "short fingerprint" || mode === "nonhex fingerprint") { row.fingerprint = mode === "short fingerprint" ? "a".repeat(63) : "g".repeat(64); rejection = { code: "23514", constraint: "catalog_operator_receipts_fingerprint_check" }; }
+  if (mode === "empty object") row.result = {};
+  if (mode === "primitive result") { row.result = false; rejection = { code: "23514", constraint: "catalog_operator_receipts_result_check" }; }
+  if (mode === "result bound" || mode === "result overflow") {
+    const result = { zzPadding: "" }, bytes = 8_388_608 + (mode === "result overflow" ? 1 : 0);
+    const base = (await db.query("SELECT octet_length($1::jsonb::text) AS bytes", [JSON.stringify(result)])).rows[0].bytes;
+    result.zzPadding = "x".repeat(bytes - base); row.result = result;
+    expect((await db.query("SELECT octet_length($1::jsonb::text) AS bytes", [JSON.stringify(result)])).rows[0].bytes).toBe(bytes);
+    if (mode === "result overflow") rejection = { code: "23514", constraint: "catalog_operator_receipts_result_check" };
+  }
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const insert = client.query("INSERT INTO public.catalog_operator_receipts SELECT (jsonb_populate_record(NULL::public.catalog_operator_receipts,$1::jsonb)).*", [JSON.stringify(row)]);
+    if (rejection) await expect(insert).rejects.toMatchObject(rejection); else expect((await insert).rowCount).toBe(1);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it.each(["one reason", "max reason", "blank reason", "long reason", "padded long reason", "action", "short candidate digest", "nonhex candidate digest", "short reference digest", "nonhex reference digest", "short fingerprint", "nonhex fingerprint"] as const)("cycle1 native decision SQL admission: %s", async mode => {
+  const decision = (await db.query("SELECT to_jsonb(d) AS value FROM public.catalog_publication_decisions d WHERE product_id=$1 LIMIT 1", [foreignPublished.data.productId])).rows[0].value as Record<string, unknown>;
+  const receipt = (await db.query("SELECT to_jsonb(r) AS value FROM public.catalog_operator_receipts r WHERE kind=$3 AND scope_id=$1 AND command_key=$2", [decision.product_id, decision.command_key, decision.action])).rows[0].value as Record<string, unknown>;
+  decision.id = randomUUID(); decision.command_key = `constraint:${randomUUID()}`; receipt.command_key = decision.command_key;
+  let constraint = "catalog_publication_decisions_reason_check";
+  if (mode === "one reason") decision.reason = "x";
+  if (mode === "max reason") decision.reason = "x".repeat(1000);
+  if (mode === "blank reason") decision.reason = " ";
+  if (mode === "long reason") decision.reason = "x".repeat(1001);
+  if (mode === "padded long reason") decision.reason = ` ${"x".repeat(1000)}`;
+  if (mode === "action") { decision.action = "deny"; constraint = "catalog_publication_decisions_action_check"; }
+  for (const [label, field] of [["candidate digest", "candidate_digest"], ["reference digest", "candidate_reference_digest"], ["fingerprint", "fingerprint"]]) {
+    if (mode.endsWith(label)) { decision[field] = mode.startsWith("short") ? "a".repeat(63) : "g".repeat(64); constraint = `catalog_publication_decisions_${field}_check`; }
+  }
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("INSERT INTO public.catalog_operator_receipts SELECT (jsonb_populate_record(NULL::public.catalog_operator_receipts,$1::jsonb)).*", [JSON.stringify(receipt)]);
+    const insert = client.query("INSERT INTO public.catalog_publication_decisions SELECT (jsonb_populate_record(NULL::public.catalog_publication_decisions,$1::jsonb)).*", [JSON.stringify(decision)]);
+    if (mode === "one reason" || mode === "max reason") expect((await insert).rowCount).toBe(1); else await expect(insert).rejects.toMatchObject({ code: "23514", constraint });
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it.each(["short", "nonhex", "valid"] as const)("cycle1 native pointer SQL fingerprint: %s", async mode => {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const fingerprint = mode === "short" ? "a".repeat(63) : mode === "nonhex" ? "g".repeat(64) : "a".repeat(64);
+    const insert = client.query("INSERT INTO public.catalog_publication_pointer_capabilities VALUES(pg_current_xact_id(),$1,$2,$3)", [foreignPublished.data.productId, foreignPublished.data.payload.product.documentRevision!.id, fingerprint]);
+    if (mode === "valid") expect((await insert).rowCount).toBe(1); else await expect(insert).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_pointer_capabilit_command_fingerprint_check" });
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it.each(["catalog_publications", "catalog_sku_revisions", "catalog_operator_receipts", "catalog_publication_decisions"] as const)("cycle1 native immutable SQL refusal names %s", async table => {
+  await expect(db.query(`UPDATE public.${table} SET ${table === "catalog_operator_receipts" ? "command_key=command_key" : "id=id"}`))
+    .rejects.toMatchObject({ code: "55000", message: "catalog_publication_record_immutable" });
+});
+
+
+it.each((["anon", "authenticated", "service_role"] as const).flatMap(role => (["present", "absent"] as const).map(mode => ({ role, mode }))))("cycle1 native optional role SQL admission: $role $mode", async ({ role, mode }) => {
+  const statement = readFileSync("db/platform/migrations/20261123150000_catalog_publication.sql", "utf8").split("\n")
+    .find(line => line.startsWith("DO $$") && line.includes(`FROM ${role};`));
+  expect(statement).toBeDefined();
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const exists = (await client.query("SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=$1) AS value", [role])).rows[0].value;
+    if (mode === "present") {
+      if (!exists) await client.query(`CREATE ROLE ${role}`);
+      await client.query(`GRANT SELECT ON public.catalog_publications TO ${role}`);
+    } else if (exists) await client.query(`ALTER ROLE ${role} RENAME TO publication_absent_${role}_${process.pid}`);
+    await client.query(statement!);
+    if (mode === "present") expect((await client.query("SELECT has_table_privilege($1,'public.catalog_publications','SELECT') AS allowed", [role])).rows[0].allowed).toBe(false);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it("cycle1 native readiness requires the primary unit identifier", async () => {
+  const client = await db.connect();
+  const skuId = foreignPublished.data.payload.skus[0].id;
+  try {
+    await client.query("BEGIN");
+    await client.query("UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{logisticsRef}','\"native-logistics\"') WHERE id=$1", [skuId]);
+    const reasons = async () => (await client.query("SELECT public.catalog_publication_sku_reasons($1,true) AS reasons", [skuId])).rows[0].reasons;
+    expect(await reasons()).toEqual([]);
+    await client.query("UPDATE public.catalog_sku_identifiers SET is_primary=false WHERE catalog_sku_id=$1", [skuId]);
+    expect(await reasons()).toEqual(["unit_gtin_missing"]);
+    await client.query("UPDATE public.catalog_sku_identifiers SET is_primary=true WHERE catalog_sku_id=$1 AND identifier_kind='gtin' AND pack_kind='unit'", [skuId]);
+    expect(await reasons()).toEqual([]);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it("cycle1 native readiness requires the current document pointer", async () => {
+  const client = await db.connect(), productId = randomUUID(), skuId = randomUUID();
+  try {
+    await client.query("BEGIN");
+    await client.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,$2,'Unpointed native document','draft')", [productId, `unpointed-${productId}`]);
+    await client.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Unpointed native SKU')", [skuId, productId, `SKU-${skuId}`]);
+    await client.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [productId, skuId]);
+    await client.query("INSERT INTO public.catalog_product_document_revisions(product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest) VALUES($1,1,'legacy:document','unpointed','{}','native-fixture','{}',$2)", [productId, "a".repeat(64)]);
+    expect((await client.query("SELECT public.catalog_publication_sku_reasons($1,false) AS reasons", [skuId])).rows[0].reasons).toEqual(["document_revision_missing"]);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it("cycle1 native readiness precedence keeps identity before archived status", async () => {
+  const client = await db.connect(), skuId = foreignPublished.data.payload.skus[0].id;
+  try {
+    await client.query("BEGIN");
+    await client.query("UPDATE public.catalog_products SET slug=$2 WHERE id=$1", [foreignPublished.data.productId, "p".repeat(65)]);
+    await client.query("UPDATE public.catalog_skus SET status='archived',publication_facts=jsonb_set(publication_facts,'{logisticsRef}','\"native-logistics\"') WHERE id=$1", [skuId]);
+    expect((await client.query("SELECT public.catalog_publication_sku_reasons($1,true) AS reasons", [skuId])).rows[0].reasons).toEqual(["primary_sku_missing", "commerce_identity_unsupported", "sku_archived"]);
+  } finally { await client.query("ROLLBACK"); client.release(); }
+});
+
+it("refuses malformed legacy publication lookup before querying a head", async () => {
+  const invalidHead = { ...foreignPublished.head, revision: 0 };
+  let queried = false;
+  const target = createPostgresCatalogPublication(dependencies(sql => { if (!sql.startsWith("SET TRANSACTION")) queried = true; }));
+  expect(await target.reads.readback(invalidHead)).toEqual({ outcome: "validation_issue", reason: "candidate_invalid" });
+  expect(queried).toBe(false);
+});
+
+it("refuses a well-formed legacy head with no retained publication", async () => {
+  const missingHead = { ...foreignPublished.head, publicationId: randomUUID() };
+  expect(await authority.reads.readback(missingHead)).toEqual({ outcome: "unsupported", reason: "publication_not_supported" });
+});
+
+it("refuses a publication history receipt bound to a different product", async () => {
+  const rows = (await db.query(`SELECT p.revision,p.id,r.result,r.scope_id,r.command_key,r.fingerprint,r.actor_id,r.publication_id
+    FROM public.catalog_publications p JOIN public.catalog_operator_receipts r ON r.publication_id=p.id
+    WHERE p.id=$1 AND r.kind='publish'`, [foreignPublished.head.publicationId])).rows;
+  expect(rows).toHaveLength(1);
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, returned) => {
+    if (sql.startsWith("SELECT p.revision,p.id,r.result")) returned.splice(0, returned.length, ...rows);
+  }));
+  expect(await target.reads.history(paged.data.productId, null))
+    .toEqual({ outcome: "dependency_unavailable", reason: "publication_authority_unavailable" });
+});
+
+it("returns absence when publication recovery finds an approval under the same scope and key", async () => {
+  const scope = { productId: foreignPublished.data.productId, commandKey: `approve:${foreignPublished.data.publication.commandKey}` };
+  expect((await db.query("SELECT kind FROM public.catalog_operator_receipts WHERE scope_id=$1 AND command_key=$2", [scope.productId, scope.commandKey])).rows)
+    .toEqual([{ kind: "approve" }]);
+  expect(await authority.receipt(scope, actor)).toEqual({ outcome: "absent" });
+  expect(await authority.readPort(actor).receipt(scope)).toEqual({ outcome: "absent" });
+});
+
+it("refuses a full-fact head with the correct revision and a different document digest", async () => {
+  const wrongDigest = (foreignPublished.head.documentDigest.startsWith("a") ? "b" : "a") + foreignPublished.head.documentDigest.slice(1);
+  expect(await authority.readbackV2({ ...foreignPublished.head, documentDigest: wrongDigest }))
+    .toEqual({ outcome: "conflict", reason: "head_conflict" });
+});
+
+it("refuses noncanonical full-fact manifest bytes with an unchanged semantic digest", async () => {
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.startsWith("SELECT p.product_id,p.revision,p.canonical_state")) rows[0].canonical_state = ` ${rows[0].canonical_state as string}`;
+  }));
+  expect(await target.readbackV2(foreignPublished.head)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_manifest_invalid" });
+});
+
+it("refuses a same-product full-fact cursor from an earlier publication revision", async () => {
+  const cursor = Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts", productId: paged.data.productId,
+    highWater: paged.head.revision - 1, before: 1 })).toString("base64url");
+  expect(await authority.readbackV2(paged.head, cursor)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_cursor_invalid" });
+});
+
+it("refuses noncanonical retained SKU bytes with an unchanged semantic digest", async () => {
+  const target = createPostgresCatalogPublication(dependencies((sql, _executor, rows) => {
+    if (sql.startsWith("SELECT id,full_facts FROM public.catalog_sku_revisions")) rows[0].full_facts = ` ${rows[0].full_facts as string}`;
+  }));
+  expect(await target.readbackV2(foreignPublished.head)).toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" });
+});
+
+it("rolls back when an identifier differs from the compiled post-state", async () => {
+  const data = await draft(); await approve(data.publication);
+  const before = await snapshot();
+  const target = createPostgresCatalogPublication(dependencies(async (sql, executor) => {
+    if (sql.startsWith("SELECT to_char(clock_timestamp()"))
+      await executor.query("UPDATE public.catalog_sku_identifiers SET display_label='Different identifier label' WHERE catalog_sku_id=$1", [data.skuId]);
+  }));
+  expect(await target.publish(data.publication, (await target.authorize(null))!))
+    .toEqual({ outcome: "validation_issue", reason: "catalog_publication_post_state_mismatch" });
+  expect(await snapshot()).toEqual(before);
+});
+
+it("rolls back when a resolved attribute reference becomes unavailable at projection", async () => {
+  const data = await draft();
+  data.payload.skus[0].attributes = { reference: { namespace: "example:asset", id: "projection-asset" } };
+  const command = await save(data.payload, data.draftId, 1);
+  let projecting = false;
+  const target = createPostgresCatalogPublication({
+    ...dependencies(sql => { if (sql.startsWith("DELETE FROM public.catalog_attribute_projection")) projecting = true; }),
+    attributeReferences: { resolve: async references => references.map(reference => ({
+      ...reference, status: projecting ? "unavailable" as const : "resolved" as const,
+    })) },
+  });
+  const capability = (await target.authorize(null))!;
+  await approve(command, target, capability);
+  const before = await snapshot();
+  expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_attribute_projection_invalid" });
+  expect(projecting).toBe(true);
+  expect(await snapshot()).toEqual(before);
+});
+
+it.each([["revision", "release"], ["compensation", "compensation"]] as const)(
+  "W09 rejects a cross-product route collision on a presentation-only %s", async (_path, kind) => {
+    const data = await draft(), initial = await commit(data.publication), payload = structuredClone(data.payload);
+    const route = (foreignPublished.data.payload.product.sharedContent.presentation.routePath as { en: string }).en;
+    payload.product.sharedContent.catalogAction = "revise";
+    payload.publication.kind = kind;
+    payload.product.sharedContent.presentation = { routePath: { en: route } };
+    payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: payload.product.sharedContent.presentation }];
+    const command = await save(payload, data.draftId, 1, initial.head);
+    await approve(command);
+    const before = await snapshot();
+    const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async (executor, state, requirePrice) => {
+      expect(requirePrice).toBe(false);
+      expect(state.skus).toEqual([]);
+      const { rows } = await executor.query("SELECT id FROM public.catalog_products WHERE id<>$1 AND publication_facts->'presentation'->'routePath'->>'en'=$2", [state.product.id, route]);
+      expect(rows).toEqual([{ id: foreignPublished.data.productId }]);
+      return { ready: false, reasons: ["localized_route_duplicate"] };
+    } });
+    expect(await target.publish(command, (await target.authorize(null))!)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_structural_readiness_failed" });
+    expect(await snapshot()).toEqual(before);
+  });
+
+describe("LC2 forward compatibility with legacy catalogue rows", () => {
+  let legacy: Pool;
+  const publicationPath = "db/platform/migrations/20261123150000_catalog_publication.sql";
+  beforeAll(async () => {
+    const container = await runPostgresContainer({ name: `catalog-publication-legacy-${process.pid}`, password: "synthetic-catalog-publication" });
+    containers.push(container);
+    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Legacy catalogue witnesses require real PostgreSQL");
+    legacy = new Pool({ connectionString: container.connectionString });
+    pools.push(legacy);
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+    for (const unit of [manifest.baseline, ...manifest.forward]) {
+      if (unit.file === publicationPath) break;
+      await legacy.query(readFileSync(unit.file, "utf8"));
+    }
+  }, postgresSetupTimeoutMs);
+
+  it.each(["duplicate GTIN under different issuers", "duplicate draft combination", "opaque legacy GTIN"] as const)("installs over %s", async kind => {
+    const client = await legacy.connect();
+    const productId = randomUUID(), firstSku = randomUUID(), secondSku = randomUUID();
+    const combination = Buffer.alloc(32, 1);
+    const gtin = nextGtin();
+    try {
+      await client.query("BEGIN");
+      await client.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Legacy product')", [productId, `legacy-${productId}`]);
+      await client.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,combination_digest)
+        VALUES($1,$3,$1::uuid::text,'First legacy SKU','draft',$4),($2,$3,$2::uuid::text,'Second legacy SKU','draft',$4)`,
+      [firstSku, secondSku, productId, kind === "duplicate draft combination" ? combination : null]);
+      if (kind === "duplicate GTIN under different issuers") {
+        await client.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
+          VALUES ($1,'legacy:first','gtin',$3,'unit',1),($2,'legacy:second','gtin',$3,'unit',1)`, [firstSku, secondSku, gtin]);
+      } else if (kind === "opaque legacy GTIN") {
+        await client.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
+          VALUES ($1,'legacy:first','gtin','opaque','unit',1)`, [firstSku]);
+      }
+      await client.query(readFileSync(publicationPath, "utf8"));
+      const skus = await client.query("SELECT publication_facts,combination_digest FROM public.catalog_skus WHERE product_id=$1", [productId]);
+      expect(skus.rows).toEqual(Array.from({ length: 2 }, () => ({ publication_facts: null, combination_digest: kind === "duplicate draft combination" ? combination : null })));
+      const identifiers = await client.query("SELECT issuer,scheme,normalized_value FROM public.catalog_sku_identifiers ORDER BY issuer");
+      expect(identifiers.rows).toEqual(kind === "duplicate draft combination" ? [] : kind === "opaque legacy GTIN"
+        ? [{ issuer: "legacy:first", scheme: null, normalized_value: "opaque" }]
+        : [{ issuer: "legacy:first", scheme: null, normalized_value: gtin }, { issuer: "legacy:second", scheme: null, normalized_value: gtin }]);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+  });
+});
+
+it("publication refuses a GTIN held by a different legacy issuer", async () => {
+  const data = await draft(), identifier = data.payload.skus[0]!.identifiers![0]!;
+  const legacy = randomUUID();
+  await db.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Legacy product')", [legacy, `legacy-${legacy}`]);
+  await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Legacy SKU')", [legacy, `legacy-${legacy}`]);
+  await db.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity)
+    VALUES ($1,'legacy:issuer','gtin',$2,'unit',1)`, [legacy, identifier.value]);
+  await approve(data.publication);
+  const before = await snapshot();
+  expect(await authority.publish(data.publication, actor)).toEqual({ outcome: "conflict", reason: "catalog_publication_identity_conflict" });
+  expect(await snapshot()).toEqual(before);
+});
+
+describe("governed publication reads", () => {
+  const offerVersion = "example:members";
+  const firstId = "01000000-0000-4000-8000-000000000001";
+  const lastId = "02000000-0000-4000-8000-000000000002";
+  const query = { offerVersion, cursor: null, limit: 1 } as const;
+  const pageSql = "SELECT public.catalog_offer_memberships_page($1,$2,$3,$4,$5) AS result";
+  const batchSql = "SELECT public.catalog_publication_activation_readiness($1,$2) AS result";
+  const wrongDigest = "0".repeat(64);
+  const liveDrift = { code: "40001", message: "catalog_publication_live_drift" };
+  let first: Awaited<ReturnType<typeof publishMember>>, last: typeof first;
+
+  async function publishMember(id: string, code: string, logisticsRef: string) {
+    const data = await draft(undefined, code, id), payload = structuredClone(data.payload);
+    const productSlug = payload.product.slug!;
+    payload.skus[0].grossMass = payload.skus[0].netContent;
+    payload.skus[0].logisticsRef = logisticsRef;
+    payload.product.sharedContent.requestedModes = [{ skuCode: code, modes: ["one_time", "subscription"] }];
+    payload.product.sharedContent.offerMemberships = [{ skuCode: code, offerVersion, admitted: true }];
+    payload.publication.operations = payload.publication.operations.filter(operation => operation.op !== "set_offer_membership");
+    payload.publication.operations.push(
+      { op: "set_offer_membership", skuCode: code, offerVersion, admitted: true },
+      { op: "set_sku_metadata", skuCode: code, logisticsRef },
+      { op: "set_eligibility", skuCode: code, sellableStandalone: true, sellableInSubscription: true },
+      { op: "set_sku_status", skuCode: code, status: "active" },
+      { op: "set_product_status", productSlug, status: "active" },
+    );
+    const target = createPostgresCatalogPublication({ ...dependencies(), globalReadiness: async () => ({ ready: true, reasons: [] }) });
+    const identity = (await target.authorize(null))!;
+    const command = { ...await save(payload, data.draftId, 1), changes: [{ variantId: id, expectedRevision: 0, state: "active" as const }] };
+    const receipt = await commit(command, target, identity);
+    return { ...data, payload, receipt, code, logisticsRef };
+  }
+
+  async function isolated(work: (connection: PoolClient) => Promise<void>, pool = db) {
+    const connection = await pool.connect();
+    try { await connection.query("BEGIN"); await work(connection); }
+    finally { await connection.query("ROLLBACK"); connection.release(); }
+  }
+
+  async function governed(executor: PgQueryExecutor = db, input: Parameters<typeof readPostgresCatalogMembershipPage>[2] = query) {
+    const page = await readPostgresCatalogMembershipPage(executor, registry, input);
+    expect(page).toMatchObject({ protocol: "governed" });
+    if (!("protocol" in page) || page.protocol !== "governed") throw new Error(JSON.stringify(page));
+    return page;
+  }
+
+  beforeAll(async () => {
+    last = await publishMember(lastId, "LC2R-A", "example:last");
+    first = await publishMember(firstId, "LC2R-Z", "example:first");
+  });
+
+  it.each([
+    ["D-207.unknown-offer", ["example:unknown", null, 1, null, null]],
+    ["D-207.null-limit", [offerVersion, null, null, null, null]],
+    ["D-207.low-limit", [offerVersion, null, 0, null, null]],
+    ["D-207.high-limit", [offerVersion, null, 101, null, null]],
+    ["D-207.mode", [offerVersion, null, 1, "invalid", null]],
+    ["LC6-D-092.unbound", [offerVersion, firstId, 1, null, null]],
+  ])("%s", async (_rule, args) => {
+    await expect(db.query(pageSql, args)).rejects.toMatchObject({ code: "22023", message: "catalog_offer_memberships_page_input_invalid" });
+  });
+
+  it.each([
+    ["D-209.offer", "UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{memberships}','[{\"offerVersion\":\"example:other\",\"admitted\":true}]') WHERE id=$1", null],
+    ["D-209.admitted", "UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{memberships}','[{\"offerVersion\":\"example:members\",\"admitted\":false}]') WHERE id=$1", null],
+    ["D-209.sku-active", "UPDATE public.catalog_skus SET status='archived' WHERE id=$1", null],
+    ["D-209.product-active", "UPDATE public.catalog_products SET status='archived' WHERE primary_sku_id=$1", null],
+    ["D-209.scope", "DELETE FROM public.catalog_publication_heads WHERE product_id=(SELECT product_id FROM public.catalog_skus WHERE id=$1)", null],
+    ["D-209.one-time", "UPDATE public.catalog_skus SET sellable_standalone=false WHERE id=$1", "one_time"],
+    ["D-209.subscription", "UPDATE public.catalog_skus SET sellable_in_subscription=false WHERE id=$1", "subscription"],
+    ["D-209.any-mode", "UPDATE public.catalog_skus SET sellable_standalone=false,sellable_in_subscription=false WHERE id=$1", null],
+  ] as const)("%s", async (_rule, change, mode) => isolated(async connection => {
+    await connection.query(change, [firstId]);
+    const page = await governed(connection, { ...query, mode });
+    expect(page.items.map(item => item.skuId)).toEqual([lastId]);
+    expect(page.nextCursor).toBeNull();
+  }));
+
+  it.each([
+    ["D-210.lookahead", { limit: 1 }, [firstId], firstId],
+    ["D-210.no-lookahead", { limit: 2 }, [firstId, lastId], null],
+    ["D-210.empty", { mode: "subscription", cursor: { skuId: lastId, headDigest: wrongDigest } }, [], null],
+  ] as const)("%s", async (_rule, ensure, expectedIds, nextId) => {
+    const input = { ...query, ...ensure };
+    const page = await governed(db, input.cursor ? { ...input, cursor: { ...input.cursor, headDigest: (await governed()).headDigest } } : input);
+    expect(page.items.map(item => item.skuId)).toEqual(expectedIds);
+    expect(page.nextCursor).toEqual(nextId === null ? null : { skuId: nextId, headDigest: page.headDigest });
+  });
+
+  it.each(["D-209.seek", "LC6-D-092.head"] as const)("%s", async rule => {
+    const page = await governed();
+    if (rule === "D-209.seek") {
+      expect((await governed(db, { ...query, cursor: page.nextCursor })).items.map(item => item.skuId)).toEqual([lastId]);
+    } else {
+      await expect(db.query(pageSql, [offerVersion, firstId, 1, null, wrongDigest]))
+        .rejects.toMatchObject({ code: "40001", message: "catalog_publication_head_moved" });
+    }
+  });
+
+  it("LC6-D-092.advance", async () => {
+    const page = await governed();
+    await commit((await draft()).publication);
+    expect(await authority.membershipPage({ ...query, cursor: page.nextCursor }))
+      .toEqual({ outcome: "conflict", reason: "catalog_publication_head_moved" });
+    await expect(db.query(pageSql, [offerVersion, firstId, 1, null, page.headDigest]))
+      .rejects.toMatchObject({ code: "40001", message: "catalog_publication_head_moved" });
+    expect(await authority.activationReadiness([first.code], page.headDigest))
+      .toEqual({ outcome: "conflict", reason: "catalog_publication_head_moved" });
+  });
+
+  it("LC6-D-094.selected-page-only", async () => isolated(async connection => {
+    await connection.query("UPDATE public.catalog_skus SET sku='CHANGED' WHERE id=$1", [lastId]);
+    const page = await governed(connection);
+    expect(page.items.map(item => item.skuId)).toEqual([firstId]);
+    expect(await readPostgresCatalogMembershipPage(connection, registry, { ...query, cursor: page.nextCursor }))
+      .toEqual({ outcome: "conflict", reason: "catalog_publication_live_drift" });
+  }));
+
+  it.each(["D-210.presentation", "D-210.logistics", "LC6-D-094.binding"])("%s", async rule => {
+    const page = await governed(db, { ...query, limit: 2 });
+    if (rule === "D-210.presentation") {
+      expect(page.items.map(item => item.presentation)).toEqual([first, last].map(member => member.payload.product.sharedContent.presentation));
+    } else if (rule === "D-210.logistics") {
+      expect(page.items.map(item => item.logisticsRef)).toEqual([first.logisticsRef, last.logisticsRef]);
+    } else {
+      const selected = page.items[0]!;
+      const retained = await authority.readbackV2(first.receipt.head);
+      expect(retained.outcome).toBe("page");
+      if (retained.outcome !== "page") throw new Error("Missing fixture head");
+      expect(selected).toMatchObject({ skuId: firstId, productId: first.productId, head: first.receipt.head,
+        skuRevisionId: retained.items[0]!.reference.revisionId, document: first.payload.product.documentRevision });
+    }
+  });
+
+  it.each([
+    ["LC6-D-094.identity", "UPDATE public.catalog_skus SET sku='CHANGED' WHERE id=$1"],
+    ["LC6-D-094.mode", "UPDATE public.catalog_skus SET sellable_standalone=false WHERE id=$1"],
+    ["LC6-D-094.measure", "UPDATE public.catalog_skus SET net_weight_g=101 WHERE id=$1"],
+    ["LC6-D-094.document", "UPDATE public.catalog_products SET current_document_revision_id=NULL WHERE primary_sku_id=$1"],
+  ])("%s", async (rule, change) => isolated(async connection => {
+    if (rule === "LC6-D-094.document") await connection.query("ALTER TABLE public.catalog_products DISABLE TRIGGER catalog_products_publication_pointer_fence");
+    await connection.query(change, [firstId]);
+    expect(await readPostgresCatalogMembershipPage(connection, registry, query)).toEqual({ outcome: "conflict", reason: "catalog_publication_live_drift" });
+  }));
+
+  it("LC6-D-094.revision", async () => isolated(async connection => {
+    await connection.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+    await connection.query(`WITH changed AS (
+      SELECT id,jsonb_set(canonical_state::jsonb,'{skus,0,digest}',to_jsonb(repeat('0',64)))::text AS state
+      FROM public.catalog_publications WHERE id=$1
+    ) UPDATE public.catalog_publications p SET canonical_state=changed.state,digest=encode(sha256(convert_to(changed.state,'UTF8')),'hex')
+      FROM changed WHERE p.id=changed.id`, [first.receipt.head.publicationId]);
+    expect(await readPostgresCatalogMembershipPage(connection, registry, query)).toEqual({ outcome: "conflict", reason: "catalog_publication_live_drift" });
+  }));
+
+  it.each([
+    ["D-207.null-offer", null, null],
+    ["D-207.offer-min", "", null],
+    ["D-207.offer-max", "x".repeat(81), null],
+    ["D-207.offer-trim", ` ${offerVersion} `, null],
+    ["LC6-D-092.format-digest", offerVersion, "invalid"],
+  ])("%s", async (_rule, offer, digest) => isolated(async connection => {
+    await connection.query("DELETE FROM public.catalog_publication_heads");
+    await expect(connection.query(pageSql, [offer, digest === null ? null : firstId, 1, null, digest]))
+      .rejects.toMatchObject({ code: "22023", message: "catalog_offer_memberships_page_input_invalid" });
+  }));
+
+  it.each(["D-208.legacy", "D-212.legacy"])("%s", async rule => isolated(async connection => {
+    await connection.query("DELETE FROM public.catalog_publication_heads");
+    if (rule === "D-208.legacy") {
+      expect(await readPostgresCatalogMembershipPage(connection, registry, query)).toEqual({ protocol: "legacy", headDigest: null, items: [], nextCursor: null });
+    } else {
+      await expect(connection.query(batchSql, [[first.code], wrongDigest])).rejects.toMatchObject({ code: "55000", message: "catalog_publication_not_adopted" });
+    }
+  }));
+
+  it.each([
+    ["D-211.null-array", null, wrongDigest], ["D-211.empty", [], wrongDigest],
+    ["D-211.max", Array.from({ length: 101 }, (_, index) => `SKU-${index}`), wrongDigest],
+    ["D-211.dimensions", [["AAA", "BBB"]], wrongDigest], ["D-211.null-code", [null], wrongDigest],
+    ["D-211.duplicate", ["AAA", "AAA"], wrongDigest], ["D-211.code", ["bad"], wrongDigest],
+    ["D-211.null-digest", ["AAA"], null], ["D-211.format-digest", ["AAA"], "bad"],
+  ] as const)("%s", async (_rule, codes, head) => {
+    await expect(db.query(batchSql, [codes, head])).rejects.toMatchObject({ code: "22023", message: "catalog_publication_readiness_input_invalid" });
+  });
+
+  it("D-212.head", async () => {
+    await expect(db.query(batchSql, [[first.code], wrongDigest])).rejects.toMatchObject({ code: "40001", message: "catalog_publication_head_moved" });
+  });
+
+  it.each(["D-213.order", "D-213.absent", "D-214.cardinality", "D-214.logistics", "D-214.ready"])("%s", async rule => {
+    const { headDigest } = await governed();
+    const target = createPostgresCatalogPublication({ ...dependencies(), readiness: async (_db, state, priced) => {
+      expect(priced).toBe(true);
+      expect(state.skus).toHaveLength(1);
+      return state.skus[0]!.id === lastId ? { ready: false, reasons: ["price_readiness_missing"] } : { ready: true, reasons: [] };
+    } });
+    const codes = [first.code, last.code, "UNMATERIALIZED"];
+    const result = await target.activationReadiness(codes, headDigest);
+    expect(result).toMatchObject({ protocol: "governed", headDigest });
+    if (!("items" in result)) throw new Error(JSON.stringify(result));
+    if (rule === "D-213.order") expect(result.items.map(item => item.skuCode)).toEqual(codes);
+    if (rule === "D-213.absent") expect(result.items[2]).toEqual({ skuCode: "UNMATERIALIZED", skuId: null, logisticsRef: null, ready: false, reasons: ["sku_not_materialized"] });
+    if (rule === "D-214.cardinality") expect(result.items).toHaveLength(codes.length);
+    if (rule === "D-214.logistics") expect(result.items.map(item => item.logisticsRef)).toEqual([first.logisticsRef, last.logisticsRef, null]);
+    if (rule === "D-214.ready") expect(result.items.slice(0, 2).map(({ ready, reasons }) => ({ ready, reasons })))
+      .toEqual([{ ready: true, reasons: [] }, { ready: false, reasons: ["price_readiness_missing"] }]);
+  });
+
+  it.each(["D-214.native-reasons", "LC2R-READINESS.read-only"])("%s", async rule => {
+    if (rule === "D-214.native-reasons") {
+      await isolated(async connection => {
+        const { headDigest } = await governed(connection);
+        await connection.query("DELETE FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1 AND is_primary", [firstId]);
+        const { rows } = await connection.query(batchSql, [[first.code], headDigest]);
+        expect(rows[0]!.result.items).toMatchObject([{ skuCode: first.code, skuId: firstId, ready: false, reasons: ["unit_gtin_missing"] }]);
+      });
+    } else {
+      const { headDigest } = await governed();
+      const target = createPostgresCatalogPublication({ ...dependencies(), async readiness(connection) {
+        const { rows } = await connection.query("SHOW transaction_read_only");
+        expect(rows).toEqual([{ transaction_read_only: "on" }]);
+        return { ready: true, reasons: [] };
+      } });
+      expect(await target.activationReadiness([first.code], headDigest))
+        .toMatchObject({ protocol: "governed", items: [{ skuId: firstId, ready: true, reasons: [] }] });
+    }
+  });
+
+  it("D-213.scope", async () => isolated(async connection => {
+    await connection.query("DELETE FROM public.catalog_publication_heads WHERE product_id=$1", [first.productId]);
+    const { headDigest } = await governed(connection);
+    const { rows } = await connection.query(batchSql, [[first.code], headDigest]);
+    expect(rows[0]!.result.items).toEqual([{ skuCode: first.code, skuId: null, ready: false, reasons: ["sku_not_materialized"], logisticsRef: null, evidence: null }]);
+  }));
+
+  it.each(["D-208.lock", "D-212.lock"])("%s", async rule => {
+    const { headDigest } = await governed();
+    const writer = await db.connect(), reader = await db.connect();
+    const readBackend = (await reader.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+    await writer.query("BEGIN");
+    await writer.query("SELECT pg_advisory_xact_lock(hashtextextended('catalog-publication-global',0))");
+    const pending = rule === "D-208.lock" ? reader.query(pageSql, [offerVersion, null, 1, null, null])
+      : reader.query(batchSql, [[first.code], headDigest]);
+    try {
+      await expect.poll(async () => (await writer.query("SELECT wait_event FROM pg_stat_activity WHERE pid=$1", [readBackend])).rows[0]?.wait_event)
+        .toBe("advisory");
+    } finally { await writer.query("ROLLBACK"); writer.release(); await pending.finally(() => reader.release()); }
+  });
+
+  it("D-212.latest-after-wait", async () => {
+    const { headDigest } = await governed();
+    const data = await draft();
+    await approve(data.publication);
+    const writer = await db.connect(), reader = await db.connect();
+    try {
+      const readerPid = (await reader.query("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+      await writer.query("BEGIN");
+      await writer.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`);
+      const publisher = createPostgresCatalogPublication({ ...dependencies(), transactions: { run: work => work(writer) } });
+      const published = await publisher.publish(data.publication, (await publisher.authorize(null))!);
+      expect(published).toMatchObject({ outcome: "committed" });
+
+      await reader.query("BEGIN");
+      const target = createPostgresCatalogPublication({ ...dependencies(), transactions: { run: work => work(reader) } });
+      const pending = target.activationReadiness([first.code], headDigest);
+      try {
+        await expect.poll(async () => (await writer.query("SELECT wait_event FROM pg_stat_activity WHERE pid=$1", [readerPid])).rows[0]?.wait_event)
+          .toBe("advisory");
+        await writer.query("COMMIT");
+      } finally {
+        await writer.query("ROLLBACK");
+        expect(await pending).toEqual({ outcome: "conflict", reason: "catalog_publication_head_moved" });
+      }
+    } finally {
+      await Promise.all([writer.query("ROLLBACK"), reader.query("ROLLBACK")]);
+      writer.release();
+      reader.release();
+    }
+  });
+
+  it.each([
+    ["LC6-D-088.acl", pageSql, () => [offerVersion, null, 1, null, null]],
+    ["D-214.acl", batchSql, (head: string) => [[first.code], head]],
+  ] as const)("%s", async (_rule, sql, args) => {
+    const { headDigest } = await governed();
+    for (const role of ["lc2r_reader", "anon", "authenticated", "service_role"]) {
+      await isolated(async connection => {
+        if (role === "lc2r_reader") await connection.query("CREATE ROLE lc2r_reader NOLOGIN");
+        await connection.query(`SET LOCAL ROLE ${role}`);
+        const values = [...args(headDigest)];
+        if (role === "service_role") {
+          expect((await connection.query(sql, values)).rows).toHaveLength(1);
+          const { rows } = await connection.query(`SELECT
+            has_function_privilege('public.catalog_publication_read_head()', 'EXECUTE') AS head,
+            has_function_privilege('public.catalog_publication_read_member(uuid)', 'EXECUTE') AS member`);
+          expect(rows).toEqual([{ head: false, member: false }]);
+        } else {
+          await expect(connection.query(sql, values)).rejects.toMatchObject({ code: "42501" });
+        }
+      });
+    }
+  });
+
+  const sharedHelpers = [
+    ["catalog_publication_read_head", "SELECT public.catalog_publication_read_head()", []],
+    ["catalog_publication_read_member", "SELECT public.catalog_publication_read_member($1)", [firstId]],
+  ] as const;
+  it.each(sharedHelpers.flatMap(([name, sql, parameters]) =>
+    ["lc2r_reader", "anon", "authenticated", "service_role"].map(role =>
+      [`LC2R-ACL.helpers.${name}.${role}`, name, sql, parameters, role] as const)))("%s", async (_rule, name, sql, parameters, role) => isolated(async connection => {
+    if (role === "lc2r_reader") await connection.query("CREATE ROLE lc2r_reader NOLOGIN");
+    await connection.query(`SET LOCAL ROLE ${role}`);
+    await expect(connection.query(sql, [...parameters])).rejects
+      .toMatchObject({ code: "42501", message: `permission denied for function ${name}` });
+  }, role === "service_role" ? priceDb : db));
+
+  // Rewrite sealed fixture bytes only in the rollback scope. Reseal every
+  // unrelated carrier so a secondary check cannot mask the targeted change.
+  async function rewriteManifest(connection: PoolClient, change: (manifest: CatalogPublicationManifestV2) => void, mirrorProduct = false) {
+    await connection.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+    const publicationId = first.receipt.head.publicationId;
+    const { rows: [row] } = await connection.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [publicationId]);
+    const manifest: CatalogPublicationManifestV2 = JSON.parse(row!.canonical_state);
+    change(manifest);
+    const text = canonicalCatalogDraftJson(manifest);
+    await connection.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
+      [publicationId, text, createHash("sha256").update(text).digest("hex")]);
+    if (mirrorProduct) await connection.query("UPDATE public.catalog_products SET publication_facts=$2 WHERE id=$1", [first.productId, manifest.product]);
+  }
+
+  async function rewriteSku(connection: PoolClient, change: (sku: CatalogPublishedSku) => void) {
+    await connection.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
+    const { rows: [row] } = await connection.query("SELECT id,full_facts FROM public.catalog_sku_revisions WHERE sku_id=$1", [firstId]);
+    const sku: CatalogPublishedSku = JSON.parse(row!.full_facts);
+    change(sku);
+    const text = canonicalCatalogDraftJson(sku);
+    const digest = createHash("sha256").update(text).digest("hex");
+    await connection.query("UPDATE public.catalog_sku_revisions SET full_facts=$2,digest=$3 WHERE id=$1", [row!.id, text, digest]);
+    await connection.query("UPDATE public.catalog_skus SET publication_facts=$2 WHERE id=$1", [firstId, sku]);
+    await rewriteManifest(connection, manifest => { manifest.skus[0]!.digest = digest; });
+  }
+
+  it.each<[string, (connection: PoolClient) => Promise<unknown>]>([
+    ["LC6-D-094.subscription-drift", connection => connection.query("UPDATE public.catalog_skus SET sellable_in_subscription=false WHERE id=$1", [firstId])],
+    ["LC6-D-094.retained-link.sku", connection => rewriteManifest(connection, manifest => { manifest.skus[0]!.skuId = lastId; })],
+    ["LC6-D-094.retained-link.revision-id", connection => rewriteManifest(connection, manifest => { manifest.skus[0]!.revisionId = randomUUID(); })],
+    ["LC6-D-094.retained-link.revision-number", connection => rewriteManifest(connection, manifest => { manifest.skus[0]!.revision++; })],
+    ["LC6-D-094.retained-link.owner", async connection => {
+      const { rows: [foreign] } = await connection.query("SELECT id,revision,digest,full_facts FROM public.catalog_sku_revisions WHERE sku_id=$1", [lastId]);
+      await rewriteManifest(connection, manifest => {
+        manifest.skus[0] = { skuId: firstId, revisionId: foreign!.id, revision: foreign!.revision, digest: foreign!.digest };
+      });
+      await connection.query("UPDATE public.catalog_skus SET sku='LC2R-UNRELATED' WHERE id=$1", [lastId]);
+      await connection.query("UPDATE public.catalog_skus SET sku=$2,publication_facts=$3::jsonb WHERE id=$1", [firstId, last.code, foreign!.full_facts]);
+    }],
+    ["LC6-D-094.ambiguous-retained", connection => rewriteManifest(connection, manifest => { manifest.skus.push(manifest.skus[0]!); })],
+    ["LC6-D-094.hash-publication", async connection => {
+      await connection.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+      await connection.query("UPDATE public.catalog_publications SET canonical_state=canonical_state||' ' WHERE id=$1", [first.receipt.head.publicationId]);
+    }],
+    ["LC6-D-094.hash-sku", async connection => {
+      await connection.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
+      await connection.query("UPDATE public.catalog_sku_revisions SET full_facts=full_facts||' ' WHERE sku_id=$1", [firstId]);
+    }],
+    ["LC6-D-094.hash-document", async connection => {
+      await connection.query("ALTER TABLE public.catalog_product_document_revisions DISABLE TRIGGER catalog_product_document_revisions_immutable");
+      await connection.query("UPDATE public.catalog_product_document_revisions SET canonical_text=canonical_text||' ' WHERE id=$1", [first.payload.product.documentRevision!.id]);
+    }],
+    ["LC6-D-094.document-projection", connection => rewriteManifest(connection, manifest => { manifest.product.document!.sourceRef = "example:wrong"; }, true)],
+    ["LC6-D-094.live-product", connection => connection.query("UPDATE public.catalog_products SET publication_facts=jsonb_set(publication_facts,'{name}',to_jsonb($2::text)) WHERE id=$1", [first.productId, "Different name"])],
+    ["LC6-D-094.live-sku", connection => connection.query("UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{title}',to_jsonb($2::text)) WHERE id=$1", [firstId, "Different title"])],
+    ["LC6-D-094.live-slug", connection => connection.query("UPDATE public.catalog_products SET slug='different-slug' WHERE id=$1", [first.productId])],
+    ["LC6-D-094.live-status.product", connection => rewriteManifest(connection, manifest => { manifest.product.status = "archived"; }, true)],
+    ["LC6-D-094.live-status.sku", connection => rewriteSku(connection, sku => { sku.status = "archived"; })],
+  ])("%s", async (_rule, change) => isolated(async connection => {
+    await change(connection);
+    const { rows: [head] } = await connection.query("SELECT public.catalog_publication_read_head() AS digest");
+    const { rows: [selected] } = await connection.query("SELECT sku FROM public.catalog_skus WHERE id=$1", [firstId]);
+    await connection.query("SAVEPOINT membership_evidence");
+    const page = await connection.query(pageSql, [offerVersion, null, 1, null, null]).catch((error: unknown) => error);
+    await connection.query("ROLLBACK TO SAVEPOINT membership_evidence");
+    const batch = await connection.query(batchSql, [[selected!.sku], head!.digest]).catch((error: unknown) => error);
+    expect({ page, batch }).toMatchObject({ page: liveDrift, batch: liveDrift });
+  }));
+
+  it("LC6-D-094.retained-link.current", async () => isolated(async connection => {
+    const previous = first.receipt.head;
+    const { items: [member] } = await governed(connection);
+    const publicationId = randomUUID();
+    await connection.query(`INSERT INTO public.catalog_publications
+      (id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id)
+      SELECT $2,product_id,revision+1,id,draft_id,draft_revision,candidate_ref||'/selected-fixture',candidate_digest,document_revision_id,canonical_state,digest,actor_id
+      FROM public.catalog_publications WHERE id=$1`, [previous.publicationId, publicationId]);
+    await connection.query("UPDATE public.catalog_publication_heads SET publication_id=$2,revision=revision+1 WHERE product_id=$1", [first.productId, publicationId]);
+    const otherText = canonicalCatalogDraftJson({ variant: "another retained document" });
+    await connection.query(`INSERT INTO public.catalog_product_document_revisions
+      (product_id,revision_no,schema_id,document_ref,source_ref,document_payload,provenance,digest,canonical_text)
+      SELECT product_id,revision_no+1,schema_id,document_ref,source_ref,$2::text::jsonb,provenance,$3,$2::text
+      FROM public.catalog_product_document_revisions WHERE id=$1`,
+    [member!.document.id, otherText, createHash("sha256").update(otherText).digest("hex")]);
+    const { items: [selected] } = await governed(connection);
+    expect(selected).toMatchObject({
+      head: { ...previous, publicationId, revision: previous.revision + 1 },
+      skuRevisionId: member!.skuRevisionId, document: member!.document,
+    });
+  }));
+
+  it.each(["presentation", "logistics"])("D-210.null-optionals.%s", async field => isolated(async connection => {
+    if (field === "presentation") await rewriteManifest(connection, manifest => { manifest.product.presentation = null; }, true);
+    else await rewriteSku(connection, sku => { sku.logisticsRef = null; });
+    const { items } = await governed(connection);
+    expect(items).toMatchObject([{
+      skuId: firstId,
+      presentation: field === "presentation" ? null : first.payload.product.sharedContent.presentation,
+      logisticsRef: field === "logistics" ? null : first.logisticsRef,
+    }]);
+  }));
+
+  describe("bounded paging parity", () => {
+    const thirdId = "03000000-0000-4000-8000-000000000003";
+
+    beforeAll(async () => {
+      await publishMember(thirdId, "LC2R-THIRD", "example:third");
+    });
+
+    it.each([
+      ["D-209.order", 1, [firstId], firstId],
+      ["D-210.cursor-last", 2, [firstId, lastId], lastId],
+      ["D-208.head-fold", 3, [firstId, lastId, thirdId], null],
+    ] as const)("%s", async (rule, limit, ids, cursor) => {
+      const result = await governed(db, { ...query, limit });
+      expect(result.items.map(item => item.skuId)).toEqual(ids);
+      expect(result.nextCursor).toEqual(cursor === null ? null : { skuId: cursor, headDigest: result.headDigest });
+      if (rule === "D-210.cursor-last") {
+        expect((await governed(db, { ...query, cursor: result.nextCursor })).items.map(item => item.skuId)).toEqual([thirdId]);
+      }
+      if (rule === "D-208.head-fold") {
+        const { rows } = await db.query(`SELECT jsonb_build_array(h.product_id,h.publication_id,h.revision,p.digest)::text AS entry
+          FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON p.id=h.publication_id ORDER BY h.product_id`);
+        expect(rows.length).toBeGreaterThanOrEqual(3);
+        const expected = createHash("sha256").update(`[${rows.map(row => row.entry).join(", ")}]`).digest("hex");
+        expect(result.headDigest).toBe(expected);
+      }
+    });
+  });
+});

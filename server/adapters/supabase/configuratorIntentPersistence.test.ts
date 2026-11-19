@@ -261,6 +261,21 @@ describe("supabaseConfiguratorIntentPersistencePort — the verified subject", (
 });
 
 describe("supabaseConfiguratorIntentPersistencePort — persistIntent error mapping", () => {
+  it("replays a completed 21-day checkout command through the managed identity RPC", async () => {
+    const command = { ...commandWithPhone("+12025550123", "US"), mode: "subscription" as const, cadenceDays: 21 };
+    const rpc = vi.fn(async () => ({ data: {
+      ...completedPayload(), idempotencyKey: command.idempotencyKey, petId: null, replayed: true,
+    }, error: null }));
+    const from = vi.fn(() => { throw new Error("unexpected receipt SELECT"); });
+
+    await expect(portFor(asClient({ rpc, from })).persistCheckoutCommand(command)).resolves.toMatchObject({
+      idempotencyKey: command.idempotencyKey, subjectId: null, replayed: true,
+    });
+    expect(rpc).toHaveBeenCalledWith("commerce_configurator_persist_intent", {
+      p_intent: { ...command, authenticatedUserId: null },
+    });
+    expect(from).not.toHaveBeenCalled();
+  });
   it("maps a nullable legacy subject response into the neutral persistence result", async () => {
     const client = asClient({
       rpc: vi.fn(async () => ({

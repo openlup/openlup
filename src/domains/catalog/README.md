@@ -76,8 +76,8 @@ and authoritative refusal presentation.
 ## Isolated product drafts
 
 `catalogDraftContracts.ts`, `catalogProductTypeContracts.ts` and
-`server/domains/catalog/catalogDraftValidation.ts` are a dark,
-development-preview draft seam. Product types are installed by composition,
+`server/domains/catalog/catalogDraftValidation.ts` are a composition-owned
+draft seam. Product types are installed by composition,
 never supplied as draft data, and absent facts stay readiness issues.
 
 The package adds explicit v2 draft schemas and v1-or-v2 stored readers. V2

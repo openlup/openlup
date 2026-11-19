@@ -73,7 +73,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         case 'set_composition': {
           if (!allowed(['components']) || !Array.isArray(payload.components) || payload.components.length > 100)
             return refused('starter_input_invalid');
-          const components = [];
+          const components: { sku: string; quantity: number; isAddon: boolean; sortOrder: number }[] = [];
           for (const [index, entry] of payload.components.entries()) {
             if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return refused('starter_input_invalid');
             const item = entry as Record<string, unknown>;

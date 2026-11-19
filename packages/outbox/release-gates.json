@@ -2,14 +2,39 @@
   "schemaVersion": 5,
   "kind": "rail",
   "compatibilityPolicies": {
-    "internal-candidate": "Development-preview API; no stable compatibility claim.",
-    "testing-internal": "Synthetic protocol test support."
+    "stable": "Stable API under SemVer from 1.0.0. Unions and literal sets are open: adding a value is minor; consumers must keep a default branch for unknown values. Removing, renaming or narrowing an export, value or type is major. Symbols tagged @experimental within a stable subpath are outside this promise.",
+    "experimental": "Experimental API; may change in any minor release.",
+    "testing": "Test support only; not a runtime compatibility promise."
+  },
+  "packageRelease": {
+    "phase": "platform-monorepo-phase-5",
+    "publicStability": "stable-semver",
+    "artifactChannel": "npm-stable",
+    "versionRule": "MAJOR.MINOR.PATCH"
+  },
+  "evidence": {
+    "packageSmokeEvidence": {
+      "state": "required",
+      "meaning": "Hermetic build, import, pack and directory publish-refusal proof for this package."
+    },
+    "conformanceEvidence": {
+      "state": "required-for-declared-ports",
+      "meaning": "A framework-free port/adapter suite is required only when this package declares that seam."
+    },
+    "dogfoodEvidence": {
+      "state": "first-party-production",
+      "meaning": "A first-party production deployment consumes package seams; this is first-party evidence only."
+    },
+    "externalConsumerEvidence": {
+      "state": "first-party-npm-and-production",
+      "meaning": "A first-party demo store installed from npm and a first-party production deployment provide consumer evidence. No independent adoption is claimed."
+    }
   },
   "packageSurface": {
     ".": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageContract.test.ts"
       ],
@@ -18,8 +43,8 @@
     },
     "./postgres": {
       "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "test/packageContract.test.ts"
       ],
@@ -29,7 +54,7 @@
     "./testing": {
       "role": "testing",
       "maturity": "testing",
-      "compatibilityPolicy": "testing-internal",
+      "compatibilityPolicy": "testing",
       "packageSmokeEvidence": [
         "test/packageContract.test.ts"
       ],
@@ -50,8 +75,8 @@
     "maxUnpackedBytes": 266240,
     "maxFiles": 90,
     "baseline": {
-      "version": "0.42.0",
-      "packedBytes": 41035
+      "version": "1.1.0",
+      "packedBytes": 41748
     },
     "browserEntries": {}
   }

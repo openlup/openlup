@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 import type { ExactSubscriptionEditAction, ExactSubscriptionEditQuote, ExactSubscriptionEditRequest, SubscriptionEditRequest } from "./contracts/exactEdit.js";
@@ -37,7 +38,8 @@ export function createPostgresPackageEditor(options: PackageEditorOptions) {
     if (!result.success) throw new Error("subscription_reprice_invalid_request"); return result.data; };
   function assertRequestLimits(request: ReturnType<typeof parse>) {
     const base = "base" in request ? request.base : [], addons = "addons" in request ? request.addons : [];
-    if (("planDays" in request && request.planDays > limits.maximumPlanDays) || base.length > limits.maximumBaseLines ||
+    // Current representation limits follow completed receipt replay.
+    if (("planDays" in request && request.planDays > Math.min(limits.maximumPlanDays, MAX_CADENCE_DAYS)) || base.length > limits.maximumBaseLines ||
       addons.length > limits.maximumAddonLines || [...base, ...addons].some(line => line.qty > limits.maximumQuantity) ||
       ("qty" in request && request.qty > limits.maximumQuantity)) throw new Error("subscription_reprice_invalid_request");
   }

@@ -1,7 +1,7 @@
 {
   "name": "@openlup/core",
-  "version": "0.43.0",
-  "description": "Neutral D2C subscription and bundle commerce kernels; a development preview with no stable API.",
+  "version": "1.2.0",
+  "description": "Neutral D2C subscription and bundle commerce kernels.",
   "keywords": [
     "openlup",
     "subscription",

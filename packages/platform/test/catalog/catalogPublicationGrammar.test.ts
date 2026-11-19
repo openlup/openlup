@@ -1,11 +1,13 @@
 import { expect, it } from "vitest";
+import { createPostgresCatalogPublication } from "../../src/catalog/publicationStore.js";
+import { CATALOG_PUBLICATION_LIMITS, type CatalogPublicationReceiptV2 } from "../../src/catalog/contracts/publication.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js";
 import { validateCatalogDraft } from "../../src/catalog/draftValidation.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
-import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, compileCatalogPublication, publicationDigest } from "../../src/catalog/publicationValidation.js";
-import { input, registry } from "./fixtures/publicationInput.js";
+import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, catalogPublishedProductSchema, compileCatalogPublication, publicationDigest } from "../../src/catalog/publicationValidation.js";
+import { input, registry, rules } from "./fixtures/publicationInput.js";
 
 // Conservative aliases cover shared target grammar/identity predicates. Each
 // executes the closed-contract matrix, rather than asserting a source-code token.
@@ -306,7 +308,6 @@ const witnesses = [
   "W39_V5-1790_predicate_precedence_boundary",
   "W39_V5-1791_predicate_precedence_boundary",
   "W39_V5-1792_predicate_precedence_boundary",
-  "W39_V5-1794_predicate_precedence_boundary",
   "W03_V5-1798_predicate_precedence_boundary",
   "W03_V5-1799_predicate_precedence_boundary",
   "W03_V5-1800_predicate_precedence_boundary",
@@ -487,4 +488,134 @@ it.each(witnesses)("%s", () => {
   ]) expect(validateCatalogDraft(value as typeof v2, registry).valid).toBe(false);
   expect(() => createCatalogProductTypeRegistry([{ ...data.definition, version: 0 }])).toThrow();
   expect(() => createCatalogProductTypeRegistry([data.definition, data.definition])).toThrow();
+});
+
+it("cycle1 retained fact scalar and roster boundaries", () => {
+  const compiled = compileCatalogPublication(input());
+  function skuPatch(change: (sku: typeof compiled.skus[number]) => void, accepts: boolean) {
+    const sku = structuredClone(compiled.skus[0]); change(sku);
+    expect(catalogPublishedSkuSchema.safeParse(sku).success).toBe(accepts);
+  }
+  function productPatch(change: (product: typeof compiled.product) => void, accepts: boolean) {
+    const product = structuredClone(compiled.product); change(product);
+    expect(catalogPublishedProductSchema.safeParse(product).success).toBe(accepts);
+  }
+  for (const [field, maximum] of [["code",160],["title",500],["logisticsRef",240]] as const)
+    for (const length of [0,1,maximum-1,maximum,maximum+1]) skuPatch(sku => { sku[field] = "a".repeat(length); }, length>=1 && length<=maximum);
+  for (const value of [0,1,2,2_147_483_646,2_147_483_647,2_147_483_648,1.5]) {
+    const accepts = Number.isInteger(value) && value>=1 && value<=2_147_483_647;
+    skuPatch(sku => { sku.minQuantity=value; },accepts);
+    skuPatch(sku => { sku.source.revision=value; },accepts);
+    productPatch(product => { product.source.revision=value; },accepts);
+  }
+  for (const field of ["commandKey"] as const) for(const length of [0,1,239,240,241]) {
+    skuPatch(sku => {sku.source[field]="a".repeat(length);},length>=1&&length<=240);
+    productPatch(product => {product.source[field]="a".repeat(length);},length>=1&&length<=240);
+  }
+  for(const [field,maximum] of [["name",500],["slug",null]] as const) for(const length of [0,1,499,500,501])
+    productPatch(product=>{product[field]="a".repeat(length);},length>=1&&(maximum===null||length<=maximum));
+  for(const count of [0,1,15,16,17]) productPatch(product=>{product.axes=Array.from({length:count},(_,i)=>`axis${i}`);},count<=16);
+  productPatch(product=>{product.axes=["axis","axis"];},false);
+  for(const count of [0,1,31,32,33]) skuPatch(sku=>{sku.assetRefs=Array.from({length:count},(_,i)=>`example:asset-${i}`);},count<=32);
+  for(const [field,maximum] of [["scheme",240],["issuer",240],["value",128],["label",500],["sourceRef",240]] as const)
+    for(const length of [0,1,maximum-1,maximum,maximum+1]) skuPatch(sku=>{
+      const identifier=sku.identifiers[0];identifier.scheme="example:identifier";identifier.isPrimary=false;identifier[field]="a".repeat(length);
+    },length>=1&&length<=maximum);
+  for(const value of [0,1,2,999_998,999_999,1_000_000,2.5]) skuPatch(sku=>{
+    sku.identifiers[0].packagingLevel="case";sku.identifiers[0].isPrimary=false;sku.identifiers[0].quantity=value;
+  },Number.isInteger(value)&&value>=2&&value<=999_999);
+  for(const value of [0,1,2]) skuPatch(sku=>{sku.identifiers[0].quantity=value;},value===1);
+  skuPatch(sku=>{sku.memberships=[{offerVersion:"a",admitted:false},{offerVersion:"b",admitted:true}];},true);
+  skuPatch(sku=>{sku.memberships=[{offerVersion:"b",admitted:false},{offerVersion:"a",admitted:true}];},false);
+  skuPatch(sku=>{sku.memberships=[{offerVersion:"a",admitted:false},{offerVersion:"a",admitted:true}];},false);
+  skuPatch(sku=>{sku.identifiers.push({...sku.identifiers[0],value:"4006381333931"});},false);
+  for(const field of ["logisticsRef"] as const) for(const value of [" a","a ","\ta","a\n"]) skuPatch(sku=>{sku[field]=value;},false);
+  const ref={skuId:compiled.skus[0].id,revisionId:"50000000-0000-4000-8000-000000000001",revision:1,digest:"a".repeat(64)};
+  for(const revision of [0,1,2_147_483_647,2_147_483_648]) expect(catalogPublicationManifestSchema.safeParse({schemaVersion:2,product:compiled.product,skus:[{...ref,revision}]}).success).toBe(revision>=1&&revision<=2_147_483_647);
+  for(const skus of [[],[ref,ref],[{...ref,skuId:"20000000-0000-4000-8000-000000000002"},ref]])
+    expect(catalogPublicationManifestSchema.safeParse({schemaVersion:2,product:compiled.product,skus}).success).toBe(false);
+});
+
+it("cycle1 publication envelope exact UTF-8 boundary", () => {
+  const value = { text: "é" }, text = canonicalCatalogDraftJson(value), bytes = Buffer.byteLength(text);
+  expect(() => publicationDigest(value, bytes - 1)).toThrow("catalog_publication_envelope_too_large");
+  expect(publicationDigest(value, bytes)).toBe(publicationDigest(value, bytes + 1));
+});
+
+it("cycle1 primary identifier keeps independent scheme and packaging guards", () => {
+  const sku = compileCatalogPublication(input()).skus[0];
+  expect(catalogPublishedSkuSchema.safeParse(sku).success).toBe(true);
+  const foreignScheme = structuredClone(sku); foreignScheme.identifiers[0].scheme = "example:identifier";
+  expect(catalogPublishedSkuSchema.safeParse(foreignScheme).success).toBe(false);
+  const primaryCase = structuredClone(sku); primaryCase.identifiers[0].packagingLevel = "case"; primaryCase.identifiers[0].quantity = 2;
+  expect(catalogPublishedSkuSchema.safeParse(primaryCase).success).toBe(false);
+});
+
+it("W39_V5-1794_predicate_precedence_boundary", async () => {
+  const { payload, record } = input();
+  const productId = payload.product.id;
+  const actorId = "70000000-0000-4000-8000-000000000001";
+  const documentDigest = payload.product.documentRevision!.digest;
+  const suffix = (value: number) => String(value).padStart(12, "0");
+  const headAt = (revision: number) => ({
+    publicationId: `50000000-0000-4000-8000-${suffix(revision)}`, revision, documentDigest,
+  });
+  const history = Array.from({ length: 20 }, (_, index) => {
+    const revision = 20 - index;
+    const head = headAt(revision), previousHead = revision > 1 ? headAt(revision - 1) : null;
+    const receipt: CatalogPublicationReceiptV2 = {
+      schemaVersion: 2, productId, commandKey: `publish:${revision}`, fingerprint: "a".repeat(64), actorId,
+      head, previousHead, publicationDigest: "b".repeat(64), committedAt: "2026-01-01T00:00:00.000000Z",
+      changes: Array.from({ length: 2500 }, (_, index) => {
+        const variantId = `60000000-0000-4000-8000-${suffix(index + 1)}`;
+        return { productId, variantId, sku: `SKU-${suffix(index + 1)}`, state: "active", variantRevision: revision,
+          publicationHead: head, draftRef: { draftId: record.draftId, revision } };
+      }),
+    };
+    return { revision, id: head.publicationId, result: receipt, scope_id: productId,
+      command_key: receipt.commandKey, fingerprint: receipt.fingerprint, actor_id: actorId, publication_id: head.publicationId };
+  });
+  const historyQueries: unknown[][] = [];
+  const target = createPostgresCatalogPublication({
+    registry, rules, authorizeHuman: async () => ({ ok: false }),
+    transactions: { run: work => work({ async query(sql, params) {
+      if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
+      if (sql.startsWith("SELECT EXISTS")) return { rows: [{ unknown: false }] };
+      if (sql.startsWith("SELECT p.revision,p.id,r.result")) {
+        const [scope, highWater, before] = params!;
+        historyQueries.push(params!);
+        return { rows: history.filter(row => row.scope_id === scope &&
+          (highWater === null || row.revision <= Number(highWater)) && (before === null || row.revision < Number(before))) };
+      }
+      if (sql.startsWith("SELECT p.revision,p.digest,d.digest")) {
+        const stored = history.find(row => row.id === params?.[0] && row.scope_id === params?.[1]);
+        if (!stored) throw new Error("Unknown history receipt");
+        const { result } = stored;
+        return { rows: [{ revision: result.head.revision, digest: result.publicationDigest, document_digest: documentDigest,
+          previous_id: result.previousHead?.publicationId ?? null, previous_revision: result.previousHead?.revision ?? null,
+          previous_document_digest: result.previousHead?.documentDigest ?? null, committed_at: result.committedAt }] };
+      }
+      throw new Error("Unexpected history query");
+    } }) },
+    readiness: async () => { throw new Error("Unexpected readiness call"); },
+    verifyMedia: async () => { throw new Error("Unexpected media call"); },
+  });
+
+  const first = await target.reads.history(productId, null);
+  expect(first.outcome).toBe("page");
+  if (first.outcome !== "page" || first.nextCursor === null) throw new Error("Missing history continuation");
+  expect(first.receipts.map(receipt => receipt.head.revision)).toEqual([20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5]);
+  expect(JSON.parse(Buffer.from(first.nextCursor, "base64url").toString("utf8"))).toEqual({
+    schemaVersion: 1, kind: "history", productId, highWater: 20, before: 5,
+  });
+  const rest = await target.reads.history(productId, first.nextCursor);
+  expect(rest.outcome).toBe("page");
+  if (rest.outcome !== "page") throw new Error("Missing history remainder");
+  expect(rest.receipts.map(receipt => receipt.head.revision)).toEqual([4, 3, 2, 1]);
+  expect(rest.nextCursor).toBeNull();
+  expect(historyQueries).toEqual([[productId, null, null], [productId, 20, 5]]);
+
+  const bytes = Buffer.byteLength(JSON.stringify(first));
+  expect(bytes).toBeLessThanOrEqual(CATALOG_PUBLICATION_LIMITS.historyBytes);
+  expect(bytes + Buffer.byteLength(JSON.stringify(rest.receipts[0])) + 1).toBeGreaterThan(CATALOG_PUBLICATION_LIMITS.historyBytes);
 });

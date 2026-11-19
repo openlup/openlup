@@ -85,3 +85,27 @@ it("returns null for a missing active read and rejects malformed stored state", 
   f.chain.maybeSingle.mockResolvedValue({ data: { id: "invalid" }, error: null });
   await expect(createCommerceCheckoutResumeQueryPort(f.client).readDraftByTokenHash({ tokenHash: "hash-a", now })).rejects.toBeInstanceOf(CommerceCheckoutResumePersistenceError);
 });
+
+it.each([0, 1, 3660, 3661])("admits fresh resume insert/update cadence %i before accessing persistence", async cadenceDays => {
+  for (const existing of [null, { expires_at: expires, revoked_at: null }]) {
+    const f = resumeClient(existing), draftState = { ...state, mode: "subscription" as const, cadenceDays };
+    const result = createCommerceCheckoutResumeQueryPort(f.client).upsertDraft({ ...input, draftState });
+    if (cadenceDays === 0 || cadenceDays === 3661) {
+      await expect(result).rejects.toMatchObject({ name: "CommerceCheckoutResumePersistenceError",
+        details: { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: 3660 } });
+      expect(f.client.from).not.toHaveBeenCalled();
+      expect(f.table.insert).not.toHaveBeenCalled(); expect(f.table.update).not.toHaveBeenCalled();
+    } else {
+      await expect(result).resolves.toMatchObject({ replayed: false });
+      expect(existing ? f.table.update : f.table.insert).toHaveBeenCalledOnce();
+    }
+  }
+});
+it("reads a historical 3661-day resume draft without admitting another write", async () => {
+  const f = resumeClient();
+  f.chain.maybeSingle.mockResolvedValue({ data: { id: "11111111-1111-4111-8111-111111111111", last_section_id: "review",
+    draft_state: { ...state, mode: "subscription", cadenceDays: 3661 }, expires_at: expires, created_at: now, updated_at: now }, error: null });
+  await expect(createCommerceCheckoutResumeQueryPort(f.client).readDraftByTokenHash({ tokenHash: "hash-a", now }))
+    .resolves.toMatchObject({ replayed: true, draftState: { cadenceDays: 3661 } });
+  expect(f.table.insert).not.toHaveBeenCalled(); expect(f.table.update).not.toHaveBeenCalled();
+});

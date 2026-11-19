@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { z } from "zod";
 import type { PackageEditActor, PackageEditBlockedReason } from "./packageEditContracts.js";
 import type { SizedEditApplyResult, SizedEditContext, SizedEditPreview, SizedEditRequest } from "./contracts/sizedEdit.js";
@@ -38,7 +39,11 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
     const core = "coreLines" in request ? request.coreLines : "base" in request ? request.base
       : request.action === "resize_bundle" && request.resizeLever.kind === SIZED_PARCEL_LEVER_KIND ? request.resizeLever.value.coreLines : [];
     const addons = "addonLines" in request ? request.addonLines ?? [] : [];
-    if (core.length > policy.maximumCoreLines || addons.length > policy.maximumAddonLines ||
+    // Structural parsing above preserves old receipt identity; bound only fresh work.
+    const days = ["planDays" in request ? request.planDays : undefined,
+      "cadenceDays" in request ? request.cadenceDays : undefined,
+      request.action === "resize_bundle" && request.resizeLever.kind === "portionMode" ? request.resizeLever.value.planDays : undefined];
+    if (days.some(value => value !== undefined && value > MAX_CADENCE_DAYS) || core.length > policy.maximumCoreLines || addons.length > policy.maximumAddonLines ||
       [...core, ...addons].some(line => line.qty > policy.maximumQuantity) || ("qty" in request && request.qty > policy.maximumQuantity)) {
       throw new Error("subscription_reprice_invalid_request");
     }

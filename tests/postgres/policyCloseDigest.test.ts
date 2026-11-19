@@ -178,3 +178,101 @@ it.each([false, true])("transfer_round_trip_matrix preserves the original policy
       effectiveTo: row.effective_to === null ? null : new Date(row.effective_to).toISOString() });
   }
 });
+
+const markerRefusal = { code: "55000", message: "subscription_price_policy_revision_close_provenance_requires_restore" };
+const markerForward = "db/platform/migrations/20261123160000_subscription_price_policy_close_provenance.sql";
+const capabilityTable = "public.subscription_price_policy_restore_capabilities";
+const markedInsert = `INSERT INTO public.subscription_price_policy_revisions
+  (id,price_list_id,region_code,currency,channel,revision_no,discount_bps,rounding_quantum_minor,
+    rounding_rule,effective_from,effective_to,digest,closed_from_open)
+  VALUES($1,$2,'ZZ','XXX',$3,1,1000,10,'FLOOR_TO_QUANTUM',$4,$5,$6,$7)
+  RETURNING closed_from_open`;
+
+it.each([
+  { rule: "CLM-01 refuses a plain marked finite policy insert", marker: true, finite: true, refusal: markerRefusal },
+  { rule: "CLM-03 allows an unmarked finite insert", marker: false, finite: true, refusal: null },
+  { rule: "CLM-04 preserves the open-window check", marker: true, finite: false,
+    refusal: { code: "23514", constraint: "subscription_price_policy_revisions_closed_from_open_check" } },
+])("$rule", async ({ rule, marker, finite, refusal }) => {
+  const policy = input(rule.slice(0, 6).toLowerCase(), finite ? end : null);
+  const write = source.owner.query(markedInsert, [policy.id, list, policy.channel, from, policy.effectiveTo,
+    await digestSubscriptionPricePolicy({ ...policy, effectiveTo: marker ? null : policy.effectiveTo }), marker]);
+  if (refusal) await expect(write).rejects.toMatchObject(refusal);
+  else await expect(write).resolves.toMatchObject({ rows: [{ closed_from_open: false }] });
+});
+
+it("CLM-05 refuses a capability from a different transaction", async () => {
+  const old = (await source.owner.query(`INSERT INTO ${capabilityTable} VALUES (pg_current_xact_id()) RETURNING transaction_id::text`)).rows[0].transaction_id;
+  try {
+    const policy = input("clm-05", end);
+    await expect(source.owner.query(markedInsert, [policy.id, list, policy.channel, from, end,
+      await digestSubscriptionPricePolicy({ ...policy, effectiveTo: null }), true])).rejects.toMatchObject(markerRefusal);
+  } finally {
+    await source.owner.query(`DELETE FROM ${capabilityTable} WHERE transaction_id=$1::xid8`, [old]);
+  }
+});
+
+it("CLM-08 preserves guarded close provenance", async () => {
+  const policy = await insert(source.owner, input("clm-08"));
+  const result = await source.owner.query(`UPDATE public.subscription_price_policy_revisions SET effective_to=$2
+    WHERE id=$1 RETURNING closed_from_open, effective_to, digest`, [policy.id, end]);
+  expect(result.rows).toEqual([{ closed_from_open: true, effective_to: new Date(end), digest: policy.digest }]);
+});
+
+it("CLM-02 restores the exact marked policy row", async () => {
+  const policy = await insert(source.owner, input("clm-02"));
+  await source.owner.query("UPDATE public.subscription_price_policy_revisions SET effective_to=$2 WHERE id=$1", [policy.id, end]);
+  const expected = await source.owner.query("SELECT to_jsonb(p)::text AS value FROM public.subscription_price_policy_revisions p WHERE id=$1", [policy.id]);
+  expect(JSON.parse(expected.rows[0].value).closed_from_open).toBe(true);
+  const copy = await resources.installation("policy-marker-target");
+  const packet = await captureStoreJourney(source.owner, "policy-marker-source");
+  const freshTarget = await captureStoreJourney(copy.owner, "policy-marker-target");
+  await expect(restoreConnectedNativeStore({ owner: copy.owner, installation: journeySelection, packet, freshTarget }))
+    .resolves.toMatchObject({ replayed: false });
+  const restored = await copy.owner.query("SELECT to_jsonb(p)::text AS value FROM public.subscription_price_policy_revisions p WHERE id=$1", [policy.id]);
+  expect(restored.rows).toEqual(expected.rows);
+});
+
+it("CLM-06 leaves no capability after native restore", async () => {
+  const copy = await resources.installation("policy-capability-target");
+  const packet = await captureStoreJourney(source.owner, "policy-capability-source");
+  const freshTarget = await captureStoreJourney(copy.owner, "policy-capability-target");
+  await expect(restoreConnectedNativeStore({ owner: copy.owner, installation: journeySelection, packet, freshTarget }))
+    .resolves.toMatchObject({ replayed: false });
+  expect((await copy.owner.query(`SELECT transaction_id FROM ${capabilityTable}`)).rows).toEqual([]);
+});
+
+it("CLM-09 installs the exact capability storage shape", async () => {
+  const shape = await source.owner.query(`SELECT c.relrowsecurity AS rls, c.relforcerowsecurity AS forced,
+    ARRAY(SELECT a.attname || ':' || pg_catalog.format_type(a.atttypid,a.atttypmod) || ':' || a.attnotnull::text
+      FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum) AS columns,
+    ARRAY(SELECT pg_catalog.pg_get_constraintdef(k.oid) FROM pg_catalog.pg_constraint k WHERE k.conrelid=c.oid ORDER BY k.conname) AS constraints,
+    ARRAY(SELECT p.polname::text FROM pg_catalog.pg_policy p WHERE p.polrelid=c.oid ORDER BY p.polname) AS policies
+    FROM pg_catalog.pg_class c WHERE c.oid=$1::regclass`, [capabilityTable]);
+  expect(shape.rows).toEqual([{ rls: true, forced: false, columns: ["transaction_id:xid8:true"],
+    constraints: ["PRIMARY KEY (transaction_id)"], policies: [] }]);
+});
+
+it("CLM-10 refuses runtime capability writes even with a table grant", async () => {
+  const db = await source.owner.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query(`GRANT INSERT ON ${capabilityTable} TO transfer_runtime`);
+    await db.query("SET LOCAL ROLE transfer_runtime");
+    await expect(db.query(`INSERT INTO ${capabilityTable} VALUES (pg_current_xact_id())`))
+      .rejects.toMatchObject({ code: "42501", message: expect.stringContaining("row-level security policy") });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});
+
+it("CLM-11 revokes inherited default public access", async () => {
+  const db = await legacy.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("ALTER DEFAULT PRIVILEGES GRANT INSERT ON TABLES TO PUBLIC");
+    await db.query(readFileSync(markerForward, "utf8"));
+    const acl = await db.query(`SELECT a.privilege_type FROM pg_catalog.pg_class c,
+      LATERAL pg_catalog.aclexplode(COALESCE(c.relacl, pg_catalog.acldefault('r', c.relowner))) a
+      WHERE c.oid=$1::regclass AND a.grantee=0`, [capabilityTable]);
+    expect(acl.rows).toEqual([]);
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});

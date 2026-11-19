@@ -2,14 +2,15 @@
   "schemaVersion": 5,
   "kind": "kernel",
   "compatibilityPolicies": {
-    "internal-candidate": "Candidate package surfaces may change until the platform phase-5 activation explicitly freezes a public API.",
-    "testing-internal": "Test-support surfaces may change and are not runtime compatibility promises."
+    "stable": "Stable API under SemVer from 1.0.0. Unions and literal sets are open: adding a value is minor; consumers must keep a default branch for unknown values. Removing, renaming or narrowing an export, value or type is major. Symbols tagged @experimental within a stable subpath are outside this promise.",
+    "experimental": "Experimental API; may change in any minor release.",
+    "testing": "Test support only; not a runtime compatibility promise."
   },
   "packageRelease": {
     "phase": "platform-monorepo-phase-5",
-    "publicStability": "not-claimed",
-    "artifactChannel": "npm-staged-preview",
-    "versionRule": "0.N.P"
+    "publicStability": "stable-semver",
+    "artifactChannel": "npm-stable",
+    "versionRule": "MAJOR.MINOR.PATCH"
   },
   "evidence": {
     "packageSmokeEvidence": {
@@ -21,19 +22,19 @@
       "meaning": "A framework-free port/adapter suite is required only when this package declares that seam."
     },
     "dogfoodEvidence": {
-      "state": "private-current-seams",
-      "meaning": "A private product currently imports candidate package seams; this does not establish a public platform adopter seam."
+      "state": "first-party-production",
+      "meaning": "A first-party production deployment consumes package seams; this is first-party evidence only."
     },
     "externalConsumerEvidence": {
-      "state": "not-evaluated",
-      "meaning": "Requires a real independent adopter or public platform artifact in phase 4 or 5; first-party packed consumers remain package smoke evidence."
+      "state": "first-party-npm-and-production",
+      "meaning": "A first-party demo store installed from npm and a first-party production deployment provide consumer evidence. No independent adoption is claimed."
     }
   },
   "packageSurface": {
     "./subscription": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/subscriptionBundleStandalone.test.ts"
       ],
@@ -42,8 +43,8 @@
     },
     "./bundle": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/subscriptionBundleStandalone.test.ts"
       ],
@@ -52,8 +53,8 @@
     },
     "./pricing": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/pricingStandalone.test.ts"
       ],
@@ -63,7 +64,7 @@
     "./company-identity": {
       "role": "kernel",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "smoke/companyIdentityStandalone.test.ts"
       ],
@@ -72,8 +73,8 @@
     },
     "./fulfillment": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/fulfillmentStandalone.test.ts",
         "test/fulfillmentStatusMap.test.ts",
@@ -86,8 +87,8 @@
     },
     "./inventory": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/inventoryStandalone.test.ts"
       ],
@@ -96,8 +97,8 @@
     },
     "./shipping": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/shippingStandalone.test.ts"
       ],
@@ -106,8 +107,8 @@
     },
     "./catalog": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/catalogStandalone.test.ts"
       ],
@@ -116,8 +117,8 @@
     },
     "./promo": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/promoStandalone.test.ts"
       ],
@@ -126,8 +127,8 @@
     },
     "./risk": {
       "role": "kernel",
-      "maturity": "candidate",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/riskStandalone.test.ts"
       ],
@@ -137,7 +138,7 @@
     "./marketing/research": {
       "role": "kernel",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "smoke/marketingResearchStandalone.test.ts"
       ],
@@ -146,8 +147,8 @@
     },
     "./partners": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/partnersStandalone.test.ts"
       ],
@@ -156,8 +157,8 @@
     },
     "./payment": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/paymentStandalone.test.ts"
       ],
@@ -166,8 +167,8 @@
     },
     "./platform-runtime": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/platformRuntimeStandalone.test.ts"
       ],
@@ -176,8 +177,8 @@
     },
     "./outbox": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/outboxStandalone.test.ts"
       ],
@@ -186,8 +187,8 @@
     },
     "./readiness": {
       "role": "kernel",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "maturity": "stable",
+      "compatibilityPolicy": "stable",
       "packageSmokeEvidence": [
         "smoke/readinessStandalone.test.ts"
       ],
@@ -197,7 +198,7 @@
     "./standard-schema": {
       "role": "kernel",
       "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
+      "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "smoke/standardSchemaStandalone.test.ts"
       ],
@@ -207,7 +208,7 @@
     "./testing": {
       "role": "testing",
       "maturity": "testing",
-      "compatibilityPolicy": "testing-internal",
+      "compatibilityPolicy": "testing",
       "packageSmokeEvidence": [
         "smoke/testingStandalone.test.ts"
       ],
@@ -275,13 +276,13 @@
       "maxFiles": 20
     },
     "guide": {
-      "maxPackedBytes": 209770,
-      "maxFiles": 70
+      "maxPackedBytes": 282000,
+      "maxFiles": 80
     },
-    "maxPackedBytes": 421729,
-    "maxUnpackedBytes": 1621192,
-    "maxFiles": 420,
-    "capReason": "Under the coordinator-approved budget rule, canonical cold main 645faa295 measured with Node 24.21.0 and npm 11.19.0 is total 413743 B packed / 1579787 B unpacked / 375 files, code 185433 B packed / 300 files, and guide 200994 B packed / 63 files. Landed work is already in the base. Remaining A2 guide forecasts, scaled from the prior component ledger to the latest design upper bounds, total +6700 B packed / +40000 B unpacked with no new files or Core code. Projected totals 420443 B packed (413743 + 6700) and 1619787 B unpacked (1579787 + 40000) fit the existing paired caps 421729/1621192 B; preserve both. Raise only the existing guide packed cap to 209770 B (200994 + 6700 + 2076). Each cushion is floor(1% of measured plus forecast), below 1.5% of its new limit. Preserve total files 420, code 276480 B / 400 files, docs 49152 B / 20 files, guide files 70 and the published baseline. Code and guide have no unpacked limit, so pairing is vacuous there; only their existing limit kinds apply. This budgets unbound 0.44.0 work and activates no capability.",
+    "maxPackedBytes": 486000,
+    "maxUnpackedBytes": 1851000,
+    "maxFiles": 440,
+    "capReason": "Measured on merged main 90c2d2ee0 plus the pause-after-exhaustion recipe (Node 24.22.2, npm 11.19.1): total 422588 B packed / 1609791 B unpacked / 375 files; code 187556 B packed / 300 files; docs 20669 B / root files; guide 207013 B packed / 63 files. Owner 2026-11-17: these Core caps sat at 0.7-1.3% headroom and blocked unrelated PRs; reset to about 15% headroom over the measurement so routine growth does not trip them, while gross accidental bloat still fails. Raise again in a reviewed PR when headroom drops below about 5%. New caps: total 486000 B packed / 1851000 B unpacked / 440 files; guide 238000 B / 80 files; code 276480 B / 400 files and docs 49152 B / 20 files already exceed 15% and stay. The 1.2.0 generated upgrade guide brought the guide pack to 245226 B (Node 24.22.2, npm 11.19.1). Reset only the guide byte cap to 282000 B, about 15% headroom. This activates no capability.",
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",
@@ -295,8 +296,8 @@
       "release-gates.json"
     ],
     "baseline": {
-      "version": "0.42.0",
-      "packedBytes": 371346
+      "version": "1.1.0",
+      "packedBytes": 448561
     },
     "browserEntries": {}
   },

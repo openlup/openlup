@@ -146,3 +146,30 @@ for (const table of carried) {
     expect(await journeyCensus(target.owner)).toEqual(before);
   }, 105_000);
 }
+
+it("CLM-07 admits the policy INSERT guard before importing any policy rows", async () => {
+  expect(emptyPacket.owned.find(value => value.table === "subscription_price_policy_revisions")?.rows).toEqual([]);
+  await expect(restore(emptyPacket)).resolves.toMatchObject({ replayed: false });
+});
+
+it("CLM-14 limits the restore capability to policy row copies", async () => {
+  const seen: [table: string, active: unknown][] = [];
+  const owner = observedOwner(async (sql, query) => {
+    const table = /^INSERT INTO public\."(price_lists|subscription_price_policy_revisions|commerce_promotion_definitions)"/u.exec(sql)?.[1];
+    if (!table) return;
+    const { rows } = await query(`SELECT EXISTS (
+      SELECT 1 FROM public.subscription_price_policy_restore_capabilities
+      WHERE transaction_id = pg_catalog.pg_current_xact_id()
+    ) AS active`);
+    seen.push([table, rows[0].active]);
+  });
+
+  expect(await restore(packet, owner)).toMatchObject({ replayed: false });
+  expect(seen).toEqual([
+    ["price_lists", false],
+    ["subscription_price_policy_revisions", true],
+    ["subscription_price_policy_revisions", true],
+    ["commerce_promotion_definitions", false],
+    ["commerce_promotion_definitions", false],
+  ]);
+});

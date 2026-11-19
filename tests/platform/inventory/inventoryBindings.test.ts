@@ -84,7 +84,7 @@ it.each([undefined, "", "   "])("keeps admin reads ready but names the missing s
 });
 
 it("passes the native source and clock through the single reference binding", async () => {
-  const query = vi.fn(async () => ({ rows: [{ response: [] }] }));
+  const query = vi.fn(async (text: string) => text.includes("inventory_renewal_protection_days") ? { rows: [{ days: 14 }] } : { rows: [{ response: [] }] });
   const injected = { read: vi.fn() };
   const now = () => new Date(0).toISOString();
   const binding = createM06InventoryReferenceBinding({ store: { dataKind: "postgres", executor: { query }, stockSourceKey: "EXAMPLE-source", now, newPurchaseStockReadPort: injected },
@@ -97,7 +97,8 @@ it("passes the native source and clock through the single reference binding", as
   expect(binding.availability).not.toBeNull();
   expect(binding.ports["@openlup/platform/inventory:newPurchaseStockRead"]).toBe(binding.newPurchaseStockReadPort!.read);
   await binding.stock!.getAvailability({ items: [{ sku: "SKU-EXAMPLE", productSlug: "example", variantId: "example", requestedQuantity: 1, checkoutMode: "one_time" }] });
-  expect(query).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("public.inventory_new_purchase_stock_read("), ["EXAMPLE-source", '["SKU-EXAMPLE"]', now()]);
+  expect(query.mock.calls).toEqual([["SELECT public.inventory_renewal_protection_days() AS days"],
+    [expect.stringContaining("public.inventory_new_purchase_stock_read("), ["EXAMPLE-source", '["SKU-EXAMPLE"]', now()]]]);
   expect(injected.read).not.toHaveBeenCalled();
 });
 

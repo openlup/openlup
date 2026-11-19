@@ -44,7 +44,14 @@ export type PromotionAcceptanceDiagnostic = {
   mismatchField?: PromotionQuoteMismatchField;
 };
 
-export function createPromotionQuoteAcceptance<Request extends { promoCodes: string[] }>({ projectRequest }: { projectRequest(request: Request): unknown }) {
+export function createPromotionQuoteAcceptance<Request extends { promoCodes: string[] }>({
+  projectRequest, purpose,
+}: {
+  projectRequest(request: Request): unknown;
+  /** A separate token domain for explicit offer review, including quotes without adjustments. */
+  purpose?: "offer-review";
+}) {
+  const reviewsOffer = purpose === "offer-review";
   function issuePromotionQuoteAcceptance(input: {
     request: Request;
     quote: CommerceQuote;
@@ -65,7 +72,7 @@ export function createPromotionQuoteAcceptance<Request extends { promoCodes: str
     now?: Date;
   }): { token: string | null; diagnostic: PromotionAcceptanceDiagnostic } {
     const evidence = v2Discounts(input.quote);
-    if (evidence.length === 0 && !input.acquisitionTerms && !input.shippingTerms) return {
+    if (!reviewsOffer && evidence.length === 0 && !input.acquisitionTerms && !input.shippingTerms) return {
       token: null,
       diagnostic: rejected("no_v2_adjustment"),
     };
@@ -146,7 +153,7 @@ export function createPromotionQuoteAcceptance<Request extends { promoCodes: str
     if (payload.currency !== input.expectedTotal.currency) {
       return { accepted: false, reason: "currency_mismatch", ...base };
     }
-    if (v2Discounts(input.quote).length === 0 && !input.acquisitionTerms && !input.shippingTerms) {
+    if (!reviewsOffer && v2Discounts(input.quote).length === 0 && !input.acquisitionTerms && !input.shippingTerms) {
       return { accepted: false, reason: "no_v2_adjustment_in_quote", ...base };
     }
     return { accepted: true, reason: "accepted", ...base };
@@ -274,7 +281,9 @@ export function createPromotionQuoteAcceptance<Request extends { promoCodes: str
   }
 
   function sign(encoded: string, secret: string): string {
-    return createHmac("sha256", secret).update(encoded).digest("base64url");
+    return createHmac("sha256", secret)
+      .update(reviewsOffer ? "openlup.offer-review.v1." + encoded : encoded)
+      .digest("base64url");
   }
 
   function safeEqual(left: string, right: string): boolean {

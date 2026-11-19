@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import type { BundleLineRef, CompositionConstraint } from "@openlup/core/bundle";
 import { agreedSubscriptionTotal, mergeSubscriptionAgreedQuote, splitBySubscriptionAgreement } from "./agreedPlanQuote.js";
 import { hashPackageEditQuote } from "./classicPackageQuote.js";
@@ -15,6 +16,8 @@ export function selectSizedAgreements(context: SizedEditContext, policy: SizedEd
 export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; context: SizedEditContext; request: SizedEditRequest;
   policy: SizedEditPolicy; host: SizedHostPorts; point: "preview" | "apply" }) {
   const { db, context, request, policy, host } = input;
+  const cadenceDays = request.action === "update_plan_length" ? request.planDays : "cadenceDays" in request ? request.cadenceDays ?? context.cadenceDays : context.cadenceDays;
+  if (!Number.isInteger(cadenceDays) || cadenceDays < 1 || cadenceDays > MAX_CADENCE_DAYS) throw new Error("subscription_reprice_invalid_plan_length");
   const facts = await host.readFacts(db, context, input.point);
   assertSizedSubjectFacts(facts, context, policy);
   let constraint = context.compositionConstraint;
@@ -33,7 +36,6 @@ export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; con
   const baseline = selectSizedAgreements(context, policy), current = agreedSubscriptionTotal(baseline);
   const catalog = (await host.readCatalog(db, context)).map(fact => ({ ...fact, variantId: fact.variantId.toLowerCase(),
     exclusions: fact.exclusions === null ? null : [...fact.exclusions].sort() }));
-  const cadenceDays = request.action === "update_plan_length" ? request.planDays : "cadenceDays" in request ? request.cadenceDays ?? context.cadenceDays : context.cadenceDays;
   const rules = createSizedCompositionRules({ policy, catalog, baseline, exclusions: facts.exclusions, dailyNeed: Number(dailyNeed), cadenceDays,
     useFrozenBaseline: sizedEditPhase(context, policy) === "graduation_pending", proposePortion: host.proposePortion });
   let core: BundleLineRef[] = baseline.filter(line => !line.isAddon).map(line => ({ variantId: line.variantId, qty: line.qty, isAddon: false }));

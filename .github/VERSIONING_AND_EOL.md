@@ -2,17 +2,11 @@
 
 ## Two release channels
 
-Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
-
-Development preview is the current channel, for evaluation and first-party
-integration evidence, with no support window. An explicitly experimental surface
-follows preview rules.
-
-- **Stable** begins only after the `P1-SF` stable-framework gate has produced a versioned platform
-  release/BOM, a thin adopter app, public extension contracts and upgrade
-  tooling, with the advertised clean install, typecheck, build, tests and
-  upgrade proofs green. No current source checkout, private package, or preview
-  release satisfies that gate.
+OpenLup 1.0.0 begins the stable npm package line. The
+[stability reference](../packages/core/docs/guide/reference/stability.md#public-api)
+owns the compatibility commitment and its experimental and testing exclusions.
+The separate source-preview channel supplies source snapshots, not a supported
+npm installation.
 
 ## Stable semantic versioning
 
@@ -25,16 +19,11 @@ remove it no earlier than the next major with explicit upgrade notes.
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#support-window).
 
-The current stable major’s latest minor receives fixes, security fixes and new
-features. The previous stable major’s latest minor, if one exists, receives only
-security and critical-defect fixes for six months after the current major’s
-release. Older minors and majors receive no fixes. Preview trains never count
-as a previous stable major; the published window is advance end-of-life notice.
-
-There is no stable maintenance line yet. Previous-major backports are not
-applicable because no stable major exists. Backport automation follows explicit
-owner activation of the stable channel; maintenance evidence remains partial
-until then. The project maintainer remains accountable through [SECURITY.md](../SECURITY.md).
+The latest 1.x minor receives fixes, including security fixes, and new features.
+Earlier minors receive no fixes; upgrade to the latest minor before reporting a
+defect. There are no LTS or maintenance branches and no previous-major backport
+commitment. The project maintainer remains accountable through [SECURITY.md](../SECURITY.md).
+Release-evidence retention is owned by [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification).
 
 ## Exceptional cessation
 
@@ -52,17 +41,14 @@ correct the support claim in that record. This is the fail-honest path for the
 bus-factor-one project described in [governance](GOVERNANCE.md); it does not
 permit casually shortening a support window.
 
-## Before stable
+## Package set
 
-Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
-
-All preview `@openlup/*` packages share a `0.N.P` set version from one commit,
-with package tags `openlup-<package>-v<version>` at that commit. The project has
-not entered the stable channel and no current version has a support window.
+[Package releases](#package-releases) owns the coherent set, exact peer pins and
+tag conventions. Upgrade the set together.
 
 For the contributor-to-release sequence and diagnostic execution map, start with
-[Development, diagnostics and preview releases](../docs/platform/DEVELOPMENT_AND_RELEASE.md).
-This policy remains the owner of release permissions, channel rules and recovery.
+[Development, diagnostics and releases](../docs/platform/DEVELOPMENT_AND_RELEASE.md).
+This policy owns release permissions, channel rules and recovery.
 
 ## Upgrades
 
@@ -71,7 +57,8 @@ Moved to [Versioning and stability](../packages/core/docs/guide/reference/stabil
 Stable upgrades are supported one major at a time, in order; skipping a major
 is unsupported even if it appears to work.
 
-Database schema changes are forward-only; there is no supported downgrade path.
+Database compatibility and code-rollback limits are owned by the
+[database upgrade guide](../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility).
 
 ## Pending preview upgrade notes: public coordinates
 
@@ -108,7 +95,7 @@ wins, and malformed configured regions refuse the route.
 Company identity extensions reuse the neutral core input schema and the public
 `normalizeCompanyIdentityLookupRequest` export. National tax-id checks and
 optional registry fields remain in the extension layer. The core helper is an
-additive development-preview API, not a stable contract.
+experimental API outside the SemVer promise.
 
 ## Preview 9 upgrade note: moved payment and communications modules
 
@@ -243,7 +230,7 @@ not make this a stable API.
 
 ### One-click source preview workflow
 
-Maintainers can cut an adjacent development preview with
+Maintainers can cut an adjacent source preview with
 [`publish-source-preview.yml`](workflows/publish-source-preview.yml). This
 workflow is inert until the repository variable `OPENLUP_SOURCE_RELEASE` is
 `enabled`. It runs only when dispatched from `main`. Its unprivileged preflight
@@ -516,18 +503,20 @@ adopter; no preview is a supported upgrade channel.
 
 ## Package releases
 
-While `@openlup/core` is below 1.0, the `@openlup/*` packages are released as
-one set:
+The `@openlup/*` packages are released as one coherent set:
 
-- Every package carries the same set version `0.N.P`, released from one commit.
+- Every package carries the same `MAJOR.MINOR.PATCH` set version, released from
+  one commit, with exact internal peer pins.
 - Each package has its own tag `openlup-<package>-v<set version>`, and every tag
   of a set points at that commit.
 - Every package is republished in each set, changed or not.
 - A patch set only restores documented behaviour, with no API or schema change.
-  Any API, behaviour or schema change makes a minor set, and so does a new
-  package or any SQL a package ships. A change to subscription, renewal or
-  payment objects is always a minor set with a `Migration:` block in the
-  package's changelog.
+  Compatible API, behaviour or additive schema changes require at least a minor
+  set, as does a new package or any shipped SQL. Breaking changes follow the
+  [stable API policy](../packages/core/docs/guide/reference/stability.md#public-api)
+  and [schema policy](../packages/core/docs/guide/upgrade/database-migrations.md#check-application-compatibility).
+  Changes to subscription, renewal or payment objects carry a `Migration:` block
+  in the package’s changelog.
 - For a pull request or merge group, the `--policy` self-check refuses a change
   since its base that removes or changes a line of a publishable package's API
   snapshot unless the package's single `## [Unreleased]` changelog section
@@ -564,14 +553,15 @@ request, the one where the reference application composes it, so a set never
 republishes a half-built package. The inventory, rather than a hardcoded package
 list, determines the publishable set. Each publishable
 package's own `package.json` carries the set version: `packages:check` refuses
-publishable packages at different versions, or at a version that is not `0.N.P`
-below 1.0. A set release needs no source preview. `publish-package.yml` releases
+publishable packages at different versions, or at a version outside the coherent
+`MAJOR.MINOR.PATCH` model. A set release needs no source preview. `publish-package.yml` releases
 the whole set when its package is `all`, and one package when it names one;
 `all` is reserved and is never a package directory. `openlup-source-preview/11` was
 the last lockstep cut that also published a package: `@openlup/core` `0.11.0`,
 on the `preview` dist-tag. Later source previews are optional snapshots with no
-package. The first set was `0.12.0`. No package version implies a stable API or a
-supported upgrade path, and the version model at 1.0 is not decided.
+package. The first set was `0.12.0`. From 1.0.0, compatibility follows the
+[stable API policy](../packages/core/docs/guide/reference/stability.md#public-api),
+with installation support bounded by the [install policy](INSTALL_SUPPORT_POLICY.md).
 
 ### Task authority, verification and adopter continuation
 
@@ -826,7 +816,7 @@ A release takes three steps:
    contract without requiring current committed digests. Source prepare,
    package/set preflight, protected prepare/plan and publication/resume refuse
    a stale snapshot byte-for-byte against the exact target Git objects.
-   A post-snapshot change to a bound input requires another reviewed refresh. The version is the next set version `0.N.P` and must be above
+   A post-snapshot change to a bound input requires another reviewed refresh. The version is the next set version `MAJOR.MINOR.PATCH` and must be above
    every version npm holds for each package. Choose it from actual registry
    observations and the API, behaviour, schema and shipped-SQL classification,
    then recheck before dispatch. A conflict after review needs a repair and
@@ -850,16 +840,19 @@ A release takes three steps:
    completed, and names that run. It then checks that the target
    is on `main`, as fetched from origin, and that the six required contexts passed
    there, and that every publishable package carries the set version
-   (`packages:check --release-set`). A patch set (`0.N.P`, P above 0) only fixes,
+   (`packages:check --release-set`). A patch set (`MAJOR.MINOR.PATCH`, patch above 0) only fixes,
    so it is refused when a package's API snapshot (`packages/<package>/api/`)
-   differs from the one at its previous set tag `openlup-<package>-v0.N.<p>`, or
+   differs from the one at an earlier patch tag `openlup-<package>-v<major>.<minor>.<patch>` in the same major/minor, or
    when the package has no such tag. What protects that baseline is the
    tag-creation ruleset, which lets only the release App and administrators
    create these tags. The check itself only adds consistency: it counts an
    annotated tag with the release App's tagger line and the release message, so a
    lightweight or hand-made tag is ignored, but a tagger line proves nothing on
    its own. It then packs every publishable package with
-   `npm run packages:check -- --cold --out <dir> --release-set <version>` and scans
+   `npm run packages:check -- --cold --out <dir> --release-set <version>`.
+   Before release planning, it runs the [adjacent starter upgrade proof](../docs/platform/DISTRIBUTION_EVIDENCE.md#interrupted-adjacent-set-starter-upgrade)
+   from the previous published set to the retained digest-verified candidate
+   packs; failure stops the dispatch before tags or npm publication. It scans
    the unpacked tarballs with checksum-verified gitleaks 8.30.1. Cold preparation
    removes only untracked generated `dist` output in inventory packages before
    each selected pack; tracked output, symlinks and unsupported output layouts
@@ -943,7 +936,15 @@ workflow run and reports to the maintainer; a propagation timeout warns and
 defers the tutorial. It runs after publication and cannot affect it. The
 separate `exact-set-qualification` job reads the tagged starter as data,
 verifies and tests the exact locked npm set, and retains a blocking
-qualification result and a 90-day receipt. A dispatch with `publish_image: false`
+qualification result and a 90-day Actions receipt. Published qualified sets also
+retain the BOM, both SBOMs and qualification receipt in the same GHCR package as
+the image, under `<set-version>-evidence`, for at least one year after release.
+Maintainers must not delete those tags, their digest-addressed contents or their
+associated provenance attestations within that year. Retrieve by digest and
+verify with `gh attestation verify oci://ghcr.io/openlup/neutral-store-starter@<digest> --owner openlup --bundle-from-oci`;
+the [evidence retrieval procedure](../docs/platform/DISTRIBUTION_EVIDENCE.md#qualified-application-image)
+includes registry-bundle verification and extraction. Keep the 90-day Actions
+copies. A dispatch with `publish_image: false`
 skips the publisher job, so no write token is minted; its retained qualification
 receipt is the run's receipt, with no separate publication receipt. Both jobs have
 `contents: read`;

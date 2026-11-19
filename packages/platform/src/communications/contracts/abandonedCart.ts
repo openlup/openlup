@@ -14,7 +14,9 @@ export interface AbandonedCartEmailVars {
   firstName: string | null;
   /** Consumer-facing brand label injected by the app/composition root. */
   brandName: string;
-  reminderHours: AbandonedCartReminderHours;
+  reminderHours: number;
+  /** Explicit stage wins over the historical hour mapping. */
+  stage?: "first" | "gentle" | "last";
   /** Absolute CTA URL back to the configurator. */
   ctaUrl: string;
   /** Absolute signed unsubscribe URL (purpose 'marketing_newsletter'). */
@@ -40,8 +42,8 @@ export function createAbandonedCartContentFactory(input: {
     signoff: string,
   ): AbandonedCartEmailContent {
     const copy = commerceEmailContent.abandonedCart[locale];
-    const tone =
-      vars.reminderHours === 72 ? copy.last : vars.reminderHours === 1 ? copy.first : copy.gentle;
+    const stage = vars.stage ?? (vars.reminderHours === 72 ? "last" : vars.reminderHours === 1 ? "first" : "gentle");
+    const tone = copy[stage];
     const withBrand = (text: string) => text.split("{{brand}}").join(vars.brandName);
 
     const blocks: EmailBlock[] = [

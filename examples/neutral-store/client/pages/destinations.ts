@@ -94,11 +94,11 @@ const destinationLabels: Record<string, CopyKey> = {
 export function destinationsPage(context: PageContext): HTMLElement {
   const list = el('table', {}, el('thead', {}, el('tr', {},
     el('th', { scope: 'col' }, context.t('actionRef')),
-    el('th', { scope: 'col' }, context.t('languageEnglish')), el('th', { scope: 'col' }, context.t('languagePolish')))));
+    ...context.config.market.locales.map(locale => el('th', { scope: 'col' }, context.t(({ en: 'languageEnglish', pl: 'languagePolish' } as const)[locale]))))));
   const body = el('tbody');
   for (const destination of messageDestinations) {
     append(body, el('tr', {}, el('th', { scope: 'row' }, destination.id),
-      ...(['en', 'pl'] as const).map(locale => el('td', {},
+      ...context.config.market.locales.map(locale => el('td', {},
         link(context.t(destinationLabels[destination.route] ?? 'open'),
           routes[destination.route][locale] + (destination.query ? `?${destination.query}` : '') + (destination.hash ? `#${destination.hash}` : ''))))));
   }

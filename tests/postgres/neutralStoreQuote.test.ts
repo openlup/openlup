@@ -72,7 +72,7 @@ const shippingScript = String.raw`
   const {createApplication} = await import('./application/host/server.ts');
   const owner = new pg.Pool({connectionString:fixture.ownerUrl});
   const runtime = new pg.Pool({connectionString:fixture.runtimeUrl});
-  const bindings = await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,fixture.port),{current:'fixture-only-acceptance-key-00000000000000'});
+  const bindings = await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,fixture.port),config,{current:'fixture-only-acceptance-key-00000000000000'});
   const server = createApplication(bindings);
   await new Promise(resolve=>server.listen(fixture.port,'127.0.0.1',resolve));
   try {
@@ -252,7 +252,7 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
       const {composeNativeBindings}=await import('./application/host/native-composition.ts');
       const {createOriginPolicy}=await import('./application/host/origin-policy.ts');
       const keyring={current:'fixture-only-acceptance-key-00000000000000'};
-      const bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),keyring);
+      const bindings=await composeNativeBindings(fixture.runtimeUrl,createOriginPolicy(config,port),config,keyring);
       const server=createApplication(bindings);await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
       try {
         const base='http://127.0.0.1:'+port;

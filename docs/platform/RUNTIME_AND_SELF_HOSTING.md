@@ -334,7 +334,7 @@ is a host-callable `node-postgres` capability. Compose the complete catalogue,
 trusted owner-authority connection and verified human operator for its directory.
 Native membership dispatch needs an explicit provider; native watchdog readback
 needs a selected read function. Each capability closes its pool. The
-[package recipe](PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview)
+[package recipe](PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations)
 owns the selected bridges and their limits; no default timer is installed.
 
 Reference identity privacy routes retain human-admin authorization, mutation
@@ -831,11 +831,27 @@ supplies `store.stockSourceKey` to bind the existing ATP reader into catalog bun
 availability. Missing keys leave the preview unbound with
 `inventory_stock_source_key_required`; `requireNewPurchaseStockRead` makes that
 a readiness refusal. The native preview protects all live holds, remaining due
-subscription demand inside 14 days and channel exposure, clamped at zero. It
-refuses own-order exclusions and other horizons. Managed composition uses an injected normalized reader first, then
+subscription demand through the horizon installed via `inventory_renewal_protection`
+(default 14 days) and channel exposure, clamped at zero. It refuses own-order
+exclusions and horizons that differ from the installed value. Managed composition uses an injected normalized reader first, then
 `store.stockRpc` for the service-role managed reader with the managed forward
 `20261025109000_inventory_new_purchase_stock_read.sql`; without either it reports `inventory_new_purchase_stock_reader_required`.
-Managed quantities retain ATP provider-tagged accounting and the same fixed priority. Native one-time and replacement allocation remain
+Managed quantities retain ATP provider-tagged accounting and the fixed 14-day priority.
+For a separate native runtime role, keep the
+[documented ATP function and relation grants](DATA_AND_MIGRATIONS.md#native-stock-wait-and-atp-n3).
+After applying the policy migration and before resuming ATP calls, upgrade the
+earlier grant list with exactly one additional grant (substitute the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
+```
+
+Omitting it raises SQLSTATE `42501`, including with no installed policy. The
+restricted `SECURITY DEFINER` helper reads settings for ATP, so this path needs
+no settings-table `SELECT`; the TypeScript policy reader still needs `SELECT`
+on `public.commerce_settings` to read revision and days. Qualified service-role
+bindings already receive helper execution.
+Native one-time and replacement allocation remain
 unavailable; this read supplies no allocation authority. Importing
 the binding mounts no route, schedule or provider. Admin composition retains its
 authorization and mutation flag; native adjustment remains refused.
@@ -998,7 +1014,7 @@ selected-profile API operations, the server rechecks that live id and Auth's
 email-confirmation setting. Keep the generated environment server-only and
 preserve the database volume when restarting the Node process.
 
-This is bounded development-preview evidence, not a production composition,
+This is bounded local evidence, not a production composition,
 supported install, managed-host certification, or substitute for a complete
 HTTP/browser acceptance run. The separate portable PostgreSQL migration lane
 has not been installed or certified by this profile.
@@ -1200,12 +1216,11 @@ provider SDK, deployment setting, route, scheduler or second outbox executor;
 managed receipt service-scope and fixture construction remain in the reference
 adapter.
 
-## Preview posture
+## Release posture
 
-Before maintainers make stable-framework claims, the release evidence must
-establish a versioned release/BOM, a thin adopter application, conformance
-coverage, upgrade tooling, public installation/build/test evidence and
-compatibility proof.
+The [install support policy](../../.github/INSTALL_SUPPORT_POLICY.md) names the
+supported composition. Runtime recipes and local checks retain their stated
+limits; see the [release evidence boundary](../../packages/core/docs/guide/reference/stability.md#release-evidence).
 
 ## Communications host bindings
 

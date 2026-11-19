@@ -1,3 +1,5 @@
+import { editorText } from '../owned/editor-copy.ts';
+import { market } from '../owned/market.config.ts';
 import { test as base, expect, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -27,7 +29,7 @@ export async function nativeSubscription(page: Page,baseURL: string | undefined,
   };
   const config = (await (await page.request.get(`${baseURL}/api/config`)).json()).config as StoreConfig;
   const email = `${randomUUID()}@example.test`;
-  const purchase = { acquisitionCapability: 'subscription-acquisition.v1', locale: 'en',configuration: config.id,country: config.market.country,
+  const purchase = { acquisitionCapability: 'subscription-acquisition.v1', locale: market.defaultLocale,configuration: config.id,country: config.market.country,
     termsRevision: config.legal.revision,termsAccepted: true,email,firstName: 'Example',lastName: 'Customer',phone: '000000000',
     line1: '1 Example Street',city: 'Example City',postalCode: '00000',
     cart: { schemaVersion: 1,configuration: config.id,mode: 'subscription',cadenceDays: config.offer.defaultCadenceDays,
@@ -122,10 +124,10 @@ export async function nativeSubscription(page: Page,baseURL: string | undefined,
       await dispatcher.run(100); await dispatcher.run(100);process.stdout.write(JSON.stringify(captures.map(item=>({...item,...kinds.get(item.key)}))));}finally{await store.close();await pool.end()}`;
     return JSON.parse(compose(['exec','-T','--user','node','application','node','--input-type=module'],code));
   };
-  const open = (sized = false,invitation = false) => page.goto(`${routes[sized ? 'sizedEdit' : 'classicEdit'].en}?subscription=${id}${invitation ? '&optIn=1' : ''}`);
+  const open = (sized = false,invitation = false) => page.goto(`${routes[sized ? 'sizedEdit' : 'classicEdit'][market.defaultLocale]}?subscription=${id}${invitation ? '&optIn=1' : ''}`);
   const confirm = async (invitation = false) => {
-    await page.getByRole('button',{ name: 'Review changes',exact: true }).click();
-    await page.getByRole('button',{ name: invitation ? 'I accept size-aware servicing and the price; save' : 'Confirm changes',exact: true }).click();
+    await page.getByRole('button',{ name: editorText(market.defaultLocale, 'review'),exact: true }).click();
+    await page.getByRole('button',{ name: editorText(market.defaultLocale, invitation ? 'confirmOptIn' : 'confirm'),exact: true }).click();
     await expect(page).toHaveURL(/packageSaved=1$/);
   };
   return { action,config,sub,id,read,rows,sql,uuid,catalogue,accepted,apply,classicRequest,sizedRequest,optIn,eventPricing,subject,setSubject,setStock,captureNotices,open,confirm };

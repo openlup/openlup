@@ -2,10 +2,34 @@
 
 Status: historical record, 2026-11-09.
 
-Status: development-preview source tooling. No complete release outcome or
-supported installation is claimed.
+Status: qualification evidence for the one supported stable 1.x installation
+composition: the npm starter, PostgreSQL and the qualified image.
+
+On 2026-11-18, [run 44263843134](https://github.com/openlup/openlup/actions/runs/44263843134)
+qualified `openlup-core-v1.1.0` (`ec24f180`): 1.0.0→1.1.0 upgrade,
+schema and canary passed. 1.1.0 is the first qualified stable set, including
+the npm set and `ghcr.io/openlup/neutral-store-starter:1.1.0` at
+`sha256:96f31906a5100d986ec5a0c0b8474ef2daa417e5d08d0816efc590bd9b74eadf`.
+Its evidence image, `ghcr.io/openlup/neutral-store-starter:1.1.0-evidence`, is at
+`sha256:5d779d5beaffe5a548cda51b571ef8eca1ef9502125090031ea1a9f5d448d75b`.
+Both are attested by `registry-tutorial.yml` on `main`. The first automatic
+[run 44255571945](https://github.com/openlup/openlup/actions/runs/44255571945)
+qualified the npm set, but image publication was refused before any registry
+write because the publisher lacked the containerd image store; the fix on
+`main` was followed by the single recovery run above.
+
+1.0.0 initially failed starter-upgrade qualification in
+[run 44156615468](https://github.com/openlup/openlup/actions/runs/44156615468).
+On 2026-11-18, [run 44256496392](https://github.com/openlup/openlup/actions/runs/44256496392)
+passed exact-set qualification for 0.43.0→1.0.0 using the
+[starter migration published with 1.1.0](../../packages/core/docs/guide/upgrade/v1-0-0.md#starter-applications-from-0430).
+This qualifies the 1.0.0 npm set without an image; it remains superseded by 1.1.0.
 
 ## Released starter inputs
+
+Start from the [1.1.0 demo store](https://github.com/openlup/demo-store) or use
+release-matched starter inputs when available. This repository retains the
+historical 0.43.0 pair described below.
 
 The source-only pairs under `examples/neutral-store/release-inputs/<tag>/`
 retain the exact `manifest.json` and `package-lock.json` bytes from
@@ -13,7 +37,7 @@ retain the exact `manifest.json` and `package-lock.json` bytes from
 They are public source files delivered by ordinary contributions, not release
 assets: the [package publisher](../../scripts/packages/package-release.ts)
 requires immutable, assetless releases. Preserve every historical pair unchanged;
-add a new directory for another tag. The [starter recipe](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application)
+add a new directory for another tag. The [historical 0.43.0 starter recipe](../../packages/core/docs/guide/how-to/build/customize-the-starter.md#prepare-the-application)
 selects input commit `87dadb251b27b72a18718b08ac39951dd4f1fdd0` separately
 from the released source commit. Fetch both inputs from that exact commit,
 never from a moving branch or an independently resolved replacement lock.
@@ -115,7 +139,17 @@ a production deployment. Later proofs need their own executed evidence.
 
 ## Interrupted adjacent-set starter upgrade
 
-The same qualification job adds one step using the existing
+Before publication, the set-release preflight also runs this file/dependency
+proof after packing and before release planning, tags or npm publication. The
+target comes exclusively from the retained complete local set, verified by the
+pack manifest against its commit, SHA-256 and SHA-512 digests. Extraction admits
+local tarball resolutions only for those verified entries; other dependencies
+retain registry-origin checks. The receipt identifies the target as
+`candidate, local digest-verified`. A failed application test or typecheck on
+the upgraded predecessor fails the receipt and blocks dispatch. This candidate
+proof supplies no published provenance, schema, image or canary qualification.
+
+After publication, the unchanged qualification job adds one step using the existing
 [distribution CLI proof](../../scripts/packages/distribution-cli-proof.ts) in
 pair mode. Its no-pair mode retains the fixed published 0.35.0→0.36.0 witness
 and existing PR execution. Pair mode chooses the greatest stable core release
@@ -127,7 +161,17 @@ The shared released-input consumer proof checks both extracted applications,
 including the target application that supplies the installed upgrade CLI.
 
 Managed snapshots are derived from each extracted `ownership.json`, excluding
-generated and owned paths. The proof customizes owned theme and fragment files,
+generated and owned paths. A release that changes an owned file or its contract
+adds its own packaged starter migration. The
+[1.1.0 to 1.2.0 procedure](../../packages/core/docs/guide/upgrade/v1-2-0.md#starter-applications-from-110)
+includes the target-only `owned/market.config.ts`. For 0.43.0→1.0.0 or 1.1.0
+the proof first follows the packaged
+starter migration: the three new owned files are target-only snapshot entries;
+the four required existing owned contracts take the target extraction's bytes
+while pristine. For a 1.1.0 target, starters from either 0.43.0 or 1.0.0 also
+take the target's pristine `owned/renewal.config.ts` retention contract, as
+documented in that set's upgrade page. The proof then customizes
+owned theme and fragment files,
 uses the target's installed public CLI for plan/apply, and checks the exact
 `current bytes match neither predecessor nor candidate` managed conflict before
 any writes. After reconciliation it SIGKILLs apply immediately after the first
@@ -140,6 +184,25 @@ shared consumer proof. It runs `npm ci`, typecheck, build, application tests and
 development-loop checks on the upgraded application, including package
 confinement, installed provenance and unchanged target-lock assertions.
 Owned customization bytes must remain identical.
+
+The local 2026-11-17 0.43.0→1.0.0 file/dependency proof passed with the
+updated migration harness and the published packages. Both extracted starters
+and the upgraded application passed the shared consumer checks. The owned
+migration, managed conflict refusal, interruption, incomplete-state refusal,
+resume, replay and owned-byte preservation all passed. This uses the migration
+published with 1.1.0. The later hosted qualification results are recorded above.
+
+The local 2026-11-17 1.0.0→1.1.0 published-to-candidate proof also passed
+through the same CLI pair harness and shared locked-input consumer checks.
+The 1.0.0 owned files matched the immutable source tag; its published package
+provenance was verified. The 1.1.0 target used verified local cold tarballs.
+Both baselines and the upgraded application passed application tests,
+typecheck, build and development-loop checks. The exact target lock moved
+unchanged; conflict refusal, interruption, incomplete-state refusal, resume,
+replay and owned customizations passed. The old store configuration imports
+remained in place, with the documented retention migration in
+`owned/renewal.config.ts`. This is local file/dependency evidence; the later
+hosted 1.1.0 qualification and provenance results are recorded above.
 
 For 0.40.0→0.41.0 the only changing managed file is the extracted
 `package.json` with exact package pins. The kill therefore interrupts the CLI
@@ -224,6 +287,9 @@ first hosted qualification, which must remeasure the step's bound.
 
 ## Public outcome projection
 
+The projection uses the release tooling's coherent-set rule: `0.N.P` with N at
+least 1, or `MAJOR.MINOR.PATCH` with MAJOR at least 1; prereleases are refused.
+
 The [generated projection](OUTCOME_PROJECTION.md) derives its package entries,
 class counts, API snapshots and executable proof links from `config/openlup-packages.json`,
 the package manifests and each code export's existing `packageSmokeEvidence`
@@ -260,6 +326,11 @@ not an input to this file. The [task record](plans/oss-m19-g16.md) retains that
 requirements for a later complete claim.
 
 ## Package-set BOM
+
+Both BOM formats use the same coherent-set rule as release preparation. Their
+`posture` follows the selected version: `development-preview` for 0.x and
+`stable` from 1.0.0. Re-qualifying a historical 0.x tag preserves its preview
+posture; a stable version alone supplies no execution or provenance evidence.
 
 The BOM generator consumes the existing exact-commit `packages-manifest.json`
 and its retained tarballs. The package producer owns building, packing and its
@@ -361,6 +432,8 @@ archive manifest digest before any write. With `publish_image: false` (the defau
 the publisher job is skipped and no write token is minted. That run retains the
 qualification job's receipt, with no separate publication receipt. The in-script
 `PUBLISH_IMAGE` guard remains a second layer.
+Both qualification and publication enable the bundled Docker builder's
+containerd image store before exporting archives.
 The existing per-tag workflow concurrency serializes these runs. An existing
 version tag with a different digest refuses by name; ambiguous registry errors
 also refuse. A digest-preserving copy is followed by registry manifest readback.
@@ -375,6 +448,44 @@ disabled. Organization owners must make the package public, link it to this
 repository and choose its retention policy. Source presence and local OCI-layout copy evidence establish neither GHCR
 activation nor a hosted qualification run. The running-image canary below must
 pass before the archive is handed to this publication job.
+
+Qualified sets also publish the four evidence files (BOM, both CycloneDX SBOMs
+and the unmodified qualification receipt) at the root of a scratch image in the
+same GHCR package, tagged `<set-version>-evidence`, never `latest`. The publisher
+admits canonical set versions, including 1.x, and reuses the existing write
+permissions and tools. Both version tags refuse a changed digest; both subjects
+are read back and attested with the same pinned provenance action. Final PASS
+requires verification of both attestations. The final publication receipt records
+`evidence.manifestDigest`, registry readback and the evidence bundle SHA-256.
+Dispatches that skip publication issue neither attestation nor durable copy.
+
+Maintainers retain each `*-evidence` tag, its digest-addressed contents and its
+associated provenance attestation in GHCR for at least one year after release;
+do not delete them during that period. Keep the 90-day Actions copies for
+convenience. GHCR retention is a maintainer obligation, not an Actions artifact
+retention setting. The durable copy contains the qualification receipt before
+publication adds registry and attestation results, avoiding a self-referential
+receipt digest.
+
+Retrieve the evidence digest from the final publication receipt (or resolve the
+version's evidence tag), then verify and extract without running the image:
+
+```sh
+image=ghcr.io/openlup/neutral-store-starter
+# Set digest to the recorded evidence.manifestDigest, including sha256:.
+docker pull "$image@$digest"
+gh attestation verify "oci://$image@$digest" --owner openlup --signer-workflow openlup/openlup/.github/workflows/registry-tutorial.yml --bundle-from-oci
+container=$(docker create "$image@$digest" /unused)
+docker cp "$container:/" ./release-evidence
+docker rm "$container"
+```
+
+Alternatively, preserve the digest in an OCI layout with
+`skopeo copy --preserve-digests "docker://$image@$digest" oci:release-evidence:qualified`.
+The verified digest covers all four files; the BOM's `sbom` hashes additionally
+check each inventory's exact bytes, and the receipt's `bom.sha256` checks the BOM.
+Local fixtures establish refusal behavior; hosted publication and later retrieval
+remain execution evidence from the release run.
 
 ### Exact-artifact canary
 
@@ -406,8 +517,8 @@ qualification dependency blocks image publication on a failed canary. Compose
 cleanup runs on success and failure; the job's existing `always()` cleanup also
 removes containers and volumes labelled with a `canary-*` Compose project after
 cancellation or a step timeout.
-This is development-preview qualification, not provider certification or stable
-support. The first-party demo store is separate adoption evidence.
+This is qualification evidence for the one supported stable 1.x installation
+composition, not provider certification. The first-party demo store is separate adoption evidence.
 
 A local 2026-11-14 rehearsal on the qualified 0.41.0 set passed archive loading
 and identity, lifecycle installation/readiness (30.857 seconds), the existing

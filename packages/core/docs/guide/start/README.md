@@ -39,23 +39,23 @@ Continue with the [tutorial](tutorial.md) for a runnable example.
 <!-- generated:maturity:core -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `./bundle` | kernel | candidate |
-| `./catalog` | kernel | candidate |
+| `./bundle` | kernel | stable |
+| `./catalog` | kernel | stable |
 | `./company-identity` | kernel | experimental |
-| `./fulfillment` | kernel | experimental |
-| `./inventory` | kernel | candidate |
+| `./fulfillment` | kernel | stable |
+| `./inventory` | kernel | stable |
 | `./marketing/research` | kernel | experimental |
-| `./outbox` | kernel | experimental |
-| `./partners` | kernel | experimental |
-| `./payment` | kernel | experimental |
-| `./platform-runtime` | kernel | experimental |
-| `./pricing` | kernel | candidate |
-| `./promo` | kernel | candidate |
-| `./readiness` | kernel | experimental |
-| `./risk` | kernel | candidate |
-| `./shipping` | kernel | candidate |
+| `./outbox` | kernel | stable |
+| `./partners` | kernel | stable |
+| `./payment` | kernel | stable |
+| `./platform-runtime` | kernel | stable |
+| `./pricing` | kernel | stable |
+| `./promo` | kernel | stable |
+| `./readiness` | kernel | stable |
+| `./risk` | kernel | stable |
+| `./shipping` | kernel | stable |
 | `./standard-schema` | kernel | experimental |
-| `./subscription` | kernel | candidate |
+| `./subscription` | kernel | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:core -->
 
@@ -64,15 +64,15 @@ Continue with the [tutorial](tutorial.md) for a runnable example.
 <!-- generated:maturity:outbox -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `.` | rail | experimental |
-| `./postgres` | rail | experimental |
+| `.` | rail | stable |
+| `./postgres` | rail | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:outbox -->
 
 ### `@openlup/platform`
 
 The platform package's subpaths and their maturity are listed in its
-[agent guide](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/platform/AGENTS.md#subpath-maturity).
+[agent guide](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/AGENTS.md#subpath-maturity).
 
 ## Next steps
 

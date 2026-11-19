@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -888,6 +888,55 @@ function parameterForward(text: string, mutate: (slot: NativeStoreSlot) => void,
 const addCheck = (slot: NativeStoreSlot) => { slot.checkSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_status", column: "status", values: ["open", "closed", "paused"] }]; };
 const addUnique = (slot: NativeStoreSlot) => { slot.uniqueSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_key", columns: ["id", "extra"], nullsNotDistinct: true }]; };
 
+const rangeCheck = (expression = "days BETWEEN 1 AND 3660", tail = "") => `ALTER TABLE public.fixture_parameters DROP CONSTRAINT fixture_days;
+ALTER TABLE public.fixture_parameters ADD CONSTRAINT fixture_days CHECK (${expression})${tail};`;
+const addRange = (slot: NativeStoreSlot) => { slot.checkSupersets = [{ table: "public.fixture_parameters", constraint: "fixture_days", column: "days",
+  range: { lower: 1, upper: 3660 }, beforeSha256: sqlSha256("CHECK (((days >= 1) AND (days <= 90)))") }]; };
+
+describe("integer range CHECK admission", () => {
+  it.each(["days BETWEEN 1 AND 3660", "days >= 1 AND days <= 3660"])("admits the exact adjacent pair: %s", expression => {
+    expect(() => parameterForward(rangeCheck(expression), addRange)).not.toThrow();
+    expect(() => parameterForward(rangeCheck(expression, " NOT VALID"), addRange)).not.toThrow();
+    expect(isExpandOnlyPlatformForward(rangeCheck(expression))).toBe(false);
+  });
+  it("admits signed int4 endpoints", () => {
+    expect(() => parameterForward(rangeCheck("days BETWEEN -2147483648 AND 2147483647"), slot => {
+      addRange(slot); Object.assign(slot.checkSupersets![0]!, { range: { lower: -2147483648, upper: 2147483647 } });
+    })).not.toThrow();
+  });
+  it.each([
+    "days BETWEEN 2 AND 3660", "days BETWEEN 1 AND 89", "other_days BETWEEN 1 AND 3660",
+    "days BETWEEN 1.0 AND 3660", "days BETWEEN 1 AND 3660.5", "days BETWEEN '1' AND 3660",
+    "days BETWEEN 1::integer AND 3660", "days BETWEEN (1 + 0) AND 3660", "days BETWEEN lower_bound AND 3660",
+    "days BETWEEN 1 AND 3660 OR true", "days BETWEEN 1 AND 3660 AND other_days > 0",
+    "days > 1 AND days <= 3660", "days >= 1 AND other_days <= 3660", "days >= 1 OR days <= 3660",
+    "days NOT BETWEEN 1 AND 3660", "days BETWEEN SYMMETRIC 1 AND 3660",
+    "days BETWEEN -2147483649 AND 3660", "days BETWEEN 1 AND 2147483648",
+  ])("refuses an unlisted or non-literal interval: %s", expression => {
+    expect(() => parameterForward(rangeCheck(expression), addRange)).toThrow(/CHECK must match/u);
+  });
+  it.each(["NO INHERIT", "NOT VALID NO INHERIT", "NOT VALID NOT VALID"])("refuses extra CHECK options: %s", option => {
+    expect(() => parameterForward(rangeCheck(undefined, ` ${option}`), addRange)).toThrow(/CHECK must match/u);
+  });
+  it("requires the same table and constraint, exactly once, with no transaction boundary or intervening statement", () => {
+    const pair = rangeCheck(), [drop, add] = pair.split("\n");
+    for (const text of ["", drop!, add!, `${pair}\n${pair}`, pair.replaceAll("fixture_parameters", "other_table"), pair.replaceAll("fixture_days", "other_check"),
+      pair.replace(";\n", ";\nCOMMIT;\n"), pair.replace(";\n", ";\nCREATE TABLE public.gap(id int);\n"),
+      pair.replace("DROP CONSTRAINT", "DROP CONSTRAINT IF EXISTS"), pair.replace(";\n", " CASCADE;\n"), `${pair}\nCOMMIT;`]) {
+      expect(() => parameterForward(text, addRange)).toThrow(/complete named|must match|duplicate|closed shapes|adjacent/u);
+    }
+    expect(() => parameterForward(pair, () => {})).toThrow(/closed shapes/u);
+  });
+  it.each([
+    { range: { lower: 1.5, upper: 3660 } }, { range: { lower: "1", upper: 3660 } },
+    { range: { lower: 1, upper: 2147483648 } }, { range: { lower: 90, upper: 1 } },
+    { range: { lower: 1, upper: 3660, extra: true } }, { range: null },
+    { beforeSha256: undefined }, { beforeSha256: "wrong" }, { values: ["open"] },
+  ])("refuses malformed range declarations or a missing preimage pin: %j", fields => {
+    expect(() => parameterForward(rangeCheck(), slot => { addRange(slot); Object.assign(slot.checkSupersets![0]!, fields); })).toThrow(/invalid CHECK superset entry/u);
+  });
+});
+
 describe("registry-defined native capabilities", () => {
   it("admits a fresh later eighth slot from data and keeps all issued data unchanged", () => {
     expect(readReviewedForwardRegistry(encode(production))).toEqual(production);
@@ -1118,6 +1167,7 @@ const triggerFunction = "CREATE FUNCTION public.fixture_trigger_guard() RETURNS 
 const triggerRevoke = "REVOKE ALL ON FUNCTION public.fixture_trigger_guard() FROM PUBLIC;";
 const triggerBefore = "CREATE TRIGGER fixture_trigger_guard BEFORE INSERT OR DELETE OR UPDATE OF id, extra ON public.fixture_parameters FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger_guard();";
 const triggerAfter = "CREATE TRIGGER fixture_trigger_event AFTER INSERT ON public.fixture_row FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger_guard();";
+const deferredTrigger = "CREATE CONSTRAINT TRIGGER fixture_trigger_guard AFTER INSERT OR UPDATE OR DELETE ON public.fixture_parameters DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger_guard();";
 function triggerForward(statement = triggerBefore, extra = "", configure?: (slot: NativeStoreSlot) => void, history = "", definition = triggerFunction) {
   parameterForward(`${definition}\n${triggerRevoke}\n${statement}\n${extra}`, slot => {
     slot.createdFunctions.push({ signature: "public.fixture_trigger_guard()", searchPath: "pg_catalog, pg_temp" });
@@ -1125,6 +1175,58 @@ function triggerForward(statement = triggerBefore, extra = "", configure?: (slot
     configure?.(slot);
   }, history);
 }
+
+describe("deferred constraint triggers", () => {
+  it("admits the pinned form with earlier same-slot and prefix targets", () => {
+    const prefixTrigger = deferredTrigger.replaceAll("fixture_trigger_guard", "fixture_prefix_trigger").replace("INSERT OR UPDATE OR DELETE", "UPDATE");
+    const sameSlotTable = "CREATE TABLE public.fixture_local (id uuid);";
+    const sameSlotTrigger = deferredTrigger.replace("public.fixture_parameters", "public.fixture_local");
+    expect(() => parameterForward(`${sameSlotTable}\n${triggerFunction}\n${triggerRevoke}\n${sameSlotTrigger}\n${prefixTrigger}`, slot => {
+      slot.createdFunctions.push({ signature: "public.fixture_trigger_guard()", searchPath: "pg_catalog, pg_temp" });
+      slot.createdTriggers = [
+        { name: "fixture_trigger_guard", table: "public.fixture_local", sha256: sqlSha256(sameSlotTrigger) },
+        { name: "fixture_prefix_trigger", table: "public.fixture_parameters", sha256: sqlSha256(prefixTrigger) },
+      ];
+    }, triggerFunction.replace("fixture_trigger_guard", "fixture_prefix_trigger"), parameterTable.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"))).not.toThrow();
+  });
+  it.each([
+    ["BEFORE", "AFTER", "BEFORE"],
+    ["INSTEAD OF", "AFTER", "INSTEAD OF"],
+    ["FOR EACH STATEMENT", "FOR EACH ROW", "FOR EACH STATEMENT"],
+    ["omitted row level", "FOR EACH ROW ", ""],
+    ["NOT DEFERRABLE", "DEFERRABLE", "NOT DEFERRABLE"],
+    ["omitted deferral", "DEFERRABLE INITIALLY DEFERRED ", ""],
+    ["INITIALLY IMMEDIATE", "INITIALLY DEFERRED", "INITIALLY IMMEDIATE"],
+    ["WHEN", "EXECUTE", "WHEN (true) EXECUTE"],
+    ["FROM", "DEFERRABLE", "FROM public.fixture_row DEFERRABLE"],
+    ["REFERENCING", "FOR EACH ROW", "REFERENCING NEW TABLE AS new_rows FOR EACH ROW"],
+    ["arguments", "fixture_trigger_guard();", "fixture_trigger_guard('argument');"],
+    ["TRUNCATE", "INSERT", "TRUNCATE"],
+    ["UPDATE OF", "UPDATE", "UPDATE OF id"],
+    ["duplicate event", "UPDATE", "INSERT"],
+    ["unqualified relation", "ON public.", "ON "],
+    ["unqualified function", "FUNCTION public.", "FUNCTION "],
+  ])("refuses %s even with a fresh statement hash", (_label, from, to) => {
+    expect(() => triggerForward(deferredTrigger.replace(from, to))).toThrow("reviewed native store created trigger shape refused");
+  });
+  it.each([
+    ["an uncatalogued relation", ""],
+    ["a relation created later", "CREATE TABLE public.fixture_unknown (id uuid);"],
+  ])("refuses %s", (_label, laterTable) => {
+    const statement = deferredTrigger.replace("public.fixture_parameters", "public.fixture_unknown");
+    expect(() => triggerForward(statement, laterTable, slot => { slot.createdTriggers![0]!.table = "public.fixture_unknown"; })).toThrow("reviewed native store deferred constraint trigger requires an earlier relation");
+  });
+  it.each([
+    ["an uncatalogued function", "", ""],
+    ["a function created later", `${triggerFunction}\n${triggerRevoke}`, ""],
+    ["a prefix function with another return type", "", triggerFunction.replace("RETURNS trigger", "RETURNS text")],
+  ])("refuses %s", (_label, laterFunction, history) => {
+    expect(() => parameterForward(`${deferredTrigger}\n${laterFunction}`, slot => {
+      if (laterFunction) slot.createdFunctions.push({ signature: "public.fixture_trigger_guard()", searchPath: "pg_catalog, pg_temp" });
+      slot.createdTriggers = [{ name: "fixture_trigger_guard", table: "public.fixture_parameters", sha256: sqlSha256(deferredTrigger) }];
+    }, history)).toThrow("reviewed native store deferred constraint trigger requires an earlier function");
+  });
+});
 
 describe("closed created row triggers on prefix tables", () => {
   it("admits both guarded existing-table trigger shapes with PUBLIC and conditional revokes", () => {
@@ -1236,7 +1338,7 @@ it.each(["pull_request", "merge_group"])("routes prepared later SQL plus a catal
     git("init", "-q", "-b", "main"); const value = registry(), path = "db/platform/migrations/20271106100000_prepared.sql", text = "CREATE TABLE public.prepared (id uuid);";
     value.nativeStoreForwardClass = { sealed: false, slots: [emptySlot(path)] }; value.nativeStoreForwards = [{ path, sha256: sqlSha256(text), functions: [] }];
     put("config/reviewed-platform-forwards.json", encode(value)); put(PLATFORM_BASELINE_FILE, before); const base = commit(); git("update-ref", "refs/remotes/origin/main", base);
-    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.test.ts", "// Changed observer"); const head = commit();
+    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.shared.ts", "// Changed observer"); const head = commit();
     expect(isNativeStoreMigrationPath(path)).toBe(true);
     expect(isNativeStoreMigrationPath(path, value.nativeStoreForwardClass.slots)).toBe(true);
     const candidate = await captureCommittedReviewCandidate(folder, base, head);
@@ -1255,7 +1357,7 @@ it("routes later paths conservatively while admitting an ordinary unregistered e
   nativeGitFixture(({ folder, put, commit }) => {
     const value = registry(), path = "db/platform/migrations/20271106100000_unregistered.sql", text = "CREATE TABLE public.unregistered (id uuid);";
     put("config/reviewed-platform-forwards.json", encode(value)); put(PLATFORM_BASELINE_FILE, before); const base = commit();
-    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.test.ts", "// Ordinary additive test change"); const head = commit();
+    put(path, text); put("tests/postgres/nativeStoreForwardCatalog.shared.ts", "// Ordinary additive test change"); const head = commit();
     expect(isNativeStoreMigrationPath(path)).toBe(true); expect(isNativeStoreMigrationPath(path, value.nativeStoreForwardClass!.slots)).toBe(false);
     expect(isNativeStoreMigrationPath("db/platform/migrations/20261101221999_earlier.sql")).toBe(false);
     expect(isNativeStoreMigrationPath("supabase/migrations/20271106100000_other.sql")).toBe(false);
@@ -1820,6 +1922,63 @@ describe("closed successor new-table RESTRICT foreign keys", () => {
     ["incomplete tokens", create.replace("<> successor_sku_id", "<> successor_sku_id \\ ")],
     ...["SELECT 1;", "DELETE FROM public.catalog_skus;", "ALTER TABLE public.catalog_skus DROP COLUMN id;", "GRANT SELECT ON TABLE public.catalog_sku_successors TO PUBLIC;", "UPDATE public.catalog_sku_successors SET publication_id=NULL;"].map(extra => [`appended ${extra}`, create + extra]),
   ])("refuses successor new-table shape: %s", (_label, statement) => {
+    expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
+  });
+});
+
+
+describe("closed successor storage RESTRICT tables", () => {
+  it.each(Object.entries(NATIVE_SUCCESSOR_TABLE_SQL))("admits exact successor storage: %s without broadening other modes", (_name, create) => {
+    for (const statement of [create, create.toLowerCase().replaceAll("on delete", "on /* action */\n delete")]) {
+      expect(() => check(`${sql()}\n${statement}`)).not.toThrow();
+      expect(isExpandOnlyPlatformForward(statement)).toBe(false);
+      expect(isExpandOnlyPlatformForward(statement, true)).toBe(false);
+    }
+  });
+  const refusals = Object.entries(NATIVE_SUCCESSOR_TABLE_SQL).flatMap(([name, create]) => {
+    const cases: [string, string][] = [
+      ["other table", create.replace(name, "public.other_successor_storage")],
+      ["conditional creation", create.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS")],
+      ["extra column", create.replace("id uuid PRIMARY KEY,", "id uuid PRIMARY KEY, extra text,")],
+      ["extra CHECK", create.replace(/\);$/u, ", CHECK (true));")],
+      ["extra UNIQUE", create.replace(/\);$/u, ", UNIQUE (id));")],
+      ["column order", create.replace("id uuid PRIMARY KEY,\n", "").replace(/\);$/u, ", id uuid PRIMARY KEY);")],
+      ["quoted syntax", create.replace("id uuid PRIMARY KEY", '"id" uuid PRIMARY KEY')],
+      ["literal syntax", create.replace("id uuid PRIMARY KEY", "'id' uuid PRIMARY KEY")],
+      ["literal case", create.replace("'abcdef0123456789'", "'ABCDEF0123456789'")],
+      ["comment smuggling", create.replace("RESTRICT,", "RESTRICT /*,*/ SELECT 1,")],
+      ["control smuggling", create.replace(" ON DELETE", " ON\rDELETE")],
+      ["dollar smuggling", create.replace("id uuid PRIMARY KEY", () => "id uuid PRIMARY KEY DEFAULT $$DELETE$$")],
+      ...["SELECT 1;", `DELETE FROM ${name};`, `UPDATE ${name} SET id=NULL;`, `ALTER TABLE ${name} DROP COLUMN id;`, `GRANT SELECT ON ${name} TO PUBLIC;`].map(extra => [`appended ${extra}`, create + extra] as [string, string]),
+    ];
+    for (const line of create.split("\n").slice(1, -1)) {
+      const column = line.trim().split(" ")[0]!;
+      cases.push([`${column} name`, create.replace(line, line.replace(column, "unlisted_column"))]);
+      cases.push([`${column} type`, create.replace(line, line.replace(/ (uuid|jsonb|integer|bigint|text|timestamptz)(?= |,|$)/u, " numeric"))]);
+      if (line.includes("NOT NULL")) cases.push([`${column} nullable`, create.replace(line, line.replace(" NOT NULL", ""))]);
+      if (line.includes("PRIMARY KEY")) cases.push([`${column} missing PK`, create.replace(line, line.replace(" PRIMARY KEY", ""))]);
+      if (line.includes(" UNIQUE")) cases.push([`${column} missing UNIQUE`, create.replace(line, line.replace(" UNIQUE", ""))]);
+      if (line.includes(" CHECK")) cases.push([`${column} changed CHECK`, create.replace(line, line.replace(/ CHECK \(.*\)(,?)$/u, " CHECK (true)$1"))]);
+      if (line.includes(" DEFAULT")) cases.push([`${column} changed DEFAULT`, create.replace(line, line.replace(/ DEFAULT (?:'[^']*'|now\(\)|1)/u, " DEFAULT NULL"))]);
+      if (line.includes(" REFERENCES")) {
+        for (const action of ["CASCADE", "SET NULL", "SET DEFAULT", "NO ACTION", ""]) cases.push([`${column} action ${action || "implicit"}`, create.replace(line, line.replace("ON DELETE RESTRICT", action ? `ON DELETE ${action}` : ""))]);
+        for (const [label, actual] of [
+          ["target", line.replace(/REFERENCES public\.\w+/u, "REFERENCES public.other_target")],
+          ["target key", line.replace("(id)", "(other_id)")],
+          ["target arity", line.replace("(id)", "(id, other_id)")],
+          ["missing FK", line.replace(/ REFERENCES .*?(,?)$/u, "$1")],
+          ["update", line.replace("DELETE RESTRICT", "DELETE RESTRICT ON UPDATE CASCADE")],
+          ["match", line.replace(" ON DELETE", " MATCH FULL ON DELETE")],
+          ["deferred", line.replace("DELETE RESTRICT", "DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED")],
+        ]) cases.push([`${column} ${label}`, create.replace(line, actual!)]);
+      }
+    }
+    return cases.map(([label, statement]) => {
+      if (statement === create) throw new Error(`ineffective refusal fixture: ${name}: ${label}`);
+      return [`${name}: ${label}`, statement];
+    });
+  });
+  it.each(refusals)("refuses successor storage statement: %s", (_label, statement) => {
     expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
   });
 });

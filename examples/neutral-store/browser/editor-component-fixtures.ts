@@ -35,6 +35,8 @@ export async function editorComponent(page: Page,options: { sized?: boolean; opt
   // Synthetic API identities need their own explicit commercial rules, independent of the demonstration's offers.
   await page.route('**/api/config',async route => {
     const response = await route.fetch(),body = await response.json(),config = body.config;
+    // Explicit bilingual presentation fixture, independent of the installed host market.
+    config.market = { ...config.market, locales: ['en', 'pl'], defaultLocale: 'en' };
     const days = set(14,28,56), common = { days,defaultDays: 28,minimumBaseUnits: 6,maximumUnits: 1782,
       maximumBaseLines: 6,maximumAddonLines: 12,
       bySku: Object.fromEntries([1,2,3,4,5,8].map(n => [`ITEM-${n}`,[{ days,quantities: range(1,99,1) }]])) };

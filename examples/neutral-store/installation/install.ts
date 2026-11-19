@@ -1,3 +1,5 @@
+import { installCheckoutRecoveryReminderSchedule } from '@openlup/platform/commerce/server';
+import { installRenewalStockProtectionPolicy } from '@openlup/platform/inventory';
 import { seedQuoteAuthority } from './quote-seed.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
@@ -91,6 +93,8 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         sellable_standalone=EXCLUDED.sellable_standalone, sellable_in_subscription=EXCLUDED.sellable_in_subscription,net_weight_g=EXCLUDED.net_weight_g`,
     [row.id, row.product_id, row.sku, row.title, row.status, row.min_order_qty,
       row.is_addon, row.sellable_standalone, row.sellable_in_subscription,row.net_weight_g]);
+    await installRenewalStockProtectionPolicy(connection, config.inventory.renewalProtection);
+    await installCheckoutRecoveryReminderSchedule(connection, config.checkoutRecoveryReminders);
     for (const row of seed.settings) await connection.query(`INSERT INTO public.commerce_settings(key,value_text)
       VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`, [row.key,row.value]);
     const stock = installation.stock ?? (await import('@openlup/platform/fulfillment')).createPostgresFulfillmentStockSyncPort(connection,

@@ -16,6 +16,7 @@ import type { CatalogProductState, CatalogSkuState, CatalogLifecycleStoredRecord
 import { catalogDraftPayloadV4Schema, catalogAuthoritativeLifecycleV2, catalogLifecycleProjectionV2, catalogLifecycleTransitionV2, resolveCatalogLifecycleProvenance } from "./lifecycleV2.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
 
+/** @experimental */
 export class CatalogPublicationError extends Error {
   constructor(readonly code: string, readonly outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported" = "validation_issue") {
     super(code); this.name = "CatalogPublicationError";
@@ -104,6 +105,7 @@ export interface CatalogPublicationDocument {
   reference: z.infer<typeof catalogDocumentRevisionRefSchema>; canonicalText: string;
   provenance: { draftId: string; draftRevision: number; draftCommandKey: string; draftFingerprint: string };
 }
+/** @experimental */
 export interface CatalogPublicationRules {
   /** Installed code only. Validate/canonicalize opaque documents, presentations, vocabularies and full affected-set facts. */
   validateProduct(product: CatalogProductState, skus: readonly CatalogSkuState[], documents: readonly CatalogPublicationDocument[]): readonly string[];
@@ -114,6 +116,7 @@ export interface CatalogPublicationRules {
     beforeDocument: CatalogPublicationDocument | null; afterDocument: CatalogPublicationDocument;
   }): "compatible" | "material" | "inconclusive";
 }
+/** @experimental */
 export interface CatalogPublicationCompileInput {
   payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4; record: CatalogDraftPublicationStoredRecord; definition: CatalogProductTypeDefinition;
   product: CatalogProductState | null; skus: readonly CatalogSkuState[]; documents: readonly CatalogPublicationDocument[];
@@ -126,7 +129,7 @@ const equal = (a: unknown, b: unknown): boolean => publicationJson(a) === public
 const need = (condition: unknown, reason: string): void => { if (!condition) publicationRefuse(reason); };
 const authoredSlug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
 /** Temporary native publication boundary, until versioned quantity readers land. */
-export function catalogPublicationIntegralGrams(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition, kind: "net" | "gross"): string {
+export function catalogPublicationIntegralGrams(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition, kind: "net" | "gross" = "net"): string {
   const reason = "catalog_publication_integral_grams_required";
   try {
     const units = definition.units.flatMap(unit => {
@@ -142,20 +145,25 @@ export function catalogPublicationIntegralGrams(quantity: CatalogQuantity, defin
   } catch { return publicationRefuse(reason); }
 }
 export function assertCatalogPublicationMassInputs(payload: unknown, definition: CatalogProductTypeDefinition): void {
-  const header = z.object({ skus: z.array(z.object({ netContent: z.unknown().optional(), grossMass: z.unknown().optional() })) }).safeParse(payload);
+  const header = z.object({ schemaVersion: z.unknown().optional(), skus: z.array(z.object({ netContent: z.unknown().optional(), grossMass: z.unknown().optional() })) }).safeParse(payload);
   if (!header.success) return;
   for (const sku of header.data.skus) for (const [kind, value] of [["net", sku.netContent], ["gross", sku.grossMass]] as const) {
+    if (kind === "gross" && header.data.schemaVersion !== 4) continue;
     if (value && typeof value === "object" && "dimension" in value && value.dimension === "mass")
       catalogPublicationIntegralGrams(value as CatalogQuantity, definition, kind);
   }
 }
-/** Hard preparation guard, independent of dark/activation readiness. */
+/** Hard preparation guard, independent of dark/activation readiness.
+ * @experimental
+ */
 export function assertCatalogPublicationPreparation(payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4): void {
   need(authoredSlug.safeParse(payload.product.slug).success, "commerce_product_slug_unsupported");
   for (const sku of payload.skus) need(sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
     && identifier.packagingLevel === "unit" && isValidGtin(identifier.value)), "unit_trade_identifier_missing");
 }
-/** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic. */
+/** Exact scaled comparison after owner-defined conversion, with no rounding or Number arithmetic.
+ * @experimental
+ */
 export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void {
   need(net.dimension === "mass", "catalog_publication_mass_required_until_mc5");
   need(gross?.dimension === "mass", "catalog_publication_gross_mass_required");
@@ -170,7 +178,9 @@ export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: C
     need(BigInt(g.unscaled) * 10n ** BigInt(n.scale) >= BigInt(n.unscaled) * 10n ** BigInt(g.scale), "catalog_publication_gross_below_net");
   } catch (error) { if (error instanceof CatalogPublicationError) throw error; publicationRefuse("catalog_publication_gross_mass_invalid"); }
 }
-/** Ordered publication compiler using installed definitions; never persists or calls commerce. */
+/** Ordered publication compiler using installed definitions; never persists or calls commerce.
+ * @experimental
+ */
 export function compileCatalogPublication(input: CatalogPublicationCompileInput): { product: CatalogProductState; skus: CatalogSkuState[]; documents: CatalogPublicationDocument[]; activation: boolean; changed: boolean } {
   canonicalCatalogDraftJson(input.payload);
   // Check the temporary numeric domain before strict positive-quantity decoding,
@@ -198,6 +208,8 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
   }
   const original = publicationJson(materialState(product, input.skus));
   const withdrawalOnly = governed && catalogLifecycleWithdrawalOnly(payload as CatalogDraftPayloadV4);
+  // Preserve first-match semantics while indexing retained facts once.
+  const originalById = new Map([...input.skus].reverse().map(sku => [sku.id, sku] as const));
   const skus = new Map(input.skus.map(sku => [sku.code, structuredClone(sku)]));
   const documents = input.documents.map(document => structuredClone(document));
   const sources = [input.record, ...input.retainedSources];
@@ -389,7 +401,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
       Object.assign(sku, overlay);
       if (governed && policy !== undefined) Object.assign(sku, { demandPolicyRef: policy });
     }
-    const before = input.skus.find(before => before.id === sku.id);
+    const before = originalById.get(sku.id);
     if (before && (productPhysicalChange || !equal(
       [before.netContent, before.options, before.attributes, before.facts, before.grossMass, before.assetRefs],
       [sku.netContent, sku.options, sku.attributes, sku.facts, sku.grossMass, sku.assetRefs]))) {
@@ -399,7 +411,7 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     }
     need(sku.netContent.dimension === "mass", "catalog_publication_mass_required_until_mc5");
     catalogPublicationIntegralGrams(sku.netContent, input.definition, "net");
-    if (sku.grossMass) catalogPublicationIntegralGrams(sku.grossMass, input.definition, "gross");
+    if (governed && sku.grossMass) catalogPublicationIntegralGrams(sku.grossMass, input.definition, "gross");
     need(withdrawalOnly || equal(input.rules.deriveSkuFacts(JSON.parse(currentDocument().canonicalText), sku), sku.facts),
       "catalog_publication_v3_compile_derived_facts_mismatch");
     if (sku.sellableStandalone || sku.sellableInSubscription) {
@@ -413,19 +425,21 @@ export function compileCatalogPublication(input: CatalogPublicationCompileInput)
     const identity = canonicalizeCatalogCombinationV2({ definition: input.definition, axes: result.axes, options: sku.options });
     const key = Buffer.from(identity.combinationDigest).toString("hex");
     if ("schemaVersion" in sku) need(sku.optionDigest === key, "sku_identity_change_requires_new_sku");
-    if (sku.status === "active") { need(!identities.has(key), "duplicate_combination"); identities.add(key); }
+    if (!governed || sku.status === "active") { need(!identities.has(key), "duplicate_combination"); identities.add(key); }
     publicationJson(catalogSkuStateSchema.parse(sku), CATALOG_PUBLICATION_LIMITS.skuBytes);
   }
   need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
   need(result.primarySkuId && result.document && (result.presentation || governed && input.product), "catalog_publication_v3_structural_readiness_failed");
   const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
   need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
+  if (payload.publication.operations.some(operation => operation.op === "set_product_status" && operation.status === "active"))
+    need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
   const issues = withdrawalOnly ? [] : input.rules.validateProduct(result, [...skus.values()], documents);
   need(withdrawalOnly || issues.length === 0, "catalog_publication_adopter_validation_failed");
   const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const changed = original !== publicationJson(materialState(result, sorted));
   for (const sku of sorted) {
-    const before = input.skus.find(row => row.id === sku.id);
+    const before = originalById.get(sku.id);
     // An omitted derived cache effect has this publication's draft/receipt as
     // its effect provenance. Keep the retained physical/media source available.
     if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) sku.source = claim;

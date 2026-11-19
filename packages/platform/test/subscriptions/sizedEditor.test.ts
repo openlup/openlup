@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { splitBySubscriptionAgreement, mergeSubscriptionAgreedQuote, agreedSubscriptionTotal } from "../../src/subscriptions/agreedPlanQuote.js";
-import { createSizedEditContextScope, normalizeSizedEdit, sizedEditPhase } from "../../src/subscriptions/sizedEditContext.js";
+import { createSizedEditContextScope, normalizeSizedEdit, readSizedEditContext, sizedEditPhase } from "../../src/subscriptions/sizedEditContext.js";
 import { createSizedCompositionRules } from "../../src/subscriptions/sizedComposition.js";
 import { quoteSizedEdit, selectSizedAgreements, sizedCandidateCompatibility } from "../../src/subscriptions/sizedEditQuote.js";
 import { createOfferDispatchedSubscriptionEditor, mapSizedEditError, createPostgresSizedEditor } from "../../src/subscriptions/sizedEditor.js";
@@ -17,6 +17,53 @@ function rules(options: Partial<Parameters<typeof createSizedCompositionRules>[0
 }
 const validate = (port: ReturnType<typeof rules>, lines = [{ variantId: ids.a, qty: 4, isAddon: false }]) => port.validateComposition({ coreLines: lines,
   constraint: coreConstraint(lines.reduce((sum, line) => sum + line.qty, 0)) });
+it.each(["plan", "bundle", "resize", "portion"])("bounds fresh sized %s request cadences before database work", async kind => {
+  for (const days of [0, 1, 3660, 3661]) {
+    const input: SizedEditRequest = kind === "plan" ? { subscriptionId: ids.subscription, action: "update_plan_length", planDays: days }
+      : kind === "bundle" ? { subscriptionId: ids.subscription, action: "update_bundle", cadenceDays: days, coreLines: [{ variantId: ids.a, qty: 4 }], compositionConstraint: coreConstraint().data }
+      : { subscriptionId: ids.subscription, action: "resize_bundle", cadenceDays: kind === "portion" ? 20 : days, compositionConstraint: coreConstraint().data,
+        resizeLever: kind === "portion" ? { kind: "portionMode", value: { portionMode: "complete", planDays: days } }
+          : { kind: SIZED_PARCEL_LEVER_KIND, value: { coreLines: [{ variantId: ids.a, qty: 4 }] } } };
+    const transaction = vi.fn(async () => { throw new Error("cadence admitted to transaction"); });
+    const editor = createPostgresSizedEditor({ ...host(), policy, now: () => "2040-01-01T00:00:00Z", withTransaction: transaction });
+    await expect(editor.preview({ actorId: ids.actor, clientId: ids.client }, input)).rejects.toThrow(
+      days === 1 || days === 3660 ? "cadence admitted to transaction" : "subscription_reprice_invalid_request");
+    expect(transaction).toHaveBeenCalledTimes(days === 1 || days === 3660 ? 1 : 0);
+  }
+});
+it("reads historical sized subscription read cadences", async () => {
+  for (const days of [0, 1, 3660, 3661, 2_147_483_647, 2_147_483_648]) {
+    const result = readSizedEditContext({ query: async () => ({ rows: [{ context: { ...context(), cadenceDays: days } }] }) }, ids.client, ids.subscription);
+    if (days >= 1 && days <= 2_147_483_647) await expect(result).resolves.toMatchObject({ cadenceDays: days });
+    else await expect(result).rejects.toThrow("subscription_reprice_sized_context_unreadable");
+  }
+});
+it.each(["plan", "bundle", "resize", "portion"])("replays completed sized %s commands above current cadence limits", async kind => {
+  const input: SizedEditRequest = kind === "plan" ? { subscriptionId: ids.subscription, action: "update_plan_length", planDays: 3661 }
+    : kind === "bundle" ? { subscriptionId: ids.subscription, action: "update_bundle", cadenceDays: 3661, coreLines: [{ variantId: ids.a, qty: 4 }], compositionConstraint: coreConstraint().data }
+    : { subscriptionId: ids.subscription, action: "resize_bundle", cadenceDays: kind === "portion" ? 20 : 3661, compositionConstraint: coreConstraint().data,
+      resizeLever: kind === "portion" ? { kind: "portionMode", value: { portionMode: "complete", planDays: 3661 } }
+        : { kind: SIZED_PARCEL_LEVER_KIND, value: { coreLines: [{ variantId: ids.a, qty: 4 }] } } };
+  const saved = { action: input.action, subscriptionId: ids.subscription, templateVersion: 2 };
+  let matches = true, completed = true;
+  const query = vi.fn(async (sql: string) => {
+    if (sql.startsWith("SELECT s.*")) return { rows: [{ configured_offer_version: "sized.v1" }] };
+    if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+    if (sql.includes("FROM public.subscription_command_receipts")) return { rows: completed ? [{ matches, status: "applied", result: saved }] : [] };
+    throw new Error("replay attempted later work");
+  });
+  const ports = host(), admit = vi.fn(() => { throw new Error("admission must not run"); });
+  const editor = createPostgresSizedEditor({ ...ports, admitSubscriptionTerms: admit, policy,
+    now: () => "2040-01-01T00:00:00Z", withTransaction: work => work({ query }) });
+  const actor = { actorId: ids.actor, clientId: ids.client };
+  await expect(editor.apply(actor, "completed-sized-key", input)).resolves.toEqual({ ...saved, status: "replayed", originalStatus: "applied" });
+  matches = false;
+  await expect(editor.apply(actor, "completed-sized-key", { ...input, expectedTemplateVersion: 2 })).rejects.toThrow("subscription_command_idempotency_conflict");
+  completed = false;
+  await expect(editor.apply(actor, "fresh-sized-key", input)).rejects.toThrow("subscription_reprice_invalid_request");
+  expect(admit).not.toHaveBeenCalled();
+  expect(query.mock.calls.some(([sql]) => sql.includes("subscription_sized_edit_context"))).toBe(false);
+});
 describe("full agreed pricing", () => {
   it("matches exact SKU, quantity and classification once and preserves every unchanged field", () => {
     const saved = agreed(), request = { mode: "subscription" as const, promoCodes: [], cadenceDays: 30,
@@ -206,4 +253,16 @@ it("keeps sized frozen pricing unchanged when admission is absent or permissive"
   const input = { db, context: context(), request: parcel(), policy, host: host(), point: "preview" as const };
   const original = await quoteSizedEdit(input), admit = vi.fn(); input.host.admitSubscriptionTerms = admit;
   expect(await quoteSizedEdit(input)).toEqual(original); expect(admit).toHaveBeenCalledOnce();
+});
+
+it("reads a historical sized context but refuses a fresh edit retaining its cadence", async () => {
+  const current = context(), ports = host(); current.cadenceDays = 3661;
+  const live = vi.spyOn(ports.quotePort, "createServerAuthoritativeQuote");
+  const facts = vi.spyOn(ports, "readFacts"), catalog = vi.spyOn(ports, "readCatalog"), need = vi.spyOn(ports, "resolveOptInNeed");
+  await expect(quoteSizedEdit({db, context:current, request:{subscriptionId:ids.subscription,action:"update_base_mix",base:[{variantId:ids.a,qty:4}]},policy,host:ports,point:"preview"}))
+    .rejects.toThrow("subscription_reprice_invalid_plan_length");
+  expect(live).not.toHaveBeenCalled();
+  expect(facts).not.toHaveBeenCalled(); expect(catalog).not.toHaveBeenCalled(); expect(need).not.toHaveBeenCalled();
+  expect(await quoteSizedEdit({db,context:current,request:{subscriptionId:ids.subscription,action:"update_plan_length",planDays:30},policy,host:ports,point:"preview"}))
+    .toMatchObject({cadenceDays:30});
 });

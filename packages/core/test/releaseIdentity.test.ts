@@ -14,11 +14,14 @@ function readJson<Parsed>(path: string): Parsed {
   return JSON.parse(readFileSync(path, "utf8")) as Parsed;
 }
 
-const admitted = ["0.12.0", "0.12.1", "0.13.0", "0.99.10"];
+const admitted = ["0.12.0", "0.12.1", "0.13.0", "0.99.10", "1.0.0", "1.12.0", "2.0.1", "12.10.0"];
 const refused = [
   "0.0.1",
-  "1.0.0",
-  "1.12.0",
+  "01.0.0",
+  "1.01.0",
+  "1.0.01",
+  "1.0.0-rc.1",
+  "1.0.0+build.1",
   "0.12.0-rc.1",
   "0.12.0+build.1",
   "0.012.0",
@@ -40,7 +43,7 @@ describe("set release identity", () => {
       join(packageRoot, "release-gates.json"),
     );
 
-    expect(releaseGates.packageRelease.versionRule).toBe("0.N.P");
+    expect(releaseGates.packageRelease.versionRule).toBe("MAJOR.MINOR.PATCH");
     expect(isSetVersion(manifest.version)).toBe(true);
     expect(packageLock.version).toBe(manifest.version);
     expect(packageLock.packages[""].version).toBe(manifest.version);
@@ -51,15 +54,15 @@ describe("set release identity", () => {
     expect(() => assertSetVersion(setVersionRule, version)).not.toThrow();
   });
 
-  it.each(refused)("refuses %j, which is not a set version below 1.0", (version) => {
+  it.each(refused)("refuses %j, which is not a set version", (version) => {
     expect(isSetVersion(version)).toBe(false);
     expect(() => assertSetVersion(setVersionRule, version)).toThrow(
-      `package version must be a set version 0.N.P below 1.0, not ${version}`,
+      `package version must be a set version MAJOR.MINOR.PATCH, not ${version}`,
     );
   });
 
-  it.each([undefined, "0.<n>.0", "MAJOR.MINOR.PATCH"])("refuses the version rule %j", (versionRule) => {
-    expect(() => assertSetVersion(versionRule, "0.12.0")).toThrow(/must be a set version 0\.N\.P/);
+  it.each([undefined, "0.<n>.0", "0.N.P"])("refuses the version rule %j", (versionRule) => {
+    expect(() => assertSetVersion(versionRule, "0.12.0")).toThrow(/must be a set version MAJOR\.MINOR\.PATCH/);
   });
 
   it("refuses a version that is not a string", () => {
@@ -94,22 +97,22 @@ describe("release:check identity", () => {
     );
   }
 
-  it.each(["0.12.0", "0.12.1", "0.13.0"])("admits %s", (version) => {
+  it.each(["0.12.0", "0.12.1", "0.13.0", "1.0.0", "2.1.3"])("admits %s", (version) => {
     const result = runIdentity(version);
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(result.stdout).toContain(`package release identity ok (${version}, set 0.N.P, npm-staged-preview)`);
+    expect(result.stdout).toContain(`package release identity ok (${version}, set MAJOR.MINOR.PATCH, npm-stable)`);
   });
 
-  it("refuses 1.0.0", () => {
-    const result = runIdentity("1.0.0");
+  it("refuses 1.0.0-rc.1", () => {
+    const result = runIdentity("1.0.0-rc.1");
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("package version must be a set version 0.N.P below 1.0, not 1.0.0");
+    expect(result.stderr).toContain("package version must be a set version MAJOR.MINOR.PATCH, not 1.0.0-rc.1");
   });
 
   it("refuses the retired version rule 0.<n>.0", () => {
     const result = runIdentity("0.12.0", "0.<n>.0");
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("package version must be a set version 0.N.P");
+    expect(result.stderr).toContain("package version must be a set version MAJOR.MINOR.PATCH");
   });
 });
 

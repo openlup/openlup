@@ -1,3 +1,4 @@
+import { MAX_CADENCE_DAYS } from '@openlup/core/subscription';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { admitsLine, admitsTerms, assertSubscriptionOffer, choices, quantityChoices, set, range,
@@ -56,5 +57,14 @@ test('invalid defaults, overlapping cadence rules and malformed or unsupported d
   invalid(value => { value.days = set(14,14); });
   invalid(value => { value.bySku = { 'SAMPLE-A': [{ days: set(28),quantities: set(1) },{ days: set(28),quantities: set(2) }] }; });
   invalid(value => { value.bySku = { UNKNOWN: [{ days: set(28),quantities: set(1) }] }; });
-  invalid(value => { value.days = range(1,2_147_483_647,1); },'starter_database_cadence_limit');
+  invalid(value => { value.days = range(1,MAX_CADENCE_DAYS+1,1); });
+  invalid(value => { value.days = set(0); });
+});
+
+for (const days of [1,90,91,MAX_CADENCE_DAYS]) test(`configured subscription offer admits ${days} days`, () => {
+  const configured = offer();
+  configured.days = configured.checkoutDays = configured.preferredDays = set(days);
+  configured.defaultDays = days; configured.bySku = rules(set(days));
+  assertSubscriptionOffer(configured,skus);
+  assert.equal(admitsLine(configured,skus[0]!,days,1),true);
 });

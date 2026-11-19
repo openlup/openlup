@@ -4,6 +4,8 @@ import type { CatalogReadPort } from "./catalogFixtures.js";
 import type { CatalogProduct } from "./catalogFixtures.js";
 import { createQuoteResponseSchema } from "./quoteSchemaFixtures.js";
 import {
+  createDbBackedCommerceQuotePort as createQuoteEngine,
+  type OneTimeOfferPricing,
   CommercePriceAuthorityError,
   type CommercePriceAuthorityPort,
   type PricingResolverPort,
@@ -18,6 +20,26 @@ import { createDbBackedCommerceQuotePort } from "./quoteEngineFixtures.js";
 
 const COVERAGE_CONSTRAINT = { kind: "usage_days" as const, value: 21, dailyUsageOverride: 328 };
 const settlementProfile = readSettlementProfile();
+
+it.each([0, 1, 3660, 3661])("admits fresh quote cadence %i before invoking any pricing dependency", async cadenceDays => {
+  const catalogReadPort = createCatalogReadPort();
+  const pricingResolverPort = createPricingResolver({
+    "variant-item-alpha-400:subscription": price({ mode: "subscription", unitPriceMinor: 100 }),
+    "variant-item-alpha-400:one_time": price({ mode: "one_time", unitPriceMinor: 100 }),
+  });
+  const now = vi.fn(() => "2026-06-05T10:00:00.000Z");
+  const port = createDbBackedCommerceQuotePort({ catalogReadPort, pricingResolverPort, now });
+  for (const create of [port.createQuote, port.createServerAuthoritativeQuote!]) {
+    const result = create({ mode: "subscription", cadenceDays, promoCodes: [], lines: [{ sku: "opaque:item-alpha.v1", quantity: 1 }] });
+    if (cadenceDays === 0 || cadenceDays === 3661) {
+      await expect(result).rejects.toMatchObject({ name: "CommerceQuoteError", code: "cadence_limit_exceeded",
+        details: { reason: "cadence_limit_exceeded", cadenceDays, maximumCadenceDays: 3660 } });
+      expect(now).not.toHaveBeenCalled();
+      for (const method of Object.values(catalogReadPort)) if (vi.isMockFunction(method)) expect(method).not.toHaveBeenCalled();
+      expect(pricingResolverPort.resolvePrice).not.toHaveBeenCalled();
+    } else await expect(result).resolves.toMatchObject({ quote: { context: { cadenceDays } } });
+  }
+});
 
 const exampleTaxProfile = {
   included: true,
@@ -249,6 +271,87 @@ describe("db backed commerce quote port", () => {
         }),
       })] },
     });
+  });
+
+  it("prices an allocated offer before VAT, promotions and delivery without changing its retail reference", async () => {
+    const request = { mode: "one_time" as const, lines: [{ sku: "opaque:item-alpha.v1", quantity: 2 }], promoCodes: ["SAVE"] };
+    const offer = {
+      priceReference: "private-offer-price-revision",
+      currency: settlementProfile.defaultCurrency,
+      lines: [{ ...request.lines[0]!, unitGrossMinor: 950 }],
+    };
+    const resolveQuoteShippingPromotions = vi.fn(async () => ({
+      discounts: [{ promotionId: "promo", appliesTo: "order_total" as const, amountOffMinor: 50, reasonCode: "fixture" }],
+      codeRejections: [], codeRejectionDetails: [], shippingGrossMinor: 100, hasShipping: true,
+    }));
+    const port = createQuoteEngine({
+      quoteCatalogReadPort: quoteCatalogReadPort(),
+      isStrictD1Quote: true,
+      commercePriceAuthorityPort: createCommercePriceAuthority({ oneTime: price({ unitPriceMinor: 1000 }) }),
+      taxProfile: exampleTaxProfile, supportedTaxProfiles: [exampleTaxProfile],
+      regionCode: settlementProfile.regionCode, currency: offer.currency,
+      hasPromotionCodePort: true, lineContext: () => ({}),
+      quoteContext: (request) => () => ({ mode: request.mode, promoCodes: request.promoCodes }),
+      resolveQuoteShippingPromotions,
+      resolveAutomaticQuotePromotions: vi.fn(),
+      applyPromotionCodesV2: vi.fn(),
+    });
+    const authoritative = await port.createServerAuthoritativeQuote(request, { oneTimeOfferPricing: offer });
+    expect(resolveQuoteShippingPromotions).toHaveBeenCalledWith(expect.objectContaining({
+      referenceProductMinor: 2000, subtotalGrossMinor: 1900,
+    }));
+    expect(authoritative.quote.lines[0]).toMatchObject({
+      quantity: 2, unitPriceGross: { amountMinor: 950 }, lineSubtotalGross: { amountMinor: 1900 },
+      pricingComponents: [
+        expect.objectContaining({ componentType: "base_unit", amountMinor: 2000 }),
+        expect.objectContaining({ componentType: "bundle", amountMinor: -100 }),
+      ],
+      catalogFacts: {
+        version: "catalog_facts_v3", offerPriceReference: offer.priceReference,
+        basePriceEntryId: "price-one", baseUnitAmountMinor: 1000,
+        resolvedUnitAmountMinor: 950, resolvedLineAmountMinor: 1900,
+      },
+    });
+    expect(authoritative.quote.lines[0]!.catalogFacts).not.toHaveProperty("resolvedPriceEntryId");
+    expect(authoritative.quote.totalGross.amountMinor).toBe(1950);
+    expect(authoritative.quote.netTotal.amountMinor + authoritative.quote.taxTotal.amountMinor).toBe(1950);
+    expect(createQuoteResponseSchema.parse(authoritative)).toEqual(authoritative);
+    const publicQuote = await port.createQuote(request, { oneTimeOfferPricing: offer });
+    expect(JSON.stringify(publicQuote)).not.toContain(offer.priceReference);
+    expect(publicQuote.quote.lines[0]).not.toHaveProperty("catalogFacts");
+    // A client-supplied field cannot set the server quote option.
+    const clientInput = { ...request, oneTimeOfferPricing: offer };
+    expect((await port.createQuote(clientInput)).quote.subtotalGross.amountMinor).toBe(2000);
+  });
+
+  it("refuses unsafe or incomplete offer allocations instead of using retail as a fallback", async () => {
+    const request = { mode: "one_time" as const, lines: [{ sku: "opaque:item-alpha.v1", quantity: 2 }], promoCodes: [] };
+    const line = { ...request.lines[0]!, unitGrossMinor: 950 };
+    const offer: OneTimeOfferPricing = { priceReference: "revision", currency: settlementProfile.defaultCurrency, lines: [line] };
+    const port = createDbBackedCommerceQuotePort({
+      quoteCatalogReadPort: quoteCatalogReadPort(),
+      commercePriceAuthorityPort: createCommercePriceAuthority({ oneTime: price({ unitPriceMinor: 1000 }) }),
+    });
+    for (const invalid of [
+      { ...offer, priceReference: " " },
+      { ...offer, currency: "XTS" },
+      { ...offer, lines: [] },
+      { ...offer, lines: [line, line] },
+      { ...offer, lines: [{ ...line, sku: "opaque:other" }] },
+      { ...offer, lines: [{ ...line, quantity: 1 }] },
+      { ...offer, lines: [{ ...line, unitGrossMinor: 0 }] },
+      { ...offer, lines: [{ ...line, unitGrossMinor: 1.5 }] },
+      { ...offer, lines: [{ ...line, unitGrossMinor: Number.MAX_SAFE_INTEGER }] },
+      { ...offer, lines: [{ ...line, unitGrossMinor: 1001 }] },
+    ]) {
+      await expect(port.createQuote(request, { oneTimeOfferPricing: invalid })).rejects.toMatchObject({
+        code: "PRICING_INVARIANT_VIOLATION",
+      });
+    }
+    await expect(port.createQuote({ ...request, mode: "subscription" }, { oneTimeOfferPricing: offer }))
+      .rejects.toMatchObject({ code: "PRICING_INVARIANT_VIOLATION" });
+    await expect(port.createQuote({ ...request, lines: [{ ...request.lines[0]!, modeAtLine: "subscription" }] }, { oneTimeOfferPricing: offer }))
+      .rejects.toMatchObject({ code: "PRICING_INVARIANT_VIOLATION" });
   });
 
   it("derives a strict D1 subscription price from the authority policy result", async () => {

@@ -3,8 +3,12 @@
 `@openlup/platform` provides the server substrate an application composes: Node
 HTTP and BFF dispatch, scheduling and leases, blob storage, data gateways,
 PostgreSQL migrations and optional commerce services. Ports and contracts live in
-`@openlup/core/platform-runtime`. This is a development preview: pin exact versions
-and upgrade the `@openlup/*` set together after reading every changelog.
+`@openlup/core/platform-runtime`. Pin exact versions and upgrade the `@openlup/*`
+set together after reading every changelog. Follow the
+[stable API contract](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/stability.md#public-api): unions
+and literal sets are open, additions are minor, and consumers must keep a default
+branch for unknown values. The generated [maturity reference](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/maturity.md)
+identifies stable, experimental and testing subpaths.
 
 ```sh
 npm install --save-exact @openlup/core @openlup/platform
@@ -34,6 +38,12 @@ tarball. They may describe a different revision. For installed behavior, use
 this package's declarations and changelogs and source at the matching release
 tag. A current-`main` link establishes no compatibility or support guarantee.
 See [CHANGELOG.md](CHANGELOG.md) for release changes and migration precautions.
+
+The published `1.1.0` set is the first qualified stable npm set and image
+([qualification run](https://github.com/openlup/openlup/actions/runs/44263843134)).
+It includes the required owned-file migration, cadence widening and native
+forward 151. It supersedes `1.0.0`, which later passed qualification as an npm
+set without an image ([requalification run](https://github.com/openlup/openlup/actions/runs/44256496392)).
 
 The `subscriptions` entry also exposes `createPostgresSubscriptionAutoResume`:
 bind its `run(limit, now)` method to the host scheduler and job ledger after
@@ -159,7 +169,7 @@ and the retained [M14 obligations](https://github.com/openlup/openlup/blob/main/
 The provider-owned HTTP counterexample exercises an existing adapter's cached
 bearer; its local fixture establishes no hosted revocation guarantee.
 
-`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
+`release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
 
 | Export | Contents |
 | --- | --- |
@@ -174,27 +184,27 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./job-ledger` | The job-run ledger port, its PostgreSQL and managed (Supabase) adapters, the managed v2/v3 compatibility calls and the location of its SQL |
 | `./kernel` | The bundle identifiers, descriptors and readiness |
 | `./composition` | `createBundleComposer`, the Node HTTP binding helpers and `createNodeHost` |
-| `./identity` | Experimental capability: identity engine, authorization, profile readers, session adapters and BFF factories |
+| `./identity` | Identity engine, authorization, profile readers, session adapters and BFF factories |
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
-| `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
+| `./communications` | Existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
 | `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
 | `./payments/tpay` | Opt-in Node payment example with injected HTTP/certificate I/O, Model O aliases and verified observations; no default activation. |
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
-| `./payments/testing` | Experimental offline adapter conformance runner and scripted transport fake; development preview. |
-| `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
-| `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, capability declarations/refusals and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
-| `./fulfillment/native` | Experimental `createNativeFulfillmentBinding` with selected `nativeDispatch` or explicit host preparation; requires a capability-local transaction lane and contribution composition. Optional `shadowCommandFingerprint` preserves actual adapter command identity. |
-| `./fulfillment/native` (operator transactions) | Experimental `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
-| `./fulfillment/native` (shipment commands) | Experimental `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
+| `./payments/testing` | Testing-only offline adapter conformance runner and scripted transport fake. |
+| `./payments` | Prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
+| `./fulfillment`, `./fulfillment/contracts` | [Fulfillment services, capability declarations/refusals and status canon](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
+| `./fulfillment/native` | `createNativeFulfillmentBinding` with selected `nativeDispatch` or explicit host preparation; requires a capability-local transaction lane and contribution composition. Optional `shadowCommandFingerprint` preserves actual adapter command identity. |
+| `./fulfillment/native` (operator transactions) | `createPostgresFulfillmentOperatorPort` for replacement and complete cancellation, with authenticated actor and explicit provider/stock-source binding; `createPostgresParcelReservationConsumption` supplies exact parcel stock consumption. Install the complete catalogue and retain the [legacy cancellation limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
+| `./fulfillment/native` (shipment commands) | `createPostgresFulfillmentShipmentCommandPort` records label evidence, handoff and tracking atomically with server actor and durable replay evidence. Handoff consumes only frozen parcel reservation IDs. Compose `withAccountingInvoiceShadowTrigger` from `./invoicing` after the committed command, using host channel policy and fail-soft accounting. [Historical limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries). |
 | `./fulfillment/native` (local commerce) | `createPostgresFulfillmentCommerceMutationPort` composes local creation, private operator-attempt audit and cancellation. `createPostgresFulfillmentDispatchComposition` supplies recorded native candidate/preparation reads. Install the complete catalogue through the dispatch-outcome forward; authenticate operators in the host. |
-| `./fulfillment/native` (provider intake) | Experimental `createPostgresFulfillmentProviderIntake` composes verified ingress, first-envelope replay, recorded correlation, exact stock, scoped exception recovery and leased reconciliation over existing workers and commands. Supply committed SQL calls, declared channels, durable keys and accounting policy. Empty tracking references write no arrival. See the [native recipe](../core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation); offline evidence only. |
+| `./fulfillment/native` (provider intake) | `createPostgresFulfillmentProviderIntake` composes verified ingress, first-envelope replay, recorded correlation, exact stock, scoped exception recovery and leased reconciliation over existing workers and commands. Supply committed SQL calls, declared channels, durable keys and accounting policy. Empty tracking references write no arrival. See the [native recipe](../core/docs/guide/how-to/build/fulfillment.md#bind-provider-intake-and-reconciliation); offline evidence only. |
 | `./fulfillment/native` (customer alignment) | `createPostgresCustomerAlignmentRowsReader` feeds `readFulfillmentDelay` with protected/aligned rows ordered by update time. Supply authorized subscription IDs and current schedules. Replacement creation queues only; selected native dispatch submits the new parcel independently, and actual arrival settles alignment. Overview remains host-bound. |
-| `./fulfillment/native` (commerce projection) | Experimental reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
-| `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
+| `./fulfillment/native` (commerce projection) | Reduced `createPostgresFulfillmentCommerceReadPort`; requires the existing eligibility policy and explicit order-mode mapping. Its default destination reader calls the nonmutating shipment view through the supplied executor; an optional injected reader wins. Select `nativeFulfillmentCommerceResponseSchemas` explicitly when composing served commerce handlers; managed schemas remain the default. The preparation reader does not supply that boundary. [Limits](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-commerce-read-projection). |
+| `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [subscription contracts and renewal port](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
-| `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
-| `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
+| `./inventory` | Schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
+| `./catalog` | Neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
 | `./commerce/server/postgres` | Existing native OMS control, reduced control-plane, delivered system-hold recovery and return lifecycle stores; host executor |
@@ -207,12 +217,12 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
-| `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
+| `./pricing` | Price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/browser` | Existing quote primitives, acquisition validators and shipping-terms validator, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
-| `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
+| `./promotions` | Promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
-| `./shipping` | Experimental delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
+| `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 
 ## HTTP runtime and security contract
@@ -635,7 +645,7 @@ of an active pending order. It sends no mail and performs no settlement. See the
 selecting them. Reminder waves atomically mint distinct links without revoking
 older checkout links. Pending initial purchases remain eligible; renewal-cycle
 orders refuse. Successful or recent active payment evidence suppresses nudges.
-The final wave requires a confirmed first-wave receipt bound to its event,
+A final wave that follows a first wave requires a confirmed first-wave receipt bound to its event,
 template and selected delivery profile, independently of outbox completion.
 Skipped, disabled, ambiguous and failed sends do not create that evidence.
 The existing recovery email handler remains the consumer.
@@ -937,7 +947,7 @@ Event-type literals and host payload behavior are preserved.
 
 ## Commerce domain effects
 
-The experimental Node-only `./commerce/server` entry provides the transactional email
+The Node-only `./commerce/server` entry provides the transactional email
 consumer factories, their descriptors and dispatch registry. Compose explicit
 `uniqueRegistry` composition from `@openlup/outbox` and
 `CommerceEmailRuntime` bindings for the fulfillment payload parser, communications
@@ -1001,12 +1011,13 @@ an atomic ordered item batch over finalized order items, per-reservation release
 and bounded expiry. The trusted host supplies its observed-stock source and
 server payment status, wires checkout compensation and schedules expiry. Item
 arrays are serialized as JSON for node-postgres. Existing native ATP counts its
-live holds together with renewal holds, while the fourteen-day subscription
-priority remains in force for purchase admission. Matching replay retains the
+live holds together with renewal holds, while the installed subscription
+priority horizon (`inventory_renewal_protection`, default 14 days) remains in
+force for purchase admission. Matching replay retains the
 reservation identity and current status; changed keyed input and elapsed initial
 expiry refuse. Local lots, locations, balance counters and movement history are
 outside this slice. Install the complete catalogue; this remains a
-development-preview source binding. See the
+source binding with explicit host composition. See the
 [G4 source task evidence](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m19-g4.md).
 Fresh reserve/release writes and expiry require READ COMMITTED and shared
 transaction admission. Contention maps to `InventoryPersistenceError`
@@ -1036,7 +1047,7 @@ identifying strings, as can receipt metadata. Hosts should use opaque references
 and keep personal details out of those fields. There is no erasure path for
 these retained reservations, receipts or compensation history yet.
 
-`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Native preview availability subtracts all live holds and remaining subscription demand inside 14 days, clamped at zero; native safety and channel exposure remain zero. Managed preview additionally accounts for channel exposure. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
+`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Native preview availability subtracts all live holds and remaining subscription demand through the horizon installed via `inventory_renewal_protection` (default 14 days), clamped at zero; native safety and channel exposure remain zero. Managed preview additionally accounts for channel exposure. The native reader refuses a horizon differing from the installed value or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and their fixed 14-day horizon, refusing other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
 
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 
@@ -1234,7 +1245,7 @@ the caller controls the key set. Readiness keeps its 60-second positive and
 5-second negative caps. Every caller-side policy reason still requires a
 dedicated host monitor; the exported reason tuple lets a host coverage check
 enumerate the reasons but does not install or verify monitors.
-The additive experimental acquisition API is off by default. `selectAcquisitionTerms`
+The additive acquisition API is off by default. `selectAcquisitionTerms`
 and `filterAcquisitionPromotions` require an `AcquisitionFinancialPolicy<Row>`:
 row facts, classification, metadata validation, pair matching, initial rate and
 unconfigured terms all come from the host. Omission refuses with
@@ -1272,7 +1283,9 @@ Install the complete catalogue through
 `20261122140000_subscription_price_policy_close_digest` before using the updated
 native readers. Unverifiable pre-forward closed tuples refuse with
 `subscription_price_policy_original_tuple_unverified`; historical digests are
-never replaced. The [migration and rollback guidance](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#policy-revision-close-compatibility)
+never replaced. Closed-from-open provenance can only be set by a guarded
+close or a native restore after installing
+`20261123160000_subscription_price_policy_close_provenance`. The [migration and rollback guidance](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#policy-revision-close-compatibility)
 owns compatibility. This adds no scheduler, closing command or activation.
 
 The package witnesses in `test/pricing/` move the incumbent authority, policy,
@@ -1396,105 +1409,42 @@ price validation block publication; a publisher must reconstruct and refuse all
 issues inside its own transaction. A draft actor or service credential cannot
 construct `VerifiedCatalogPublisher`.
 
-`createPostgresCatalogPublication` supplies an unbound native authority. Its host
-provides fresh single-connection transactions, human authorization, installed
-document/derived-fact validators and transaction-local readiness adapters. Nothing
-mounts the authority or changes a capability flag. `authorize` mints an opaque
-publisher only for a human administrator; every command rechecks native membership
-before replay. `decision` persists alternating approve/revoke decisions against
-the exact candidate reference and digest. Publication requires approval; a later
-revocation leaves the publication and its original replay receipt intact.
+`createPostgresCatalogPublication` is an unbound native publisher. Its contracts,
+compiler and shared price writer are `@experimental`. Status and outcome unions
+grow by addition. Compose it with single-connection transactions, human
+administrator authorization, installed validators and transaction-local
+readiness. Commands recheck membership before replay and publication requires
+persisted approval of the exact immutable v3 candidate.
 
-The writer revalidates immutable v3 inputs, applies their ordered effects and
-checks full native readback in one transaction. It takes catalogue locks only.
-The native price boundary defaults to the price owner's transaction writer. It
-prelocks receipts before contexts and calls `applyInTransaction` once on that same
-executor, after catalogue effects and before readiness. Its adapter must throw on
-any child refusal; it cannot open or commit another transaction. Installed
-readiness adapters perform no external I/O or commerce locking. Media evidence
-is prepared before admission and verified against its immutable claim. Required
-evidence never defaults to ready.
+Publication checks the ordered effects and native projection in one transaction,
+including child prices, receipts and outbox. Adapters keep to catalogue locks
+and verify required evidence locally. Omitted SKUs retain their revisions unless
+an explicit compatible operation changes them. Material or inconclusive changes
+require successor identity. A net mass outside the legacy integer-gram range
+refuses while gross mass retains its exact scale.
 
-`publish` returns a version 2 receipt; `publication` adapts it to the existing
-publication port. `reads.current` checks projection drift. `reads.readback` and
-`readbackV2` read exact retained heads after subsequent publications. Full facts
-are paged with a product-bound high-water cursor. `receipt(scope, publisher)` and
-the publisher-bound `readPort` recover a lost response without republishing.
-History is bounded to 100 receipts per page. The unbound `reads.receipt` refuses
-because it has no human authority.
+`reads.current` checks drift. Retained readback uses exact revisions and
+product-bound pagination. Recovery requires a verified publisher. Retained
+account, order and fulfilment reads use an authorized persisted line binding.
+See the [native catalogue publication contract](../../docs/platform/DATA_AND_MIGRATIONS.md#native-catalogue-publication)
+for the write order, refusal boundaries, read methods and limits.
 
-`resolveRetained` requires both an opaque read scope and a host accepted-source
-authorizer. In one consistent read, that authorizer verifies the caller's account,
-order or fulfilment access and the persisted line binding. The resolver then
-matches the exact publication, document and SKU revision. Missing legacy binding
-refuses as `retained_revision_unavailable`; current facts cannot repair it. This
-read grants no fresh-sale admission. Hosts still own accepted-source persistence
-and the later acceptance fence.
+The experimental `membershipPage({ offerVersion, cursor, limit, mode })`
+reads the active, admitted SKUs for an offer declared in the published roster.
+Start with `cursor: null` and pass `nextCursor` unchanged on the next call. The head digest binds the
+continuation to the same publication roster. Each member includes its exact
+publication, SKU revision and document reference. Use
+`readPostgresCatalogMembershipPage` on a trusted server executor when composing
+the read inside an existing catalogue snapshot.
 
-Lifecycle-aware authoring opts into draft payload v4. Its closed operation grammar
-adds explicit product/SKU lifecycle transitions and restoration, with each parent
-withdrawal's complete child effect set bound into the approved candidate. Governed
-publication manifests and product/SKU facts use version 3; `readbackV3` reads them,
-while `readbackV2` refuses that format. Existing v1/v2/v3 draft codecs and original
-receipt replay keep their previous bytes. Ungoverned rows require separate adoption.
-Atomic child effects retain the existing command and receipt bounds; an oversized
-withdrawal refuses without partial changes. The authoritative lifecycle is distinct from native SQL status: withdrawal retains
-`active` status and clears both fresh-sale flags. Legacy listing readers are not
-qualified by that projection. Ordinary withdrawal needs no unrelated activation
-readiness; restoration rechecks current readiness and restores no child implicitly.
-Archive is terminal and the primary SKU remains ineligible for archive.
-
-`CatalogAcceptedReferenceV2` is the shared I/O-free reference exported by core's
-catalogue entry. `assertCatalogAcceptedReferenceV2` and
-`assertCatalogAcceptanceV2` verify supplied immutable publication, document, type,
-option and quantity facts in native PostgreSQL; they never infer a legacy binding.
-Nullable subscription revision bindings use a same-SKU FK. Orders, accepted edit
-events, retained terms and frozen operations have versioned acceptance carriers.
-`subscription_renewal_purchase_terms_v2` renders retained references without
-rewriting the old view. The opt-in `createNativeCatalogRenewalCodecV2` takes the
-shared strict reference parser and adds `native.purchase-renewal.v3` snapshots;
-its old-dialect replay and agreed money remain unchanged. New freezes require
-complete accepted references. The host's commerce-first acceptance fence owns
-capture; installation composes no acceptance or publication service.
-
-The unpaginated native `catalog_bound_obligations_v2` query is the common archive
-and withdrawal-impact owner. It requires unfiltered evidence across every
-obligation family; legacy NULL revisions still preserve known SKU obligations.
-Operational fulfillment labels do not establish arrival, and superseded parcels
-do not erase undelivered leaf replacements. Unknown evidence refuses. Archive
-continues to return `catalog_archive_barrier_unavailable` even with no observed
-obligation until every creation and handoff lane is qualified under the
-[catalogue lock order](../../docs/platform/CANONICAL_CONTRACTS.md#catalogue-lock-order).
-Author each SKU activation or restoration with an enabling eligibility operation
-for the same SKU. Either order is supported within one issuance. Parent-only
-restoration keeps children withdrawn. Initial product activation and a parent
-restore that also enables fresh sales require an active, sellable primary after
-all effects. Withdrawal preserves physical and merchandising facts.
-
-An optional experimental `demandPolicyRef` in draft v4 is sealed into the SKU
-revision. Accepted references must match it exactly, including presence. A
-frozen renewal v3 carrier requires one reference for each distinct basket SKU.
-
-No agreement, quantity, price or cycle schedule is changed by a lifecycle write.
-
-Publication preserves omitted SKU revisions unless an explicit compatible derived
-operation changes them. Material or inconclusive changes require successor SKU
-identity. A document change revalidates affected omitted siblings. Nonmass or
-missing net content refuses as `catalog_publication_mass_required_until_mc5`;
-the legacy projection requires representable positive integer grams. Fractional, zero, negative or out-of-range mass refuses as
-`catalog_publication_integral_grams_required`. Net grams range from 1 through
-2,147,483,647; gross grams range from 1 through 10^40−1. This temporary boundary
-lasts until versioned quantity readers are available. Count and volume publication
-journeys remain incomplete. Hard preparation requires a valid
-unit GTIN even for dark facts; gross mass and configured prices are independently
-checked when eligibility is enabled.
-
-Draft input retains its 1 MiB ceiling. Publication validation shares scalar and
-attribute rules while counting full UTF-8 envelopes: SKU facts 2 MiB, manifest
-16 MiB, receipt 8 MiB, history 16 MiB and full-fact page 8 MiB/100 items. It never
-truncates an item or regenerates legacy document bytes. All synchronous effects,
-including receipt, outbox and readback, roll back together. A later cache failure
-does not undo a committed publication.
+The experimental `activationReadiness(skuCodes, expectedHeadDigest)` checks 1
+through 100 distinct SKU codes in request order. Each code has 3 through 80
+characters, starts with an uppercase letter or digit, and otherwise permits
+uppercase letters, digits and hyphens. Supply the digest from a governed
+membership page. This read combines native checks with the installed
+transaction-local readiness adapter. A missing SKU receives a blocking reason.
+A changed head requires a fresh read. Keep both methods behind the application's
+server authorization boundary.
 
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,
@@ -1762,7 +1712,7 @@ consumer exercises both new stores and the descriptor without optional peers;
 its synthetic executor proves named refusal, not durable storage behavior.
 
 
-`./catalog` is an experimental capability for the existing neutral catalog
+`./catalog` provides the existing neutral catalog
 foundation, installed product types, draft validation/use cases, active SKU
 selection, resolved SKU projection and sellable reference reads. Hosts supply
 the read/store ports, verified operator authorizer, product-type registry and
@@ -2024,16 +1974,9 @@ committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.
 
-The `release-gates.json` pack caps are 2,029,568 tarball bytes, 9,447,424
-unpacked bytes, 2,712 total files, 1,743,872 code gzip bytes and 2,656 code files.
-The [M15 budget decision](../../docs/platform/plans/oss-m15-generic-risk-controls.md#cd-m15-6-platform-pack-budget--2026-10-27)
-sized R1's original allocation from the measured full M15 stack after M14 #397,
-with approximately 2% for S1 and repairs. The later lifecycle integration takes
-the higher parent value for each cap: M14 supplies the three current byte caps,
-while M15 retains its higher file caps. Documentation caps remain 73,728 gzip
-bytes and 10 files; browser caps and the release baseline are unchanged.
-Every candidate still needs its actual artifact check; later growth needs its
-own measured budget decision.
+Current measured caps and the published release baseline are owned by
+`release-gates.json`; [Package artifact limits](#package-artifact-limits) describes
+the checks.
 
 The source-checkout binding `npm run test:consumer` runs
 [`platform-cold-consumer.ts`](https://github.com/openlup/openlup/blob/main/scripts/packages/platform-cold-consumer.ts).
@@ -2080,14 +2023,14 @@ contacts and refreshes optional defaults only on unlinked rows; its result grant
 no account access and linked rows remain untouched.
 See [guest contact resolution](../core/docs/guide/concepts/identity.md#guest-checkout-contact-resolution)
 for host quotas, internal result fields and erasure boundaries.
-This is a development-preview import candidate, not an activated adopter contract.
+Importing identity does not activate an adopter’s composition.
 Installed exports alone do not mount routes or establish host readiness; the
 application must verify its selected identity composition and capabilities.
 See the [identity recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/identity.md#contacts-principals-and-authority) for composition, migrations and operator invitations.
 
 ## Personal data
 
-The experimental identity entry provides contributor-based personal-data export and erasure.
+The identity entry provides contributor-based personal-data export and erasure.
 See the [personal-data recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/concepts/personal-data.md#personal-data-coverage) for composition, refusals and retained obligations.
 
 ## Disposable identity composition
@@ -2130,7 +2073,9 @@ See the [communications recipe](https://github.com/openlup/openlup/blob/main/doc
 The monorepo's package artifact checker enforces this package's
 `release-gates.json` caps and packed content allowlist. Only
 `--release-set <version>` checks compressed growth against the last released
-baseline, with explanations in the new set's changelog section and release body. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
+baseline, with explanations in the new set's changelog section and release body.
+For the published `1.1.0` set, comparison used the published `1.0.0` tarball;
+releases before `0.43.0` remain in the source-only `CHANGELOG-HISTORY.md`. Its browser-safe `./identity/contracts` export also has a minified+gzip cap. See the
 [package artifact policy](https://github.com/openlup/openlup/blob/main/.github/VERSIONING_AND_EOL.md#package-artifact-limits)
 for measured sizes, current caps, the S1 baseline refresh and refusal remedies.
 Artifact checks require a clean package directory; `--manifest-only` supplies no
@@ -2144,8 +2089,9 @@ artifact evidence.
 
 The payments entry also exports verified ingress, canonical truth fingerprints, method lifecycle/refusal handoff, reconciliation/verify-now and three runner-independent conformance functions. A new internal boundary projects verified envelopes into the contributed processing carrier: original bytes reach verification unchanged, receipt time starts processing, and durable first receipt overrides redelivery time. Full-reversal chargebacks use the existing dispute path. Snapshot and delta observations preserve original payment money; missing observation, required money or identity refuses before terminal application. Missing money, amounts that are not safe positive integers, or blank currencies on succeeded, refunded or disputed adapter evidence use the existing amount-mismatch refusal before ingestion or terminal application; ingress returns the existing processing-failure response. Failed and pending evidence may still omit money. Hosts own durable stores and response transport. Conformance requires safe positive integer amounts and nonblank currencies on settling money and checks exact identity/money, capability/port agreement and transient-secret exclusion; its evidence contains no handoff. Real-store durability still requires a selected-store proof.
 
-The paragraph below records the earlier direct-truth-only profile; the current
-source preview adds the provider store described immediately afterwards.
+The next paragraph records the earlier direct-truth-only profile. The published
+package includes the provider store described below and its matching native
+migration.
 
 `createPostgresPaymentTruthPort` accepts the platform data executor structural
 shape and `PostgresPaymentTruthOptions` from the contracts entry. It preserves
@@ -2303,9 +2249,10 @@ This composition selects card provider only. The second reference provider's por
 composition and live-provider qualification remain follow-up work. Existing
 managed exports and the default sandbox bindings remain available.
 
-The source preview's `createPostgresSandboxPaymentSimulator` requires the complete
-native chain through `20261101222000_sandbox_payment_attempts.sql`. Its server
-commands use the existing `sandbox` settlement channel only. The host authorizes
+The published package includes `createPostgresSandboxPaymentSimulator` and its
+matching native migration. The simulator requires the complete native chain
+through `20261101222000_sandbox_payment_attempts.sql`. Its server commands use
+the existing `sandbox` settlement channel only. The host authorizes
 `beginAttempt`, `recordObservation` and `readAttempt`; do not expose those commands
 as unauthenticated browser actions. No key or provider SDK is needed. Beginning
 records dispatch conservatively; a replay returns the same row with `replayed`
@@ -2375,7 +2322,7 @@ adapter refusal envelope; envelope forwarding remains unsupported.
 
 ### Test a payment adapter offline
 
-`@openlup/platform/payments/testing` is an experimental development-preview kit
+`@openlup/platform/payments/testing` is a testing kit
 for adapter authors. It re-exports `runPaymentAdapterConformance`; the existing
 `./payments` export remains available. `createScriptedPaymentFake` supplies a
 separate FIFO queue per injected transport call, with success, provider 5xx,
@@ -2716,21 +2663,16 @@ access keeps the prior no-template behavior and refused native edits, with no ne
 grant. Graduation retries absent context under the same best-effort rule in a
 savepoint, preserving its existing add-on lookup and due anchor.
 `createNativeRenewalCodec` supplies a versioned, database-decodable frozen wire;
-the opt-in `createNativeCatalogRenewalCodecV2` adds complete retained catalogue
-references in `native.purchase-renewal.v3`. It requires authoritative capture
-through the caller's commerce-first transaction and preserves old replay bytes.
-The [catalogue lifecycle boundary](#catalog) describes the unbound carriers and
-acceptance-barrier limits.
 `createPostgresSandboxRenewalRail` and `createSandboxRenewalPolicy` provide no-key
 renewal success, decline and ambiguity using the existing native operation fence.
 Hosts supply trusted purchase facts and current method identity and retry pending
-attachment duties. These source-preview exports require the selected database
-forward; they claim no real PSP, mandate, automatic repair, default runner or
-published complete migration chain. See the
+attachment duties. The published package includes these exports and the matching
+native migrations. This composition requires the selected database forward and
+supplies no real PSP, mandate, automatic repair or default runner. See the
 [subscription owner](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 for the fingerprint dialect, transaction boundaries and recovery limits.
 
-The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
+The `./subscriptions` entry exposes hosted renewal mechanisms and
 an explicit native capability descriptor and the sized parcel lever value;
 `./subscriptions/contracts` is browser-safe and type-only. The [subscription architecture and recipe](https://github.com/openlup/openlup/blob/main/docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 owns the concrete ports, continuity rules, capability refusals and witnesses.
@@ -2761,7 +2703,9 @@ at `./inventory`). Hosts supply transactions, clock, source and the existing
 wire codec. Candidate discovery preserves uncaptured frozen operations; shortage
 creates a durable wait, and elapsed stock-only refusals may reacquire on the same
 identity with a new claim generation. Resumed means paid realization admitted.
-The fixed 14-day soft priority is distinct from durable advance reservations.
+Native soft priority uses the horizon installed via `inventory_renewal_protection`
+(default 14 days) and is distinct from durable advance reservations. The managed
+contract retains its fixed 14-day horizon.
 The unbound descriptor keeps stock recovery unavailable. The opt-in native M10
 reference composition selects it after composed PostgreSQL proof; managed
 TypeScript recovery remains unavailable.
@@ -2801,7 +2745,7 @@ account page and selects no other retention planner.
 
 See [invoicing composition, duties and read helpers](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md).
 
-Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
+`@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
 `invoicing/contracts` contains types only. Host selection is explicit and default-off.
 Frozen facts, correction recovery, exact absence, owed duties and host-only fiscal,
 artifact, delivery, payout and owned-history seams are described in the
@@ -2870,7 +2814,7 @@ OMS read projections are optional. Omitting the host health classifier preserves
 
 ### Captured native invoice composition
 
-Experimental `@openlup/platform/invoicing/postgres` supplies an explicitly enabled
+`@openlup/platform/invoicing/postgres` supplies an explicitly enabled
 captured sandbox provider, append-only non-fiscal PDF artifacts and a PostgreSQL
 owned invoice-history/ticket reader. The host passes a restricted runtime
 executor and authenticated principal UUID. See the
@@ -2911,7 +2855,7 @@ store or HTTP route is installed by these entries.
 `applied_from_next_parcel` leaves the frozen parcel unchanged; show that scope to
 the customer.
 
-Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
+`@openlup/platform/account-support` supplies `createAccountReadFacade`
 and the unchanged account-read diagnostic helpers. Inject account and order owner
 ports; delegation preserves their arguments, receivers, results, nulls and thrown
 failures. Authentication, authorization and private profile/market projection stay
@@ -3094,7 +3038,7 @@ no release is implied.
 
 ## Operations and diagnostics
 
-The experimental `./operations` entry contains browser-safe operational schemas,
+The `./operations` entry contains browser-safe operational schemas,
 alert projections and `createOperationsClients`, which binds an existing BFF
 requester. `./operations/contracts` contains DTOs and narrow ports only.
 `./operations/server` contains settings read/update, pipeline read, alert overview,
@@ -3116,7 +3060,7 @@ for refusal behavior, SQL prerequisites and the bounded preview scope.
 
 ## Risk controls
 
-The experimental `@openlup/platform/risk` entry exports the existing strict
+The `@openlup/platform/risk` entry exports the existing strict
 schemas with CSP-safe Zod initialization. `risk/contracts` is type-only;
 `risk/server` exports paid-order assessment, subject hashing, structural managed
 clients and the native executor factory. Core risk remains at `@openlup/core/risk`.
@@ -3145,7 +3089,7 @@ invokes it nor claims transfer/restore support.
 
 ## Company identity
 
-Experimental `./company-identity` preserves the existing compatibility schemas
+`./company-identity` preserves the existing compatibility schemas
 (including optional registry fields); `./company-identity/contracts` contains only
 browser-safe types over the unchanged core contract. `./company-identity/server`
 exposes ordered provider lookup and the HTTP handler. Pass the host BFF responder
@@ -3159,7 +3103,7 @@ application retains its existing national rules and callers unchanged.
 
 ## Market packs
 
-Experimental `./market-packs` exposes pure settlement/fiscal record readers,
+`./market-packs` exposes pure settlement/fiscal record readers,
 profile comparison, exponent lookup and money formatting. COMMERCE configuration keys and refusal semantics are preserved. Readers require
 explicit fallback facts; the package defines no market defaults. Supply currency, region, fiscal facts
 and display locale independently; formatting historical amounts uses their own
@@ -3177,7 +3121,7 @@ separate source composition from an installed or mounted deployment.
 
 ## Channels
 
-The experimental `@openlup/platform/channels` subpath provides browser-safe
+The `@openlup/platform/channels` subpath provides browser-safe
 normalized order, retained purchase, page/cursor and money-allocation contracts
 and helpers. `channels/contracts` exports types only. `channels/server` exposes
 ingest admission/saga, webhook/operator/pull/recovery helpers and explicit store,
@@ -3240,161 +3184,27 @@ Source: [channel contracts](src/channels/index.ts),
 [preservation witnesses](test/channels/). Repository users can also consult
 [the channel task record](../../docs/platform/plans/oss-m17-r1-channel-import.md).
 
-## Release notes
+## Upgrade guidance
 
-Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
-`createInvoiceContribution` through `/invoicing`, with no new composition entry.
-`claimInvoiceSellerRevision` reads an injected selection before claim; the pinned
-SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
-available from the type-only contracts entry. Legacy obligations keep fallback.
+Read the selected release's [migration notes and limitations](CHANGELOG.md)
+before upgrading the exact package set. Current composition belongs to these
+reader owners; imports and installation do not activate optional services.
 
-For the prepared `0.43.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0430) before selecting optional services. This set
-adds neutral fulfillment capabilities, native dispatch, intake, reconciliation,
-replacement arrival/alignment, delivery-contact correction and an offline
-adapter testing entry. Native payment provider profiles preserve the existing
-policy variants; a third provider needs a declaration plus its adapter. Apply
-all seven ordered forwards at slots 135–141, through
-`20261121100000_order_delivery_contact_correction.sql`, including the event-erasure
-lock preparation and payment-profile forward. Hosts explicitly compose the
-selected provider port, authorization, transactions, intake and schedules.
-The starter still selects sandbox payments; portable payment composition covers
-the reference card provider only. The warehouse adapter remains a reference
-example, and offline evidence supplies no live provider/carrier qualification.
-Apply the complete selected migration catalogue before composing the new native
-bindings. Experimental
-marketing uses browser-safe `./marketing`, type-only browser-safe
-`./marketing/contracts`, and Node-only `./marketing/server` and
-`./marketing/server/postgres`. Marketing contributions and bindings remain
-inert and default-off. Experimental
-account/support APIs use `./account-support` and the type-only
-`./account-support/contracts`; reference bindings remain inert and default-off.
-Apply the M12 support-authority forwards after complete same-rail predecessors
-and follow the email-correction admission, claim, identity-commit and settlement
-migration notes before replacing retired callers. Experimental
-commerce schemas and ports use `./commerce` and `./commerce/contracts`;
-handlers, adapters and checkout engines use the Node-only `./commerce/server`.
-The commerce contribution and reference binding remain inert and default-off.
-Install the complete native chain through the M17 purchased-source forward
-(`20261030122000_channel_purchased_source.sql`). Use the complete packaged installer described below; individual module SQL
-projections are not an install chain. Native runtime
-roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
-the release notes.
-Managed hosts apply the complete prefix through `20261030122000`, including
-the two channel forwards, the support-authority forward and M11's nine forwards for preference/return ownership, operator receipts,
-acquisition/finalize admission, ATP preview and starter graduation. Legacy
-omitted-country input uses the configured settlement region; neutral commands
-require explicit country. Starter graduation admits 14, 21 or 28 days; rollback
-below that forward with a 21-day marker is unsupported, so roll forward.
-The service-only ATP preview uses owner privileges and a fixed search path.
-Retain exact applied failure-attempt attribution for the existing managed
-dunning overloads; native attempt-replay parity remains registered. These
-managed forwards authorize no host activation.
-Preserve captured obligations and receipts on rollback.
-M10 subscription services and contributions remain **EXPERIMENTAL and DEFAULT-OFF**.
-Hosts explicitly supply readiness, execution, commands, mandatory G23 admission,
-a population lease and M04 delivery. Factories activate no serving work. The inert
-native reference composes renewal, dunning and stock wait; managed TypeScript
-stock recovery and native multi-cycle prepaid retain their named unsupported
-boundaries. The earlier M07 prepared-attempt-store refusal described the
-pre-store checkpoint; `paymentSchemaDescriptor.preparedDurableStore` is now
-`supported` with the appended store installed. Follow the older native-row
-migration precautions when upgrading `0.22.0` data.
-M09 invoicing remains **EXPERIMENTAL and DEFAULT-OFF**, available for explicit
-provider/capability selection and ready host composition, including issue,
-correction, independent duties, delivery/read-side and seller revision helpers.
-Adopters must not activate unselected or unready invoicing; installation and
-inert contributions register no runner, worker, route or schedule.
-M06 managed-host proof classes remain pending in the
-[M06 parity ledger](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.42.0` tarball. Preparation and offline
-adapter evidence grant no publication or provider-account certification.
+| Boundary | Current owner |
+| --- | --- |
+| Invoice services, duties and seller revisions | [Invoicing](../core/docs/guide/how-to/build/invoicing.md) |
+| Native fulfillment, provider intake and observation timestamps | [Fulfillment](../core/docs/guide/how-to/build/fulfillment.md) |
+| Native payments and provider profiles | [Payments](../core/docs/guide/concepts/payments.md) |
+| Subscription renewal, admission and timed pauses | [Subscriptions](../core/docs/guide/concepts/subscriptions.md) |
+| Marketing and account/support composition | [Marketing](../core/docs/guide/how-to/build/marketing.md), [account/support](../core/docs/guide/how-to/build/account-and-support.md) |
+| Commerce quote and checkout composition | [Quote prices](../core/docs/guide/how-to/build/quote-prices.md) |
+| Complete SQL catalogue, session admission and ledger fingerprints | [Database migrations](../core/docs/guide/upgrade/database-migrations.md) |
+| Customer recovery, inspection, recreation, guidance, token pay and inline retry | [Checkout recovery](../core/docs/guide/how-to/build/checkout-recovery.md) |
 
-The set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
-Public quote requests retain their collection limits and valid-input behavior;
-oversized collections now fail with the size error before accumulating invalid
-element errors. Package API and installed-consumer checks remain required.
-The observation adapter explicitly retains minute-precision timestamps
-alongside seconds/fractions, compact offsets and local timestamps. Calendar
-validation still rejects impossible dates; validation never rewrites the raw
-timestamp used in the webhook's idempotency key.
-
-The experimental migration source may supply `assertSession` to observe host
-facts once under the existing advisory lock, after exact ledger-prefix admission
-and before status, dry-run or pending SQL. Every source uses catalog-bound locks
-and admits only the canonical baseline ledger catalog shape before reading its
-exact prefix. The fingerprint stays exact except for numeric `pg_attver` column version markers in a nonempty, one-dimensional array starting at index 1; every other attribute option refuses admission.
-A pending unit locks an installed ledger before its first catalog
-read in that transaction and preserves the connection's isolation setting. The
-[migration owner](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/upgrade/database-migrations.md#select-the-complete-catalogue)
-and [runner witness](https://github.com/openlup/openlup/blob/main/packages/platform/test/migrations/postgresRunner.test.ts) define that boundary;
-this callback does not provision or qualify a hosted installation.
-
-Customer checkout recovery entry points in `./commerce/server` provide signed-in
-navigation tokens and cookie-authorized buyer mail with atomic bucket deduplication.
-Both preserve earlier links and refuse renewal-cycle orders. See the
-[customer recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#add-customer-recovery-entry-points)
-for session binding, PostgreSQL ports, lifetimes and host delivery/UI obligations.
-
-Checkout recovery inspection in `./commerce/server` adds service-only original
-and latest-descendant readers, capability-gated expired presentation and an
-adopter-owned content validation fence. Inspection cannot authorize payment or
-create a replacement. Renewal cycles refuse; initial declarations retain their
-separate native identity. See the [inspection recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#inspect-a-link-before-showing-recovery-controls).
-
-Expired checkout recreation in `./commerce/server` adds a safety-first service,
-service-only lineage preparation, native draft replay and transaction-bound
-sandbox purchase/compensation adapters. The same adopter content fence gates
-validation and recreation. The runtime rechecks source payment evidence under the source aggregate lock
-before first stock or payment admission. A linked replacement cannot change its
-predecessor. Preparation copies recorded buyer snapshots and leaves an absent
-`invoiceBuyerSnapshot` key absent, allowing first-duty capture to select the owned
-billing profile/address, then the marked shipping fallback. Recorded empty objects
-remain explicit. Install the complete catalogue through
-`20261110280000_checkout_recovery_buyer_snapshot.sql`; existing orders are not
-backfilled. A replacement initial subscription receives a new
-provisional declaration; its terminal predecessor and live subscriptions stay
-unchanged. Renewal cycles refuse. The native prior-payment safety adapter in
-`./payments` uses actual simulator attempts; real-provider paths retain their
-named unsupported refusal. See the [recreation recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#recreate-a-technically-expired-checkout)
-for required host authority, executor binding and the real-money closure limit.
-
-Atomic sandbox checkout guidance uses
-`createPostgresPaymentRecoveryGuidancePort` in `./commerce/server`, with
-`normalizeSandboxPaymentRecoveryEvidence` from `./payments`.
-`readAuthorizedPaymentRecovery` binds validation-only token or verified cookie
-authority and derives Core refusal actions. One service-only SQL statement
-rechecks authority and reads status, raw activation/gap facts and bounded evidence.
-Captured observations suppress refusal advice without claiming settlement.
-Opaque native method references establish no method or operation; those guidance
-fields remain unknown. Non-sandbox channels retain the existing named refusal.
-The host keeps status capability opt-in, its legacy display fallback and response
-shape. See the [atomic guidance recipe](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/checkout-recovery.md#show-payment-recovery-guidance-from-one-snapshot).
-
-### Checkout token payment
-
-The sandbox preview composes `createCheckoutRecoveryPayService`,
-`createCheckoutRecoveryTokenPay` and `withCheckoutRecoveryPaymentHold` from
-`commerce/server` with `createPostgresSandboxCheckoutRecoveryAttemptPort` from
-`payments`. It retries on the same order/intent, binds method facts to the request
-key and rechecks checkout authority under locks. Renewal cycles refuse; initial
-declarations remain eligible. Hold policy/read ports stay host-owned. Other
-channels keep the named native refusal. See the
-[composition recipe](../core/docs/guide/how-to/build/checkout-recovery.md#retry-payment-with-a-recovery-token)
-and [PostgreSQL witnesses](../../tests/postgres/checkoutRecoveryPay.test.ts).
-
-### Exact inline checkout retry
-
-`createCheckoutInlineRecovery` composes the exact configured continuation codec,
-atomic guidance, native order reader, registered synthetic methods and
-`createPostgresSandboxInlineRecoveryAttemptPort`. It requires the exact failed
-predecessor, failed intent and permitted method action. Cookie authority is
-checked before reads; bearer authority cannot widen it. The existing hold
-wrapper gates fresh attempts. Durable nonce/rail replay returns the replacement
-cookie and existing result without redispatch, including safe polling when
-readback lags. Renewal cycles and observed success refuse. See the
-[composition recipe](../core/docs/guide/how-to/build/checkout-recovery.md#retry-the-exact-failed-attempt-inline)
-and [PostgreSQL witnesses](../../tests/postgres/checkoutInlineRecovery.test.ts).
+The former release-notes block is retained in the
+[dated README archive](https://github.com/openlup/openlup/blob/main/docs/platform/history/platform-readme-release-notes-0.43.0.md).
+Earlier release checkpoints remain in the
+[changelog history](https://github.com/openlup/openlup/blob/main/packages/platform/CHANGELOG-HISTORY.md).
 
 ## Saved customer address book
 
@@ -3427,9 +3237,11 @@ const addresses = createPostgresCustomerSavedAddressPort(database, trustedScope,
 The local policy supplies an ISO country/default and aliases, calling prefix,
 tax normalization/validation and messages. The request mechanism retains fixed
 limits on field lengths and idempotency identifiers, trimming and whitespace
-collapse, local nine-digit phone normalization,
-local five-digit postal formatting, foreign-format behavior and shipping-only
-company/tax omission. Neutral demo values can use `ZZ` and calling prefix `99`.
+collapse, foreign-format behavior and shipping-only company/tax omission. When
+the policy omits the optional effect-free `local` callbacks, it also applies the
+default local nine-digit phone normalization and five-digit postal formatting;
+supply `local` (`normalizePostalCode`, `isValidPostalCode`, `normalizePhone`) to
+replace them for the local country only. Neutral demo values can use `ZZ` and calling prefix `99`.
 Bind `requests` and the host response validator into the existing customer address
 handler schemas and recognize
 `CustomerSavedAddressRefused` with code `address_in_use` as a mutation conflict.

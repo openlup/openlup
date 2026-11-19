@@ -24,8 +24,8 @@ establish complete coverage. Core supplies the executable. See
 <!-- generated:maturity:outbox -->
 | Export | Role | Maturity |
 | --- | --- | --- |
-| `.` | rail | experimental |
-| `./postgres` | rail | experimental |
+| `.` | rail | stable |
+| `./postgres` | rail | stable |
 | `./testing` | testing | testing |
 <!-- /generated:maturity:outbox -->
 
@@ -38,12 +38,12 @@ export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(ex
 ```
 
 The executor must commit each operation before resolving. Follow
-[installation and transaction ownership](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions)
+[installation and transaction ownership](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions)
 and [deliver events with the outbox](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/outbox.md).
 
 ## Sources and declarations
 
-Inspect `src/` and the exported declaration files in `dist/`; `sql/manifest.json` binds the baseline. The development preview may change any experimental export.
+Inspect `src/` and the exported declaration files in `dist/`; `sql/manifest.json` binds the baseline. Follow the [stability policy](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/reference/stability.md#public-api) for stable, experimental and testing exports.
 
 ## Readiness codes
 
@@ -51,8 +51,8 @@ Composition can report `OPENLUP_E_PORT_MISSING`, `OPENLUP_E_EVENT_UNHANDLED`, `O
 
 ## Using this package in an application
 
-Read [application ownership](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/core/docs/guide/start/adopt-from-npm.md#keep-application-ownership)
-and [extension seams](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md).
+Read [application ownership](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/core/docs/guide/start/adopt-from-npm.md#keep-application-ownership)
+and [extension seams](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/core/docs/guide/how-to/extend/choose-an-extension-seam.md).
 
 Public handlers, policies, ports and compatible adapters need no per-function
 record or upstream release. A missing seam needs a local reproducer and actual

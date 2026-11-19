@@ -2,7 +2,7 @@
 
 `@openlup/core` provides framework-independent TypeScript contracts and pure logic
 for subscription and bundle commerce. An application binds its ports and owns
-composition. This is a development preview: pin an exact version and upgrade all
+composition. Pin an exact version and upgrade all
 `@openlup/*` packages together after reading their changelogs.
 
 ```sh
@@ -19,32 +19,36 @@ Node 24 or newer is required; the source adoption recipe uses npm 11.19.0. Decla
 shipped `src/`; JavaScript source maps are not shipped. Read [AGENTS.md](AGENTS.md) for the compiled wiring
 example and application ownership rules.
 
+The published `1.1.0` set is the first qualified stable npm set and image
+([qualification run](https://github.com/openlup/openlup/actions/runs/44263843134)).
+It includes the required owned-file migration, cadence widening and native
+forward 151. It supersedes `1.0.0`, which later passed qualification as an npm
+set without an image ([requalification run](https://github.com/openlup/openlup/actions/runs/44256496392)).
+
 ## Package Surface Maturity
 
 | Export | Role | Maturity | Package smoke |
 | --- | --- | --- | --- |
-| `./bundle` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
-| `./catalog` | kernel | candidate | `smoke/catalogStandalone.test.ts` |
+| `./bundle` | kernel | stable | `smoke/subscriptionBundleStandalone.test.ts` |
+| `./catalog` | kernel | stable | `smoke/catalogStandalone.test.ts` |
 | `./company-identity` | kernel | experimental | `smoke/companyIdentityStandalone.test.ts` |
-| `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts`<br>`test/fulfillmentStatusMap.test.ts`<br>`test/fulfillmentTrackingProgress.test.ts`<br>`test/fulfillmentCurrentParcel.test.ts`<br>`test/fulfillmentNormalizedFacts.test.ts` |
-| `./inventory` | kernel | candidate | `smoke/inventoryStandalone.test.ts` |
+| `./fulfillment` | kernel | stable | `smoke/fulfillmentStandalone.test.ts`<br>`test/fulfillmentStatusMap.test.ts`<br>`test/fulfillmentTrackingProgress.test.ts`<br>`test/fulfillmentCurrentParcel.test.ts`<br>`test/fulfillmentNormalizedFacts.test.ts` |
+| `./inventory` | kernel | stable | `smoke/inventoryStandalone.test.ts` |
 | `./marketing/research` | kernel | experimental | `smoke/marketingResearchStandalone.test.ts` |
-| `./partners` | kernel | experimental | `smoke/partnersStandalone.test.ts` |
-| `./payment` | kernel | experimental | `smoke/paymentStandalone.test.ts` |
-| `./platform-runtime` | kernel | experimental | `smoke/platformRuntimeStandalone.test.ts` |
-| `./pricing` | kernel | candidate | `smoke/pricingStandalone.test.ts` |
-| `./promo` | kernel | candidate | `smoke/promoStandalone.test.ts` |
-| `./risk` | kernel | candidate | `smoke/riskStandalone.test.ts` |
-| `./shipping` | kernel | candidate | `smoke/shippingStandalone.test.ts` |
-| `./subscription` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
-| `./outbox` | kernel | experimental | `smoke/outboxStandalone.test.ts` |
-| `./readiness` | kernel | experimental | `smoke/readinessStandalone.test.ts` |
+| `./partners` | kernel | stable | `smoke/partnersStandalone.test.ts` |
+| `./payment` | kernel | stable | `smoke/paymentStandalone.test.ts` |
+| `./platform-runtime` | kernel | stable | `smoke/platformRuntimeStandalone.test.ts` |
+| `./pricing` | kernel | stable | `smoke/pricingStandalone.test.ts` |
+| `./promo` | kernel | stable | `smoke/promoStandalone.test.ts` |
+| `./risk` | kernel | stable | `smoke/riskStandalone.test.ts` |
+| `./shipping` | kernel | stable | `smoke/shippingStandalone.test.ts` |
+| `./subscription` | kernel | stable | `smoke/subscriptionBundleStandalone.test.ts` |
+| `./outbox` | kernel | stable | `smoke/outboxStandalone.test.ts` |
+| `./readiness` | kernel | stable | `smoke/readinessStandalone.test.ts` |
 | `./standard-schema` | kernel | experimental | `smoke/standardSchemaStandalone.test.ts` |
 | `./testing` | testing | testing | `smoke/testingStandalone.test.ts` |
 
-Every current code export is an internal candidate, experimental kernel, or
-testing surface; the `./package.json` export is the manifest itself. Its declaration snapshot is a reviewable drift proof, not a public API
-promise.
+The table follows `release-gates.json`: stable exports use SemVer from 1.0.0; experimental and testing exports are excluded; `./package.json` exports the manifest itself.
 
 `release-gates.json` records four distinct evidence classes:
 
@@ -53,8 +57,8 @@ promise.
 - `conformanceEvidence`: required only when a declared port/adapter seam needs
   a framework-free suite;
 - `dogfoodEvidence`: first-party integration seams, not independent adoption;
-- `externalConsumerEvidence`: not yet evaluated; a first-party packed consumer
-  remains package smoke, not external adoption.
+- `externalConsumerEvidence`: first-party demo-store and production evidence;
+  see the [release evidence boundary](docs/guide/reference/stability.md#release-evidence).
 
 ## Channel and stability
 
@@ -62,14 +66,12 @@ promise.
   provenance from its release tag `openlup-core-v<version>` after a protected
   release approval. Versions up to `0.11.0` were published on the `preview`
   dist-tag only. `npm publish` from this directory is refused.
-- **Versions:** below 1.0 every `@openlup/*` package shares one set version
-  `0.N.P`: a minor set for any API, behaviour or schema change, a patch set for
-  a fix only.
-- **Stability:** development preview. Any version may change an export, and
-  each change is recorded in [the changelog](CHANGELOG.md). Pin an exact
-  version and read the changelog when you upgrade.
+- **Versions and stability:** follow the [stable API contract](docs/guide/reference/stability.md#public-api)
+  and upgrade the coherent package set together. Unions and literal sets are open:
+  additions are minor; consumers must keep a default branch for unknown values.
+  Read [the changelog](CHANGELOG.md) before upgrading.
 
-The experimental `./outbox`, `./standard-schema` and `./readiness` subpaths
+The `./outbox`, `./standard-schema` and `./readiness` subpaths
 provide infrastructure contracts. `checkReadiness` checks inert contributions,
 complete host inventory, actual schedule/route function bindings and a bounded
 schema probe. It never migrates, leases or sends. Only `ready` admits a candidate;
@@ -211,36 +213,73 @@ Nested Markdown headings return separate spans. Read the installed package versi
 and cited source before changing a contract; a result locates evidence and grants
 no application policy or execution authority.
 
+A declaration hit is a textual occurrence with an unverified public import. It
+may be internal, imported, aliased, type-only or ambiguous. Read the installed
+manifest's exports and that version's examples to establish the public specifier
+and type/value usage; a declaration path is not a legal deep-import recipe.
+
+Run from the selected application's `package.json` directory. Lookup selects its
+reachable declared OpenLup dependencies plus required Core through Node's normal
+`node_modules` resolution, including npm workspace hoisting and linked package
+roots. It does not select another application's undeclared packages. Without an
+application manifest, local `node_modules/@openlup` installations remain usable.
+Node package self-references from a checkout are refused: source bytes are not
+installed dependency evidence. Run from an adopter application root.
+Uninstalled non-Core declarations are skipped; lookup does not validate a complete
+application installation.
+Selected versions must agree with each other and with their entries in the
+application's owning `package-lock.json`, when present. Layouts without Node-resolvable
+`node_modules` packages are unsupported. `--code` always scans only the current
+application directory; hoisting does not widen that source boundary.
+
+When npm hoists Core, resolve its installed manifest and declared executable from
+the application root, then invoke it directly with Node:
+
+```sh
+OPENLUP_CONTEXT_BIN="$(node --input-type=module -e '
+import { findPackageJSON } from "node:module";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+const manifest = findPackageJSON("@openlup/core", `${process.cwd()}/package.json`);
+const bin = JSON.parse(readFileSync(manifest, "utf8")).bin["openlup-context"];
+console.log(resolve(dirname(manifest), bin));
+')" && node "$OPENLUP_CONTEXT_BIN" search "subscription renewal"
+```
+
+This reads installed metadata only, requires no public `package.json` export, and
+uses neither a registry nor an npm command cache. Core must already be installed.
+
 ## Agent context over MCP
 
 Connect an MCP client to the installed context tool over stdio. Set the working
-directory to your application root (the directory containing `node_modules`):
+directory to your application root (the directory containing its `package.json`):
 
 ```json
 {
   "mcpServers": {
     "openlup-context": {
-      "command": "npx",
-      "args": ["openlup-context", "mcp"],
+      "command": "node",
+      "args": ["/path/to/installed-core/src/openlup-context.js", "mcp"],
       "cwd": "/path/to/your-application"
     }
   }
 }
 ```
 
-The example assumes core is already installed; use the local executable
-`./node_modules/.bin/openlup-context mcp` directly if your client must never let
-`npx` fetch a missing command. Configure the working directory in your client's
+Replace the first argument with the installed executable path resolved above
+(`OPENLUP_CONTEXT_BIN`). A local installation can also run
+`./node_modules/.bin/openlup-context mcp` directly. Configure the working directory in your client's
 settings if it does not accept `cwd`.
 
 Use `search_openlup_context` when the owner or extension seam is unclear, then
 `read_openlup_file` with the returned application-relative path and optional
 inclusive `startLine`/`endLine` (starting at 1). Search also returns structured
 results; `includeApplicationCode` and `includePackageCode` opt into the same
-bounded scans as the CLI flags. Read accepts only ordinary installed
-`node_modules/@openlup/<name>/` files up to 200,000 bytes. Symlinked package roots
+bounded scans as the CLI flags. Read accepts only ordinary selected installed
+`node_modules/@openlup/<name>/` files up to 200,000 bytes, including the exact
+prefix returned by search, including a hoisted or sibling installation. Symlinked package roots
 are supported; file realpaths must stay inside the resolved package root. Read
-refuses traversal and never fetches release-tag source URLs. These checks guard
+refuses other traversal and never fetches release-tag source URLs. These checks guard
 against wrong paths and links present when the file is read; they do not defend
 against a process that rewrites `node_modules` during the read, which can already
 change the code the application runs. Read repository-only sources and application source hits with your client's own
@@ -291,7 +330,7 @@ under `docs/guide/` if it exists; a guide without a detected source repository
 root refuses. `npm run docs:check -- --write` refreshes generated regions in
 `README.md`, `AGENTS.md` and the guide.
 
-The [repository neutrality checks](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/CONTRIBUTING.md#development-preview-checks)
+The [repository neutrality checks](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#contribution-checks)
 reuse the source scanner through `./scripts/neutrality-tree-counts.ts` relative
 to this source package. This process interface reads JSON containing source paths,
 contents and a policy
@@ -302,7 +341,7 @@ export and changes no matcher or kernel behavior.
 Repository lint keeps this package's production source independent of configured
 provider SDKs and explicit industry contract names. Adopter adapters compose
 providers; generic ports can forward opaque extension data. See the
-[syntax scope and exceptions](https://github.com/openlup/openlup/blob/openlup-core-v0.43.0/CONTRIBUTING.md#development-preview-checks).
+[syntax scope and exceptions](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#contribution-checks).
 
 The repository checker also calls the UI neutrality counting process with
 `--counts-json` to count its existing patterns over the supplied sources. Running that checker without
@@ -324,6 +363,6 @@ artifact evidence.
 
 ## Release notes
 
-Read [the changelog](CHANGELOG.md#0430) before upgrading the package set.
+Read [the changelog](CHANGELOG.md#100) before upgrading the package set.
 
 Catalogue pack authors: [offline extension recipes and skeleton](docs/guide/how-to/extend/catalogue-extension.md).

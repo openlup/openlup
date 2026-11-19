@@ -1,4 +1,5 @@
-import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import type { SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { lifecycleTerms, retentionFields } from "./lifecycleTerms.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./index.js";
@@ -8,6 +9,9 @@ export interface NativeSubscriptionCommand {
   action: string; payload: Record<string, unknown>; now: string;
 }
 export interface NativeSubscriptionCommandBinding {
+  /** Optional effect-free policy. Completed receipts bypass current admission;
+   * thrown named errors propagate and roll back without a refusal receipt. */
+  admitSubscriptionCommand?: SubscriptionCommandAdmission;
   /** Server-owned timing policy, separate from customer fields. Omit for compatibility timings. */
   lifecycleTerms?: SubscriptionLifecycleTerms;
   /** Optional adopter taxonomy; the package validates shape without owning reason values. */
@@ -60,14 +64,14 @@ function commandResult(result: Record<string, unknown>): Record<string, unknown>
 
 /** N2 owns normalization, locking, quote acceptance, receipts and all writes.
  * Preview is a separate persisted transaction; apply never executes payment. */
-export function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes">) {
+export function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes" | "admitSubscriptionCommand">) {
   return {
     preview(input: NativeSubscriptionCommand) { return invokeCommand(binding, input, true); },
     apply(input: NativeSubscriptionCommand) { return invokeCommand(binding, input, false); },
   };
 }
 
-async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes">,
+async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes" | "admitSubscriptionCommand">,
   input: NativeSubscriptionCommand, preview: boolean,
   futureTerms?: () => ReturnType<NativeSubscriptionCommandBinding["futureTerms"]>): Promise<Record<string, unknown>> {
   if (input.action === "multi_cycle_prepaid") return {
@@ -100,6 +104,34 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
       WHEN status<>'previewed' THEN result||jsonb_build_object('status','replayed','originalStatus',status,'commandFingerprint',command_fingerprint)
       END AS response FROM receipt`, [...values, preview, !!futureTerms]);
     if (stored.rows[0]?.response) return commandResult(subscriptionRecord(stored.rows[0].response));
+    if (binding.admitSubscriptionCommand) {
+      // Acquire the lock before taking the payment-facts statement snapshot:
+      // a dunning writer can commit after we start waiting without updating s.
+      const subscription = await executor.query(`SELECT status FROM public.subscriptions
+        WHERE id=$1::uuid AND client_id=$2::uuid FOR UPDATE`, [input.subscriptionId, input.clientId]);
+      if (!subscription.rows[0]) throw new Error("subscription_command_forbidden");
+      const { rows } = await executor.query(`SELECT current_setting('transaction_isolation') AS isolation,
+        COALESCE((SELECT CASE d.status WHEN 'open' THEN 'payment_blocked' ELSE 'payment_expired' END
+          FROM public.subscription_dunning_cases d WHERE d.subscription_id=$1::uuid AND d.status IN ('open','expired')
+          ORDER BY (d.status='open') DESC,d.updated_at DESC,d.id DESC LIMIT 1),
+          (SELECT 'payment_failed' FROM public.subscription_cycles c WHERE c.subscription_id=$1::uuid
+            AND c.status IN ('payment_failed','retry_scheduled') LIMIT 1)) AS payment_blocker`, [input.subscriptionId]);
+      const row = rows[0];
+      // Higher isolation retains a pre-lock transaction snapshot. PostgreSQL's
+      // READ UNCOMMITTED uses READ COMMITTED's statement snapshots as well.
+      if (row.isolation !== "read committed" && row.isolation !== "read uncommitted") {
+        throw new Error("subscription_command_admission_isolation_unsupported");
+      }
+      await binding.admitSubscriptionCommand({ action: admissionAction(input.action),
+        pausePreset: typeof input.payload.pausePreset === "string" ? input.payload.pausePreset : null,
+        reason: typeof input.payload.reason === "string" ? input.payload.reason : null,
+        subscriptionStatus: String(subscription.rows[0].status), paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
+    }
+    if (["update_package_template", "update_bundle", "resize_bundle", "update_plan_length"].includes(input.action)
+      && [input.payload.cadenceDays, input.payload.planDays]
+        .some(days => days !== undefined && (typeof days !== "number" || !Number.isInteger(days) || days < 1 || days > MAX_CADENCE_DAYS))) {
+      return { status: "refused", reason: "subscription_command_invalid_input" };
+    }
     if ((input.action === "pause" || input.action === "cancel") && binding.retentionReasonCodes
       && input.payload.survey !== null && typeof input.payload.survey === "object") {
       const reasonCode = subscriptionRecord(input.payload.survey).reasonCode;
@@ -145,6 +177,17 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
     if (typeof receipt.rows[0]?.command_fingerprint !== "string") throw new Error("subscription_command_receipt_missing");
     return { ...result, commandFingerprint: receipt.rows[0].command_fingerprint };
   });
+}
+
+function admissionAction(action: string): SubscriptionCommand["action"] {
+  switch (action) {
+    case "pause": case "resume": case "cancel": case "order_now": case "reactivate": return action;
+    case "skip_next_cycle": return "skip";
+    case "slide_next_cycle": return "slide";
+    case "update_package_template": case "update_bundle": case "resize_bundle": case "update_plan_length":
+    case "add_addon": case "remove_addon": case "update_addon_quantity": return "edit_future_terms";
+    default: throw new Error("subscription_command_unsupported_action");
+  }
 }
 
 /** Trusted customer/operator authorization precedes this adapter. The native

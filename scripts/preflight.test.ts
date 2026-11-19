@@ -1,9 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>();
+  return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
+});
 
 import {
   addedLines, formatCheckLine, isTestEntry, isTestFile, missingFragments, nearDates, parseNameStatus,
-  neutralityVerdict, releasedPackageSource, shortExpiries, sqlTreeChanges, type AddedLine, type Change,
+  main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries, sqlTreeChanges,
+  testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
+
+afterEach(() => { vi.mocked(spawnSync).mockReset(); vi.restoreAllMocks(); });
 
 const changed = (...paths: string[]): Change[] => paths.map((path) => ({ path, deleted: false }));
 const line = (text: string): AddedLine[] => [{ path: "scripts/example.test.ts", line: 7, text }];
@@ -11,6 +21,74 @@ const line = (text: string): AddedLine[] => [{ path: "scripts/example.test.ts", 
 const now = new Date("2040-01-01T00:00:00Z");
 
 describe("preflight report", () => {
+  it("confirms a real root test while leaving a wrong suffix undiscovered", async () => {
+    const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    vi.mocked(spawnSync).mockImplementation(actual.spawnSync);
+    expect(vitestFiles(["scripts/preflight.test.ts", "scripts/preflight.test.tsx"]))
+      .toEqual(["scripts/preflight.test.ts"]);
+    expect(vitestFiles(["packages/core/test/agent-context-cli.test.ts", "packages/core/test/agent-context-cli.test.tsx"], "packages/core/vitest.config.ts"))
+      .toEqual(["packages/core/test/agent-context-cli.test.ts"]);
+  });
+  it("reports cheap failures before package builds and still retains the build failure", () => {
+    const calls: string[] = [];
+    vi.mocked(spawnSync).mockImplementation(((command, args) => {
+      const call = `${command} ${(args ?? []).join(" ")}`; calls.push(call);
+      let stdout = ""; let status = 0;
+      if (command === "git") {
+        if (args?.includes("--show-toplevel")) stdout = process.cwd();
+        else if (args?.includes("merge-base")) stdout = "a".repeat(40);
+      } else if (call.includes("ast-grep")) { stdout = "planted structural fault"; status = 1; }
+      else if (call.includes("public-ci-neutrality")) { stdout = '"scripts/example.ts": brand increased 0 -> 1'; status = 1; }
+      else if (call === "npm run prelint") { stdout = "broken package build"; status = 9; }
+      else if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+      return { status, stdout, stderr: "" };
+    }) as typeof spawnSync);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(main(now)).toBe(1);
+    const build = calls.indexOf("npm run prelint");
+    expect(build).toBeGreaterThan(calls.findIndex((call) => call.includes("ast-grep")));
+    expect(build).toBeGreaterThan(calls.findIndex((call) => call.includes("public-ci-neutrality")));
+    expect(log.mock.calls.flat().join("\n")).toContain("FAIL typecheck: package build (npm run prelint) failed");
+    expect(calls.some((call) => call.includes("--typecheck"))).toBe(false);
+  });
+
+  it("distinguishes undiscovered tests from confirmed separate suites and discovered files", () => {
+    const report = testDiscoveryVerdict({ files: ["scripts/collected.test.ts"],
+      separate: [{ path: "packages/core/test/separate.test.ts", command: "owning discovery command" }],
+      unknown: ["scripts/misnamed.test.tsx", "tests/unowned/new.test.ts"] });
+    expect(report).toMatchObject({ check: "test discovery", status: "WARN" });
+    expect(report.detail).toContain("execution remains missing proof");
+    expect(report.notes?.join("\n")).toContain("check the suffix/location");
+    expect(report.notes?.join("\n")).toContain("separate runner confirmed");
+    expect(testDiscoveryVerdict({ files: ["scripts/collected.test.ts"], separate: [], unknown: [] })).toMatchObject({ status: "PASS" });
+    expect(testDiscoveryVerdict({ files: [], separate: [], unknown: [] })).toMatchObject({ status: "SKIP" });
+  });
+
+  it("uses actual discovery results for package and browser ownership without executing their tests", () => {
+    const commands: string[] = [];
+    vi.mocked(spawnSync).mockImplementation(((command, args) => {
+      commands.push(`${command} ${(args ?? []).join(" ")}`);
+      if (command === "git") return { status: 0, stdout: "vitest.config.ts\0packages/core/vitest.config.ts\0playwright.checkout.config.ts\0", stderr: "" };
+      if (args?.includes("vitest")) {
+        const output = args.find((arg) => arg.startsWith("--json="))!.slice("--json=".length);
+        writeFileSync(output, JSON.stringify([{ file: `${process.cwd()}/packages/core/test/separate.test.ts` }]));
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      return { status: 0, stdout: JSON.stringify({ config: { rootDir: `${process.cwd()}/tests/preview/checkout` }, suites: [{ file: "journey.spec.ts" }] }), stderr: "" };
+    }) as typeof spawnSync);
+    const candidates = ["packages/core/test/separate.test.ts", "packages/core/test/misnamed.test.tsx", "tests/preview/checkout/journey.spec.ts", "tests/unowned/new.test.ts"];
+    expect(separateTestFiles(candidates).map(({ path }) => path)).toEqual(["packages/core/test/separate.test.ts", "tests/preview/checkout/journey.spec.ts"]);
+    expect(commands.filter((command) => command.includes("npx")).every((command) => command.includes(" list ") || command.includes(" --list "))).toBe(true);
+    expect(commands.join("\n")).not.toContain("npm test");
+  });
+
+  it("keeps a separate runner's unavailable setup explicit as unconfirmed discovery", () => {
+    vi.mocked(spawnSync).mockImplementation(((command) => command === "git"
+      ? { status: 0, stdout: "playwright.checkout.config.ts\0", stderr: "" }
+      : { status: 1, stdout: "", stderr: "owned profile setup required" }) as typeof spawnSync);
+    expect(separateTestFiles(["tests/preview/checkout/journey.spec.ts"])).toEqual([]);
+  });
   it("prints one status line per check", () => {
     expect(formatCheckLine({ check: "typecheck", status: "PASS", detail: "the tree compiles to its signed debt. (27 s)" }))
       .toBe("PASS typecheck: the tree compiles to its signed debt. (27 s)");

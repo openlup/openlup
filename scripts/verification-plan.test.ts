@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -68,7 +68,7 @@ describe('local obligation contract', () => {
     expect(job('self-check')).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
     expect(job('install-packages')).toContain('scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
     expect(job('install-proof')).toContain('needs: [install-packages, install-browser]');
-    expect(job('test-full-shard')).toContain('npm test -- --shard=${{ matrix.shard }}/6');
+    expect(job('test-full-shard')).toContain('npm test -- --shard=${{ matrix.shard }}/8');
     expect(job('test')).toContain('test "$SHARD_RESULT" = "success"');
     expect(plan().hostedOnly.map(item => item.context)).toEqual(['test', 'install-proof', 'native-review']);
   });
@@ -98,11 +98,54 @@ describe('read-only public explain CLI', () => {
     expect(result.scope).toMatchObject({ state: 'known', candidate: { clean: false } });
     expect(result.evidence).toContain('commands have not run');
     expect(result.phases.map(step => step.name)).toEqual(expectedNames);
+    expect(result.prerequisites.find(item => item.name === 'compiler')).toMatchObject({ status: 'blocked', observed: 'node_modules/typescript/bin/tsc is absent' });
+    expect(result.prerequisites.find(item => item.name === 'npm')).toMatchObject({ status: 'blocked', observed: 'not found on PATH' });
+    expect(result.prerequisites.find(item => item.name === 'resource broker')).toMatchObject({ status: 'optional', requiredBy: [] });
     expect(result).not.toHaveProperty('code'); expect(output.stdout).not.toContain('PASS');
     expect(await readdir(f.cwd)).toEqual(files); expect(await readFile(join(f.cwd, '.git/index'))).toEqual(before);
     const human = execute(f.cwd, '--plan', '--pgtap');
     expect(human.status).toBe(0); expect(human.stdout).toContain('pgTAP: selected');
     expect(human.stdout).toContain('Hosted only (native-review)'); expect(await readdir(f.cwd)).toEqual(files);
+    expect(human.stdout).toContain('Prerequisite compiler: blocked');
+    expect(human.stdout).toContain('npm ci --prefer-offline --no-audit --fund=false');
+  });
+  it('observes selected versions without builds, installation, review or scratch writes, and reports wrong versions', async () => {
+    const f = await gitFixture();
+    const bin = join(f.cwd, '.git', 'observation-bin'); await mkdir(bin);
+    for (const [name, value] of [['npm', '11.19.0'], ['gitleaks', '8.30.1'], ['docker', '27.0.0']]) {
+      await writeFile(join(bin, name), `#!/bin/sh\nprintf '%s\\n' '${value}'\n`); await chmod(join(bin, name), 0o700);
+    }
+    await writeFile(join(f.cwd, '.nvmrc'), process.versions.node);
+    await writeFile(join(f.cwd, 'package.json'), JSON.stringify({ packageManager: 'npm@11.19.0' }));
+    await writeFile(join(f.cwd, 'package-lock.json'), JSON.stringify({ packages: { 'node_modules/typescript': { version: '6.0.3' } } }));
+    await mkdir(join(f.cwd, 'node_modules', 'typescript', 'bin'), { recursive: true });
+    await writeFile(join(f.cwd, 'node_modules', 'typescript', 'bin', 'tsc'), 'console.log("Version 6.0.3")');
+    const before = await readdir(f.cwd); const index = await readFile(join(f.cwd, '.git/index'));
+    const observe = () => spawnSync(process.execPath, [cli, '--plan', '--json'], { cwd: f.cwd, env: { PATH: `${bin}:/usr/bin:/bin` }, encoding: 'utf8' });
+    const observed = observe(); expect(observed.status).toBe(0);
+    const prerequisites = JSON.parse(observed.stdout).prerequisites;
+    for (const name of ['node', 'npm', 'compiler', 'gitleaks', 'docker', 'history']) expect(prerequisites.find(item => item.name === name)?.status).toBe('ready');
+    expect(prerequisites.find(item => item.name === 'candidate')?.status).toBe('blocked');
+    expect(await readdir(f.cwd)).toEqual(before); expect(await readFile(join(f.cwd, '.git/index'))).toEqual(index);
+    await writeFile(join(f.cwd, '.nvmrc'), '0.0.0');
+    await writeFile(join(bin, 'npm'), '#!/bin/sh\nprintf "0.0.0\\n"\n');
+    await writeFile(join(f.cwd, 'node_modules', 'typescript', 'bin', 'tsc'), 'console.log("Version 0.0.0")');
+    const wrong = JSON.parse(observe().stdout).prerequisites;
+    for (const name of ['node', 'npm', 'compiler']) expect(wrong.find(item => item.name === name)?.status).toBe('blocked');
+    expect(await readdir(f.cwd)).toEqual(before); expect(await readFile(join(f.cwd, '.git/index'))).toEqual(index);
+  });
+  it('distinguishes a known comparison base from incomplete secret-scan history without changing admission', async () => {
+    const f = await gitFixture();
+    await writeFile(join(f.cwd, '.git', 'shallow'), `${f.git('rev-parse', 'HEAD')}\n`);
+    const before = await readFile(join(f.cwd, '.git/index'));
+    const output = execute(f.cwd, '--plan', '--json');
+    expect(output.status).toBe(0);
+    const result = JSON.parse(output.stdout);
+    expect(result.scope.state).toBe('known');
+    expect(result.prerequisites.find(item => item.name === 'history')).toMatchObject({ status: 'ready', observed: 'comparison base and candidate scope available' });
+    expect(result.prerequisites.find(item => item.name === 'secret scan history')).toMatchObject({ status: 'unknown', observed: 'shallow checkout; complete local history is not available' });
+    expect(result.phases.map(step => step.name)).toEqual(expectedNames);
+    expect(await readFile(join(f.cwd, '.git/index'))).toEqual(before);
   });
   it('schedules a broad diagnostic only after early preflight accepts the committed candidate', async () => {
     const f = await gitFixture();

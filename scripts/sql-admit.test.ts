@@ -79,14 +79,24 @@ function directVerdicts(f: Fixture, base: string, head: string) {
 }
 
 const nativePath = "db/platform/migrations/20271106100000_future.sql", nativeText = "CREATE TABLE public.future (id uuid);\n";
-function stageNativeForward(f: Fixture) {
+function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePath), functions: NonNullable<ReviewedForwardRegistry["nativeStoreForwards"]>[number]["functions"] = []) {
   const value = registry();
-  value.nativeStoreForwardClass!.slots.push(slot(nativePath)); value.nativeStoreForwards!.push({ path: nativePath, sha256: sqlSha256(nativeText), functions: [] });
-  f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: nativePath, sha256: sha256(nativeText) }])); f.put(nativePath, nativeText);
+  value.nativeStoreForwardClass!.slots.push(entry); value.nativeStoreForwards!.push({ path: nativePath, sha256: sqlSha256(text), functions });
+  f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: nativePath, sha256: sha256(text) }])); f.put(nativePath, text);
 }
 type Case = { name: string; exit: number; refusal?: string; hint?: string; queue?: "not run"; build: (f: Fixture) => { base: string; head: string }; also?: (f: Fixture, base: string, head: string, fork: string) => void };
 const cases: Case[] = [
   { name: "an admitted native forward with its slot, pin and manifest row", exit: 0, build: (f) => { stageNativeForward(f); return { base: f.base, head: f.commit() }; } },
+  { name: "a reviewed native forward with a deferred constraint trigger", exit: 0, build: (f) => {
+    const entry = slot(nativePath), signature = "public.fixture_deferred()";
+    const definition = `CREATE FUNCTION ${signature} RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$ BEGIN RETURN NULL; END; $$;`;
+    const statement = `CREATE CONSTRAINT TRIGGER fixture_deferred AFTER UPDATE OR DELETE ON public.fixture_row DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${signature};`;
+    entry.createdFunctions = [{ signature, searchPath: "pg_catalog" }];
+    entry.createdTriggers = [{ name: "fixture_deferred", table: "public.fixture_row", sha256: sqlSha256(statement) }];
+    stageNativeForward(f, `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n${statement}\n`, entry,
+      [{ signature, beforeSha256: null, afterSha256: sqlSha256(definition) }]);
+    return { base: f.base, head: f.commit() };
+  } },
   { name: "a replacement pin whose SQL this change does not introduce", exit: 1, refusal: "reviewed replacement pin must be approved separately unless its SQL is introduced in this PR",
     hint: "a separate approval PR", build: (f) => {
       const value = registry(); value.qualifiedInstallations = production.qualifiedInstallations!.slice(0, 4);

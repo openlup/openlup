@@ -198,8 +198,9 @@ The same sweep aligns per-line quantities (99), selected lines (50), stock and
 seeded price integer ranges, tax legal-basis length (200), and the shared legal
 revision (trimmed, 1..64) with their native consumers. Catalog size is unchanged.
 
-Current cadence ownership and the deferred SQL 90-day limit are documented in
-the [starter limits](../../../examples/neutral-store/docs/limits.md#interim-subscription-mode-price).
+The [dated starter limits](../history/neutral-store-limits-2026-11-13.md#interim-subscription-mode-price)
+record the SQL cadence limit at that checkpoint. Current cadence ownership and
+admission bounds live in the [reader guide](../../../packages/core/docs/guide/reference/limits.md#subscription-cadence-representation).
 
 The root PostgreSQL regression no longer launches a browser or reads ignored UI
 output. Existing source tests prove create/replay/completion/reload credential

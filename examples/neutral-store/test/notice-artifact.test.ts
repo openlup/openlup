@@ -1,3 +1,4 @@
+import { market } from '../owned/market.config.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -31,7 +32,7 @@ function message(kind: NoticeArtifactV1['kind']): NoticeArtifactV1 {
     token, recoveryUrl: token ? `http://localhost:4319/account/payment/recover?token=${token}` : null,
     expiresAt: token ? '2030-01-01T00:00:00.000000Z' : null,
     recipient: 'mailbox@example.test', recipientReference: 'client:example', templateReference: 'template:example:en',
-    subject: 'Example notice', body: 'Private rendered message', locale: 'en' };
+    subject: 'Example notice', body: 'Private rendered message', locale: market.defaultLocale };
 }
 
 test('every notice kind round trips through one private schema without replacing existing content', async () => {

@@ -12,12 +12,15 @@ import {
   type CatalogPriceSetupRefusal,
 } from "./catalogPriceSetupSchemas.js";
 
-/** Persistence for the use case. Answers are validated here, never trusted. */
+/** Persistence for the use case. Answers are validated here, never trusted.
+ * @experimental
+ */
 export interface CatalogPriceSetupStorePort {
   preview(query: CatalogPriceSetupPreviewQuery): Promise<unknown>;
   apply(input: { canonicalCommand: string; fingerprint: string }): Promise<unknown>;
 }
 
+/** @experimental */
 export interface CatalogPriceSetupHandlerDeps<Context> {
   /** Bound to the same administrator's session that `authorizeOperator` verified. */
   store: CatalogPriceSetupStorePort;
@@ -25,6 +28,7 @@ export interface CatalogPriceSetupHandlerDeps<Context> {
   authorizeOperator(context: Context): Promise<{ actorId: string } | null>;
 }
 
+/** @experimental */
 export type CatalogPriceSetupReadback =
   | { outcome: "confirmed" | "diverged"; preview: CatalogPriceSetupPreview }
   | CatalogPriceSetupRefusal;
@@ -35,7 +39,9 @@ const unavailable = (): CatalogPriceSetupRefusal => ({
   outcome: "dependency_unavailable", reason: "price_setup_dependency_unavailable",
 });
 
-/** Dark use case: mounting requires a verified administrator authorizer and a session-bound store. */
+/** Dark use case: mounting requires a verified administrator authorizer and a session-bound store.
+ * @experimental
+ */
 export function createCatalogPriceSetupHandler<Context>(deps: CatalogPriceSetupHandlerDeps<Context>) {
   async function operator(context: Context): Promise<{ actorId: string } | CatalogPriceSetupRefusal> {
     try {

@@ -1,4 +1,4 @@
-import { CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_PROVENANCE_VERSION } from "./contracts/provenance.js";
+import { CATALOG_FACTS_POLICY_PROVENANCE_VERSION, CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_OFFER_PROVENANCE_VERSION } from "./contracts/provenance.js";
 import type { CatalogFactsProvenance } from "./contracts/provenance.js";
 import {
   catalogFactsProvenanceSchema,
@@ -32,33 +32,12 @@ export function createCatalogFactsProvenance(input: {
   resolvedLineAmountMinor: number;
   baseUnitAmountMinor: number;
   policy?: PolicyDerivedSubscriptionFacts;
+  offerPriceReference?: string;
 }): CatalogFactsProvenance {
-  if (input.policy) {
-    if (input.mode !== "subscription") {
-      throw new CommerceQuoteError("PRICING_INVARIANT_VIOLATION", "One-time quote facts cannot carry a subscription policy");
-    }
-    return catalogFactsProvenanceSchema.parse({
-      version: CATALOG_FACTS_POLICY_PROVENANCE_VERSION,
-      skuId: input.item.skuId,
-      documentRevisionId: input.item.documentRevision.id,
-      documentDigest: input.item.documentRevision.digest,
-      basePriceEntryId: input.base.priceEntryId,
-      policyRevisionId: input.policy.policyRevisionId,
-      policyDigest: input.policy.policyDigest,
-      mode: input.mode,
-      atTime: input.atTime,
-      currency: input.currency,
-      resolvedUnitAmountMinor: input.resolvedUnitAmountMinor,
-      resolvedLineAmountMinor: input.resolvedLineAmountMinor,
-      baseUnitAmountMinor: input.baseUnitAmountMinor,
-    });
-  }
-  return catalogFactsProvenanceSchema.parse({
-    version: CATALOG_FACTS_PROVENANCE_VERSION,
+  const baseFacts = {
     skuId: input.item.skuId,
     documentRevisionId: input.item.documentRevision.id,
     documentDigest: input.item.documentRevision.digest,
-    resolvedPriceEntryId: input.resolved.priceEntryId,
     basePriceEntryId: input.base.priceEntryId,
     mode: input.mode,
     atTime: input.atTime,
@@ -66,6 +45,32 @@ export function createCatalogFactsProvenance(input: {
     resolvedUnitAmountMinor: input.resolvedUnitAmountMinor,
     resolvedLineAmountMinor: input.resolvedLineAmountMinor,
     baseUnitAmountMinor: input.baseUnitAmountMinor,
+  };
+  if (input.offerPriceReference !== undefined) {
+    if (input.mode !== "one_time" || input.policy) {
+      throw new CommerceQuoteError("PRICING_INVARIANT_VIOLATION", "Allocated offer facts require one-time pricing");
+    }
+    return catalogFactsProvenanceSchema.parse({
+      version: CATALOG_FACTS_OFFER_PROVENANCE_VERSION,
+      offerPriceReference: input.offerPriceReference,
+      ...baseFacts,
+    });
+  }
+  if (input.policy) {
+    if (input.mode !== "subscription") {
+      throw new CommerceQuoteError("PRICING_INVARIANT_VIOLATION", "One-time quote facts cannot carry a subscription policy");
+    }
+    return catalogFactsProvenanceSchema.parse({
+      version: CATALOG_FACTS_POLICY_PROVENANCE_VERSION,
+      policyRevisionId: input.policy.policyRevisionId,
+      policyDigest: input.policy.policyDigest,
+      ...baseFacts,
+    });
+  }
+  return catalogFactsProvenanceSchema.parse({
+    version: CATALOG_FACTS_PROVENANCE_VERSION,
+    resolvedPriceEntryId: input.resolved.priceEntryId,
+    ...baseFacts,
   });
 }
 
@@ -74,7 +79,7 @@ export function catalogFactsForQuoteLine(
   base: ResolvedPriceObservation, mode: "one_time" | "subscription",
   atTime: string, currency: string, resolvedUnitAmountMinor: number,
   resolvedLineAmountMinor: number, baseUnitAmountMinor: number,
-  policy?: PolicyDerivedSubscriptionFacts,
+  policy?: PolicyDerivedSubscriptionFacts, offerPriceReference?: string,
 ): CatalogFactsProvenance | undefined {
   if (!enabled) return undefined;
   const { id, digest } = item.documentRevision;
@@ -86,7 +91,7 @@ export function catalogFactsForQuoteLine(
   }
   return createCatalogFactsProvenance({
     item: { ...item, documentRevision: { id, digest } },
-    resolved, base, mode, atTime, currency, resolvedUnitAmountMinor, resolvedLineAmountMinor, baseUnitAmountMinor, policy,
+    resolved, base, mode, atTime, currency, resolvedUnitAmountMinor, resolvedLineAmountMinor, baseUnitAmountMinor, policy, offerPriceReference,
   });
 }
 
