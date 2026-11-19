@@ -1,9 +1,11 @@
 // Native supervisor process evidence, not a signature or remote attestation.
 import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { NATIVE_CATALOG_CONTROLS } from './reviewed-platform-forward.ts';
 
 export const REVIEW_RULES_VERSION = 3;
 export const ECONOMY_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 -->';
+export const COMPRESSED_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 gzip -->';
 export const RECEIPT_MARKER = '<!-- openlup-native-review-receipt v2 -->';
 const SHA = /^[a-f0-9]{40}$/u;
 const RISKS = ['prose', 'routine', 'behavior', 'unknown'];
@@ -355,6 +357,16 @@ export function receiptSummary(session, pr, now) {
     demand(Buffer.byteLength(JSON.stringify(summary)) <= 1024 * 1024 - 128, 'receipt exceeds bounded transport'); return summary;
   }
   return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: session.candidate.integration ? 'behavior' : legacyClassifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: reviewExpiry(session), sessionDigest: digest(session) };
+}
+export function receiptBody(summary) {
+  const json = JSON.stringify(summary);
+  const marker = summary.version === 3 ? ECONOMY_RECEIPT_MARKER : RECEIPT_MARKER;
+  const raw = `${marker}\n\`\`\`json\n${json}\n\`\`\``;
+  if (summary.version !== 3 || raw.length <= 65_536) return raw;
+  const compressed = `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${gzipSync(json).toString('base64')}\n\`\`\``;
+  const limit = 200_000;
+  demand(compressed.length <= limit, `compressed receipt is ${compressed.length} characters (limit ${limit}). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
+  return compressed;
 }
 export function admit({ receipt, observed, now }) {
   if (receipt?.version === 3) {
