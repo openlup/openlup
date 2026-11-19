@@ -1590,6 +1590,15 @@ feature. Once introduced, migration bytes remain immutable and repairs use a
 new forward. Stopping new co-located PRs must retain release support for histories
 already admitted this way; reverting to parent-only approval would reject them.
 
+For a managed forward outside the existing SQL classes, a separate control
+change can record an exact path, SHA-256 and ordered managed prefix digest in
+`managedExactForwards`. The feature change must keep that approval unchanged.
+The prefix digest binds every earlier managed SQL path to its content hash.
+CI also checks a registered path if its replacement text would otherwise pass
+expand-only admission. Release preparation checks the approval in the parent of
+the migration's first introduction. Exact admission still requires behavioral
+evidence and independent review.
+
 The separate `batchedForwards` list approves the frozen M10/F17 packet: seven
 native files and eleven managed files (18 pins). It adds no installation-chain SQL. Exact
 future bytes live only in [inert fixtures](../../scripts/fixtures/reviewed-m10/).
