@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { configurations } from '../owned/store.config.ts';
@@ -88,6 +90,10 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
     stock: { async recordProviderStockCurrent(input) { stockCalls.push(input); return { replayed: false,readBack: true }; } },
     connection: { query: async (text, values) => {
       calls.push({ text, values });
+      if (text.startsWith('SELECT public.catalog_definition_install')) {
+        const { manifest } = JSON.parse(String(values?.[2]));
+        return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(manifest).digest('hex') } }] };
+      }
       if (text.startsWith('SELECT public.fulfillment_record_stock_current')) return { rows: [{ response: { status: 'recorded' } }] };
       if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
       if (text.startsWith('SELECT id,digest')) return { rows: policies.has(String(values?.[0])) ? [policies.get(String(values?.[0]))!] : [] };
@@ -107,6 +113,47 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
   };
   return { binding, calls, stockCalls, closed: () => closed };
 }
+
+test('local rules run before installation and derive an immutable product type on demo startup', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'openlup-catalogue-rules-'));
+  const artifact = `module.exports = {
+    validateContent: title => title ? [] : [{ code: 'title_required' }],
+    validateProduct: () => [], identifyDocument: () => ({}), inspectDocument: () => ({}),
+    matchesDocument: () => false, deriveSkuFacts: () => ({}), classifySkuChange: () => 'inconclusive',
+  };`;
+  try {
+    await mkdir(resolve(directory, 'owned'));
+    await writeFile(resolve(directory, 'owned/catalogue-rules.cjs'), artifact);
+    await writeFile(resolve(directory, 'owned/catalogue-rules.test.cjs'), `
+      const { test } = require('node:test');
+      const { deepEqual } = require('node:assert/strict');
+      const rules = require('./catalogue-rules.cjs');
+      test('product titles are required', () => {
+        deepEqual(rules.validateContent('Example'), []);
+        deepEqual(rules.validateContent(''), [{ code: 'title_required' }]);
+      });
+    `);
+    const { NODE_TEST_CONTEXT: _parentTest, ...testEnvironment } = process.env;
+    const output = execFileSync(process.execPath, ['--test', 'owned/catalogue-rules.test.cjs'],
+      { cwd: directory, env: testEnvironment, encoding: 'utf8' });
+    assert.match(output, /pass 1\b/u);
+    async function installed(bytes: Buffer) {
+      const fixture = installation();
+      fixture.binding.catalogueRules = bytes;
+      await installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding);
+      const call = fixture.calls.find(entry => entry.text.startsWith('SELECT public.catalog_definition_install'));
+      assert.ok(call);
+      const { types } = JSON.parse(String(call.values?.[2]));
+      return JSON.parse(types[0].canonicalDefinition);
+    }
+    const bytes = Buffer.from(artifact);
+    const first = await installed(bytes);
+    assert.deepEqual(await installed(bytes), first);
+    assert.equal(first.validatorRef, `sha256:${createHash('sha256').update(bytes).digest('hex')}`);
+    assert.ok(first.version > 0);
+    assert.notEqual((await installed(Buffer.from(artifact + '// Changed rules asset'))).version, first.version);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 for (const config of Object.values(configurations)) {
   test(`${config.id}: fictional catalog and prices come from one configuration deterministically`, () => {

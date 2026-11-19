@@ -624,20 +624,28 @@ export interface CatalogCandidateQuery {
     draftRevision: number;
     expectedHead: CatalogHeadRef | null;
 }
+/** A preparation refusal with safe context for fixing and checking the draft.
+ * @experimental
+ */
+export interface CatalogCandidateIssue extends CatalogDraftIssue {
+    phase?: "structural" | "pricing" | "activation";
+    subject?: string;
+    message?: string;
+}
 /** @experimental */
 export interface CatalogCandidatePreview {
     candidateRef: string;
     candidateDigest: string;
-    issues: readonly CatalogDraftIssue[];
+    issues: readonly CatalogCandidateIssue[];
     /** @experimental Phase reports for sealed publication inputs. */
     preparation?: {
         structural: {
             outcome: "staged" | "blocked-input" | "unknown";
-            issues: readonly CatalogDraftIssue[];
+            issues: readonly CatalogCandidateIssue[];
         };
         activation: {
             outcome: "ready" | "pending" | "blocked-input" | "unknown";
-            issues: readonly (CatalogDraftIssue & {
+            issues: readonly (CatalogCandidateIssue & {
                 channel?: "one_time" | "subscription";
             })[];
         };
@@ -1417,10 +1425,8 @@ export type { CatalogTypeDefinitionV2, CatalogProductTypeInput } from "./product
 export type { CatalogDefinitionInstallReceipt } from "./definitionInstall.js";
 export type { CatalogCombinationIdentityV2, CatalogCombinationCode, CatalogRetainedCombinationV2, CatalogCombinationChangeV2 } from "./variantAxes.js";
 export type { CatalogDraftPriceOperationV2, CatalogAttributeScalarValue, CatalogAttributeValue, CatalogDraftPayloadV2, CatalogDraftCommandV2, CatalogDraftStoredPayload, CatalogDraftStoredCommand, CatalogDraftStoredRecord, CatalogDraftStoredApplyResult } from "./draftV2.js";
-export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./candidate.js";
+export type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison, CatalogCandidateIssue } from "./candidate.js";
 export type { CatalogPublicationJson, CatalogPublicationFacts, CatalogDraftProvenanceV3, CatalogDraftClaimV3, CatalogDraftMediaClaimV3, CatalogDraftPublicationSkuV3, CatalogDraftMembershipV3, CatalogDraftSharedContentV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./draftV3.js";
-export { CATALOG_PUBLICATION_LIMITS } from "./publication.js";
-export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogDecisionReceiptV2, CatalogPublicationReceiptV2, CatalogPublishedContent, CatalogPublishedIdentifier, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogSkuRevisionRef, CatalogPublicationFailure } from "./publication.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -1676,129 +1682,6 @@ export interface CatalogProductTypeRegistry {
 export declare function validateCatalogQuantity(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): boolean;
 /** Decimal spelling cannot make two equal option values distinct. No unit conversion is inferred. */
 export declare function canonicalCatalogOption(value: CatalogOptionValue): string;
-```
-## dist/catalog/contracts/publication.d.ts
-
-```ts
-import type { CatalogPublishCommand, CatalogPublicationReceipt } from "./lifecycle.js";
-import type { CatalogQuantity, CatalogProductTypeRef, CatalogOptionValue } from "./productTypes.js";
-import type { CatalogAttributeValue } from "./draftV2.js";
-import type { CatalogPublicationFacts, CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./draftV3.js";
-import type { CatalogDocumentRevisionRef } from "./foundation.js";
-/** @experimental */
-export declare const CATALOG_PUBLICATION_LIMITS: {
-    readonly skuBytes: 2097152;
-    readonly manifestBytes: 16777216;
-    readonly receiptBytes: 8388608;
-    readonly historyBytes: 16777216;
-    readonly pageBytes: 8388608;
-    readonly pageItems: 100;
-};
-/** @experimental */
-export interface CatalogPublishCommandV2 extends CatalogPublishCommand {
-    schemaVersion: 2;
-}
-/** @experimental */
-export interface CatalogDecisionCommandV2 {
-    schemaVersion: 2;
-    action: "approve" | "revoke";
-    productId: string;
-    commandKey: string;
-    candidateRef: string;
-    candidateDigest: string;
-    reason: string | null;
-}
-/** @experimental */
-export interface CatalogPublishedIdentifier {
-    scheme: string;
-    issuer: string;
-    value: string;
-    packagingLevel: "unit" | "case";
-    quantity: number;
-    isPrimary: boolean;
-    label: string | null;
-    sourceRef: string | null;
-}
-/** @experimental */
-export type CatalogPublishedContent = Pick<CatalogDraftSharedContentV3, "schemaVersion" | "catalogAction" | "presentation" | "offerMemberships" | "requestedModes" | "publicationSkus">;
-/** @experimental */
-export interface CatalogPublishedProduct {
-    id: string;
-    slug: string;
-    name: string;
-    status: "draft" | "active" | "archived";
-    type: CatalogProductTypeRef;
-    axes: string[];
-    attributes: Record<string, CatalogAttributeValue>;
-    primarySkuId: string | null;
-    document: CatalogDocumentRevisionRef | null;
-    presentation: CatalogPublicationFacts | null;
-    source: CatalogDraftClaimV3;
-    content: CatalogPublishedContent;
-}
-/** @experimental */
-export interface CatalogPublishedSku {
-    id: string;
-    productId: string;
-    code: string;
-    title: string;
-    status: "draft" | "active" | "archived";
-    minQuantity: number;
-    isAddon: boolean;
-    sellableStandalone: boolean;
-    sellableInSubscription: boolean;
-    netContent: CatalogQuantity;
-    grossMass: CatalogQuantity | null;
-    options: Record<string, CatalogOptionValue>;
-    attributes: Record<string, CatalogAttributeValue>;
-    facts: CatalogPublicationFacts;
-    identifiers: CatalogPublishedIdentifier[];
-    assetRefs: string[];
-    logisticsRef: string | null;
-    memberships: {
-        offerVersion: string;
-        admitted: boolean;
-    }[];
-    source: CatalogDraftClaimV3;
-}
-/** @experimental */
-export interface CatalogSkuRevisionRef {
-    skuId: string;
-    revisionId: string;
-    revision: number;
-    digest: string;
-}
-/** @experimental */
-export interface CatalogPublicationManifestV2 {
-    schemaVersion: 2;
-    product: CatalogPublishedProduct;
-    skus: CatalogSkuRevisionRef[];
-}
-/** @experimental */
-export interface CatalogPublicationReceiptV2 extends CatalogPublicationReceipt {
-    schemaVersion: 2;
-    productId: string;
-    publicationDigest: string;
-    committedAt: string;
-}
-/** @experimental */
-export interface CatalogDecisionReceiptV2 {
-    schemaVersion: 2;
-    action: "approve" | "revoke";
-    productId: string;
-    commandKey: string;
-    fingerprint: string;
-    candidateRef: string;
-    candidateDigest: string;
-    actorId: string;
-    reason: string | null;
-    decidedAt: string;
-}
-/** @experimental */
-export interface CatalogPublicationFailure {
-    outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
-    reason: string;
-}
 ```
 ## dist/catalog/contracts/resolveProductMedia.d.ts
 

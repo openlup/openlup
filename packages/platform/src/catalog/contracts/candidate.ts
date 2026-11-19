@@ -2,13 +2,21 @@ import type { CatalogHeadRef } from "./lifecycle.js";
 import type { CatalogDraftIssue } from "./productTypes.js";
 /** @experimental */
 export interface CatalogCandidateQuery { draftId: string; draftRevision: number; expectedHead: CatalogHeadRef | null }
+/** A preparation refusal with safe context for fixing and checking the draft.
+ * @experimental
+ */
+export interface CatalogCandidateIssue extends CatalogDraftIssue {
+  phase?: "structural" | "pricing" | "activation";
+  subject?: string;
+  message?: string;
+}
 /** @experimental */
 export interface CatalogCandidatePreview {
-  candidateRef: string; candidateDigest: string; issues: readonly CatalogDraftIssue[];
+  candidateRef: string; candidateDigest: string; issues: readonly CatalogCandidateIssue[];
   /** @experimental Phase reports for sealed publication inputs. */
   preparation?: {
-    structural: { outcome: "staged" | "blocked-input" | "unknown"; issues: readonly CatalogDraftIssue[] };
-    activation: { outcome: "ready" | "pending" | "blocked-input" | "unknown"; issues: readonly (CatalogDraftIssue & {
+    structural: { outcome: "staged" | "blocked-input" | "unknown"; issues: readonly CatalogCandidateIssue[] };
+    activation: { outcome: "ready" | "pending" | "blocked-input" | "unknown"; issues: readonly (CatalogCandidateIssue & {
       channel?: "one_time" | "subscription";
     })[] };
   };

@@ -1,47 +1,68 @@
 import { createHash } from "node:crypto";
 import { Script } from "node:vm";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
-import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
-import type { CatalogDraftIssue } from "./contracts/productTypes.js";
-import type { CatalogPublicationDocument } from "./publicationEvidence.js";
+import type { CatalogProductTypeRef } from "./contracts/productTypes.js";
+import type { CatalogPackInput } from "./contracts/catalogPack.js";
+import type { CatalogPublicationRulesModule } from "./catalogPublicationRules.js";
+import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import { publicationRefuse } from "./publicationError.js";
 
 declare const handleBrand: unique symbol;
 
-/** An in-process capability for the executable pinned by an installed definition.
- * @experimental
- */
+/** @internal */
 export interface CatalogPublicationRulesHandle { readonly [handleBrand]: true }
 
-/** Export this interface as module.exports in a self-contained publication rules bundle.
- * @experimental
- */
-export interface CatalogPublicationRulesModule {
-  validateContent(content: unknown): readonly CatalogDraftIssue[];
-  validateProduct(product: CatalogPublishedProduct, skus: readonly CatalogPublishedSku[], documents: readonly CatalogPublicationDocument[]): readonly string[];
-  validateMembershipChange?(sku: Readonly<CatalogPublishedSku>, change: { offerVersion: string; admitted: boolean }): boolean;
-  inspectDocument(canonicalText: string): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number;
-    name?: string; canonicallyEncoded: boolean };
-  matchesDocument(document: unknown, canonicalText: string): boolean;
-  identifyDocument(document: unknown): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number; name?: string };
-  validateSkuAmounts?(sku: { code: string; netGrams: string }): boolean;
-  deriveSkuFacts(canonicalText: string, sku: CatalogPublishedSku): CatalogPublicationFacts;
-  classifySkuChange(before: CatalogPublishedSku, after: CatalogPublishedSku, context: {
-    beforeProduct: CatalogPublishedProduct; afterProduct: CatalogPublishedProduct;
-    beforeDocument: CatalogPublicationDocument | null; afterDocument: CatalogPublicationDocument;
-  }): "compatible" | "material" | "inconclusive";
-}
 const requiredHooks = ["validateContent", "validateProduct", "inspectDocument", "matchesDocument", "identifyDocument",
   "deriveSkuFacts", "classifySkuChange"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
 const optionalHooks = ["validateMembershipChange", "validateSkuAmounts"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
-const handles = new WeakMap<CatalogPublicationRulesHandle, { validatorRef: string; rules: CatalogPublicationRulesModule }>();
+const handles = new WeakMap<CatalogPublicationRulesHandle, {
+  validatorRef: `sha256:${string}`; bytes: Buffer; rules: CatalogPublicationRulesModule;
+}>();
+const rulePacks = new WeakMap<CatalogPackInput, ReadonlyMap<string, CatalogPublicationRulesHandle>>();
+const referenceFor = (bytes: Uint8Array): `sha256:${string}` => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+const typeKey = ({ key, version }: CatalogProductTypeRef): string => `${key}@${version}`;
 
-/** Load trusted, deterministic JavaScript rules from the verified byte snapshot.
- * @experimental
- */
-export function loadCatalogPublicationRules(validatorRef: string, artifact: Uint8Array): CatalogPublicationRulesHandle {
+export function ruleProduct({ source: _source, document: _document, content: _content, ...product }: CatalogPublishedProduct): RulesProduct {
+  return product;
+}
+export function ruleSku({ source: _source, ...sku }: CatalogPublishedSku): RulesSku {
+  return sku;
+}
+
+export function bindCatalogPublicationRules<P extends CatalogPackInput>(pack: P,
+  rulesFor: (type: CatalogProductTypeRef) => Uint8Array | undefined): P {
+  const bindings = new Map<string, CatalogPublicationRulesHandle>();
+  const types = pack.types.map(type => {
+    const artifact = rulesFor({ key: type.key, version: type.version });
+    if (artifact === undefined) return type;
+    const handle = loadCatalogPublicationRules(type.validatorRef, artifact);
+    bindings.set(typeKey(type), handle);
+    return Object.freeze({ ...type, validatorRef: handles.get(handle)!.validatorRef });
+  });
+  const bound: P = Object.freeze({ ...pack, types: Object.freeze(types) });
+  rulePacks.set(bound, bindings);
+  return bound;
+}
+
+/** @internal */
+export function publicationRulesFor(pack: CatalogPackInput, type: CatalogProductTypeRef): CatalogPublicationRulesHandle | undefined {
+  return rulePacks.get(pack)?.get(typeKey(type));
+}
+
+/** @internal */
+export function verifyCatalogRulesAtInstall(pack: CatalogPackInput): void {
+  const bindings = rulePacks.get(pack);
+  if (bindings) for (const type of pack.types) {
+    const handle = bindings.get(typeKey(type));
+    if (handle) resolvePublicationRules(handle, type.validatorRef, true);
+  }
+}
+
+/** @internal Load trusted JavaScript rules from the verified byte snapshot. */
+export function loadCatalogPublicationRules(expectedRef: string | undefined, artifact: Uint8Array): CatalogPublicationRulesHandle {
   const bytes = Buffer.from(artifact);
-  if (`sha256:${createHash("sha256").update(bytes).digest("hex")}` !== validatorRef)
+  const validatorRef = referenceFor(bytes);
+  if (expectedRef !== undefined && validatorRef !== expectedRef)
     return publicationRefuse("catalog_publication_rules_digest_mismatch");
   try {
     const source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
@@ -73,15 +94,15 @@ ${source}
     const rules = Object.fromEntries([...requiredHooks, ...optionalHooks].filter(key => dispatch.available(key))
       .map(key => [key, (...args: unknown[]) => JSON.parse(dispatch.invoke(key, JSON.stringify(args))) as unknown]));
     const handle = Object.freeze({}) as CatalogPublicationRulesHandle;
-    handles.set(handle, { validatorRef, rules: Object.freeze(rules) as unknown as CatalogPublicationRulesModule });
+    handles.set(handle, { validatorRef, bytes, rules: Object.freeze(rules) as unknown as CatalogPublicationRulesModule });
     return handle;
   } catch {
     return publicationRefuse("catalog_publication_rules_module_invalid");
   }
 }
 
-export function resolvePublicationRules(handle: CatalogPublicationRulesHandle, validatorRef: string | undefined): CatalogPublicationRulesModule {
+export function resolvePublicationRules(handle: CatalogPublicationRulesHandle, validatorRef: string | undefined, recheck = false): CatalogPublicationRulesModule {
   const binding = handles.get(handle);
-  if (!binding || binding.validatorRef !== validatorRef) return publicationRefuse("catalog_publication_rules_binding_mismatch");
+  if (!binding || binding.validatorRef !== validatorRef || recheck && referenceFor(binding.bytes) !== validatorRef) return publicationRefuse("catalog_publication_rules_binding_mismatch");
   return binding.rules;
 }

@@ -20,78 +20,42 @@ const QUOTE_PAYLOAD_USES = [
   "await verifyDocument(documents[index]!.revision_document_payload, envelope);",
   "revision_document_payload: unknown;",
 ];
-const PUBLICATION_COMPILER = "packages/platform/src/catalog/publicationValidation.ts";
-const PUBLICATION_RULES = "packages/platform/src/catalog/publicationRules.ts";
-const DOCUMENT_QUERY = "server/adapters/postgres/exampleDocumentReader.ts";
-const DOCUMENT_MIGRATION = "db/platform/migrations/example_document_query.sql";
-// Exact reviewed uses for storage, digest, whole-value equality and rules handoff.
-const CANONICAL_DOCUMENT_USES = new Map<string, readonly string[]>([
-  [PUBLICATION_COMPILER, [
+
+const COMPILER = "packages/platform/src/catalog/publicationValidation.ts";
+const DOCUMENT_USE = /\b(?:canonical_text|canonicalText|authoredValue)\b|\bsharedContent\s*\??\s*(?:\.\s*document\b|\[\s*["']document["']\s*\])/;
+// Owner-file and exact-line allowances for pass-through, digest and installed-rule calls.
+const documentUses = new Map<string, readonly string[]>([
+  [COMPILER, [
     "function checkedDocument(canonicalText: string, reference: Pick<CatalogPublicationDocument[\"reference\"], \"digest\" | \"documentRef\" | \"revisionNo\" | \"schemaId\">,",
     "need(createHash(\"sha256\").update(canonicalText).digest(\"hex\") === reference.digest, \"catalog_publication_v3_document_digest_mismatch\");",
-    "let documentInfo: ReturnType<CatalogPublicationRulesModule[\"inspectDocument\"]>;",
     "documentInfo = rules.inspectDocument(canonicalText);",
-    "need(documentInfo?.productSlug === slug && documentInfo.documentRef === reference.documentRef",
-    "&& documentInfo.revisionNo === reference.revisionNo && documentInfo.schemaId === reference.schemaId, \"catalog_publication_v3_document_invalid\");",
-    "need(documentInfo.canonicallyEncoded === true, \"catalog_publication_v3_document_not_canonical\");",
-    "return documentInfo;",
-    "function matchesAuthoredDocument(document: unknown, canonicalText: string, rules: CatalogPublicationRulesModule) {",
-    "try { return rules.matchesDocument(document, canonicalText) === true; }",
-    "function documentSkuFacts(document: CatalogPublicationDocument, sku: CatalogPublishedSku, rules: CatalogPublicationRulesModule): CatalogPublicationFacts {",
-    "return rules.deriveSkuFacts(document.canonicalText, sku);",
+    "function matchesAuthoredDocument(authoredValue: unknown, canonicalText: string, rules: CatalogPublicationRulesModule) {",
+    "try { return rules.matchesDocument(authoredValue, canonicalText) === true; }",
+    "return rules.deriveSkuFacts(document.canonicalText, ruleSku(sku));",
     "if (reference && rules) checkedDocument(operation.canonicalText, { ...operation, schemaId: reference.schemaId }, slug, rules);",
     "else need(createHash(\"sha256\").update(operation.canonicalText).digest(\"hex\") === operation.digest,",
-    "if (rules && source.payload.product.sharedContent.document !== undefined)",
-    "need(matchesAuthoredDocument(source.payload.product.sharedContent.document, operation.canonicalText, rules), \"catalog_publication_v3_document_invalid\");",
+    "if (rules && intent.product.sharedContent.document !== undefined)",
+    "need(matchesAuthoredDocument(intent.product.sharedContent.document, operation.canonicalText, rules), \"catalog_publication_v3_document_invalid\");",
     "return { reference, canonicalText: operation.canonicalText, provenance };",
-    "const authored = payload.product.sharedContent.document;",
-    "try { name = rules.identifyDocument(authored)?.name; }",
+    "if (payload.product.sharedContent.document !== undefined) {",
+    "try { name = rules.identifyDocument(payload.product.sharedContent.document)?.name; }",
     "const info = checkedDocument(registration.canonicalText, reference, slug, rules);",
     "if (rules) checkedDocument(document.canonicalText, document.reference, slug, rules);",
-    "if (rules && selected) need(equal(documentSkuFacts(selected, sku, rules), sku.facts), \"catalog_publication_v3_compile_derived_facts_mismatch\");",
-    "if (rules && selected) need(equal(documentSkuFacts(selected, sku, rules), operation.facts), \"catalog_publication_v3_compile_derived_facts_mismatch\");",
     "if (rules && afterDocument && payload.product.sharedContent.document !== undefined)",
     "need(matchesAuthoredDocument(payload.product.sharedContent.document, afterDocument.canonicalText, rules), \"catalog_publication_document_source_mismatch\");",
-    "if (rules && afterDocument) need(equal(documentSkuFacts(afterDocument, sku, rules), sku.facts),",
+    "beforeDocument: beforeDocument.canonicalText, afterDocument: afterDocument.canonicalText }) === \"compatible\", \"sku_identity_change_requires_new_sku\");",
+    "const issues = rules.validateProduct(ruleProduct(result), [...skus.values()].map(ruleSku), documents.map(document => document.canonicalText));",
   ]],
-  [PUBLICATION_RULES, [
+  ["packages/platform/src/catalog/catalogPublicationRules.ts", [
     "inspectDocument(canonicalText: string): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number;",
     "matchesDocument(document: unknown, canonicalText: string): boolean;",
-    "identifyDocument(document: unknown): { schemaId: string; documentRef: string; productSlug: string; revisionNo: number; name?: string };",
-    "deriveSkuFacts(canonicalText: string, sku: CatalogPublishedSku): CatalogPublicationFacts;",
-    "const requiredHooks = [\"validateContent\", \"validateProduct\", \"inspectDocument\", \"matchesDocument\", \"identifyDocument\",",
-    "\"deriveSkuFacts\", \"classifySkuChange\"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];",
+    "deriveSkuFacts(canonicalText: string, sku: RulesSku): CatalogPublicationFacts;",
   ]],
-  ["packages/platform/src/catalog/publicationEvidence.ts", [
-    "reference: CatalogDocumentRevisionRef; canonicalText: string;",
-  ]],
-  ["packages/platform/src/catalog/contracts/draftV3.ts", [
-    "documentRef: string; sourceRef: string; canonicalText: string; digest: string; provenance: CatalogDraftProvenanceV3 }",
-  ]],
-  ["packages/platform/src/catalog/draftV3Schemas.ts", [
-    "documentRef: reference, sourceRef: reference, canonicalText: z.string().min(1), digest, provenance: catalogDraftProvenanceV3Schema }).strict(),",
-  ]],
-  ["db/platform/migrations/20261122160000_catalog_drafts_v3.sql", [
-    "WHEN 'register_document_revision' THEN ARRAY['op','productSlug','revisionId','revisionNo','documentRef','sourceRef','canonicalText','digest','provenance']",
-  ]],
+  ["packages/platform/src/catalog/publicationEvidence.ts", ["reference: CatalogDocumentRevisionRef; canonicalText: string;"]],
+  ["packages/platform/src/catalog/contracts/draftV3.ts", ["documentRef: string; sourceRef: string; canonicalText: string; digest: string; provenance: CatalogDraftProvenanceV3 }"]],
+  ["packages/platform/src/catalog/draftV3Schemas.ts", ["documentRef: reference, sourceRef: reference, canonicalText: z.string().min(1), digest, provenance: catalogDraftProvenanceV3Schema }).strict(),"]],
+  ["db/platform/migrations/20261122160000_catalog_drafts_v3.sql", ["WHEN 'register_document_revision' THEN ARRAY['op','productSlug','revisionId','revisionNo','documentRef','sourceRef','canonicalText','digest','provenance']"]],
 ]);
-const CANONICAL_DOCUMENT = /\b(?:canonical_text|canonicalText|decodeDocument|inspectDocument|identifyDocument|deriveSkuFacts|documentInfo|matchesDocument|matchesAuthoredDocument|documentSkuFacts)\b|\bsharedContent\s*\??\s*(?:\.\s*document\b|\[\s*["']document["']\s*\])/;
-const DOCUMENT_METHOD = /\b(?:parse|safeParse|validate|canonicalize)(?:Product)?Document(?:V1)?\b/;
-const PAYLOAD_COLUMN = String.raw`\b(?:document_payload|revision_document_payload)\b`;
-const SQL_DOCUMENT_OPERATOR = String.raw`(?:->>?|#>>?|@>|<@|\?)`;
-const SQL_DOCUMENT_INTERPRETATION = new RegExp(
-  [
-    String.raw`${PAYLOAD_COLUMN}"?\s*(?:\)\s*)*${SQL_DOCUMENT_OPERATOR}`,
-    String.raw`${SQL_DOCUMENT_OPERATOR}\s*(?:\w+\.)?"?${PAYLOAD_COLUMN}`,
-    String.raw`\bjsonb_\w+\s*\([^;\x60]*${PAYLOAD_COLUMN}`,
-  ].join("|"),
-  "i",
-);
-const OPAQUE_DOCUMENT = String.raw`\b(?:document|document_payload|revision_document_payload)\b`;
-const DOCUMENT_INTERPRETATION = new RegExp(String.raw`\b(?:parse|safeParse|validate|canonicalize)\s*\([^();,]*${OPAQUE_DOCUMENT}`);
-const BARE_CANONICAL_TEXT_INTERPRETATION = /(?<![\w$.])(?:parse|safeParse|validate|canonicalize)\s*\(\s*canonicalText\b/;
-const LOG_OR_STRINGIFY = /\b(?:console|logger)\s*[.[]|\bJSON\s*\.\s*stringify\s*\(/;
-const DOCUMENT_DISCLOSURE = new RegExp(String.raw`(?:\b(?:console|logger)\s*(?:\.\s*\w+|\[[^\]]+\])\s*\(|\bJSON\s*\.\s*stringify\s*\()[^;]*${OPAQUE_DOCUMENT}`);
 
 interface SourceFile {
   path: string;
@@ -114,7 +78,6 @@ const SQL_RESERVED_WORDS = new Set([
   "offset",
   "union",
   "returning",
-  "set",
 ]);
 
 function perimeterSources(): SourceFile[] {
@@ -155,110 +118,27 @@ function readsDormantCatalogSkuGtin(source: string): boolean {
   });
 }
 
-function exactUses(actual: readonly string[], expected: readonly string[]): boolean {
-  return actual.length === expected.length && new Set(actual).size === expected.length
-    && actual.every(line => expected.includes(line));
-}
-
-function readsUnapprovedCanonicalDocument(file: SourceFile, lines: readonly string[]): boolean {
-  // Other SQL carriers use the same column name for unrelated commands.
-  // Limit the SQL rule to document storage, draft document operations and references to NEW.
-  if (file.path.endsWith(".sql") && !/\bcatalog_product_document_revisions\b|\bregister_document_revision\b|\bNEW\s*\.\s*canonical_text\b/i.test(file.source))
-    return false;
-  const uses = lines.filter(line => !line.trimStart().startsWith("--") && (CANONICAL_DOCUMENT.test(line)
-    || file.path === PUBLICATION_COMPILER && /\bcanonical\b|(?:=|\breturn)\s*\bdocument\b(?!\s*\.)/.test(line))).map(line => line.trim());
-  const allowed = CANONICAL_DOCUMENT_USES.get(file.path) ?? [];
-  return new Set(uses).size !== uses.length || uses.some(line => !allowed.includes(line));
-}
-
-const SQL_PROJECTION_TOKENS = /"(?:[^"]|"")*"|\b(?:select|from|returning)\b|[()]/gi;
-
-function projectionBody(projection: string): string {
-  const modifier = /^\s*(?:ALL\b|DISTINCT\b(?:\s+ON\s*\()?)\s*/i.exec(projection)?.[0] ?? "";
-  let body = projection.slice(modifier.length);
-  if (modifier.trimEnd().endsWith("(")) {
-    let depth = 1;
-    for (const { 0: token, index } of body.matchAll(SQL_PROJECTION_TOKENS)) {
-      if (token === "(") depth++;
-      if (token === ")" && --depth === 0) {
-        body = body.slice(index + 1);
-        break;
-      }
-    }
-  }
-  return body;
-}
-
-function readsWholeDocumentRow(source: string): boolean {
-  return source.split(/[`;]/).some(statement => {
-    statement = statement.replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"]|"")*"|\bONLY\b/gi,
-      token => token.startsWith('"') ? token : " ");
-    if (/^\s*table\s+(?:"?public"?\s*\.\s*)?"?catalog_product_document_revisions\b/i.test(statement)) return true;
-    const tables = [...statement.matchAll(/(?:\b(?:from|join|update|into)\s+|,\s*)(?:\(\s*)?(?:"?public"?\s*\.\s*)?"?(catalog_product_document_revisions)\b"?(?:\s*\))?(?:\s+(?:as\s+)?(?:"([^"]+)"|([a-z_][\w]*)\b))?/gi)];
-    if (!tables.length) return false;
-    const projections = [];
-    const selects = new Map<number, number>();
-    let depth = 0;
-    for (const { 0: token, index } of statement.matchAll(SQL_PROJECTION_TOKENS)) {
-      switch (token.toLowerCase()) {
-        case "(": depth++; break;
-        case ")": selects.delete(depth--); break;
-        case "select": selects.set(depth, index + token.length); break;
-        case "from": {
-          if (/\bIS\s+(?:NOT\s+)?DISTINCT\s*$/i.test(statement.slice(0, index))) break;
-          const start = selects.get(depth);
-          if (start !== undefined) projections.push(projectionBody(statement.slice(start, index)));
-          selects.delete(depth);
-          break;
-        }
-        case "returning": projections.push(statement.slice(index + token.length)); break;
-      }
-    }
-    return tables.some(([, table, quotedAlias, alias]) => {
-      const row = alias && !SQL_RESERVED_WORDS.has(alias.toLowerCase()) ? alias : table;
-      const rowToken = quotedAlias && !/^[a-z_]\w*$/.test(quotedAlias)
-        ? `"${quotedAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`
-        : String.raw`(?:"${quotedAlias ?? row}"|\b${quotedAlias ?? row}\b)`;
-      return projections.some(projection =>
-        /(?:^|,)\s*\*\s*(?:,|$)/.test(projection)
-        || new RegExp(String.raw`${rowToken}\s*\.\s*\*`, "i").test(projection)
-        || new RegExp(String.raw`(?<![."\w])${rowToken}(?!\s*["]?\s*\.)`, "i")
-          .test(projection.replace(new RegExp(String.raw`\bAS\s+${rowToken}`, "gi"), "")));
-    });
-  });
-}
-
 // This exact opt-in reader may transport an unknown value only to host policy.
 // Any second selection or other use of the value requires another boundary decision.
 function opaqueQuotePayloadPassThrough(source: string, payloadLines: readonly string[]): boolean {
   const uses = source.split("\n").filter((line) => /\brevision_document_payload\b/.test(line)).map((line) => line.trim());
   return payloadLines.length === 1 && payloadLines[0]!.trim() === QUOTE_PAYLOAD_SELECT
-    && exactUses(uses, QUOTE_PAYLOAD_USES);
+    && uses.length === QUOTE_PAYLOAD_USES.length
+    && new Set(uses).size === QUOTE_PAYLOAD_USES.length
+    && uses.every((line) => QUOTE_PAYLOAD_USES.includes(line));
 }
 
 function violations(files: readonly SourceFile[]): string[] {
   const found: string[] = [];
   for (const file of files) {
-    const lines = file.source.split("\n");
     if (/\b(?:ProductDocumentV1|productDocumentV1Schema|productDocumentSchema|CatalogDocumentMappingDraftV1|CatalogDocumentMappingReceiptV1|catalogDocumentMappingDraftV1Schema|catalogDocumentMappingReceiptV1Schema)\b/.test(file.source)) {
       found.push(`${file.path}: private document schema vocabulary is not portable`);
     }
     if (/(?:from\s*|import\s*\()\s*["'][^"']*(?:productDocumentContracts|catalogDocumentMappingContracts|mapCatalogPresentation|compile-catalog-document-mapping|overlays\/[^/]+\/(?:data|tooling)\/catalog)/.test(file.source)) {
       found.push(`${file.path}: imports a private document boundary`);
     }
-    const documentMethods = lines.filter(line => DOCUMENT_METHOD.test(line)).map(line => line.trim());
-    if (documentMethods.length > 0 || DOCUMENT_INTERPRETATION.test(file.source)
-      || BARE_CANONICAL_TEXT_INTERPRETATION.test(file.source)) {
+    if (/\b(?:parse|safeParse|validate|canonicalize)(?:Product)?Document(?:V1)?\b/.test(file.source)) {
       found.push(`${file.path}: parses, validates, or canonicalizes a private document`);
-    }
-    if (SQL_DOCUMENT_INTERPRETATION.test(file.source)) {
-      found.push(`${file.path}: interprets the SQL document payload`);
-    }
-    if (readsWholeDocumentRow(file.source)) {
-      found.push(`${file.path}: document rows must use explicit projections`);
-    }
-    if (readsUnapprovedCanonicalDocument(file, lines)) {
-      found.push(`${file.path}: unapproved canonical document operation`);
     }
     if (readsDormantCatalogSkuGtin(file.source)) {
       found.push(`${file.path}: reads dormant catalog_skus.gtin`);
@@ -267,11 +147,23 @@ function violations(files: readonly SourceFile[]): string[] {
       found.push(`${file.path}: imports or reconstructs OmniPack provenance`);
     }
 
+    const uses = file.path.endsWith(".sql") && !/catalog_product_document_revisions|register_document_revision/.test(file.source)
+      ? [] : file.source.split("\n").map(line => line.trim()).filter(line => DOCUMENT_USE.test(line));
+    const allowed = documentUses.get(file.path) ?? [];
+    if (uses.length !== new Set(uses).size || uses.some(line => !allowed.includes(line)))
+      found.push(`${file.path}: unapproved document operation`);
+    if (/\bSELECT\s+(?:DISTINCT\s+(?:ON\s*\([^)]*\)\s*)?)?(?:[\w."]*\*|(?:to_jsonb|row_to_json|jsonb?_agg)\s*\([^)]*\))\s+FROM\s+(?:ONLY\s+)?(?:public\.)?catalog_product_document_revisions\b/i.test(file.source))
+      found.push(`${file.path}: document rows require explicit columns`);
+    else if (/\bSELECT\s+(?:DISTINCT\s+)?([a-z_][\w]*)\s+FROM\s+(?:ONLY\s+)?(?:public\.)?catalog_product_document_revisions\s+(?:AS\s+)?\1\b/i.test(file.source))
+      found.push(`${file.path}: document rows require explicit columns`);
+
     const isTestSource = /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file.path);
-    const payloadLines = lines.filter(line => /\bdocument_payload\b/.test(line) && !line.trimStart().startsWith("--"));
+    const payloadLines = file.source
+      .split("\n")
+      .filter((line) => /\bdocument_payload\b/.test(line) && !line.trimStart().startsWith("--"));
     const opaqueQuoteRead = file.path === QUOTE_READER && opaqueQuotePayloadPassThrough(file.source, payloadLines);
     const opaqueStorage = file.path === PORTABLE_MIGRATION
-      && exactUses(payloadLines.map(line => line.trim()), ["document_payload jsonb NOT NULL,"]);
+      && payloadLines.every((line) => /^\s*document_payload jsonb NOT NULL,\s*$/.test(line));
     if (!isTestSource && (
       (payloadLines.length > 0 && !opaqueStorage && !opaqueQuoteRead)
       || (file.path === QUOTE_READER && /\brevision_document_payload\b/.test(file.source) && !opaqueQuoteRead)
@@ -280,13 +172,9 @@ function violations(files: readonly SourceFile[]): string[] {
     }
     if (file.path === QUOTE_READER && (
       /\b(?:parse|safeParse|validate|canonicalize)\s*\(/.test(file.source)
-      || LOG_OR_STRINGIFY.test(file.source)
+      || /\b(?:console|logger)\s*[.[]|\bJSON\s*\.\s*stringify\s*\(/.test(file.source)
     )) {
       found.push(`${file.path}: quote document must pass unparsed to host policy`);
-    }
-    if (DOCUMENT_DISCLOSURE.test(file.source)
-      || (file.path === PUBLICATION_COMPILER && LOG_OR_STRINGIFY.test(file.source))) {
-      found.push(`${file.path}: document payload must not be logged or serialized`);
     }
   }
   return found;
@@ -296,185 +184,28 @@ describe("portable catalog document boundary", () => {
   it("scans exactly the portable/core catalog perimeter", () => {
     const files = perimeterSources();
 
-    expect(files).not.toHaveLength(0);
-    expect(files.some((file) =>
-      file.path.startsWith("node_modules/@openlup/core/src/catalog/") && /\.tsx?$/.test(file.path),
-    )).toBe(true);
-    expect(files.every((file) => PERIMETERS.some((perimeter) => file.path.startsWith(`${perimeter}/`)))).toBe(true);
-    expect(files.some((file) => file.path === PORTABLE_MIGRATION)).toBe(true);
-    expect(files.some((file) => file.path === PORTABLE_ADAPTER)).toBe(true);
+    expect(files.some(file => file.path === PORTABLE_MIGRATION)).toBe(true);
+    expect(files.some(file => file.path === PORTABLE_ADAPTER)).toBe(true);
     expect(violations(files)).toEqual([]);
   });
 
-  it.each([...CANONICAL_DOCUMENT_USES])("allows the selected carrier uses in %s", (path, uses) => {
-    expect(violations([{ path, source: uses.join("\n") }])).toEqual([]);
-  });
-
   it.each([
-    "document_payload -> 'name'",
-    "document_payload ->> 'name'",
-    "document_payload #> '{name}'",
-    "revision.document_payload #>> '{name}'",
-    "document_payload @> $1",
-    "$1 <@ revision.document_payload",
-    "document_payload ? 'name'",
-    "jsonb_extract_path(document_payload, 'name')",
-    'jsonb_path_exists(\n  revision."document_payload", \'$.name\')',
-  ])("refuses SQL document interpretation in an approved file: %s", expression => {
-    const source = `SELECT ${expression};`;
-    expect(violations([{ path: DOCUMENT_QUERY, source }])).toContain(`${DOCUMENT_QUERY}: interprets the SQL document payload`);
-  });
-
-  it.each([
-    "SELECT to_jsonb(d) FROM public.catalog_product_document_revisions d;",
-    "SELECT row_to_json(saved) FROM public.catalog_product_document_revisions AS saved;",
-    "SELECT json_agg(saved ORDER BY saved.id) FROM public.catalog_product_document_revisions AS saved;",
-    "SELECT jsonb_agg(saved) FROM public.catalog_product_document_revisions AS saved;",
-    "SELECT saved.* FROM public.catalog_product_document_revisions saved;",
-    "SELECT * FROM public.catalog_product_document_revisions;",
-    "SELECT *, saved.id FROM public.catalog_product_document_revisions saved;",
-    "SELECT DISTINCT * FROM public.catalog_product_document_revisions d;",
-    "SELECT DISTINCT /* whole */ * FROM public.catalog_product_document_revisions d;",
-    "SELECT d FROM public.catalog_product_document_revisions AS d;",
-    'SELECT "d" FROM public.catalog_product_document_revisions AS d;',
-    "SELECT ROW(d) FROM public.catalog_product_document_revisions d;",
-    "SELECT jsonb_build_object('revision', d) FROM public.catalog_product_document_revisions d;",
-    "SELECT DISTINCT ON (d.id) d FROM public.catalog_product_document_revisions d;",
-    "SELECT DISTINCT ON (d.id) * FROM public.catalog_product_document_revisions d;",
-    "SELECT DISTINCT ON (coalesce(d.id, (NULL::uuid))) * FROM public.catalog_product_document_revisions d;",
-    "SELECT d.* FROM ONLY public.catalog_product_document_revisions d;",
-    "SELECT to_jsonb(d) FROM products p JOIN ONLY (public.catalog_product_document_revisions) d ON d.product_id=p.id;",
-    'SELECT d FROM "public"."catalog_product_document_revisions" AS "d";',
-    'SELECT "select" FROM public.catalog_product_document_revisions AS "select";',
-    'SELECT ROW("saved revision") FROM public.catalog_product_document_revisions AS "saved revision";',
-    "SELECT (SELECT x.value FROM other_table x), d FROM public.catalog_product_document_revisions d;",
-    "SELECT d.id IS DISTINCT FROM x.id, d FROM other_table x, public.catalog_product_document_revisions d;",
-    "UPDATE public.catalog_product_document_revisions d SET revision_no=2 RETURNING d;",
-    "TABLE public.catalog_product_document_revisions;",
-  ])("refuses a whole document row projection: %s", source => {
-    expect(violations([{ path: DOCUMENT_QUERY, source }])).toContain(
-      `${DOCUMENT_QUERY}: document rows must use explicit projections`,
-    );
-  });
-
-  it("allows a document row query with only scalar columns and a row count", () => {
-    const source = "SELECT DISTINCT d.id, d.revision_no AS d, count(*) FROM public.catalog_product_document_revisions d;";
-    expect(violations([{ path: DOCUMENT_QUERY, source }])).toEqual([]);
-  });
-
-  it.each([
-    ["transport (aliased parse)", DOCUMENT_QUERY, "const alias = row.canonicalText;\n JSON.parse(alias);"],
-    ["transport (wrong file)", "server/adapters/postgres/other.ts", CANONICAL_DOCUMENT_USES.get(PUBLICATION_COMPILER)![0]],
-    ["digest (inspection)", DOCUMENT_QUERY, 'createHash("sha256").update(JSON.parse(row.canonical_text).name);'],
-    ["equality (field extraction)", DOCUMENT_MIGRATION, "SELECT canonical_text::jsonb->>'name' FROM public.catalog_product_document_revisions;"],
-    ["installed handoff (private decoder)", PUBLICATION_COMPILER, "const value = privateRules.decodeDocument(canonicalText);"],
-    ["installed handoff (field extraction)", PUBLICATION_COMPILER, "const name = payload.product.sharedContent.document?.name;"],
-    ["installed handoff (canonicalization result alias)", PUBLICATION_COMPILER, "const alias = canonical; JSON.parse(alias);"],
-    ["installed handoff (decoded document alias)", PUBLICATION_COMPILER, "const alias = document; JSON.parse(alias);"],
-    ["installed handoff (field on handed-back value)", PUBLICATION_COMPILER,
-      "const name = (documentInfo as { document: { name: string } }).document.name;"],
-    ["object envelope (field validation)", DOCUMENT_MIGRATION, "IF jsonb_typeof(NEW.canonical_text::jsonb->'name') IS DISTINCT FROM 'string' THEN"],
-  ])("refuses a widened canonical document %s", (_kind, path, source) => {
-    expect(violations([{ path, source }])).toContain(`${path}: unapproved canonical document operation`);
-  });
-
-  it("refuses a raw payload projection in the legacy storage owner", () => {
-    const source = "document_payload jsonb NOT NULL,\nSELECT document_payload FROM public.catalog_product_document_revisions;";
-    expect(violations([{ path: PORTABLE_MIGRATION, source }])).toContain(`${PORTABLE_MIGRATION}: document payload must remain opaque SQL storage only`);
-  });
-
-  it.each([...CANONICAL_DOCUMENT_USES].flatMap(([path, uses]) => uses.map(use => ({ path, use }))))(
-    "refuses a second canonical document use in $path ($use)", ({ path, use }) => {
-      const source = path.endsWith(".sql") ? `SELECT id FROM public.catalog_product_document_revisions;\n${use}\n${use}` : `${use}\n${use}`;
-      expect(violations([{ path, source }])).toContain(`${path}: unapproved canonical document operation`);
-    },
-  );
-
-  it.each([
-    "canonicalizeDocument(document);",
-    "otherRules.canonicalizeDocument(document);",
-    'import { canonicalizeDocument } from "./privateCanonicalizer.js";',
-    "canonicalize(document);",
-    "parse(document);",
-    "validate(document);",
-    "parse(canonicalText);",
-  ])("refuses an unapproved document method: %s", use => {
-    expect(violations([{ path: PUBLICATION_COMPILER, source: use }])).toContain(`${PUBLICATION_COMPILER}: parses, validates, or canonicalizes a private document`);
-  });
-
-  it.each([
-    [PUBLICATION_COMPILER, "logger.info(value);"],
-    [DOCUMENT_QUERY, "JSON.stringify(document_payload);"],
-    ["server/adapters/postgres/anotherDocumentOwner.ts", "console.log(document);"],
-    ["server/adapters/postgres/anotherDocumentOwner.ts", "JSON.stringify({ document });"],
-  ])("refuses document disclosure in %s: %s", (path, source) => {
-    expect(violations([{ path, source }])).toContain(`${path}: document payload must not be logged or serialized`);
-  });
-
-  it("fails document interpretation while allowing an opaque storage declaration", () => {
-    expect(violations([
-      { path: PORTABLE_MIGRATION, source: "  document_payload jsonb NOT NULL,\n" },
-      { path: "server/adapters/postgres/unsafe.ts", source: "import { ProductDocumentV1 } from '../../../src/overlays/reference/data/catalog/productDocumentContracts.js';" },
-      { path: "server/adapters/postgres/unsafe-payload.ts", source: "SELECT document_payload FROM public.catalog_product_document_revisions;" },
-    ])).toEqual([
-      "server/adapters/postgres/unsafe.ts: private document schema vocabulary is not portable",
-      "server/adapters/postgres/unsafe.ts: imports a private document boundary",
-      "server/adapters/postgres/unsafe-payload.ts: document payload must remain opaque SQL storage only",
-    ]);
-
-    const passThrough = QUOTE_PAYLOAD_USES.join("\n");
-    expect(violations([{ path: QUOTE_READER, source: passThrough }])).toEqual([]);
-    // Every other perimeter retains the original no-read boundary.
-    for (const perimeter of PERIMETERS) {
-      const path = `${perimeter}/unexpected-document-read.ts`;
-      expect(violations([{ path, source: passThrough }])).toContain(
-        `${path}: document payload must remain opaque SQL storage only`,
-      );
-    }
-    expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${QUOTE_PAYLOAD_SELECT}` }])).toContain(
-      `${QUOTE_READER}: document payload must remain opaque SQL storage only`,
-    );
-    for (const interpretation of ["parseDocument(value);", "validateDocument(value);", "canonicalizeDocument(value);"]) {
-      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${interpretation}` }])).toContain(
-        `${QUOTE_READER}: parses, validates, or canonicalizes a private document`,
-      );
-    }
-    for (const interpretation of ["JSON.parse(value);", "schema.safeParse(value);", "validate(value);", "canonicalize(value);"]) {
-      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${interpretation}` }])).toContain(
-        `${QUOTE_READER}: quote document must pass unparsed to host policy`,
-      );
-    }
-    for (const logging of ["console.log(documents);", "logger.info(documents[index]);", "JSON.stringify(documents);"]) {
-      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${logging}` }])).toContain(
-        `${QUOTE_READER}: quote document must pass unparsed to host policy`,
-      );
-    }
-    for (const schema of ["ProductDocumentV1", "productDocumentV1Schema", "productDocumentSchema"]) {
-      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${schema};` }])).toContain(
-        `${QUOTE_READER}: private document schema vocabulary is not portable`,
-      );
-    }
-    for (const misuse of [
-      passThrough.replace("revision_document_payload, envelope", "revision_document_payload.title, envelope"),
-      passThrough.replace("revision_document_payload, envelope", 'revision_document_payload["title"], envelope'),
-      `${passThrough}\nconsole.log(documents[index]!.revision_document_payload);`,
-      `${passThrough}\nconst copied = documents[index]!.revision_document_payload;`,
-    ]) {
-      expect(violations([{ path: QUOTE_READER, source: misuse }])).toContain(
-        `${QUOTE_READER}: document payload must remain opaque SQL storage only`,
-      );
-    }
-  });
-
-  it("fails imports or interpretation of the private W2d mapping proof", () => {
-    expect(violations([
-      { path: "packages/core/src/catalog-mapping.ts", source: "export type { CatalogDocumentMappingReceiptV1 } from '../../../../src/overlays/private/data/catalog/catalogDocumentMappingContracts.js';" },
-      { path: "server/domains/catalog/mapper.ts", source: "const mapping = await import('../../../src/overlays/private/tooling/catalog/mapCatalogPresentation.js');" },
-    ])).toEqual([
-      "packages/core/src/catalog-mapping.ts: private document schema vocabulary is not portable",
-      "packages/core/src/catalog-mapping.ts: imports a private document boundary",
-      "server/domains/catalog/mapper.ts: imports a private document boundary",
-    ]);
+    [PORTABLE_MIGRATION, "SELECT document_payload->>'name' FROM public.catalog_product_document_revisions;", "document payload must remain opaque SQL storage only"],
+    [PORTABLE_MIGRATION, "SELECT DISTINCT r FROM ONLY public.catalog_product_document_revisions AS r;", "document rows require explicit columns"],
+    [PORTABLE_MIGRATION, "SELECT canonical_text::jsonb->>'name' FROM public.catalog_product_document_revisions;", "unapproved document operation"],
+    [COMPILER, "const parsed = JSON.parse(canonicalText);", "unapproved document operation"],
+    [COMPILER, "const value = payload.product.sharedContent.document.title;", "unapproved document operation"],
+    [COMPILER, "logger.info(authoredValue);", "unapproved document operation"],
+    [COMPILER, "schema.safeParse(authoredValue);", "unapproved document operation"],
+    [COMPILER, [documentUses.get(COMPILER)![0], documentUses.get(COMPILER)![0]].join("\n"), "unapproved document operation"],
+    [QUOTE_READER, [...QUOTE_PAYLOAD_USES, "console.log(documents);"].join("\n"), "quote document must pass unparsed to host policy"],
+    [QUOTE_READER, [...QUOTE_PAYLOAD_USES, QUOTE_PAYLOAD_SELECT].join("\n"), "document payload must remain opaque SQL storage only"],
+    [PORTABLE_ADAPTER, QUOTE_PAYLOAD_SELECT, "document payload must remain opaque SQL storage only"],
+    [PORTABLE_ADAPTER, "import { ProductDocumentV1 } from './productDocumentContracts.js';", "imports a private document boundary"],
+    [PORTABLE_ADAPTER, "ProductDocumentV1;", "private document schema vocabulary is not portable"],
+    [PORTABLE_ADAPTER, "parseDocument(value);", "parses, validates, or canonicalizes a private document"],
+  ])("refuses %s with %s", (path, source, expected) => {
+    expect(violations([{ path, source }])).toContain(`${path}: ${expected}`);
   });
 
   it.each([

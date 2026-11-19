@@ -2,6 +2,7 @@ import type { CatalogDraftPublicationStoredRecord, CatalogDraftClaimV3, CatalogD
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./contracts/publication.js";
+import type { PublicationDraftRecord, PublicationLifecycleState } from "./publicationIntent.js";
 import type { CatalogPublicationRulesHandle } from "./publicationRules.js";
 
 /** @experimental */
@@ -13,7 +14,7 @@ export interface CatalogPublicationDocument {
  * @experimental
  */
 export interface CatalogPublicationDraftEvidence {
-  record: CatalogDraftPublicationStoredRecord;
+  record: PublicationDraftRecord;
   receipt: CatalogDraftClaimV3;
   head: Pick<CatalogDraftPublicationStoredRecord, "draftId" | "productId" | "revision" | "status"> | null;
 }
@@ -30,6 +31,7 @@ export interface CatalogPublicationEvidence {
   documentRevisionHighWater: number;
   /** Selected sources, including the candidate. Retained sources are ordered newest first. */
   drafts: readonly CatalogPublicationDraftEvidence[];
+  lifecycle?: { product: PublicationLifecycleState; skus: Readonly<Record<string, { state: PublicationLifecycleState; demandPolicyRef?: string }>> };
 }
 
 /** Observations supplied by the host's read owners.

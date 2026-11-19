@@ -66,7 +66,7 @@ export function input(): PublicationFixture {
       { op: "set_product_presentation", productSlug: "article", presentation: {} },
     ] } };
   const record = { draftId, productId, revision: 1, status: "open" as const, commandKey: "draft:first", fingerprint: "b".repeat(64),
-    actorId: "operator:synthetic", createdAt: "2026-01-01T00:00:00Z", payload };
+    actorId: "operator:synthetic", createdAt: "2000-01-01T00:00:00Z", payload };
   return { payload, record, expectedHead: null, ...prepared,
     evidence: { head: null, product: null, skus: [], documents: [], documentRevisionHighWater: 0,
       drafts: [{ record, receipt: catalogPublicationClaim(record), head: recordHead(record) }] },
@@ -76,8 +76,8 @@ export function input(): PublicationFixture {
 export function recordHead({ draftId, productId, revision, status }: CatalogPublicationEvidence["drafts"][number]["record"]) {
   return { draftId, productId, revision, status };
 }
-export async function revision(): Promise<PublicationFixture> {
-  const initial = input();
+export async function revision(installed?: ReturnType<typeof setupRules>): Promise<PublicationFixture> {
+  const initial = { ...input(), ...installed };
   const retained = await compileCatalogPublication(initial);
   const payload = structuredClone(initial.payload);
   delete payload.product.primarySkuId;

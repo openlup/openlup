@@ -6,9 +6,11 @@ import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import type { FulfillmentStockSyncPort } from '@openlup/platform/fulfillment/contracts';
 import { editorProducts } from '../host/editor-catalogue.ts';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { catalogDefinitionDigest, installCatalogDefinitions, withCatalogPublicationRules } from '@openlup/platform/catalog';
+import { catalogDraftRegistry } from '../owned/catalogue.ts';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
 
@@ -47,6 +49,7 @@ export async function prepareDemonstrationQuoteKey(connection: InstallConnection
 export interface DemonstrationInstallation {
   connection: InstallConnection;
   stock?: Pick<FulfillmentStockSyncPort,'recordProviderStockCurrent'>;
+  catalogueRules?: Uint8Array;
   installRole: string;
   runtimeRole: string;
   close(): Promise<void>;
@@ -59,6 +62,19 @@ export async function installDemonstration(config: StoreConfig, bootstrap: Insta
   const installation = await bootstrap(config);
   try { await applyDemoSeed(config, installation); }
   finally { await installation.close(); }
+}
+
+async function installDemoCatalogueRules(connection: InstallConnection, artifact: Uint8Array): Promise<void> {
+  const authored = catalogDraftRegistry.resolve({ key: 'starter:item', version: 1 });
+  if (!authored) throw new Error('starter_catalogue_type_missing');
+  // The local demo reuses an identical install on restart. Its existing
+  // immutable installer refuses a different definition at a colliding version.
+  const version = 1 + createHash('sha256').update(catalogDefinitionDigest(authored)).update(artifact).digest().readUInt32BE() % 2_147_483_647;
+  const pack = withCatalogPublicationRules({
+    id: 'starter:local-rules', namespace: 'starter', version, openlupRange: '1.x',
+    types: [{ ...authored, version }], capabilities: {}, taxClasses: [],
+  }, () => artifact);
+  await installCatalogDefinitions(connection, pack);
 }
 
 /** Idempotent demo composition; stock uses its native writer. No schema, clients or subscription truth. */
@@ -80,6 +96,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       throw new Error('starter_seed_install_role_required');
     }
     if (target.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
+    if (installation.catalogueRules) await installDemoCatalogueRules(connection, installation.catalogueRules);
     for (const row of seed.products) await connection.query(`INSERT INTO public.catalog_products
       (id, slug, status, name, description) VALUES ($1,$2,$3,$4,$5)
       ON CONFLICT (id) DO UPDATE SET slug=EXCLUDED.slug, status=EXCLUDED.status,
@@ -190,9 +207,13 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
     if (status.pending.length) throw new Error('starter_installation_incomplete');
     process.stdout.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');
   } finally { await bootstrap.end(); }
+  const catalogueRules = await readFile(new URL('../owned/catalogue-rules.cjs', import.meta.url)).catch((error: unknown) => {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
+    throw error;
+  });
   const connection = new pg.Client({ host: socket, database, user: installRole });
   await connection.connect();
   const { createPostgresFulfillmentStockSyncPort } = await import('@openlup/platform/fulfillment');
   const stock = createPostgresFulfillmentStockSyncPort(connection,{ sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
-  return { connection,stock, installRole, runtimeRole, close: () => connection.end() };
+  return { connection,stock, installRole, runtimeRole, ...(catalogueRules ? { catalogueRules } : {}), close: () => connection.end() };
 }

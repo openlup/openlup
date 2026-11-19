@@ -1,2 +1,2 @@
-- Add experimental verified rules loading and shared ordered preparation for v3 catalogue candidates. The published product facts carry a document revision reference and named neutral content fields.
-- Migration: Existing candidate-service construction and v1 references and digests remain supported. To resolve unknown v3 evidence, install a type version pinned to the bundled rules bytes and supply the optional read-only publication dependencies. Preparation performs no issuance.
+- Prepare catalogue candidates through one ordered evaluator with actionable preparation and pricing diagnostics. Product rule builds attach to the existing definition installation. Published product content carries neutral facts and a document reference.
+- Migration: Existing candidate-service construction and v1 references and digests remain supported. To update rules, run your rule tests and install the updated product type through the existing install flow.
