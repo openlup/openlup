@@ -581,10 +581,18 @@ BEGIN
   hash:=preview.quote_hash; basis:=preview.template_version;
  ELSE
   SELECT * INTO old_quote FROM public.subscription_edit_quotes q WHERE q.accepted_event_id=p_event.id
-   AND q.subscription_id=p_event.subscription_id AND q.status='accepted' AND q.action=edit_action AND q.accepted_at=p_event.occurred_at;
+   AND q.subscription_id=p_event.subscription_id AND q.status='accepted' AND q.accepted_at=p_event.occurred_at;
   IF FOUND THEN
    hash:=coalesce(payload#>>'{payload,acceptedQuoteHash}',payload->>'quoteHash');
    basis:=old_quote.expected_template_version;
+   -- The classic command owner uses the bundle quote row for its entire action
+   -- family. Its event binds the actual action and basis through its request.
+   IF payload#>'{payload,acceptedQuoteHash}' IS NOT NULL THEN
+    IF old_quote.idempotency_key IS DISTINCT FROM p_event.idempotency_key
+     OR payload#>'{payload,expectedTemplateVersion}' IS DISTINCT FROM to_jsonb(basis)
+     OR edit_action NOT IN ('update_bundle','resize_bundle','update_package_template','update_plan_length',
+       'add_addon','remove_addon','update_addon_quantity') THEN RETURN NULL; END IF;
+   ELSIF old_quote.action IS DISTINCT FROM edit_action THEN RETURN NULL; END IF;
    IF hash IS DISTINCT FROM old_quote.quote_hash OR (payload ? 'quoteHash' AND payload->>'quoteHash' IS DISTINCT FROM hash)
     OR (SELECT count(*) FROM public.subscription_edit_quotes q WHERE q.accepted_event_id=p_event.id)<>1 THEN RETURN NULL; END IF;
    quoted:=public.catalog_quoted_edit_evidence_v2(old_quote.proposed_lines,false);

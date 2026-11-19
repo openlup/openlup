@@ -597,7 +597,7 @@ it.each(["accepted edit", "accepted classic receipt", "accepted sized edit", "ac
         proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,status,expires_at,accepted_event_id,accepted_at)
         VALUES($1,$2,$3,$4,$5,$6::jsonb,28,0,1851,'XXX','accepted',clock_timestamp()+interval '1 hour',$7,
           (SELECT occurred_at FROM public.subscription_events WHERE id=$7))`,
-      [f.subscription,`quote:${event}`,"b".repeat(64),quoteHash,basis,JSON.stringify([{ variantId: f.sku, quantity: 3, sortOrder: 0, isAddon: false, unitPriceMinor: 617 }]),event]);
+      [f.subscription,eventKey,"b".repeat(64),quoteHash,basis,JSON.stringify([{ variantId: f.sku, quantity: 3, sortOrder: 0, isAddon: false, unitPriceMinor: 617 }]),event]);
     } else await db.query(`INSERT INTO public.subscription_quote_previews(id,subscription_id,client_id,actor_id,action,quote_hash,template_version,expires_at,status,request_payload,quote_snapshot,totals,accepted_at,accepted_idempotency_key,accepted_event_id)
       VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+interval '1 hour','accepted','{}',$8::jsonb,'{}',(SELECT occurred_at FROM public.subscription_events WHERE id=$9),$10,$9)`, [preview,f.subscription,f.client,previewActorId,action,quoteHash,basis,JSON.stringify(quoted),event,key]);
     await db.query("INSERT INTO public.subscription_command_receipts(actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,quote_hash,result,status) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8::jsonb,'applied')",
@@ -673,12 +673,12 @@ it.each(["priced", "unpriced"] as const)("LC5-C3-O retains the owner's %s carry 
   expect(result.obligations).not.toEqual(expect.arrayContaining([expect.objectContaining({ family: "graduation" })]));
 });
 // Standing immutable active facts exercise servicing. This fixture does not qualify activation or the later price writer.
-async function standingActive(f: Awaited<ReturnType<typeof seed>>, sellable = false, presentation = true, activeSibling = false) {
+async function standingActive(f: Awaited<ReturnType<typeof seed>>, sellable = false, presentation = true, activeSibling = false, subscriptionSale?: true) {
   if (!("receipt" in f.first.result)) throw new Error("Missing first head");
   const old = (await db.query("SELECT * FROM public.catalog_publications WHERE id=$1", [f.first.result.receipt.head.publicationId])).rows[0];
   const manifest = JSON.parse(old.canonical_state), reference = manifest.skus.find((entry: { skuId: string }) => entry.skuId === f.sku);
   const prior = (await db.query("SELECT * FROM public.catalog_sku_revisions WHERE id=$1", [reference.revisionId])).rows[0];
-  const facts = { ...JSON.parse(prior.full_facts), lifecycleState: "active", status: "active", sellableStandalone: sellable };
+  const facts = { ...JSON.parse(prior.full_facts), lifecycleState: "active", status: "active", sellableStandalone: sellable, ...(subscriptionSale ? { sellableInSubscription: true } : {}) };
   manifest.product = { ...manifest.product, lifecycleState: "active", status: "active", ...(presentation ? {} : { presentation: null }) };
   const publication = randomUUID(), revision = randomUUID(), text = canonicalCatalogDraftJson(facts), digest = createHash("sha256").update(text).digest("hex");
   manifest.skus = manifest.skus.map((entry: { skuId: string }) => entry.skuId === f.sku ? { ...reference, revisionId: revision, revision: 2, digest } : entry);
@@ -694,7 +694,7 @@ async function standingActive(f: Awaited<ReturnType<typeof seed>>, sellable = fa
   const canonical = canonicalCatalogDraftJson(manifest), hash = createHash("sha256").update(canonical).digest("hex");
   await db.query("INSERT INTO public.catalog_lifecycle_write_capabilities(transaction_id,product_id,fingerprint) VALUES(pg_current_xact_id(),$1,$2)", [f.product,hash]);
   await db.query("UPDATE public.catalog_products SET status='active',publication_facts=$2::jsonb WHERE id=$1", [f.product,JSON.stringify(manifest.product)]);
-  await db.query("UPDATE public.catalog_skus SET status='active',publication_facts=$2::jsonb,sellable_standalone=$3 WHERE id=$1", [f.sku,text,sellable]);
+  await db.query("UPDATE public.catalog_skus SET status='active',publication_facts=$2::jsonb,sellable_standalone=$3,sellable_in_subscription=COALESCE($4,sellable_in_subscription) WHERE id=$1", [f.sku,text,sellable,subscriptionSale ?? null]);
   await db.query("INSERT INTO public.catalog_publications(id,product_id,revision,previous_id,draft_id,draft_revision,candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id) VALUES($1,$2,2,$3,$4,1,$5,$6,$7,$8,$6,$9)", [publication,f.product,old.id,old.draft_id,`standing:${publication}`,hash,old.document_revision_id,canonical,admin]);
   await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,2,$4,$5,$6)", [revision,f.sku,f.product,publication,text,digest]);
   if (siblingRevision) {
@@ -888,6 +888,76 @@ it.each([
   await db.query("ROLLBACK TO SAVEPOINT corrupt_companion");
   expect((await db.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [target])).rows[0].catalog_acceptance).toEqual(JSON.parse(acceptance));
 });
+
+it.each(["legacy classic", "command classic", "line", "sized"] as const)(
+  "LC5-C3 final acceptance consumes the real %s owner", async owner => {
+    const f = await seed(), standing = await standingActive(f, false, true, false, true);
+    const applyActor = randomUUID(), key = `edit:${randomUUID()}`, priceList = randomUUID();
+    const { at, expiry } = (await db.query("SELECT statement_timestamp() AS at, statement_timestamp()+interval '1 hour' AS expiry")).rows[0];
+    await db.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic','AA','XXX',$2)", [priceList,at]);
+    await db.query("UPDATE public.subscriptions SET currency_code='XXX',price_list_id=$2 WHERE id=$1", [f.subscription,priceList]);
+    await db.query("INSERT INTO public.price_entries(variant_id,price_list_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'subscription',617,$3)", [f.sku,priceList,at]);
+    await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
+    await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,1,0,617,'XXX')", [f.subscription,f.sku]);
+    await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES($1,'XXX','synthetic','sandbox',$2,'synthetic')", [f.subscription,at]);
+    await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,1,617)", [f.subscription,f.code]);
+
+    let applied: { status: string; eventId: string; templateVersion: number };
+    if (owner === "legacy classic") {
+      await db.query("UPDATE public.clients SET principal_id=$2 WHERE id=$1", [f.client,applyActor]);
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: applyActor, role: "authenticated" })]);
+      const core = JSON.stringify([{ variantId: f.sku, qty: 2 }]);
+      const quote = (await db.query("SELECT public.customer_subscription_preview_bundle_as_actor($1,$2,$3) AS result", [f.subscription,key,core])).rows[0].result.preview;
+      expect(quote).toMatchObject({ canApply: true });
+      applied = (await db.query("SELECT public.customer_subscription_apply_bundle_as_actor($1,$2,$3,$4) AS result",
+        [f.subscription,key,quote.quoteHash,core])).rows[0].result.subscriptionAction;
+      await db.query("RESET ROLE");
+    } else if (owner === "command classic") {
+      const action = "update_plan_length", requested = { cadenceDays: 29, expectedTemplateVersion: 1 };
+      const args = [applyActor,f.client,key,f.subscription,action];
+      const quote = (await db.query("SELECT public.subscription_command_preview($1,$2,$3,$4,$5,$6::jsonb,$7) AS result", [...args,requested,at])).rows[0].result;
+      expect(quote).toMatchObject({ status: "previewed", canApply: true });
+      applied = (await db.query("SELECT public.subscription_command_apply($1,$2,$3,$4,$5,$6::jsonb,$7) AS result",
+        [...args,{ ...requested, acceptedQuoteHash: quote.quoteHash },at])).rows[0].result;
+    } else {
+      const sized = owner === "sized", action = sized ? "resize_bundle" : "update_plan_length";
+      const previewActor = sized ? applyActor : randomUUID();
+      const request = { action, planDays: 29, ...(sized ? { resizeLever: { kind: "subscription.sized.parcel", value: { optInToSized: true } } } : {}) };
+      const compositionConstraint = { kind: "plan_days", value: 29 }, money = { amountMinor: 617, currency: "XXX" };
+      const lines = [{ variantId: f.sku, qty: 1, isAddon: false, quoteLine: {
+        sku: f.code, quantity: 1, unitPriceGross: money, lineSubtotalGross: money,
+      } }];
+      const snapshot = { lines, cadenceDays: 29, compositionConstraint, ...(sized ? { subjectFacts: { subject: "synthetic" }, optInFacts: { accepted: true } } : {}) };
+      const hash = createHash("sha256").update(key).digest("hex");
+      await db.query("SELECT public.subscription_quote_preview_record($1,$2,$3,$4,$5,1,$6,$7::jsonb,$8::jsonb,'{}',$9)",
+        [previewActor,f.client,f.subscription,action,hash,expiry,request,snapshot,at]);
+      const accepted = { ...request, expectedTemplateVersion: 1, acceptedQuoteHash: hash };
+      const payload = { ...snapshot, ...accepted, request: accepted };
+      const args = [applyActor,f.client,key,f.subscription];
+      applied = sized
+        ? (await db.query("SELECT public.subscription_sized_edit_apply($1,$2,$3,$4,$5::jsonb,$6) AS result", [...args,payload,at])).rows[0].result
+        : (await db.query("SELECT public.subscription_line_edit_apply($1,$2,$3,$4,$5,$6::jsonb,$7) AS result", [...args,action,payload,at])).rows[0].result;
+    }
+    expect(applied).toMatchObject({ status: "applied", templateVersion: 2, eventId: expect.any(String) });
+    const transition = (await db.query("SELECT public.subscription_catalog_basis_transition($1,1) AS result", [f.subscription])).rows[0].result;
+    expect(transition).toMatchObject({ outcome: "proved", eventId: applied.eventId, kind: "edit", from: 1, to: 2,
+      basket: { [f.code]: owner === "legacy classic" ? 2 : 1 } });
+
+    const acceptance = { schemaVersion: 2, lines: [standing.accepted] };
+    await db.query("UPDATE public.subscription_events SET catalog_acceptance=$2::jsonb WHERE id=$1", [applied.eventId,acceptance]);
+    if (owner === "command classic") {
+      await db.query("SAVEPOINT wrong_classic_basis");
+      await db.query("UPDATE public.subscription_events SET payload=jsonb_set(payload,'{payload,expectedTemplateVersion}','2') WHERE id=$1", [applied.eventId]);
+      await expect(db.query("SET CONSTRAINTS subscription_events_catalog_final IMMEDIATE"))
+        .rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_line_mismatch" });
+      await db.query("ROLLBACK TO SAVEPOINT wrong_classic_basis");
+    }
+    await db.query("SET CONSTRAINTS ALL IMMEDIATE");
+    expect((await db.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [applied.eventId])).rows)
+      .toEqual([{ catalog_acceptance: acceptance }]);
+  },
+);
 
 function withdrawal(f: Awaited<ReturnType<typeof seed>>): CatalogDraftPayloadV4 {
   const payload = structuredClone(f.payload); payload.product.sharedContent.catalogAction = "revise";
