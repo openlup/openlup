@@ -2,8 +2,8 @@ import { SaxesParser } from "saxes";
 
 const soap11Namespace = "http://schemas.xmlsoap.org/soap/envelope/";
 
-/** A retry requires a complete SOAP 1.1 client fault from the booking endpoint. */
-export function readCarrierSoapClientRefusal(xml: string): string | null {
+/** A retry requires a complete SOAP 1.1 client fault before another call. */
+export function readSoap11ClientRefusal(xml: string): string | null {
   const parser = new SaxesParser({ xmlns: true });
   const path: string[] = [];
   let depth = 0;
@@ -22,6 +22,7 @@ export function readCarrierSoapClientRefusal(xml: string): string | null {
   const reasonPath = `${faultPath}/faultstring`;
   parser.on("error", () => { valid = false; });
   parser.on("doctype", () => { valid = false; });
+  parser.on("processinginstruction", () => { valid = false; });
   parser.on("opentag", tag => {
     depth++;
     if (depth > 4) {
@@ -43,7 +44,7 @@ export function readCarrierSoapClientRefusal(xml: string): string | null {
     }
     if (depth === 4 && path[1] === "Body" && path[2] === "Fault") {
       const field = faultFields.indexOf(tag.local);
-      valid &&= (tag.uri === "" || tag.uri === soap11Namespace) && field > lastFaultField;
+      valid &&= tag.uri === "" && field > lastFaultField;
       lastFaultField = field;
       if (current === codePath) codeCount++;
       if (current === reasonPath) reasonCount++;

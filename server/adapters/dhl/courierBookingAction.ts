@@ -12,7 +12,7 @@ import {
   sanitizeCarrierError,
   type CarrierAdminAuth,
 } from "../../infra/dhl/adminDhlSoap.js";
-import { readCarrierSoapClientRefusal } from "../../infra/dhl/courierBookingSoapFault.js";
+import { readSoap11ClientRefusal } from "../../infra/soap11Fault.js";
 import {
   classifyCarrierProviderMessage,
   loadCarrierShipperContact,
@@ -124,7 +124,7 @@ export function createCarrierPickupBookingAction(deps: {
     const courierOrderId = extractCarrierPickupOrderId(response.text);
     if (!response.ok || fault || cException || !courierOrderId) {
       const confirmedRefusal = !cException && !courierOrderId && (response.ok || response.status === 500)
-        ? readCarrierSoapClientRefusal(response.text) : null;
+        ? readSoap11ClientRefusal(response.text) : null;
       const status = confirmedRefusal ? "failed" : "indeterminate";
       const message = confirmedRefusal ?? fault ?? cException ?? (response.ok
         ? `${CARRIER_DISPLAY_NAME} nie zwrócił numeru zamówienia kuriera`

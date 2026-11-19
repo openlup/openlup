@@ -190,6 +190,8 @@ describe("carrier pickup booking action", () => {
     ["unknown namespace", clientRefusalEnvelope().replaceAll("faultcode", "other:faultcode").replace(
       "<SOAP-ENV:Fault>", '<SOAP-ENV:Fault xmlns:other="urn:unrelated">',
     ), 500],
+    ["qualified fault field", clientRefusalEnvelope().replaceAll("faultcode", "SOAP-ENV:faultcode"), 500],
+    ["processing instruction", "<?context unsupported?>" + clientRefusalEnvelope(), 500],
     ["unqualified fault code", clientRefusalEnvelope().replace("SOAP-ENV:Client", "Client"), 500],
   ])("keeps a %s outside the retry path", async (_case, body, status) => {
     const fake = bookingClient();
