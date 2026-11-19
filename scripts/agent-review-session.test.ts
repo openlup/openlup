@@ -1,4 +1,4 @@
-import { gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { admit, candidateFloor, classifyRisk, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, explainSession, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
 import { parseReceipt } from './agent-review-queue.mjs';
@@ -64,6 +64,21 @@ describe('native receipt transport', () => {
   it('refuses a UTF-8 BOM before compressed JSON', () => {
     const json = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"version":3}')]);
     expect(parseReceipt(textBody(gzipSync(json).toString('base64')))).toBeNull();
+  });
+
+  it('refuses a valid gzip receipt with an optional filename', () => {
+    const session = recordReport(prepare({ rules: { version: 3 } }), report(), time);
+    const summary = receiptSummary(session, 12, time);
+    const payload = gzipSync(JSON.stringify(summary));
+    const header = Buffer.from(payload.subarray(0, 10));
+    header[3] = 0x08; // FNAME
+    // The filename and its NUL also form a non-final stored deflate block.
+    // With the flag check removed, the fixed-offset inflate would consume the entire input.
+    const blockHeader = Buffer.from([0x08, 0x01, 0x01, 0xfe, 0xfe]); // Length 257 and its complement.
+    const filename = Buffer.concat([blockHeader, Buffer.alloc(256, 0x61), Buffer.from([0])]);
+    const named = Buffer.concat([header, filename, payload.subarray(10)]);
+    expect(gunzipSync(named)).toEqual(Buffer.from(JSON.stringify(summary)));
+    expect(parseReceipt(textBody(named.toString('base64')))).toBeNull();
   });
 
   it('refuses bytes after the gzip member', () => {
