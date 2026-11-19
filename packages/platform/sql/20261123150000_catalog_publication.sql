@@ -270,6 +270,24 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_assert_receipt(uuid,text) FROM PUBLIC;
 
+CREATE FUNCTION public.catalog_publication_assert_approval(p_issue public.catalog_publications) RETURNS void
+LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM public.catalog_publication_decisions a
+     WHERE a.id=p_issue.approval_id AND a.product_id=p_issue.product_id AND a.action='approve'
+       AND a.candidate_ref=p_issue.candidate_ref AND a.candidate_digest=p_issue.candidate_digest AND a.decided_at<=p_issue.committed_at)
+   OR (SELECT count(*) FILTER (WHERE a.action='approve') - count(*) FILTER (WHERE a.action='revoke')
+     FROM public.catalog_publication_decisions a
+     WHERE a.candidate_reference_digest=encode(sha256(convert_to(public.catalog_publication_canonical(
+       jsonb_build_array(p_issue.candidate_ref,p_issue.candidate_digest),0),'UTF8')),'hex')
+       AND a.product_id=p_issue.product_id AND a.candidate_ref=p_issue.candidate_ref
+       AND a.candidate_digest=p_issue.candidate_digest AND a.decided_at<=p_issue.committed_at) <> 1 THEN
+  RAISE EXCEPTION 'catalog_publication_candidate_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_candidate_invalid';
+ END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_assert_approval(public.catalog_publications) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_publication_assert_issued(p_product uuid, p_issue uuid) RETURNS void
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE issue public.catalog_publications%ROWTYPE; prior public.catalog_publications%ROWTYPE;
@@ -327,12 +345,10 @@ BEGIN
  IF product->'type' IS DISTINCT FROM authored #> '{product,type}'
    OR NOT EXISTS (SELECT 1 FROM public.catalog_draft_revisions d
      WHERE d.draft_id=issue.draft_id AND d.revision=issue.draft_revision
-       AND product->'source'=jsonb_build_object('draftId',d.draft_id,'revision',d.revision,'commandKey',d.command_key,'fingerprint',d.fingerprint))
-   OR NOT EXISTS (SELECT 1 FROM public.catalog_publication_decisions a
-     WHERE a.id=issue.approval_id AND a.product_id=p_product AND a.action='approve'
-       AND a.candidate_ref=issue.candidate_ref AND a.candidate_digest=issue.candidate_digest AND a.decided_at<=issue.committed_at) THEN
+       AND product->'source'=jsonb_build_object('draftId',d.draft_id,'revision',d.revision,'commandKey',d.command_key,'fingerprint',d.fingerprint)) THEN
   RAISE EXCEPTION 'catalog_publication_candidate_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_candidate_invalid';
  END IF;
+ PERFORM public.catalog_publication_assert_approval(issue);
 
  SELECT jsonb_build_object('id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,
     'schemaId',d.schema_id,'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest),
@@ -372,11 +388,11 @@ BEGIN
  WITH previous_skus AS MATERIALIZED (
   SELECT value AS reference FROM jsonb_array_elements(coalesce(prior.canonical_state::jsonb->'skus','[]'::jsonb))
  ), issued AS MATERIALIZED (
-  SELECT r.id,r.sku_id,r.sku_code,r.revision,r.digest,r.issue_ordinal,r.full_facts::jsonb->>'status' AS status
+  SELECT r.id,r.sku_id,r.sku_code,r.revision,r.digest,r.issue_ordinal,r.full_facts::jsonb->>'status' AS status, r.full_facts::jsonb->'source' AS source
   FROM public.catalog_sku_revisions r WHERE r.publication_id=p_issue AND r.product_id=p_product
  ), merged AS (
   SELECT coalesce(new.sku_id::text,old.reference->>'skuId') AS sku_id,new.id AS issued_id,
-   new.revision,new.sku_code,new.status,new.issue_ordinal,
+   new.revision,new.sku_code,new.status,new.issue_ordinal,new.source,
    old.reference AS previous_reference,
    CASE WHEN new.id IS NULL THEN old.reference ELSE
     jsonb_build_object('skuId',new.sku_id,'revisionId',new.id,'revision',new.revision,'digest',new.digest) END AS reference
@@ -385,7 +401,8 @@ BEGIN
  SELECT coalesce(jsonb_agg(m.reference ORDER BY m.sku_id COLLATE "C"),'[]'::jsonb),
   count(m.issued_id)::integer,
   coalesce(bool_or(m.revision::bigint<>coalesce((m.previous_reference->>'revision')::bigint,0)+1
-    OR m.reference->>'digest'=m.previous_reference->>'digest' OR m.issue_ordinal>issue.issued_count)
+    OR m.reference->>'digest'=m.previous_reference->>'digest' OR m.issue_ordinal>issue.issued_count
+    OR m.source IS DISTINCT FROM product->'source')
     FILTER (WHERE m.issued_id IS NOT NULL),false),
   count(DISTINCT coalesce(m.sku_code,inherited.sku_code))::integer,
   coalesce(jsonb_agg(jsonb_build_object('productId',p_product,'variantId',m.sku_id,'sku',m.sku_code,
@@ -527,6 +544,7 @@ REVOKE ALL ON FUNCTION public.catalog_publication_sku_admit() FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_publication_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE issue public.catalog_publications%ROWTYPE;
 BEGIN
  IF TG_OP <> 'INSERT' AND TG_TABLE_NAME IN ('catalog_publications','catalog_operator_receipts','catalog_publication_decisions') THEN
   RAISE EXCEPTION 'catalog_publication_record_immutable' USING ERRCODE='23514',
@@ -534,6 +552,8 @@ BEGIN
  END IF;
  CASE TG_TABLE_NAME
  WHEN 'catalog_publications' THEN
+  -- Use the existing draft head as the write conflict point for issuance and decisions.
+  UPDATE public.catalog_draft_heads SET revision=revision WHERE draft_id=NEW.draft_id;
   PERFORM public.catalog_publication_assert_issued(NEW.product_id,NEW.id);
   PERFORM public.catalog_publication_assert_head(NEW.product_id,true);
  WHEN 'catalog_operator_receipts' THEN
@@ -541,6 +561,11 @@ BEGIN
  WHEN 'catalog_publication_decisions' THEN
   PERFORM public.catalog_publication_assert_receipt(NEW.product_id,NEW.command_key);
   PERFORM public.catalog_publication_candidate_source(NEW.product_id,NEW.candidate_ref,NEW.candidate_digest);
+  UPDATE public.catalog_draft_heads SET revision=revision
+   WHERE draft_id=split_part(substr(NEW.candidate_ref,4),'@',1)::uuid;
+  SELECT * INTO issue FROM public.catalog_publications WHERE candidate_ref=NEW.candidate_ref
+   AND product_id=NEW.product_id AND candidate_digest=NEW.candidate_digest AND committed_at>=NEW.decided_at;
+  IF FOUND THEN PERFORM public.catalog_publication_assert_approval(issue); END IF;
  WHEN 'catalog_publication_heads' THEN
   IF TG_OP <> 'DELETE' THEN PERFORM public.catalog_publication_assert_head(NEW.product_id,true); END IF;
   IF TG_OP = 'DELETE' OR (TG_OP = 'UPDATE' AND NEW.product_id<>OLD.product_id) THEN

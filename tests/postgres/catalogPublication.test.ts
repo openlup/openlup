@@ -383,6 +383,71 @@ it("refuses an owner truncation that would reopen an issued SKU slot", async () 
   expect((await publicationReader().readbackV2(issue.head)).outcome).toBe("page");
 });
 
+it("binds every issued SKU to the exact publication draft even when another draft source is valid", async () => {
+  await expect(transaction(pool, async db => {
+    const data = fixture();
+    const first = await graph(db, data);
+    await insertGraph(db, first);
+    const second = await graph(db, data, first.head);
+    second.facts.source = first.source;
+    await insertGraph(db, second);
+  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_sku_revision_invalid" });
+});
+
+it("refuses issuance after a receipted revocation and permits an active approval", async () => {
+  const data = fixture();
+  await expect(transaction(pool, async db => {
+    const issue = await graph(db, data);
+    const { rows: [times] } = await db.query(`SELECT
+      to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '1 second','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS revoked,
+      to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '2 seconds','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed`, [issue.time]);
+    const decisionKey = "revoke:1";
+    const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
+    const revoked = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])), time: times.revoked };
+    await decisionReceipt(db, revoked);
+    await decisionRow(db, revoked);
+    await insertGraph(db, { ...issue, time: times.committed }, { approvalTime: issue.time });
+  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_candidate_invalid" });
+  await transaction(pool, async db => insertGraph(db, await graph(db, data)));
+});
+
+it("refuses a backdated revocation that would change a saved publication's approval", async () => {
+  const issue = await transaction(pool, async db => {
+    const value = await graph(db, fixture());
+    await insertGraph(db, value);
+    return value;
+  });
+  const decisionKey = "revoke:1";
+  const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
+  const revoke = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])) };
+  await expect(transaction(pool, async db => {
+    await decisionReceipt(db, revoke);
+    await decisionRow(db, revoke);
+  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_candidate_invalid" });
+  expect((await publicationReader().readbackV2(issue.head)).outcome).toBe("page");
+});
+
+it("cannot issue against an approval snapshot taken before a concurrent revocation", async () => {
+  const issue = await transaction(pool, db => graph(db, fixture()));
+  const decisionKey = "revoke:1";
+  const decision = { ...issue.decision, commandKey: decisionKey, action: "revoke" as const, reason: "Approval withdrawn" };
+  const revoke = { ...issue, approvalId: randomUUID(), decisionKey, decision, decisionFingerprint: hash(json([decision, actorId])) };
+  const publisher = await pool.connect();
+  try {
+    await publisher.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await publisher.query("SELECT revision FROM public.catalog_draft_heads WHERE draft_id=$1", [issue.draftId]);
+    await transaction(pool, async db => {
+      await decisionReceipt(db, revoke);
+      await decisionRow(db, revoke);
+    });
+    await insertGraph(publisher, issue);
+    await expect(publisher.query("COMMIT")).rejects.toMatchObject({ code: "40001" });
+  } finally {
+    await publisher.query("ROLLBACK");
+    publisher.release();
+  }
+});
+
 function publicationReader() {
   return createPostgresCatalogPublicationReads({
     transactions: { run: work => transaction(pool, work) },
