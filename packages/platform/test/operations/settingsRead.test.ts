@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
@@ -166,4 +167,13 @@ it("projects read-only MCP inputs and results from the settings read contracts",
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
     remediation: expect.objectContaining({ command: "node --experimental-strip-types host/settings.ts list", retry: true }),
   }) });
+});
+
+it("preserves the full serialized schemas of both legacy settings tools", () => {
+  // Captured from the built operations/server entry at main 4d939dbba.
+  const expected = readFileSync(new URL("./settingsReadToolSchemas.main.json", import.meta.url), "utf8");
+  const schemas = settingsReadTools
+    .filter(({ name }) => name === "settings__list" || name === "settings__show")
+    .map(({ name, inputSchema, outputSchema }) => ({ name, inputSchema, outputSchema }));
+  expect(JSON.stringify(schemas) + "\n").toBe(expected);
 });
