@@ -110,6 +110,44 @@ export function catalogPublicationClaim(record: CatalogDraftPublicationStoredRec
 }
 const equal = (a: unknown, b: unknown): boolean => publicationJson(a) === publicationJson(b);
 const need = (condition: unknown, reason: string): void => { if (!condition) publicationRefuse(reason); };
+const sealedPresentation = (presentation: CatalogPublicationFacts | null): CatalogPublicationFacts => presentation ?? {};
+
+type PublicationEligibility = Extract<PublicationOperation, { op: "set_eligibility" }>;
+function enablesSku(operation: PublicationOperation): operation is PublicationEligibility {
+  return operation.op === "set_eligibility" && (operation.sellableStandalone || operation.sellableInSubscription);
+}
+
+function requiredPromotions(operations: readonly PublicationOperation[], current: Pick<CatalogPublicationCompileInput, "product" | "skus">) {
+  const enabling = new Set(operations.filter(enablesSku).map(operation => operation.skuCode));
+  return { product: enabling.size > 0 && current.product?.status === "draft",
+    skus: current.skus.filter(sku => enabling.has(sku.code) && sku.status === "draft").map(sku => sku.code) };
+}
+
+/** Adapts presentation and compiles required draft-status effects before sealing the v3 batch.
+ * @experimental
+ */
+export function compileCatalogPublicationDraft(payload: CatalogDraftPayloadV3, presentation: CatalogPublicationFacts | null,
+  current?: Pick<CatalogPublicationCompileInput, "product" | "skus">): CatalogDraftPayloadV3 {
+  const { operations } = payload.publication;
+  let compiled = operations;
+  if (current?.product) {
+    const required = requiredPromotions(operations, current);
+    const missing = new Set(required.skus);
+    for (const operation of operations)
+      if (operation.op === "set_sku_status" && operation.status === "active") missing.delete(operation.skuCode);
+    compiled = operations.flatMap(operation => enablesSku(operation) && missing.delete(operation.skuCode)
+      ? [operation, { op: "set_sku_status", skuCode: operation.skuCode, status: "active" }] : [operation]);
+    if (required.product && !compiled.some(operation => operation.op === "set_product_status" && operation.status === "active")) {
+      let index = compiled.length;
+      while (compiled[index - 1]?.op === "set_offer_membership") index--;
+      compiled.splice(index, 0, { op: "set_product_status", productSlug: current.product.slug, status: "active" });
+    }
+  }
+  return { ...payload, product: { ...payload.product, sharedContent: {
+    ...payload.product.sharedContent, presentation: sealedPresentation(presentation),
+  } }, publication: { ...payload.publication, operations: compiled } };
+}
+
 const authoredSlug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
 /** Temporary native publication boundary, until versioned quantity readers land. */
 export function catalogPublicationIntegralGrams(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): string {
@@ -634,6 +672,9 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
       need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
       need(result.presentation, "catalog_publication_v3_presentation_required");
     }
+    const promotions = requiredPromotions(payload.publication.operations, input);
+    need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
+      "catalog_publication_activation_effect_missing");
     const issues = input.rules.validateProduct(result, [...skus.values()], documents);
     need(issues.length === 0, "catalog_publication_adopter_validation_failed");
   }

@@ -80,7 +80,7 @@ export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 
 export { createPostgresCatalogPublication } from "./publicationStore.js";
-export { compileCatalogPublication, CatalogPublicationError, assertCatalogPublicationPreparation, assertCatalogPublicationGrossMass } from "./publicationValidation.js";
+export { compileCatalogPublication, compileCatalogPublicationDraft, CatalogPublicationError, assertCatalogPublicationPreparation, assertCatalogPublicationGrossMass } from "./publicationValidation.js";
 export type { CatalogPublicationRules, CatalogPublicationCompileInput, CatalogPublicationDocument } from "./publicationValidation.js";
 export type { CatalogPublicationDependencies, CatalogPublicationTransactions, CatalogPublicationPriceBoundary, VerifiedCatalogReadScope } from "./publicationPortsV2.js";
 export { validateCatalogPublicationAttributes } from "./attributeValidation.js";

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
-import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation, compileCatalogPublication, publicationJson,
+import { assertCatalogPublicationGrossMass, assertCatalogPublicationPreparation, compileCatalogPublication, compileCatalogPublicationDraft, publicationJson,
   catalogPublicationIntegralGrams, assertCatalogPublicationMassInputs } from "../../src/catalog/publicationValidation.js";
 import { catalogDraftPayloadV3Schema } from "../../src/catalog/draftV3Schemas.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
@@ -797,13 +797,34 @@ it.each(["missing", "archived"])("cycle1 final primary refuses a %s retained SKU
   else data.skus[0].status = "archived";
   expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_v3_compile_primary_foreign");
 });
-it("a scoped secondary SKU effect leaves the draft product otherwise unchanged", () => {
+it("a scoped secondary SKU activation cannot leave the owning product in draft", () => {
   const data = publicationWithSecondary();
   data.payload.publication.operations = [{ op: "set_eligibility", skuCode: "SECOND", sellableStandalone: true, sellableInSubscription: false },
     { op: "set_sku_status", skuCode: "SECOND", status: "active" }];
-  const issued = compileCatalogPublication(data);
-  expect(issued.product.status).toBe("draft");
-  expect(issued.skus.find(sku => sku.code === "SECOND")?.status).toBe("active");
+  expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_activation_effect_missing");
+});
+
+it.each([
+  ["draft", "draft", true, ["set_sku_status", "set_product_status"]],
+  ["draft", "active", true, ["set_product_status"]],
+  ["active", "draft", true, ["set_sku_status"]],
+  ["active", "active", true, []],
+  ["draft", "draft", false, []],
+] as const)("CD-CAT-43 generates the donor promotion set for %s product, %s SKU, positive eligibility %s", (product, sku, enabling, expected) => {
+  const data = publicationWithSecondary();
+  const primary = data.skus.find(row => row.code === "ARTICLE")!;
+  primary.status = "active"; primary.sellableStandalone = true;
+  data.product!.status = product;
+  const affected = data.skus.find(row => row.code === "SECOND")!;
+  affected.status = sku;
+  affected.sellableStandalone = !enabling;
+  data.payload.product.sharedContent.requestedModes.find(row => row.skuCode === "SECOND")!.modes = enabling ? ["one_time"] : [];
+  data.payload.publication.operations = [{ op: "set_eligibility", skuCode: "SECOND", sellableStandalone: enabling, sellableInSubscription: false }];
+  if (expected.length) expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_activation_effect_missing");
+  const payload = compileCatalogPublicationDraft(data.payload, data.payload.product.sharedContent.presentation, data);
+  expect(payload.publication.operations.slice(1).map(op => op.op)).toEqual(expected);
+  expect(compileCatalogPublication({ ...data, payload, record: { ...data.record, payload } }).skus.find(row => row.code === "SECOND"))
+    .toMatchObject({ status: enabling ? "active" : sku, sellableStandalone: enabling });
 });
 it.each([true, false])("cycle1 changed=%s retains the matching product source and content", changed => {
   const data = retainedPublicationInput(), before = structuredClone(data.product!);

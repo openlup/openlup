@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createCatalogCandidateService, createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
+import { compileCatalogPublicationDraft, createCatalogCandidateService, createPostgresCatalogPublication, createCatalogProductTypeRegistry, catalogDefinitionDigest, installCatalogDefinitions,
   type CatalogPublicationDependencies } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogPublishCommand, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { CatalogRetainedSourceBinding } from "@openlup/platform/catalog/contracts";
@@ -1332,7 +1332,12 @@ async function priceDraft(active = true, slug?: string) {
     payload.product.sharedContent.requestedModes = [{skuCode,modes:["one_time"]}];
     payload.product.sharedContent.offerMemberships[0].admitted = true;
     const membership = payload.publication.operations.find(op=>op.op==="set_offer_membership")!; if(membership.op==="set_offer_membership") membership.admitted=true;
-    payload.publication.operations.push({op:"set_eligibility",skuCode,sellableStandalone:true,sellableInSubscription:false},{op:"set_sku_status",skuCode,status:"active"});
+    payload.publication.operations.push({op:"set_eligibility",skuCode,sellableStandalone:true,sellableInSubscription:false});
+    const before = await authority.readbackV2(head);
+    if (before.outcome !== "page") throw new Error(JSON.stringify(before));
+    payload.publication = compileCatalogPublicationDraft(payload, payload.product.sharedContent.presentation, {
+      product: before.product, skus: before.items.map(item => item.facts),
+    }).publication;
   }
   return { ...data, payload, publication: await save(payload, data.draftId, 1, head) };
 }
@@ -1766,6 +1771,7 @@ async function withdrawalUnderRed() { await inPriceDatabase(async () => {
     { op: "set_eligibility", skuCode: sku.code!, sellableStandalone: true, sellableInSubscription: false },
     { op: "set_sku_status", skuCode: sku.code!, status: "active" },
   ]);
+  activation.publication.operations.push({ op: "set_product_status", productSlug: activation.product.slug!, status: "active" });
   activation.skus.forEach(sku => { delete sku.priceOperations; });
   const first = await commit(await save(activation, data.draftId, 3, structural.head), target, capability);
   const withdrawal = structuredClone(activation);
@@ -2283,14 +2289,38 @@ it.each(["eligibility", "membership"] as const)("cycle1 native omitted %s withdr
 }));
 
 it.each(["draft eligible", "active ineligible"] as const)("cycle1 native document move excludes an omitted %s SKU from activation source admission", async mode => inPriceDatabase(async () => {
-  const reads: unknown[][] = [], target = realPriceAuthority(undefined, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); }), capability = (await target.authorize(null))!, data = await priceDraft(), initial = structuredClone(data.payload);
-  if (mode === "draft eligible") initial.publication.operations = initial.publication.operations.filter(operation => operation.op !== "set_sku_status");
-  let head = (await commit(await save(initial, data.draftId, 2, data.publication.expectedHead), target, capability)).head, revision = 3;
+  const reads: unknown[][] = [], target = realPriceAuthority(undefined, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); }), capability = (await target.authorize(null))!, data = await priceDraft(mode !== "draft eligible"), initial = structuredClone(data.payload);
+  let head = (await commit(data.publication, target, capability)).head, revision = 2;
   if (mode === "active ineligible") {
     const withdrawal = structuredClone(initial); delete withdrawal.skus[0].priceOperations; withdrawal.product.sharedContent.catalogAction = "revise";
     withdrawal.product.sharedContent.requestedModes = [{ skuCode: withdrawal.skus[0].code!, modes: [] }];
     withdrawal.publication.operations = [{ op: "set_eligibility", skuCode: withdrawal.skus[0].code!, sellableStandalone: false, sellableInSubscription: false }];
     head = (await commit(await save(withdrawal, data.draftId, revision++, head), target, capability)).head;
+  } else {
+    // A retained historical snapshot can predate the paired promotion rule.
+    const page = await target.readbackV2(head);
+    if (page.outcome !== "page") throw new Error(JSON.stringify(page));
+    const item = page.items[0], full = canonicalCatalogDraftJson({ ...item.facts, sellableStandalone: true });
+    const digest = createHash("sha256").update(full).digest("hex"), connection = await db.connect();
+    try {
+      await connection.query("BEGIN");
+      await connection.query("ALTER TABLE public.catalog_sku_revisions DISABLE TRIGGER catalog_sku_revisions_immutable");
+      await connection.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+      await connection.query("UPDATE public.catalog_skus SET sellable_standalone=true,publication_facts=$2::jsonb WHERE id=$1", [data.skuId, full]);
+      await connection.query("UPDATE public.catalog_sku_revisions SET full_facts=$2,digest=$3 WHERE id=$1", [item.reference.revisionId, full, digest]);
+      const { canonical_state } = (await connection.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [head.publicationId])).rows[0];
+      const state = JSON.parse(canonical_state);
+      state.skus[0].digest = digest;
+      const bytes = canonicalCatalogDraftJson(state);
+      await connection.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
+        [head.publicationId, bytes, createHash("sha256").update(bytes).digest("hex")]);
+      await connection.query("ALTER TABLE public.catalog_sku_revisions ENABLE TRIGGER catalog_sku_revisions_immutable");
+      await connection.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_immutable");
+      await connection.query("COMMIT");
+    } catch (error) {
+      await connection.query("ROLLBACK");
+      throw error;
+    } finally { connection.release(); }
   }
   const payload = structuredClone(initial); payload.product.sharedContent.catalogAction = "revise"; payload.skus = []; delete payload.product.primarySkuId;
   payload.product.sharedContent.publicationSkus = []; payload.product.sharedContent.requestedModes = []; payload.product.sharedContent.offerMemberships = [];
@@ -2428,10 +2458,11 @@ it("cycle1 native archiving an ineligible product skips activation readiness", a
 it("cycle1 native eligibility alone requires prices without a structural operation", async () => inPriceDatabase(async () => {
   const reads: unknown[][] = [], target = realPriceAuthority(undefined, (sql, _executor, _rows, values) => { if (sql.startsWith("SELECT public.catalog_publication_sku_reasons")) reads.push(values!); });
   const capability = (await target.authorize(null))!, data = await priceDraft(), initial = structuredClone(data.payload);
+  const active = await commit(data.publication, target, capability);
+  delete initial.skus[0].priceOperations;
   initial.product.sharedContent.requestedModes = [{ skuCode: initial.skus[0].code!, modes: [] }];
-  initial.publication.operations = initial.publication.operations.filter(operation => operation.op !== "set_eligibility" && operation.op !== "set_sku_status");
-  const first = await commit(await save(initial, data.draftId, 2, data.publication.expectedHead), target, capability), payload = structuredClone(initial);
-  payload.product.sharedContent.catalogAction = "revise"; delete payload.skus[0].priceOperations;
+  initial.publication.operations = [{ op: "set_eligibility", skuCode: initial.skus[0].code!, sellableStandalone: false, sellableInSubscription: false }];
+  const first = await commit(await save(initial, data.draftId, 2, active.head), target, capability), payload = structuredClone(initial);
   payload.product.sharedContent.requestedModes = [{ skuCode: payload.skus[0].code!, modes: ["one_time"] }];
   payload.publication.operations = [{ op: "set_eligibility", skuCode: payload.skus[0].code!, sellableStandalone: true, sellableInSubscription: false }];
   reads.length = 0;
@@ -3170,6 +3201,20 @@ it.each([
   expect(checks).toEqual(mode.endsWith("membership") ? ["example:offer"] : []);
 });
 
+it.each(["missing SKU promotion", "missing product promotion"] as const)("CD-CAT-43 refuses an atomic activation batch with %s", async missing => {
+  await inPriceDatabase(async () => {
+    const data = await priceDraft(), payload = structuredClone(data.payload);
+    payload.publication.operations = payload.publication.operations.filter(op => op.op !== "set_product_status"
+      && (missing !== "missing SKU promotion" || op.op !== "set_sku_status"));
+    const target = realPriceAuthority(), capability = (await target.authorize(null))!;
+    const command = await save(payload, data.draftId, 2, data.publication.expectedHead);
+    await approve(command, target, capability);
+    const before = await snapshot();
+    expect(await target.publish(command, capability)).toEqual({ outcome: "validation_issue", reason: "catalog_publication_activation_effect_missing" });
+    expect(await snapshot()).toEqual(before);
+  });
+});
+
 it.each(["before creation", "after metadata", "before metadata"] as const)("first decision validates membership against the SKU prefix %s", async prefix => {
   const data = await draft(), payload = structuredClone(data.payload);
   const membership = { op: "set_offer_membership" as const, ...payload.product.sharedContent.offerMemberships[0] };
@@ -3339,7 +3384,7 @@ it.each(["archive eligible product", "leave last membership", "live eligible", "
         expect(result.outcome).toBe("committed");
         const rows = (await connection.query(`SELECT p.status AS product_status,s.sellable_standalone,s.publication_facts->'memberships' AS memberships
           FROM public.catalog_products p JOIN public.catalog_skus s ON s.product_id=p.id WHERE s.sku=$1`, [skuCode])).rows;
-        expect(rows).toEqual([{ product_status: mode === "archive eligible product" ? "archived" : "draft", sellable_standalone: true,
+        expect(rows).toEqual([{ product_status: mode === "archive eligible product" ? "archived" : "active", sellable_standalone: true,
           memberships: [{ offerVersion: "example:offer", admitted: mode !== "leave last membership" }] }]);
         expect(phases).toEqual([]);
       }
