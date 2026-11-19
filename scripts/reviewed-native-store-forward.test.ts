@@ -1176,6 +1176,14 @@ function triggerForward(statement = triggerBefore, extra = "", configure?: (slot
 }
 
 describe("closed created row triggers on prefix tables", () => {
+  it("refuses conditional prefix function drops for ordinary and deferred triggers", () => {
+    const deferred = triggerBefore.replace("CREATE TRIGGER fixture_trigger_guard BEFORE INSERT OR DELETE OR UPDATE OF id, extra", "CREATE CONSTRAINT TRIGGER fixture_trigger_guard AFTER INSERT")
+      .replace("FOR EACH ROW", "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW");
+    const refusal = new Error("reviewed native store unsupported preceding function DDL");
+    for (const history of ["DROP FUNCTION IF EXISTS public.fixture_retired_guard();", "DROP FUNCTION IF EXISTS public.other(), public.fixture_existing(uuid);"]) {
+      for (const statement of [triggerBefore, deferred]) expect(() => triggerForward(statement, "", undefined, history)).toThrow(refusal);
+    }
+  });
   it("admits both guarded existing-table trigger shapes with PUBLIC and conditional revokes", () => {
     const revokes = ["anon", "authenticated", "service_role"].map(role => block(role, "REVOKE ALL", "public.fixture_trigger_guard()")).join("\n");
     expect(() => triggerForward(triggerBefore, `${triggerAfter}\n${revokes}`, slot => {

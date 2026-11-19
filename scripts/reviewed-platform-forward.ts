@@ -2611,10 +2611,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
     if (["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
       const name = nativeQualified(tokens, functionIndex + 1);
-      if (source.path !== PLATFORM_BASELINE_FILE && (!name || (names.has(name.name) && (!nativeWord(tokens, 0, "CREATE") || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted")))) {
-        const conditionalDrop = deferredFunctions.size && nativeWord(tokens, 0, "DROP") && nativeWord(tokens, 2, "IF") && nativeWord(tokens, 3, "EXISTS") && nativeQualified(tokens, 4);
-        if (!conditionalDrop || names.has(conditionalDrop.name)) throw new Error("reviewed native store unsupported preceding function DDL");
-      }
+      if (source.path !== PLATFORM_BASELINE_FILE && (!name || (names.has(name.name) && (!nativeWord(tokens, 0, "CREATE") || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted")))) throw new Error("reviewed native store unsupported preceding function DDL");
       if (complete && name && nativeWord(tokens, 0, "CREATE") && nativeSymbol(tokens, name.next, "(") && nativeSymbol(tokens, name.next + 1, ")")
         && deferredFunctions.has(`${name.name}()`)) prefixTriggerFunctions.add(`${name.name}()`);
     }
