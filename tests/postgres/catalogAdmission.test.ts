@@ -2355,6 +2355,9 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
           } finally { await setup.query("UPDATE public.catalog_skus SET is_addon=false WHERE id=$1", [f.sibling]); }
         } else if (action === "candidate document drift" || action === "candidate parent drift" || action === "candidate measure drift") {
           await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
+          await expect(editor.preview(actor,{ subscriptionId: f.subscription,action: "resize_bundle",cadenceDays: 28,compositionConstraint: constraint,
+            resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: [{ variantId: f.sku,qty: coreQuantity }] } } }))
+            .rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
         } else {
           const result = await editor.candidates(actor,f.subscription);
           expect(result.catalog.map(fact => fact.variantId).sort()).toEqual([f.sku,variantId].sort());
@@ -3265,7 +3268,7 @@ it.for([
      $1,1,$2,$3,'XXX','D2C',t,NULL,$4,$5,'FLOOR_TO_QUANTUM') FROM (SELECT $6::timestamptz-interval '1 day' AS t) clock`,
   [randomUUID(),price.priceListId,row.regionCode,row.discount,row.quantum,f.at]);
   const tax = { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax" } as const;
-  const catalog = createPostgresCommerceQuoteCatalogReadPort(runtime,{ verifyDocument(document,envelope) {
+  const catalog = createPostgresCommerceQuoteCatalogReadPort(runtime,{ async verifyDocument(document,envelope) {
     expect(digest(canonicalCatalogDraftJson(document))).toBe(envelope.documentRevision.digest);
   },governedOffer: { offerVersion: "classic",mode: "subscription",async withSnapshot(work) {
     const db = await runtime.connect();

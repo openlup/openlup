@@ -1410,7 +1410,6 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_create_policy_draft(text,jsonb,jsonb,uuid,text) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_create_policy_draft(text,jsonb,jsonb,uuid,text) TO service_role'; END IF; END; $$;
 
 CREATE FUNCTION public.catalog_admission_edit_lane(p_action text,p_binding text,p_opt_in boolean)
 RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
@@ -2366,7 +2365,6 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_check_sized_preview(uuid,uuid,uuid,text,text,integer,text,boolean,timestamptz) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_check_sized_preview(uuid,uuid,uuid,text,text,integer,text,boolean,timestamptz) TO service_role'; END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.subscription_sized_edit_apply(
  p_actor_id uuid,p_client_id uuid,p_key text,p_subscription_id uuid,p_payload jsonb,p_now timestamptz
@@ -2732,3 +2730,5 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THE
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_members(text,text,uuid[],boolean), public.catalog_admission_candidate_members(uuid[],text), public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer), public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text), public.catalog_admission_build_evidence(jsonb,text,jsonb,text), public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text), public.catalog_admission_bind_purchase(uuid,uuid), public.catalog_admission_validate_proof(jsonb) TO service_role'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_graduation_proof(uuid) TO service_role'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_create_policy_draft(text,jsonb,jsonb,uuid,text) TO service_role'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_check_sized_preview(uuid,uuid,uuid,text,text,integer,text,boolean,timestamptz) TO service_role'; END IF; END; $$;
