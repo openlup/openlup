@@ -20,6 +20,10 @@ import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresS
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
+function primaryIdentifier(sku: string) {
+  const digits = (BigInt(`0x${sku.replaceAll("-","").slice(0,14)}`) % 1_000_000_000_000n).toString().padStart(12,"0");
+  return digits + String((10 - [...digits].reduce((sum,digit,index) => sum + Number(digit) * (index % 2 ? 3 : 1),0) % 10) % 10);
+}
 const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
 const definition = { key: "example:article", version: 1, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }],
   netContentUnits: ["openlup:g"], dimensions: [], axes: [], validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
@@ -71,8 +75,7 @@ function publisher(connection: PoolClient, afterQuery?: (sql: string, values: un
 }
 function payload(product: string, sku: string, pack: string): CatalogDraftPayloadV4 {
   const code = `ARTICLE-${sku}`, slug = `article-${product}`, documentId = randomUUID();
-  const digits = (BigInt(`0x${sku.replaceAll("-","").slice(0,14)}`) % 1_000_000_000_000n).toString().padStart(12,"0");
-  const gtin = digits + String((10 - [...digits].reduce((sum,digit,index) => sum + Number(digit) * (index % 2 ? 3 : 1),0) % 10) % 10);
+  const gtin = primaryIdentifier(sku);
   const document = { schemaVersion: 1, derived: 12, pack }, canonicalText = canonicalCatalogDraftJson(document);
   const facts = { skuCode: code, title: "Synthetic article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };
   return { schemaVersion: 4, product: { id: product, type: { key: definition.key, version: 1 }, dimensions: [], slug, primarySkuId: sku,
@@ -120,8 +123,10 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
     const publication = randomUUID(), revision = randomUUID(), fullFacts = canonicalCatalogDraftJson(facts), factsDigest = digest(fullFacts);
     manifest.skus = [{ ...ref, revisionId: revision, revision: 2, digest: factsDigest }];
     const sibling = standing.sibling ? { id: randomUUID(), revision: randomUUID() } : null;
+    const siblingIdentifier = sibling ? primaryIdentifier(sibling.id) : null;
     const siblingFacts = sibling ? { ...facts, id: sibling.id, code: `ARTICLE-${sibling.id}`, status: "draft",
-      lifecycleState: "draft", isAddon: false, sellableStandalone: false, sellableInSubscription: false, memberships: [] } : null;
+      lifecycleState: "draft", isAddon: false, sellableStandalone: false, sellableInSubscription: false, memberships: [],
+      identifiers: [{ ...facts.identifiers[0],value: siblingIdentifier }] } : null;
     const siblingText = siblingFacts ? canonicalCatalogDraftJson(siblingFacts) : null;
     if (sibling && siblingText) {
       manifest.skus.push({ ...ref,skuId: sibling.id,revisionId: sibling.revision,revision: 1,digest: digest(siblingText) });
@@ -137,9 +142,13 @@ async function fixture(pack: string, standing: { product?: Record<string, unknow
     await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,2,$4,$5,$6)", [revision,sku,product,publication,fullFacts,factsDigest]);
     if (sibling && siblingFacts && siblingText) {
       await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,min_order_qty,is_addon,sellable_standalone,
-        sellable_in_subscription,net_weight_g,publication_facts,net_content_dimension,net_content_unscaled,net_content_scale,net_content_unit)
+        sellable_in_subscription,net_weight_g,publication_facts,net_content_dimension,net_content_unscaled,net_content_scale,net_content_unit,
+        gross_mass_dimension,gross_mass_unscaled,gross_mass_scale,gross_mass_unit,asset_ref,attribute_values,option_values,canonical_option_bytes,combination_digest)
         SELECT $2,product_id,$3,title,'draft',min_order_qty,false,false,false,net_weight_g,$4,net_content_dimension,
-         net_content_unscaled,net_content_scale,net_content_unit FROM public.catalog_skus WHERE id=$1`, [sku,sibling.id,siblingFacts.code,siblingFacts]);
+         net_content_unscaled,net_content_scale,net_content_unit,gross_mass_dimension,gross_mass_unscaled,gross_mass_scale,gross_mass_unit,
+         asset_ref,attribute_values,option_values,canonical_option_bytes,combination_digest FROM public.catalog_skus WHERE id=$1`, [sku,sibling.id,siblingFacts.code,siblingFacts]);
+      await db.query(`INSERT INTO public.catalog_sku_identifiers(catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,scheme,original_value)
+        VALUES($1,'example','gtin',lpad($2,14,'0'),'unit',1,true,'gs1:gtin',$2)`, [sibling.id,siblingIdentifier]);
       await db.query("INSERT INTO public.catalog_sku_revisions(id,sku_id,product_id,revision,publication_id,full_facts,digest) VALUES($1,$2,$3,1,$4,$5,$6)",
         [sibling.revision,sibling.id,product,publication,siblingText,digest(siblingText)]);
     }
@@ -2432,6 +2441,7 @@ const authorityCases = [
   { rule: "LC6-D-008 sealed SKU drift", change: "sku-drift", code: "55000" },
   { rule: "LC6-D-008 relational add-on drift", change: "projection-drift", code: "55000" },
   { rule: "LC6-D-008 unselected sibling role drift", change: "sibling-role-drift", code: "55000" },
+  { rule: "LC6-D-008/D-140 unselected sibling persisted identifier drift", change: "identifier-drift", code: "55000" },
   { rule: "LC6-D-008 relational net-weight drift", change: "weight-drift", code: "55000" },
   { rule: "LC6-D-009 exact anchor keys", change: "extra-anchor-key", code: "22023" },
   { rule: "LC6-D-009 malformed digest", change: "invalid-digest", code: "22023" },
@@ -2518,7 +2528,7 @@ async function authorityCase({ path,change,code,control }: (typeof authorityCase
     ...(path === "addon" ? { isAddon: true } : {}),...(change === "inactive-sku" ? { status: "draft" } : {}),
     ...(change === "no-standalone" ? { sellableStandalone: false } : {}),
     ...(change === "no-subscription" ? { sellableInSubscription: false } : {}) },
-    product: change === "inactive-product" ? { status: "draft" } : undefined,sibling: change === "sibling-role-drift" };
+    product: change === "inactive-product" ? { status: "draft" } : undefined,sibling: change === "sibling-role-drift" || change === "identifier-drift" };
   const f = await fixture(packs[0],standing), input = structuredClone(f.admission);
   const purchase = path.startsWith("plain") || path.startsWith("promoted"), account = !purchase && path !== "assertion" && path !== "port";
   if (!account) input.purpose = "order";
@@ -2527,10 +2537,10 @@ async function authorityCase({ path,change,code,control }: (typeof authorityCase
   const refused = account ? "customer_self_service_invalid_offer_membership" : orderRefused;
   const unreadable = "catalog_propagation_head_unreadable";
   let message = missing;
-  if (change === "unreadable" || change === "sku-drift" || change === "projection-drift" || change === "sibling-role-drift" || change === "weight-drift") message = unreadable;
+  if (change === "unreadable" || change === "sku-drift" || change === "projection-drift" || change === "sibling-role-drift" || change === "weight-drift" || change === "identifier-drift") message = unreadable;
   if (change === "unreadable" && (path === "sized" || path === "ordinary-sized")) message = "customer_self_service_invalid_catalog_head";
   if (change === "retained-unreadable") message = "customer_self_service_invalid_catalog_head";
-  if (change === "unreadable" || change === "extra-anchor-key" || change === "projection-drift" || change === "sibling-role-drift" || change === "weight-drift") Object.assign(input.heads[0].head,{ extra: true });
+  if (change === "unreadable" || change === "extra-anchor-key" || change === "projection-drift" || change === "sibling-role-drift" || change === "weight-drift" || change === "identifier-drift") Object.assign(input.heads[0].head,{ extra: true });
   if (change === "stale") {
     input.heads = structuredClone(input.heads);
     input.heads[0].head.revision = 99;
@@ -2581,6 +2591,10 @@ async function authorityCase({ path,change,code,control }: (typeof authorityCase
     }
     if (change === "sibling-role-drift") {
       await db.query("UPDATE public.catalog_skus SET is_addon=true WHERE id=$1", [f.sibling]);
+    }
+    if (change === "identifier-drift") {
+      const changed = await db.query("UPDATE public.catalog_sku_identifiers SET original_value='00000000000000',normalized_value='00000000000000' WHERE catalog_sku_id=$1 AND is_primary", [f.sibling]);
+      expect(changed.rowCount).toBe(1);
     }
     if (change === "weight-drift") {
       await scopedFacts(db,f,"catalog_skus",{});
@@ -2839,6 +2853,7 @@ const authorityControls = [
   { change: "sku-drift",predicate: "OR sk.publication_facts IS DISTINCT FROM r.full_facts::jsonb",replacement: "" },
   { change: "projection-drift",predicate: "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'",replacement: "" },
   { change: "sibling-role-drift",predicate: "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'",replacement: "" },
+  { change: "identifier-drift",predicate: "OR NOT public.catalog_admission_identifiers_match(sk.id,sk.publication_facts->'identifiers')",replacement: "" },
   { change: "weight-drift",predicate: "OR sk.net_weight_g::numeric IS DISTINCT FROM",replacement: "OR false AND sk.net_weight_g::numeric IS DISTINCT FROM" },
   { change: "extra-anchor-key",predicate: "OR (h->'head')-ARRAY['publicationId','revision','documentDigest']<>'{}'::jsonb",replacement: "" },
   { change: "invalid-digest",predicate: "OR NOT coalesce(h#>>'{head,documentDigest}' ~ '^[0-9a-f]{64}$',false)",replacement: "" },
@@ -2858,13 +2873,13 @@ const authorityControls = [
 ] as const;
 it.each(authorityControls.flatMap(({ change,predicate,replacement }) => {
   const row = authorityCases.find(value => value.change === change)!;
-  const allPaths = ["projection-drift","sibling-role-drift","weight-drift","duplicate-offer-membership",
+  const allPaths = ["projection-drift","sibling-role-drift","weight-drift","identifier-drift","duplicate-offer-membership",
     "inactive-sku","inactive-product","no-standalone","no-subscription"].includes(change);
   const paths = allPaths ? authorityPaths.filter(path => authorityApplies(path,row))
     : change === "unreadable" ? ["sized","ordinary-sized"] as const : ["plain-subscription"] as const;
   return paths.map(path => ({ row,path,predicate,replacement }));
 }))("authority control $row.change fails its precise witness via $path", async ({ row,path,predicate,replacement }) => {
-  const liveHead = ["sku-drift","projection-drift","sibling-role-drift","weight-drift","unreadable"].includes(row.change);
+  const liveHead = ["sku-drift","projection-drift","sibling-role-drift","weight-drift","identifier-drift","unreadable"].includes(row.change);
   const control = () => hook(liveHead ? verifiedHeadsSignature : admissionSignature,liveHead ? "DECLARE product_id uuid;" : sharedBoundary,"",body => {
     expect(body.split(predicate)).toHaveLength(2);
     return body.replace(predicate,replacement);

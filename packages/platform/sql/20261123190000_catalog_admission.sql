@@ -126,10 +126,25 @@ REVOKE ALL ON FUNCTION public.catalog_admission_keeps_price(uuid,uuid,integer,bo
 
 -- Use one canonical live-state check for acceptance and governed readers.
 -- The caller owns publication ordering and snapshot selection.
+CREATE FUNCTION public.catalog_admission_identifiers_match(p_sku_id uuid,p_sealed jsonb)
+RETURNS boolean LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
+ SELECT (SELECT coalesce(jsonb_agg(tuple ORDER BY tuple::text),'[]') FROM (
+   SELECT jsonb_build_object('scheme',i.scheme,'issuer',i.issuer,'value',i.original_value,
+    'normalized',i.normalized_value,'kind',i.identifier_kind,'packagingLevel',CASE i.pack_kind WHEN 'unit' THEN 'unit' ELSE 'case' END,
+    'quantity',i.quantity,'isPrimary',i.is_primary,'label',i.display_label,'sourceRef',i.source_ref) AS tuple
+   FROM public.catalog_sku_identifiers i WHERE i.catalog_sku_id=p_sku_id
+  ) live)=(SELECT coalesce(jsonb_agg(tuple ORDER BY tuple::text),'[]') FROM (
+   SELECT i||jsonb_build_object('kind',CASE WHEN i->>'scheme'='gs1:gtin' THEN 'gtin' ELSE 'other' END,
+    'normalized',CASE WHEN i->>'scheme'='gs1:gtin' THEN lpad(i->>'value',14,'0') ELSE i->>'value' END) AS tuple
+   FROM jsonb_array_elements(p_sealed) i
+  ) sealed)
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_identifiers_match(uuid,jsonb) FROM PUBLIC;
+
 CREATE FUNCTION public.catalog_admission_verified_heads(p_products uuid[],p_sized_command boolean)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE product_id uuid; product public.catalog_products; publication public.catalog_publications;
- manifest jsonb; document_digest text; actual_heads jsonb:='{}';
+ manifest jsonb; document_digest text; document jsonb; actual_heads jsonb:='{}';
 BEGIN
  FOREACH product_id IN ARRAY p_products LOOP
   SELECT * INTO product FROM public.catalog_products WHERE id=product_id;
@@ -137,7 +152,10 @@ BEGIN
    WHERE h.product_id=product.id;
   IF publication.id IS NULL AND p_sized_command THEN
    RAISE EXCEPTION 'customer_self_service_invalid_catalog_head' USING ERRCODE='55000'; END IF;
-  SELECT digest INTO document_digest FROM public.catalog_product_document_revisions WHERE id=publication.document_revision_id;
+  SELECT digest,jsonb_build_object('id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,'schemaId',d.schema_id,
+   'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest) INTO document_digest,document
+   FROM public.catalog_product_document_revisions d WHERE d.id=publication.document_revision_id AND d.product_id=product.id
+    AND encode(sha256(convert_to(d.canonical_text,'UTF8')),'hex')=d.digest;
   manifest:=publication.canonical_state::jsonb;
   IF publication.id IS NULL OR document_digest IS NULL OR manifest->'schemaVersion' IS DISTINCT FROM '3'::jsonb
    OR encode(sha256(convert_to(publication.canonical_state,'UTF8')),'hex') IS DISTINCT FROM publication.digest
@@ -147,9 +165,14 @@ BEGIN
    OR product.name IS DISTINCT FROM manifest#>>'{product,name}'
    OR product.status IS DISTINCT FROM manifest#>>'{product,status}'
    OR product.primary_sku_id::text IS DISTINCT FROM manifest#>>'{product,primarySkuId}'
+   OR product.type_key IS DISTINCT FROM manifest#>>'{product,type,key}'
+   OR to_jsonb(product.type_version) IS DISTINCT FROM manifest#>'{product,type,version}'
+   OR to_jsonb(product.variant_axes) IS DISTINCT FROM manifest#>'{product,axes}'
+   OR product.attribute_values IS DISTINCT FROM manifest#>'{product,attributes}'
    OR product.current_document_revision_id IS DISTINCT FROM publication.document_revision_id
    OR publication.document_revision_id::text IS DISTINCT FROM manifest#>>'{product,document,id}'
    OR document_digest IS DISTINCT FROM manifest#>>'{product,document,digest}'
+   OR document IS DISTINCT FROM manifest#>'{product,document}'
    OR jsonb_typeof(manifest->'skus') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_propagation_head_unreadable' USING ERRCODE='55000'; END IF;
   IF (SELECT count(*) FROM public.catalog_skus sk WHERE sk.product_id=product.id)<>jsonb_array_length(manifest->'skus')
@@ -169,6 +192,15 @@ BEGIN
       OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'
       OR to_jsonb(sk.sellable_standalone) IS DISTINCT FROM sk.publication_facts->'sellableStandalone'
       OR to_jsonb(sk.sellable_in_subscription) IS DISTINCT FROM sk.publication_facts->'sellableInSubscription'
+      OR sk.attribute_values IS DISTINCT FROM sk.publication_facts->'attributes'
+      OR sk.option_values IS DISTINCT FROM sk.publication_facts->'options'
+      OR encode(sk.combination_digest,'hex') IS DISTINCT FROM sk.publication_facts->>'optionDigest'
+      OR sha256(sk.canonical_option_bytes) IS DISTINCT FROM sk.combination_digest
+      OR sk.asset_ref IS DISTINCT FROM sk.publication_facts#>>'{assetRefs,0}'
+      OR def.definition_digest IS DISTINCT FROM manifest#>>'{product,definitionDigest}'
+      OR (CASE WHEN sk.gross_mass_dimension IS NULL THEN 'null'::jsonb ELSE jsonb_build_object('dimension',sk.gross_mass_dimension,
+       'unscaled',sk.gross_mass_unscaled::text,'scale',sk.gross_mass_scale,'unit',sk.gross_mass_unit) END) IS DISTINCT FROM sk.publication_facts->'grossMass'
+      OR NOT public.catalog_admission_identifiers_match(sk.id,sk.publication_facts->'identifiers')
       OR jsonb_build_object('dimension',sk.net_content_dimension,'unscaled',sk.net_content_unscaled::text,
         'scale',sk.net_content_scale,'unit',sk.net_content_unit) IS DISTINCT FROM sk.publication_facts->'netContent'
       OR sk.net_weight_g::numeric IS DISTINCT FROM sk.net_content_unscaled/power(10::numeric,sk.net_content_scale)
