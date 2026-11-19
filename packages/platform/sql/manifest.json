@@ -630,9 +630,13 @@
       {
         "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
         "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
+      },
+      {
+        "file": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+        "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
       }
     ],
-    "objectInventorySha256": "98ac384683dfb399d94b23f8b4d8ef8f716187c2f3c54a04a529228603600b6d",
+    "objectInventorySha256": "39aaadc3085ec2a0cfb330d4f2debd3347b7cbdb24edf7bd9270935b42837d44",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1282,14 +1286,18 @@
         {
           "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
           "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
+        },
+        {
+          "file": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+          "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "6f94572e6e83c264b50d2ef6b3fe99b7180fb6a888ad557d1b9c1976143cbe41"
+          "withRestore": "13ed143e3d89c58e9bed605999f77ca37d4cd9e5911dcdfe6d2d5e6c3236464b"
         },
         "separateMigrator": {
-          "withRestore": "3761997e93d3fd7818bd4bbe432bdc036c630c167bc16126c6ded311fabc75e9"
+          "withRestore": "129a6ec4c20ea219d22cb1afe5a124d9677f5b0c745cc130ae87353a6815f533"
         }
       }
     },
@@ -1938,11 +1946,15 @@
         {
           "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
           "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
+        },
+        {
+          "file": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+          "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "4fdda166f7a80c13b52c72bc1f11bba3e11fb7e393c0ba018359c659d670df18",
-        "operatorProvisioned": "9456d477f95686a0203ac37c4546efd7f0df5e44ae1e2992d7da277cb3083947"
+        "installerManaged": "dcf65614061ccf21afad173f6783d1a0845cf421ae0005108de5c1b533d28f74",
+        "operatorProvisioned": "f85b7d32c20c9addf8ece187d39d7c4e4603a8d685562d51bd2b9203cb0e4280"
       }
     }
   },
@@ -2731,6 +2743,11 @@
       "file": "20261123142000_inventory_renewal_protection_validation.sql",
       "source": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
       "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
+    },
+    {
+      "file": "20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+      "source": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+      "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

@@ -76,6 +76,14 @@ as the installed fence subtracts stored hours from the next cycle instant.
 
 ## Native renewal stock protection
 
+The [renewal credit aggregation forward](../../db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql)
+groups live renewal holds by subscription and scheduled cycle before matching
+due demand. The calculation credits only holds for the exact cycle that still
+needs stock, floors each subscription at zero, and leaves hard holds, channel
+exposure and renewal priority intact. The function retains its signature,
+privileges and search path. Callers retain their existing transaction and stock
+row locking.
+
 The [inventory validation forward](../../db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql)
 creates `public.inventory_renewal_protection_validate(jsonb)` and replaces the
 body of `public.inventory_renewal_protection_days()`. The validator preserves
@@ -1589,6 +1597,15 @@ retains its existing control decision; it is not an unrelated companion of a
 feature. Once introduced, migration bytes remain immutable and repairs use a
 new forward. Stopping new co-located PRs must retain release support for histories
 already admitted this way; reverting to parent-only approval would reject them.
+
+For a managed forward outside the existing SQL classes, a separate control
+change can record an exact path, SHA-256 and ordered managed prefix digest in
+`managedExactForwards`. The feature change must keep that approval unchanged.
+The prefix digest binds every earlier managed SQL path to its content hash.
+CI also checks a registered path if its replacement text would otherwise pass
+expand-only admission. Release preparation checks the approval in the parent of
+the migration's first introduction. Exact admission still requires behavioral
+evidence and independent review.
 
 The separate `batchedForwards` list approves the frozen M10/F17 packet: seven
 native files and eleven managed files (18 pins). It adds no installation-chain SQL. Exact

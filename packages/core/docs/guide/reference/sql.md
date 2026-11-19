@@ -173,6 +173,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20261123140000_checkout_recovery_reminder_schedule.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/sql/20261123140000_checkout_recovery_reminder_schedule.sql) |
 | [`20261123141000_checkout_recovery_reminder_guard.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/sql/20261123141000_checkout_recovery_reminder_guard.sql) |
 | [`20261123142000_inventory_renewal_protection_validation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/sql/20261123142000_inventory_renewal_protection_validation.sql) |
+| [`20261123147000_inventory_atp_aggregate_renewal_credits.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/sql/20261123147000_inventory_atp_aggregate_renewal_credits.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

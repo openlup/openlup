@@ -70,7 +70,8 @@ export type NativeStoreCheck = { table: string; constraint: string; column: stri
 export type NativeStoreUnique = { table: string; constraint: string; columns: string[]; nullsNotDistinct: boolean };
 export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: { name: string; table: string; sha256: string }[]; purposeCheck?: { beforeSha256: string; values: string[] } };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
-export type ReviewedForwardRegistry = { nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
+type ManagedExactForward = { path: string; sha256: string; prefixSha256: string };
+export type ReviewedForwardRegistry = { managedExactForwards?: ManagedExactForward[]; nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -264,6 +265,19 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
   if (raw.supportAuthorityForwards !== undefined) validateSupportAuthorityForwards(raw.supportAuthorityForwards, paths);
   if (raw.channelIngestForwards !== undefined) validateChannelIngestForwards(raw.channelIngestForwards, paths);
   validateNativeStoreClass(raw, paths);
+  if (raw.managedExactForwards !== undefined) {
+    if (!Array.isArray(raw.managedExactForwards)) throw new Error("exact managed forwards require an ordered list");
+    let previous = MANAGED_BASELINE;
+    for (const forward of raw.managedExactForwards) {
+      if (!forward || Object.keys(forward).sort().join(",") !== "path,prefixSha256,sha256"
+        || !/^supabase\/migrations\/\d{14}_[a-z0-9_]+\.sql$/u.test(forward.path)
+        || forward.path <= previous || paths.has(forward.path) || !hash(forward.sha256) || !hash(forward.prefixSha256)) {
+        throw new Error("invalid, duplicate or unordered exact managed forward");
+      }
+      previous = forward.path;
+      paths.add(forward.path);
+    }
+  }
   return raw;
 }
 
@@ -925,7 +939,7 @@ function blob(root: string, revision: string, path: string): Buffer | undefined 
   return git(root, ["cat-file", "blob", match[1]!]);
 }
 
-const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards", "qualifiedInstallations", "channelIngestForwards", "nativeStoreForwards"] as const;
+const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards", "qualifiedInstallations", "channelIngestForwards", "nativeStoreForwards", "managedExactForwards"] as const;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
 const sharedApproval = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => key !== "nativeStoreForwardClass" && !FORWARD_LISTS.includes(key as typeof FORWARD_LISTS[number])));
 const approvalBinding = (registry: ReviewedForwardRegistry, path: string) => {
@@ -970,6 +984,7 @@ export function assertForwardApproval(root: string, base: string, head: string):
   for (const { path } of introducedChannel) if (!current.channelIngestForwards?.some(pin => pin.path === path)) throw new Error(`reviewed M17 channel requires a binding: ${path}`);
   if (before.equals(after)) return;
   for (const path of changedForwardApprovals(before, after)) {
+    if (previous.managedExactForwards?.some(pin => pin.path === path)) throw new Error("exact managed forward approvals are immutable within a feature change");
     if (isQualifiedPlatformMigrationPath(path) && previous.qualifiedInstallations?.some(pin => pin.path === path)) throw new Error("issued qualified installation approvals are immutable");
     if (blob(root, base, path) || !blob(root, head, path)) throw new Error(`reviewed replacement pin must be approved separately unless its SQL is introduced in this PR: ${path}`);
   }
@@ -1018,9 +1033,31 @@ export const NATIVE_CATALOG_CONTROLS = [
 ];
 export function assertCoLocatedForwardApproval(root: string, base: string, head: string): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
-  if (before && after && !before.equals(after)) {
-    assertNativeStoreClassTransition(readForwardRegistry(before, true), readReviewedForwardRegistry(after));
-    nativeStoreNewSlotTimes(root, base, readForwardRegistry(before, true), readReviewedForwardRegistry(after));
+  const prior = before ? readForwardRegistry(before, true) : undefined;
+  for (const pin of prior?.managedExactForwards ?? []) {
+    const issued = blob(root, base, pin.path);
+    if (!issued) continue;
+    if (!after) throw new Error("issued exact managed forward requires its approval registry");
+    const proposed = blob(root, head, pin.path);
+    if (!proposed || !issued.equals(proposed)) {
+      throw new Error(`issued exact managed forward must retain its bytes: ${pin.path}`);
+    }
+  }
+  if (before && prior && after && !before.equals(after)) {
+    const candidate = readReviewedForwardRegistry(after);
+    assertNativeStoreClassTransition(prior, candidate);
+    nativeStoreNewSlotTimes(root, base, prior, candidate);
+    for (const [index, pin] of (prior.managedExactForwards ?? []).entries()) {
+      if (blob(root, base, pin.path) && canonical(candidate.managedExactForwards?.[index]) !== canonical(pin)) {
+        throw new Error("issued exact managed forward approvals are immutable");
+      }
+    }
+    const existingExactPaths = new Set(prior.managedExactForwards?.map(pin => pin.path));
+    for (const pin of candidate.managedExactForwards ?? []) {
+      if (!existingExactPaths.has(pin.path) && blob(root, base, pin.path)) {
+        throw new Error(`exact managed forward approval must precede its SQL: ${pin.path}`);
+      }
+    }
     const previousData = JSON.parse(before.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
     const currentData = JSON.parse(after.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
     if (previousData?.channelIngestForwards !== undefined && currentData?.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
@@ -1037,10 +1074,10 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
     }
   }
   const added = git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, head, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\0").filter((path) => path.endsWith(".sql"));
-  if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path, readReviewedForwardRegistry(after).nativeStoreForwardClass?.slots ?? []))) return;
+  if (before && after && before.equals(after) && !added.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path, readReviewedForwardRegistry(after).nativeStoreForwardClass?.slots ?? []) || hasExactManagedForward(root, base, path))) return;
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
-  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", ...NATIVE_CATALOG_CONTROLS, "package.json", "package-lock.json"];
+  const controls = ["scripts/oss-source-release-contract.ts", "scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", ...NATIVE_CATALOG_CONTROLS, "package.json", "package-lock.json"];
   const changed = git(root, ["diff", "--name-only", "--no-renames", "-z", base, head]).toString("utf8").split("\0");
   const releaseTool = (path: string) => /^scripts\/(?:agent-review-|oss-|source-|packages\/)/u.test(path) && !/\.test\.[cm]?[jt]sx?$/u.test(path);
   if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || path.startsWith("tests/setup/") || releaseTool(path))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
@@ -1074,6 +1111,20 @@ function headerAttributes(statement: string): string {
   return statement.slice(0, opening.index).replace(/^CREATE OR REPLACE /u, "CREATE ");
 }
 
+/** Bind the full managed prefix, including companion table ACLs and DDL. */
+export function managedForwardPrefixSha256(root: string, revision: string, path: string): string {
+  const paths = git(root, ["ls-tree", "-rz", "--name-only", revision, "--", "supabase/migrations/"])
+    .toString("utf8").split("\0").filter(item => item.endsWith(".sql") && item < path).sort();
+  if (paths[0] !== MANAGED_BASELINE) throw new Error("exact managed forward requires the managed baseline");
+  return sqlSha256(JSON.stringify(paths.map(item => [item, sqlSha256(blob(root, revision, item)!)])));
+}
+
+export function hasExactManagedForward(root: string, revision: string, path: string): boolean {
+  if (!path.startsWith("supabase/migrations/")) return false;
+  const registry = blob(root, revision, REVIEWED_FORWARD_PATH);
+  return registry !== undefined && (readForwardRegistry(registry, true).managedExactForwards?.some(pin => pin.path === path) ?? false);
+}
+
 /** Both required CI and release preparation use this exact path/byte/signature check. */
 export function assertReviewedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
   const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f;
@@ -1081,6 +1132,28 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const targetRegistry = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);
+  const exact = registry.managedExactForwards?.find(pin => pin.path === path);
+  if (exact) {
+    let approval = base;
+    if (release) {
+      const introductions = git(root, ["log", "--first-parent", "--format=%H", "--diff-filter=A", `${base}..${head}`, "--", path])
+        .toString("utf8").trim().split("\n").filter(Boolean);
+      if (introductions.length !== 1) throw new Error("exact managed forward requires one first-parent introduction");
+      approval = git(root, ["rev-parse", `${introductions[0]}^`]).toString("utf8").trim();
+      const introduction = introductions[0]!;
+      assertUnchangedForwardApproval(root, approval, introduction, path);
+      const introduced = blob(root, introduction, path);
+      if (!introduced || sqlSha256(introduced) !== exact.sha256
+        || managedForwardPrefixSha256(root, introduction, path) !== exact.prefixSha256) {
+        throw new Error("exact managed forward introduction differs from upstream approval");
+      }
+    }
+    // An upstream approval is mandatory, including when the candidate adds its own pin.
+    assertUnchangedForwardApproval(root, approval, head, path);
+    if (exact.sha256 !== sqlSha256(bytes)) throw new Error("exact managed forward bytes differ from upstream approval");
+    if (exact.prefixSha256 !== managedForwardPrefixSha256(root, head, path)) throw new Error("exact managed forward managed prefix differs from upstream approval");
+    return;
+  }
   const portable = path.startsWith("db/platform/migrations/");
   const candidates = portable ? [...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? []] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? []), ...(registry.managedInvoicingForwards ?? [])];
   const forward = [...candidates, ...(registry.batchedForwards ?? []), ...(registry.managedCommerceForwards ?? []), ...(registry.supportAuthorityForwards ?? []), ...(registry.qualifiedInstallations ?? []), ...(registry.channelIngestForwards ?? []), ...(registry.nativeStoreForwards ?? [])].find((entry) => entry.path === path);

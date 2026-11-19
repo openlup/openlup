@@ -18,7 +18,7 @@ import { captureCommittedReviewCandidate } from "./agent-review-session.mjs";
 import { documentationGit } from "./documentation-git.ts";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
-import { assertCoLocatedForwardApproval } from "./reviewed-platform-forward.ts";
+import { assertCoLocatedForwardApproval, hasExactManagedForward } from "./reviewed-platform-forward.ts";
 
 export const SQL_ADMIT_USAGE = "usage: npm run sql:admit -- [--base <rev>] [--head <rev>] [--allow-stale-rules]\n"
   + "Checks committed revisions only; commit first; a local commit can be amended.\n"
@@ -153,7 +153,7 @@ export async function admitSqlRange({ root, base, head, fork, merge }: Range): P
   attempt("migration history", "self-check, base..merge", () => assertAppendOnlyMigrationHistory(root, base, merge));
   // Merge queue: the PR head on its fork point, then the merge-group head on main.
   const candidate = await captureCommittedReviewCandidate(root, fork, head, closedRunGit);
-  if (!needsForwardApproval(candidate.changedPaths)) {
+  if (!needsForwardApproval(candidate.changedPaths, path => hasExactManagedForward(root, fork, path) || hasExactManagedForward(root, base, path))) {
     verdicts.push({ status: "PASS", subject: "co-located approval", check: "queue: not run, no registry or reviewed-class migration change" });
     return verdicts;
   }

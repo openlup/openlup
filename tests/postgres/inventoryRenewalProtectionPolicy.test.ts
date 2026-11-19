@@ -75,6 +75,7 @@ afterAll(async () => { await closePostgres(resource, db); }, postgresTeardownTim
 it.each([
   "20261123130000_inventory_renewal_protection_policy.sql",
   "20261123142000_inventory_renewal_protection_validation.sql",
+  "20261123147000_inventory_atp_aggregate_renewal_credits.sql",
 ])("admits %s against its complete native prefix", file => {
   const path = `db/platform/migrations/${file}`;
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -274,6 +275,62 @@ it("restricted native startup refuses drift before serving or writing, with inst
     const bindings = await composeNativeBindings(url.toString(), createOriginPolicy(config, 4319), config);
     await bindings.close();
   } finally { await runtime.end(); }
+});
+
+
+it("matches current ATP credits for eligible holds, terminal cycles, expired holds and another schedule", async () => {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const original = sqlStatements(readFileSync("db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql", "utf8"))
+      .find(sql => sql.startsWith("CREATE OR REPLACE FUNCTION public.inventory_available_to_promise("))!;
+    await client.query(original.replace("public.inventory_available_to_promise(", "public.inventory_before_credit_aggregation("));
+    await client.query(`WITH operations AS (
+      INSERT INTO public.subscription_renewal_operations (
+        subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,cycle_snapshot,
+        claim_token,claimed_by,claimed_at,lease_expires_at)
+      SELECT s.id, s.next_cycle_at + CASE WHEN l.quantity=15 THEN interval '1 day' ELSE interval '0' END,
+        1, 'atp-fixture:' || s.id || ':new', repeat('c',64), '{}', gen_random_uuid(), 'fixture',
+        $1::timestamptz, $1::timestamptz + interval '5 minutes'
+      FROM public.subscriptions s JOIN public.subscription_renewal_term_lines l ON l.subscription_id=s.id
+      WHERE l.sku=$3 AND l.quantity IN (7,13,14,15)
+      RETURNING id,subscription_id,operation_fingerprint
+    ), terminal AS (
+      INSERT INTO public.subscription_cycles (
+        subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
+      SELECT o.subscription_id, s.next_cycle_at, 'skipped', o.id, o.operation_fingerprint
+      FROM operations o JOIN public.subscriptions s ON s.id=o.subscription_id
+      JOIN public.subscription_renewal_term_lines l ON l.subscription_id=o.subscription_id
+      WHERE l.quantity=13
+    ), reservations AS (
+      INSERT INTO public.fulfillment_inventory_reservations (
+        renewal_operation_id,operation_fingerprint,source_key,status,expires_at,created_at)
+      SELECT o.id,o.operation_fingerprint,$2,'held',
+        $1::timestamptz + CASE WHEN l.quantity=14 THEN interval '0' ELSE interval '1 day' END,
+        $1::timestamptz - interval '1 day'
+      FROM operations o JOIN public.subscription_renewal_term_lines l ON l.subscription_id=o.subscription_id
+      RETURNING id,operation_fingerprint
+    )
+    INSERT INTO public.fulfillment_inventory_reservation_lines(reservation_id,operation_fingerprint,sku,quantity)
+    SELECT id,operation_fingerprint,$3,10 FROM reservations`, [asOf, source, sku]);
+    await client.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('inventory_renewal_protection',$1)",
+      [JSON.stringify({ revision: "fixture-21", renewalProtectionDays: 21 })]);
+    const { rows } = await client.query(`SELECT mode,
+      public.inventory_before_credit_aggregation($1,$2,$3,mode) AS before,
+      public.inventory_available_to_promise($1,$2,$3,mode) AS after
+      FROM (VALUES (false), (true), (NULL)) AS modes(mode)`, [source, sku, asOf]);
+    for (const { mode, before, after } of rows) {
+      expect(after).toEqual(before);
+      expect(after).toMatchObject({
+        available_quantity: mode === true ? 65 : 2,
+        hard_hold_quantity: 35,
+        soft_subscription_demand_quantity: 63,
+      });
+    }
+  } finally {
+    try { await client.query("ROLLBACK"); }
+    finally { client.release(); }
+  }
 });
 
 it("the running starter editor sees the installer change from 14 to 21 via readInstalled", async () => {
