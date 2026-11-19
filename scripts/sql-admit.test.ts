@@ -90,8 +90,8 @@ const cases: Case[] = [
   ...["exact", "drift", "conflict"].map((scenario): Case => {
     const name = "fixture_deferred", relation = "public.fixture_row", signature = "public.fixture_deferred()";
     const canonical = `CREATE CONSTRAINT TRIGGER ${name} AFTER UPDATE OR DELETE ON ${relation} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${signature};`;
-    const refusal = scenario === "exact" ? undefined : `remove CREATE ${scenario === "conflict" ? "OR REPLACE " : "CONSTRAINT "}TRIGGER from this forward`;
-    return { name: `a pinned deferred trigger with ${scenario} SQL`, exit: refusal ? 1 : 0, refusal, build: (f) => {
+    const refusal = scenario === "drift" ? `deferred trigger ${name} does not match its registry entry; write exactly: ${canonical}` : scenario === "conflict" ? "remove CREATE OR REPLACE TRIGGER from this forward" : undefined;
+    return { name: `a pinned deferred trigger with ${scenario} SQL`, exit: refusal ? 1 : 0, refusal, hint: scenario === "drift" ? "#declare-a-reviewed-trigger" : undefined, build: (f) => {
         const statement = scenario === "drift" ? canonical.replace("UPDATE OR DELETE", "UPDATE, DELETE") : canonical;
         const entry = slot(nativePath);
         const definition = `CREATE FUNCTION ${signature} RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$;`;

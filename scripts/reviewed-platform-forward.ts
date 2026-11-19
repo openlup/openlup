@@ -69,7 +69,8 @@ export type NativeStoreCheck = { table: string; constraint: string; column: stri
 );
 export type NativeStoreUnique = { table: string; constraint: string; columns: string[]; nullsNotDistinct: boolean };
 const deferredEvents = ["INSERT", "UPDATE", "DELETE"] as const;
-const deferredKeyword = /^(?:if|not|exists|or|replace|on|after|before|constraint|trigger|create|function|table|column|check|unique|comment|rename|validate|insert|update|delete|deferrable|initially|deferred|for|each|row|execute|alter|drop|grant|revoke|all|privileges|from|to|public|only|enable|disable)$/u;
+// PostgreSQL reserved and type/function-name keywords, plus positional words in native admission.
+const deferredKeyword = new Set("add after all alter always analyse analyze and any array as asc asymmetric authorization before binary both case cast check collate collation column comment concurrently constraint create cross current_catalog current_date current_role current_schema current_time current_timestamp current_user default deferrable deferred delete desc disable distinct do drop each else enable end except execute exists false fetch for foreign freeze from full function grant group having if ilike in initially inner insert intersect into is isnull join lateral leading left like limit localtime localtimestamp natural not notnull null offset on only or order outer overlaps placing primary privileges public references rename replace replica returning revoke right row select session_user similar some symmetric system_user table tablesample then to trailing trigger true union unique update user using validate variadic verbose when where window with".split(" "));
 export type NativeDeferredTrigger = { name: string; relation: string; events: (typeof deferredEvents)[number][]; function: string; deferred: true; sha256: string };
 const deferredTriggerMessages = {
   unregistered: (name: string) => `deferred trigger ${name} is not registered; add it to createdTriggers in the same PR`,
@@ -2377,7 +2378,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       const invalid = (field: string, rule: string): never => { throw new Error(deferredTriggerMessages.field(trigger.name, field, `must be ${rule}`)); };
       if (trigger.deferred !== true) return invalid("deferred", "true");
       if (!nativeStoreName(trigger.name) || trigger.name.length > 63) invalid("name", "an unquoted identifier of at most 63 bytes");
-      if (deferredKeyword.test(trigger.name)) throw new Error(deferredTriggerMessages.field(trigger.name, "name", "must not be an SQL keyword"));
+      if (deferredKeyword.has(trigger.name)) throw new Error(deferredTriggerMessages.field(trigger.name, "name", "must not be an SQL keyword"));
       if (!nativeStoreTable(trigger.relation) || trigger.relation.length > 70) invalid("relation", "a public relation with an identifier of at most 63 bytes");
       if (typeof trigger.function !== "string" || !/^public\.[a-z_][a-z0-9_]{0,62}\(\)$/u.test(trigger.function)) invalid("function", "a zero-argument public function of at most 63 bytes");
       if (!Array.isArray(trigger.events) || !trigger.events.length || canonical(trigger.events) !== canonical(deferredEvents.filter(event => trigger.events.includes(event)))) invalid("events", "a nonempty ordered subset of INSERT, UPDATE, DELETE");
@@ -2608,7 +2609,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   }
   const pins = (slot.createdTriggers ?? []).filter((entry): entry is NativeDeferredTrigger => entry.deferred === true);
   const namesObject = (tokens: readonly PlatformSqlToken[], name: string) => tokens.some((token, i) =>
-    nativeIdentifier(token)?.slice(0, 63) === name && (token.kind === "quoted" || !deferredKeyword.test(name) || nativeSymbol(tokens, i - 1, ".")));
+    nativeIdentifier(token)?.slice(0, 63) === name && (token.kind === "quoted" || !deferredKeyword.has(name) || nativeSymbol(tokens, i - 1, ".")));
   const statements = sqlStatements(bytes.toString("utf8"), false, false, true, unfinished => {
     const tokens = platformSqlTokens(unfinished, false, true).tokens, pin = pins.find(pin => namesObject(tokens, pin.name));
     if (pin) return deferredTriggerMessages.text(pin);
@@ -2663,7 +2664,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const id = (i: number) => nativeIdentifier(tokens[i])?.slice(0, 63);
     const next = (i: number) => i + (nativeSymbol(tokens, i + 1, ".") ? 3 : 1);
     const relation = (i: number) => next(i) === i + 3 ? `${id(i)}.${id(i + 2)}` : `public.${id(i)}`;
-    const remove = (end: number, clause = tokens) => new Error(deferredTriggerMessages.remove(clause.slice(0, end + 1).map(token => token.value.toUpperCase()).join(" ")));
+    const remove = (end: number, clause = tokens, suffix = "") => new Error(deferredTriggerMessages.remove(clause.slice(0, end + 1).map(token => token.value.toUpperCase()).join(" ") + suffix));
     const alter = nativeStoreAlter(statement), start = word(2, "IF") ? 4 : 2, table = start + Number(word(start, "ONLY"));
     const actions = alter?.actions ?? (pins.length && changing && word(1, "TABLE") ? nativeStoreArguments(statement.slice(tokens[next(table)]?.start ?? -1, -1)) : []);
     const parts = actions.map(part => platformSqlTokens(part, false, true));
@@ -2674,13 +2675,12 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (pending && (!action || action.verb !== "ADD" || `${action.table}.${action.name}` !== pending)) throw new Error("reviewed native store requires the adjacent named constraint replacement");
     if (droppedCheck && !addedCheck && !statement.startsWith(`ALTER TABLE ${purposeTable} ADD CONSTRAINT ${purposeConstraint} `)) throw new Error("reviewed native store requires the adjacent purpose CHECK replacement");
     const triggerAt = kind + Number(constraint), nameAt = triggerAt + (word(triggerAt + 1, "IF") && word(triggerAt + 2, "NOT") && word(triggerAt + 3, "EXISTS") ? 4 : 1);
-    const entry = constraint && word(triggerAt, "TRIGGER") && pins.find(pin => statement === renderNativeDeferredTrigger(pin));
+    const entry = create && word(triggerAt, "TRIGGER") && pins.find(pin => pin.name === id(nameAt));
     if (entry) {
-      if (statements[index + 1] === ";") throw new Error(deferredTriggerMessages.text(entry));
+      if (statement !== renderNativeDeferredTrigger(entry) || statements[index + 1] === ";") throw new Error(deferredTriggerMessages.text(entry));
       if (triggers.has(entry.name)) throw new Error(deferredTriggerMessages.duplicate(entry.name));
       const digest = sqlSha256(statement);
       if (digest !== entry.sha256) throw new Error(deferredTriggerMessages.hash(entry.name, digest));
-      if (pins.some(pin => pin !== entry && pin.relation === entry.relation)) throw remove(triggerAt);
       triggers.add(entry.name); continue;
     }
     const block = nativeStoreRolePrivilege.exec(statement);
@@ -2690,8 +2690,12 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
         ? forward.functions.some(binding => binding.signature === pin.function && binding.afterSha256 === sqlSha256(statement))
         : revoke === `revoke all on function public . ${pin.function.slice(7, -2)} ( ) from public ;`));
       const namedTokens = block ? platformSqlTokens(block[2]!, false, true).tokens : tokens;
-      if (pins.some(pin => [pin.name, pin.function.slice(7, -2)].some(name => name !== own?.function.slice(7, -2) && namesObject(namedTokens, name))))
-        throw remove(block || parts.length ? 1 : triggerAt, block ? namedTokens : parts[0]?.tokens);
+      const conflicts = (clause: readonly PlatformSqlToken[]) => pins.some(pin =>
+        [pin.name, pin.function.slice(7, -2)].some(name => name !== own?.function.slice(7, -2) && namesObject(clause, name)));
+      const part = parts.findIndex(({ tokens }) => conflicts(tokens)), clause = parts[part]?.tokens;
+      const object = clause?.[nativeWord(clause ?? [], 2, "IF") ? (nativeWord(clause ?? [], 3, "NOT") ? 5 : 4) : 2];
+      if (clause || conflicts(namedTokens)) throw remove(block || clause ? 1 : triggerAt, block ? namedTokens : clause,
+        parts.length > 1 && object ? ` ${actions[part]!.slice(object.start, object.end)}` : "");
     }
     if (word(triggerAt, "TRIGGER") && (create || drop || changing || comment)) {
       const on = tokens.findIndex((_, i) => i > triggerAt && word(i, "ON"));
@@ -2717,9 +2721,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       dropped.add(index.name); continue;
     }
     for (const { tokens: sub } of parts) {
-      const verb = sub[0]?.value.toUpperCase() ?? "";
       const toggle = ["ALWAYS", "REPLICA"].some(word => nativeWord(sub, 1, word)) ? 2 : 1;
-      const trigger = ["ENABLE", "DISABLE"].includes(verb) && nativeWord(sub, toggle, "TRIGGER");
+      const trigger = (nativeWord(sub, 0, "ENABLE") || nativeWord(sub, 0, "DISABLE")) && nativeWord(sub, toggle, "TRIGGER");
       if (trigger && pins.some(pin => pin.relation === relation(table))) throw remove(toggle, sub);
       if (trigger && alter) throw new Error("reviewed native store trigger mutation refused");
     }

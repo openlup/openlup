@@ -1278,7 +1278,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   const cases: Fixture[] = [
     ...subset.map(events => ({ label: events.join(" OR "), pins: [deferredPin({ events })] })),
     { label: "63-byte name", pins: [deferredPin({ name: long })] },
-    { label: "keyword name if", pins: [deferredPin({ name: "if" })], refusal: "createdTriggers entry if: name must not be an SQL keyword" },
+    { label: "keyword name select", pins: [deferredPin({ name: "select" })], refusal: "createdTriggers entry select: name must not be an SQL keyword" },
     { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: `createdTriggers entry ${long}a: name must be an unquoted identifier of at most 63 bytes` },
     { label: "64-byte relation", pins: [deferredPin({ relation: "public." + long + "a" })], refusal: `createdTriggers entry ${pin.name}: relation must be a public relation with an identifier of at most 63 bytes` },
     { label: "64-byte function", pins: [deferredPin({ function: "public." + long + "a()" })], refusal: functionRule },
@@ -1287,7 +1287,8 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     { label: "missing statement", pins: [pin], sql: "", refusal: mismatch },
     { label: "stale statement hash", pins: [{ ...pin, sha256: "0".repeat(64) }], refusal: `deferred trigger ${pin.name}: update sha256 in its createdTriggers entry to ${pin.sha256}` },
     { label: "duplicate statement", pins: [pin], sql: statement + statement, refusal: `deferred trigger ${pin.name} is declared twice; remove the second statement` },
-    { label: "inline column CHECK", pins: [pin], sql: statement + inlineColumn, companions: { existingTableStatements: [inlineColumn] }, refusal: "remove ADD COLUMN from this forward" },
+    ...[inlineColumn, inlineColumn.replace(" CONSTRAINT", ", ADD CONSTRAINT")].map(sql => ({ label: sql === inlineColumn ? "inline column CHECK" : "second ALTER action",
+      pins: [pin], sql: statement + sql, companions: { existingTableStatements: [sql] }, refusal: `remove ADD ${sql === inlineColumn ? "COLUMN" : `CONSTRAINT ${pin.name}`} from this forward` })),
     ...["CHECK (true)", "UNIQUE (id)"].map(clause => ({ label: `inline table ${clause}`, pins: [freshPin],
       sql: `CREATE TABLE public.cat_fresh (id integer, CONSTRAINT ${pin.name} ${clause});` + renderNativeDeferredTrigger(freshPin), refusal: "remove CREATE TABLE from this forward" })),
     { label: "duplicate registry entry", pins: [pin, pin], sql: statement, refusal: `createdTriggers entry ${pin.name} is listed twice; delete the duplicate entry` },
@@ -1295,16 +1296,13 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     ...["AFTER", "CREATE"].map(word => ({ label: `unfinished lowercase ${word}`, pins: [pin],
       sql: statement.slice(0, -1).replace(word, word.toLowerCase()) + (word === "AFTER" ? " -- unfinished declaration" : ""), refusal: mismatch })),
     { label: "extra terminator", pins: [pin], sql: statement + ";", refusal: mismatch },
-    { label: "disjoint pins with a shared null-path invoker", pins: [pin, deferredPin({ name: "cat_deferred_other", relation: "public.cat_parameters" })] },
+    ...[pin.relation, "public.cat_parameters"].map(relation => ({ label: `second pinned trigger on ${relation}`, pins: [pin, deferredPin({ name: "cat_deferred_other", relation })] })),
     { label: "renamed prefix table", pins: [renamed], setup: "ALTER TABLE public.cat_existing_table RENAME TO cat_renamed;", prefixFunction: true },
     { label: "successor table with its own linked constraint", pins: [successor], setup: successorBase, sql: successorCreate + renderNativeDeferredTrigger(successor) },
     ...[
-      ["event separator", "INSERT OR UPDATE", "INSERT, UPDATE"], ["WHEN", "EXECUTE", "WHEN (true) EXECUTE"],
-      ["OR REPLACE", "CREATE", "CREATE OR REPLACE"], ["IF NOT EXISTS", "TRIGGER ", "TRIGGER IF NOT EXISTS "], ["byte spacing", " TRIGGER ", "  TRIGGER "],
-    ].map(([label, from, to]) => {
-      const sql = statement.replace(from!, to!);
-      return { label: label!, pins: [deferredPin({}, sql)], sql, refusal: `remove CREATE ${label === "OR REPLACE" ? "OR REPLACE " : ""}CONSTRAINT TRIGGER from this forward` };
-    }),
+      ["event separator", "INSERT OR UPDATE", "INSERT, UPDATE"], ["byte spacing", " TRIGGER ", "  TRIGGER "], ["lowercase AFTER", "AFTER", "after"],
+      ["OR REPLACE", "CREATE", "CREATE OR REPLACE"], ["IF NOT EXISTS", "TRIGGER ", "TRIGGER IF NOT EXISTS "], ["ordinary CREATE spelling", "CONSTRAINT TRIGGER", "TRIGGER"],
+    ].map(([label, from, to]) => ({ label: label!, pins: [pin], sql: statement.replace(from!, to!), refusal: mismatch })),
     ...[
       ["DROP TRIGGER", "DROP TRIGGER IF EXISTS cat_deferred_guard ON public.cat_existing_table;"],
       ["DISABLE TRIGGER", "ALTER TABLE ONLY public.cat_existing_table DISABLE TRIGGER ALL;"],
