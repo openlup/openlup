@@ -65,6 +65,11 @@ Initial activation and a parent restore that also restores fresh sales require
 an active, sellable primary after the authored effects. A withdrawal preserves
 physical and merchandising facts and does not depend on unrelated sale readiness.
 
+Fresh sale readiness uses the price owner's latest effective active list in
+the configured settlement region and currency. It requires one positive
+gross base price at quantity one and an eligible stored subscription price
+on that list.
+
 The optional experimental `demandPolicyRef` is sealed into governed SKU facts.
 When the sealed revision includes the field, accepted references must carry the
 same value. Frozen renewal v3 requires exactly one reference per distinct line

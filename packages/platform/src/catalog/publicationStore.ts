@@ -291,7 +291,12 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     for (const sku of evidence.structural) await checkSkuReadiness(db, sku, false);
     if (evidence.structural.length) checkReadinessResult(await deps.readiness(db, { product, skus: evidence.structural }, false));
     for (const sku of evidence.commercial) await checkSkuReadiness(db, sku, true);
-    if (evidence.commercial.length) checkReadinessResult(await deps.readiness(db, { product, skus: evidence.commercial }, true));
+    if (evidence.commercial.length) {
+      checkReadinessResult(await deps.readiness(db, { product, skus: evidence.commercial }, true));
+      const rows = await tuple(db, `SELECT bool_and(public.catalog_price_setup_sale_ready(sku_id)) AS ready
+        FROM unnest($1::uuid[]) AS affected(sku_id)`, [evidence.commercial.map(sku => sku.id)]);
+      require(rows[0]?.ready === true, "catalog_publication_v3_activation_readiness_failed");
+    }
     if (evidence.activatesParent || evidence.restoresParent && evidence.enabling) {
       const primary = skus.find(sku => sku.id === product.primarySkuId && sku.productId === product.id);
       require(primary && "lifecycleState" in primary && primary.lifecycleState === "active" && (primary.sellableStandalone || primary.sellableInSubscription),

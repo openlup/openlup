@@ -5797,6 +5797,10 @@
           {
             "signature": "public.catalog_renewal_instant_v3(jsonb,boolean)",
             "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_price_setup_sale_ready(uuid,uuid)",
+            "searchPath": "pg_catalog, public"
           }
         ],
         "grantOnlyFunctions": [],
@@ -8142,7 +8146,7 @@
     },
     {
       "path": "db/platform/migrations/20261123180000_catalog_lifecycle.sql",
-      "sha256": "200a11f859d8b7c423c8abaf4669df088df2462f1ab7cc49d0b994fe04f42837",
+      "sha256": "46182ab7b3fa296c8d722ce059f024156298904fec31e8dedcf0aa3c017b17f0",
       "functions": [
         {
           "signature": "public.catalog_draft_apply(text,text,text)",
@@ -8348,6 +8352,11 @@
           "signature": "public.catalog_renewal_instant_v3(jsonb,boolean)",
           "beforeSha256": null,
           "afterSha256": "e7688fcc623c41da77b6330163ea63cc18083b9dd0c60aa4b5c6c3ae667b1f00"
+        },
+        {
+          "signature": "public.catalog_price_setup_sale_ready(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "ace707b20037b7053ada64fce156568f035f90f1c301da42fc1f3b6842f188a7"
         }
       ]
     }

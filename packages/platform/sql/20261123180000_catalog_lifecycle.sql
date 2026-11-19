@@ -1528,3 +1528,29 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.subscription_renewal_purchase_terms_v2(uuid) FROM PUBLIC;
+
+-- Price-setup authority for fresh catalogue sales and consulted price evidence.
+-- Apply the optional consulted list only after selecting the effective winner.
+CREATE FUNCTION public.catalog_price_setup_sale_ready(p_sku_id uuid,p_expected_list_id uuid DEFAULT NULL)
+RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ WITH selected_list AS (
+  SELECT id,region_code,currency FROM public.price_lists
+  WHERE region_code=public.catalog_price_setup_region_code()
+   AND currency=public.catalog_price_setup_settlement_currency() AND status='active'
+   AND valid_from<=statement_timestamp() AND (valid_to IS NULL OR valid_to>statement_timestamp())
+  ORDER BY created_at DESC,id DESC LIMIT 1
+ )
+ SELECT count(*) FILTER(WHERE entry.mode='one_time' AND entry.min_qty=1)=1
+  AND count(*) FILTER(WHERE entry.mode='subscription' AND entry.min_qty=1)=1
+  AND coalesce(bool_and(entry.mode<>'any' AND entry.min_qty=1
+   AND entry.amount_kind='gross' AND entry.unit_price_minor>0),false)
+  AND NOT EXISTS (
+   SELECT 1 FROM selected_list list JOIN public.subscription_price_policy_revisions policy
+    ON policy.price_list_id=list.id AND policy.region_code=list.region_code AND policy.currency=list.currency AND policy.channel='D2C'
+  )
+ FROM selected_list list JOIN public.price_entries entry ON entry.price_list_id=list.id
+ WHERE (p_expected_list_id IS NULL OR list.id=p_expected_list_id)
+  AND entry.variant_id=p_sku_id AND entry.active
+  AND entry.valid_from<=statement_timestamp() AND (entry.valid_to IS NULL OR entry.valid_to>statement_timestamp())
+$$;
+REVOKE ALL ON FUNCTION public.catalog_price_setup_sale_ready(uuid,uuid) FROM PUBLIC;

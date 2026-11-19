@@ -1249,6 +1249,121 @@ function authoredEnablement(payload: CatalogDraftPayloadV4, code: string) {
   ] as const;
 }
 
+async function seedSalePrices(skuId: string) {
+  await db.query(`INSERT INTO public.commerce_settings(key,value_text)
+    VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
+    ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text`);
+  const list = (await db.query(`INSERT INTO public.price_lists(name,region_code,currency,status,created_at,valid_from,valid_to)
+    VALUES('Effective list','ZZ','XXX','active',statement_timestamp()-interval '1 day',statement_timestamp()-interval '1 hour',statement_timestamp()+interval '1 day')
+    RETURNING id`)).rows[0].id as string;
+  const entries = (await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from)
+    VALUES($1,$2,'one_time',617,statement_timestamp()-interval '1 hour'),
+      ($1,$2,'subscription',543,statement_timestamp()-interval '1 hour') RETURNING id,mode`, [list, skuId])).rows;
+  return { list, base: entries.find(row => row.mode === "one_time")!.id as string,
+    subscription: entries.find(row => row.mode === "subscription")!.id as string };
+}
+
+const salePriceCases = ["valid with newer future list", "newer non-effective list only", "newer expired list only",
+  "newer list in another region", "newer list in another currency", "newer inactive list only", "newer effective list wins", "larger list ID on tied creation time",
+  "zero base rows", "two base rows", "non-positive base", "net base", "missing subscription price",
+  "two subscription prices", "non-positive subscription price", "policy owns subscription price", "any-mode override", "quantity tier", "future base row", "expired subscription price"] as const;
+it.each(
+  (["EL", "PA", "PR", "SA", "SR"] as const).flatMap(path => salePriceCases.map(price => ({ path, price }))),
+)("LC5-D-051/052/053 price owner checks $price through $path", async ({ path, price }) => {
+  const sibling = path === "EL" || path === "SA" || path === "SR";
+  const f = await seed({ other: sibling, gross: true });
+  const standing = await standingActive(f, false, true, path === "EL" || path === "SR");
+  const sku = f.payload.skus[sibling ? 1 : 0]!, code = sku.code!;
+  const prices = await seedSalePrices(sku.id);
+  const payload = withdrawal(f);
+  let head = standing.head, revision = 1;
+  const advance = async () => {
+    const result = (await publish(payload,revision++,head)).result;
+    if (!("receipt" in result)) throw new Error(JSON.stringify(result));
+    head = result.receipt.head;
+  };
+  if (path === "PR") await advance();
+  if (path === "SR") {
+    payload.publication.operations = [{ op: "set_sku_lifecycle", skuCode: code, expectedState: "active", state: "withdrawn" }];
+    await advance();
+  }
+  const enable = authoredEnablement(payload, code);
+  if (path === "PA") {
+    // Establish a selling child first so the parent command carries no enabling operation.
+    payload.publication.operations = [...enable];
+    await advance();
+    payload.publication.kind = "compensation";
+  }
+  const operation: CatalogDraftPayloadV4["publication"]["operations"][number] = path === "EL"
+    ? { op: "set_sku_lifecycle", skuCode: code, expectedState: "active", state: "withdrawn" }
+    : path === "PA" ? { op: "set_product_lifecycle", productSlug: "article", expectedState: "active", state: "active", children: [] }
+    : path === "PR" ? { op: "restore_product", productSlug: "article", expectedState: "withdrawn" }
+    : path === "SA" ? { op: "set_sku_lifecycle", skuCode: code, expectedState: "draft", state: "active" }
+    : { op: "restore_sku", skuCode: code, expectedState: "withdrawn" };
+  payload.publication.operations = [...(path === "PA" ? [] : enable), operation];
+  if (path === "PR") payload.publication.operations.push({ op: "restore_sku", skuCode: code, expectedState: "withdrawn" });
+  if (price === "valid with newer future list" || price === "newer non-effective list only") {
+    const future = (await db.query(`INSERT INTO public.price_lists(name,region_code,currency,status,valid_from)
+      VALUES('Future list','ZZ','XXX','active',statement_timestamp()+interval '1 day') RETURNING id`)).rows[0].id;
+    if (price === "newer non-effective list only") {
+      await db.query("UPDATE public.price_entries SET price_list_id=$1 WHERE price_list_id=$2", [future,prices.list]);
+    } else {
+      const result = await db.query(`SELECT public.catalog_price_setup_sale_ready($1,$2) AS consulted,
+        public.catalog_price_setup_sale_ready($1,$3) AS future`, [sku.id,prices.list,future]);
+      expect(result.rows).toEqual([{ consulted: true, future: false }]);
+    }
+  } else if (price === "newer expired list only" || price === "newer list in another region" || price === "newer list in another currency" || price === "newer inactive list only") {
+    const outside = (await db.query(`INSERT INTO public.price_lists(name,region_code,currency,status,valid_from,valid_to)
+      VALUES('List outside the active selection',$1,$2,$4,statement_timestamp()-interval '2 hours',
+        CASE WHEN $3::boolean THEN statement_timestamp()-interval '1 hour' END) RETURNING id`,
+    [price === "newer list in another region" ? "ZY" : "ZZ",price === "newer list in another currency" ? "XYY" : "XXX",price === "newer expired list only",price === "newer inactive list only" ? "draft" : "active"])).rows[0].id;
+    await db.query("UPDATE public.price_entries SET price_list_id=$1 WHERE price_list_id=$2",[outside,prices.list]);
+  } else if (price === "newer effective list wins" || price === "larger list ID on tied creation time") {
+    const tied = price === "larger list ID on tied creation time";
+    await db.query(`INSERT INTO public.price_lists(id,name,region_code,currency,status,created_at,valid_from,valid_to)
+      SELECT $2,'Competing list',region_code,currency,status,CASE WHEN $3::boolean THEN created_at ELSE statement_timestamp() END,valid_from,valid_to
+      FROM public.price_lists WHERE id=$1`,[prices.list,tied ? "ffffffff-ffff-ffff-ffff-ffffffffffff" : "00000000-0000-0000-0000-000000000001",tied]);
+  } else if (price === "zero base rows" || price === "missing subscription price") {
+    await db.query("UPDATE public.price_entries SET active=false WHERE id=$1",[price === "zero base rows" ? prices.base : prices.subscription]);
+  } else if (price === "two base rows" || price === "two subscription prices") {
+    await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from,amount_kind)
+      SELECT price_list_id,variant_id,mode,unit_price_minor,valid_from,amount_kind FROM public.price_entries WHERE id=$1`,
+    [price === "two base rows" ? prices.base : prices.subscription]);
+  } else if (price === "non-positive base" || price === "non-positive subscription price") {
+    await db.query("UPDATE public.price_entries SET unit_price_minor=0 WHERE id=$1",[price === "non-positive base" ? prices.base : prices.subscription]);
+  } else if (price === "future base row") {
+    await db.query("UPDATE public.price_entries SET valid_from=statement_timestamp()+interval '1 day' WHERE id=$1",[prices.base]);
+  } else if (price === "expired subscription price") {
+    await db.query("UPDATE public.price_entries SET valid_to=statement_timestamp()-interval '30 minutes' WHERE id=$1",[prices.subscription]);
+  } else if (price === "any-mode override" || price === "quantity tier") {
+    await db.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,min_qty,unit_price_minor,valid_from)
+      SELECT price_list_id,variant_id,$2,$3,unit_price_minor,valid_from FROM public.price_entries WHERE id=$1`,
+    [prices.base,price === "any-mode override" ? "any" : "one_time",price === "quantity tier" ? 2 : 1]);
+  } else if (price === "policy owns subscription price") {
+    await db.query(`INSERT INTO public.subscription_price_policy_revisions
+      (id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
+      SELECT id,1,$1,'ZZ','XXX','D2C',at,1000,10,'FLOOR_TO_QUANTUM',
+        public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',at,NULL,1000,10,'FLOOR_TO_QUANTUM')
+      FROM (SELECT gen_random_uuid() AS id,date_trunc('milliseconds',statement_timestamp()-interval '1 hour') AS at) evidence`, [prices.list]);
+  } else {
+    await db.query("UPDATE public.price_entries SET amount_kind='net' WHERE id=$1",[prices.base]);
+  }
+  const commercial: string[] = [];
+  readiness = async (priced, skus) => {
+    if (priced) commercial.push(...skus.map(sku => sku.code));
+    return { ready: true, reasons: [] };
+  };
+  const { result } = await publish(payload,revision,head);
+  expect(commercial).toEqual([code]);
+  if (price === "valid with newer future list") {
+    expect(result).toMatchObject({ outcome: "committed" });
+  } else {
+    expect(result).toMatchObject({ outcome: "validation_issue", reason: "catalog_publication_v3_activation_readiness_failed" });
+    expect((await db.query("SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1",[f.product])).rows)
+      .toEqual([{ publication_id: head.publicationId }]);
+  }
+});
+
 it.each([
   ["LC5-D-013", "enable first"],
   ["LC5-D-012", "restore first"],
@@ -1272,6 +1387,7 @@ it.each([
     { op: "restore_product", productSlug: "article", expectedState: "withdrawn" },
     ...(mode === "restore first" ? [restore, ...enabling] : [...enabling, restore]),
   ];
+  if (mode !== "closed source") await seedSalePrices(payload.skus.find(sku => sku.code === code)!.id);
   staleAuthoredSource = mode === "closed source";
   const result = (await publish(payload,2,withdrawn.receipt.head)).result;
   if (mode === "wrong primary" || mode === "closed source") {
@@ -1324,6 +1440,7 @@ it.each((["parent", "activation", "restore", "eligibility", "parent restore"] as
     payload.publication.operations.push({ op: "set_sku_lifecycle", skuCode: code, expectedState: "active", state: "withdrawn" });
   }
   const priced: string[] = [];
+  if (defect === "no membership") await seedSalePrices(payload.skus.find(sku => sku.code === code)!.id);
   if (other && defect === "no membership") watchedSkuStatus = f.payload.skus[1]!.id;
   readiness = async (requirePrice, skus) => {
     if (requirePrice) priced.push(...skus.filter(sku => sku.sellableStandalone || sku.sellableInSubscription).map(sku => sku.code));
@@ -1395,6 +1512,7 @@ it.each([
     return;
   }
   payload.publication.operations.unshift(...authoredEnablement(payload, f.code));
+  if (mode === "explicit enablement") await seedSalePrices(f.sku);
   let commercial = 0, global = 0;
   readiness = async price => {
     if (price) commercial += 1;
