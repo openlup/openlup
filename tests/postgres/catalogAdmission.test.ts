@@ -2259,20 +2259,25 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
     const constraint = { kind: "unit_count",value: coreQuantity,dailyNeed: 1 };
     try {
       if (!optIn) expect(await (await edit(f,"sized")).invoke(setup)).toMatchObject({ status: "applied" });
-      const outsideOffer = discovery
+      const previewTarget = action === "preview parent drift" ? await fixture(packs[1]) : f;
+      const outsideOffer = discovery && previewTarget === f
         ? await fixture(packs[1], { sku: { memberships: [{ offerVersion: "classic", admitted: true }] } })
         : undefined;
+      const ids = [...new Set([f.sku,variantId,previewTarget.sku,...(outsideOffer ? [outsideOffer.sku] : [])])];
       await setup.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,$2,'Legacy article','active')", [product,`legacy-${product}`]);
       await setup.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,is_addon,sellable_standalone,sellable_in_subscription,net_weight_g) VALUES($1,$2,$3,'Legacy article','active',true,true,true,100)", [variantId,product,code]);
       const tax = { included: true,country: "ZZ",category: "standard",vatRateBps: 0,legalBasis: "Synthetic tax" } as const;
       const catalog = { async listQuoteCatalogItems() {
-        return (await setup.query("SELECT s.*,p.slug FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id WHERE s.id=ANY($1::uuid[])", [[f.sku,variantId]])).rows.map(row => ({
+        return (await setup.query("SELECT s.*,p.slug FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id WHERE s.id=ANY($1::uuid[])", [ids])).rows.map(row => ({
           variantId: String(row.id),skuId: String(row.id),skuCode: String(row.sku),productSlug: String(row.slug),netWeightG: Number(row.net_weight_g),isAddon: row.is_addon === true,
           sellability: { oneTime: true,subscription: true },documentRevision: { id: null,digest: null },
         }));
       } };
       const priceList = f.admission.priceContextVersions[0].priceListId, entry = randomUUID();
       await setup.query("INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,'any',411,$4::timestamptz-interval '1 day')", [entry,priceList,variantId,f.at]);
+      if (previewTarget !== f) {
+        await setup.query("INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,$3,'subscription',617,$4::timestamptz-interval '1 day')", [randomUUID(),priceList,previewTarget.sku,f.at]);
+      }
       const repriced: string[] = [];
       const engine = createDbBackedCommerceQuotePort({ quoteCatalogReadPort: catalog,isStrictD1Quote: false,
         pricingResolverPort: { async resolvePrice(input) {
@@ -2344,11 +2349,10 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
         },
         async readCatalog(db) {
           expect(unavailable,"replay must precede catalogue read").toBe(false);
-          const ids = [f.sku,variantId,...(outsideOffer ? [outsideOffer.sku] : [])];
           const facts = (await db.query(`SELECT s.*,p.publication_facts#>>'{document,id}' AS document_id,p.publication_facts#>>'{document,digest}' AS document_digest
             FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id WHERE s.id=ANY($1::uuid[])`, [ids])).rows.map(row => {
             const wrongDoc = row.id === f.sku && action === "candidate document drift";
-            return { variantId: String(row.id),sku: String(row.sku),groupId: row.id === f.sku && action.endsWith("parent drift") ? randomUUID() : String(row.product_id),isAddon: row.is_addon === true,
+            return { variantId: String(row.id),sku: String(row.sku),groupId: row.id === previewTarget.sku && action.endsWith("parent drift") ? randomUUID() : String(row.product_id),isAddon: row.is_addon === true,
               sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: row.id === f.sku && action.endsWith("measure drift") ? 101 : 100,demandPerUnit: 28,
               documentRevisionId: wrongDoc ? String(row.id) : String(row.document_id ?? row.id),
               documentDigest: wrongDoc ? digest(String(row.id)) : String(row.document_digest ?? digest(String(row.id))),verified: true,exclusions: [],sellableNow: row.is_addon ? null : 100 };
@@ -2386,7 +2390,7 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
           }
         } else if (action === "preview parent drift" || action === "preview measure drift") {
           await expect(editor.preview(actor,{ subscriptionId: f.subscription,action: "resize_bundle",cadenceDays: 28,compositionConstraint: constraint,
-            resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: [{ variantId: f.sku,qty: coreQuantity }] } } }))
+            resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: [{ variantId: previewTarget.sku,qty: coreQuantity }] } } }))
             .rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
         } else if (action === "candidate document drift" || action === "candidate parent drift" || action === "candidate measure drift") {
           await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
