@@ -1249,6 +1249,8 @@ export interface OmnipackFulfillmentAdapterConfig {
     selected?: boolean;
     /** Per-instance retention target; default 10,000. Evicts oldest completed submissions, never in-flight. */
     maxRetainedSubmissions?: number;
+    /** Maximum pages readback.read may walk to prove whole-collection uniqueness; default 1 (single-page only). */
+    readbackMaxPages?: number;
     /** Host account evidence, independent of credentials. Omission remains not ready. */
     readiness?: FulfillmentCapabilityDescriptor["readiness"];
     /** Called in prepare and again for new dispatches; return identical metadata for the same request or dispatch refuses. */

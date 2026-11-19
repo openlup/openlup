@@ -255,4 +255,52 @@ describe("createEnvAdvisoryLock", () => {
       errorSpy.mockRestore();
     }
   });
+
+  it("recovers after a transient connect failure and resolves close cleanly", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ pid: 42, locked: true, held: true, unlocked: true }] });
+    const connect = vi.fn()
+      .mockRejectedValueOnce(new Error("database starting up"))
+      .mockResolvedValueOnce({ query, end: vi.fn().mockResolvedValue(undefined) } as AdvisoryLockQuerier);
+    const lock = createEnvAdvisoryLock({ DATABASE_URL: "postgres://host/db" }, connect)!;
+
+    await expect(lock.tryAcquire("probe")).rejects.toThrow("database starting up");
+    await expect(lock.tryAcquire("probe")).resolves.toBe(true);
+    await lock.release("probe");
+    expect(connect).toHaveBeenCalledTimes(2);
+
+    const failingOnly = createEnvAdvisoryLock(
+      { DATABASE_URL: "postgres://host/db" },
+      vi.fn().mockRejectedValue(new Error("connect down")),
+    )!;
+    await expect(failingOnly.tryAcquire("probe")).rejects.toThrow("connect down");
+    await expect(failingOnly.close()).resolves.toBeUndefined();
+  });
+
+  it("retires an idle disconnected dedicated client and reconnects on the next tick, while keeping active-lock disconnects fail-closed", async () => {
+    const firstClient = Object.assign(new EventEmitter(), {
+      query: vi.fn().mockResolvedValue({ rows: [{ pid: 101, locked: true, held: true, unlocked: true }] }),
+      end: vi.fn().mockResolvedValue(undefined),
+    });
+    const secondClient = Object.assign(new EventEmitter(), {
+      query: vi.fn().mockResolvedValue({ rows: [{ pid: 202, locked: true, held: true, unlocked: true }] }),
+      end: vi.fn().mockResolvedValue(undefined),
+    });
+    const connect = vi.fn()
+      .mockResolvedValueOnce(firstClient as unknown as AdvisoryLockQuerier)
+      .mockResolvedValueOnce(secondClient as unknown as AdvisoryLockQuerier);
+    const lock = createEnvAdvisoryLock({ DATABASE_URL: "postgres://host/db" }, connect)!;
+
+    await expect(lock.tryAcquire("probe")).resolves.toBe(true);
+    await lock.release("probe");
+    // Idle disconnect with zero active locks: retires firstClient and resets sessionPid.
+    firstClient.emit("end");
+    await expect(lock.tryAcquire("probe")).resolves.toBe(true);
+    expect(connect).toHaveBeenCalledTimes(2);
+
+    // Active lock held: disconnect must NOT silently reset session affinity.
+    secondClient.emit("end");
+    secondClient.query.mockRejectedValueOnce(new Error("connection closed"));
+    await expect(lock.release("probe")).rejects.toThrow("connection closed");
+    expect(connect).toHaveBeenCalledTimes(2);
+  });
 });

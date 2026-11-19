@@ -60,6 +60,17 @@ export function createPgAdvisoryLock(
   client: AdvisoryLockQuerier,
   closeClient: () => Promise<void> = () => client.end?.() ?? Promise.resolve(),
 ): AdvisoryLock {
+  return createPgAdvisoryLockInternal(client, closeClient).lock;
+}
+
+function createPgAdvisoryLockInternal(
+  client: AdvisoryLockQuerier,
+  closeClient: () => Promise<void>,
+): {
+  lock: AdvisoryLock;
+  reservedCount(): number;
+  resetIdleSession(): void;
+} {
   let closePromise: Promise<void> | null = null;
   let closed = false;
   let refused = false;
@@ -77,7 +88,7 @@ export function createPgAdvisoryLock(
   // PostgreSQL grants reentrant session locks. Reserve the actual key locally
   // before querying so pending/held acquisitions, including hash collisions, skip.
   const reserved = new Set<number>();
-  return {
+  const lock: AdvisoryLock = {
     durability: "cluster",
     async tryAcquire(jobId) {
       if (closed) throw new Error("advisory_lock_closed");
@@ -138,6 +149,15 @@ export function createPgAdvisoryLock(
       return closePromise;
     },
   };
+  return {
+    lock,
+    reservedCount: () => reserved.size,
+    resetIdleSession: () => {
+      if (reserved.size === 0 && !refused && !closed) {
+        sessionPid = undefined;
+      }
+    },
+  };
 }
 
 /**
@@ -160,23 +180,25 @@ const attachedClientErrors = new WeakSet<object>();
 function attachAdvisoryClientErrorListener<T extends object>(
   target: T,
   onError?: (error: Error) => void,
+  onAfterError?: () => void,
 ): T {
   if (attachedClientErrors.has(target)) return target;
   const emitter = target as { on?: (event: string, listener: (error: Error) => void) => unknown };
   if (typeof emitter.on !== "function") return target;
   attachedClientErrors.add(target);
   emitter.on("error", (error: Error) => {
-    if (onError) {
-      try {
+    try {
+      if (onError) {
         onError(error);
-      } catch {
-        // Never allow an error callback to turn an idle pg error into an uncaught exception.
+      } else {
+        const rawCode = (error as { code?: unknown })?.code;
+        const code = typeof rawCode === "string" ? ` (${rawCode})` : "";
+        console.error(`[openlup/platform:advisory-lock] idle postgres error${code}: ${error instanceof Error ? error.message : String(error)}`);
       }
-      return;
+    } catch {
+      // Never allow an error callback to turn an idle pg error into an uncaught exception.
     }
-    const rawCode = (error as { code?: unknown })?.code;
-    const code = typeof rawCode === "string" ? ` (${rawCode})` : "";
-    console.error(`[openlup/platform:advisory-lock] idle postgres error${code}: ${error instanceof Error ? error.message : String(error)}`);
+    onAfterError?.();
   });
   return target;
 }
@@ -188,35 +210,61 @@ export function createEnvAdvisoryLock(
 ): AdvisoryLock | null {
   const connectionString = env.DATABASE_URL?.trim() ?? "";
   if (connectionString === "") return null;
-  const openClient = () => {
-    const connecting = connect === connectDedicatedClient
-      ? connectDedicatedClient(connectionString, options.onClientError)
-      : connect(connectionString);
-    return connecting.then((client) => attachAdvisoryClientErrorListener(client, options.onClientError));
-  };
   let pending: Promise<AdvisoryLockQuerier> | null = null;
   let closed = false;
   let closePromise: Promise<void> | null = null;
+
   const querier: AdvisoryLockQuerier = {
     async query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[] }> {
       if (closed) throw new Error("advisory_lock_closed");
-      pending ??= openClient();
-      const client = await pending;
+      const client = await getClient();
       return client.query<T>(text, values);
     },
   };
-  const lock = createPgAdvisoryLock(querier, () => {
+  const state = createPgAdvisoryLockInternal(querier, () => {
     closed = true;
-    closePromise ??= pending?.then((client) => client.end?.() ?? undefined) ?? Promise.resolve();
+    closePromise ??= pending?.then((client) => client.end?.() ?? undefined, () => undefined) ?? Promise.resolve();
     return closePromise;
   });
+
+  function getClient(): Promise<AdvisoryLockQuerier> {
+    if (closed) return Promise.reject(new Error("advisory_lock_closed"));
+    if (!pending) {
+      let resolvedClient: AdvisoryLockQuerier | null = null;
+      let attempt!: Promise<AdvisoryLockQuerier>;
+      const retireIfIdle = () => {
+        if (resolvedClient && pending === attempt && state.reservedCount() === 0) {
+          const client = resolvedClient;
+          pending = null;
+          state.resetIdleSession();
+          void Promise.resolve(client.end?.()).catch(() => {});
+        }
+      };
+      const connecting = connect === connectDedicatedClient
+        ? connectDedicatedClient(connectionString, options.onClientError, retireIfIdle)
+        : connect(connectionString).then((client) => attachAdvisoryClientErrorListener(client, options.onClientError, retireIfIdle));
+      attempt = connecting.then((client) => {
+        resolvedClient = client;
+        const emitter = client as { on?: (event: string, listener: (...args: unknown[]) => void) => unknown };
+        if (typeof emitter.on === "function") {
+          emitter.on("end", retireIfIdle);
+        }
+        return client;
+      });
+      pending = attempt;
+      attempt.catch(() => {
+        if (pending === attempt) pending = null;
+      });
+    }
+    return pending;
+  }
   return {
-    ...lock,
+    ...state.lock,
     async tryAcquire(jobId) {
       // Connection failure precedes every lock statement; preserve its peer or
       // transport error. Only a failed statement can leave an uncertain grant.
-      if (!closed) await (pending ??= openClient());
-      return lock.tryAcquire(jobId);
+      if (!closed) await getClient();
+      return state.lock.tryAcquire(jobId);
     },
   };
 }
@@ -224,10 +272,11 @@ export function createEnvAdvisoryLock(
 async function connectDedicatedClient(
   connectionString: string,
   onClientError?: (error: Error) => void,
+  onAfterError?: () => void,
 ): Promise<AdvisoryLockQuerier> {
   const pg = await import("pg").catch(peerMissing);
   const ClientCtor = (pg.default?.Client ?? pg.Client) as typeof import("pg").Client;
-  const client = attachAdvisoryClientErrorListener(new ClientCtor({ connectionString }), onClientError);
+  const client = attachAdvisoryClientErrorListener(new ClientCtor({ connectionString }), onClientError, onAfterError);
   await client.connect();
   return client as unknown as AdvisoryLockQuerier;
 }
