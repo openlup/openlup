@@ -1486,6 +1486,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4887,6 +4891,10 @@
     },
     {
       "path": "packages/platform/sql/20261123142000_inventory_renewal_protection_validation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
       "class": "public-output"
     },
     {
