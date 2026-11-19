@@ -13,7 +13,7 @@ export interface CatalogCandidateIssue extends CatalogDraftIssue {
 /** @experimental */
 export interface CatalogCandidatePreview {
   candidateRef: string; candidateDigest: string; issues: readonly CatalogCandidateIssue[];
-  /** @experimental Phase reports for sealed publication inputs. */
+  /** @experimental Reports what needs attention before the draft is ready. */
   preparation?: {
     structural: { outcome: "staged" | "blocked-input" | "unknown"; issues: readonly CatalogCandidateIssue[] };
     activation: { outcome: "ready" | "pending" | "blocked-input" | "unknown"; issues: readonly (CatalogCandidateIssue & {

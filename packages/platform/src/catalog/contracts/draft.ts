@@ -37,7 +37,7 @@ export interface CatalogDraftListQuery { afterDraftId?: string; limit: number }
 export function canonicalCatalogDraftJson(input: unknown): string {
   return canonicalCatalogJson(input, CATALOG_DRAFT_MAX_BYTES);
 }
-/** Shared safe scalar/JSON rules; publication owners supply their separately bounded envelope ceiling. */
+/** @internal Shared scalar and JSON rules for publication envelopes. */
 export function canonicalCatalogPublicationJson(input: unknown): string {
   return canonicalCatalogJson(input, 16_777_216);
 }

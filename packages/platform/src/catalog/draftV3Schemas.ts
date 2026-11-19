@@ -34,6 +34,7 @@ function uniqueSkuIntents(content: Omit<CatalogDraftSharedContentV3, "document">
     if (new Set(codes).size !== codes.length) context.addIssue({ code: "custom", path: [key], message: "SKU intents must be unique" });
   }
 }
+/** @internal Published neutral content excludes the authored document. */
 export const catalogPublicationContentSchema: z.ZodType<Omit<CatalogDraftSharedContentV3, "document">> = z.object(sharedContentShape).strict().superRefine(uniqueSkuIntents);
 /** @experimental */
 export const catalogDraftSharedContentV3Schema: z.ZodType<CatalogDraftSharedContentV3> =
@@ -119,13 +120,13 @@ function draftPayloadV3Schema(content: z.ZodType<CatalogDraftSharedContentV3>): 
   });
 }
 /** @experimental */
-export const catalogDraftPayloadV3Schema = draftPayloadV3Schema(catalogDraftSharedContentV3Schema);
+export const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3> = draftPayloadV3Schema(catalogDraftSharedContentV3Schema);
 
-// The released draft codec owns its wire shape. Publication checks the neutral
-// envelope and retains the opaque legacy value for the installed rules.
-export const catalogPublicationDraftPayloadSchema = draftPayloadV3Schema(
+/** @internal Checks the neutral envelope and retains the opaque value for the installed rules. */
+export const catalogPublicationDraftPayloadSchema: z.ZodType<CatalogDraftPayloadV3> = draftPayloadV3Schema(
   z.object({ ...sharedContentShape, document: z.custom<CatalogPublicationFacts>().optional() }).strict().superRefine(uniqueSkuIntents),
 );
+/** @internal */
 export const catalogPublicationDraftRecordSchema: z.ZodType<CatalogDraftPublicationStoredRecord> = catalogDraftSummarySchema.extend({ payload: catalogPublicationDraftPayloadSchema }).strict()
   .refine(record => record.productId === record.payload.product.id, "record product must own payload");
 /** @experimental */
