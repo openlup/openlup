@@ -4,7 +4,7 @@ import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, effectivePublicC
 import { PUBLIC_EXECUTION_ENTRYPOINTS, isDirectExecutionEntrypoint } from "./oss-publication-contract.ts";
 import { readPublicTypecheckCompatibility, type PublicTypecheckCompatibility } from "./oss-public-typecheck.ts";
 import { documentationGit } from "./documentation-routing.ts";
-import { assertReviewedPlatformForward, isExpandOnlyPlatformForward, isNativeStoreMigrationPath, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH } from "./reviewed-platform-forward.ts";
+import { assertReviewedPlatformForward, hasExactManagedForward, isExpandOnlyPlatformForward, isNativeStoreMigrationPath, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH } from "./reviewed-platform-forward.ts";
 
 export { isExpandOnlyPlatformForward } from "./reviewed-platform-forward.ts";
 
@@ -186,7 +186,9 @@ export function assertAdmittedPlatformForward(root: string, base: string, head: 
     const slots = hasRegistry ? readReviewedForwardRegistry(gitBytes(root, ["show", `${head}:${REVIEWED_FORWARD_PATH}`])).nativeStoreForwardClass?.slots ?? [] : undefined;
     native = isNativeStoreMigrationPath(path, slots);
   }
-  if (isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || native || !isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, base, head, path, bytes, release);
+  if (isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || native
+    || !isExpandOnlyPlatformForward(bytes.toString("utf8")) || hasExactManagedForward(root, base, path)
+    || (release && hasExactManagedForward(root, head, path))) assertReviewedPlatformForward(root, base, head, path, bytes, release);
 }
 
 function assertPlatformSchemaForwards(root: string, previousCommit: string, targetCommit: string, old: GitInventoryEntry[], target: GitInventoryEntry[], readOld: SourceReleaseBlobReader, readTarget: SourceReleaseBlobReader): void {
