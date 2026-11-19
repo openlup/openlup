@@ -8,7 +8,8 @@ Retry when the blocking orders close or their cart eligibility ends. Use
 `READ COMMITTED` for changes and producers to avoid
 `checkout_recovery_schedule_isolation_unsupported`.
 
-On legacy profiles with a separately delegated cart producer, grant its
-trusted runtime role EXECUTE on
-`public.commerce_enqueue_abandoned_cart_reminder_episodes(integer)`. The
-qualified service role receives the grant during migration.
+If your legacy cart reminder job runs under its own database role, grant that
+role EXECUTE on `public.commerce_enqueue_abandoned_cart_reminder_episodes(integer)`
+once after applying the migration. If the grant is missing, the job reports
+`checkout_recovery_cart_runtime_grant_required` with the exact command to run.
+The built-in runtime role already has the grant.

@@ -210,12 +210,19 @@ still apply. For example, a 48-hour final checkout reminder needs a host window
 longer than 48 hours. Keep the request-policy offsets valid even when an
 installed schedule supplies timing.
 
-Qualified native service-role bindings can run the cart producer. On legacy
-profiles, a separate cart runtime needs its original producer EXECUTE and
-EXECUTE on `public.commerce_enqueue_abandoned_cart_reminder_episodes(integer)`.
-The owner grants that function to the same trusted role as the producer. The
-runtime needs no access to episode rows or settings. The TypeScript read helper
-still needs settings SELECT.
+If your legacy cart reminder job runs under its own database role, run this
+grant as the database owner once after applying the episode pin migration.
+Replace `cart_runtime` with the role that runs the job.
+
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_enqueue_abandoned_cart_reminder_episodes(integer) TO cart_runtime;
+```
+
+If the grant is missing, the job reports
+`checkout_recovery_cart_runtime_grant_required` and gives the command for its
+role. The built-in runtime role already has the grant. The cart job can enqueue
+without access to episode rows or settings. The TypeScript read helper still
+needs settings SELECT.
 
 ## Give an operator a payment link
 

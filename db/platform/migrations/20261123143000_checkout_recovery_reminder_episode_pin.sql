@@ -42,6 +42,10 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog
 AS $$
 BEGIN
+  IF NOT has_function_privilege(current_user, 'public.commerce_enqueue_abandoned_cart_reminder_episodes(integer)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'checkout_recovery_cart_runtime_grant_required' USING ERRCODE = '42501',
+      HINT = format('GRANT EXECUTE ON FUNCTION public.commerce_enqueue_abandoned_cart_reminder_episodes(integer) TO %I;', current_user);
+  END IF;
   RETURN public.commerce_enqueue_abandoned_cart_reminder_episodes(p_limit);
 END; $$;
 
@@ -93,6 +97,8 @@ BEGIN
   RETURN counts;
 END; $$;
 REVOKE ALL ON FUNCTION public.commerce_enqueue_abandoned_cart_reminder_episodes(integer) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_enqueue_abandoned_cart_reminder_episodes(integer) FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.commerce_enqueue_abandoned_cart_reminder_episodes(integer) FROM authenticated;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_enqueue_abandoned_cart_reminder_episodes(integer) TO service_role;'; END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.commerce_enqueue_checkout_recovery_reminders(p_limit integer,p_policy jsonb,p_now timestamptz)
