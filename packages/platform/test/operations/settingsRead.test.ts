@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { settingRefusalSchema, toolInputSchema } from "../../src/operations/server/toolSchema.js";
 import { describe, expect, it, vi } from "vitest";
 import { previewRenewalStockProtection, renewalStockProtectionPreviewResult, describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
@@ -250,4 +251,13 @@ it("snapshots a direct proposal before connecting and admits a request with more
     expect(input.skus).toEqual(skus);
     return { schemaVersion: 1 };
   } })).resolves.toEqual({ schemaVersion: 1 });
+});
+
+it("preserves the full serialized schemas of both legacy settings tools", () => {
+  // Captured from the built operations/server entry at main 4d939dbba.
+  const expected = readFileSync(new URL("./settingsReadToolSchemas.main.json", import.meta.url), "utf8");
+  const schemas = settingsReadTools
+    .filter(({ name }) => name === "settings__list" || name === "settings__show")
+    .map(({ name, inputSchema, outputSchema }) => ({ name, inputSchema, outputSchema }));
+  expect(JSON.stringify(schemas) + "\n").toBe(expected);
 });
