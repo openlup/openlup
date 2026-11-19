@@ -40,6 +40,14 @@ const recordEvidence = "commerce_payment_control_record_reconciliation";
 const applyResult = "commerce_payment_control_apply_reconciliation_result";
 const finishJob = "platform_finish_job_run_v2";
 
+const expectedEvidence = {
+  source: "payment-provider-reconciliation.v0",
+  provider, providerPaymentId: remote, paymentIntentId: INTENT, paymentAttemptId: ATTEMPT,
+  orderId: ORDER, subscriptionId: null, subscriptionCycleId: null,
+  localAttemptStatus: "processing", localIntentStatus: "processing",
+  failureReason: null, amountMinorPresent: true, currency: "XTS", providerPayload: { synthetic: true },
+};
+
 function readback(status: ProviderReconciliationStatus, steps: string[]) {
   return {
     [provider]: {
@@ -148,8 +156,9 @@ describe("managed cron and installed PostgreSQL reconciliation", () => {
     const managed = await runManaged(pending);
     const native = await runNative(pending);
     expect(managed.response.status).toBe(200);
-    expect(managed.response.body).toMatchObject(native.result);
-    expect(native.result).toMatchObject({ pending: 1, silenceOverdue: 1, manualReview: 1, corrected: 0, providerCalls: 1 });
+    const counts = { pending: 1, silenceOverdue: 1, manualReview: 1, corrected: 0, providerCalls: 1 };
+    expect(managed.response.body).toMatchObject(counts);
+    expect(native.result).toMatchObject(counts);
 
     expect(native.steps).toEqual([preparedClaim, staleClaim, "provider:read", recordEvidence]);
     expect(managed.steps).toEqual(["platform_claim_job_run", ...native.steps, "subscription_reconcile_paid_activation_gaps", finishJob]);
@@ -161,29 +170,42 @@ describe("managed cron and installed PostgreSQL reconciliation", () => {
     expect(managed.calls.get(staleClaim)).toEqual({
       p_now: NOW, p_stale_after_seconds: 900, p_limit: 4, p_claim_key: KEY,
     });
-    const evidence = managed.calls.get(recordEvidence)!;
-    expect(native.calls.get(recordEvidence)).toEqual([
-      evidence.p_idempotency_key, provider, remote, INTENT, ATTEMPT, "processing", "processing", "observed",
-      NOW, JSON.stringify(evidence.p_payload),
+    const key = `payment-provider-reconciliation:${ATTEMPT}:observed:pending:953012`;
+    const observation = {
+      ...expectedEvidence, providerStatus: "processing", normalizedStatus: "pending", applied: false, silenceOverdue: true,
+    };
+    expect(managed.calls.get(recordEvidence)).toEqual({
+      p_idempotency_key: key, p_provider: provider, p_provider_payment_id: remote, p_payment_intent_id: INTENT,
+      p_payment_attempt_id: ATTEMPT, p_local_status: "processing", p_provider_status: "processing",
+      p_correction_status: "observed", p_checked_at: NOW, p_payload: observation,
+    });
+    const nativeObservation = native.calls.get(recordEvidence)!;
+    expect(nativeObservation).toEqual([
+      key, provider, remote, INTENT, ATTEMPT, "processing", "processing", "observed", NOW, expect.any(String),
     ]);
-    expect(evidence.p_idempotency_key).toMatch(new RegExp(`^payment-provider-reconciliation:${ATTEMPT}:observed:pending:[0-9]+$`, "u"));
+    expect(JSON.parse(String(nativeObservation[9]))).toEqual(observation);
   });
 
   it("reuses the terminal receipt key with each rail's evidence contract", async () => {
     const managed = await runManaged(capture);
     const native = await runNative(capture);
     expect(managed.response.status).toBe(200);
-    expect(managed.response.body).toMatchObject(native.result);
-    expect(native.result).toMatchObject({ replayed: 1, corrected: 0, succeeded: 1, providerCalls: 1 });
+    const counts = { replayed: 1, corrected: 0, succeeded: 1, providerCalls: 1 };
+    expect(managed.response.body).toMatchObject(counts);
+    expect(native.result).toMatchObject(counts);
 
     expect(native.steps).toEqual([preparedClaim, staleClaim, "provider:read", applyResult]);
     expect(managed.steps).toEqual(["platform_claim_job_run", ...native.steps, "subscription_reconcile_paid_activation_gaps", finishJob]);
-    const managedApply = managed.calls.get(applyResult)!;
     const key = `payment-provider-reconciliation:${ATTEMPT}:apply:succeeded`;
-    expect(managedApply).toMatchObject({
+    const success = {
+      ...expectedEvidence, providerStatus: "paid", normalizedStatus: "succeeded", applied: true, resultStatus: "succeeded",
+    };
+    expect(managed.calls.get(applyResult)).toEqual({
       p_idempotency_key: key, p_expected_order_id: ORDER, p_expected_payment_intent_id: INTENT,
-      p_expected_payment_attempt_id: ATTEMPT, p_expected_payment_id: PAYMENT, p_occurred_at: OLD,
-      p_result_status: "succeeded", p_failure_class: null, p_failure_class_decided_by: null,
+      p_expected_payment_attempt_id: ATTEMPT, p_expected_payment_id: PAYMENT, p_provider: provider,
+      p_provider_payment_id: remote, p_local_status: "processing", p_provider_status: "paid",
+      p_result_status: "succeeded", p_occurred_at: OLD, p_failure_reason: null, p_checked_at: NOW,
+      p_payload: success, p_failure_class: null, p_failure_class_decided_by: null,
     });
     const nativeApply = native.calls.get(applyResult)!;
     expect(nativeApply).toEqual([
@@ -191,9 +213,7 @@ describe("managed cron and installed PostgreSQL reconciliation", () => {
       null, NOW, expect.any(String), null, null, "fixture-dunning", "/fixture/recovery", "fixture-recovery",
     ]);
     expect(JSON.parse(String(nativeApply[13]))).toEqual({
-      ...managedApply.p_payload as object, amountMinor: 1200, capturedAmountBasis: "provider_capture_v1",
+      ...success, amountMinor: 1200, capturedAmountBasis: "provider_capture_v1",
     });
-    expect(managedApply.p_payload).not.toHaveProperty("amountMinor");
-    expect(managedApply.p_payload).not.toHaveProperty("capturedAmountBasis");
   });
 });

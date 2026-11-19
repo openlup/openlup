@@ -119,11 +119,11 @@ reconciliation port from its PostgreSQL payment rail.
 The [composition witness](../../api/cron/payment-provider-reconciliation.parity.test.ts)
 pins the claim order, nonterminal observation payload and terminal replay
 key through both adapters. The managed host derives the lease key and
-records completion in its job ledger. Native terminal evidence also carries
-the collected-money amount and proof basis, and the Native SQL adapter
-passes its host-selected recovery options. Keep these contracts when sharing
-code. The worker result, status kinds, read purpose and silence-lookup types
-come from `@openlup/platform/payments/contracts`.
+records completion in its job ledger. For a successful terminal result, the
+Native worker requires the collected amount, its currency and the capture proof
+basis. The Native SQL adapter also passes its host-selected recovery options.
+Keep these contracts when sharing code. The worker result, status kinds, read
+purpose and silence-lookup types come from `@openlup/platform/payments/contracts`.
 
 ## Opt-in fulfillment example
 
