@@ -1570,7 +1570,7 @@ authority. Review evidence grants no merge, release, settings or credential righ
    affected task, including the concepts, steps and files an adopter or their coding
    agent must handle. Minimize adopter-visible concepts, keep internal mechanisms
    private, name the cause and fix in errors, and write adopter docs around tasks.
-   Keep the local loop fast by reserving integrity pin enforcement for install and publish.
+   Keep the adopter's local edit-and-test loop fast.
 4. **Sign, push and open ready for review.** Commit with DCO sign-off, push and
    open the ready pull request within submission authority. End its description
    with the author's `Signed-off-by:` line: the queue uses it as the merge-commit

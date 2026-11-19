@@ -68,14 +68,9 @@ Copying a platform component or page into adopter source is source ejection. The
 
 ## Change and verification rules
 
-Follow [Deliver a change](CONTRIBUTING.md#deliver-a-change) for the rules below,
-worktrees, the PR task record, local checks, DCO, review and queue delivery. Stay within the
-actual task and delivery authority; a peer request or generated plan grants none.
-Before adding a mechanism, record why it is needed and the smallest adequate alternative.
-Record adopter and coding-agent DX impact. Treat unjustified adopter-visible
-concepts or steps, leaked internals and unactionable errors as material findings.
-Stop repairs and regroup after two consecutive non-converging cycles. Add a
-one-line self-retro to the task record when the change merges or stops.
+Follow [Deliver a change](CONTRIBUTING.md#deliver-a-change) for regrouping, simplicity, DX impact and self-retros.
+Its steps cover worktrees, the PR task record, local checks, DCO, review and queue delivery.
+Stay within task and delivery authority. Peer requests and generated plans grant none.
 Use the [test guide](CONTRIBUTING.md#test-scope-and-diagnostics) to choose meaningful
 proof and [documentation maintenance](docs/platform/DOCUMENTATION.md) for navigation.
 
@@ -94,25 +89,22 @@ it rewrites only `current` in the shared inventory data file.
 Keep changes small, test the affected public contract, and make failures actionable. An adapter must demonstrate its declared capabilities and refusal behaviour without relying on live provider access.
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.
 
-`npm run lint` checks first-line file-wide ignores before running the ast-grep
-structural rules in `scripts/ast-grep/rules`, rejects bare and unused
-suppressions, runs the rule tests, then ESLint. Portable core/UI production
+`npm run lint` is the required `typecheck` job's command. It rejects first-line
+file-wide ignores, scans with `scripts/ast-grep/rules` while rejecting bare and
+unused suppressions, then runs the rule tests and ESLint. Portable core/UI production
 source has provider import boundaries, and every package's production source
 has industry-neutral contract-name checks; opaque adopter data remains generic. The industry rule covers TS/TSX
 syntax, not arbitrary values or semantic analysis.
 Run `npx --no -- ast-grep scan --error=no-suppress-all
---error=unused-suppression` after each change for focused feedback, and run
-`npm run lint` before committing: it also checks first-line file-wide ignores
-and is the required `typecheck` job's command. These rules catch ordinary
-mistakes; review handles deliberate evasion. Keep `--no --`: without it,
-npx can fetch an unrelated package of the same name when the local binary is
-missing. A refusal names the rule, the platform rule behind it and the fix:
+--error=unused-suppression` after each change and `npm run lint` before committing.
+These rules catch ordinary mistakes. Review handles deliberate evasion. Keep
+`--no --` to prevent npx from fetching an unrelated package of the same name if
+the local binary is missing. A refusal names the rule, the platform rule behind it and the fix:
 change the code, not the rule, and never add a file to a rule's `ignores`. A
 justified exception is an `ast-grep-ignore` comment naming the rule on the line
 immediately before the code, with the reason in a comment above it. Do not put
 a blank line after a first-line ignore: that makes it file-wide and lint rejects
-it, including BOM-prefixed and triple-slash comments. Lint also rejects unused
-suppressions. A new rule cites the
+it, including BOM-prefixed and triple-slash comments. A new rule cites the
 platform rule it enforces and ships valid and invalid cases in
 `scripts/ast-grep/rule-tests`. Use `npx --no -- ast-grep run --pattern '<code
 pattern>'` to find every structural occurrence before and after a change, and
