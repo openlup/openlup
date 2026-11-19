@@ -1,11 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
 import {
   CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION,
+  CONFIGURATOR_SHIPPING_COUNTRY,
   configuratorIntentSchema,
 } from "@/domains/commerce/configuratorIntentContracts";
 import { COMMERCE_RECOMMENDATION_VERSION } from "@/domains/commerce/recommendationEngine";
 import type { CommerceRecommendationSnapshot } from "@/domains/commerce/recommendationContracts";
 
+import type { LegacyCheckoutIntentPolicy } from "@/checkout/composer/legacyCheckoutIntentPolicy";
 import { buildCheckoutIntent } from "./buildCheckoutIntent";
 import { defaultConfiguratorFormData, type ConfiguratorFormData } from "@/checkout/composer/configuratorFormStore";
 
@@ -25,6 +28,17 @@ const KNOWN_COMPOSITION_SLUGS = ["lamb", "venison", "beef", "turkey", "salmon", 
  * same reason. Line gamma seam: the vertical energy-policy module stays in the overlay.
  */
 const FIXTURE_ENERGY_POLICY_VERSION = "commerce.energy_policy.fediaf_2025_dog_mer.v3";
+
+const deployment = vi.hoisted(() => ({ policy: null as LegacyCheckoutIntentPolicy | null }));
+
+vi.mock("#legacy-checkout-intent-policy", async (importOriginal) => {
+  const reference = await importOriginal<typeof import("#legacy-checkout-intent-policy")>();
+  return {
+    get LEGACY_CHECKOUT_INTENT_POLICY() {
+      return deployment.policy ?? reference.LEGACY_CHECKOUT_INTENT_POLICY;
+    },
+  };
+});
 
 const IDEMPOTENCY_KEY = "checkout:11111111-1111-4111-8111-111111111111";
 
@@ -61,6 +75,44 @@ function completeForm(overrides: Partial<ConfiguratorFormData> = {}): Configurat
 }
 
 describe("buildCheckoutIntent", () => {
+  it("preserves the serialized reference checkout intent", () => {
+    const intent = buildCheckoutIntent(completeForm(), { knownCompositionSlugs: KNOWN_COMPOSITION_SLUGS, idempotencyKey: IDEMPOTENCY_KEY });
+    expect(intent).not.toBeNull();
+    expect(createHash("sha256").update(JSON.stringify(intent)).digest("hex")).toBe("4a5f49c3d5618db39c5a147b3e3f2fbff1e3e85faeb1e380d10f556de74aa453");
+  });
+
+  it("uses a deployment policy while retaining the legacy wire validator", () => {
+    const form = completeForm({ dogAge: "", dogWeightKg: "" });
+    const options = { knownCompositionSlugs: KNOWN_COMPOSITION_SLUGS, idempotencyKey: IDEMPOTENCY_KEY };
+    const profile: NonNullable<ReturnType<LegacyCheckoutIntentPolicy["mapProfile"]>> = {
+      name: "Companion",
+      ageBand: "adult",
+      breed: "mixed",
+      weightKg: 10,
+      activityLevel: "normal",
+      bcs: "ideal",
+      allergenSlugs: [],
+    };
+    const mapProfile = vi.fn<LegacyCheckoutIntentPolicy["mapProfile"]>().mockReturnValue(profile);
+
+    deployment.policy = { defaultLocale: "en", shippingCountry: CONFIGURATOR_SHIPPING_COUNTRY, mapProfile };
+    try {
+      const intent = buildCheckoutIntent(form, options);
+      expect(intent).toMatchObject({ locale: "en", petProfile: { name: "Companion", weightKg: 10, dailyKcalOverride: 708 } });
+      expect(configuratorIntentSchema.safeParse(intent).success).toBe(true);
+      expect(mapProfile).toHaveBeenCalledWith(form);
+      expect(buildCheckoutIntent(form, { ...options, locale: "pl" })?.locale).toBe("pl");
+
+      mapProfile.mockReturnValue(null);
+      expect(buildCheckoutIntent(form, options)).toBeNull();
+
+      mapProfile.mockReturnValue({ ...profile, name: "" });
+      expect(buildCheckoutIntent(form, options)).toBeNull();
+    } finally {
+      deployment.policy = null;
+    }
+  });
+
   it("maps a complete form with a server recommendation snapshot to a valid intent", () => {
     const intent = buildCheckoutIntent(completeForm(), { knownCompositionSlugs: KNOWN_COMPOSITION_SLUGS, idempotencyKey: IDEMPOTENCY_KEY });
 

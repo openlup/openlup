@@ -22378,6 +22378,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/composer/legacyCheckoutIntentPolicy.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/composer/marketIdentityPersistence.test.ts",
       "class": "public-output"
     },
