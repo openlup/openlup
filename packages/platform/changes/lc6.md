@@ -4,7 +4,10 @@ SQL assertion called by the native writers. It distinguishes
 unreadable authority, invalid anchors, stale heads and invalid membership.
 Sized unchanged or reduced selections retain immutable identities. A separate
 context records any price the existing quote owner consulted for a retained
-selection. Mixed carts and edits prove the exact governed subset.
+selection. The shared assertion checks the consulted products' current
+definitions before classifying retained demand. Subscription edits verify the
+policy revision alongside its exact base row when their quote owner returns
+policy-derived prices. Mixed carts and edits prove the exact governed subset.
 Sized edits share the configured-offer binding and numbered-cycle evidence
 between preview and apply. The graduation baseline retains the current add-on
 agreement. Explicit opt-in checks the current offer membership for every
@@ -49,7 +52,8 @@ unchanged.
 
 Managed divergence design: a twin uses the same `catalog_products`, `catalog_skus`,
 `catalog_publications`, `catalog_publication_heads`, `catalog_sku_revisions`,
-`catalog_type_versions`, `price_lists`, `price_entries`, `subscriptions`,
+`catalog_type_versions`, `price_lists`, `price_entries`,
+`subscription_price_policy_revisions`, `subscriptions`,
 `subscription_lines`, `subscription_renewal_terms`, `subscription_events` and
 `commerce_orders` facts. RLS-preserving trusted wrappers must derive actor/client
 ownership from the authenticated session before the assertion, with complete

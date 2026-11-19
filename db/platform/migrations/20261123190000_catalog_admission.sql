@@ -137,24 +137,6 @@ BEGIN
   moved:='customer_self_service_stale_edit_catalog_head'; missing:='customer_self_service_invalid_catalog_anchor'; refused:='customer_self_service_invalid_offer_membership';
  ELSE RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;
  PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-publication-global',0));
- IF p_purpose='account' AND pg_input_is_valid(p_offer_evidence->>'subscriptionId','uuid') THEN
-  SELECT * INTO subscription FROM public.subscriptions WHERE id=(p_offer_evidence->>'subscriptionId')::uuid;
-  IF subscription.id IS NOT NULL AND p_offer_evidence->>'lane'='sized' AND p_offer_evidence->'optIn' IS DISTINCT FROM 'true'::jsonb THEN
-   baseline:=public.catalog_admission_sized_baseline(subscription.id);
-  END IF;
- END IF;
- IF baseline IS NOT NULL THEN
-  scope_demand:=p_offer_evidence->'scopeDemand';
-  IF scope_demand IS NULL AND jsonb_typeof(p_sku_revisions)='array' THEN
-   SELECT jsonb_agg(jsonb_build_object('skuId',l#>'{reference,skuId}','quantity',l->'quantity','isAddon',false))
-    INTO scope_demand FROM jsonb_array_elements(p_sku_revisions) l;
-  END IF;
-  SELECT coalesce(array_agg(DISTINCT (d->>'skuId')::uuid),'{}') INTO retained_ids
-  FROM jsonb_array_elements(scope_demand) d
-  WHERE pg_input_is_valid(d->>'skuId','uuid') AND pg_input_is_valid(d->>'quantity','integer')
-   AND (d->>'quantity')::integer<=(SELECT coalesce(sum((b->>'qty')::integer),0)
-    FROM jsonb_array_elements(baseline) b WHERE b->>'variantId'=d->>'skuId' AND b->'isAddon'=d->'isAddon');
- END IF;
  -- Accepting writers supply the scope resolved from their owned lines. A direct
  -- assertion checks its named heads before a selection can widen their scope.
  consulted:='{}';
@@ -171,8 +153,7 @@ BEGIN
      WHEN jsonb_typeof(p_sku_revisions)='array' THEN
        (SELECT jsonb_agg(v#>'{reference,skuId}') FROM jsonb_array_elements(p_sku_revisions) v)
      ELSE '[]'::jsonb END) v
-    ON s.id=CASE WHEN pg_input_is_valid(v#>>'{}','uuid') THEN (v#>>'{}')::uuid END
-  WHERE s.id<>ALL(retained_ids);
+    ON s.id=CASE WHEN pg_input_is_valid(v#>>'{}','uuid') THEN (v#>>'{}')::uuid END;
  END IF;
  FOREACH product_id IN ARRAY consulted LOOP
   PERFORM pg_advisory_xact_lock_shared(hashtextextended('catalog-lineage:'||product_id::text,0));
@@ -235,6 +216,34 @@ BEGIN
   actual_heads:=actual_heads||jsonb_build_object(product.id::text,jsonb_build_object('publicationId',publication.id,
    'revision',publication.revision,'documentDigest',document_digest));
  END LOOP;
+ IF p_purpose='account' AND pg_input_is_valid(p_offer_evidence->>'subscriptionId','uuid') THEN
+  SELECT * INTO subscription FROM public.subscriptions WHERE id=(p_offer_evidence->>'subscriptionId')::uuid;
+  IF subscription.id IS NOT NULL AND p_offer_evidence->>'lane'='sized' AND p_offer_evidence->'optIn' IS DISTINCT FROM 'true'::jsonb THEN
+   baseline:=public.catalog_admission_sized_baseline(subscription.id);
+  END IF;
+ END IF;
+ IF baseline IS NOT NULL THEN
+  scope_demand:=p_offer_evidence->'scopeDemand';
+  IF scope_demand IS NULL AND jsonb_typeof(p_sku_revisions)='array' THEN
+   SELECT jsonb_agg(jsonb_build_object('skuId',l#>'{reference,skuId}','quantity',l->'quantity','isAddon',false))
+    INTO scope_demand FROM jsonb_array_elements(p_sku_revisions) l;
+  END IF;
+  SELECT coalesce(array_agg(DISTINCT (d->>'skuId')::uuid),'{}') INTO retained_ids
+  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(scope_demand)='array' THEN scope_demand ELSE '[]'::jsonb END) d
+  WHERE pg_input_is_valid(d->>'skuId','uuid') AND pg_input_is_valid(d->>'quantity','integer')
+   AND (d->>'quantity')::integer<=(SELECT coalesce(sum((b->>'qty')::integer),0)
+    FROM jsonb_array_elements(baseline) b WHERE b->>'variantId'=d->>'skuId' AND b->'isAddon'=d->'isAddon');
+ END IF;
+ -- The authority read precedes agreement classification. A retained SKU
+ -- still keeps its immutable reference and carries no current admission head.
+ IF cardinality(retained_ids)>0 THEN
+  SELECT coalesce(array_agg(DISTINCT s.product_id ORDER BY s.product_id),'{}') INTO consulted
+  FROM public.catalog_skus s
+  JOIN jsonb_array_elements(scope_demand) d
+   ON s.id=CASE WHEN pg_input_is_valid(d->>'skuId','uuid') THEN (d->>'skuId')::uuid END
+  WHERE s.product_id=ANY(consulted) AND s.id<>ALL(retained_ids);
+  SELECT coalesce(jsonb_object_agg(k,v),'{}') INTO actual_heads FROM jsonb_each(actual_heads) h(k,v) WHERE k::uuid=ANY(consulted);
+ END IF;
  IF p_purpose='account' AND p_offer_evidence->'clearSelection'='true'::jsonb AND cardinality(consulted)=0
   AND p_heads='[]'::jsonb AND p_sku_revisions='[]'::jsonb AND p_price_context_versions='[]'::jsonb THEN RETURN; END IF;
  IF jsonb_typeof(p_heads) IS DISTINCT FROM 'array' THEN
@@ -332,7 +341,11 @@ BEGIN
    WHERE NOT coalesce((CASE WHEN pg_input_is_valid(p->>'skuId','uuid') THEN (p->>'skuId')::uuid END)=ANY(retained_ids),false))
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(prices) p
    WHERE NOT coalesce(pg_input_is_valid(p->>'priceListId','uuid'),false)
-      OR NOT coalesce(pg_input_is_valid(p->>'entryId','uuid'),false) OR jsonb_typeof(p->'entry') IS DISTINCT FROM 'object')
+      OR NOT coalesce(pg_input_is_valid(p->>'entryId','uuid'),false) OR jsonb_typeof(p->'entry') IS DISTINCT FROM 'object'
+      OR (p ? 'policy' AND (p_purpose<>'account' OR p_mode<>'subscription' OR p_offer_evidence->>'lane'='legacy'
+       OR jsonb_typeof(p->'policy') IS DISTINCT FROM 'object' OR (p->'policy')-ARRAY['revisionId','digest']<>'{}'::jsonb
+       OR NOT coalesce(pg_input_is_valid(p#>>'{policy,revisionId}','uuid'),false)
+       OR NOT coalesce(p#>>'{policy,digest}' ~ '^[0-9a-f]{64}$',false))))
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(prices) p GROUP BY (p->>'skuId')::uuid HAVING count(*)>1) THEN
   RAISE EXCEPTION 'catalog_admission_price_context_required' USING ERRCODE='22023'; END IF;
  -- The price writer owns these guards. Exact row bytes bind existing provenance,
@@ -352,6 +365,15 @@ BEGIN
   (SELECT (v->>'priceListId')::uuid FROM jsonb_array_elements(prices) v) ORDER BY p.id FOR SHARE;
  PERFORM p.id FROM public.price_entries p WHERE p.id IN
   (SELECT (v->>'entryId')::uuid FROM jsonb_array_elements(prices) v) ORDER BY p.id FOR SHARE;
+ -- The policy writer serializes its effective windows with this context
+ -- guard. Read its MVCC row while holding the guard and no policy row lock.
+ FOR price_key IN
+  SELECT DISTINCT p.id,p.region_code,p.currency FROM public.price_lists p
+  JOIN jsonb_array_elements(prices) v ON p.id=(v->>'priceListId')::uuid AND v ? 'policy'
+  ORDER BY p.id,p.region_code,p.currency
+ LOOP
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended(concat_ws('|',price_key.id::text,price_key.region_code,price_key.currency,'D2C'),0));
+ END LOOP;
  FOR price_context IN SELECT value FROM jsonb_array_elements(prices) ORDER BY (value->>'entryId')::uuid LOOP
   SELECT l INTO demand FROM jsonb_array_elements(p_sku_revisions) l WHERE l#>>'{reference,skuId}'=price_context->>'skuId';
   IF p_purpose='account' AND price_context->>'priceListId' IS DISTINCT FROM subscription.price_list_id::text THEN
@@ -361,11 +383,22 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
   PERFORM 1 FROM public.price_entries p WHERE p.id=(price_context->>'entryId')::uuid
    AND p.price_list_id=(price_context->>'priceListId')::uuid AND p.variant_id=(price_context->>'skuId')::uuid
-   AND p.mode IN (p_mode,'any') AND p.min_qty<=(demand->>'quantity')::integer
+   AND ((NOT (price_context ? 'policy') AND p.mode IN (p_mode,'any')) OR
+    (price_context ? 'policy' AND p.mode='one_time' AND p.min_qty=1))
+   AND p.min_qty<=(demand->>'quantity')::integer
    AND (p_purpose<>'order' OR p.amount_kind='gross')
    AND p.active AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
    AND to_jsonb(p)=price_context->'entry';
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
+  IF price_context ? 'policy' AND NOT EXISTS(
+   SELECT 1 FROM public.subscription_price_policy_revisions r
+   JOIN public.price_lists p ON (r.price_list_id,r.region_code,r.currency)=(p.id,p.region_code,p.currency)
+   WHERE r.id=(price_context#>>'{policy,revisionId}')::uuid AND r.price_list_id=(price_context->>'priceListId')::uuid
+    AND r.channel='D2C' AND r.digest=price_context#>>'{policy,digest}'
+    AND r.effective_from<=statement_timestamp() AND (r.effective_to IS NULL OR r.effective_to>statement_timestamp())
+    AND r.digest=public.catalog_price_setup_policy_digest(r.id,r.revision_no,r.price_list_id,r.region_code,r.currency,r.channel,
+      r.effective_from,CASE WHEN r.closed_from_open THEN NULL ELSE r.effective_to END,r.discount_bps,r.rounding_quantum_minor,r.rounding_rule)
+  ) THEN RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
   IF p_offer_evidence->>'lane'='legacy' AND (public.catalog_admission_legacy_price(subscription.price_list_id,
     (price_context->>'skuId')::uuid,(demand->>'quantity')::integer,statement_timestamp())).id IS DISTINCT FROM (price_context->>'entryId')::uuid THEN
    RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
@@ -455,7 +488,7 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg
 DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]; requested jsonb; line jsonb;
  member jsonb; offer_version text; quoted_heads jsonb; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
- retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text; keep_price boolean;
+ retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text; keep_price boolean; price_context jsonb;
 BEGIN
  IF p_purpose NOT IN ('order','account') OR p_purpose IS NULL OR jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;
@@ -534,11 +567,13 @@ BEGIN
      AND a->>'qty'=coalesce(line->>'qty',line->>'quantity')) THEN CONTINUE; END IF;
   SELECT * INTO price FROM public.price_entries WHERE id=CASE WHEN pg_input_is_valid(price_id,'uuid') THEN price_id::uuid END AND variant_id=sku_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_required' USING ERRCODE='22023'; END IF;
-  IF sku_id=ANY(scope) THEN
-   prices:=prices||jsonb_build_array(jsonb_build_object('skuId',price.variant_id,'priceListId',price.price_list_id,'entryId',price.id,'entry',to_jsonb(price)));
-  ELSE
-   retained_prices:=retained_prices||jsonb_build_array(jsonb_build_object('skuId',price.variant_id,'priceListId',price.price_list_id,'entryId',price.id,'entry',to_jsonb(price)));
+  price_context:=jsonb_build_object('skuId',price.variant_id,'priceListId',price.price_list_id,'entryId',price.id,'entry',to_jsonb(price));
+  IF requested->>'version'='catalog_facts_v2' AND p_purpose='account' THEN
+   price_context:=price_context||jsonb_build_object('policy',jsonb_build_object(
+    'revisionId',requested->'policyRevisionId','digest',requested->'policyDigest'));
   END IF;
+  IF sku_id=ANY(scope) THEN prices:=prices||jsonb_build_array(price_context);
+  ELSE retained_prices:=retained_prices||jsonb_build_array(price_context); END IF;
  END LOOP;
  IF p_purpose='order' AND p_binding->'quoteTimeHeads' IS NOT NULL THEN
   IF jsonb_typeof(p_binding->'quoteTimeHeads') IS DISTINCT FROM 'array' THEN
@@ -624,7 +659,9 @@ BEGIN
   JOIN jsonb_array_elements(p_evidence->'priceContextVersions'||coalesce(p_evidence->'retainedPriceContextVersions','[]'::jsonb)) c
     ON c->>'skuId'=sku.id::text
   WHERE consulted.entry_id IS NOT NULL AND (c->>'entryId' IS DISTINCT FROM consulted.entry_id
-    OR (observed.facts IS NOT NULL AND observed.facts->>'skuId' IS DISTINCT FROM sku.id::text))) THEN
+    OR (observed.facts IS NOT NULL AND observed.facts->>'skuId' IS DISTINCT FROM sku.id::text)
+    OR (observed.facts->>'version'='catalog_facts_v2' AND c->'policy' IS DISTINCT FROM
+      jsonb_build_object('revisionId',observed.facts->'policyRevisionId','digest',observed.facts->'policyDigest')))) THEN
   RAISE EXCEPTION 'catalog_admission_price_context_moved' USING ERRCODE='40001'; END IF;
  IF scope='[]'::jsonb THEN RETURN 'null'::jsonb; END IF;
  RETURN (SELECT jsonb_build_object('schemaVersion',2,'lines',jsonb_agg(l->'reference' ORDER BY l#>>'{reference,skuId}'))

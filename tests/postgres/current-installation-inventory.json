@@ -4,11 +4,11 @@
       "legacy": {
         "count": 154,
         "exactTailCount": 44,
-        "objectInventorySha256": "17b0d9ef3d070571be8e2fb8e1c7fedd63903ae356530c4955ec9f155d32377a",
+        "objectInventorySha256": "d0cd67e679a3b2beb7755d8134a74ac68bce76a521163b59240fa1460827dd75",
         "tail": [
           {
             "file": "db/platform/migrations/20261123190000_catalog_admission.sql",
-            "sha256": "96d39df55a162d71985ee2dbdbb87dd4a361cd1a3134563b0fc227520ba2b0ca"
+            "sha256": "f2df35cc254db94472b52454af9be28319d5320ab408f4ced0db68ddd72a2d04"
           },
           {
             "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
@@ -627,11 +627,11 @@
       "bootstrap": {
         "count": 159,
         "exactTailCount": 44,
-        "objectInventorySha256": "2ab9d3a2bc5d1383198f2b1a062357432aeefdd9ccb770d93d7b64ba130fad6e",
+        "objectInventorySha256": "ee8d336044a0f644c7a0462e95daa3af593e5561951f49acb05dd62c9aec4ba0",
         "tail": [
           {
             "file": "db/platform/migrations/20261123190000_catalog_admission.sql",
-            "sha256": "96d39df55a162d71985ee2dbdbb87dd4a361cd1a3134563b0fc227520ba2b0ca"
+            "sha256": "f2df35cc254db94472b52454af9be28319d5320ab408f4ced0db68ddd72a2d04"
           },
           {
             "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
@@ -1270,11 +1270,11 @@
       "separate": {
         "count": 159,
         "exactTailCount": 44,
-        "objectInventorySha256": "ead0c169123d5ebae8152f6b148cfb21221b8c10f48999bd27a4d18ac1d4ee91",
+        "objectInventorySha256": "a6aea5f73558caf6bcd6dab59204ad29d8ed591b27278799a5cae995ffb99d72",
         "tail": [
           {
             "file": "db/platform/migrations/20261123190000_catalog_admission.sql",
-            "sha256": "96d39df55a162d71985ee2dbdbb87dd4a361cd1a3134563b0fc227520ba2b0ca"
+            "sha256": "f2df35cc254db94472b52454af9be28319d5320ab408f4ced0db68ddd72a2d04"
           },
           {
             "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
@@ -1913,11 +1913,11 @@
       "admin-managed": {
         "count": 158,
         "exactTailCount": 44,
-        "objectInventorySha256": "b58955cff0c21cb09f8e62b94caffea2d885f54a655bbf0e5cde77980cfc4566",
+        "objectInventorySha256": "cf9cfe8007038e3e3600a75fa3db7c27cfb656a0e1b61cd1a621f2522ac70dca",
         "tail": [
           {
             "file": "db/platform/migrations/20261123190000_catalog_admission.sql",
-            "sha256": "96d39df55a162d71985ee2dbdbb87dd4a361cd1a3134563b0fc227520ba2b0ca"
+            "sha256": "f2df35cc254db94472b52454af9be28319d5320ab408f4ced0db68ddd72a2d04"
           },
           {
             "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",
@@ -2552,11 +2552,11 @@
       "admin-operator": {
         "count": 158,
         "exactTailCount": 44,
-        "objectInventorySha256": "a2b9f521ded1ed560979c5cc9bab9a6170fa892635c4c6d2f1282c1d5071a47f",
+        "objectInventorySha256": "b51af6b80055a054afc1aaa61446eb547724a0b97c736dfe694bef38bc9ddb0b",
         "tail": [
           {
             "file": "db/platform/migrations/20261123190000_catalog_admission.sql",
-            "sha256": "96d39df55a162d71985ee2dbdbb87dd4a361cd1a3134563b0fc227520ba2b0ca"
+            "sha256": "f2df35cc254db94472b52454af9be28319d5320ab408f4ced0db68ddd72a2d04"
           },
           {
             "file": "db/platform/migrations/20261122200001_catalog_lifecycle.sql",

@@ -107,6 +107,13 @@ export interface CatalogAdmissionPriceContext {
     priceListId: string;
     entryId: string;
     entry: Record<string, unknown>;
+    /** Effective subscription policy associated with the consulted one-time base.
+     * @experimental
+     */
+    policy?: {
+        revisionId: string;
+        digest: string;
+    };
 }
 /** A trusted server supplies this evidence; an account baseline is read under its subscription lock.
  * @experimental
