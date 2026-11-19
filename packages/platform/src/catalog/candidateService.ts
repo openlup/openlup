@@ -50,17 +50,18 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
   readDraft(draftId: string, revision?: number): Promise<PublicationDraftRecord | null>;
 },
   publication?: CatalogCandidatePublicationDeps): CatalogCandidateService {
-  async function reconstruct(candidateRef: string): Promise<{ preview: CatalogCandidatePreview; head: CatalogHeadRef | null }> {
+  async function readHead(productId: string) {
+    try {
+      const current: CatalogPublicationReadResult = await deps.currentHead(productId);
+      if (current?.outcome === "found") return headSchema.safeParse(current.head).data;
+      if (current?.outcome === "unpublished") return null;
+    } catch { /* This observation is unavailable. */ }
+  }
+
+  async function reconstruct(candidateRef: string, expected?: CatalogHeadRef | null): Promise<{ preview: CatalogCandidatePreview; head: CatalogHeadRef | null }> {
     try {
       const reference = parseCatalogCandidateReference(candidateRef);
       if (!reference) return refuse("candidate_invalid");
-      let expectedHead: CatalogHeadRef | null = null;
-      if (reference.head) {
-        const parsed = headSchema.safeParse(await deps.resolveHead(reference.head));
-        if (!parsed.success || parsed.data.publicationId !== reference.head.publicationId
-          || parsed.data.revision !== reference.head.revision) return refuse("head_conflict");
-        expectedHead = parsed.data;
-      }
       const raw = await deps.readDraft(reference.draftId, reference.draftRevision);
       const preparePublication = raw?.payload?.schemaVersion === 3 || raw?.payload?.schemaVersion === 4;
       const record = preparePublication ? readPublicationDraftEnvelope(raw) : catalogDraftPublicationStoredRecordSchema.safeParse(raw).data;
@@ -69,15 +70,28 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       if (!payload?.product?.type) return refuse("candidate_invalid");
       const latest = await deps.readDraft(record.draftId);
       if (!latest || latest.draftId !== record.draftId || latest.revision !== record.revision || latest.status !== record.status) return refuse("candidate_invalid");
-      let current: CatalogPublicationReadResult | undefined;
-      try { current = await deps.currentHead(record.productId); }
-      catch { if (!preparePublication) return refuse("candidate_dependency_unavailable"); }
-      const head = current?.outcome === "found" ? headSchema.safeParse(current.head).data
-        : current?.outcome === "unpublished" ? null : undefined;
-      const headKnown = head !== undefined;
-      if (headKnown && !equal(head, expectedHead))
-        return refuse("head_conflict");
-      if (!headKnown && !preparePublication) return refuse("candidate_dependency_unavailable");
+      let expectedHead: CatalogHeadRef | null = null;
+      let unresolvedExpectedHead = false;
+      if (reference.head) {
+        let observed: CatalogHeadRef | null | undefined;
+        try { observed = await deps.resolveHead(reference.head); } catch { /* Admission can still diagnose the supplied draft. */ }
+        const parsed = headSchema.safeParse(observed);
+        if (parsed.success && parsed.data.publicationId === reference.head.publicationId
+          && parsed.data.revision === reference.head.revision) expectedHead = parsed.data;
+        else {
+          unresolvedExpectedHead = true;
+          if (expected?.publicationId === reference.head.publicationId && expected.revision === reference.head.revision)
+            expectedHead = expected;
+        }
+      }
+      async function checkLegacyLineage(productId: string) {
+        if (unresolvedExpectedHead) return refuse("head_conflict");
+        const head = await readHead(productId);
+        if (head === undefined) return refuse("candidate_dependency_unavailable");
+        if (!equal(head, expectedHead)) return refuse("head_conflict");
+      }
+      // Older drafts keep the released lineage checks. Publication admission runs before current lineage is read.
+      if (!preparePublication) await checkLegacyLineage(record.productId);
       const definitionDrift = () => refuse("catalog_definition_drift",
         publicationIssue("catalog_definition_drift", "structural", "product.type", payload.product.type.key).message);
       const definition = deps.registry.resolve(payload.product.type);
@@ -126,10 +140,13 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       if (preparePublication) {
         const result = await evaluateCatalogPublication({ record, definition, installedDefinitionDigest: installed,
           expectedHead, evaluation, observations: publication,
+          readCurrentHead: async () => {
+            if (unresolvedExpectedHead) throw new CatalogPublicationError("head_conflict", "conflict");
+            return readHead(record.productId);
+          },
           attributeReferences: deps.attributeReferences, validatePrices: deps.validatePrices }, "preview");
-        if (result.failure?.code === "candidate_invalid") return refuse("candidate_invalid");
+        if (result.failure?.code === "candidate_invalid" || result.failure?.code === "head_conflict") return refuse(result.failure.code);
         const structural = result.structural.map(issue => issue.diagnostic);
-        if (!headKnown) structural.push(publicationIssue("publication_head_unavailable", "structural", "publication", definition.key));
         const blocked = result.structural.some(issue => issue.outcome !== "dependency_unavailable");
         const activationBlocked = result.activationIssues.some(issue => issue.outcome !== "dependency_unavailable");
         const activation = [...structural, ...result.activationIssues.map(issue => issue.diagnostic)];
@@ -162,13 +179,14 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       if (!parsed.success) return refuse("candidate_invalid");
       const { draftId, draftRevision, expectedHead } = parsed.data;
       const candidateRef = `v1:${draftId}@${draftRevision}/${expectedHead === null ? "unpublished" : `${expectedHead.publicationId}@${expectedHead.revision}`}`;
-      const result = await reconstruct(candidateRef);
+      const result = await reconstruct(candidateRef, expectedHead);
       if (!equal(result.head, expectedHead)) return refuse("head_conflict");
       return result.preview;
     },
     async validate(candidateRef) { return (await reconstruct(candidateRef)).preview; },
     async compareCandidate(input) {
-      const result = await reconstruct(input.candidateRef);
+      const head = headSchema.nullable().safeParse(input.expectedHead);
+      const result = await reconstruct(input.candidateRef, head.data);
       if (!headSchema.nullable().safeParse(input.expectedHead).success || !equal(input.expectedHead, result.head)) return refuse("head_conflict");
       if (input.candidateDigest !== result.preview.candidateDigest) return refuse("candidate_digest_mismatch");
       return result.preview;
