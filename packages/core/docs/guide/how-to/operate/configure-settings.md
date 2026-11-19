@@ -81,8 +81,8 @@ owns changes.
 
 ## Refusals
 
-Machine-readable refusals carry `code`, `path`, `rule`, `hint` and
-`remediation`. Run `node --experimental-strip-types host/settings.ts explain <refusal-code>` for the
+CLI and MCP return the same `refusal` object with `code`, `path`, `rule`,
+`hint` and `remediation`. Run `node --experimental-strip-types host/settings.ts explain <refusal-code>` for the
 recheck command and whether retrying can help.
 
 | Code | Next step |
@@ -93,7 +93,7 @@ recheck command and whether retrying can help.
 | `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
 | `commerce_setting_preview_connection_required` | Repeat preview with a read-capable connection to the intended store. |
 | `commerce_setting_preview_unsupported` | Read the key's runtime level and effect with `show`. |
-| `commerce_setting_preview_unavailable` | Verify the installed value, store connection, read access and validator EXECUTE. |
+| `commerce_setting_preview_unavailable` | Verify the installed policy and use a role that can read it, run the stock read and execute the validator. |
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |

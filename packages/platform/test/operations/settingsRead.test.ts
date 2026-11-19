@@ -207,7 +207,7 @@ it("refuses preview with a fix when PostgreSQL validator execution is denied", a
   const connection = previewConnection({ code: "42501" });
   expect(await previewSetting({ key: previewKey, proposed, asOf }, connection.previewers)).toMatchObject({
     refusal: { code: "commerce_setting_preview_unavailable", remediation: {
-      action: expect.stringContaining("EXECUTE on public.inventory_renewal_protection_validate(jsonb)"),
+      action: expect.stringMatching(/read it from public\.commerce_settings, run public\.inventory_new_purchase_stock_read, and has EXECUTE on public\.inventory_renewal_protection_validate\(jsonb\)/u),
       command: expect.stringContaining("preview <key> '<value>' --database-url"),
     } },
   });

@@ -6,6 +6,7 @@ import { globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
+import { configurations } from "../examples/neutral-store/owned/store.config.ts";
 import { checkSettingsCatalogue, parseSettingData, renderSettingsCatalogue } from "./settings-catalogue.ts";
 
 it("reproduces all three committed settings carriers byte for byte", () => {
@@ -108,11 +109,23 @@ it("the offline starter CLI refuses preview and prints the connected command", (
   { cwd: "examples/neutral-store", encoding: "utf8" });
   expect(result.status, result.stderr).toBe(1);
   expect(result.stderr).toBe("");
-  expect(JSON.parse(result.stdout)).toMatchObject({
-    schemaVersion: 1,
-    refusal: {
+  expect(JSON.parse(result.stdout)).toEqual({
+    refusal: expect.objectContaining({
       code: "commerce_setting_preview_connection_required",
-      remediation: { command: expect.stringContaining("--database-url <read-capable-url>") },
-    },
+      remediation: expect.objectContaining({ command: expect.stringContaining("--database-url <read-capable-url>") }),
+    }),
   });
+});
+
+it("names the unknown configuration and the valid IDs before connecting", () => {
+  const result = spawnSync(process.execPath, ["--experimental-strip-types", "host/settings.ts", "preview",
+    "inventory_renewal_protection", '{"revision":"candidate","renewalProtectionDays":21}', "--configuration", "unknown-store",
+    "--database-url", "postgresql://[", "--json"],
+  { cwd: "examples/neutral-store", encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(1);
+  expect(JSON.parse(result.stdout)).toMatchObject({ refusal: {
+    code: "commerce_setting_read_input_invalid",
+    path: ["configuration"],
+    hint: `Unknown configuration "unknown-store". Use one of these IDs: ${Object.keys(configurations).join(", ")}.`,
+  } });
 });

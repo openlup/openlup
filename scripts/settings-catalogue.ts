@@ -139,7 +139,7 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
     hint: "Check the intended store's connection, installed value, and read access.",
     remediation: {
       retry: true,
-      action: "Verify the installed value and read access. If the validator is missing, apply the inventory renewal protection validation migration. If execution is denied, use a role with EXECUTE on public.inventory_renewal_protection_validate(jsonb).",
+      action: "Verify the installed policy. Use a role that can read it from public.commerce_settings, run public.inventory_new_purchase_stock_read, and has EXECUTE on public.inventory_renewal_protection_validate(jsonb). If the validator is missing, apply the inventory renewal protection validation migration.",
       command: "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --sku <sku> --json",
     },
   },

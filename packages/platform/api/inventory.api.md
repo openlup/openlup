@@ -799,7 +799,7 @@ export declare function describeRenewalStockProtectionSetting(): {
     };
     readonly runtime: {
         readonly level: "preview";
-        readonly reason: "Runtime changes require a shared write path and proof that rollback restores a prior value and an absent setting.";
+        readonly reason: "Preview is available. Apply changes with the installer at deployment.";
     };
     readonly change: {
         readonly operation: "installRenewalStockProtectionPolicy";

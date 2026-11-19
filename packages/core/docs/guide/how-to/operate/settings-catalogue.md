@@ -303,7 +303,7 @@ node --experimental-strip-types host/settings.ts show inventory_renewal_protecti
 ```
 
 - Owner **inventory** · kind **installed** · runtime **preview**
-- Runtime changes require a shared write path and proof that rollback restores a prior value and an absent setting.
+- Preview is available. Apply changes with the installer at deployment.
 - Frozen on: Existing reservations keep their quantities and expiry times.
 - Default is `{"revision":"default","renewalProtectionDays":14}`.
 - Basis `reference-code` (matches the reference deployment's code).

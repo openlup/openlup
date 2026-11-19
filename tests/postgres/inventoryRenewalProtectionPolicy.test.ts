@@ -288,7 +288,7 @@ it("restricted native startup refuses drift before serving or writing, with inst
   } finally { await runtime.end(); }
 });
 
-it("previews 14 to 21 identically in CLI and MCP at one instant with five queries for 1 or 25 SKUs and no writes", async () => {
+it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries for 1 or 25 SKUs and no writes", async () => {
   const key = "inventory_renewal_protection";
   const current = { revision: "fixture-14", renewalProtectionDays: 14 };
   const proposed = { revision: "fixture-21", renewalProtectionDays: 21 };
@@ -337,6 +337,15 @@ it("previews 14 to 21 identically in CLI and MCP at one instant with five querie
     await server.connect(serverTransport);
     await mcp.connect(clientTransport);
     expect((await mcp.listTools()).tools[0]?.annotations?.readOnlyHint).toBe(true);
+    const options = { cwd: fileURLToPath(new URL("../../examples/neutral-store/", import.meta.url)), encoding: "utf8" } as const;
+    const unknownKey = "unknown_setting";
+    const refused = await mcp.callTool({ name: tool.name, arguments: { key: unknownKey, proposed } });
+    expect(refused.structuredContent).toMatchObject({ refusal: { code: "commerce_setting_unknown" } });
+    const cliRefused = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
+      unknownKey, JSON.stringify(proposed), "--json"], options);
+    expect(cliRefused.status, cliRefused.stderr).toBe(1);
+    expect(JSON.parse(cliRefused.stdout)).toEqual(refused.structuredContent);
+
     for (const selected of [[sku], skus]) {
       const result = await preview(selected);
       expect(result).toMatchObject({
@@ -360,7 +369,6 @@ it("previews 14 to 21 identically in CLI and MCP at one instant with five querie
       if (selected.length === 1) {
         const args = ["run", "--silent", "settings", "--", "preview", key, JSON.stringify(proposed),
           "--database-url", url.toString(), "--sku", sku, "--as-of", instant];
-        const options = { cwd: fileURLToPath(new URL("../../examples/neutral-store/", import.meta.url)), encoding: "utf8" } as const;
         const json = spawnSync("npm", [...args, "--json"], options);
         expect(json.status, json.stderr).toBe(0);
         expect(JSON.parse(json.stdout)).toEqual(result);

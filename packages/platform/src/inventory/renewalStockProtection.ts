@@ -44,7 +44,7 @@ export function describeRenewalStockProtectionSetting() {
       frozenOn: ["Existing reservations keep their quantities and expiry times."],
       impact: "operations",
     },
-    runtime: { level: "preview", reason: "Runtime changes require a shared write path and proof that rollback restores a prior value and an absent setting." },
+    runtime: { level: "preview", reason: "Preview is available. Apply changes with the installer at deployment." },
     change: { operation: "installRenewalStockProtectionPolicy" },
   } as const;
 }
