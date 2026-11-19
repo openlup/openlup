@@ -3922,7 +3922,7 @@ it.each(["fresh decision", "publish", "wrong receipt fingerprint", "wrong head o
     }
   });
 
-it.each(["stale head", "future SKU revision", "superseded SKU revision", "duplicate code outside page",
+it.each(["stale head", "future SKU revision", "superseded SKU revision", "duplicate code outside page", "future SKU in predecessor with empty receipt", "lower SKU revision at same issuance",
   "wrong observation status", "duplicate observation", "duplicate manifest SKU"] as const)(
   "publication retained reads distinguish an internally consistent but false state: %s", async mode => {
     const data = await draft(), first = await commit(data.publication);
@@ -3976,6 +3976,15 @@ it.each(["stale head", "future SKU revision", "superseded SKU revision", "duplic
         const older = await stored(first.head.publicationId), newer = await stored(second.head.publicationId);
         bound = page.items.find(item => item.facts.id !== data.skuId)!;
         await writeState(first.head.publicationId, { ...older, skus: newer.skus });
+      } else if (mode === "future SKU in predecessor with empty receipt") {
+        const older = await stored(first.head.publicationId), newer = await stored(second.head.publicationId);
+        await writeState(first.head.publicationId, { ...older, skus: newer.skus });
+        await writeReceipt({ ...second, changes: [] });
+      } else if (mode === "lower SKU revision at same issuance") {
+        const original = (await stored(first.head.publicationId)).skus[0];
+        await client.query(`INSERT INTO public.catalog_sku_revisions(id,sku_id,sku_code,product_id,revision,publication_id,digest,full_facts)
+          SELECT $1,sku_id,sku_code,product_id,2,publication_id,digest,full_facts FROM public.catalog_sku_revisions WHERE id=$2`,
+        [randomUUID(), original.revisionId]);
       } else if (mode === "superseded SKU revision") {
         const older = await stored(first.head.publicationId), newer = await stored(second.head.publicationId);
         const oldSku = older.skus[0];
@@ -4008,7 +4017,7 @@ it.each(["stale head", "future SKU revision", "superseded SKU revision", "duplic
         const publicationDigest = await writeState(first.head.publicationId, state);
         const capability = (await target.authorize(null))!;
         await target.receipt({ productId: data.productId, commandKey: first.commandKey }, capability);
-        expect(recordedChanges.map(change => change.variantRevision).sort()).toEqual([1, 2]);
+        expect(recordedChanges.map(change => change.variantRevision)).toEqual([2]);
         await writeReceipt({ ...first, publicationDigest, changes: recordedChanges });
       } else {
         const receipt: typeof first = { ...first, changes: mode === "wrong observation status" ? [{ ...first.changes[0], state: "active" }]
@@ -4018,6 +4027,14 @@ it.each(["stale head", "future SKU revision", "superseded SKU revision", "duplic
       const legacy = { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
       if (mode === "stale head") {
         expect(await target.reads.current(data.productId)).toEqual(legacy);
+      } else if (mode === "future SKU in predecessor with empty receipt" || mode === "lower SKU revision at same issuance") {
+        const capability = (await target.authorize(null))!;
+        const tie = mode === "lower SKU revision at same issuance", head = tie ? first.head : second.head;
+        const refusal = { outcome: "dependency_unavailable", reason: tie ? "catalog_publication_sku_revision_invalid" : "catalog_publication_receipt_invalid" };
+        expect(await target.receipt({ productId: data.productId, commandKey: tie ? first.commandKey : second.commandKey }, capability)).toEqual(refusal);
+        expect(await target.publish(tie ? data.publication : command, capability)).toEqual(refusal);
+        if (tie) expect(await target.readbackV2(head)).toEqual(refusal);
+        expect(await target.reads.history(data.productId, null)).toEqual(legacy);
       } else if (mode === "future SKU revision" || mode === "superseded SKU revision" || mode === "duplicate code outside page") {
         const head = mode === "future SKU revision" ? first.head : second.head;
         const cursor = mode !== "duplicate code outside page" ? null : Buffer.from(canonicalCatalogDraftJson({ schemaVersion: 1, kind: "facts",

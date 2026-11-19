@@ -90,7 +90,8 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
       issued.revision<=$3 AS visible,
       EXISTS(SELECT 1 FROM public.catalog_sku_revisions changed JOIN public.catalog_publications newer
         ON newer.product_id=changed.product_id AND newer.id=changed.publication_id
-        WHERE changed.product_id=r.product_id AND changed.sku_id=r.sku_id AND newer.revision>issued.revision AND newer.revision<=$3) AS superseded
+        WHERE changed.product_id=r.product_id AND changed.sku_id=r.sku_id AND newer.revision<=$3
+          AND (newer.revision>issued.revision OR newer.id=issued.id AND changed.revision>r.revision)) AS superseded
       FROM public.catalog_sku_revisions r JOIN public.catalog_publications issued ON issued.product_id=r.product_id AND issued.id=r.publication_id
       WHERE r.product_id=$1::uuid AND r.id=ANY($2::uuid[])`, [productId, references.map(ref => ref.revisionId), at]);
     const byId = new Map(rows.map(row => [row.id, row])), codes = new Set<string>();
@@ -239,11 +240,9 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           'productId',p.product_id,'variantId',r.sku_id,'sku',r.sku_code,
           'state',CASE WHEN r.full_facts::jsonb->>'status'='archived' THEN 'withdrawn' ELSE r.full_facts::jsonb->>'status' END,
           'variantRevision',r.revision,'publicationHead',jsonb_build_object('publicationId',p.id,'revision',p.revision,'documentDigest',d.digest),
-          'draftRef',jsonb_build_object('draftId',p.draft_id,'revision',p.draft_revision)) ORDER BY entry->>'skuId' COLLATE "C"),'[]'::jsonb)
-        FROM (SELECT value AS entry FROM jsonb_array_elements(p.canonical_state::jsonb->'skus')
-          EXCEPT SELECT value FROM jsonb_array_elements(previous.canonical_state::jsonb->'skus')) changed
-        LEFT JOIN public.catalog_sku_revisions r ON r.id=(entry->>'revisionId')::uuid AND r.publication_id=p.id AND r.product_id=p.product_id
-          AND r.sku_id=(entry->>'skuId')::uuid AND r.revision=(entry->>'revision')::integer AND r.digest=entry->>'digest') AS recorded_changes,
+          'draftRef',jsonb_build_object('draftId',p.draft_id,'revision',p.draft_revision)) ORDER BY r.sku_id::text COLLATE "C"),'[]'::jsonb)
+        FROM (SELECT DISTINCT ON (issued.sku_id) issued.sku_id,issued.sku_code,issued.full_facts,issued.revision FROM public.catalog_sku_revisions issued
+          WHERE issued.publication_id=p.id AND issued.product_id=p.product_id ORDER BY issued.sku_id,issued.revision DESC) r) AS recorded_changes,
       to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at,p.canonical_state
       FROM public.catalog_publications p JOIN public.catalog_product_document_revisions d ON d.id=p.document_revision_id AND d.product_id=p.product_id
       LEFT JOIN public.catalog_publications previous ON previous.id=p.previous_id AND previous.product_id=p.product_id
@@ -252,7 +251,6 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(publications.length === 1 && result.head.revision === publications[0]!.revision && result.head.documentDigest === publications[0]!.document_digest
       && result.publicationDigest === publications[0]!.digest && result.committedAt === publications[0]!.committed_at
       && result.commandKey === publications[0]!.command_key && result.actorId === publications[0]!.actor_id && publications[0]!.receipt_count === 1
-      && equal(result.changes, publications[0]!.recorded_changes)
       && equal(result.previousHead, publications[0]!.previous_id === null ? null : { publicationId: publications[0]!.previous_id, revision: publications[0]!.previous_revision, documentDigest: publications[0]!.previous_document_digest }),
     "catalog_publication_receipt_invalid", "dependency_unavailable");
     verifyPredecessor(result.head.revision, publications[0]!.previous_id, publications[0]!.previous_revision);
@@ -261,7 +259,12 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     const manifest = catalogPublicationManifestSchema.safeParse(JSON.parse(canonicalState as string));
     require(manifest.success && manifest.data.product.id === result.productId && publicationJson(manifest.data) === canonicalState
       && publicationDigest(manifest.data) === result.publicationDigest, "catalog_publication_receipt_invalid", "dependency_unavailable");
-    await retainedSkuIndex(db, result.productId, result.head.revision, manifest.data!.skus);
+    const references = manifest.data!.skus;
+    await retainedSkuIndex(db, result.productId, result.head.revision, references);
+    const bySku = new Map(references.map(reference => [reference.skuId, reference.revision]));
+    require(equal(result.changes, publications[0]!.recorded_changes)
+      && result.changes.every(change => bySku.get(change.variantId) === change.variantRevision),
+      "catalog_publication_receipt_invalid", "dependency_unavailable");
     publicationJson({ outcome: "found", receipt: result }, CATALOG_PUBLICATION_LIMITS.receiptBytes);
     return result;
   }
