@@ -522,7 +522,8 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
 });
 
 it("matches the installed stock read with contrasting sources, classes, due terms, cycle statuses, and exposure", async () => {
-  const [, sourceSku, packagingSku, pausedSku, foreignTermsSku, paidSku, skippedSku, cancelledSku] = fixtureSkus;
+  const [, sourceSku, packagingSku, pausedSku, foreignTermsSku, paidSku, skippedSku, cancelledSku,
+    nullClassSku, cancelledSubscriptionSku] = fixtureSkus;
   const otherSource = "policy-fixture:other";
   const client = await db.connect();
   try {
@@ -533,12 +534,29 @@ it("matches the installed stock read with contrasting sources, classes, due term
        last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
       VALUES ($1,$2,37,37,0,'sellable',$3,$3::timestamptz + interval '1 day','fixture','other-source',repeat('a',64))`,
     [otherSource, sourceSku, asOf]);
+    // Pins r.source_key=p_source_key in 20261123152000_inventory_new_purchase_stock_preview.sql:29 with a live hold from the other source.
+    await client.query(`WITH other_order AS (
+      INSERT INTO public.commerce_orders(client_id,currency_code,total_amount_minor)
+      SELECT id,'XXX',0 FROM public.clients WHERE email='policy@example.invalid' RETURNING id
+    ), other_hold AS (
+      INSERT INTO public.fulfillment_inventory_reservations
+        (source_key,purchase_order_id,operation_fingerprint,status,expires_at,created_at)
+      SELECT $1,id,repeat('b',64),'held',$2::timestamptz + interval '1 day',$2::timestamptz
+      FROM other_order RETURNING id
+    )
+    INSERT INTO public.fulfillment_inventory_reservation_lines(reservation_id,operation_fingerprint,sku,quantity)
+    SELECT id,repeat('b',64),$3,12 FROM other_hold`, [otherSource, asOf, sourceSku]);
     // Pins the sellable inventory-class filter: packaging has 100 units and contributes zero to ATP.
     await client.query("UPDATE public.fulfillment_stock_current SET inventory_class='packaging' WHERE source_key=$1 AND sku=$2",
       [source, packagingSku]);
+    // Pins stock.inventory_class='sellable' in 20261123152000_inventory_new_purchase_stock_preview.sql:41 against treating NULL as sellable.
+    await client.query("UPDATE public.fulfillment_stock_current SET inventory_class=NULL WHERE source_key=$1 AND sku=$2",
+      [source, nullClassSku]);
     for (const [item, subscriptionStatus, termsSource, cycleStatus] of [
       // Pins the active-subscription filter: the paused subscription has due terms.
       [pausedSku, "paused", source, null],
+      // Pins s.status='active' in 20261123152000_inventory_new_purchase_stock_preview.sql:49 against admitting cancelled subscriptions with due terms.
+      [cancelledSubscriptionSku, "cancelled", source, null],
       // Pins the renewal-terms source match: active demand belongs to another source.
       [foreignTermsSku, "active", otherSource, null],
       // Pins the paid exclusion: this cycle's live hold must not credit its due terms.
@@ -574,24 +592,36 @@ it("matches the installed stock read with contrasting sources, classes, due term
       await client.query(`INSERT INTO public.fulfillment_inventory_reservation_lines(reservation_id,operation_fingerprint,sku,quantity)
         VALUES ($1,repeat('c',64),$2,4)`, [reservation, item]);
     }
-    // Pins channel exposure in both the projection and ATP subtraction; native exposure defaults to zero.
+    // Pins exposure's p_source_key and requested.sku arguments in 20261123152000_inventory_new_purchase_stock_preview.sql:55.
     await client.query(`CREATE OR REPLACE FUNCTION public.inventory_channel_exposure_quantity(p_source_key text, p_sku text)
-      RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$ SELECT '3'::jsonb; $$`);
+      RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
+        SELECT to_jsonb((CASE WHEN p_source_key = '${otherSource}' THEN 10 ELSE 0 END)
+                       + (CASE WHEN p_sku = '${sourceSku}' THEN 5 ELSE 3 END));
+      $$`);
     // Pins request-SKU de-duplication: the repeated SKU must still produce one result row.
-    const { rows: [{ installed, proposed }] } = await client.query(`SELECT
-      public.inventory_new_purchase_stock_read($1,$2,$3) AS installed,
-      public.inventory_new_purchase_stock_preview($1,$2,$3,to_jsonb(public.inventory_renewal_protection_days())) AS proposed`,
-    [source, JSON.stringify([...fixtureSkus, sku]), asOf]);
-    expect(installed).toHaveLength(fixtureSkus.length);
-    expect(installed).toEqual(expect.arrayContaining([
-      expect.objectContaining({ sku: sourceSku, providerForSale: 100, channelExposure: 3, availableForNewPurchases: 97 }),
-      expect.objectContaining({ sku: packagingSku, providerForSale: 100, availableForNewPurchases: 0 }),
-      ...[pausedSku, foreignTermsSku].map(item => expect.objectContaining({ sku: item, renewalDemand: 0, availableForNewPurchases: 97 })),
+    const { rows } = await client.query(`SELECT
+      public.inventory_new_purchase_stock_read(source_key,$2,$3) AS installed,
+      public.inventory_new_purchase_stock_preview(source_key,$2,$3,to_jsonb(public.inventory_renewal_protection_days())) AS proposed
+      FROM (VALUES (1,$1::text), (2,$4::text)) sources(ordinal,source_key) ORDER BY ordinal`,
+    [source, JSON.stringify([...fixtureSkus, sku]), asOf, otherSource]);
+    const [primary, other] = rows;
+    expect(primary.installed).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sku: sourceSku, providerForSale: 100, activeHolds: 0, channelExposure: 5, availableForNewPurchases: 95 }),
+      ...[packagingSku, nullClassSku].map(item => expect.objectContaining({ sku: item, providerForSale: 100, availableForNewPurchases: 0 })),
+      ...[pausedSku, cancelledSubscriptionSku, foreignTermsSku].map(item => expect.objectContaining({
+        sku: item, renewalDemand: 0, channelExposure: 3, availableForNewPurchases: 97,
+      })),
       ...[paidSku, skippedSku, cancelledSku].map(item => expect.objectContaining({
         sku: item, activeHolds: 4, renewalDemand: 11, availableForNewPurchases: 82,
       })),
     ]));
-    expect(proposed).toEqual(installed);
+    expect(other.installed).toContainEqual(expect.objectContaining({
+      sku: sourceSku, providerForSale: 37, activeHolds: 12, channelExposure: 15, availableForNewPurchases: 10,
+    }));
+    for (const { installed, proposed } of rows) {
+      expect(installed).toHaveLength(fixtureSkus.length);
+      expect(proposed).toEqual(installed);
+    }
   } finally {
     try { await client.query("ROLLBACK"); }
     finally { client.release(); }
