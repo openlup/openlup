@@ -23,6 +23,9 @@ const QUOTE_PAYLOAD_USES = [
 const PUBLICATION_MIGRATION = "db/platform/migrations/20261123150000_catalog_publication.sql";
 const PUBLICATION_WRITER = "packages/platform/src/catalog/publicationStore.ts";
 const PUBLICATION_COMPILER = "packages/platform/src/catalog/publicationValidation.ts";
+const CONNECTED_CAPTURE = "server/adapters/postgres/connectedStoreCapture.ts";
+const CONNECTED_RESTORE = "server/adapters/postgres/connectedStoreRestore.ts";
+const DOCUMENT_TRANSFER_PAYLOAD = '"id", "product_id", "revision_no", "schema_id", "document_ref", "document_payload",';
 const PUBLICATION_PAYLOAD_USES = new Map<string, readonly string[]>([
   [PUBLICATION_MIGRATION, [
     "canonical_text IS NULL OR (CAST(canonical_text AS jsonb) = document_payload)) NOT VALID;",
@@ -39,6 +42,7 @@ const PUBLICATION_CANONICALIZATION_USES = [
 // Canonical text carries the same document as the JSONB column. Keep these
 // operations bound to exact source lines so that assigning an alias is a use.
 const CANONICAL_DOCUMENT_USES = new Map<string, readonly string[]>([
+  [CONNECTED_CAPTURE, ['"source_ref", "provenance", "digest", "created_at", "canonical_text",']],
   [PUBLICATION_MIGRATION, [
     "ALTER TABLE public.catalog_product_document_revisions ADD COLUMN canonical_text text;",
     ...PUBLICATION_PAYLOAD_USES.get(PUBLICATION_MIGRATION)!,
@@ -212,7 +216,12 @@ function projectionBody(projection: string): string {
   return body;
 }
 
-function readsWholeDocumentRow(source: string): boolean {
+function readsWholeDocumentRow(file: SourceFile): boolean {
+  // The capture and restore table loops include document revisions. Test their
+  // unresolved table interpolation as the document relation.
+  const source = file.path === CONNECTED_CAPTURE || file.path === CONNECTED_RESTORE
+    ? file.source.replace(/public\.\$\{(?:identifier|quoted)\(table\)\}/g, "public.catalog_product_document_revisions")
+    : file.source;
   return source.split(/[`;]/).some(statement => {
     statement = statement.replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"]|"")*"|\bONLY\b/gi,
       token => token.startsWith('"') ? token : " ");
@@ -279,7 +288,7 @@ function violations(files: readonly SourceFile[]): string[] {
     if (SQL_DOCUMENT_INTERPRETATION.test(file.source)) {
       found.push(`${file.path}: interprets the SQL document payload`);
     }
-    if (readsWholeDocumentRow(file.source)) {
+    if (readsWholeDocumentRow(file)) {
       found.push(`${file.path}: document rows must use explicit projections`);
     }
     if (readsUnapprovedCanonicalDocument(file, lines)) {
@@ -297,10 +306,11 @@ function violations(files: readonly SourceFile[]): string[] {
     const opaqueQuoteRead = file.path === QUOTE_READER && opaqueQuotePayloadPassThrough(file.source, payloadLines);
     const publicationPayloadUses = PUBLICATION_PAYLOAD_USES.get(file.path);
     const opaquePublication = publicationPayloadUses !== undefined && exactUses(payloadLines.map(line => line.trim()), publicationPayloadUses);
+    const opaqueTransfer = file.path === CONNECTED_CAPTURE && exactUses(payloadLines.map(line => line.trim()), [DOCUMENT_TRANSFER_PAYLOAD]);
     const opaqueStorage = file.path === PORTABLE_MIGRATION
       && exactUses(payloadLines.map(line => line.trim()), ["document_payload jsonb NOT NULL,"]);
     if (!isTestSource && (
-      (payloadLines.length > 0 && !opaqueStorage && !opaqueQuoteRead && !opaquePublication)
+      (payloadLines.length > 0 && !opaqueStorage && !opaqueQuoteRead && !opaquePublication && !opaqueTransfer)
       || (file.path === QUOTE_READER && /\brevision_document_payload\b/.test(file.source) && !opaqueQuoteRead)
     )) {
       found.push(`${file.path}: document payload must remain opaque SQL storage only`);
@@ -410,6 +420,13 @@ describe("portable catalog document boundary", () => {
     const source = "SELECT DISTINCT d.id, d.revision_no AS d, count(*) FROM public.catalog_product_document_revisions d;";
     expect(violations([{ path: PUBLICATION_WRITER, source }])).toEqual([]);
   });
+
+  it.each([[CONNECTED_CAPTURE, "identifier"], [CONNECTED_RESTORE, "quoted"]])(
+    "refuses a whole document row selected by the retained-transfer table loop in %s", (path, name) => {
+      const source = "SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public.${" + name + "(table)} t";
+      expect(violations([{ path, source }])).toContain(`${path}: document rows must use explicit projections`);
+    },
+  );
 
   it.each([
     ["transport (aliased parse)", PUBLICATION_WRITER, "const alias = row.canonicalText;\n JSON.parse(alias);"],

@@ -415,6 +415,8 @@ The portable catalogue boundary binds these operations to their exact paths,
 trimmed lines and occurrence counts. It refuses field extraction, path and
 containment operators, schema-shaped validation, private schema imports, platform
 parsing, logging, serialization and whole-row projections.
+Native retained capture and restore use an explicit document-column projection
+to carry and compare both opaque values with the other revision fields.
 Publication checks canonical GTINs across issuers while it holds the identifier
 relation lock. It refuses a duplicate committed before it takes that lock.
 Legacy writers retain the issuer-scoped key. A legacy write racing a

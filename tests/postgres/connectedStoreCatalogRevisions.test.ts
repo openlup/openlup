@@ -19,6 +19,8 @@ let source: JourneyInstallation, target: JourneyInstallation;
 let packet: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture;
 let targetNumber = 0;
 let retainedPublication: { first: CatalogHeadRef; second: CatalogHeadRef; productId: string; receipt: unknown };
+const documentCaptureReads: string[] = [];
+const isDocumentTransferRead = (sql: string) => sql.includes("to_jsonb(t)") && sql.includes("catalog_product_document_revisions");
 
 beforeAll(async () => {
   source = await resources.installation("catalog-source");
@@ -44,7 +46,10 @@ beforeAll(async () => {
     await setFixtureCatalogDocument(source.owner, product, latest[index]);
   }
   retainedPublication = await seedPublicationHistory(source.owner);
-  packet = await captureStoreJourney(source.owner, "catalog-document-source");
+  const observer = observedOwner(async sql => {
+    if (isDocumentTransferRead(sql)) documentCaptureReads.push(sql);
+  }, undefined, source.owner);
+  packet = await captureStoreJourney(observer, "catalog-document-source");
 }, postgresSetupTimeoutMs);
 
 beforeEach(async () => {
@@ -60,9 +65,9 @@ const restore = (owner = target.owner, captured = packet) => restoreConnectedNat
 // Observe or perturb real SQL on the owned transaction, without replacing any
 // query result, schema object, constraint or qualification evidence.
 function observedOwner(before: (sql: string, query: (sql: string, values?: unknown[]) => Promise<unknown>) => Promise<void>,
-  onError: (sql: string, error: unknown) => void = () => undefined): Pool {
+  onError: (sql: string, error: unknown) => void = () => undefined, pool = target.owner): Pool {
   return { async connect() {
-    const client = await target.owner.connect();
+    const client = await pool.connect();
     return {
       async query(sql: string | QueryConfig, values?: unknown[]) {
         const text = typeof sql === "string" ? sql : sql.text;
@@ -79,10 +84,18 @@ function observedOwner(before: (sql: string, query: (sql: string, values?: unkno
 // Container setup retains its separate deadline; cases keep retry at zero.
 it("carries two revisions per revised product, resolves the latest pointer and replays byte-exactly", async () => {
   const before = await journeyCensus(source.owner);
+  const projection = /FROM \(SELECT "id","product_id",[\w",]*"document_payload",[\w",]*"canonical_text" FROM public\.catalog_product_document_revisions\) t/u;
+  expect(documentCaptureReads).toHaveLength(1);
+  expect(documentCaptureReads[0]).toMatch(projection);
   expect(packet.owned.find(table => table.table === "catalog_product_document_revisions")?.rows)
     .toEqual(before.catalog_product_document_revisions);
   expect(before.catalog_product_document_revisions).toHaveLength(5);
-  expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
+  const restoreReads: string[] = [];
+  const owner = observedOwner(async sql => { if (isDocumentTransferRead(sql)) restoreReads.push(sql); });
+  expect(await restore(owner)).toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
+  expect(restoreReads.filter(sql => sql.startsWith("SELECT 1 FROM"))).toHaveLength(before.catalog_product_document_revisions.length);
+  expect(restoreReads.some(sql => sql.startsWith("SELECT pg_catalog.to_jsonb(t)"))).toBe(true);
+  for (const sql of restoreReads) expect(sql).toMatch(projection);
   expect(await journeyCensus(target.owner)).toEqual(before);
   expect((await target.owner.query(`SELECT p.id,p.current_document_revision_id,r.product_id,r.revision_no,
     r.id=(SELECT r2.id FROM public.catalog_product_document_revisions r2

@@ -87,6 +87,19 @@ export const connectedNativeStoreTables = [...compatible, ...owned] as const;
 
 type OwnedTable = typeof owned[number];
 type Column = { name: string; type: string };
+const documentRevisionColumns = new Set([
+  "id", "product_id", "revision_no", "schema_id", "document_ref", "document_payload",
+  "source_ref", "provenance", "digest", "created_at", "canonical_text",
+]);
+
+// Capture and restore use the same closed document projection to compare the
+// packet's PostgreSQL encoding, including when the source predates canonical text.
+export function connectedStoreRowSource(table: string, columns: readonly Column[]): string {
+  if (table !== "catalog_product_document_revisions") return `public.${identifier(table)}`;
+  if (columns.some(column => !documentRevisionColumns.has(column.name))) throw new PostgresTransferError("schema_conflict", table);
+  return `(SELECT ${columns.map(column => identifier(column.name)).join(",")} FROM public.catalog_product_document_revisions)`;
+}
+
 export interface ConnectedStoreOwnedRows {
   table: OwnedTable;
   columns: Column[];
@@ -195,7 +208,7 @@ export async function captureConnectedNativeStore(input: {
         // Only PostgreSQL encodes row values. JS never reserializes parsed
         // bigint/numeric/timestamp values for transport.
         const rows = (await db.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value
-          FROM public.${identifier(table)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows.map(row => row.value);
+          FROM ${connectedStoreRowSource(table, columns)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows.map(row => row.value);
         count += rows.length;
         bytes += rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
         if (count > maximumRows || bytes > maximumBytes) throw new PostgresTransferError("limit_exceeded", table);

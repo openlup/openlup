@@ -8,7 +8,7 @@ import { deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
-import { connectedNativeStoreTables, connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+import { connectedNativeStoreTables, connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
@@ -566,7 +566,7 @@ async function closeRestrictedOwnerWindow(client: PoolClient, installation: Qual
 }
 async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): Promise<boolean> {
   for (const [table, data] of expected) {
-    const actual = (await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public.${quoted(table)} t`)).rows.map(row => row.value).sort();
+    const actual = (await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM ${connectedStoreRowSource(table, data.columns)} t`)).rows.map(row => row.value).sort();
     if (JSON.stringify(actual) !== JSON.stringify([...data.rows].sort())) return false;
   }
   return true;
@@ -585,7 +585,7 @@ async function insert(client: PoolClient, table: Rows, row: string): Promise<voi
   if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy','on',true)");
   await client.query(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM pg_catalog.jsonb_populate_record(NULL::${name},$1::jsonb) ON CONFLICT DO NOTHING`, [row]);
   if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy',$1,true)",[prior??'']);
-  if ((await client.query(`SELECT 1 FROM ${name} t WHERE pg_catalog.to_jsonb(t)=$1::jsonb`, [row])).rows.length !== 1) fail("target_conflict", table.table);
+  if ((await client.query(`SELECT 1 FROM ${connectedStoreRowSource(table.table, table.columns)} t WHERE pg_catalog.to_jsonb(t)=$1::jsonb`, [row])).rows.length !== 1) fail("target_conflict", table.table);
 }
 async function restoreSettings(client: PoolClient, baseline: Rows, source: Rows): Promise<void> {
   // Closed read-approved factory tables, including installation marking. Each deletion matches one whole
