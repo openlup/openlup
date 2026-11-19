@@ -107,6 +107,7 @@ it.each([
   ["inventory_renewal_protection", "{", [], "json_invalid", ["proposed"]],
   ["inventory_renewal_protection", "{}", ["--configuration", "unknown-store"], "configuration_unknown", ["configuration"]],
   ["inventory_renewal_protection", "{}", ["--as-of", "yesterday"], "input_invalid", ["asOf"]],
+  ["inventory_renewal_protection", "{}", ["--sku-extra"], "input_invalid", ["sku-extra"]],
   ["inventory_renewal_protection", "{}", ["--database-url", "https://user:private@example.invalid"], "input_invalid", ["database-url"]],
   ["inventory_renewal_protection", "{}", [], "connection_required", []],
   ["checkout_recovery_reminders", "{}", [], "unsupported", ["key"]],
@@ -121,6 +122,7 @@ it.each([
     code: `commerce_setting_preview_${reason}`, path, rule: expect.any(String),
     remediation: { action: expect.any(String), command: expect.stringContaining("host/settings.ts") },
   } });
+  if (path[0] === "sku-extra") expect(document.refusal.hint).toBe("Unknown option --sku-extra. See preview help.");
   if (reason === "configuration_unknown") {
     expect(document.refusal.hint).toContain("unknown-store");
     expect(document.refusal.hint).toMatch(/supplements.*coffee/u);

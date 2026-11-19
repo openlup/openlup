@@ -106,7 +106,7 @@ export function refuseSettingsPreview(code: string, detail?: Pick<SettingRefusal
 export const settingsPreviewRequest = z.strictObject({
   key: z.string().min(1),
   proposed: z.json(),
-  skus: z.array(z.string().trim().min(1)).optional(),
+  skus: z.array(z.string().min(1)).optional(),
   asOf: z.iso.datetime().optional(),
 });
 

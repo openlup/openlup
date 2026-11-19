@@ -11,6 +11,7 @@
   {"name": "null", "input": "null", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "array", "input": "[]", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "number", "input": "14", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
+  {"name": "negative number", "input": "-1", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "string", "input": "\"14\"", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "boolean", "input": "true", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "empty object", "input": "{}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},

@@ -253,6 +253,14 @@ it("snapshots a direct proposal before connecting and admits a request with more
   } })).resolves.toEqual({ schemaVersion: 1 });
 });
 
+it("passes exact SKU identifiers through and deduplicates only exact matches", async () => {
+  const skus = ["SKU-1", " SKU-1 ", "SKU-1", " SKU-1 "];
+  const run = vi.fn(async () => ({ schemaVersion: 1 as const }));
+  await expect(previewSetting({ key: previewKey, proposed, skus, asOf }, { [previewKey]: run }))
+    .resolves.toEqual({ schemaVersion: 1 });
+  expect(run).toHaveBeenCalledExactlyOnceWith(proposed, expect.objectContaining({ skus: ["SKU-1", " SKU-1 "] }));
+});
+
 it("preserves the full serialized schemas of both legacy settings tools", () => {
   // Captured from the built operations/server entry at main 4d939dbba.
   const expected = readFileSync(new URL("./settingsReadToolSchemas.main.json", import.meta.url), "utf8");

@@ -444,7 +444,7 @@ it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries f
         schemaVersion: 1, validation: expected ? { state: "valid", value: expected } : { state: "invalid", code: entry.code },
       });
       expect(JSON.stringify(structuredContent), entry.name).toContain(`"proposed":${JSON.stringify(decoded)}`);
-      if (entry.decodedNormalized || entry.name === "additional field") {
+      if (decoded === null || typeof decoded !== "object" || entry.decodedNormalized || entry.name === "additional field") {
         const cli = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
           key, entry.input, "--database-url", url.toString(), "--as-of", instant, "--json"], options);
         expect(cli.status, cli.stderr).toBe(0);

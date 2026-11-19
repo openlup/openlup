@@ -752,11 +752,10 @@ export declare function describeRenewalStockProtectionSetting(): {
             source: z.ZodEnum<{
                 missing: "missing";
                 provider: "provider";
-                local: "local";
             }>;
             stale: z.ZodBoolean;
             currentAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
-            proposedAvailableForNewPurchases: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            proposedAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
         }, z.core.$strict>>;
     }, z.core.$strict>;
     readonly rules: readonly [{
@@ -875,11 +874,10 @@ export declare const renewalStockProtectionPreviewResult: z.ZodObject<{
             source: z.ZodEnum<{
                 missing: "missing";
                 provider: "provider";
-                local: "local";
             }>;
             stale: z.ZodBoolean;
             currentAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
-            proposedAvailableForNewPurchases: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+            proposedAvailableForNewPurchases: z.ZodNullable<z.ZodNumber>;
         }, z.core.$strict>>;
     }, z.core.$strict>;
     uncertainty: z.ZodString;

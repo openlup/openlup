@@ -81,10 +81,10 @@ const previewEffectSchema = () => z.strictObject({
   newPurchaseAvailability: z.enum(["equal-or-lower", "equal-or-higher", "unchanged", "undetermined"]),
   skus: z.array(z.strictObject({
     sku: z.string(),
-    source: z.enum(["provider", "local", "missing"]),
+    source: z.enum(["provider", "missing"]),
     stale: z.boolean(),
     currentAvailableForNewPurchases: z.number().nullable(),
-    proposedAvailableForNewPurchases: z.number().nullable().optional(),
+    proposedAvailableForNewPurchases: z.number().nullable(),
   })),
 });
 

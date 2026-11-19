@@ -16,7 +16,14 @@ Examples:
   npm run --silent settings -- explain commerce_setting_unknown`;
 
 async function run(args: string[]) {
-  const previewRequested = args.find(arg => arg !== '--json' && arg !== '--help') === 'preview';
+  const commandIndex = args.findIndex(arg => arg !== '--json' && arg !== '--help');
+  const previewRequested = args[commandIndex] === 'preview';
+  const keyArg = args[commandIndex + 1];
+  const proposalIndex = commandIndex + 2;
+  // JSON accepts leading whitespace, which keeps a negative proposal positional.
+  if (previewRequested && keyArg && !keyArg.startsWith('-') && /^-\d/u.test(args[proposalIndex] ?? '')) {
+    args = args.map((arg, index) => index === proposalIndex ? ' ' + arg : arg);
+  }
   let parsed;
   try {
     parsed = parseArgs({
@@ -27,9 +34,12 @@ async function run(args: string[]) {
       },
     });
   } catch (error) {
-    const flag = error instanceof Error ? /--(database-url|sku|configuration|as-of)\b/u.exec(error.message)?.[1] : undefined;
-    print(previewRequested ? refuseSettingsPreview('commerce_setting_preview_input_invalid', flag
-      ? { path: [flag], hint: `Supply a value for --${flag} as shown in preview help.` } : undefined)
+    const message = error instanceof Error ? error.message : '';
+    const missing = /^Option '--(database-url|sku|configuration|as-of) <value>' argument missing$/u.exec(message)?.[1];
+    const unknown = /^Unknown option '(-{1,2}[\w-]+)'\./u.exec(message)?.[1];
+    const detail = missing ? { path: [missing], hint: `Supply a value for --${missing} as shown in preview help.` }
+      : unknown ? { path: [unknown.replace(/^-{1,2}/u, '')], hint: `Unknown option ${unknown}. See preview help.` } : undefined;
+    print(previewRequested ? refuseSettingsPreview('commerce_setting_preview_input_invalid', detail)
       : invalidSettingsCommand(), args.includes('--json'));
     return;
   }
