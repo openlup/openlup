@@ -24,6 +24,7 @@ let rail: ReturnType<typeof createPostgresProviderPaymentRail>, renewal: ReturnT
 let binding: ReturnType<typeof createNativeSubscriptionBinding>;
 const codec = createNativeRenewalCodec();
 const requests: Record<string, unknown>[] = [];
+let pauseNextDispatch: (() => Promise<void>) | undefined;
 const transaction = async <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => {
   const db = await env.runtime.connect();
   try { await db.query("BEGIN"); const value = await work(db); await db.query("COMMIT"); return value; }
@@ -58,6 +59,9 @@ beforeAll(async () => {
       expect((await env.owner.query("SELECT count(*)::int n FROM public.payment_provider_attempts WHERE settlement_intent_id=$1 AND status='created'", [input.metadata.paymentIntentId])).rows[0].n).toBe(1);
       if (declined) throw { type: "StripeCardError", code: "card_declined", decline_code: "insufficient_funds",
         payment_intent: { id: "pi_declined_diagnostic", status: "requires_payment_method" } };
+      const pause = pauseNextDispatch;
+      pauseNextDispatch = undefined;
+      if (pause) await pause();
       return fake.invoke("create");
     },
     retrievePaymentIntent: () => fake.invoke("read"), createSetupIntent: () => fake.invoke("setup"),
@@ -211,11 +215,10 @@ it("acknowledges a completed historical capture through the shipping native rail
   expect(queries).toHaveLength(1);
   expect(queries[0]).toContain("public.commerce_payment_control_completed_capture_receipt");
 });
-it("runs an off-session saved-method renewal through the installed runtime role", async () => {
-  time = firstDue;
-  remote = payment("pi_renewal", "succeeded"); fake.enqueue("create", { kind: "success", value: remote }); fake.enqueue("read", { kind: "success", value: remote });
+function nativeWorker(workerId: string) {
   const p = policy();
-  binding = createNativeSubscriptionBinding({ enabled: true, population: "synthetic", executor: env.runtime, withTransaction: transaction,
+  return createNativeSubscriptionBinding({ enabled: true, population: "synthetic", executor: env.runtime, withTransaction: transaction,
+    // Allow overlapping runs to exercise the row claim independently of the population lease.
     withRunLease: async (_population, work) => work(), codec, settlement: db => createPostgresRenewalSettlementPort(db, codec, transaction),
     inventory: createPostgresRenewalReservationPort(env.runtime), paymentRails: renewal.paymentRails, providerLifecycle: renewal.lifecycle, policy: p,
     retry: { readFrozenMandate: async snapshot => ({ authorized: true, authorizationRef: snapshot.authorizationRef, paymentMethodRef: currentMethod }),
@@ -223,16 +226,64 @@ it("runs an off-session saved-method renewal through the installed runtime role"
         cycleSnapshot: snapshot } as never, { orderId: row.orderId, settlementIntentId: row.settlementIntentId }),
       executionIdempotencyKey: `${row.identityKey}:retry:${row.retryAttempt}`, externalIdempotencyKey: `${row.identityKey}:retry-provider:${row.retryAttempt}` }),
       payments: renewal.retryPayments, recoveredTemplate: truth.recoveryTemplateSlug },
-    failureTemplate: truth.dunningTemplateSlug, recoveryPath: truth.recoveryUrlPath, workerId: "portable", now: () => time,
+    failureTemplate: truth.dunningTemplateSlug, recoveryPath: truth.recoveryUrlPath, workerId, now: () => time,
     catalogue: { version: "fixture", migration: "fixture" }, readiness: async () => ({ state: "ready", candidate: { artifact: "fixture", configuration: "fixture", environment: "fixture", database: "fixture", schema: "fixture" }, loadedPackages: [], issues: [] }) });
-  expect(binding.services.capabilities.preparedAttemptStore).toEqual({ supported: true });
-  expect(await binding.services.run()).toMatchObject({ renewals: [{ status: "awaiting_provider" }] });
-  const prepared = (await env.owner.query("SELECT id FROM public.commerce_settlement_intents WHERE renewal_operation_id IN (SELECT id FROM public.subscription_renewal_operations WHERE subscription_id=$1)", [subscriptionId])).rows[0];
-  expect(await rail.ingress.receive(signed("payment_intent.succeeded", { ...remote, amount_received: 200,
-    metadata: { paymentIntentId: prepared.id, clientId, subscriptionId } }))).toMatchObject({ status: 200 });
-  expect(requests.at(-1)).toMatchObject({ customer: "cus_primary", paymentMethod: "pm_primary", offSession: true });
-  expect((await env.owner.query("SELECT state,terminal_outcome FROM public.subscription_renewal_operations WHERE subscription_id=$1", [subscriptionId])).rows)
-    .toEqual([{ state: "succeeded", terminal_outcome: "succeeded" }]);
+}
+
+it("claims an off-session renewal once across overlapping workers and settles late evidence after reclaim", async () => {
+  time = firstDue;
+  remote = payment("pi_renewal", "succeeded");
+  fake.enqueue("create", { kind: "success", value: remote });
+  fake.enqueue("read", { kind: "success", value: remote }, { kind: "success", value: remote });
+  const callsBefore = requests.length;
+  const initial = nativeWorker("portable-first");
+  expect(initial.services.capabilities.preparedAttemptStore).toEqual({ supported: true });
+
+  let entered!: () => void;
+  let resume!: () => void;
+  const enteredDispatch = new Promise<void>(resolve => { entered = resolve; });
+  const resumeDispatch = new Promise<void>(resolve => { resume = resolve; });
+  pauseNextDispatch = () => { entered(); return resumeDispatch; };
+  const running = initial.services.run();
+  try {
+    expect(await Promise.race([enteredDispatch.then(() => "dispatch"), running.then(() => "finished")])).toBe("dispatch");
+    expect(await nativeWorker("portable-overlap").services.run()).toMatchObject({ renewals: [] });
+    expect(requests).toHaveLength(callsBefore + 1);
+  } finally {
+    pauseNextDispatch = undefined;
+    resume();
+    await running;
+  }
+
+  expect(await running).toMatchObject({ renewals: [{ status: "awaiting_provider" }] });
+  const operations = () => env.owner.query(`SELECT id,state,terminal_outcome,claimed_by,claim_generation,lease_expires_at
+    FROM public.subscription_renewal_operations WHERE subscription_id=$1`, [subscriptionId]);
+  const { rows: [operation] } = await operations();
+  expect(operation).toMatchObject({ state: "attempt_prepared", claimed_by: "portable-first", claim_generation: "1" });
+  const { rows: [prepared] } = await env.owner.query("SELECT id FROM public.commerce_settlement_intents WHERE renewal_operation_id=$1", [operation.id]);
+  const attempts = () => env.owner.query("SELECT id,provider_attempt_id FROM public.payment_provider_attempts WHERE settlement_intent_id=$1", [prepared.id]);
+  const { rows: dispatch } = await attempts();
+  expect(dispatch).toEqual([{ id: expect.any(String), provider_attempt_id: remote.id }]);
+
+  time = new Date(operation.lease_expires_at.getTime() + 1).toISOString();
+  binding = nativeWorker("portable-restarted");
+  expect(await binding.services.run()).toMatchObject({ renewals: [{ operationId: operation.id, status: "awaiting_provider" }] });
+  expect((await operations()).rows).toEqual([expect.objectContaining({ id: operation.id, state: "attempt_prepared",
+    claimed_by: "portable-restarted", claim_generation: "2" })]);
+  expect((await attempts()).rows).toEqual(dispatch);
+  expect(requests.slice(callsBefore)).toEqual([expect.objectContaining({ customer: "cus_primary", paymentMethod: "pm_primary", offSession: true })]);
+
+  const event = signed("payment_intent.succeeded", { ...remote, amount_received: 200,
+    metadata: { paymentIntentId: prepared.id, clientId, subscriptionId } });
+  const receipt = await rail.ingress.receive(event);
+  expect(receipt).toMatchObject({ status: 200, data: { paymentEventId: expect.any(String) } });
+  expect(await rail.ingress.receive(event)).toMatchObject({ status: 200, data: { replayed: true } });
+  expect((await operations()).rows).toEqual([expect.objectContaining({ id: operation.id, state: "succeeded", terminal_outcome: "succeeded" })]);
+  expect((await env.owner.query("SELECT outcome FROM public.subscription_renewal_outcomes WHERE renewal_operation_id=$1", [operation.id])).rows)
+    .toEqual([{ outcome: "succeeded" }]);
+  expect(await binding.services.run()).toMatchObject({ renewals: [] });
+  expect(requests).toHaveLength(callsBefore + 1);
+  fake.assertDrained();
 });
 it("attributes a synchronous decline to one rung and one dunning case", async () => {
   time = secondDue; declined = true;
