@@ -444,7 +444,7 @@ export async function evaluateCatalogPublication(input: CatalogPublicationCompil
     let bound!: Awaited<ReturnType<typeof bindEvidence>>;
     // Donor: P is supabase/migrations/20261012074153_catalog_propagation_product_publication.sql.
     // M is supabase/migrations/20261012074151_catalog_propagation_membership.sql.
-    // T is src/overlays/velipet/data/catalog/catalogPropagationDraftCompiler.ts (15ef3b8cf).
+    // T is catalogPropagationDraftCompiler.ts in the donor overlay (15ef3b8cf).
     // Phase                    Modes               Donor at 15ef3b8cf
     const phases = [
       { run: async () => { admitted = await admit(); } },                                       // Admit                   all  P:420–442,482–485,745–747,808–809
