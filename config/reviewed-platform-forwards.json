@@ -5618,7 +5618,7 @@
       },
       {
         "row": "CF-R0-CHECKOUT-RECOVERY-REMINDER-GUARD",
-        "path": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
+        "path": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
         "replacedFunctions": [
           {
             "signature": "public.commerce_enqueue_abandoned_cart_reminders(integer)",
@@ -7959,7 +7959,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
+      "path": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
       "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718",
       "functions": [
         {

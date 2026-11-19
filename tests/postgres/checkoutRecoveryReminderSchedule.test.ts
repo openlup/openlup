@@ -16,7 +16,7 @@ import { composeNativeBindings } from '../../examples/neutral-store/host/native-
 import { createOriginPolicy } from '../../examples/neutral-store/host/origin-policy.ts';
 
 const path = 'db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql';
-const guardPath = 'db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql';
+const guardPath = 'db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql';
 const signatures = ['public.commerce_enqueue_abandoned_cart_reminders(integer)', 'public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)'];
 const installation = { generation: 'qualified-v2', roleMode: 'installer-managed', migrationLogin: 'postgres',
   bootstrapLogin: 'postgres', runtimeLogin: 'starter_runtime', restoreLogin: 'starter_restore' } as const;

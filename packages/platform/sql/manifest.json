@@ -624,7 +624,7 @@
         "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
       },
       {
-        "file": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
+        "file": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
         "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
       }
     ],
@@ -1272,7 +1272,7 @@
           "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
         },
         {
-          "file": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
+          "file": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
           "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
         }
       ],
@@ -1924,7 +1924,7 @@
           "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
         },
         {
-          "file": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
+          "file": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
           "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
         }
       ],
@@ -2711,8 +2711,8 @@
       "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
     },
     {
-      "file": "20261125000000_checkout_recovery_reminder_guard.sql",
-      "source": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
+      "file": "20261123141000_checkout_recovery_reminder_guard.sql",
+      "source": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
       "sha256": "098bead0444582e8baf7749b3485d9b91f535445b5f8b36e42a08449ca8de718"
     },
     {

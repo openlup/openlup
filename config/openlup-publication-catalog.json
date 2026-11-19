@@ -1478,7 +1478,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125000000_checkout_recovery_reminder_guard.sql",
+      "path": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
       "class": "public-output"
     },
     {
@@ -4878,7 +4878,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125000000_checkout_recovery_reminder_guard.sql",
+      "path": "packages/platform/sql/20261123141000_checkout_recovery_reminder_guard.sql",
       "class": "public-output"
     },
     {

@@ -4467,7 +4467,7 @@ GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_reminder_schedule() 
 The validator requires no caller settings SELECT. Missing EXECUTE raises `42501`
 even with an absent key. The TypeScript read helper separately needs settings
 SELECT to return the revision and full schedule. The reminder guard forward
-`20261125000000_checkout_recovery_reminder_guard.sql` preserves both producer signatures and privileges. The SQL installer runs with
+`20261123141000_checkout_recovery_reminder_guard.sql` preserves both producer signatures and privileges. The SQL installer runs with
 the installation role's permissions. It takes the same transaction
 advisory lock as the guard and both producers, before reading the installed
 schedule. Enqueued waves and the guard check therefore serialize at `READ COMMITTED`.
