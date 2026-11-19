@@ -41,6 +41,7 @@ const sqlRefusals = {
   catalog_publication_sku_title_invalid: ["publication_sku_title_invalid", "A SKU title is missing or too long. Enter a shorter title."],
   catalog_publication_gtin_invalid: ["publication_gtin_invalid", "A SKU barcode has an invalid GTIN. Check its digits and try again."],
   catalog_publication_page_invalid: ["publication_details_too_large", "The product and one SKU exceed the publication size limit. Reduce product or SKU details and prepare it again."],
+  catalog_publication_live_drift: ["publication_changed", "The current product or a SKU differs from the prepared publication. Reload the product and prepare it again."],
   catalog_publication_manifest_invalid: ["publication_details_invalid", "The publication contains invalid product details. Review the product and prepare it again."],
   catalog_publication_head_invalid: ["publication_changed", "The current publication changed. Reload the product and try again."],
   catalog_publication_lineage_invalid: ["publication_version_invalid", "The selected previous publication is unavailable. Reload the product and select its current publication."],
@@ -174,53 +175,9 @@ async function currentIssue(db: PgQueryExecutor, productId: string) {
 
 async function assertCurrentProjection(db: PgQueryExecutor, issue: Issue) {
   const { product, skus } = issue.manifest;
-  const { rows } = await db.query(`SELECT p.publication_facts=$2::jsonb AND
-    p.slug=$3 AND p.name=$4 AND p.status=$5 AND p.primary_sku_id=$6 AND p.current_document_revision_id=$7
-    AND p.type_key=$8 AND p.type_version=$9 AND p.variant_axes=$10 AND p.attribute_values=$11::jsonb
-    AND (SELECT count(*) FROM public.catalog_skus WHERE product_id=p.id)=$12 AS matches
-    FROM public.catalog_products p WHERE p.id=$1`, [
-    product.id, publicationJson(product), product.slug, product.name, product.status, product.primarySkuId, product.document?.id,
-    product.type.key, product.type.version, product.axes, publicationJson(product.attributes), skus.length,
-  ]);
-  requireCondition(rows.length === 1 && rows[0]?.matches === true, "catalog_publication_live_drift", "conflict");
-  const changed = await db.query(`SELECT 1 FROM jsonb_array_elements($2::jsonb) AS member
-    JOIN public.catalog_sku_revisions r ON r.id=(member->>'revisionId')::uuid AND r.product_id=$1
-    LEFT JOIN public.catalog_skus s ON s.id=r.sku_id AND s.product_id=r.product_id
-    CROSS JOIN LATERAL (SELECT r.full_facts::jsonb AS facts) f
-    CROSS JOIN LATERAL (
-      SELECT coalesce(jsonb_agg(entry.fact ORDER BY entry.fact),'[]'::jsonb) AS facts
-      FROM (
-        SELECT jsonb_build_object('issuer',i.issuer,'normalized',i.normalized_value,'kind',i.identifier_kind,
-          'packagingLevel',CASE WHEN i.pack_kind='unit' THEN 'unit' ELSE 'case' END,
-          'quantity',i.quantity,'isPrimary',i.is_primary) AS fact
-        FROM public.catalog_sku_identifiers i WHERE i.catalog_sku_id=s.id
-      ) entry
-    ) recorded
-    CROSS JOIN LATERAL (
-      SELECT coalesce(jsonb_agg(entry.fact ORDER BY entry.fact),'[]'::jsonb) AS facts
-      FROM (
-        SELECT jsonb_build_object('issuer',i->'issuer','packagingLevel',i->'packagingLevel',
-          'quantity',i->'quantity','isPrimary',i->'isPrimary','normalized',CASE WHEN i->>'scheme'='gs1:gtin' THEN lpad(i->>'value',14,'0') ELSE i->>'value' END,
-          'kind',CASE WHEN i->>'scheme'='gs1:gtin' THEN 'gtin' ELSE 'other' END) AS fact
-        FROM jsonb_array_elements(f.facts->'identifiers') i
-      ) entry
-    ) expected
-    WHERE (s.publication_facts=f.facts AND s.sku=r.sku_code AND s.title=f.facts->>'title'
-      AND s.status=f.facts->>'status' AND s.sellable_standalone=(f.facts->>'sellableStandalone')::boolean
-      AND s.sellable_in_subscription=(f.facts->>'sellableInSubscription')::boolean
-      AND s.min_order_qty=(f.facts->>'minQuantity')::integer AND s.is_addon=(f.facts->>'isAddon')::boolean
-      AND s.attribute_values=f.facts->'attributes' AND s.option_values=f.facts->'options'
-      AND s.net_content_dimension=f.facts #>> '{netContent,dimension}'
-      AND s.net_content_unit=f.facts #>> '{netContent,unit}'
-      AND s.net_content_scale=(f.facts #>> '{netContent,scale}')::integer
-      AND s.net_content_unscaled=(f.facts #>> '{netContent,unscaled}')::numeric
-      AND s.gross_mass_dimension IS NOT DISTINCT FROM f.facts #>> '{grossMass,dimension}'
-      AND s.gross_mass_unit IS NOT DISTINCT FROM f.facts #>> '{grossMass,unit}'
-      AND s.gross_mass_scale IS NOT DISTINCT FROM (f.facts #>> '{grossMass,scale}')::integer
-      AND s.gross_mass_unscaled IS NOT DISTINCT FROM (f.facts #>> '{grossMass,unscaled}')::numeric
-      AND s.asset_ref IS NOT DISTINCT FROM f.facts #>> '{assetRefs,0}'
-      AND recorded.facts=expected.facts) IS DISTINCT FROM true LIMIT 1`, [product.id, publicationJson(skus)]);
-  requireCondition(changed.rows.length === 0, "catalog_publication_live_drift", "conflict");
+  const { rows } = await db.query("SELECT public.catalog_publication_live_matches($1,$2,$3) AS matches",
+    [product.id, publicationJson(product), publicationJson(skus)]);
+  requireCondition(rows[0]?.matches === true, "catalog_publication_live_drift", "conflict");
 }
 
 type Cursor = { kind: "history" | "facts"; productId: string; highWater: number; before: number };

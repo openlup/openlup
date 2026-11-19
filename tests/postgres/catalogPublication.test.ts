@@ -544,6 +544,18 @@ it.each([0, 1])("checks the real singleton page byte boundary with %i extra byte
   }
 }, 60_000);
 
+it.each([
+  ["product", "UPDATE public.catalog_products SET name='Drift' WHERE id=$1", "productId"],
+  ["SKU", "UPDATE public.catalog_skus SET title='Drift' WHERE id=$1", "skuId"],
+] as const)("refuses live %s drift before the publication commits", async (_label, update, key) => {
+  const error = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    await insertGraph(db, issue);
+    await db.query(update, [issue[key]]);
+  }).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_changed" });
+});
+
 function publicationReader() {
   return createPostgresCatalogPublicationReads({
     transactions: { run: work => transaction(pool, work) },

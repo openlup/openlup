@@ -637,7 +637,12 @@ BEGIN
  IF receipt.kind<>'publish' OR receipt.result<>public.catalog_publication_canonical(expected_receipt,0) THEN
   RAISE EXCEPTION 'catalog_publication_receipt_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_receipt_invalid';
  END IF;
-
+ IF EXISTS (SELECT 1 FROM public.catalog_publication_heads WHERE product_id=p_product AND publication_id=p_issue) THEN
+  PERFORM public.catalog_publication_assert_head(p_product,true);
+  IF NOT public.catalog_publication_live_matches(p_product,product,roster) THEN
+   RAISE EXCEPTION 'catalog_publication_live_drift' USING ERRCODE='23514', CONSTRAINT='catalog_publication_live_drift';
+  END IF;
+ END IF;
 EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range THEN
  RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_manifest_invalid';
 END;
@@ -659,6 +664,59 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_sku_admit() FROM PUBLIC;
+
+CREATE FUNCTION public.catalog_publication_live_matches(p_product uuid, p_state jsonb, p_roster jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+ SELECT EXISTS (
+  SELECT 1 FROM public.catalog_products p WHERE p.id=p_product
+    AND p.publication_facts=p_state
+    AND p.slug=p_state->>'slug' AND p.name=p_state->>'name' AND p.status=p_state->>'status'
+    AND p.primary_sku_id=(p_state->>'primarySkuId')::uuid
+    AND p.current_document_revision_id=(p_state #>> '{document,id}')::uuid
+    AND p.type_key=p_state #>> '{type,key}' AND p.type_version=(p_state #>> '{type,version}')::integer
+    AND to_jsonb(p.variant_axes)=p_state->'axes' AND p.attribute_values=p_state->'attributes'
+    AND (SELECT count(*) FROM public.catalog_skus WHERE product_id=p.id)=jsonb_array_length(p_roster)
+ ) AND NOT EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_roster) AS member
+    JOIN public.catalog_sku_revisions r ON r.id=(member->>'revisionId')::uuid AND r.product_id=p_product
+    LEFT JOIN public.catalog_skus s ON s.id=r.sku_id AND s.product_id=r.product_id
+    CROSS JOIN LATERAL (SELECT r.full_facts::jsonb AS facts) f
+    CROSS JOIN LATERAL (
+      SELECT coalesce(jsonb_agg(entry.fact ORDER BY entry.fact),'[]'::jsonb) AS facts
+      FROM (
+        SELECT jsonb_build_object('issuer',i.issuer,'normalized',i.normalized_value,'kind',i.identifier_kind,
+          'packagingLevel',CASE WHEN i.pack_kind='unit' THEN 'unit' ELSE 'case' END,
+          'quantity',i.quantity,'isPrimary',i.is_primary) AS fact
+        FROM public.catalog_sku_identifiers i WHERE i.catalog_sku_id=s.id
+      ) entry
+    ) recorded
+    CROSS JOIN LATERAL (
+      SELECT coalesce(jsonb_agg(entry.fact ORDER BY entry.fact),'[]'::jsonb) AS facts
+      FROM (
+        SELECT jsonb_build_object('issuer',i->'issuer','packagingLevel',i->'packagingLevel',
+          'quantity',i->'quantity','isPrimary',i->'isPrimary','normalized',CASE WHEN i->>'scheme'='gs1:gtin' THEN lpad(i->>'value',14,'0') ELSE i->>'value' END,
+          'kind',CASE WHEN i->>'scheme'='gs1:gtin' THEN 'gtin' ELSE 'other' END) AS fact
+        FROM jsonb_array_elements(f.facts->'identifiers') i
+      ) entry
+    ) expected
+    WHERE (s.publication_facts=f.facts AND s.sku=r.sku_code AND s.title=f.facts->>'title'
+      AND s.status=f.facts->>'status' AND s.sellable_standalone=(f.facts->>'sellableStandalone')::boolean
+      AND s.sellable_in_subscription=(f.facts->>'sellableInSubscription')::boolean
+      AND s.min_order_qty=(f.facts->>'minQuantity')::integer AND s.is_addon=(f.facts->>'isAddon')::boolean
+      AND s.attribute_values=f.facts->'attributes' AND s.option_values=f.facts->'options'
+      AND s.net_content_dimension=f.facts #>> '{netContent,dimension}'
+      AND s.net_content_unit=f.facts #>> '{netContent,unit}'
+      AND s.net_content_scale=(f.facts #>> '{netContent,scale}')::integer
+      AND s.net_content_unscaled=(f.facts #>> '{netContent,unscaled}')::numeric
+      AND s.gross_mass_dimension IS NOT DISTINCT FROM f.facts #>> '{grossMass,dimension}'
+      AND s.gross_mass_unit IS NOT DISTINCT FROM f.facts #>> '{grossMass,unit}'
+      AND s.gross_mass_scale IS NOT DISTINCT FROM (f.facts #>> '{grossMass,scale}')::integer
+      AND s.gross_mass_unscaled IS NOT DISTINCT FROM (f.facts #>> '{grossMass,unscaled}')::numeric
+      AND s.asset_ref IS NOT DISTINCT FROM f.facts #>> '{assetRefs,0}'
+      AND recorded.facts=expected.facts) IS DISTINCT FROM true LIMIT 1
+ );
+$$;
+REVOKE ALL ON FUNCTION public.catalog_publication_live_matches(uuid,jsonb,jsonb) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_publication_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
