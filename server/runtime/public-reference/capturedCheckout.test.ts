@@ -3,6 +3,7 @@ import type { DataGatewayPort } from "../../../src/domains/platform-runtime/port
 import type { CheckoutCommandRuntimeResult } from "../../../src/domains/commerce/runtimePorts.js";
 import type { CheckoutCommandV1 } from "../../../src/domains/commerce/checkoutCommandContracts.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
+import { LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER } from "../../adapters/localReferenceStoreAdapter.js";
 import { createReferenceCheckoutHandler } from "../../domains/commerce/referenceCheckoutHandler.js";
 import { resolveSubscriptionPaymentMethodStatus } from "../../../src/domains/subscription/paymentMethodLifecycle.js";
 
@@ -90,7 +91,7 @@ function preparedCheckoutGateway(receipt: unknown) {
       eq(column: string, value: string) { filters[column] = value; return this; },
       async limit() {
         return { data: [{
-          provider: "stripe",
+          provider: LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER,
           request_payload: { source: "reference_store.local.payment_simulator.v1", runtimeIdempotencyKey: command.idempotencyKey },
           response_payload: { outcome: "refused" },
         }], error: null };
@@ -103,7 +104,7 @@ function preparedCheckoutGateway(receipt: unknown) {
         }
         if (table === "commerce_payment_attempts") {
           return { data: {
-            id: ids.attempt, payment_intent_id: ids.intent, status: "failed", payment_id: ids.payment, provider: "stripe",
+            id: ids.attempt, payment_intent_id: ids.intent, status: "failed", payment_id: ids.payment, provider: LOCAL_REFERENCE_SUBSCRIPTION_PAYMENT_PROVIDER,
             idempotency_key: `${command.idempotencyKey}:payment-execution:prepare-attempt`, amount_cents: 1490, currency: command.currency,
             created_at: "2026-09-23T12:00:00.000Z",
             request_payload: { source: "reference_store.local.payment_simulator.v1", runtimeIdempotencyKey: command.idempotencyKey },
