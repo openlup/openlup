@@ -93,12 +93,12 @@
       "path": [
         "key"
       ],
-      "rule": "Preview requires a valid installed policy and accessible stock reads.",
+      "rule": "Preview requires a valid installed policy, stock read access, and a working validator.",
       "hint": "Check the intended store's connection, installed value, and read access.",
       "remediation": {
         "retry": true,
-        "action": "Verify the installed value and read access before repeating preview.",
-        "command": "node --experimental-strip-types host/settings.ts show <key> --database-url <read-capable-url> --json"
+        "action": "Verify the installed value and read access. If the validator is missing, apply the inventory renewal protection validation migration. If execution is denied, use a role with EXECUTE on public.inventory_renewal_protection_validate(jsonb).",
+        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --sku <sku> --json"
       }
     },
     {

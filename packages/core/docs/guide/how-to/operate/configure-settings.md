@@ -50,17 +50,17 @@ same instant. The host can also compose the read-only MCP definition
 `settings__preview` with `previewSetting` from `@openlup/platform/operations/server`.
 Bind the inventory key to `previewRenewalStockProtection` from
 `@openlup/platform/inventory` using the intended store's pool and stock source.
-Both surfaces report the current and proposed policy, validation by TypeScript
-and PostgreSQL, and the effect on reservations and new purchases. Preview makes
-no changes to the database. The current read requires settings and stock access.
-If the connection cannot execute the PostgreSQL validator, read its remediation.
-The TypeScript validation result is still available.
+Both surfaces report the current and proposed policy, one validation outcome,
+and the effect on reservations and new purchases. A valid result includes the
+normalized value. An invalid result explains how to correct it. Preview reads
+settings and stock without changing the database. If preview is refused, follow
+the remediation to check access and validator installation.
 
 A longer horizon can only leave availability for new purchases equal or lower.
 A shorter horizon can only leave it equal or higher. Existing reservations
 keep their quantities and expiry times. The result includes current availability
 for the named SKUs and leaves `effect.skus[].proposedAvailableForNewPurchases`
-null pending a proposed-horizon read. Mode and revision number are unavailable.
+null pending a proposed-horizon read.
 
 ## Modes and runtime levels
 
@@ -93,7 +93,7 @@ recheck command and whether retrying can help.
 | `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
 | `commerce_setting_preview_connection_required` | Repeat preview with a read-capable connection to the intended store. |
 | `commerce_setting_preview_unsupported` | Read the key's runtime level and effect with `show`. |
-| `commerce_setting_preview_unavailable` | Verify the installed value, store connection and read access. |
+| `commerce_setting_preview_unavailable` | Verify the installed value, store connection, read access and validator EXECUTE. |
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |

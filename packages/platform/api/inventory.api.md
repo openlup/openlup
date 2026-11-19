@@ -734,6 +734,7 @@ export declare function describeRenewalStockProtectionSetting(): {
     readonly domain: "inventory";
     readonly kind: "installed";
     readonly goal: "Set the renewal stock protection horizon used to calculate stock available to new purchases.";
+    readonly searchTerms: "stock lookahead, inventory buffer, renewal allocation, available to promise";
     readonly schemaVersion: 1;
     readonly schema: z.ZodObject<{
         revision: z.ZodString;
@@ -828,53 +829,23 @@ export declare const renewalStockProtectionPreviewResult: z.ZodObject<{
     difference: z.ZodNullable<z.ZodObject<{
         renewalProtectionDays: z.ZodInt;
     }, z.core.$strict>>;
-    mode: z.ZodNull;
-    revisionNo: z.ZodNull;
-    validation: z.ZodObject<{
-        typescript: z.ZodDiscriminatedUnion<[z.ZodObject<{
-            state: z.ZodLiteral<"valid">;
-            value: z.ZodObject<{
-                revision: z.ZodString;
-                renewalProtectionDays: z.ZodInt;
-            }, z.core.$strict>;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"invalid">;
-            code: z.ZodLiteral<"inventory_renewal_protection_policy_invalid">;
-            path: z.ZodArray<z.ZodString>;
-            rule: z.ZodString;
-            hint: z.ZodString;
-            remediation: z.ZodObject<{
-                retry: z.ZodBoolean;
-                action: z.ZodString;
-                command: z.ZodString;
-            }, z.core.$strict>;
-        }, z.core.$strict>], "state">;
-        postgres: z.ZodDiscriminatedUnion<[z.ZodObject<{
-            state: z.ZodLiteral<"valid">;
-            value: z.ZodObject<{
-                revision: z.ZodString;
-                renewalProtectionDays: z.ZodInt;
-            }, z.core.$strict>;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"invalid">;
-            code: z.ZodLiteral<"inventory_renewal_protection_policy_invalid">;
-            path: z.ZodArray<z.ZodString>;
-            rule: z.ZodString;
-            hint: z.ZodString;
-            remediation: z.ZodObject<{
-                retry: z.ZodBoolean;
-                action: z.ZodString;
-                command: z.ZodString;
-            }, z.core.$strict>;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"unavailable">;
-            remediation: z.ZodObject<{
-                retry: z.ZodBoolean;
-                action: z.ZodString;
-                command: z.ZodString;
-            }, z.core.$strict>;
-        }, z.core.$strict>], "state">;
-    }, z.core.$strict>;
+    validation: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        state: z.ZodLiteral<"valid">;
+        value: z.ZodObject<{
+            revision: z.ZodString;
+            renewalProtectionDays: z.ZodInt;
+        }, z.core.$strict>;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodLiteral<"invalid">;
+        code: z.ZodLiteral<"inventory_renewal_protection_policy_invalid">;
+        rule: z.ZodString;
+        hint: z.ZodString;
+        remediation: z.ZodObject<{
+            retry: z.ZodBoolean;
+            action: z.ZodString;
+            command: z.ZodString;
+        }, z.core.$strict>;
+    }, z.core.$strict>], "state">;
     effect: z.ZodObject<{
         existingReservations: z.ZodLiteral<"unchanged">;
         newPurchaseAvailability: z.ZodEnum<{

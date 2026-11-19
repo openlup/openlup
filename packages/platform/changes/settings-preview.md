@@ -1,7 +1,7 @@
 ### Read-only preview for renewal stock protection
 
 - The experimental `previewSetting` dispatcher and read-only
-  `settings__preview` tool report TypeScript and PostgreSQL validation, the
+  `settings__preview` tool report one validation outcome, the
   current installed policy, current availability by SKU, and how a proposed
   horizon can affect new purchases. Existing reservations keep their
   quantities and expiry times. Proposed availability is pending.

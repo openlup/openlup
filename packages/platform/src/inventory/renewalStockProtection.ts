@@ -21,6 +21,7 @@ export function describeRenewalStockProtectionSetting() {
     domain: "inventory",
     kind: "installed",
     goal: "Set the renewal stock protection horizon used to calculate stock available to new purchases.",
+    searchTerms: "stock lookahead, inventory buffer, renewal allocation, available to promise",
     schemaVersion: 1,
     schema: policySchema(),
     previewSchema: previewEffectSchema(),
@@ -93,7 +94,7 @@ const validationResult = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("valid"), value: policySchema() }),
   z.strictObject({
     state: z.literal("invalid"),
-    code: z.literal(code), path: z.array(z.string()), rule: z.string(), hint: z.string(), remediation: remediationSchema,
+    code: z.literal(code), rule: z.string(), hint: z.string(), remediation: remediationSchema,
   }),
 ]);
 
@@ -104,25 +105,16 @@ export const renewalStockProtectionPreviewResult = z.strictObject({
   current: policySchema(),
   proposed: z.json(),
   difference: z.strictObject({ renewalProtectionDays: z.int() }).nullable(),
-  mode: z.null(),
-  revisionNo: z.null(),
-  validation: z.strictObject({
-    typescript: validationResult,
-    postgres: z.discriminatedUnion("state", [
-      ...validationResult.options,
-      z.strictObject({ state: z.literal("unavailable"), remediation: remediationSchema }),
-    ]),
-  }),
+  validation: validationResult,
   effect: previewEffectSchema(),
   uncertainty: z.string(),
 });
 
 type Validation = z.infer<typeof validationResult>;
-type PostgresValidation = z.infer<typeof renewalStockProtectionPreviewResult>["validation"]["postgres"];
 type PreviewResult = z.infer<typeof renewalStockProtectionPreviewResult>;
 
 const invalidPolicy: Validation = {
-  state: "invalid", code, path: ["proposed"], rule: policyRule,
+  state: "invalid", code, rule: policyRule,
   hint: "Check the value schema and examples for inventory_renewal_protection.",
   remediation: {
     retry: true,
@@ -131,30 +123,14 @@ const invalidPolicy: Validation = {
   },
 };
 
-function validateProposed(proposed: unknown): Validation {
-  try {
-    return { state: "valid", value: validateRenewalStockProtection(proposed) };
-  } catch {
-    return invalidPolicy;
-  }
-}
-
-async function validateInPostgres(db: Executor, proposed: PreviewResult["proposed"]): Promise<PostgresValidation> {
+async function validateInPostgres(db: Executor, proposed: PreviewResult["proposed"]): Promise<Validation> {
   try {
     const { rows } = await db.query("SELECT public.inventory_renewal_protection_validate($1::jsonb) AS value", [JSON.stringify(proposed)]);
     return { state: "valid", value: policySchema().parse(rows[0]?.value) };
   } catch (error) {
     if (typeof error !== "object" || error === null || !("code" in error)) throw error;
     if (error.code === "22023" || error.code === "22P05") return invalidPolicy;
-    if (error.code !== "42501" && error.code !== "42883") throw error;
-    return {
-      state: "unavailable",
-      remediation: {
-        retry: true,
-        action: "Check that the validator is installed and use a connection authorized to execute it.",
-        command: "node --experimental-strip-types host/settings.ts preview --help",
-      },
-    };
+    throw error;
   }
 }
 
@@ -170,7 +146,6 @@ export async function previewRenewalStockProtection(
   proposed: PreviewResult["proposed"],
   context: RenewalStockProtectionPreviewConnection & { asOf: string; skus: readonly string[] },
 ): Promise<PreviewResult> {
-  const typescript = validateProposed(proposed);
   const client = await context.db.connect();
   let releaseWithError = true;
   try {
@@ -179,16 +154,14 @@ export async function previewRenewalStockProtection(
     const stock = createPostgresStockAvailability(client, { sourceKey: context.sourceKey, now: () => context.asOf });
     const rows = await stock.readInstalled(context.skus);
     // A PostgreSQL refusal aborts the transaction. Perform validation after the snapshot reads.
-    const postgres = await validateInPostgres(client, proposed);
-    const accepted = postgres.state === "unavailable" ? typescript : postgres;
-    const days = accepted.state === "valid"
-      ? accepted.value.renewalProtectionDays - current.renewalProtectionDays
+    const validation = await validateInPostgres(client, proposed);
+    const days = validation.state === "valid"
+      ? validation.value.renewalProtectionDays - current.renewalProtectionDays
       : null;
     return renewalStockProtectionPreviewResult.parse({
       schemaVersion: 1, key: settingKey, asOf: context.asOf, current, proposed,
       difference: days === null ? null : { renewalProtectionDays: days },
-      mode: null, revisionNo: null,
-      validation: { typescript, postgres },
+      validation,
       effect: {
         existingReservations: "unchanged",
         newPurchaseAvailability: days === null ? "undetermined"
@@ -199,7 +172,7 @@ export async function previewRenewalStockProtection(
           proposedAvailableForNewPurchases: null,
         })),
       },
-      uncertainty: "Availability under the proposed horizon is not computed yet. It will be reported in effect.skus[].proposedAvailableForNewPurchases. Recorded stock and demand can change. Mode and revision number are not available yet.",
+      uncertainty: "Availability under the proposed horizon is not computed yet. It will be reported in effect.skus[].proposedAvailableForNewPurchases. Recorded stock and demand can change.",
     });
   } finally {
     try {

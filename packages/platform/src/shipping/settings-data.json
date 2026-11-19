@@ -1,6 +1,7 @@
 [
   {
     "key": "savedAddressValidation",
+    "searchTerms": "postal format, phone normalization, delivery address checks",
     "domain": "shipping",
     "kind": "callback",
     "goal": "Customize validation and normalization of the postal code and phone on saved customer addresses.",

@@ -115,6 +115,7 @@
     },
     {
       "key": "checkout_recovery_reminders",
+      "searchTerms": "abandoned basket, reminder cadence, payment follow-up, recovery offsets",
       "domain": "commerce",
       "kind": "installed",
       "goal": "Find when checkout recovery and abandoned cart reminders are sent.",
@@ -565,6 +566,7 @@
       "domain": "inventory",
       "kind": "installed",
       "goal": "Set the renewal stock protection horizon used to calculate stock available to new purchases.",
+      "searchTerms": "stock lookahead, inventory buffer, renewal allocation, available to promise",
       "schemaVersion": 1,
       "examples": [
         {
@@ -1153,6 +1155,7 @@
     },
     {
       "key": "savedAddressValidation",
+      "searchTerms": "postal format, phone normalization, delivery address checks",
       "domain": "shipping",
       "kind": "callback",
       "goal": "Customize validation and normalization of the postal code and phone on saved customer addresses.",
@@ -1245,6 +1248,7 @@
     },
     {
       "key": "subscriber_winback_policy",
+      "searchTerms": "cancelled subscriber outreach, retention messaging, reactivation window",
       "domain": "subscriptions",
       "kind": "installed",
       "goal": "Find the cancellation age window for subscriber winback messages.",
@@ -1279,6 +1283,7 @@
     },
     {
       "key": "subscriptionCreation.editWindowHours",
+      "searchTerms": "edit cutoff, change deadline, activation window",
       "domain": "subscriptions",
       "kind": "code",
       "goal": "Set how many hours before a renewal customers can edit a newly created subscription.",
@@ -1738,11 +1743,6 @@
     }
   ],
   "searchTerms": {
-    "inventory_renewal_protection": "stock lookahead, inventory buffer, renewal allocation, available to promise",
-    "checkout_recovery_reminders": "abandoned basket, reminder cadence, payment follow-up, recovery offsets",
-    "subscriber_winback_policy": "cancelled subscriber outreach, retention messaging, reactivation window",
-    "subscriptionCreation.editWindowHours": "edit cutoff, change deadline, activation window",
-    "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "account-support": "operator permissions, administrative access",
     "catalog": "product assortment, SKU records",
     "commerce": "store orders, checkout processing",
@@ -1819,235 +1819,88 @@
               }
             ]
           },
-          "mode": {
-            "type": "null"
-          },
-          "revisionNo": {
-            "type": "null"
-          },
           "validation": {
-            "type": "object",
-            "properties": {
-              "typescript": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "state": {
-                        "type": "string",
-                        "const": "valid"
-                      },
-                      "value": {
-                        "type": "object",
-                        "properties": {
-                          "revision": {
-                            "type": "string"
-                          },
-                          "renewalProtectionDays": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 3660
-                          }
-                        },
-                        "required": [
-                          "revision",
-                          "renewalProtectionDays"
-                        ],
-                        "additionalProperties": false
-                      }
-                    },
-                    "required": [
-                      "state",
-                      "value"
-                    ],
-                    "additionalProperties": false
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "valid"
                   },
-                  {
+                  "value": {
                     "type": "object",
                     "properties": {
-                      "state": {
-                        "type": "string",
-                        "const": "invalid"
-                      },
-                      "code": {
-                        "type": "string",
-                        "const": "inventory_renewal_protection_policy_invalid"
-                      },
-                      "path": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "rule": {
+                      "revision": {
                         "type": "string"
                       },
-                      "hint": {
-                        "type": "string"
-                      },
-                      "remediation": {
-                        "type": "object",
-                        "properties": {
-                          "retry": {
-                            "type": "boolean"
-                          },
-                          "action": {
-                            "type": "string"
-                          },
-                          "command": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "retry",
-                          "action",
-                          "command"
-                        ],
-                        "additionalProperties": false
+                      "renewalProtectionDays": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 3660
                       }
                     },
                     "required": [
-                      "state",
-                      "code",
-                      "path",
-                      "rule",
-                      "hint",
-                      "remediation"
+                      "revision",
+                      "renewalProtectionDays"
                     ],
                     "additionalProperties": false
                   }
-                ]
+                },
+                "required": [
+                  "state",
+                  "value"
+                ],
+                "additionalProperties": false
               },
-              "postgres": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "state": {
-                        "type": "string",
-                        "const": "valid"
-                      },
-                      "value": {
-                        "type": "object",
-                        "properties": {
-                          "revision": {
-                            "type": "string"
-                          },
-                          "renewalProtectionDays": {
-                            "type": "integer",
-                            "minimum": 1,
-                            "maximum": 3660
-                          }
-                        },
-                        "required": [
-                          "revision",
-                          "renewalProtectionDays"
-                        ],
-                        "additionalProperties": false
-                      }
-                    },
-                    "required": [
-                      "state",
-                      "value"
-                    ],
-                    "additionalProperties": false
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "const": "invalid"
                   },
-                  {
+                  "code": {
+                    "type": "string",
+                    "const": "inventory_renewal_protection_policy_invalid"
+                  },
+                  "rule": {
+                    "type": "string"
+                  },
+                  "hint": {
+                    "type": "string"
+                  },
+                  "remediation": {
                     "type": "object",
                     "properties": {
-                      "state": {
-                        "type": "string",
-                        "const": "invalid"
+                      "retry": {
+                        "type": "boolean"
                       },
-                      "code": {
-                        "type": "string",
-                        "const": "inventory_renewal_protection_policy_invalid"
-                      },
-                      "path": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        }
-                      },
-                      "rule": {
+                      "action": {
                         "type": "string"
                       },
-                      "hint": {
+                      "command": {
                         "type": "string"
-                      },
-                      "remediation": {
-                        "type": "object",
-                        "properties": {
-                          "retry": {
-                            "type": "boolean"
-                          },
-                          "action": {
-                            "type": "string"
-                          },
-                          "command": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "retry",
-                          "action",
-                          "command"
-                        ],
-                        "additionalProperties": false
                       }
                     },
                     "required": [
-                      "state",
-                      "code",
-                      "path",
-                      "rule",
-                      "hint",
-                      "remediation"
-                    ],
-                    "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "state": {
-                        "type": "string",
-                        "const": "unavailable"
-                      },
-                      "remediation": {
-                        "type": "object",
-                        "properties": {
-                          "retry": {
-                            "type": "boolean"
-                          },
-                          "action": {
-                            "type": "string"
-                          },
-                          "command": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "retry",
-                          "action",
-                          "command"
-                        ],
-                        "additionalProperties": false
-                      }
-                    },
-                    "required": [
-                      "state",
-                      "remediation"
+                      "retry",
+                      "action",
+                      "command"
                     ],
                     "additionalProperties": false
                   }
-                ]
+                },
+                "required": [
+                  "state",
+                  "code",
+                  "rule",
+                  "hint",
+                  "remediation"
+                ],
+                "additionalProperties": false
               }
-            },
-            "required": [
-              "typescript",
-              "postgres"
-            ],
-            "additionalProperties": false
+            ]
           },
           "effect": {
             "type": "object",
@@ -2125,8 +1978,6 @@
           "current",
           "proposed",
           "difference",
-          "mode",
-          "revisionNo",
           "validation",
           "effect",
           "uncertainty"

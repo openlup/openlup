@@ -549,6 +549,7 @@ export interface SettingDescriptor {
     readonly domain: string;
     readonly kind: "installed" | "code" | "callback" | "cap" | "invariant";
     readonly goal: string;
+    readonly searchTerms?: string;
     readonly schemaVersion: number;
     readonly schema?: Record<string, unknown> | null;
     readonly rules: readonly {
@@ -791,7 +792,73 @@ export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObj
     }, z.core.$strict>;
 }, z.core.$strict>;
 /** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
-export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown>;
+export declare const settingsToolOutputSchema: ((result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>) => Record<string, unknown>) & {
+    descriptor: z.ZodObject<{
+        key: z.ZodString;
+        domain: z.ZodString;
+        kind: z.ZodEnum<{
+            code: "code";
+            installed: "installed";
+            callback: "callback";
+            cap: "cap";
+            invariant: "invariant";
+        }>;
+        goal: z.ZodString;
+        searchTerms: z.ZodOptional<z.ZodString>;
+        schemaVersion: z.ZodLiteral<1>;
+        schema: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>>;
+        previewSchema: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>>;
+        rules: z.ZodArray<z.ZodObject<{
+            code: z.ZodString;
+            path: z.ZodArray<z.ZodString>;
+            description: z.ZodString;
+        }, z.core.$strict>>;
+        examples: z.ZodArray<z.ZodObject<{
+            value: z.ZodJSONSchema;
+            code: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>>;
+        fallback: z.ZodJSONSchema;
+        absentMeans: z.ZodOptional<z.ZodObject<{
+            description: z.ZodString;
+            source: z.ZodString;
+            value: z.ZodJSONSchema;
+        }, z.core.$strict>>;
+        defaultBasis: z.ZodObject<{
+            kind: z.ZodEnum<{
+                "reference-code": "reference-code";
+                neutral: "neutral";
+                "reference-live": "reference-live";
+            }>;
+        }, z.core.$strict>;
+        whyThisDefault: z.ZodString;
+        effect: z.ZodObject<{
+            appliesTo: z.ZodString;
+            frozenOn: z.ZodArray<z.ZodString>;
+            impact: z.ZodEnum<{
+                operations: "operations";
+                money: "money";
+                "customer-promise": "customer-promise";
+            }>;
+        }, z.core.$strict>;
+        runtime: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            level: z.ZodLiteral<"ready">;
+        }, z.core.$strict>, z.ZodObject<{
+            level: z.ZodEnum<{
+                preview: "preview";
+                "read-only": "read-only";
+            }>;
+            reason: z.ZodString;
+        }, z.core.$strict>], "level">;
+        change: z.ZodUnion<readonly [z.ZodObject<{
+            operation: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            file: z.ZodString;
+            symbol: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            reference: z.ZodString;
+        }, z.core.$strict>]>;
+    }, z.core.$strict>;
+};
 ```
 ## dist/operations/validation.d.ts
 

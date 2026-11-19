@@ -1,12 +1,10 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
 import { settingsToolOutputSchema, toolInputSchema } from "../index.js";
-import {
-  settingRefusals, settingsCatalogue, settingsListRequest, settingsListResult,
-  settingsShowRequest, settingsShowResult, settingsVersion, refusalSchema, previewOutputSchema, searchTerms,
-} from "./settingsCatalog.js";
+import { loadSettingsCatalogue, settingsListRequest, settingsVersion } from "./settingsCatalog.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
+type CatalogueEntry = ReturnType<typeof loadSettingsCatalogue>["entries"][number];
 type ListResult = {
   schemaVersion: 1;
   entries: Pick<SettingDescriptor, "key" | "goal" | "kind" | "runtime" | "change">[];
@@ -25,10 +23,8 @@ export type SettingReader = () => Promise<
   | { refusal: string }
 >;
 
-const byCode = new Map(settingRefusals.map(refusal => [refusal.code, refusal]));
-
 function refuse(code: string): { refusal: SettingRefusal } {
-  const refusal = byCode.get(code);
+  const refusal = loadSettingsCatalogue().byCode.get(code);
   if (!refusal) throw new Error(`Unknown internal settings refusal ${code}`);
   return { refusal };
 }
@@ -38,17 +34,18 @@ export function listSettings(input: unknown): ListResult | { refusal: SettingRef
   const parsed = settingsListRequest.safeParse(input);
   if (!parsed.success) return refuse("commerce_setting_read_input_invalid");
   const words = parsed.data.goal?.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
-  const matches = settingsCatalogue.filter(entry => {
-    const text = `${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`.toLowerCase();
+  const { entries, listResult, searchTerms } = loadSettingsCatalogue();
+  const matches = entries.filter(entry => {
+    const text = `${entry.goal} ${entry.key} ${entry.domain} ${entry.searchTerms ?? searchTerms[entry.domain] ?? ""}`.toLowerCase();
     return words.every(word => text.includes(word));
   });
-  return settingsListResult.parse({
+  return listResult.parse({
     schemaVersion: settingsVersion,
     entries: matches.map(({ key, goal, kind, runtime, change }) => ({ key, goal, kind, runtime, change })),
   });
 }
 
-function absentObservation(setting: typeof settingsCatalogue[number], effective?: JsonValue): Observation {
+function absentObservation(setting: CatalogueEntry, effective?: JsonValue): Observation {
   const absent = setting.absentMeans;
   return absent
     ? { state: "absent", absentMeans: absent.description, source: absent.source,
@@ -56,7 +53,7 @@ function absentObservation(setting: typeof settingsCatalogue[number], effective?
     : { state: "fallback", value: setting.fallback };
 }
 
-async function observe(setting: typeof settingsCatalogue[number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
+async function observe(setting: CatalogueEntry, read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
   if ("refusal" in observed) return refuse(observed.refusal);
@@ -66,14 +63,15 @@ async function observe(setting: typeof settingsCatalogue[number], read?: Setting
 
 /** @experimental Describe the key and, when a reader is supplied, its observed installed value. */
 export async function showSetting(input: unknown, readers: Readonly<Record<string, SettingReader>> = {}): Promise<ShowResult | { refusal: SettingRefusal }> {
-  const parsed = settingsShowRequest.safeParse(input);
+  const { entries, showRequest, showResult } = loadSettingsCatalogue();
+  const parsed = showRequest.safeParse(input);
   if (!parsed.success) return refuse("commerce_setting_unknown");
-  const setting = settingsCatalogue.find(entry => entry.key === parsed.data.key);
+  const setting = entries.find(entry => entry.key === parsed.data.key);
   if (!setting) return refuse("commerce_setting_unknown");
   try {
     const observation = await observe(setting, Object.hasOwn(readers, setting.key) ? readers[setting.key] : undefined);
     if ("refusal" in observation) return observation;
-    return settingsShowResult.parse({ schemaVersion: settingsVersion, setting, observation });
+    return showResult.parse({ schemaVersion: settingsVersion, setting, observation });
   } catch {
     return refuse("commerce_setting_read_unavailable");
   }
@@ -81,11 +79,12 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
 
 /** @experimental Explain a refusal code or the offline behavior when a key is absent. */
 export function explainSetting(codeOrKey: string): { explanation: SettingRefusal } | ShowResult | { refusal: SettingRefusal } {
+  const { byCode, entries, showResult } = loadSettingsCatalogue();
   const explanation = byCode.get(codeOrKey);
   if (explanation) return { explanation };
-  const setting = settingsCatalogue.find(entry => entry.key === codeOrKey);
+  const setting = entries.find(entry => entry.key === codeOrKey);
   if (!setting) return refuse("commerce_setting_refusal_unknown");
-  return settingsShowResult.parse({
+  return showResult.parse({
     schemaVersion: settingsVersion,
     setting,
     observation: setting.kind === "installed" ? absentObservation(setting) : { state: "offline" },
@@ -116,9 +115,9 @@ export async function previewSetting<Result = never>(
   const parsed = settingsPreviewRequest.safeParse(input);
   if (!parsed.success) return invalidSettingsCommand();
   const { key, proposed, skus = [], asOf = new Date().toISOString() } = parsed.data;
-  const setting = settingsCatalogue.find(entry => entry.key === key);
+  const setting = loadSettingsCatalogue().entries.find(entry => entry.key === key);
   if (!setting) return refuse("commerce_setting_unknown");
-  if (setting.previewSchema === null) return refuse("commerce_setting_preview_unsupported");
+  if (!setting.previewSchema) return refuse("commerce_setting_preview_unsupported");
   const preview = Object.hasOwn(previewers, key) ? previewers[key] : undefined;
   if (!preview) return refuse("commerce_setting_preview_connection_required");
   try {
@@ -134,21 +133,27 @@ export const settingsReadTools = [
     name: "settings__list",
     description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.",
     inputSchema: toolInputSchema(settingsListRequest),
-    outputSchema: settingsToolOutputSchema(settingsListResult, refusalSchema),
+    get outputSchema() {
+      const { listResult, refusalSchema } = loadSettingsCatalogue();
+      return settingsToolOutputSchema(listResult, refusalSchema);
+    },
     annotations: { readOnlyHint: true },
   },
   {
     name: "settings__show",
     description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.",
-    inputSchema: toolInputSchema(settingsShowRequest),
-    outputSchema: settingsToolOutputSchema(settingsShowResult, refusalSchema),
+    get inputSchema() { return toolInputSchema(loadSettingsCatalogue().showRequest); },
+    get outputSchema() {
+      const { showResult, refusalSchema } = loadSettingsCatalogue();
+      return settingsToolOutputSchema(showResult, refusalSchema);
+    },
     annotations: { readOnlyHint: true },
   },
   {
     name: "settings__preview",
-    description: "Call before any change to the setting. Use settings__show for the value schema. When a refusal is returned or SQL validation is unavailable, read remediation.",
+    description: "Call before any change to the setting. Use settings__show for the value schema. If the value is invalid or preview is refused, read remediation.",
     inputSchema: toolInputSchema(settingsPreviewRequest),
-    outputSchema: previewOutputSchema,
+    get outputSchema() { return loadSettingsCatalogue().previewOutputSchema; },
     annotations: { readOnlyHint: true },
   },
 ] as const;

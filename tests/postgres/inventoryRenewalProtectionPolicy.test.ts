@@ -280,10 +280,7 @@ it("restricted native startup refuses drift before serving or writing, with inst
     const preview = await previewSetting({ key, proposed: config.inventory.renewalProtection }, {
       [key]: (proposed, input) => previewRenewalStockProtection(key, proposed, { ...input, db: runtime, sourceKey: source }),
     });
-    expect(preview).toMatchObject({ validation: {
-      typescript: { state: "valid" },
-      postgres: { state: "valid", value: config.inventory.renewalProtection },
-    } });
+    expect(preview).toMatchObject({ validation: { state: "valid", value: config.inventory.renewalProtection } });
     await expect(installRenewalStockProtectionPolicy(runtime, config.inventory.renewalProtection)).rejects.toMatchObject({ code: "42501" });
     await installCheckoutRecoveryReminderSchedule(db, config.checkoutRecoveryReminders);
     const bindings = await composeNativeBindings(url.toString(), createOriginPolicy(config, 4319), config);
@@ -343,8 +340,8 @@ it("previews 14 to 21 identically in CLI and MCP at one instant with five querie
     for (const selected of [[sku], skus]) {
       const result = await preview(selected);
       expect(result).toMatchObject({
-        key, asOf: instant, current, proposed, difference: { renewalProtectionDays: 7 }, mode: null, revisionNo: null,
-        validation: { typescript: { state: "valid", value: proposed }, postgres: { state: "valid", value: proposed } },
+        key, asOf: instant, current, proposed, difference: { renewalProtectionDays: 7 },
+        validation: { state: "valid", value: proposed },
         effect: {
           existingReservations: "unchanged", newPurchaseAvailability: "equal-or-lower",
           skus: expect.arrayContaining([{ sku, source: "provider", stale: false,

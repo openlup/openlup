@@ -121,10 +121,9 @@ function print(result: Result, json = false) {
       `Current: ${JSON.stringify(current)}`,
       `Proposed: ${JSON.stringify(proposed)}`,
       `Horizon difference in days: ${difference?.renewalProtectionDays ?? 'unavailable'}`,
-      ...Object.entries(validation).flatMap(([engine, outcome]) => [
-        `${engine} validation: ${outcome.state}`,
-        ...('remediation' in outcome ? [outcome.remediation.action, outcome.remediation.command] : []),
-      ]),
+      `Validation: ${validation.state}`,
+      ...(validation.state === 'valid' ? [`Normalized: ${JSON.stringify(validation.value)}`]
+        : [validation.code, validation.rule, validation.hint, validation.remediation.action, validation.remediation.command]),
       'Existing reservations keep their quantities and expiry times.',
       `New purchase availability: ${effect.newPurchaseAvailability}`,
       ...effect.skus.map(row => `${row.sku}: ${row.currentAvailableForNewPurchases ?? 'unavailable'} currently available (${row.source}${row.stale ? ', stale' : ''})`),

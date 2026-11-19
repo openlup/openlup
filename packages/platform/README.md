@@ -1058,7 +1058,7 @@ installed horizon on each stock read. The explicit `readPort.read` still refuses
 requests that supply a different horizon.
 
 `previewRenewalStockProtection` uses a host pool on a read-only snapshot and
-validates the proposed value in TypeScript and PostgreSQL. Use the
+returns one validation outcome for the proposed value. Use the
 [settings preview](../core/docs/guide/how-to/operate/configure-settings.md#preview-before-changing-a-setting)
 to inspect current stock for named SKUs, how the proposed horizon could affect
 new purchase availability, and which records retain their terms. Availability

@@ -31,14 +31,14 @@ it("discovers and validates settings data in a new domain directory", () => {
   const root = mkdtempSync(join(tmpdir(), "settings-catalogue-"));
   const file = join(root, "packages/platform/src/fixture-domain/settings-data.json");
   const [sample] = parseSettingData(readFileSync("packages/platform/src/shipping/settings-data.json", "utf8"), "shipping");
-  const descriptor = { ...sample, key: "fixture.notice", domain: "fixture-domain" };
+  const descriptor = { ...sample, key: "fixture.notice", domain: "fixture-domain", searchTerms: "fixture discovery phrase" };
   try {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify([descriptor]));
     const files = renderSettingsCatalogue(root);
     const catalogue = JSON.parse(files["packages/platform/settings-catalog.json"]!);
     expect(catalogue.entries).toContainEqual(expect.objectContaining({ key: descriptor.key, domain: descriptor.domain }));
-    expect(files["packages/core/docs/guide/how-to/operate/settings-catalogue.md"]).toContain("## fixture.notice");
+    expect(files["packages/core/docs/guide/how-to/operate/settings-catalogue.md"]).toContain("Search terms include fixture discovery phrase.");
 
     writeFileSync(file, JSON.stringify([{ ...descriptor, unknown: true }]));
     expect(() => renderSettingsCatalogue(root)).toThrow(`Invalid settings data in ${file}`);
@@ -66,6 +66,24 @@ it("runs each connected refusal remediation through the connected CLI branch", (
     expect(result.status, code).toBe(1);
     expect(JSON.parse(result.stdout)).toMatchObject({ refusal: { code: "commerce_setting_read_unavailable" } });
   }
+});
+
+it("imports unrelated operations when both settings carriers are unreadable", () => {
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    import fs from "node:fs";
+    import { syncBuiltinESMExports } from "node:module";
+    const readFileSync = fs.readFileSync;
+    fs.readFileSync = (path, ...options) => {
+      assert.doesNotMatch(String(path), /settings-(?:catalog|refusals)[.]json$/);
+      return readFileSync(path, ...options);
+    };
+    syncBuiltinESMExports();
+    const operations = await import("@openlup/platform/operations/server");
+    assert.equal(typeof operations.createAdminSettingsReadHandler, "function");
+    assert.equal(typeof operations.createPlatformControlPlanePort, "function");
+  `], { encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(0);
 });
 
 it("advertises settings results that the pinned MCP SDK accepts", () => {
