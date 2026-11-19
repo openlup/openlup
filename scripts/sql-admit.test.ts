@@ -90,11 +90,11 @@ const cases: Case[] = [
   ...["exact", "drift", "conflict"].map((scenario): Case => {
     const name = "fixture_deferred", relation = "public.fixture_row", signature = "public.fixture_deferred()";
     const canonical = `CREATE CONSTRAINT TRIGGER ${name} AFTER UPDATE OR DELETE ON ${relation} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${signature};`;
-    const refusal = scenario === "drift" ? `deferred trigger ${name} does not match its registry entry; write exactly: ${canonical}` : scenario === "conflict" ? "remove CREATE OR REPLACE TRIGGER from this forward" : undefined;
+    const definition = `CREATE FUNCTION ${signature} RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$;`;
+    const refusal = scenario === "drift" ? `deferred trigger ${name} does not match its registry entry; write exactly: ${canonical}` : scenario === "conflict" ? `CREATE OR REPLACE TRIGGER is not allowed here: in a forward that pins ${name}, only these statements may name ${name}: ${canonical} ${definition} REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC; Remove or rewrite CREATE OR REPLACE TRIGGER.` : undefined;
     return { name: `a pinned deferred trigger with ${scenario} SQL`, exit: refusal ? 1 : 0, refusal, hint: scenario === "drift" ? "#declare-a-reviewed-trigger" : undefined, build: (f) => {
-        const statement = scenario === "drift" ? canonical.replace("UPDATE OR DELETE", "UPDATE, DELETE") : canonical;
+        const statement = scenario === "drift" ? canonical.replace("CREATE", "create") : canonical;
         const entry = slot(nativePath);
-        const definition = `CREATE FUNCTION ${signature} RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$;`;
         entry.createdFunctions = [{ signature, searchPath: null }];
         entry.createdTriggers = [{ name, relation, events: ["UPDATE", "DELETE"], function: signature, deferred: true, sha256: sqlSha256(statement) }];
         const companion = scenario === "conflict" ? `CREATE OR REPLACE TRIGGER other BEFORE INSERT ON ${relation} FOR EACH ROW EXECUTE FUNCTION ${signature};` : "";

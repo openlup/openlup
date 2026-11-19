@@ -196,7 +196,7 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
     const verdicts = await admitSqlRange(range);
     for (const verdict of verdicts) {
       log(`${verdict.status.padEnd(8)} ${verdict.subject} [${verdict.check}]${verdict.message === undefined ? "" : `: ${verdict.message}`}`);
-      if (verdict.message !== undefined && !/^remove .* from this forward$/u.test(verdict.message)) log(`         capability needed: ${capabilityHint(verdict.message)}`);
+      if (verdict.message !== undefined && !verdict.message.includes(" is not allowed here: in a forward that pins ")) log(`         capability needed: ${capabilityHint(verdict.message)}`);
     }
     const refused = verdicts.filter((verdict) => verdict.status === "REFUSED").length;
     log(`sql:admit: ${verdicts.length} checks, ${refused} refused. Not run here: npm run oss:published-tree -- --policy and -- --inventory, the neutrality ratchet, the root test suite (including the real-PostgreSQL native catalogue test) and pgTAP. Hosted CI and the merge queue remain authoritative.`);
