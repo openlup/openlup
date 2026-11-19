@@ -1472,6 +1472,7 @@ display field its own value. Copying a whole authored document into a display
 field fails preparation, including a copy as a localized map or array.
 An exact copy has an equal canonical JSON value. Transformed or re-encoded content, such as JSON serialized inside a string, other encodings or normalized text, is outside this rule.
 Content is refused while an earlier revision of the document cannot be read.
+When creating a product, include the authored document at `product.sharedContent.document`.
 Store structured display values as typed public attributes.
 
 Render public product attributes supplied by the catalogue read model. The

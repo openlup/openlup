@@ -38,6 +38,7 @@ export interface CatalogPublicationEvidence {
   head: CatalogHeadRef | null;
   product: CatalogPublishedProduct | null;
   skus: readonly CatalogPublishedSku[];
+  /** List every saved document revision up to the high-water mark. */
   documents: readonly CatalogPublicationDocument[];
   /** Highest saved revision number, independent of which document bytes were selected. */
   documentRevisionHighWater: number;

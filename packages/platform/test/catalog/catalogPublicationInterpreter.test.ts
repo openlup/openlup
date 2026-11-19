@@ -137,33 +137,35 @@ module.exports.identifyDocument = document => "fr" in document
   : identify(document);
 module.exports.deriveSkuFacts = () => ({ derived: 12 });
 `;
-function documentHistory(data: Fixture, readable: boolean, copy: boolean) {
+function documentHistory(data: Fixture, listed: readonly (1 | 2 | 3)[], options: {
+  active?: 1 | 3; unreadable?: 2; distinct?: boolean;
+} = {}) {
   const reference = data.payload.product.documentRevision!;
-  const documents = [
-    [2, descendingDocument],
-    [3, { ...input().payload.product.sharedContent.document, revisionNo: 3 }],
-  ] as const;
-  data.evidence.documents = documents.map(([revisionNo, document]) => {
+  const first = input().payload.product.sharedContent.document;
+  const values = { 1: first, 2: descendingDocument, 3: { ...first, revisionNo: 3 } };
+  data.evidence.documents = listed.map(revisionNo => {
+    const document = values[revisionNo];
     const canonicalText = descendingWire(document);
     const digest = createHash("sha256").update(canonicalText).digest("hex");
     const sealed = { ...reference, id: `40000000-0000-4000-8000-00000000000${revisionNo}`, revisionNo, digest };
     const record = structuredClone(data.record);
-    record.draftId = `30000000-0000-4000-8000-00000000000${revisionNo}`;
+    record.draftId = `30000000-0000-4000-8000-00000000010${revisionNo}`;
     record.payload.product.documentRevision = sealed;
     record.payload.product.sharedContent.document = document;
     const receipt = catalogPublicationClaim(record);
-    const available = readable || revisionNo === 3;
+    const available = revisionNo !== options.unreadable;
     if (available) data.evidence.drafts.push({ record, receipt, head: null });
     return { reference: sealed, canonicalText: available ? canonicalText : "",
       provenance: { draftId: receipt.draftId, draftRevision: receipt.revision,
         draftCommandKey: receipt.commandKey, draftFingerprint: receipt.fingerprint } };
   });
-  const selected = data.evidence.documents[1]!.reference;
-  data.evidence.documentRevisionHighWater = 3;
+  const active = options.active ?? 3;
+  const selected = data.evidence.documents.find(document => document.reference.revisionNo === active)!.reference;
+  data.evidence.documentRevisionHighWater = active === 1 ? 2 : 3;
   data.expectedHead!.documentDigest = selected.digest;
   data.evidence.product!.document = selected;
   data.payload.product.documentRevision = selected;
-  const presentation = { shortName: { en: "Item", fr: copy ? "Article" : "Example" } };
+  const presentation = { shortName: { en: "Item", fr: options.distinct ? "Example" : "Article" } };
   data.evidence.product!.presentation = structuredClone(presentation);
   data.evidence.product!.content.presentation = structuredClone(presentation);
   data.payload.product.sharedContent.presentation = structuredClone(presentation);
@@ -484,17 +486,25 @@ const cases: Case[] = [
   }, expected: reason("catalog_publication_document_text_copied"),
   diagnostic: { phase: "structural", path: "product.presentation.shortName", subject: "example:article" }, routeCalls: [1, 1, 1] },
   { id: "R3 compensation cannot finalise content while revision 2 is unreadable", fixture: "revision",
-    rulesAsset: descendingRules, arrange: data => documentHistory(data, false, true),
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, [1, 2, 3], { unreadable: 2 }),
     expected: reason("catalog_publication_document_bytes_unavailable"), outcome: "unknown",
     diagnostic: { phase: "structural", path: "product.presentation", subject: "example:article" }, routeCalls: [1, 1, 1] },
   { id: "R3 compensation excludes a re-encoded copy of readable revision 2", fixture: "revision",
-    rulesAsset: descendingRules, arrange: data => documentHistory(data, true, true),
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, [1, 2, 3]),
     expected: reason("catalog_publication_document_text_copied"),
     diagnostic: { phase: "structural", path: "product.presentation.shortName", subject: "example:article" }, routeCalls: [1, 1, 1] },
-  { id: "R3 compensation admits a distinct value when revision 2 is readable", fixture: "revision",
-    rulesAsset: descendingRules, arrange: data => documentHistory(data, true, false), routeCalls: [1, 1, 1] },
+  { id: "W-R3-HIGH-WATER withholds a copy of unlisted revision 2 at high-water 2", fixture: "revision",
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, [1], { active: 1 }),
+    expected: reason("catalog_publication_document_bytes_unavailable"), outcome: "unknown",
+    diagnostic: { phase: "structural", path: "product.presentation", subject: "example:article" }, routeCalls: [1, 1, 1] },
+  { id: "W-R3-OLDER-GAP withholds compensation because revision 1 is unlisted at high-water 3", fixture: "revision",
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, [2, 3], { distinct: true }),
+    expected: reason("catalog_publication_document_bytes_unavailable"), outcome: "unknown",
+    diagnostic: { phase: "structural", path: "product.presentation", subject: "example:article" }, routeCalls: [1, 1, 1] },
+  { id: "W-R3-COMPLETE admits distinct compensation with a complete listing", fixture: "revision",
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, [1, 2, 3], { distinct: true }), routeCalls: [1, 1, 1] },
   { id: "R3 unavailable history leaves an independent route refusal visible", fixture: "revision",
-    rulesAsset: descendingRules, arrange: data => documentHistory(data, false, true), readiness: routeConflict,
+    rulesAsset: descendingRules, arrange: data => documentHistory(data, [1, 2, 3], { unreadable: 2 }), readiness: routeConflict,
     expected: reason("duplicate_route"), diagnostic: routeAt(0), routeCalls: [1, 1, 1] },
   { id: "the published codec rejects an exact copy of the selected document", arrange: data => copiedPresentation(data),
     expected: reason("catalog_publication_document_text_copied"),
@@ -598,7 +608,7 @@ const cases: Case[] = [
     expected: reason("attribute_projection_text_too_large"), routeCalls: [1, 1, 1],
     outcome: "blocked-input", diagnostic: { phase: "structural", path, subject },
   }))),
-  { id: "V-RETAINED-AXIS", fixture: "revision", arrange(data) {
+  ...["V-RETAINED-AXIS", "W-RETAINED-AXIS"].map((id): Case => ({ id, fixture: "revision", arrange(data) {
     data.definition = { ...data.definition, dimensions: [{ key: "style", kind: "choice", values: ["one", "two"] }],
       axes: [{ key: "style", attributeKey: "style" }],
       attributes: [{ key: "style", scope: "variant", valueType: { kind: "enum", values: [{ id: "one" }, { id: "two" }] },
@@ -606,7 +616,13 @@ const cases: Case[] = [
     data.registry = { resolve: () => data.definition };
     data.installedDefinitionDigest = catalogDefinitionDigest(data.definition);
     data.payload.product.dimensions = ["style"];
-  }, expected: reason("option_missing"), diagnostic: { phase: "structural", path: "options.style", subject: "ARTICLE" } },
+    if (id === "W-RETAINED-AXIS") data.evidence.skus.unshift(null as never);
+  }, expected: reason("option_missing"), diagnostic: { phase: "structural", path: "options.style", subject: "ARTICLE" } })),
+  { id: "W-RETAINED-FACTS a malformed sibling leaves the derived-fact mismatch visible", fixture: "revision", arrange(data) {
+    data.evidence.skus[0]!.facts = { derived: 13 };
+    data.evidence.skus.unshift(null as never);
+  }, expected: reason("catalog_publication_v3_compile_derived_facts_mismatch"),
+  diagnostic: { phase: "structural", path: "skus", subject: "ARTICLE" } },
   { id: "D-034 publication fact intent names an incoming SKU", arrange: data => {
     data.payload.product.sharedContent.publicationSkus.push({ ...data.payload.product.sharedContent.publicationSkus[0]!, skuCode: "STRAY" });
   }, expected: reason("intent_sku_absent") },

@@ -803,7 +803,10 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         documentsById.set(reference.id, selected);
         bindDocumentValue(selected, authorship.documentValue(selected));
       }
+      // Saved revision numbers are unique and bounded by the high-water mark.
+      const missingSavedRevision = referencesByRevision.size < retainedState.documentRevisionHighWater;
       if (current) addReference(current);
+      return missingSavedRevision;
     }
     function knownProduct(): CatalogPublishedProduct { return product ?? publicationRefuse("catalog_publication_v3_compile_product_absent"); }
     const knownSku = (code: string) => prefixSku(skus, code);
@@ -814,8 +817,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         structural.push(missing("catalog_publication_document_bytes_unavailable", "product.documentRevision"));
       return selected;
     }
-    const currentDocument = () => selectedDocument(knownProduct().document);
-    readDocuments();
+    const missingSavedDocumentRevision = readDocuments();
     const media = new Map(payload.publication.evidence.media?.map(claim => [claim.skuCode, claim]));
     const verifiedMedia: CatalogDraftMediaClaimV3[] = [];
     const authoredPresentation = payload.product.sharedContent.presentation;
@@ -1128,43 +1130,50 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     let assembled: Awaited<ReturnType<typeof structuralResult>>;
     async function checkStructuralResult() { assembled = await structuralResult(); }
     let documentExclusionUnavailable = false;
+    const productLifecycleDeferred = missingSkuRoster
+      && operations.some(operation => isLifecycleOperation(operation) && "productSlug" in operation);
+    const skuEffectsReadable = !missingProduct && !(productLifecycleDeferred
+      && operations.some(operation => operation.op === "set_product_lifecycle" && operation.state === "withdrawn"));
     async function structuralResult() {
       position.path = "product";
       position.subject = definition.key;
-      if (missingState) {
-        await checkRetainedAttributes(retainedState.skus, payload.product.attributes ?? retainedState.product?.attributes);
-        return;
-      }
-      const result = knownProduct();
-      if (lastChildWithdrawn) need(productState === "withdrawn"
+      const result = missingProduct ? null : knownProduct();
+      if (!missingState && lastChildWithdrawn) need(productState === "withdrawn"
         && payload.publication.operations.some(op => op.op === "set_product_lifecycle" && op.state === "withdrawn"),
       "catalog_lifecycle_last_active_child");
-      if (payload.product.documentRevision) need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
-      const afterDocument = currentDocument();
+      if (result && payload.product.documentRevision)
+        need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
+      const afterDocument = result && selectedDocument(result.document);
       if (!withdrawalOnly && afterDocument)
         bindDocumentValue(afterDocument, payload.product.sharedContent.document, "catalog_publication_document_source_mismatch");
       const documentDigests = new Set([...referencesById.values()].map(reference => reference.digest));
       for (const digest of documentValueDigests.values()) documentDigests.add(digest);
-      if (result.document) documentDigests.add(result.document.digest);
-      const productOverlay = { attributes: payload.product.attributes ?? result.attributes, axes: payload.product.dimensions };
-      if (withdrawalOnly) need(equal(productOverlay, { attributes: result.attributes, axes: result.axes })
-        && equal(payload.product.sharedContent.presentation, result.content.presentation), "catalog_lifecycle_withdrawal_overlay_refused");
-      else {
-        Object.assign(result, productOverlay);
-        result.content = content;
-        result.source = claim;
+      if (result?.document) documentDigests.add(result.document.digest);
+      if (result) {
+        const productOverlay = { attributes: payload.product.attributes ?? result.attributes, axes: payload.product.dimensions };
+        if (withdrawalOnly) need(equal(productOverlay, { attributes: result.attributes, axes: result.axes })
+          && equal(payload.product.sharedContent.presentation, result.content.presentation), "catalog_lifecycle_withdrawal_overlay_refused");
+        else {
+          Object.assign(result, productOverlay);
+          result.content = content;
+          result.source = claim;
+        }
+        for (const [code, authored] of incoming) {
+          const sku = skus.get(code!);
+          if (!sku && missingSkuRoster) continue;
+          need(sku, "catalog_publication_sku_effect_missing");
+          if (created.has(code!)) need(authored.identifiers?.every(identifier =>
+            sku!.identifiers.some(stored => matchesAuthoredIdentifier(identifier, stored))), "catalog_publication_identifier_effect_missing");
+          if (authored.logisticsRef) need(sku!.logisticsRef === authored.logisticsRef, "catalog_publication_metadata_effect_missing");
+        }
+        for (const intent of payload.product.sharedContent.offerMemberships) {
+          const sku = skus.get(intent.skuCode);
+          if (!sku && missingSkuRoster) continue;
+          need(sku?.memberships.some(row => row.offerVersion === intent.offerVersion && row.admitted === intent.admitted),
+            "catalog_publication_membership_effect_missing");
+        }
       }
-      for (const [code, authored] of incoming) {
-        const sku = skus.get(code!);
-        need(sku, "catalog_publication_sku_effect_missing");
-        if (created.has(code!)) need(authored.identifiers?.every(identifier =>
-          sku!.identifiers.some(stored => matchesAuthoredIdentifier(identifier, stored))), "catalog_publication_identifier_effect_missing");
-        if (authored.logisticsRef) need(sku!.logisticsRef === authored.logisticsRef, "catalog_publication_metadata_effect_missing");
-      }
-      for (const intent of payload.product.sharedContent.offerMemberships)
-        need(skus.get(intent.skuCode)?.memberships.some(row => row.offerVersion === intent.offerVersion && row.admitted === intent.admitted),
-          "catalog_publication_membership_effect_missing");
-      const productPhysicalChange = retainedState.product !== null && !equal(
+      const productPhysicalChange = result !== null && retainedState.product !== null && !equal(
         [retainedState.product.type, retainedState.product.axes, retainedState.product.attributes, retainedState.product.document],
         [result.type, result.axes, result.attributes, result.document]);
       for (const sku of skus.values()) {
@@ -1180,7 +1189,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           else Object.assign(sku, overlay);
         }
         const before = originalById.get(sku.id);
-        if (!withdrawalOnly && before && rules && afterDocument && (productPhysicalChange || !equal(
+        if (result && !productLifecycleDeferred && !withdrawalOnly && before && rules && afterDocument && (productPhysicalChange || !equal(
           [before.netContent, before.options, before.attributes, before.facts, before.grossMass, before.assetRefs],
           [sku.netContent, sku.options, sku.attributes, sku.facts, sku.grossMass, sku.assetRefs]))) {
           const beforeDocument = selectedDocument(beforeReference);
@@ -1191,9 +1200,9 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         }
         need(sku.netContent.dimension === "mass", "catalog_publication_mass_required_until_mc5");
         catalogPublicationIntegralGrams(sku.netContent, input.definition);
-        if (!withdrawalOnly && rules && afterDocument) need(equal(documentSkuFacts(afterDocument, sku, rules), sku.facts),
+        if (skuEffectsReadable && !withdrawalOnly && rules && afterDocument) need(equal(documentSkuFacts(afterDocument, sku, rules), sku.facts),
           "catalog_publication_v3_compile_derived_facts_mismatch");
-        if (governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
+        if (skuEffectsReadable && !productLifecycleDeferred && governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
           const state = skuStates.get(sku.code)?.state;
           if (productState === undefined || state === undefined) structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
           else need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
@@ -1204,25 +1213,30 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       }
       position.path = "product";
       position.subject = definition.key;
-      await checkRetainedAttributes(skus.values(), result.attributes);
+      await checkRetainedAttributes(skus.values(), result?.attributes ?? payload.product.attributes);
       need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
-      need(result.primarySkuId && result.document && (retainedState.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
-      need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
-      const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
-      need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
-      const promotions = requiredPromotions(payload.publication.operations.filter(op => !isLifecycleOperation(op)), retainedState);
-      need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
-        "catalog_publication_activation_effect_missing");
+      const primary = [...skus.values()].find(sku => sku.id === result?.primarySkuId);
+      if (result && !missingState) {
+        need(result.primarySkuId && result.document && (retainedState.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
+        need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
+        need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
+        const promotions = requiredPromotions(payload.publication.operations.filter(op => !isLifecycleOperation(op)), retainedState);
+        need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
+          "catalog_publication_activation_effect_missing");
+      }
       const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      if (skuEffectsReadable) {
+        for (const sku of sorted) {
+          const before = originalById.get(sku.id);
+          // An omitted derived cache effect has this publication's draft/receipt as
+          // its effect provenance. Keep the retained physical/media source available.
+          if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) sku.source = claim;
+          assertPublishedSkuDocumentExclusion(sku, documentDigests);
+        }
+      }
+      if (!result || missingState) return;
       const lifecycle = governed && productState ? { product: productState, skus: Object.fromEntries([...skuStates].sort()) } : undefined;
       const changed = original !== publicationJson(materialState(result, sorted)) || Boolean(lifecycle && !equal(lifecycle, evidence?.lifecycle ?? null));
-      for (const sku of sorted) {
-        const before = originalById.get(sku.id);
-        // An omitted derived cache effect has this publication's draft/receipt as
-        // its effect provenance. Keep the retained physical/media source available.
-        if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) sku.source = claim;
-        assertPublishedSkuDocumentExclusion(sku, documentDigests);
-      }
       if (!changed && retainedState.product) { result.source = retainedState.product.source; result.content = retainedState.product.content; }
       const published = decodePublishedProduct(result, documentDigests);
       if (!withdrawalOnly && rules && afterDocument) {
@@ -1231,7 +1245,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       }
       need(changed || structural.some(isUnavailable) || payload.publication.kind === "compensation" && payload.publication.operations.length > 0, "catalog_publication_v3_compile_change_noop");
       // Keep the assembled views for independent activation checks, while withholding effects.
-      documentExclusionUnavailable = [...referencesById.keys()].some(id => !documentValueDigests.has(id));
+      documentExclusionUnavailable = missingSavedDocumentRevision || [...referencesById.keys()].some(id => !documentValueDigests.has(id));
       if (documentExclusionUnavailable)
         structural.push(missing("catalog_publication_document_bytes_unavailable", result.presentation ? "product.presentation" : "product.content"));
       const operations = payload.publication.operations;
@@ -1252,9 +1266,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         expectedHead, verifiedMedia,
       );
       await checkPrices(priceDraft);
-      if (!assembled) return;
-      const { compiled, primary, priced } = assembled;
-      const { product: result, operations } = compiled;
+      const priced = assembled?.priced ?? (skuEffectsReadable ? [...skus.values()].filter(affected.priced) : []);
       position.path = "skus";
       for (const sku of priced) {
         position.subject = sku.code;
@@ -1263,6 +1275,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         need(sku.identifiers.some(identifier => identifier.scheme === "gs1:gtin" && identifier.isPrimary && identifier.packagingLevel === "unit")
           && sku.logisticsRef && sku.memberships.some(row => row.admitted), "catalog_publication_v3_activation_readiness_failed");
       }
+      if (!assembled) return;
+      const { compiled: { product: result }, primary } = assembled;
       position.subject = definition.key;
       if (operations.some(operation => operation.op === "set_product_status" && operation.status === "active"
         || operation.op === "set_product_lifecycle" && operation.state === "active" || operation.op === "restore_product")) {
