@@ -2279,6 +2279,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.catalog_acceptance_record_admit_v2() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE retained jsonb; retained_lines jsonb; legacy_lines jsonb;
 BEGIN
  IF TG_OP='UPDATE' AND TG_TABLE_NAME IN ('commerce_orders','subscription_events','subscription_renewal_operations') THEN
   IF OLD.catalog_acceptance IS NOT NULL AND NEW.catalog_acceptance IS DISTINCT FROM OLD.catalog_acceptance THEN
@@ -2286,14 +2287,38 @@ BEGIN
  END IF;
  IF TG_TABLE_NAME='subscription_renewal_operations' THEN
   IF TG_OP='UPDATE' THEN
-   IF OLD.cycle_snapshot->>'frozenRevision'='native.purchase-renewal.v3' AND NEW.cycle_snapshot IS DISTINCT FROM OLD.cycle_snapshot THEN
+   IF OLD.cycle_snapshot->>'frozenRevision' IN ('native.purchase-renewal.v3','native.purchase-renewal.v4')
+    AND NEW.cycle_snapshot IS DISTINCT FROM OLD.cycle_snapshot THEN
     RAISE EXCEPTION 'catalog_acceptance_snapshot_immutable' USING ERRCODE='55000'; END IF;
   END IF;
- IF NEW.cycle_snapshot->>'frozenRevision'='native.purchase-renewal.v3' THEN
+ IF NEW.cycle_snapshot->>'frozenRevision' IN ('native.purchase-renewal.v3','native.purchase-renewal.v4') THEN
   IF NEW.catalog_acceptance IS NOT NULL AND NEW.catalog_acceptance IS DISTINCT FROM NEW.cycle_snapshot->'catalogAcceptance' THEN
    RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023'; END IF;
   NEW.catalog_acceptance:=NEW.cycle_snapshot->'catalogAcceptance';
   IF NEW.catalog_acceptance IS NULL THEN RAISE EXCEPTION 'catalog_acceptance_required' USING ERRCODE='22023'; END IF;
+  IF NEW.cycle_snapshot->>'frozenRevision'='native.purchase-renewal.v4' THEN
+   IF TG_OP='UPDATE' AND OLD.cycle_snapshot->>'frozenRevision' IS DISTINCT FROM 'native.purchase-renewal.v4' THEN
+    RAISE EXCEPTION 'catalog_acceptance_snapshot_immutable' USING ERRCODE='55000'; END IF;
+   IF TG_OP='INSERT' THEN
+    SELECT t.catalog_acceptance INTO retained FROM public.subscription_renewal_terms t WHERE t.subscription_id=NEW.subscription_id;
+    IF retained IS DISTINCT FROM NEW.catalog_acceptance THEN
+     RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023'; END IF;
+    SELECT jsonb_agg(line ORDER BY l.line_ordinal),jsonb_agg(line ORDER BY l.line_ordinal) FILTER (WHERE NOT EXISTS (
+     SELECT 1 FROM jsonb_array_elements(retained->'lines') r WHERE r->>'skuCode'=l.sku)) INTO retained_lines,legacy_lines
+    FROM public.subscription_renewal_term_lines l
+    CROSS JOIN LATERAL (SELECT jsonb_build_object('lineOrdinal',l.line_ordinal,'sku',l.sku,
+     'quantity',l.quantity,'unitAmountMinor',l.unit_amount_minor) AS line) tuple
+    WHERE l.subscription_id=NEW.subscription_id;
+    IF legacy_lines IS NULL OR legacy_lines IS DISTINCT FROM NEW.cycle_snapshot->'legacyLines'
+     OR retained_lines IS DISTINCT FROM NEW.cycle_snapshot->'lines'
+     OR retained_lines IS DISTINCT FROM NEW.cycle_snapshot#>'{templateSnapshot,lines}'
+     OR retained_lines IS DISTINCT FROM NEW.cycle_snapshot#>'{orderSnapshot,lines}'
+     OR jsonb_array_length(retained_lines)-jsonb_array_length(legacy_lines)<>jsonb_array_length(retained->'lines')
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(retained->'lines') r WHERE NOT EXISTS (
+      SELECT 1 FROM jsonb_array_elements(retained_lines) l WHERE l->>'sku'=r->>'skuCode')) THEN
+     RAISE EXCEPTION 'catalog_acceptance_snapshot_mismatch' USING ERRCODE='22023'; END IF;
+   END IF;
+  END IF;
  END IF;
  END IF;
  IF NEW.catalog_acceptance IS NOT NULL THEN PERFORM public.catalog_admission_validate_proof(NEW.catalog_acceptance); END IF;

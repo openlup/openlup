@@ -11,4 +11,4 @@ export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, Subscri
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy,
   SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
 
-export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./renewal.js";
+export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3, RenewalFrozenSnapshotV4 } from "./renewal.js";

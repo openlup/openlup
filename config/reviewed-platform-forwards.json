@@ -8239,7 +8239,7 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "7e2819f8e2f23e315a8c5968d42a1ad3f2994410501660a9c065dd663515f116",
+      "sha256": "99c0b4a1a57434b66f0cfbd96f496d1e93875291d65af5406e68bf4bc7408472",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
@@ -8284,7 +8284,7 @@
         {
           "signature": "public.catalog_acceptance_record_admit_v2()",
           "beforeSha256": "3244474e094871b795129f2f4d1c46e6543e1f119b10d8322704e59f4464d778",
-          "afterSha256": "52db303f5434e2774afeb9f7e3dd42dd52ec382f0f5fc8e92003ee05a5c40e02"
+          "afterSha256": "ef9608a99b6cd2f2c691f9cde166c42ad945a56f1728aed631f82be86197337f"
         },
         {
           "signature": "public.subscriptions_configured_offer_guard()",

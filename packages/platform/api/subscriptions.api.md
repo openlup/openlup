@@ -1256,6 +1256,14 @@ export interface RenewalFrozenSnapshotV3 extends RenewalFrozenSnapshot {
     frozenRevision: "native.purchase-renewal.v3";
     catalogAcceptance: CatalogAcceptanceV2;
 }
+/** Mixed renewals preserve the exact retained legacy lines alongside governed proof.
+ * @experimental
+ */
+export interface RenewalFrozenSnapshotV4 extends RenewalFrozenSnapshot {
+    frozenRevision: "native.purchase-renewal.v4";
+    catalogAcceptance: CatalogAcceptanceV2;
+    legacyLines: readonly RenewalLine[];
+}
 ```
 ## dist/subscriptions/contracts/sizedEdit.d.ts
 
@@ -1602,7 +1610,7 @@ export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
-export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./contracts/renewal.js";
+export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3, RenewalFrozenSnapshotV4 } from "./contracts/renewal.js";
 export { createNativeCatalogRenewalCodecV2 } from "./nativeRenewalCodec.js";
 export type { CatalogRenewalReferenceParser } from "./nativeRenewalCodec.js";
 ```
@@ -1683,7 +1691,7 @@ import { type NativeRenewalCodec } from "./postgresRenewalStore.js";
 export type CatalogRenewalReferenceParser = (value: unknown) => CatalogAcceptedReferenceV2;
 /** Existing v1/v2 dialect and bytes are unchanged. */
 export declare function createNativeRenewalCodec(): NativeRenewalCodec;
-/** Explicit v3 snapshot opt-in; the caller supplies the shared strict reference parser. No capture or activation is composed.
+/** Explicit catalogue snapshot opt-in. The caller supplies the shared strict reference parser.
  * @experimental
  */
 export declare function createNativeCatalogRenewalCodecV2(parseReference: CatalogRenewalReferenceParser): NativeRenewalCodec;

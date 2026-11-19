@@ -362,3 +362,12 @@ export interface RenewalFrozenSnapshotV3 extends RenewalFrozenSnapshot {
   frozenRevision: "native.purchase-renewal.v3";
   catalogAcceptance: CatalogAcceptanceV2;
 }
+
+/** Mixed renewals preserve the exact retained legacy lines alongside governed proof.
+ * @experimental
+ */
+export interface RenewalFrozenSnapshotV4 extends RenewalFrozenSnapshot {
+  frozenRevision: "native.purchase-renewal.v4";
+  catalogAcceptance: CatalogAcceptanceV2;
+  legacyLines: readonly RenewalLine[];
+}

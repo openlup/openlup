@@ -2,7 +2,7 @@ import type { CatalogAcceptanceV2, CatalogAcceptedReferenceV2 } from "@openlup/c
 import { nativeInstant } from "./nativeInstant.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { RenewalCycleCorrelation, RenewalFrozenSnapshot, RenewalLine, RenewalReadback, RenewalSchedule } from "./contracts/renewal.js";
+import type { RenewalCycleCorrelation, RenewalFrozenSnapshot, RenewalFrozenSnapshotV3, RenewalFrozenSnapshotV4, RenewalLine, RenewalReadback, RenewalSchedule } from "./contracts/renewal.js";
 import { subscriptionRecord, type NativeRenewalCodec } from "./postgresRenewalStore.js";
 import { nativeRenewalPrice, nativeRetainedTerms, renewalShippingTermsSchema } from "./nativeRenewalTerms.js";
 
@@ -39,12 +39,30 @@ function acceptance(value: unknown, parse: CatalogRenewalReferenceParser | undef
   if (new Set(lines.map(line => line.skuId)).size !== lines.length || nativeRenewalCanonicalJson(lines) !== nativeRenewalCanonicalJson(envelope.lines)) throw new Error("subscription_catalog_acceptance_invalid");
   return { schemaVersion: 2, lines };
 }
+
+function legacyPartition(lines: readonly RenewalLine[], captured: CatalogAcceptanceV2): RenewalLine[] {
+  const governed = new Set(captured.lines.map(ref => ref.skuCode));
+  if (lines.filter(line => governed.has(line.sku)).length !== governed.size
+    || captured.lines.length !== governed.size
+    || captured.lines.some(ref => !lines.some(line => ref.skuCode === line.sku))) {
+    throw new Error("subscription_catalog_acceptance_line_mismatch");
+  }
+  return lines.filter(line => !governed.has(line.sku));
+}
+
 function validate(snapshot: RenewalFrozenSnapshot, parse?: CatalogRenewalReferenceParser) {
   if (snapshot.frozenRevision === "native.purchase-renewal.v3") {
     const { catalogAcceptance, ...old } = snapshot as RenewalFrozenSnapshot & { catalogAcceptance: unknown };
     const captured = acceptance(catalogAcceptance, parse);
     if (captured.lines.length !== snapshot.orderSnapshot.lines.length || snapshot.orderSnapshot.lines.some(line => !captured.lines.some(ref => ref.skuCode === line.sku))) throw new Error("subscription_catalog_acceptance_line_mismatch");
     snapshotSchema.parse({ ...old, frozenRevision: "native.purchase-renewal.v2" });
+  } else if (snapshot.frozenRevision === "native.purchase-renewal.v4") {
+    const { catalogAcceptance, legacyLines, ...old } = snapshot as RenewalFrozenSnapshotV4;
+    snapshotSchema.parse({ ...old, frozenRevision: "native.purchase-renewal.v2" });
+    const expected = legacyPartition(snapshot.orderSnapshot.lines, acceptance(catalogAcceptance, parse));
+    if (nativeRenewalCanonicalJson(basket.parse(legacyLines)) !== nativeRenewalCanonicalJson(expected)) {
+      throw new Error("subscription_catalog_acceptance_line_mismatch");
+    }
   } else snapshotSchema.parse(snapshot);
   const items = nativeRenewalCanonicalJson(snapshot.orderSnapshot.lines);
   const pricing = snapshot.pricingSnapshot;
@@ -61,7 +79,7 @@ function validate(snapshot: RenewalFrozenSnapshot, parse?: CatalogRenewalReferen
     || (marker && typeof marker === "object" && marker.kind === "retained_shipping"
       && nativeRenewalCanonicalJson(marker.terms) !== nativeRenewalCanonicalJson(terms ?? null))
     || (snapshot.frozenRevision === REVISION && (Object.keys(pricing).length !== 5 || typeof marker === "object" && marker?.kind === "retained_shipping"))
-    || (["native.purchase-renewal.v2", "native.purchase-renewal.v3"].includes(snapshot.frozenRevision) && (pricing.productSubtotalAmountMinor === undefined || pricing.discountAmountMinor === undefined
+    || (snapshot.frozenRevision !== REVISION && (pricing.productSubtotalAmountMinor === undefined || pricing.discountAmountMinor === undefined
       || ((terms || pricing.shippingAmountMinor > 0) && (!marker || typeof marker !== "object" || marker.kind !== "retained_shipping"))
       || (!terms && pricing.shippingAmountMinor === 0 && typeof marker === "object" && marker?.kind === "retained_shipping")))
     || snapshot.scheduledInstant !== Date.parse(snapshot.scheduledAt)) throw new Error("subscription_renewal_snapshot_inconsistent");
@@ -115,7 +133,9 @@ function correlation(row: Record<string, unknown>): RenewalCycleCorrelation {
 }
 function body(s: RenewalFrozenSnapshot): Record<string, unknown> {
   return { contractVersion: CONTRACT, frozenRevision: s.frozenRevision,
-    ...(s.frozenRevision === "native.purchase-renewal.v3" ? { catalogAcceptance: (s as RenewalFrozenSnapshot & { catalogAcceptance: CatalogAcceptanceV2 }).catalogAcceptance } : {}),
+    ...(s.frozenRevision === "native.purchase-renewal.v3" || s.frozenRevision === "native.purchase-renewal.v4"
+      ? { catalogAcceptance: (s as RenewalFrozenSnapshotV3 | RenewalFrozenSnapshotV4).catalogAcceptance } : {}),
+    ...(s.frozenRevision === "native.purchase-renewal.v4" ? { legacyLines: (s as RenewalFrozenSnapshotV4).legacyLines } : {}),
     subscriptionId: s.subscriptionId, clientId: s.clientId, scheduledAt: instant(s.scheduledAt),
     cycleNumber: s.cycle.nativeRenewalCounter, cycle: s.cycle, retryAttempt: s.retryAttempt,
     externalAttemptSequence: s.externalAttemptSequence, templateSnapshot: s.templateSnapshot,
@@ -153,9 +173,10 @@ function nativeRenewalCodec(parse?: CatalogRenewalReferenceParser): NativeRenewa
       const retained = nativeRetainedTerms(row);
       const captured = parse ? acceptance(row.catalog_acceptance, parse) : undefined;
       if (captured && !retained) throw new Error("subscription_catalog_retained_terms_required");
-      const snapshot: RenewalFrozenSnapshot = { ...(captured ? { catalogAcceptance: captured } : {}), subscriptionId: due.subscriptionId, scheduledAt: instant(due.scheduledAt),
+      const legacyLines = captured && frozenLines.length > captured.lines.length ? legacyPartition(frozenLines, captured) : [];
+      const snapshot: RenewalFrozenSnapshot = { ...(captured ? { catalogAcceptance: captured } : {}), ...(legacyLines.length ? { legacyLines } : {}), subscriptionId: due.subscriptionId, scheduledAt: instant(due.scheduledAt),
         scheduledInstant: due.scheduledInstant, contractVersion: CONTRACT,
-        clientId: due.clientId, frozenRevision: captured ? "native.purchase-renewal.v3" : retained ? "native.purchase-renewal.v2" : REVISION, frozenFingerprint: "", cycle: due.cycle,
+        clientId: due.clientId, frozenRevision: legacyLines.length ? "native.purchase-renewal.v4" : captured ? "native.purchase-renewal.v3" : retained ? "native.purchase-renewal.v2" : REVISION, frozenFingerprint: "", cycle: due.cycle,
         retryAttempt: 0, externalAttemptSequence: 0,
         templateSnapshot: { templateId: text(facts, "templateId"), version: integer(row.template_version, 1), cadenceDays: due.cadenceDays, lines: frozenLines },
         pricingSnapshot: pricing,
@@ -177,7 +198,9 @@ function nativeRenewalCodec(parse?: CatalogRenewalReferenceParser): NativeRenewa
     decode(wire) {
       const scheduledAt = text(wire, "scheduledAt");
       const snapshot: RenewalFrozenSnapshot = {
-        ...(wire.frozenRevision === "native.purchase-renewal.v3" ? { catalogAcceptance: acceptance(wire.catalogAcceptance, parse) } : {}),
+        ...(wire.frozenRevision === "native.purchase-renewal.v3" || wire.frozenRevision === "native.purchase-renewal.v4"
+          ? { catalogAcceptance: acceptance(wire.catalogAcceptance, parse) } : {}),
+        ...(wire.frozenRevision === "native.purchase-renewal.v4" ? { legacyLines: basket.parse(wire.legacyLines) } : {}),
         contractVersion: CONTRACT, subscriptionId: text(wire, "subscriptionId"), clientId: text(wire, "clientId"),
         scheduledAt, scheduledInstant: Date.parse(scheduledAt), frozenRevision: text(wire, "frozenRevision"), frozenFingerprint: text(wire, "frozenFingerprint"),
         cycle: subscriptionRecord(wire.cycle) as unknown as RenewalCycleCorrelation,
@@ -214,7 +237,7 @@ function nativeRenewalCodec(parse?: CatalogRenewalReferenceParser): NativeRenewa
 
 /** Existing v1/v2 dialect and bytes are unchanged. */
 export function createNativeRenewalCodec(): NativeRenewalCodec { return nativeRenewalCodec(); }
-/** Explicit v3 snapshot opt-in; the caller supplies the shared strict reference parser. No capture or activation is composed.
+/** Explicit catalogue snapshot opt-in. The caller supplies the shared strict reference parser.
  * @experimental
  */
 export function createNativeCatalogRenewalCodecV2(parseReference: CatalogRenewalReferenceParser): NativeRenewalCodec {

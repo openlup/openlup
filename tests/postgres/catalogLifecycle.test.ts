@@ -1,4 +1,6 @@
-import { createNativeCatalogRenewalCodecV2, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
+import { createNativeCatalogRenewalCodecV2, createPostgresRenewalSettlementPort, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
+import { createPostgresDeliveryAlignmentPort } from "@openlup/platform/fulfillment";
+import { createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
@@ -387,7 +389,7 @@ it("filtered evidence never becomes an empty complete obligation result", async 
   await db.query("RESET ROLE");
 });
 
-it("new native freezes persist complete accepted references and replay after reconnect", async () => {
+async function activeCatalogRenewal(mixed = false) {
   const f = await seed(), standing = await standingActive(f), cycle = randomUUID(), orderId = randomUUID();
   await db.query("UPDATE public.subscriptions SET started_at=clock_timestamp()-interval '28 days',next_cycle_at=date_trunc('milliseconds',clock_timestamp())-interval '1 second' WHERE id=$1", [f.subscription]);
   await db.query("INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status) SELECT $1,id,started_at,'paid' FROM public.subscriptions WHERE id=$2", [cycle,f.subscription]);
@@ -397,7 +399,81 @@ it("new native freezes persist complete accepted references and replay after rec
   const acceptance = { schemaVersion: 2, lines: [standing.accepted] };
   await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref,catalog_acceptance) VALUES($1,'XXX','synthetic','sandbox',clock_timestamp(),'synthetic',$2::jsonb)", [f.subscription,JSON.stringify(acceptance)]);
   await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,3,617)", [f.subscription,f.code]);
-  await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,clock_timestamp())", [orderId,f.subscription,JSON.stringify({ templateId: "synthetic", shippingAmountMinor: 0, acquisitionRef: null, renewalTerms: { version: "native.renewal-terms.v1" } })]);
+  const renewalTerms = mixed ? { version: "native.renewal-terms.v1", minimumPayableMinor: 1, normalCadenceDays: [28],
+    shippingTerms: { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 37, freeThresholdMinor: 3000 },
+    starterPack: { schemaVersion: "1", starterIntervalDays: 28, basisTemplateVersion: 1,
+      delivery2: { discountBps: 2500, discountMinor: 51, basisSubtotalMinor: 2437 },
+      graduation: { cadenceDays: 28, lines: [{ sku: f.code, qty: 3, sortOrder: 0, isAddon: false,
+        quoteLine: { unitPriceGross: { amountMinor: 617 }, lineSubtotalGross: { amountMinor: 1851 } } }] } } }
+    : { version: "native.renewal-terms.v1" };
+  if (mixed) {
+    const legacyProduct = randomUUID(), legacySku = randomUUID();
+    await db.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Synthetic legacy')", [legacyProduct,`legacy-${legacyProduct}`]);
+    await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,'LEGACY','Synthetic legacy')", [legacySku,legacyProduct]);
+    await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,2,1,293,'XXX')", [f.subscription,legacySku]);
+    await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,2,'LEGACY',2,293)", [f.subscription]);
+    await db.query("UPDATE public.commerce_orders SET total_amount_minor=2437 WHERE id=$1", [orderId]);
+    await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,2,293,586)", [orderId,legacySku]);
+  }
+  await db.query("INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3::jsonb,clock_timestamp())", [orderId,f.subscription,JSON.stringify({ templateId: "synthetic", shippingAmountMinor: 0, acquisitionRef: null, renewalTerms })]);
+  return { ...f, acceptance };
+}
+
+it("LC6-D-146 mixed first renewal freezes exact legacy terms, charges the retained amount and extends once on late arrival", async () => {
+  const f = await activeCatalogRenewal(true);
+  const now = (await db.query("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).rows[0].value;
+  const codec = createNativeCatalogRenewalCodecV2(value => catalogAcceptedReferenceV2Schema.parse(value));
+  const builder = createPostgresRenewalStore(db,codec,work => work(db));
+  const due = (await builder.listDue(10,now)).find(value => value.subscriptionId === f.subscription)!;
+  const snapshot = await builder.buildCycleSnapshots(due), store = createPostgresRenewalStore(db,codec);
+  const legacy = { lineOrdinal: 2, sku: "LEGACY", quantity: 2, unitAmountMinor: 293 };
+  expect(snapshot).toMatchObject({ frozenRevision: "native.purchase-renewal.v4", catalogAcceptance: f.acceptance, legacyLines: [legacy],
+    pricingSnapshot: { productSubtotalAmountMinor: 2437, discountAmountMinor: 51, shippingAmountMinor: 37, totalAmountMinor: 2423 } });
+  expect(codec.decode(codec.encode(snapshot))).toEqual(snapshot);
+  const forged = { ...codec.encode(snapshot), legacyLines: [{ ...legacy, unitAmountMinor: 294 }] };
+  await db.query("SAVEPOINT forged_mixed");
+  await expect(db.query("SELECT public.subscription_claim_due_renewal($1,$2,$3,'synthetic',300,$4)",
+    [codec.identity(snapshot),snapshot.frozenFingerprint,JSON.stringify(forged),now])).rejects.toMatchObject({ code: "22023", message: "catalog_acceptance_snapshot_mismatch" });
+  await db.query("ROLLBACK TO SAVEPOINT forged_mixed");
+  const claim = await store.claimDue({ snapshot, workerId: "synthetic", now });
+  await db.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
+   inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
+   VALUES('synthetic',$1,20,20,0,'sellable',$3,$3::timestamptz+interval '1 day','fixture','article','fixture'),
+         ('synthetic',$2,20,20,0,'sellable',$3,$3::timestamptz+interval '1 day','fixture','legacy','fixture')`, [f.code,legacy.sku,now]);
+  expect(await createPostgresRenewalReservationPort(db).reserve({ operationId: claim.operationId, claimToken: claim.claimToken, now })).toMatchObject({ reserved: true });
+  const settlement = createPostgresRenewalSettlementPort(db,codec,work => work(db));
+  const prepared = await settlement.prepareRenewal({ operationId: claim.operationId, claimToken: claim.claimToken, now });
+  expect((await db.query("SELECT amount_minor::integer AS amount FROM public.commerce_settlement_intents WHERE id=$1", [prepared.settlementIntentId])).rows).toEqual([{ amount: 2423 }]);
+  const externalAttemptRef = `mixed:${claim.operationId}`, identity = { operationId: claim.operationId, operationFingerprint: claim.operationFingerprint };
+  await settlement.acknowledgeExternalAttempt({ ...identity, externalAttemptRef, acknowledgedAt: now });
+  const completed = await settlement.recordTerminalOutcome({ ...identity, eventKey: externalAttemptRef, outcome: "succeeded", externalRef: externalAttemptRef, occurredAt: now });
+  expect(completed).toMatchObject({ state: "succeeded", cycleSnapshot: { legacyLines: [legacy] } });
+  expect((await db.query("SELECT status,amount_minor::integer AS amount FROM public.commerce_settlement_intents WHERE id=$1", [prepared.settlementIntentId])).rows).toEqual([{ status: "settled", amount: 2423 }]);
+  expect((await db.query("SELECT sku,quantity,unit_amount_minor::integer AS unit FROM public.subscription_renewal_term_lines WHERE subscription_id=$1 AND line_ordinal=2", [f.subscription])).rows)
+    .toEqual([{ sku: legacy.sku, quantity: legacy.quantity, unit: legacy.unitAmountMinor }]);
+
+  const shipment = randomUUID();
+  await db.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+  await db.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('lifecycle:manual','manual',true)");
+  await db.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key) VALUES($1,$2,'lifecycle:manual','manual',$3)", [shipment,prepared.orderId,shipment]);
+  await db.query("INSERT INTO public.commerce_order_holds(order_id,reason,status,idempotency_key) VALUES($1,'fulfillment_exception','active',$2)", [prepared.orderId,`hold:${shipment}`]);
+  const schedule = async () => (await db.query(`SELECT next_cycle_at, (SELECT count(*)::integer FROM public.subscription_cycles WHERE subscription_id=s.id) AS cycles
+    FROM public.subscriptions s WHERE s.id=$1`, [f.subscription])).rows[0];
+  const before = await schedule();
+  const arrival = createPostgresDeliveryAlignmentPort(db);
+  const input = { requestKey: `arrival:${shipment}`, parcelRef: shipment, deliveredAt: now, evidenceRef: `evidence:${shipment}` as const };
+  const deliveredAt = new Date(Date.parse(now) + 3 * 86_400_000).toISOString();
+  const first = await arrival.recordArrival({ ...input, deliveredAt });
+  const expected = new Date(Date.parse(deliveredAt) + 28 * 86_400_000);
+  expect(first).toMatchObject({ disposition: "aligned", nextCycleAt: expected.toISOString() });
+  expect(expected.getTime()).toBeGreaterThan(before.next_cycle_at.getTime());
+  expect(await arrival.recordArrival({ ...input, deliveredAt })).toMatchObject({ replayed: true, nextCycleAt: expected.toISOString() });
+  expect(await arrival.recordArrival({ ...input, requestKey: `${input.requestKey}:earlier` })).toMatchObject({ nextCycleAt: expected.toISOString() });
+  expect(await schedule()).toEqual({ next_cycle_at: expected, cycles: before.cycles });
+});
+
+it("new native freezes persist complete accepted references and replay after reconnect", async () => {
+  const { acceptance, ...f } = await activeCatalogRenewal();
   // Fixture installation commits before the business transaction takes commerce locks.
   await db.query("COMMIT"); db.release(true); db = await pool.connect(); await db.query("BEGIN");
   const now = (await db.query("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS value")).rows[0].value;

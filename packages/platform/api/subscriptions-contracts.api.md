@@ -378,7 +378,7 @@ export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalC
 export type { SubscriptionEditTerms, SubscriptionTermsAdmission, PackageEditMoney, PackageEditLine, PackageEditQuoteLine, PackageEditPricedLine, PackageEditRequest, PackageEditQuote, PackageEditBlockedReason, PackageEditPreview, PackageEditApplyResult } from "./packageEdit.js";
 export type { ExactSubscriptionEditAction, ExactSubscriptionEditRequest, SubscriptionEditRequest, ExactSubscriptionEditPreview, ExactSubscriptionEditApplyResult, ExactSubscriptionEditPricedLine, ExactSubscriptionEditQuote, SubscriptionPortionModes } from "./exactEdit.js";
 export type { SizedParcelLeverKind, SizedEditAction, SizedEditRequest, SizedEditPhase, SizedAgreedLine, SizedEditContext, SizedEditPolicy, SizedPricedLine, SizedEditQuote, SizedEditPreview, SizedEditApplyResult, SizedQuoteLine, SizedRecurringQuote, SizedQuoteRequest } from "./sizedEdit.js";
-export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3 } from "./renewal.js";
+export type { RenewalRetainedTermsV2, RenewalFrozenSnapshotV3, RenewalFrozenSnapshotV4 } from "./renewal.js";
 ```
 ## dist/subscriptions/contracts/messages.d.ts
 
@@ -1139,6 +1139,14 @@ export interface RenewalRetainedTermsV2 extends Omit<RenewalRetainedTerms, "vers
 export interface RenewalFrozenSnapshotV3 extends RenewalFrozenSnapshot {
     frozenRevision: "native.purchase-renewal.v3";
     catalogAcceptance: CatalogAcceptanceV2;
+}
+/** Mixed renewals preserve the exact retained legacy lines alongside governed proof.
+ * @experimental
+ */
+export interface RenewalFrozenSnapshotV4 extends RenewalFrozenSnapshot {
+    frozenRevision: "native.purchase-renewal.v4";
+    catalogAcceptance: CatalogAcceptanceV2;
+    legacyLines: readonly RenewalLine[];
 }
 ```
 ## dist/subscriptions/contracts/sizedEdit.d.ts
