@@ -173,9 +173,13 @@ replay succeeds at any isolation level and performs no write. Installing an
 explicit schedule where none was stored counts as a change, even if it contains
 the default values. An empty shop accepts its first install at `READ COMMITTED`.
 
-The migration owner can run the installer. To delegate installation to a
-non-owner with settings-table read and write permissions, have the function owner
-grant execution to that role. For example, for a role named `schedule_installer`:
+On qualified profiles, run the installer as the declared migration owner.
+Qualified migration status and apply refuse grants to roles outside the
+selected profile with `outside_principal_references_selected_catalog`.
+
+On the legacy profile, the function owner can delegate installation to a role
+with settings-table read and write permissions. For a role named
+`schedule_installer`, grant execution as follows:
 
 ```sql
 GRANT EXECUTE ON FUNCTION public.commerce_install_checkout_recovery_reminder_schedule(text, jsonb),

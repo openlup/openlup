@@ -10,9 +10,13 @@ RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
     WHEN p_event.idempotency_key LIKE 'checkout_recovery:1h:%' THEN 'first'
     WHEN p_event.idempotency_key LIKE 'checkout_recovery:20h:%' THEN 'last'
     WHEN p_event.idempotency_key ~ '^checkout_recovery:[0-9]+h:' THEN 'both'
-    WHEN p_event.payload->>'reminderHours' = '1' THEN 'first'
-    WHEN p_event.payload->>'reminderHours' = '20' THEN 'last'
-    WHEN p_event.payload->>'reminderHours' IS NOT NULL THEN 'both'
+    WHEN pg_input_is_valid(p_event.payload->>'reminderHours', 'numeric') THEN
+      CASE (p_event.payload->>'reminderHours')::numeric
+        WHEN 1 THEN 'first'
+        WHEN 20 THEN 'last'
+        ELSE 'both'
+      END
+    WHEN p_event.payload->'reminderHours' IS NOT NULL THEN 'both'
   END;
 $$;
 

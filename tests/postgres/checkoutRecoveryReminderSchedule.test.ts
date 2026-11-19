@@ -299,6 +299,26 @@ it('CF-R0 (4a): legacy checkout waves consume their stages after a forced first-
   expect((await checkoutEvents(id)).map(row => row.idempotency_key)).toEqual([`checkout_recovery:1h:${id}`, `checkout_recovery:20h:${id}`]);
 });
 
+it('CF-R0: payload-only legacy waves use numeric hours to identify their stages', async () => {
+  const cases = [['20.0', 'last'], ['1.0', 'first'], ['2e1', 'last'], ['2.5', 'both'], ['"unknown"', 'both'], ['null', 'both']] as const;
+  const orders: { id: string; stage: 'first' | 'last' | 'both' }[] = [];
+  for (const [hours, stage] of cases) {
+    const id = await order(3);
+    const { rows } = await db.query(`INSERT INTO public.outbox_events AS wave
+      (aggregate_type,aggregate_id,event_type,idempotency_key,payload)
+      VALUES('commerce_order',$1,'commerce.checkout_recovery',$2,$3::jsonb)
+      RETURNING public.commerce_checkout_recovery_event_stage(wave, false) AS stage`,
+      [id, `legacy_payload:${id}`, `{"reminderHours":${hours}}`]);
+    expect(rows).toEqual([{ stage }]);
+    orders.push({ id, stage });
+  }
+  await enqueue();
+  for (const { id, stage } of orders) {
+    const keys = (await checkoutEvents(id)).map(row => row.idempotency_key);
+    expect(keys).toEqual(stage === 'last' ? [`checkout_recovery:1h:${id}`, `legacy_payload:${id}`] : [`legacy_payload:${id}`]);
+  }
+});
+
 it('CF-R0: an unlabeled nonhistorical wave consumes both stages and link events consume neither', async () => {
   const legacy = await order(22), links = await order(22);
   const fixtures = [
