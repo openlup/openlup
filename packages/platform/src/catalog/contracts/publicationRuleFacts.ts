@@ -2,18 +2,18 @@ import type { CatalogProductTypeRef, CatalogQuantity, CatalogOptionValue } from 
 import type { CatalogAttributeValue } from "./draftV2.js";
 import type { CatalogPublicationFacts } from "./draftV3.js";
 
-/** @internal */
+/** Neutral identifier data supplied to installed rules. @experimental */
 export interface RulesIdentifier {
   scheme: string; issuer: string; value: string; packagingLevel: "unit" | "case"; quantity: number;
   isPrimary: boolean; label: string | null; sourceRef: string | null;
 }
-/** @internal */
+/** Neutral product data supplied to installed rules. @experimental */
 export interface RulesProduct {
   id: string; slug: string; name: string; status: "draft" | "active" | "archived";
   type: CatalogProductTypeRef; axes: string[]; attributes: Record<string, CatalogAttributeValue>;
   primarySkuId: string | null; presentation: CatalogPublicationFacts | null;
 }
-/** @internal */
+/** Neutral SKU data supplied to installed rules. @experimental */
 export interface RulesSku {
   id: string; productId: string; code: string; title: string; status: "draft" | "active" | "archived";
   minQuantity: number; isAddon: boolean; sellableStandalone: boolean; sellableInSubscription: boolean;

@@ -79,5 +79,6 @@ export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, cata
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 
-export { withCatalogPublicationRules } from "./catalogPublicationRules.js";
-export type { CatalogPublicationRulesModule } from "./catalogPublicationRules.js";
+export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
+export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack } from "./catalogPublicationRules.js";
+export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
