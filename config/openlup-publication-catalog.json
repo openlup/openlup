@@ -8342,6 +8342,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/toolSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/validation.ts",
       "class": "public-output"
     },
