@@ -280,7 +280,7 @@ it("LC5-D-016 LC5-D-068 LC5-D-069 LC5-A-033 transfer governed facts, nullable bi
   const captured = await captureStoreJourney(held.owner,"lifecycle-source"), before = await journeyCensus(held.owner);
   expect(await restore(target.owner,captured)).toMatchObject({ replayed: false });
   expect(await journeyCensus(target.owner)).toEqual(before);
-  expect((await target.owner.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [emptyOrder])).rows).toEqual([{ catalog_acceptance: acceptance }]);
+  expect((await target.owner.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [emptyOrder])).rows).toEqual([{ catalog_acceptance: JSON.parse(acceptance) }]);
   expect(await publicationAuthority(target.owner).readbackV3(history.first)).toEqual(page);
   expect(await publicationAuthority(target.owner).readbackV3(history.second)).toMatchObject({ outcome: "page", head: history.second });
   const reader = publicationAuthority(target.owner, true), scope = reader.authorizeReadScope(undefined);
