@@ -11206,6 +11206,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/operations/settingsReadToolSchemas.main.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/operations/watchdogQueue.test.ts",
       "class": "public-output"
     },
