@@ -56,6 +56,30 @@ describe('native receipt transport', () => {
     ]) expect(parseReceipt(body)).toBeNull();
   });
 
+  it('refuses invalid UTF-8 inside compressed JSON', () => {
+    const json = Buffer.concat([Buffer.from('{"version":3,"note":"'), Buffer.from([0xff]), Buffer.from('"}')]);
+    expect(parseReceipt(textBody(gzipSync(json).toString('base64')))).toBeNull();
+  });
+
+  it('refuses a UTF-8 BOM before compressed JSON', () => {
+    const json = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"version":3}')]);
+    expect(parseReceipt(textBody(gzipSync(json).toString('base64')))).toBeNull();
+  });
+
+  it('refuses bytes after the gzip member', () => {
+    const payload = Buffer.concat([gzipSync('{"version":3}'), Buffer.from([0, 1, 2, 3])]);
+    expect(parseReceipt(textBody(payload.toString('base64')))).toBeNull();
+  });
+
+  it.each([
+    ['split JSON', '{"version":', '3}'],
+    ['empty first member', '', '{"version":3}'],
+    ['empty second member', '{"version":3}', ''],
+  ])('refuses concatenated gzip members with %s', (_label, first, second) => {
+    const payload = Buffer.concat([gzipSync(first), gzipSync(second)]);
+    expect(parseReceipt(textBody(payload.toString('base64')))).toBeNull();
+  });
+
   it('refuses a gzip payload that expands beyond 1 MiB', () => {
     const summary = { version: 3, session: { history: 'x'.repeat(1024 * 1024) } };
     expect(parseReceipt(textBody(compress(summary)))).toBeNull();

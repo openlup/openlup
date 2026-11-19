@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, inflateRawSync } from 'node:zlib';
 import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
 import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
@@ -24,6 +24,16 @@ const RECEIPT_LIMIT = 1024 * 1024;
 export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = () => false) {
   return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
+function gzipDeflateOffset(payload) {
+  // gunzip has already validated the member header (RFC 1952 §2.3.1).
+  const flags = payload[3];
+  let offset = 10;
+  if (flags & 0x04) offset += 2 + payload.readUInt16LE(offset); // Extra field
+  if (flags & 0x08) offset = payload.indexOf(0, offset) + 1; // File name
+  if (flags & 0x10) offset = payload.indexOf(0, offset) + 1; // Comment
+  if (flags & 0x02) offset += 2; // Header CRC
+  return offset;
+}
 export function parseReceipt(body) {
   if (typeof body !== 'string' || body.length > RECEIPT_LIMIT) return null;
   if (body.startsWith(`${COMPRESSED_RECEIPT_MARKER}\n`)) {
@@ -32,7 +42,12 @@ export function parseReceipt(body) {
     try {
       const payload = Buffer.from(match[1], 'base64');
       if (payload.toString('base64') !== match[1]) return null;
-      const receipt = JSON.parse(gunzipSync(payload, { maxOutputLength: RECEIPT_LIMIT }).toString('utf8'));
+      const options = { maxOutputLength: RECEIPT_LIMIT };
+      const buffer = gunzipSync(payload, options);
+      // gunzip can ignore trailing bytes or join members. The first deflate stream must end at the final trailer.
+      const deflate = payload.subarray(gzipDeflateOffset(payload), -8);
+      if (inflateRawSync(deflate, { ...options, info: true }).engine.bytesWritten !== deflate.length) return null;
+      const receipt = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer));
       return receipt?.version === 3 ? receipt : null;
     } catch { return null; }
   }
