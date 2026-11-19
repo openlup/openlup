@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import {
   createPostgresMigrationRunner,
@@ -444,5 +445,24 @@ describe("PostgreSQL migration runner", () => {
       .toEqual({ connectionString: "  postgres://localhost/reference  " });
     expect(resolvePostgresMigrationRunnerEnv({})).toEqual({ connectionString: "" });
     expect(resolvePostgresMigrationRunnerEnv({ DATABASE_URL: "" })).toEqual({ connectionString: "" });
+  });
+
+  it("attaches a single non-throwing idle pool error listener on migration pools", async () => {
+    const s = scenario({ rows: expectedRows() });
+    const emitterPool = Object.assign(new EventEmitter(), { connect: s.connect });
+    const seen: Error[] = [];
+    const runner = s.makeRunner({
+      poolFactory: () => emitterPool as unknown as import("pg").Pool,
+      onPoolError: (error) => {
+        seen.push(error);
+        throw new Error("sink boom");
+      },
+    });
+    await runner.status();
+    await runner.status();
+    expect(emitterPool.listenerCount("error")).toBe(1);
+    const idleError = new Error("idle disconnect");
+    expect(() => emitterPool.emit("error", idleError)).not.toThrow();
+    expect(seen).toEqual([idleError]);
   });
 });

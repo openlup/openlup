@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { Pool, type PoolClient } from "pg";
+import { attachPgErrorListener } from "./pgErrorListener.js";
 
 import { ACQUISITION_CASE_CONTRACT_VERSION, acquisitionCaseListResponseSchema, acquisitionCaseProjectionSchema } from "../../acquisitionCaseSchemas.js";
 import type { AcquisitionCaseProjection, AcquisitionCaseFailureKind, AcquisitionCaseListQuery, AcquisitionCaseResult } from "../../contracts/index.js";
@@ -22,7 +23,11 @@ const TRANSITION = `SELECT public.acquisition_case_transition_v1(
 const ACTIVE_COUNT = "SELECT public.acquisition_case_active_count_v1() AS response";
 
 type Env = { connectionString: string };
-type Options = { poolFactory?: (env: Env) => Pool | Promise<Pool> };
+type Options = {
+  poolFactory?: (env: Env) => Pool | Promise<Pool>;
+  /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+  onPoolError?: (error: Error) => void;
+};
 type Row = Record<string, unknown>;
 
 export function createPostgresAcquisitionCasePort(
@@ -31,9 +36,20 @@ export function createPostgresAcquisitionCasePort(
 ): AcquisitionCasePort {
   if (!env.connectionString.trim()) throw new Error("acquisition_case_database_url_required");
   let poolPromise: Promise<Pool> | null = null;
-  const pool = () => poolPromise ??= Promise.resolve(
-    options.poolFactory ? options.poolFactory(env) : new Pool({ connectionString: env.connectionString }),
-  );
+  const pool = () => {
+    if (!poolPromise) {
+      poolPromise = Promise.resolve()
+        .then(() => (options.poolFactory ? options.poolFactory(env) : new Pool({ connectionString: env.connectionString })))
+        .then(
+          (resolved) => attachPgErrorListener(resolved, "acquisition-case", options.onPoolError),
+          (error) => {
+            poolPromise = null;
+            throw error;
+          },
+        );
+    }
+    return poolPromise;
+  };
 
   const call = async (sql: string, values: unknown[]): Promise<unknown> =>
     withRole(await pool(), async (client) => {

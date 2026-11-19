@@ -6,6 +6,7 @@
 
 import type { Pool, PoolClient } from "pg";
 import type { MigrationRunnerPort } from "@openlup/core/platform-runtime";
+import { attachPgErrorListener } from "./pgErrorListener.js";
 
 export interface PostgresMigrationRunnerEnv {
   connectionString: string;
@@ -53,6 +54,8 @@ export interface PostgresMigrationRunnerOptions {
   /** Catalogue root; defaults to process.cwd(). */
   root?: string;
   poolFactory?: (env: PostgresMigrationRunnerEnv) => Pool | Promise<Pool>;
+  /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+  onPoolError?: (error: Error) => void;
 }
 
 const LEDGER = "public.platform_schema_migrations";
@@ -168,7 +171,7 @@ export function createPostgresMigrationRunner(
   async function getPool(): Promise<Pool> {
     if (pool) return pool;
     const factory = options.poolFactory ?? defaultPoolFactory;
-    pool = await factory(env);
+    pool = attachPgErrorListener(await factory(env), "migration-runner", options.onPoolError);
     return pool;
   }
 

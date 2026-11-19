@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -210,5 +211,48 @@ describe("createEnvAdvisoryLock", () => {
 
     expect(connect).toHaveBeenCalledTimes(1);
     expect(end).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches a single non-throwing idle error listener on dedicated EventEmitter clients", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const client = Object.assign(new EventEmitter(), {
+        query: vi.fn().mockResolvedValue({ rows: [{ pid: 42, locked: true, held: true, unlocked: true }] }),
+        end: vi.fn().mockResolvedValue(undefined),
+      });
+      const lock = createEnvAdvisoryLock(
+        { DATABASE_URL: "postgres://secret-user:secret-pass@host/db" },
+        vi.fn().mockResolvedValue(client as unknown as AdvisoryLockQuerier),
+      )!;
+      await lock.tryAcquire("probe");
+      expect(client.listenerCount("error")).toBe(1);
+
+      const idleError = Object.assign(new Error("backend closed"), { code: "57P01" });
+      expect(() => client.emit("error", idleError)).not.toThrow();
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(String(errorSpy.mock.calls[0]?.[0])).not.toContain("secret-pass");
+
+      const seen: Error[] = [];
+      const customClient = Object.assign(new EventEmitter(), {
+        query: vi.fn().mockResolvedValue({ rows: [{ pid: 43, locked: true, held: true, unlocked: true }] }),
+        end: vi.fn().mockResolvedValue(undefined),
+      });
+      const customLock = createEnvAdvisoryLock(
+        { DATABASE_URL: "postgres://host/db" },
+        vi.fn().mockResolvedValue(customClient as unknown as AdvisoryLockQuerier),
+        {
+          onClientError: (error) => {
+            seen.push(error);
+            throw new Error("sink boom");
+          },
+        },
+      )!;
+      await customLock.tryAcquire("probe");
+      expect(customClient.listenerCount("error")).toBe(1);
+      expect(() => customClient.emit("error", idleError)).not.toThrow();
+      expect(seen).toEqual([idleError]);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

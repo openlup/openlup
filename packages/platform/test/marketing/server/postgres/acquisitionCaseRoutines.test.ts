@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
@@ -180,6 +181,27 @@ describe("createPostgresAcquisitionCasePort", () => {
     expect(() => createPostgresAcquisitionCasePort({ connectionString: " " }, { poolFactory }))
       .toThrow("acquisition_case_database_url_required");
     expect(poolFactory).not.toHaveBeenCalled();
+  });
+
+  it("attaches a single non-throwing idle pool error listener", async () => {
+    const stub = stubPool([{ count: 0 }]);
+    const emitterPool = Object.assign(new EventEmitter(), stub.pool);
+    const seen: Error[] = [];
+    const port = createPostgresAcquisitionCasePort(
+      { connectionString: "postgres://local" },
+      {
+        poolFactory: () => emitterPool as unknown as Pool,
+        onPoolError: (error) => {
+          seen.push(error);
+          throw new Error("sink boom");
+        },
+      },
+    );
+    await port.activeCount("public_tester_application");
+    expect(emitterPool.listenerCount("error")).toBe(1);
+    const idleError = new Error("idle disconnect");
+    expect(() => emitterPool.emit("error", idleError)).not.toThrow();
+    expect(seen).toEqual([idleError]);
   });
 });
 

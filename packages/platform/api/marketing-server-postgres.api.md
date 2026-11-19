@@ -560,6 +560,8 @@ type Env = {
 };
 type Options = {
     poolFactory?: (env: Env) => Pool | Promise<Pool>;
+    /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+    onPoolError?: (error: Error) => void;
 };
 export declare function createPostgresAcquisitionCasePort(env: Env, options?: Options): AcquisitionCasePort;
 export {};
@@ -574,6 +576,8 @@ type Env = {
 };
 type Options = {
     poolFactory?: (env: Env) => Pool | Promise<Pool>;
+    /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+    onPoolError?: (error: Error) => void;
 };
 export declare function createPostgresAcquisitionEvidencePort(env: Env, options?: Options): AcquisitionEvidencePort;
 export {};
@@ -596,6 +600,8 @@ type Env = {
 };
 type Options = {
     poolFactory?: (env: Env) => Pool | Promise<Pool>;
+    /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+    onPoolError?: (error: Error) => void;
 };
 export declare function createPostgresPartnerAcquisitionPort(env: Env, options?: Options): PartnerAcquisitionPort;
 export {};

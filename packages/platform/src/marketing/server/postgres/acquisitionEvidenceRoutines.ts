@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from "pg";
+import { attachPgErrorListener } from "./pgErrorListener.js";
 
 import { ACQUISITION_NEWSLETTER_VERSION, ACQUISITION_SURVEY_VERSION, acquisitionNewsletterConsentResponseSchema, acquisitionSurveyListResponseSchema, acquisitionSurveySubmitResponseSchema } from "../../acquisitionEvidenceSchemas.js";
 import type {
@@ -13,15 +14,30 @@ const LIST = "SELECT public.acquisition_survey_operator_list_v1($1::uuid,$2::tex
 const CONSENT = "SELECT public.acquisition_newsletter_consent_v1($1::text,$2::text,$3::text,$4::text,$5::text,$6::boolean,$7::timestamptz,$8::timestamptz) AS response";
 
 type Env = { connectionString: string };
-type Options = { poolFactory?: (env: Env) => Pool | Promise<Pool> };
+type Options = {
+  poolFactory?: (env: Env) => Pool | Promise<Pool>;
+  /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+  onPoolError?: (error: Error) => void;
+};
 type Row = Record<string, unknown>;
 
 export function createPostgresAcquisitionEvidencePort(env: Env, options: Options = {}): AcquisitionEvidencePort {
   if (!env.connectionString.trim()) throw new Error("acquisition_evidence_database_url_required");
   let poolPromise: Promise<Pool> | null = null;
-  const pool = () => poolPromise ??= Promise.resolve(
-    options.poolFactory ? options.poolFactory(env) : new Pool({ connectionString: env.connectionString }),
-  );
+  const pool = () => {
+    if (!poolPromise) {
+      poolPromise = Promise.resolve()
+        .then(() => (options.poolFactory ? options.poolFactory(env) : new Pool({ connectionString: env.connectionString })))
+        .then(
+          (resolved) => attachPgErrorListener(resolved, "acquisition-evidence", options.onPoolError),
+          (error) => {
+            poolPromise = null;
+            throw error;
+          },
+        );
+    }
+    return poolPromise;
+  };
   const call = async (sql: string, values: unknown[]): Promise<Row | null> => withRole(
     await pool(),
     async (client) => object(object((await client.query(sql, values)).rows[0])?.response),

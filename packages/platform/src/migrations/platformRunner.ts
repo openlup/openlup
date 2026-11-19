@@ -19,6 +19,7 @@ import { assertQualifiedPostgresSelection, assertQualifiedPostgresSession, quali
   qualifiedAdminPostgresCatalogPayload, qualifiedAdminPostgresStartupOptions,
   type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "./qualifiedInstall.js";
 import { readPackagedPlatformCatalog } from "./packagedCatalog.js";
+import { attachPgErrorListener } from "./pgErrorListener.js";
 
 const MIGRATION_LOCK_NAME = "openlup:public-platform-migrations:v1";
 
@@ -55,6 +56,8 @@ export interface PlatformPostgresMigrationRunnerOptions {
   /** Root passed to an explicitly supplied catalogue reader; packaged SQL is module-relative. */
   root?: string;
   poolFactory?: PlatformMigrationRunnerOptions["poolFactory"];
+  /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+  onPoolError?: PlatformMigrationRunnerOptions["onPoolError"];
   /** Explicit history selection; installed histories cannot be switched in place. */
   installation: PlatformPostgresInstallation;
   /** Test-only catalog projector seam; production uses the selected generation's canonical payload. */
@@ -87,6 +90,7 @@ export function createPlatformPostgresMigrationRunner(
         ? client => qualifiedPostgresCatalogPayload(client, installation, MIGRATION_LOCK_NAME)
         : client => qualifiedAdminPostgresCatalogPayload(client, installation, MIGRATION_LOCK_NAME)),
     root: options.root,
+    onPoolError: options.onPoolError,
     poolFactory: options.poolFactory ?? (installation.generation !== "legacy" ? async binding => {
       let url: URL;
       try { url = new URL(binding.connectionString); } catch { throw new Error("qualified migrations require a PostgreSQL connection URL"); }
@@ -95,7 +99,7 @@ export function createPlatformPostgresMigrationRunner(
         ? qualifiedPostgresStartupOptions(installation) : qualifiedAdminPostgresStartupOptions(installation));
       const pg = await import("pg");
       const PoolCtor = pg.default?.Pool ?? pg.Pool;
-      return new PoolCtor({ connectionString: url.toString() });
+      return attachPgErrorListener(new PoolCtor({ connectionString: url.toString() }), "platform-migration-runner", options.onPoolError);
     } : undefined),
   });
 }

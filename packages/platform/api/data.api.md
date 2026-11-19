@@ -65,6 +65,8 @@ export interface PostgresDataGatewayEnv {
 export interface PostgresDataGatewayOptions {
     /** Injection seam: tests pass a stub pool; production lazily builds a real pg.Pool from env. */
     poolFactory?: (env: PostgresDataGatewayEnv) => Pool | Promise<Pool>;
+    /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+    onPoolError?: (error: Error) => void;
 }
 /** Convert node-postgres timestamptz text to lossless RFC 3339. */
 export declare function postgresTimestampTzToRfc3339(value: string): string;

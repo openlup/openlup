@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { createPostgresPartnerAcquisitionPort } from "../../../../src/marketing/server/postgres/partnerAcquisitionRoutines.js";
@@ -108,5 +109,26 @@ describe("unchanged partner PostgreSQL adapter", () => {
     const f = fixture([], { text: "SELECT public.", code: "22023" });
     expect(await f.port.submit(command)).toEqual({ ok: false, error: { kind: "invalid" } });
     expect(() => createPostgresPartnerAcquisitionPort({ connectionString: " " })).toThrow("partner_acquisition_database_url_required");
+  });
+
+  it("attaches a single non-throwing idle pool error listener", async () => {
+    const f = fixture([{ cases: [], nextCursor: null }]);
+    const emitterPool = Object.assign(new EventEmitter(), await f.factory({ connectionString: "postgres://local" }));
+    const seen: Error[] = [];
+    const port = createPostgresPartnerAcquisitionPort(
+      { connectionString: "postgres://local" },
+      {
+        poolFactory: () => emitterPool as unknown as Pool,
+        onPoolError: (error) => {
+          seen.push(error);
+          throw new Error("sink boom");
+        },
+      },
+    );
+    await port.list({ actorRef: ACTOR, view: "partner_acquisition_v1", limit: 1 });
+    expect(emitterPool.listenerCount("error")).toBe(1);
+    const idleError = new Error("idle disconnect");
+    expect(() => emitterPool.emit("error", idleError)).not.toThrow();
+    expect(seen).toEqual([idleError]);
   });
 });

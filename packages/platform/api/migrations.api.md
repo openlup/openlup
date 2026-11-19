@@ -31,6 +31,8 @@ export interface PlatformPostgresMigrationRunnerOptions {
     /** Root passed to an explicitly supplied catalogue reader; packaged SQL is module-relative. */
     root?: string;
     poolFactory?: PlatformMigrationRunnerOptions["poolFactory"];
+    /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+    onPoolError?: PlatformMigrationRunnerOptions["onPoolError"];
     /** Explicit history selection; installed histories cannot be switched in place. */
     installation: PlatformPostgresInstallation;
     /** Test-only catalog projector seam; production uses the selected generation's canonical payload. */
@@ -97,6 +99,8 @@ export interface PostgresMigrationRunnerOptions {
     /** Catalogue root; defaults to process.cwd(). */
     root?: string;
     poolFactory?: (env: PostgresMigrationRunnerEnv) => Pool | Promise<Pool>;
+    /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+    onPoolError?: (error: Error) => void;
 }
 export declare function createPostgresMigrationRunner(env: PostgresMigrationRunnerEnv, options: PostgresMigrationRunnerOptions): MigrationRunnerPort;
 export declare function resolvePostgresMigrationRunnerEnv(env: Record<string, string | undefined>): PostgresMigrationRunnerEnv;

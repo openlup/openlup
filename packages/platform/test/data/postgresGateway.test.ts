@@ -1,4 +1,5 @@
 import { TypeOverrides } from "pg";
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -179,5 +180,46 @@ describe("createPostgresDataGateway", () => {
       "postgres://x",
     );
     expect(resolvePostgresDataGatewayEnv({}).connectionString).toBe("");
+  });
+
+  it("attaches a single non-throwing idle error listener on EventEmitter pools for both gateway and role-free lane", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { pool } = stubPool();
+      const emitterPool = Object.assign(new EventEmitter(), pool);
+      const gw = createPostgresDataGateway(
+        { connectionString: "postgres://secret-user:secret-pass@host/db" },
+        { poolFactory: () => emitterPool as unknown as typeof pool },
+      );
+      await gw.asService(async () => null);
+      await gw.asService(async () => null);
+      expect(emitterPool.listenerCount("error")).toBe(1);
+
+      const idleError = Object.assign(new Error("connection terminated unexpectedly"), { code: "57P01" });
+      expect(() => emitterPool.emit("error", idleError)).not.toThrow();
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(String(errorSpy.mock.calls[0]?.[0])).toContain("57P01");
+      expect(String(errorSpy.mock.calls[0]?.[0])).not.toContain("secret-pass");
+
+      const seen: Error[] = [];
+      const { pool: lanePool } = stubPool();
+      const laneEmitter = Object.assign(new EventEmitter(), lanePool);
+      const lane = createPostgresRoleFreeTransactionLane(
+        { connectionString: "postgres://host/db" },
+        {
+          poolFactory: () => laneEmitter as unknown as typeof lanePool,
+          onPoolError: (error) => {
+            seen.push(error);
+            throw new Error("callback boom");
+          },
+        },
+      );
+      await lane.run(async () => null);
+      expect(laneEmitter.listenerCount("error")).toBe(1);
+      expect(() => laneEmitter.emit("error", idleError)).not.toThrow();
+      expect(seen).toEqual([idleError]);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

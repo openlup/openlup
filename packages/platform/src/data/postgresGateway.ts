@@ -3,6 +3,7 @@
 // BEGIN/COMMIT|ROLLBACK/release lifecycle, so claims never leak between calls.
 import type { Pool, PoolClient } from "pg";
 import type { DataGatewayPort } from "@openlup/core/platform-runtime";
+import { attachPgErrorListener } from "./pgErrorListener.js";
 import { PgGatewayClient } from "./queryBuilder.js";
 
 type ActorClaims = { sub?: string; role?: string } | null;
@@ -15,6 +16,8 @@ export interface PostgresDataGatewayEnv {
 export interface PostgresDataGatewayOptions {
   /** Injection seam: tests pass a stub pool; production lazily builds a real pg.Pool from env. */
   poolFactory?: (env: PostgresDataGatewayEnv) => Pool | Promise<Pool>;
+  /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+  onPoolError?: (error: Error) => void;
 }
 /** Convert node-postgres timestamptz text to lossless RFC 3339. */
 export function postgresTimestampTzToRfc3339(value: string): string {
@@ -114,7 +117,15 @@ function createPooledPostgresTransactions(
     // rather than racing to build two. Promise.resolve normalizes the factory's Pool | Promise<Pool>.
     if (!poolPromise) {
       const factory = options.poolFactory ?? defaultPoolFactory;
-      poolPromise = Promise.resolve(factory(env));
+      poolPromise = Promise.resolve()
+        .then(() => factory(env))
+        .then(
+          (pool) => attachPgErrorListener(pool, "postgres-gateway", options.onPoolError),
+          (error) => {
+            poolPromise = null;
+            throw error;
+          },
+        );
     }
     return poolPromise;
   }

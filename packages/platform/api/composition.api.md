@@ -998,7 +998,11 @@ export declare function createPgAdvisoryLock(client: AdvisoryLockQuerier, closeC
  * must never open one. `pg` stays out of the static import graph (dynamic import), so the default
  * hosted path and typecheck are untouched.
  */
-export declare function createEnvAdvisoryLock(env: Record<string, string | undefined>, connect?: (connectionString: string) => Promise<AdvisoryLockQuerier>): AdvisoryLock | null;
+export interface EnvAdvisoryLockOptions {
+    /** Optional sink for dedicated pg.Client `'error'` events; defaults to a non-throwing stderr logger. */
+    onClientError?: (error: Error) => void;
+}
+export declare function createEnvAdvisoryLock(env: Record<string, string | undefined>, connect?: (connectionString: string) => Promise<AdvisoryLockQuerier>, options?: EnvAdvisoryLockOptions): AdvisoryLock | null;
 /** Lock that always grants (single-instance / tests). Never use in multi-instance Node deploys. */
 export declare function createNoopAdvisoryLock(): AdvisoryLock;
 ```
@@ -1062,7 +1066,7 @@ export declare function createScheduledJobHttpEntry(job: ScheduledJob, options: 
 
 ```ts
 export { jobIdFromPath, jobRegistryFromConfig, loadJobRegistry, type PlatformRuntimeConfig, type ScheduledJobDeclaration, } from "./jobRegistry.js";
-export { advisoryLockKey, createEnvAdvisoryLock, createNoopAdvisoryLock, createPgAdvisoryLock, type AdvisoryLock, type AdvisoryLockQuerier, } from "./advisoryLock.js";
+export { advisoryLockKey, createEnvAdvisoryLock, createNoopAdvisoryLock, createPgAdvisoryLock, type AdvisoryLock, type AdvisoryLockQuerier, type EnvAdvisoryLockOptions, } from "./advisoryLock.js";
 export { createNodeScheduler, withAdvisoryLock, type CreateNodeSchedulerOptions, type CronScheduler, type NodeSchedulerAdapter, } from "./nodeScheduler.js";
 export { bearerToken, createVercelScheduler, verifyCronAuth, type VercelSchedulerAdapter, } from "./vercelScheduler.js";
 export { authorizeCron, type CronAuthDenied } from "./cronGuard.js";
