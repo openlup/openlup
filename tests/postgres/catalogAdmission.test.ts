@@ -493,12 +493,23 @@ const memberReadFailures = [
     readerCode: "catalog_authority_unavailable",candidateMessage: "synthetic membership store unavailable" },
 ] as const;
 
-function removeLiveRoleCheck() {
+function removeLiveSiblingCheck(kind: "role" | "identifier") {
   return hook(verifiedHeadsSignature,"DECLARE product_id uuid;","",body => {
-    const predicate = "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'";
+    const predicate = kind === "role" ? "OR to_jsonb(sk.is_addon) IS DISTINCT FROM sk.publication_facts->'isAddon'"
+      : "OR NOT public.catalog_admission_identifiers_match(sk.id,sk.publication_facts->'identifiers')";
     expect(body.split(predicate)).toHaveLength(2);
     return body.replace(predicate,"");
   });
+}
+
+async function driftSibling(db: SubscriptionQueryExecutor, f: Fixture, kind: "role" | "identifier") {
+  if (kind === "role") {
+    await db.query("UPDATE public.catalog_skus SET is_addon=true WHERE id=$1", [f.sibling]);
+    return () => db.query("UPDATE public.catalog_skus SET is_addon=false WHERE id=$1", [f.sibling]);
+  }
+  const changed = await db.query("UPDATE public.catalog_sku_identifiers SET is_primary=false WHERE catalog_sku_id=$1 AND is_primary RETURNING id", [f.sibling]);
+  expect(changed.rows).toHaveLength(1);
+  return () => db.query("UPDATE public.catalog_sku_identifiers SET is_primary=true WHERE id=$1", [changed.rows[0].id]);
 }
 
 async function observeMembershipSnapshot<T>(f: Fixture,read: () => Promise<T>,control: boolean): Promise<T> {
@@ -585,13 +596,15 @@ it.for([
     finally { await restore(); }
   }
   if (mode === "subscription") {
-    await pool.query("UPDATE public.catalog_skus SET is_addon=true WHERE id=$1", [f.sibling]);
-    try {
-      await expect(read.listQuoteCatalogItems()).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
-      const restore = await removeLiveRoleCheck();
-      try { await expect(read.listQuoteCatalogItems()).resolves.toHaveLength(1); }
-      finally { await restore(); }
-    } finally { await pool.query("UPDATE public.catalog_skus SET is_addon=false WHERE id=$1", [f.sibling]); }
+    for (const kind of ["role","identifier"] as const) {
+      const restoreDrift = await driftSibling(pool,f,kind);
+      try {
+        await expect(read.listQuoteCatalogItems()).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
+        const restoreCheck = await removeLiveSiblingCheck(kind);
+        try { await expect(read.listQuoteCatalogItems()).resolves.toHaveLength(1); }
+        finally { await restoreCheck(); }
+      } finally { await restoreDrift(); }
+    }
   }
   if (mode === "subscription") {
     for (const failure of memberReadFailures.filter(row => "predicate" in row)) {
@@ -2364,13 +2377,15 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
           const result = await observeMembershipSnapshot(f,() => editor.candidates(actor,f.subscription),action.endsWith("control"));
           expect(result.catalog.map(fact => fact.variantId).sort()).toEqual([f.sku,variantId].sort());
         } else if (action === "candidate sibling drift") {
-          await setup.query("UPDATE public.catalog_skus SET is_addon=true WHERE id=$1", [f.sibling]);
-          try {
-            await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "55000",message: "catalog_propagation_head_unreadable" });
-            const restore = await removeLiveRoleCheck();
-            try { expect((await editor.candidates(actor,f.subscription)).catalog.map(fact => fact.variantId).sort()).toEqual([f.sku,variantId].sort()); }
-            finally { await restore(); }
-          } finally { await setup.query("UPDATE public.catalog_skus SET is_addon=false WHERE id=$1", [f.sibling]); }
+          for (const kind of ["role","identifier"] as const) {
+            const restoreDrift = await driftSibling(setup,f,kind);
+            try {
+              await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "55000",message: "catalog_propagation_head_unreadable" });
+              const restoreCheck = await removeLiveSiblingCheck(kind);
+              try { expect((await editor.candidates(actor,f.subscription)).catalog.map(fact => fact.variantId).sort()).toEqual([f.sku,variantId].sort()); }
+              finally { await restoreCheck(); }
+            } finally { await restoreDrift(); }
+          }
         } else if (action === "candidate document drift" || action === "candidate parent drift" || action === "candidate measure drift") {
           await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
           await expect(editor.preview(actor,{ subscriptionId: f.subscription,action: "resize_bundle",cadenceDays: 28,compositionConstraint: constraint,
