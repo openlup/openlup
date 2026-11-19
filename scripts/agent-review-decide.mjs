@@ -358,7 +358,7 @@ export function receiptSummary(session, pr, now) {
   }
   return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: session.candidate.integration ? 'behavior' : legacyClassifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: reviewExpiry(session), sessionDigest: digest(session) };
 }
-const displayCell = value => String(value).slice(0, 80).replace(/[^a-zA-Z0-9._-]/gu, '?');
+const displayCell = value => String(value).slice(0, 80).replace(/[^a-zA-Z0-9.:_-]/gu, '?');
 function receiptDisplay(summary) {
   const { floor, reports, scope } = coverageRequirement(summary.session);
   const rows = reports.map(report => {
