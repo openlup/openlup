@@ -5225,7 +5225,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261123190000_catalog_admission";
     readonly catalogPath: "db/platform/migrations/20261123190000_catalog_admission.sql";
     readonly position: 153;
-    readonly sha256: "bcf4050cd5ec9b6c05576d1fcec12a8ac83607e272314f0fcd3b23b66a98c40b";
+    readonly sha256: "4125b973768dfa433f8de68d23ffc4633da8b1889b7bf3c94943915a04139d15";
     readonly url: URL;
 }];
 ```
@@ -7199,7 +7199,7 @@ export interface CreateQuoteResponse {
 ## dist/pricing/dbBackedCommerceQuoteHelpers.d.ts
 
 ```ts
-import type { CreateQuoteRequest } from "./contracts/quote.js";
+import type { CreateQuoteRequest, CreateQuoteResponse } from "./contracts/quote.js";
 import type { CommerceMoney, CommerceQuotePricingComponent } from "./contracts/index.js";
 import type { PricingComponent } from "@openlup/core/pricing";
 import { type CommercePriceAuthorityPort } from "./ports.js";
@@ -7230,6 +7230,12 @@ export interface StrictQuotePriceResolution {
         policyDigest: string;
     };
 }
+type OwnerQuoteLine = CreateQuoteResponse["quote"]["lines"][number];
+export declare function retainSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): void;
+/** Checks that the current line and its money still match the strict quote owner's result.
+ * @experimental
+ */
+export declare function isAuthoritativeSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): boolean;
 /**
  * Strict authority quotes require one exact one-time base anchor. Subscription money is either
  * derived by a validated policy or taken from the authority's explicit legacy
@@ -7277,6 +7283,7 @@ export declare function mapPricingComponent(component: PricingComponent, scope: 
  */
 export declare function moneyIn(currency: string): (amountMinor: number) => CommerceMoney;
 export declare function sum(values: number[]): number;
+export {};
 ```
 ## dist/pricing/dbBackedCommerceQuotePort.d.ts
 
@@ -7391,6 +7398,7 @@ export type { CommerceQuoteCatalogItem, CommerceQuoteCatalogReadPort, CommerceQu
 export { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
 export { buildSkuIndex, eligibleQtyForMode, resolveOneTimeComparison, resolveStrictQuotePrice, assertSubscriptionCheapest, toGrossMinor, calculateIncludedVat, mapPricingComponent, moneyIn, sum } from "./dbBackedCommerceQuoteHelpers.js";
 export type { SkuIndexEntry, StrictQuotePriceResolution } from "./dbBackedCommerceQuoteHelpers.js";
+export { isAuthoritativeSubscriptionPolicyQuoteLine } from "./dbBackedCommerceQuoteHelpers.js";
 export { createDbBackedCommerceQuotePort } from "./dbBackedCommerceQuotePort.js";
 export type { DbBackedCommerceQuotePortDeps, QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
 export { createExpectedQuote } from "./commerceQuoteSnapshotExpect.js";

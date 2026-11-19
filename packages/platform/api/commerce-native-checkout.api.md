@@ -1964,7 +1964,7 @@ export interface CreateQuoteResponse {
 ## dist/pricing/dbBackedCommerceQuoteHelpers.d.ts
 
 ```ts
-import type { CreateQuoteRequest } from "./contracts/quote.js";
+import type { CreateQuoteRequest, CreateQuoteResponse } from "./contracts/quote.js";
 import type { CommerceMoney, CommerceQuotePricingComponent } from "./contracts/index.js";
 import type { PricingComponent } from "@openlup/core/pricing";
 import { type CommercePriceAuthorityPort } from "./ports.js";
@@ -1995,6 +1995,12 @@ export interface StrictQuotePriceResolution {
         policyDigest: string;
     };
 }
+type OwnerQuoteLine = CreateQuoteResponse["quote"]["lines"][number];
+export declare function retainSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): void;
+/** Checks that the current line and its money still match the strict quote owner's result.
+ * @experimental
+ */
+export declare function isAuthoritativeSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): boolean;
 /**
  * Strict authority quotes require one exact one-time base anchor. Subscription money is either
  * derived by a validated policy or taken from the authority's explicit legacy
@@ -2042,6 +2048,7 @@ export declare function mapPricingComponent(component: PricingComponent, scope: 
  */
 export declare function moneyIn(currency: string): (amountMinor: number) => CommerceMoney;
 export declare function sum(values: number[]): number;
+export {};
 ```
 ## dist/pricing/dbBackedCommerceQuotePort.d.ts
 
@@ -2156,6 +2163,7 @@ export type { CommerceQuoteCatalogItem, CommerceQuoteCatalogReadPort, CommerceQu
 export { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
 export { buildSkuIndex, eligibleQtyForMode, resolveOneTimeComparison, resolveStrictQuotePrice, assertSubscriptionCheapest, toGrossMinor, calculateIncludedVat, mapPricingComponent, moneyIn, sum } from "./dbBackedCommerceQuoteHelpers.js";
 export type { SkuIndexEntry, StrictQuotePriceResolution } from "./dbBackedCommerceQuoteHelpers.js";
+export { isAuthoritativeSubscriptionPolicyQuoteLine } from "./dbBackedCommerceQuoteHelpers.js";
 export { createDbBackedCommerceQuotePort } from "./dbBackedCommerceQuotePort.js";
 export type { DbBackedCommerceQuotePortDeps, QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
 export { createExpectedQuote } from "./commerceQuoteSnapshotExpect.js";

@@ -23,6 +23,7 @@ export { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
 
 export { buildSkuIndex, eligibleQtyForMode, resolveOneTimeComparison, resolveStrictQuotePrice, assertSubscriptionCheapest, toGrossMinor, calculateIncludedVat, mapPricingComponent, moneyIn, sum } from "./dbBackedCommerceQuoteHelpers.js";
 export type { SkuIndexEntry, StrictQuotePriceResolution } from "./dbBackedCommerceQuoteHelpers.js";
+export { isAuthoritativeSubscriptionPolicyQuoteLine } from "./dbBackedCommerceQuoteHelpers.js";
 export { createDbBackedCommerceQuotePort } from "./dbBackedCommerceQuotePort.js";
 export type { DbBackedCommerceQuotePortDeps, QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
 export { createExpectedQuote } from "./commerceQuoteSnapshotExpect.js";

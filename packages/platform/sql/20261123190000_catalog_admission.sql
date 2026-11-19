@@ -362,7 +362,7 @@ BEGIN
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(prices) p
    WHERE NOT coalesce(pg_input_is_valid(p->>'priceListId','uuid'),false)
       OR NOT coalesce(pg_input_is_valid(p->>'entryId','uuid'),false) OR jsonb_typeof(p->'entry') IS DISTINCT FROM 'object'
-      OR (p ? 'policy' AND (p_purpose<>'account' OR p_mode<>'subscription' OR p_offer_evidence->>'lane'='legacy'
+      OR (p ? 'policy' AND (p_mode<>'subscription' OR p_offer_evidence->>'lane'='legacy'
        OR jsonb_typeof(p->'policy') IS DISTINCT FROM 'object' OR (p->'policy')-ARRAY['revisionId','digest']<>'{}'::jsonb
        OR NOT coalesce(pg_input_is_valid(p#>>'{policy,revisionId}','uuid'),false)
        OR NOT coalesce(p#>>'{policy,digest}' ~ '^[0-9a-f]{64}$',false))))
@@ -640,7 +640,7 @@ BEGIN
   SELECT * INTO price FROM public.price_entries WHERE id=CASE WHEN pg_input_is_valid(price_id,'uuid') THEN price_id::uuid END AND variant_id=sku_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_admission_price_context_required' USING ERRCODE='22023'; END IF;
   price_context:=jsonb_build_object('skuId',price.variant_id,'priceListId',price.price_list_id,'entryId',price.id,'entry',to_jsonb(price));
-  IF requested->>'version'='catalog_facts_v2' AND p_purpose='account' THEN
+  IF requested->>'version'='catalog_facts_v2' THEN
    price_context:=price_context||jsonb_build_object('policy',jsonb_build_object(
     'revisionId',requested->'policyRevisionId','digest',requested->'policyDigest'));
   END IF;
@@ -837,6 +837,48 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_validate_proof(jsonb) FROM PUBLIC;
 
+-- The strict quote owner supplies the price. Native acceptance checks its exact
+-- witness and effective rows, including the policy rounding interval, without
+-- selecting a different amount to put on an order.
+CREATE FUNCTION public.catalog_admission_policy_draft_price(p_line jsonb,p_evidence jsonb,p_region text,p_currency text)
+RETURNS public.price_entries LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE observed jsonb; base public.price_entries; policy public.subscription_price_policy_revisions; selected_list uuid;
+ quoted numeric; discounted numeric;
+BEGIN
+ observed:=p_line->'catalogFacts';
+ IF observed->>'version' IS DISTINCT FROM 'catalog_facts_v2' OR observed->>'mode' IS DISTINCT FROM 'subscription'
+  OR observed->>'currency' IS DISTINCT FROM p_currency OR p_region IS NULL THEN RETURN NULL; END IF;
+ SELECT min(id::text)::uuid INTO selected_list FROM public.price_lists l
+ WHERE l.region_code=p_region AND l.currency=p_currency AND l.status='active'
+  AND l.valid_from<=statement_timestamp() AND (l.valid_to IS NULL OR l.valid_to>statement_timestamp()) HAVING count(*)=1;
+ SELECT p.* INTO base FROM public.price_entries p JOIN public.catalog_skus sk ON sk.id=p.variant_id
+ JOIN public.catalog_products product ON product.id=sk.product_id AND product.status='active'
+ WHERE p.id::text=observed->>'basePriceEntryId' AND p.variant_id::text=observed->>'skuId' AND p.price_list_id=selected_list
+  AND sk.sku=p_line->>'sku' AND sk.status='active' AND sk.sellable_in_subscription AND (p_line->>'quantity')::integer>=sk.min_order_qty
+  AND p.active AND p.amount_kind='gross' AND p.mode='one_time' AND p.min_qty=1
+  AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp())
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements(p_evidence->'priceContextVersions') c
+   WHERE c->>'entryId'=p.id::text AND c->>'skuId'=sk.id::text AND c#>>'{policy,revisionId}'=observed->>'policyRevisionId');
+ IF NOT FOUND OR (SELECT count(*) FROM public.price_entries p WHERE p.variant_id=base.variant_id AND p.price_list_id=base.price_list_id
+  AND p.active AND p.mode='one_time' AND p.min_qty=1 AND p.valid_from<=statement_timestamp() AND (p.valid_to IS NULL OR p.valid_to>statement_timestamp()))<>1 THEN RETURN NULL; END IF;
+ SELECT r.* INTO policy FROM public.subscription_price_policy_revisions r
+  WHERE r.id::text=observed->>'policyRevisionId' AND r.price_list_id=selected_list AND r.channel='D2C'
+   AND r.region_code=p_region AND r.currency=p_currency AND r.rounding_rule='FLOOR_TO_QUANTUM'
+   AND r.effective_from<=statement_timestamp() AND (r.effective_to IS NULL OR r.effective_to>statement_timestamp());
+ IF NOT FOUND OR (SELECT count(*) FROM public.subscription_price_policy_revisions r WHERE r.price_list_id=selected_list AND r.channel='D2C'
+   AND r.region_code=p_region AND r.currency=p_currency AND r.effective_from<=statement_timestamp() AND (r.effective_to IS NULL OR r.effective_to>statement_timestamp()))<>1 THEN RETURN NULL; END IF;
+ quoted:=(p_line#>>'{unitPriceGross,amountMinor}')::numeric;
+ discounted:=base.unit_price_minor::numeric*(10000-policy.discount_bps);
+ IF observed->'baseUnitAmountMinor' IS DISTINCT FROM to_jsonb(base.unit_price_minor)
+  OR observed->'resolvedUnitAmountMinor' IS DISTINCT FROM p_line#>'{unitPriceGross,amountMinor}'
+  OR observed->'resolvedLineAmountMinor' IS DISTINCT FROM p_line#>'{lineSubtotalGross,amountMinor}'
+  OR mod(quoted,policy.rounding_quantum_minor)<>0 OR quoted*10000>discounted
+  OR (quoted+policy.rounding_quantum_minor)*10000<=discounted THEN RETURN NULL; END IF;
+ RETURN base;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_policy_draft_price(jsonb,jsonb,text,text) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION public.commerce_create_order_draft_with_outbox(
   p_idempotency_key text,
   p_quote_snapshot jsonb,
@@ -849,6 +891,7 @@ SET search_path = pg_catalog
 AS $$
 DECLARE
   v_catalog_evidence jsonb; v_catalog_acceptance jsonb; v_catalog_price_entry uuid; v_public_quote jsonb;
+  v_policy_region text; v_policy_price public.price_entries;
   v_existing public.commerce_order_draft_receipts%ROWTYPE;
   v_fingerprint text;
   v_order_id uuid;
@@ -913,6 +956,10 @@ BEGIN
   v_catalog_acceptance:=public.catalog_admission_accept(p_order_draft_snapshot->'lines',v_catalog_evidence,
     v_mode,jsonb_build_object('quoteSnapshot',p_quote_snapshot,'currency',p_order_draft_snapshot->>'currency'),'order');
   v_mode := COALESCE(v_mode, 'one_time');
+  IF v_catalog_acceptance IS NOT NULL AND v_mode='subscription' AND current_user=(SELECT pg_get_userbyid(proowner) FROM pg_proc
+     WHERE oid='public.catalog_admission_create_policy_draft(text,jsonb,jsonb,uuid,text)'::regprocedure) THEN
+   v_policy_region:=v_catalog_evidence->>'policyOwnerRegion';
+  END IF;
   IF v_mode NOT IN ('one_time', 'subscription') THEN
     RAISE EXCEPTION 'commerce_order_draft_invalid_mode' USING ERRCODE = '22023';
   END IF;
@@ -935,6 +982,12 @@ BEGIN
       RAISE EXCEPTION 'commerce_order_draft_invalid_line' USING ERRCODE = '22023';
     END IF;
 
+    IF v_catalog_acceptance IS NOT NULL AND v_line#>>'{catalogFacts,version}'='catalog_facts_v2' THEN
+      IF v_policy_region IS NULL THEN RAISE EXCEPTION 'catalog_admission_quote_authority_required' USING ERRCODE='22023'; END IF;
+      v_policy_price:=public.catalog_admission_policy_draft_price(v_line,v_catalog_evidence,v_policy_region,v_currency);
+      IF v_policy_price.id IS NULL THEN RAISE EXCEPTION 'commerce_order_draft_catalog_price_changed' USING ERRCODE='22023'; END IF;
+      v_sku_id:=v_policy_price.variant_id; v_catalog_price_entry:=v_policy_price.id;
+    ELSE
     SELECT sku.id, price.unit_price_minor, price.id
       INTO v_sku_id, v_expected_price, v_catalog_price_entry
       FROM public.catalog_skus AS sku
@@ -963,6 +1016,7 @@ BEGIN
      LIMIT 1;
     IF NOT FOUND OR v_expected_price <> v_unit_price THEN
       RAISE EXCEPTION 'commerce_order_draft_catalog_price_changed' USING ERRCODE = '22023';
+    END IF;
     END IF;
     IF v_catalog_evidence IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(v_catalog_evidence->'skuRevisions') c
       WHERE c#>>'{reference,skuId}'=v_sku_id::text)
@@ -1265,6 +1319,20 @@ END;
 $$;
 
 -- Preview and apply derive the same admission lane from the owned offer.
+-- This bridge passes its host scope through private admission evidence. The
+-- raw writer authenticates the bridge owner before using that scope.
+CREATE FUNCTION public.catalog_admission_create_policy_draft(p_key text,p_quote jsonb,p_draft jsonb,p_client uuid,p_region text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ IF p_region IS NULL OR p_region !~ '^[A-Z]{2}$' OR jsonb_typeof(p_quote->'catalogAdmission') IS DISTINCT FROM 'object'
+ THEN RAISE EXCEPTION 'catalog_admission_quote_authority_required' USING ERRCODE='22023'; END IF;
+ RETURN public.commerce_create_promoted_order_draft_with_outbox(p_key,
+  jsonb_set(p_quote,'{catalogAdmission,policyOwnerRegion}',to_jsonb(p_region)),p_draft,p_client);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_create_policy_draft(text,jsonb,jsonb,uuid,text) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_create_policy_draft(text,jsonb,jsonb,uuid,text) TO service_role'; END IF; END; $$;
+
 CREATE FUNCTION public.catalog_admission_edit_lane(p_action text,p_binding text,p_opt_in boolean)
 RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$
  SELECT CASE WHEN p_action='update_package_template' THEN 'classic'

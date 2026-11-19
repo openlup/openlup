@@ -1,5 +1,5 @@
 import type { CommercePriceAuthorityResult } from "./contracts/authority.js";
-import type { CreateQuoteRequest } from "./contracts/quote.js";
+import type { CreateQuoteRequest, CreateQuoteResponse } from "./contracts/quote.js";
 import type {
   CommerceMoney,
   CommerceQuotePricingComponent,
@@ -65,6 +65,25 @@ export interface StrictQuotePriceResolution {
     policyRevisionId: string;
     policyDigest: string;
   };
+}
+
+const policyQuoteLines = new WeakMap<object, string>();
+type OwnerQuoteLine = CreateQuoteResponse["quote"]["lines"][number];
+
+function policyQuoteMoney(line: OwnerQuoteLine): string {
+  return JSON.stringify([line.sku, line.quantity, line.unitPriceGross, line.lineSubtotalGross, line.catalogFacts]);
+}
+
+export function retainSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): void {
+  if (line.catalogFacts?.version === "catalog_facts_v2") policyQuoteLines.set(line.catalogFacts, policyQuoteMoney(line));
+}
+
+/** Checks that the current line and its money still match the strict quote owner's result.
+ * @experimental
+ */
+export function isAuthoritativeSubscriptionPolicyQuoteLine(line: OwnerQuoteLine): boolean {
+  const facts = line.catalogFacts;
+  return facts?.version === "catalog_facts_v2" && policyQuoteLines.get(facts) === policyQuoteMoney(line);
 }
 
 /**

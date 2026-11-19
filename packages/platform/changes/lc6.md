@@ -44,6 +44,10 @@ Governed edit previews return a token for their recorded evidence. Repeating a
 preview records a separate token, including when the quoted totals stay equal.
 The publisher retains its nonblocking busy refusal.
 
+The acquisition wrapper can accept policy-derived subscription money from the
+strict quote owner. Native acceptance verifies the exact effective base and
+policy evidence. Existing raw draft signatures and rows remain compatible.
+
 The order entrypoints keep their signatures and legacy results. A purchased
 product or SKU with native version 3 publication data requires lineage. Accepted
 subscription drafts freeze the configured offer and proof. Captured-payment

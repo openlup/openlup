@@ -8,7 +8,7 @@ import { COMMERCE_CONTRACT_VERSION, PROMOTION_ENGINE_V2 } from "./contracts/inde
 import { CommerceQuoteError, type CreateQuoteOptions } from "./quotePorts.js";
 import { splitIncludedVat } from "./quoteSchemas.js";
 import type { CommercePriceAuthorityPort } from "./ports.js";
-import { assertSubscriptionCheapest, buildSkuIndex, calculateIncludedVat, eligibleQtyForMode, mapPricingComponent, moneyIn, resolveOneTimeComparison, resolveStrictQuotePrice, sum, toGrossMinor } from "./dbBackedCommerceQuoteHelpers.js";
+import { assertSubscriptionCheapest, buildSkuIndex, calculateIncludedVat, eligibleQtyForMode, mapPricingComponent, moneyIn, resolveOneTimeComparison, resolveStrictQuotePrice, retainSubscriptionPolicyQuoteLine, sum, toGrossMinor } from "./dbBackedCommerceQuoteHelpers.js";
 import { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
 import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
 import { catalogFactsForQuoteLine, projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
@@ -176,6 +176,7 @@ export function createDbBackedCommerceQuotePort<
         };
       }));
       const lines: CommerceQuoteLine[] = pricedLines.map((entry) => entry.line);
+      lines.forEach(retainSubscriptionPolicyQuoteLine);
       const quoteComponents: CommerceQuotePricingComponent[] = pricedLines.flatMap((entry) => entry.pricingComponents);
       const context = quoteContext(request, pricedLines);
       const subtotalGrossMinor = sum(lines.map((line) => line.lineSubtotalGross.amountMinor));

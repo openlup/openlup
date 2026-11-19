@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { PromotionRow } from "@openlup/core/promo";
 import { selectAcquisitionTerms, assertAcquisitionTermsCapability, AcquisitionTermsError, resolvedAcquisitionTermsSchema,
-  createCommerceQuoteSchemas, COMMERCE_CONTRACT_VERSION, OFFER_POLICY_V2, type CreateQuoteResponse,
+  createCommerceQuoteSchemas, COMMERCE_CONTRACT_VERSION, OFFER_POLICY_V2, isAuthoritativeSubscriptionPolicyQuoteLine, type CreateQuoteResponse,
   type AcquisitionFinancialPolicy, type CommerceQuoteDiscount } from "../../../pricing/index.js";
 import { createPostgresQuoteCustomerEligibility } from "../../../promotions/index.js";
 import { commerceIdempotencyKeySchema } from "../../contractPrimitives.js";
@@ -69,8 +69,12 @@ export function createPostgresNativeCheckoutPersistence(
 ): {
   createOrderDraft(request: NativeCheckoutDraftRequest, options?: NativeCheckoutAdmissionIdentity): Promise<NativeCheckoutDraftResponse>;
 } {
+  return nativeCheckoutPersistence(executor);
+}
+
+function nativeCheckoutPersistence(executor: NativeCheckoutQuery, policyRegion?: string) {
   return {
-    async createOrderDraft(request, options) {
+    async createOrderDraft(request: NativeCheckoutDraftRequest, options?: NativeCheckoutAdmissionIdentity): Promise<NativeCheckoutDraftResponse> {
       const input = requestSchema.parse(request);
       const clientId = clientIdSchema.parse(options?.clientId ?? null);
       const { quote } = input.quoteSnapshot;
@@ -98,9 +102,11 @@ export function createPostgresNativeCheckoutPersistence(
       try {
         // Serialize JSON explicitly: pg treats an unencoded JS array as a
         // PostgreSQL array, not JSON. No gateway or driver coercion is assumed.
-        const result = await executor.query(`SELECT public.commerce_create_promoted_order_draft_with_outbox(
-          $1::text, $2::jsonb, $3::jsonb, $4::uuid) AS response`,
-        [input.idempotencyKey, JSON.stringify(options?.catalogAdmission == null ? input.quoteSnapshot : { ...input.quoteSnapshot, catalogAdmission: options.catalogAdmission }), JSON.stringify(draft), clientId]);
+        const routine = policyRegion === undefined ? "commerce_create_promoted_order_draft_with_outbox" : "catalog_admission_create_policy_draft";
+        const result = await executor.query(`SELECT public.${routine}(
+          $1::text, $2::jsonb, $3::jsonb, $4::uuid${policyRegion === undefined ? "" : ", $5::text"}) AS response`,
+        [input.idempotencyKey, JSON.stringify(options?.catalogAdmission == null ? input.quoteSnapshot : { ...input.quoteSnapshot, catalogAdmission: options.catalogAdmission }),
+          JSON.stringify(draft), clientId, ...(policyRegion === undefined ? [] : [policyRegion])]);
         response = result.rows[0]?.response;
       } catch (error) {
         const { code, message } = (error && typeof error === "object" ? error : {}) as { code?: string; message?: string };
@@ -212,12 +218,16 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
         await db.query("BEGIN ISOLATION LEVEL READ COMMITTED");
         const key = commerceIdempotencyKeySchema.parse(request.idempotencyKey);
         await db.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1::text, 0))", [key]);
-        const persistence = createPostgresNativeCheckoutPersistence(db);
         // The existing writer owns replay, changed-input and ownership validation.
         const replay = (await db.query(`SELECT o.metadata#>'{quoteSnapshot,catalogAdmission}' AS evidence
           FROM public.commerce_order_draft_receipts r JOIN public.commerce_orders o ON o.id=r.order_id
           WHERE r.idempotency_key=$1`, [key])).rows[0];
         const context = request.quoteSnapshot.quote.context as Record<string, unknown> | undefined;
+        const policies = request.quoteSnapshot.quote.lines.filter(line => line.catalogFacts?.version === "catalog_facts_v2");
+        const policyOwner = !replay && identity?.catalogAdmission != null && policies.length > 0;
+        if (policyOwner && !policies.every(isAuthoritativeSubscriptionPolicyQuoteLine)) {
+          throw new Error("catalog_admission_quote_authority_required");
+        }
         if (!replay && context?.mode === "subscription") {
           const policy = options.financialPolicy;
           const read = async () => (await db.query("SELECT promotion_id,definition,active FROM public.commerce_promotion_definitions ORDER BY promotion_id")).rows;
@@ -259,7 +269,7 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
             } else if (candidate !== undefined || starter != null || hasGrant) changed();
           }
         }
-        const result = await persistence.createOrderDraft(request, replay
+        const result = await nativeCheckoutPersistence(db, policyOwner ? options.regionCode : undefined).createOrderDraft(request, replay
           ? { clientId: identity?.clientId, catalogAdmission: replay.evidence == null ? undefined : replay.evidence as object }
           : identity);
         await db.query("COMMIT");
