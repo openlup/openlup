@@ -2320,7 +2320,9 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
     const optIn = action === "opt in unchanged" || action === "opt in with historical entry" || action === "repeat after same-money publication" || compositionRace;
     const graduation = action === "numbered graduation" || action === "numbered different basis";
     let unavailable = false;
-    const discovery = action.startsWith("candidate ") || action.startsWith("preview ");
+    const discovery = action === "candidate offer scope" || action === "candidate document drift" || action === "candidate sibling drift"
+      || action === "candidate parent drift" || action === "candidate measure drift" || action === "preview parent drift"
+      || action === "preview measure drift" || action === "candidate snapshot" || action === "candidate snapshot control";
     if ((optIn || discovery) && !(await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present) {
       test.skip("Membership page comes from the predecessor installation"); return;
     }
