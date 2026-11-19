@@ -196,6 +196,36 @@ it.each(["legacy", "separate", "admin-managed", "admin-operator"] as const)(
   }, postgresSetupTimeoutMs,
 );
 
+it("a custom runtime needs a direct validator grant only for direct calls", async () => {
+  const client = await db.connect();
+  const proposed = '{"revision":"proposed","renewalProtectionDays":14.0}';
+  try {
+    await client.query("BEGIN");
+    await installRenewalStockProtectionPolicy(client, { revision: "installed", renewalProtectionDays: 21 });
+    await client.query(`CREATE ROLE inventory_preview_runtime NOLOGIN;
+      GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO inventory_preview_runtime;
+      SET LOCAL ROLE inventory_preview_runtime;
+      SAVEPOINT horizon_only`);
+    expect((await client.query(`SELECT pg_has_role(current_user, 'service_role', 'MEMBER') AS member,
+      has_table_privilege(current_user, 'public.commerce_settings', 'SELECT') AS reads_settings`)).rows)
+      .toEqual([{ member: false, reads_settings: false }]);
+    await expect(client.query("SELECT public.inventory_renewal_protection_validate($1::jsonb)", [proposed]))
+      .rejects.toMatchObject({ code: "42501", message: "permission denied for function inventory_renewal_protection_validate" });
+    await client.query("ROLLBACK TO SAVEPOINT horizon_only");
+    expect((await client.query("SELECT public.inventory_renewal_protection_days() AS days")).rows)
+      .toEqual([{ days: 21 }]);
+
+    await client.query(`RESET ROLE;
+      GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_validate(jsonb) TO inventory_preview_runtime;
+      SET LOCAL ROLE inventory_preview_runtime`);
+    expect((await client.query(`SELECT public.inventory_renewal_protection_days() AS days,
+      public.inventory_renewal_protection_validate($1::jsonb) AS policy`, [proposed])).rows)
+      .toEqual([{ days: 21, policy: { revision: "proposed", renewalProtectionDays: 14 } }]);
+  } finally {
+    try { await client.query("ROLLBACK"); } finally { client.release(); }
+  }
+});
+
 it("restricted native startup refuses drift before serving or writing, with installer-only policy writes", async () => {
   const config = structuredClone(Object.values(configurations)[0]!);
   // Deliberately avoid assuming a built-in configuration ID.

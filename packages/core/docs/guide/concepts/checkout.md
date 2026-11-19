@@ -128,6 +128,17 @@ ATP callers need no settings-table SELECT. The TypeScript policy reader still
 requires SELECT on `commerce_settings` to return revision and days. Qualified
 installations supply both privileges through their service-role binding.
 
+After applying `20261125010000_inventory_renewal_protection_validation.sql`,
+a custom runtime role needs this separate grant for connected settings
+validation or preview. It is optional for ATP.
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_validate(jsonb) TO runtime_role;
+```
+
+The pure validator reads no table. Direct calls without the validator grant
+raise SQLSTATE `42501`.
+
 `createPostgresStockAvailability().readPort.read` admits only `horizonDays` equal
 to the installed value and no excluded order; otherwise it retains
 `native_stock_read_options_unsupported`. Set the `horizonDays` option on
