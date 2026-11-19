@@ -187,6 +187,18 @@ BEGIN
    WHERE p.product_id=NEW.product_id AND p.id=NEW.previous_id AND p.revision=NEW.revision-1) THEN
    RAISE EXCEPTION 'catalog_publication_lineage_invalid' USING ERRCODE='23514';
   END IF;
+  IF NEW.revision > 1 AND EXISTS (
+   SELECT prior_sku->>'skuId'
+   FROM public.catalog_publications prior, jsonb_array_elements(prior.canonical_state::jsonb->'skus') prior_sku
+   WHERE prior.product_id=NEW.product_id AND prior.id=NEW.previous_id
+   UNION
+   SELECT r.sku_id::text FROM public.catalog_sku_revisions r
+   JOIN public.catalog_publications issued ON issued.product_id=r.product_id AND issued.id=r.publication_id
+   WHERE r.product_id=NEW.product_id AND issued.revision<NEW.revision
+   EXCEPT SELECT current_sku->>'skuId' FROM jsonb_array_elements(NEW.canonical_state::jsonb->'skus') current_sku
+  ) THEN
+   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514';
+  END IF;
   RETURN NEW;
  END IF;
  IF TG_TABLE_NAME = 'catalog_product_document_revisions' THEN

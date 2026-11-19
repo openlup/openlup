@@ -3288,6 +3288,16 @@ it.each(["before creation", "after metadata", "before metadata"] as const)("firs
   }
 });
 
+it.each(["approve", "revoke"] as const)("first %s checks create-SKU against its authored document revision", async action => {
+  const data = await draft(), payload = structuredClone(data.payload);
+  const create = payload.publication.operations.find(operation => operation.op === "create_sku")!;
+  if (create.op === "create_sku") create.documentRevisionNo++;
+  const command = await save(payload, data.draftId, 1), before = await snapshot();
+  expect(await authority.decision({ ...approvalCommand(command), action }, actor))
+    .toEqual({ outcome: "validation_issue", reason: "catalog_publication_v3_compile_document_stale" });
+  expect(await snapshot()).toEqual(before);
+});
+
 it.each((["approve", "revoke"] as const).flatMap(action => [
   { action, issue: "missing document", refusal: { outcome: "validation_issue", reason: "document_reference_missing" } },
   { action, issue: "off-head document", refusal: { outcome: "conflict", reason: "catalog_publication_v3_document_reference_stale" } },
@@ -3935,6 +3945,47 @@ it("legacy GTIN writers accept opposite batch orders without deadlocking", async
     await db.query("DELETE FROM public.catalog_sku_identifiers WHERE issuer=ANY($1::text[])", [writers]);
     right.release(); left.release();
   }
+});
+
+it.each(["SQL admission", "readback, replay and recovery"] as const)("rejects omission of an unchanged issued SKU at %s", async boundary => {
+  const data = await draft(), first = await commit(data.publication);
+  const second = await commit(await incrementalSku(data, first.head, 1));
+  const payload = structuredClone(data.payload), content = payload.product.sharedContent;
+  content.catalogAction = "revise";
+  content.presentation = { label: "Third publication" };
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: payload.product.slug!, presentation: content.presentation }];
+  const command = await save(payload, data.draftId, 2, second.head), third = await commit(command);
+  expect(third.changes).toEqual([]);
+  const { row } = (await db.query("SELECT to_jsonb(p) AS row FROM public.catalog_publications p WHERE id=$1", [third.head.publicationId])).rows[0];
+  const manifest = JSON.parse(row.canonical_state);
+  expect(manifest.skus).toHaveLength(2);
+  manifest.skus = manifest.skus.filter((sku: { skuId: string }) => sku.skuId === data.skuId);
+  const canonical = canonicalCatalogDraftJson(manifest), digest = createHash("sha256").update(canonical).digest("hex");
+  const unsafe = { ...row, id: randomUUID(), previous_id: row.id, revision: row.revision + 1, command_key: randomUUID(),
+    candidate_ref: randomUUID(), canonical_state: canonical, digest };
+  if (boundary === "SQL admission") {
+    await expect(db.query("INSERT INTO public.catalog_publications SELECT (jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb)).*",
+      [JSON.stringify(unsafe)])).rejects.toMatchObject({ code: "23514", message: "catalog_publication_sku_revision_invalid" });
+    return;
+  }
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_immutable");
+    await client.query("ALTER TABLE public.catalog_operator_receipts DISABLE TRIGGER catalog_operator_receipts_immutable");
+    await client.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1", [row.id, canonical, digest]);
+    await client.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE publication_id=$1",
+      [row.id, canonicalCatalogDraftJson({ ...third, publicationDigest: digest })]);
+    const target = createPostgresCatalogPublication({ ...dependencies(),
+      transactions: { run: work => work({ query: (sql, values) => sql.startsWith("SET TRANSACTION")
+        ? Promise.resolve({ rows: [] }) : client.query(sql, values) }) },
+    });
+    const capability = (await target.authorize(null))!;
+    const refusal = { outcome: "dependency_unavailable", reason: "catalog_publication_sku_revision_invalid" };
+    expect(await target.readbackV2(third.head)).toEqual(refusal);
+    expect(await target.publish(command, capability)).toEqual(refusal);
+    expect(await target.receipt({ productId: data.productId, commandKey: third.commandKey }, capability)).toEqual(refusal);
+  } finally { await client.query("ROLLBACK"); client.release(); }
 });
 
 it("publication binds an omitted SKU to its newest authored issuance without rewriting SKU facts", async () => inPriceDatabase(async () => {

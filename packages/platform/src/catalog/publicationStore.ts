@@ -88,12 +88,15 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
   async function retainedSkuIndex(db: PgQueryExecutor, productId: string, at: number, references: readonly CatalogSkuRevisionRef[]) {
     const rows = await tuple(db, `SELECT r.id,r.sku_id,r.revision,r.digest,octet_length(r.full_facts) AS bytes,r.sku_code,
       issued.revision<=$3 AS visible,
-      EXISTS(SELECT 1 FROM public.catalog_sku_revisions changed JOIN public.catalog_publications newer
+      supersession.found IS TRUE AS superseded
+      FROM public.catalog_sku_revisions r JOIN public.catalog_publications issued ON issued.product_id=r.product_id AND issued.id=r.publication_id
+      LEFT JOIN LATERAL (SELECT true AS found FROM public.catalog_sku_revisions changed JOIN public.catalog_publications newer
         ON newer.product_id=changed.product_id AND newer.id=changed.publication_id
         WHERE changed.product_id=r.product_id AND changed.sku_id=r.sku_id AND newer.revision<=$3
-          AND (newer.revision>issued.revision OR newer.id=issued.id AND changed.revision>r.revision)) AS superseded
-      FROM public.catalog_sku_revisions r JOIN public.catalog_publications issued ON issued.product_id=r.product_id AND issued.id=r.publication_id
-      WHERE r.product_id=$1::uuid AND r.id=ANY($2::uuid[])`, [productId, references.map(ref => ref.revisionId), at]);
+          AND (newer.revision>issued.revision OR newer.id=issued.id AND changed.revision>r.revision)
+        LIMIT 1) supersession ON true
+      WHERE r.product_id=$1::uuid AND (r.id=ANY($2::uuid[]) OR issued.revision<=$3 AND supersession.found IS NULL)`,
+    [productId, references.map(ref => ref.revisionId), at]);
     const byId = new Map(rows.map(row => [row.id, row])), codes = new Set<string>();
     require(rows.length === references.length && byId.size === rows.length, "catalog_publication_sku_revision_invalid", "dependency_unavailable");
     for (const reference of references) {

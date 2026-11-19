@@ -395,6 +395,8 @@ function publicationAuthorship({ record, payload, retainedSources, rules }: Publ
       need(source.sku.id === operation.skuId && authored && equal(authored, {
         skuCode: operation.skuCode, title: operation.title, minQuantity: operation.minQuantity, isAddon: operation.isAddon, facts: operation.facts,
       }), "catalog_publication_operation_source_mismatch");
+      need(operation.documentRevisionNo === source.payload.product.documentRevision?.revisionNo,
+        "catalog_publication_v3_compile_document_stale");
     }
     if (operation.op === "create_identifier")
       need(source.sku.identifiers?.some(identifier => matchesAuthoredIdentifier(identifier, operation)), "catalog_publication_identifier_source_mismatch");
