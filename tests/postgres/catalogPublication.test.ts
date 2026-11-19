@@ -3933,15 +3933,17 @@ it("publication refuses a duplicate GTIN from a concurrent Read Committed legacy
 it.each(["SQL admission", "history, replay and recovery"] as const)("refuses a manifest document revision that differs from its publication foreign key at %s", async boundary => {
   const data = await draft(), first = await commit(data.publication), alternateId = randomUUID();
   const { row } = (await db.query("SELECT to_jsonb(p) AS row FROM public.catalog_publications p WHERE id=$1", [first.head.publicationId])).rows[0];
+  const alternateText = canonicalCatalogDraftJson({ ...data.payload.product.sharedContent.document, revisionNo: 2 });
+  const alternateDigest = createHash("sha256").update(alternateText).digest("hex");
   const client = await db.connect();
   try {
     await client.query("BEGIN");
     await client.query(`INSERT INTO public.catalog_product_document_revisions
       (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text)
-      SELECT $1,product_id,revision_no+1,schema_id,document_ref,document_payload,source_ref,provenance,digest,canonical_text
-      FROM public.catalog_product_document_revisions WHERE id=$2`, [alternateId, row.document_revision_id]);
+      SELECT $1,product_id,revision_no+1,schema_id,document_ref,$3::text::jsonb,source_ref,provenance,$4,$3::text
+      FROM public.catalog_product_document_revisions WHERE id=$2`, [alternateId, row.document_revision_id, alternateText, alternateDigest]);
     const manifest = JSON.parse(row.canonical_state);
-    manifest.product.document = { ...manifest.product.document, id: alternateId, revisionNo: 2 };
+    manifest.product.document = { ...manifest.product.document, id: alternateId, revisionNo: 2, digest: alternateDigest };
     const canonical = canonicalCatalogDraftJson(manifest), digest = createHash("sha256").update(canonical).digest("hex");
     if (boundary === "SQL admission") {
       const candidate = { ...row, id: randomUUID(), previous_id: row.id, revision: 2, command_key: randomUUID(),
