@@ -2408,31 +2408,37 @@ existing guarded role revokes are allowed. Every GRANT on a created view refuses
 Views gain no RLS or table-grant capability. The real catalog checks the declared
 new view inventory, ownership and owner-only privileges.
 
-`createdTriggers` entries name a fresh trigger, a qualified target table and the
-exact trigger statement hash. The target must exist in the prefix or be
-created by an earlier plain CREATE TABLE in this same slot, owned by the migrator.
-Ordinary triggers use BEFORE/AFTER INSERT, DELETE or UPDATE
-(with an optional OF column list), combined with OR, FOR EACH ROW and a
-zero-argument public function. That function must be created in the
-same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
-path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
-allowed. WHEN, transition relations, statement-level and instead-of triggers,
-trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
-OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
-triggers and missing targets; the catalog witness proves prefix membership or
-earlier same-slot table creation and ownership,
-name freshness, enabled binding, events and owner-only function ACL.
+<a id="declare-a-reviewed-trigger"></a>
 
-Static admission accepts pinned `CREATE CONSTRAINT TRIGGER` statements only for
-`AFTER` with one or more of `INSERT`, `UPDATE` and `DELETE` joined by `OR`, a qualified
-table and zero-argument trigger function from earlier in the slot or its prefix,
-and `DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION`, and refuses
-`BEFORE`, `INSTEAD OF`, `FOR EACH STATEMENT`, omitted row scope, `NOT DEFERRABLE`,
-`INITIALLY IMMEDIATE`, unknown or later targets, `WHEN`, `FROM`, `REFERENCING`,
-arguments and every other constraint-trigger form.
-The installed catalogue proof checks that exact trigger's events and table and
-function bindings, both deferral flags, and its own matching new constraint.
-A prefix trigger function must remain an unchanged invoker returning `trigger`.
+**Declare a reviewed trigger.** Choose a qualified public table and a
+zero-argument public function. Use objects already present in the ordered
+prefix or create them earlier in the same slot. Keep both through the end
+of the forward. Choose a trigger name unused on that table and list its
+name, table and exact statement hash in `createdTriggers`.
+
+Write a deferred constraint trigger in this form:
+
+```sql
+CREATE CONSTRAINT TRIGGER example_guard
+  AFTER INSERT OR UPDATE OR DELETE ON public.example_items
+  DEFERRABLE INITIALLY DEFERRED
+  FOR EACH ROW EXECUTE FUNCTION public.example_guard();
+```
+
+Use one or more distinct events from that list, joined by `OR`. Keep the
+function in invoker mode and use `RETURNS trigger` or `RETURNS pg_catalog.trigger`.
+The existing accounting document, order line and payout total constraint
+triggers use invoker functions. Leave a prefix function unchanged. For a
+same-slot function, pin its search path, revoke PUBLIC and grant no EXECUTE.
+PostgreSQL reads the legacy spelling `EXECUTE PROCEDURE` as the same binding
+as `EXECUTE FUNCTION`. Pin the exact spelling used in the forward.
+
+For an ordinary trigger, use `BEFORE` or `AFTER` and a same-slot trigger function
+with explicit `SECURITY INVOKER`. Use `UPDATE OF` only on ordinary triggers.
+Use plain creation with `FOR EACH ROW EXECUTE FUNCTION`. A deferred constraint
+trigger uses only the clauses shown above. The installed proof matches the
+executed statement to its pin and checks the enabled binding, events, function
+mode and return type, and the constraint's identity and deferral flags.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file

@@ -51,6 +51,8 @@ export const CAPABILITY_HINTS: readonly (readonly [RegExp, string])[] = [
     `bind exactly the appended portable forwards in config/platform-migration-manifest.json (${DOCS}#additive-forward-release-path)`],
   [/control characters/u,
     `remove control characters other than tab and line feed (${DOCS}#additive-forward-release-path)`],
+  [/reviewed native store .*trigger/u,
+    `declare and pin a reviewed row trigger using the documented target and clause rules (${DOCS}#declare-a-reviewed-trigger)`],
   [/slot path, row or order drifted|feature path, order or inventory drifted|closed signature, preimage or search_path drifted|requires a closed slots list|invalid fixed identity or hash/u,
     `the reviewed registry fails its strict reader; correct the class data, and a new class shape needs a capability PR first (${DOCS}#closed-native-store-forwards)`],
 ];
