@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
-import { catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
+import { catalogDraftPublicationStoredRecordSchema, catalogPublicationDraftRecordSchema } from "./draftV3Schemas.js";
 import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
@@ -12,12 +12,26 @@ import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { z } from "./validation.js";
+import type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
+import { catalogPublicationClaim, evaluateCatalogPublication, publicationIssueUnavailable } from "./publicationValidation.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const headSchema = z.object({ publicationId: id, revision, documentDigest: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
 const querySchema = z.object({ draftId: id, draftRevision: revision, expectedHead: headSchema.nullable() }).strict();
 const referencePattern = /^v1:([0-9a-f-]{36})@([1-9][0-9]*)\/(unpublished|([0-9a-f-]{36})@([1-9][0-9]*))$/u;
+/** Decodes the released candidate reference for the facade and command admission.
+ * @experimental
+ */
+export function parseCatalogCandidateReference(value: string) {
+  if (typeof value !== "string" || value.length > 200) return null;
+  const match = referencePattern.exec(value);
+  if (!match || !id.safeParse(match[1]).success || !revision.safeParse(Number(match[2])).success) return null;
+  const draftId = match[1]!, draftRevision = Number(match[2]);
+  if (match[3] === "unpublished") return { draftId, draftRevision, head: null };
+  if (!id.safeParse(match[4]).success || !revision.safeParse(Number(match[5])).success) return null;
+  return { draftId, draftRevision, head: { publicationId: match[4]!, revision: Number(match[5]) } };
+}
 /** @experimental */
 export class CatalogCandidateError extends Error {
   constructor(readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable") {
@@ -37,6 +51,8 @@ export interface CatalogCandidateDeps {
   attributeReferences?: CatalogAttributeReferencePort;
   /** The price owner validates proposed operations; its absence blocks a price-bearing preview. */
   validatePrices?: (payload: CatalogDraftPayloadV2) => Promise<readonly CatalogDraftIssue[]>;
+  /** @experimental Read-only evidence and verified rules for V3 publication preparation. */
+  publication?: CatalogCandidatePublicationDeps;
 }
 const refuse = (code: CatalogCandidateError["code"]): never => { throw new CatalogCandidateError(code); };
 const equal = (left: CatalogHeadRef | null, right: CatalogHeadRef | null): boolean => canonicalCatalogDraftJson(left) === canonicalCatalogDraftJson(right);
@@ -50,28 +66,31 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
 } {
   async function reconstruct(candidateRef: string): Promise<{ preview: CatalogCandidatePreview; head: CatalogHeadRef | null }> {
     try {
-      if (typeof candidateRef !== "string" || candidateRef.length > 200) return refuse("candidate_invalid");
-      const match = referencePattern.exec(candidateRef);
-      if (!match || !id.safeParse(match[1]).success || !revision.safeParse(Number(match[2])).success) return refuse("candidate_invalid");
+      const reference = parseCatalogCandidateReference(candidateRef);
+      if (!reference) return refuse("candidate_invalid");
       let expectedHead: CatalogHeadRef | null = null;
-      if (match[3] !== "unpublished") {
-        if (!id.safeParse(match[4]).success || !revision.safeParse(Number(match[5])).success) return refuse("candidate_invalid");
-        const resolved = await deps.resolveHead({ publicationId: match[4]!, revision: Number(match[5]) });
-        const parsed = headSchema.safeParse(resolved);
-        if (!parsed.success || parsed.data.publicationId !== match[4] || parsed.data.revision !== Number(match[5])) return refuse("head_conflict");
+      if (reference.head) {
+        const parsed = headSchema.safeParse(await deps.resolveHead(reference.head));
+        if (!parsed.success || parsed.data.publicationId !== reference.head.publicationId
+          || parsed.data.revision !== reference.head.revision) return refuse("head_conflict");
         expectedHead = parsed.data;
       }
-      const raw = await deps.readDraft(match[1]!, Number(match[2]));
-      const parsed = catalogDraftPublicationStoredRecordSchema.safeParse(raw);
-      if (!parsed.success || parsed.data.draftId !== match[1] || parsed.data.revision !== Number(match[2])) return refuse("candidate_invalid");
+      const raw = await deps.readDraft(reference.draftId, reference.draftRevision);
+      const codec = raw?.payload.schemaVersion === 3 ? catalogPublicationDraftRecordSchema : catalogDraftPublicationStoredRecordSchema;
+      const parsed = codec.safeParse(raw);
+      if (!parsed.success || parsed.data.draftId !== reference.draftId || parsed.data.revision !== reference.draftRevision)
+        return refuse("candidate_invalid");
       const record = parsed.data, payload = record.payload;
       const canonicalPayload = canonicalCatalogDraftJson(payload);
       const latest = await deps.readDraft(record.draftId);
       if (!latest || latest.draftId !== record.draftId || latest.revision !== record.revision || latest.status !== record.status) return refuse("candidate_invalid");
-      const current = await deps.currentHead(record.productId);
-      if (current.outcome !== "found" && current.outcome !== "unpublished") return refuse("candidate_dependency_unavailable");
-      const head = current.outcome === "found" ? headSchema.parse(current.head) : null;
-      if (!equal(head, expectedHead)) return refuse("head_conflict");
+      let current: CatalogPublicationReadResult | undefined;
+      try { current = await deps.currentHead(record.productId); }
+      catch { if (payload.schemaVersion !== 3) return refuse("candidate_dependency_unavailable"); }
+      const headKnown = current?.outcome === "found" || current?.outcome === "unpublished";
+      if (headKnown && !equal(current?.outcome === "found" ? headSchema.parse(current.head) : null, expectedHead))
+        return refuse("head_conflict");
+      if (!headKnown && payload.schemaVersion !== 3) return refuse("candidate_dependency_unavailable");
       const definition = deps.registry.resolve(payload.product.type);
       if (!definition || !definition.validatorRef) return refuse("catalog_definition_drift");
       const registryDigest = catalogDefinitionDigest(definition);
@@ -80,8 +99,8 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
       const issues: CatalogDraftIssue[] = [];
       if (record.status !== "open") issues.push({ path: "draft", code: "draft_abandoned" });
       if (payload.schemaVersion === 1) issues.push({ path: "payload.schemaVersion", code: "candidate_requires_payload_v2" });
-      else {
-        const validationPayload = payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(JSON.parse(canonicalPayload)) : JSON.parse(canonicalPayload);
+      else if (payload.schemaVersion === 2) {
+        const validationPayload = JSON.parse(canonicalPayload) as CatalogDraftPayloadV2;
         const validation = await validateCatalogDraftV2(validationPayload, deps.registry, deps.attributeReferences);
         issues.push(...(validation.valid ? validation.readiness.publication.issues : validation.issues));
         if (payload.product.documentRevision) {
@@ -94,13 +113,32 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
         }
         if (payload.skus.some(sku => sku.priceOperations?.length)) {
           if (!deps.validatePrices) issues.push({ path: "skus", code: "price_validation_unavailable" });
-          else issues.push(...await deps.validatePrices(payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(JSON.parse(canonicalPayload)) : JSON.parse(canonicalPayload)));
+          else issues.push(...await deps.validatePrices(validationPayload));
         }
       }
       const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalPayload).update(",")
         .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: installed }])).update(",")
         .update(canonicalCatalogDraftJson(expectedHead)).update("]").digest("hex");
-      return { head: expectedHead, preview: { candidateRef, candidateDigest, issues,
+      let preparation: CatalogCandidatePreview["preparation"];
+      if (payload.schemaVersion === 3) {
+        const publication = deps.publication;
+        let evidence = null;
+        try { evidence = await publication?.readEvidence({ candidate: catalogPublicationClaim(record), productId: record.productId, expectedHead }) ?? null; }
+        catch { /* This observation is unavailable. Candidate-local checks still run. */ }
+        const result = await evaluateCatalogPublication({ record, definition, installedDefinitionDigest: installed,
+          expectedHead, evidence, rules: publication?.rules, observations: publication,
+          attributeReferences: deps.attributeReferences, validatePrices: deps.validatePrices }, "preview");
+        const structural = [...result.structural];
+        if (!headKnown) structural.push({ path: "publication", code: "publication_head_unavailable" });
+        const blocked = Boolean(result.failure && result.phase === "structural") || structural.some(issue => !publicationIssueUnavailable(issue));
+        const activationBlocked = Boolean(result.failure && result.phase === "activation") || result.activationIssues.some(issue => !publicationIssueUnavailable(issue));
+        const activation = [...structural, ...result.activationIssues];
+        preparation = { structural: { outcome: blocked ? "blocked-input" : structural.length ? "unknown" : "staged", issues: structural },
+          activation: { outcome: blocked || activationBlocked ? "blocked-input" : activation.length ? "unknown"
+            : result.activating ? "ready" : "pending", issues: [...activation, ...result.pending] } };
+        issues.push(...activation);
+      }
+      return { head: expectedHead, preview: { candidateRef, candidateDigest, issues, ...(preparation ? { preparation } : {}),
         impact: { productId: record.productId, skuIds: payload.skus.map(sku => sku.id),
           priceOperationCount: payload.schemaVersion !== 1 ? payload.skus.reduce((sum, sku) => sum + (sku.priceOperations?.length ?? 0), 0) : 0 } } };
     } catch (error) {
