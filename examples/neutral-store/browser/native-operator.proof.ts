@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
+import { operations as declaredOperations } from '../shared/api.ts';
 
 /** Fresh installed PostgreSQL only; owns identities and the documented owner roster step. */
 const test = base.extend<{ composeProject: string }>({ composeProject: ['', { option: true }] });
@@ -101,8 +102,7 @@ test('native support roster, catalogue administration, replay and operator admis
   const operations = ['operator.customerSearch', 'operator.customer', 'operator.bundles', 'operator.bundle',
     'operator.bundleCommand', 'operator.catalogDrafts'];
   const status = (await action('application.status')).value.bindings;
-  expect(status).toHaveLength(52);
-  expect(status.filter((row: { bound: boolean }) => row.bound)).toHaveLength(25);
+  expect(status.map((row: { operation: string }) => row.operation)).toEqual(declaredOperations);
   for (const operation of operations) {
     expect(status.find((row: { operation: string }) => row.operation === operation).bound).toBe(true);
     expect((await action(operation, { operatorRef: fixture.operator })).code).toBe('operator_required');

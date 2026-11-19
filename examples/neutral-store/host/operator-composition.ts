@@ -128,7 +128,10 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         : await drafts.execute({ schemaVersion: 1, action: payload.action, draftId: payload.draftId,
           expectedRevision: payload.expectedRevision, ...(authored === undefined ? {} : { payload: authored }),
           commandKey: context.commandKey }, context);
-    if ('reason' in result) return { ...refused(`catalog_${result.reason}`), ...(result.issues?.length ? { issues: result.issues } : {}) };
+    if ('reason' in result) {
+      const issues = 'issues' in result && Array.isArray(result.issues) ? result.issues : [];
+      return { ...refused(`catalog_${result.reason}`), ...(issues.length ? { issues } : {}) };
+    }
     return { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };
   };
   return { actions, close: () => writer.close() };
