@@ -53,7 +53,8 @@ it("isolates inventory and reminder reads and installs from mutated discovery da
     [expect.stringMatching(/^SELECT /u), ["inventory_renewal_protection"]],
     [expect.stringMatching(/^SELECT /u), ["checkout_recovery_reminders"]],
     [expect.stringMatching(/^INSERT /u), ["inventory_renewal_protection", JSON.stringify(inventoryDefault)]],
-    [expect.stringMatching(/^INSERT /u), ["checkout_recovery_reminders", JSON.stringify(reminderDefault)]],
+    ["SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)",
+      ["checkout_recovery_reminders", JSON.stringify(reminderDefault)]],
   ]);
 });
 

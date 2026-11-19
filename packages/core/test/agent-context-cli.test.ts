@@ -347,7 +347,7 @@ describe("installed agent context", () => {
     expect(run.stdout).toContain("public specifiers and type/value usage");
   });
 
-  it.each([["application", 2500], ["declarations", 1200], ["package-source", 1200]] as const)("reports bounded %s scans across directories", (scope, limit) => {
+  it.each([["application", 2500], ["declarations", 2000], ["package-source", 2000]] as const)("reports bounded %s scans across directories", (scope, limit) => {
     const root = fixture();
     const core = join(root, "node_modules/@openlup/core");
     const directory = scope === "application" ? root : join(core, scope === "declarations" ? "dist" : "src");
@@ -384,15 +384,60 @@ describe("installed agent context", () => {
     const root = fixture();
     const core = join(root, "node_modules/@openlup/core");
     expect(searchContext(root, "two words").scans).toEqual([]);
+    expect(searchContext(root, "How to retry").scans).toEqual([]);
     rmSync(join(core, "dist"), { recursive: true });
     expect(searchContext(root, "someSymbol", false, true).scans).toEqual([]);
     mkdirSync(join(core, "dist"));
     mkdirSync(join(core, "src"));
     expect(searchContext(root, "someSymbol", true, true).scans).toEqual([
-      { scope: "declarations", packageName: "@openlup/core", scannedFiles: 0, fileLimit: 1200, limitReached: false },
+      { scope: "declarations", packageName: "@openlup/core", scannedFiles: 0, fileLimit: 2000, limitReached: false },
       { scope: "application", scannedFiles: 0, fileLimit: 2500, limitReached: false },
-      { scope: "package-source", packageName: "@openlup/core", scannedFiles: 0, fileLimit: 1200, limitReached: false },
+      { scope: "package-source", packageName: "@openlup/core", scannedFiles: 0, fileLimit: 2000, limitReached: false },
     ]);
+  });
+
+  it("ranks guide recipes and migration prose above repeated upgrade API diff blocks and matches PascalCase symbols in multi-word queries", () => {
+    const root = fixture();
+    const core = join(root, "node_modules/@openlup/core");
+    writeFileSync(join(core, "dist/subscription.d.ts"),
+      "export interface OneTimeOfferPricing { sku: string }\nexport declare const MAX_CADENCE_DAYS = 3660;\n");
+    mkdirSync(join(core, "docs/guide/how-to/build"), { recursive: true });
+    mkdirSync(join(core, "docs/guide/upgrade"), { recursive: true });
+    writeFileSync(join(core, "docs/guide/how-to/build/quote-prices.md"),
+      "## Price a fixed one-time offer\nPass OneTimeOfferPricing to the quote engine.\n");
+    writeFileSync(join(core, "docs/guide/upgrade/v1-2-0.md"), [
+      "# Upgrading to 1.2.0",
+      "## @openlup/platform",
+      "Pass OneTimeOfferPricing in authoritative quote options.",
+      "## API changes",
+      ...["catalog", "pricing", "promotions", "commerce", "commerce-server", "commerce-native"].map(
+        (name) => `### \`packages/platform/api/${name}.api.md\`\n\`\`\`ts nocheck\nexport interface OneTimeOfferPricing {\n\`\`\``,
+      ),
+    ].join("\n\n"));
+
+    const multiWord = searchContext(root, "OneTimeOfferPricing quote");
+    expect(multiWord.hits[0]).toMatchObject({
+      title: "OneTimeOfferPricing",
+      reason: "declaration occurrence; public import unverified",
+    });
+    const guideIndex = multiWord.hits.findIndex((hit) => hit.file.endsWith("quote-prices.md"));
+    const proseIndex = multiWord.hits.findIndex((hit) => hit.title === "@openlup/platform");
+    const apiDiffHits = multiWord.hits.filter((hit) => hit.title.endsWith(".api.md`"));
+    expect(guideIndex).toBeGreaterThan(0);
+    expect(proseIndex).toBeGreaterThan(0);
+    expect(apiDiffHits).toHaveLength(1);
+    expect(guideIndex).toBeLessThan(multiWord.hits.indexOf(apiDiffHits[0]!));
+    expect(proseIndex).toBeLessThan(multiWord.hits.indexOf(apiDiffHits[0]!));
+
+    const constantQuery = searchContext(root, "MAX_CADENCE_DAYS bound");
+    expect(constantQuery.hits[0]).toMatchObject({
+      title: "MAX_CADENCE_DAYS",
+      reason: "declaration occurrence; public import unverified",
+    });
+
+    const explicitReport = searchContext(root, "packages/platform/api/pricing.api.md OneTimeOfferPricing");
+    expect(explicitReport.hits[1]?.title).toBe("`packages/platform/api/pricing.api.md`");
+    expect(explicitReport.hits.filter((hit) => hit.title.endsWith(".api.md`"))).toHaveLength(5);
   });
 
   it("does not count excluded application and package source files", () => {

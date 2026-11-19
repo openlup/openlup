@@ -16,6 +16,8 @@ const codeExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".
 const skippedDirectories = new Set(["node_modules", ".git", ".next", ".turbo", "coverage", "dist", "build", ".cache"]);
 const guideEntryLimit = 400;
 const guideFileBytes = 200_000;
+const packageFileLimit = 2000;
+const apiReportHeading = /^`?packages\/[^/]+\/api\/[^/]+\.api\.md`?$/u;
 const usage = "Usage: openlup-context search <task> [--code] [--package-code] [--json]\n       openlup-context mcp\nRun from the application root after installing @openlup/core.\nDeclaration occurrences are unverified import leads; read installed exports and examples for public specifiers and type/value usage.\n";
 
 function readText(path: string): string | undefined {
@@ -156,7 +158,8 @@ function markdownHits(item: InstalledPackage, fileName: string, query: string, t
   for (const [position, heading] of headings.entries()) {
     const endIndex = headings[position + 1]?.index ?? lines.length;
     const body = lines.slice(heading.index, endIndex).join("\n");
-    const score = relevance(heading.title, body, query, terms);
+    const rawScore = relevance(heading.title, body, query, terms);
+    const score = !query.includes(".api.md") && apiReportHeading.test(heading.title.trim()) ? rawScore * 0.25 : rawScore;
     if (score > 0) hits.push({ title: heading.title, file, start: heading.index + 1, end: endIndex, packageName: item.name, score, reason: `installed ${fileName}` });
   }
   return hits;
@@ -196,7 +199,7 @@ function guideFiles(item: InstalledPackage): string[] {
 function declarationHits(item: InstalledPackage, query: string): ScanResult {
   const exact = /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(query.trim());
   const symbol = query.match(/\b[A-Za-z_$][A-Za-z0-9_$]{2,}\b/gu)?.find((word) =>
-    (exact && word === query.trim()) || (/^[a-z_$]/u.test(word) && /[A-Z_]/u.test(word.slice(1))));
+    (exact && word === query.trim()) || /[A-Z_]/u.test(word.slice(1)));
   if (!symbol) return { hits: [] };
   const symbolPattern = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\b`, "u");
   const root = join(item.root, "dist");
@@ -204,10 +207,10 @@ function declarationHits(item: InstalledPackage, query: string): ScanResult {
   const hits: Hit[] = [];
   const pending = [root];
   let seen = 0;
-  while (pending.length && seen < 1200) {
+  while (pending.length && seen < packageFileLimit) {
     const directory = pending.pop()!;
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (seen >= 1200) break;
+      if (seen >= packageFileLimit) break;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) pending.push(path);
       else if (entry.isFile() && path.endsWith(".d.ts")) {
@@ -222,7 +225,7 @@ function declarationHits(item: InstalledPackage, query: string): ScanResult {
       }
     }
   }
-  return { hits, summary: { scope: "declarations", packageName: item.name, scannedFiles: seen, fileLimit: 1200, limitReached: seen >= 1200 } };
+  return { hits, summary: { scope: "declarations", packageName: item.name, scannedFiles: seen, fileLimit: packageFileLimit, limitReached: seen >= packageFileLimit } };
 }
 
 function exportHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
@@ -272,10 +275,10 @@ function packageSourceHits(item: InstalledPackage, query: string, terms: string[
   const hits: Hit[] = [];
   const pending = [root];
   let seen = 0;
-  while (pending.length && seen < 1200) {
+  while (pending.length && seen < packageFileLimit) {
     const directory = pending.pop()!;
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
-      if (seen >= 1200) break;
+      if (seen >= packageFileLimit) break;
       const path = join(directory, entry.name);
       if (entry.isDirectory()) { pending.push(path); continue; }
       if (!entry.isFile() || !codeExtensions.has(entry.name.slice(entry.name.lastIndexOf(".")))) continue;
@@ -296,7 +299,7 @@ function packageSourceHits(item: InstalledPackage, query: string, terms: string[
       if (best) hits.push(best);
     }
   }
-  return { hits, summary: { scope: "package-source", packageName: item.name, scannedFiles: seen, fileLimit: 1200, limitReached: seen >= 1200 } };
+  return { hits, summary: { scope: "package-source", packageName: item.name, scannedFiles: seen, fileLimit: packageFileLimit, limitReached: seen >= packageFileLimit } };
 }
 
 export function searchContext(cwd: string, task: string, includeCode = false, includePackageCode = false): { version: string; packages: string[]; hits: Hit[]; scans: ScanSummary[] } {
@@ -334,10 +337,15 @@ export function searchContext(cwd: string, task: string, includeCode = false, in
   }
   hits.sort((left, right) => right.score - left.score || left.file.localeCompare(right.file) || left.start - right.start);
   const unique = new Set<string>();
+  const apiDiffFiles = new Set<string>();
   const selected = hits.filter((hit) => {
     const key = `${hit.file}:${hit.start}:${hit.end}`;
     if (unique.has(key)) return false;
     unique.add(key);
+    if (!query.includes(".api.md") && apiReportHeading.test(hit.title.trim())) {
+      if (apiDiffFiles.has(hit.file)) return false;
+      apiDiffFiles.add(hit.file);
+    }
     return true;
   }).slice(0, 8);
   return { version: packages[0].version, packages: packages.map((item) => item.name), hits: selected, scans };

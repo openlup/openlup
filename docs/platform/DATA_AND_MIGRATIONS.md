@@ -76,7 +76,7 @@ as the installed fence subtracts stored hours from the next cycle instant.
 
 ## Native renewal stock protection
 
-The [inventory validation forward](../../db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql)
+The [inventory validation forward](../../db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql)
 creates `public.inventory_renewal_protection_validate(jsonb)` and replaces the
 body of `public.inventory_renewal_protection_days()`. The validator preserves
 the revision text and normalizes the horizon to an integer. Invalid input and
@@ -4493,8 +4493,23 @@ GRANT EXECUTE ON FUNCTION public.commerce_checkout_recovery_reminder_schedule() 
 
 The validator requires no caller settings SELECT. Missing EXECUTE raises `42501`
 even with an absent key. The TypeScript read helper separately needs settings
-SELECT to return the revision and full schedule. Installer-only writes and
-read-only starter drift checks follow the installed inventory policy pattern.
+SELECT to return the revision and full schedule. The reminder guard forward
+`20261123141000_checkout_recovery_reminder_guard.sql` preserves both producer signatures and privileges. The SQL installer runs with
+the installation role's permissions. It takes the same transaction
+advisory lock as the guard and both producers, before reading the installed
+schedule. Enqueued waves and the guard check therefore serialize at `READ COMMITTED`.
+Every pending checkout order with a wave blocks schedule changes regardless of
+age. A pending abandoned cart with a wave blocks while its draft receipt is
+valid and it has no settlement intent. A refusal reports the number of blocking
+orders. A compacted checkout wave consumes both stages with an installed
+schedule and follows the historical hour mapping when the row is absent.
+Abandoned-cart stage identity survives compaction in the event type. Both
+producers apply stage deduplication after the candidate limit.
+An identical install returns without a write at every isolation level. Changes
+and producers require a fresh statement snapshot after the lock, so
+`REPEATABLE READ` and `SERIALIZABLE` refuse. Follow the
+[reader contract](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
+to resolve an open-episode refusal before retrying installation.
 
 ### Expired checkout preparation
 

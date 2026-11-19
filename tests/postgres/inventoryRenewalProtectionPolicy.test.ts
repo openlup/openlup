@@ -81,7 +81,7 @@ afterAll(async () => { await closePostgres(resource, db); }, postgresTeardownTim
 
 it.each([
   "20261123130000_inventory_renewal_protection_policy.sql",
-  "20261125010000_inventory_renewal_protection_validation.sql",
+  "20261123142000_inventory_renewal_protection_validation.sql",
 ])("admits %s against its complete native prefix", file => {
   const path = `db/platform/migrations/${file}`;
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -212,7 +212,7 @@ it("revokes default validator execution grants for anon and authenticated", asyn
     // Replay the unlanded forward as its owner with browser-role defaults in place.
     await client.query(`DROP FUNCTION public.inventory_renewal_protection_validate(jsonb);
       ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated`);
-    await client.query(readFileSync("db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql", "utf8"));
+    await client.query(readFileSync("db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql", "utf8"));
     for (const role of ["anon", "authenticated"]) {
       await client.query(`SET LOCAL ROLE ${role}; SAVEPOINT validator_call`);
       await expect(client.query("SELECT public.inventory_renewal_protection_validate($1::jsonb)", [

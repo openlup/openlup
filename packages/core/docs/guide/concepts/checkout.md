@@ -128,7 +128,7 @@ ATP callers need no settings-table SELECT. The TypeScript policy reader still
 requires SELECT on `commerce_settings` to return revision and days. Qualified
 installations supply both privileges through their service-role binding.
 
-After applying `20261125010000_inventory_renewal_protection_validation.sql`,
+After applying `20261123142000_inventory_renewal_protection_validation.sql`,
 a custom runtime role needs this separate grant for connected settings
 validation or preview. It is optional for ATP.
 

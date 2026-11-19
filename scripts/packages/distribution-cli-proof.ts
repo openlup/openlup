@@ -168,8 +168,34 @@ export function assertCompleteStarter(directory: string, snapshot: ReturnType<ty
   assert(matches && installed, "incomplete_application_upgrade");
 }
 
+export const reminderInstallationTest = "test/installation.test.ts";
+
+export function reconcileReminderInstallationTest(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
+  const managed = join(app, reminderInstallationTest);
+  const name = "runs the application-owned installation test";
+  const localCase = `
+test(${JSON.stringify(name)}, () => {
+  assert.equal(2 + 2, 4);
+});
+`;
+  const customized = predecessor + localCase;
+  writeFileSync(managed, customized);
+  assertUpgradeConflict(applyRefused(), reminderInstallationTest);
+  const current = readFileSync(managed, "utf8");
+  assert.equal(current, customized, "refused upgrade changed the managed test");
+
+  const path = "test/local-installation.test.ts";
+  const bytes = `import { test } from 'node:test';
+import assert from 'node:assert/strict';
+${current.slice(predecessor.length)}`;
+  writeFileSync(join(app, path), bytes, { flag: "wx" });
+  writeFileSync(managed, predecessor);
+  return { path, bytes, name };
+}
+
 type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string;
-  evidence: { planSha256?: string; customizations?: Record<string, string>; phases: { name: string; result: string }[] } };
+  evidence: { planSha256?: string; customizations?: Record<string, string>;
+    managedConflict?: { path: string; action: "create" | "replace" }; phases: { name: string; result: string }[] } };
 
 function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const app = pair.from, from = starterUpgradeSnapshot(app, pair.fromVersion), to = starterUpgradeSnapshot(pair.to, pair.toVersion);
@@ -215,8 +241,11 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   phase("plan", () => { plan = run("plan"); pair.evidence.planSha256 = hash(JSON.stringify(plan)); assert.deepEqual(starterUpgradeSnapshot(app, pair.fromVersion), from, "planning wrote files"); });
   const changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
   assert(changed.length > 0, "upgrade_pair_has_no_replacements");
-  const conflict = changed.at(-1).path;
+  const reminderTestReplaced = changed.some((file: { path: string; action: string }) =>
+    file.path === reminderInstallationTest && file.action === "replace");
+  const { path: conflict, action } = changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
   phase("managed-conflict", () => {
+    pair.evidence.managedConflict = { path: conflict, action };
     const original = existsSync(join(app, conflict)) ? readFileSync(join(app, conflict)) : null;
     mkdirSync(dirname(join(app, conflict)), { recursive: true });
     writeFileSync(join(app, conflict), "adopter-managed-divergence");
@@ -224,6 +253,16 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assertUpgradeConflict(run("apply", 1), conflict);
     assert.deepEqual(starterUpgradeSnapshot(app, pair.fromVersion), before, "conflict wrote managed files");
     if (original) writeFileSync(join(app, conflict), original); else rmSync(join(app, conflict));
+  });
+  if (reminderTestReplaced) phase("reminder-test-reconciliation", () => {
+    const local = reconcileReminderInstallationTest(app, from.files[reminderInstallationTest]!, () => {
+      const before = starterUpgradeSnapshot(app, pair.fromVersion);
+      const report = run("apply", 1);
+      assert.deepEqual(starterUpgradeSnapshot(app, pair.fromVersion), before, "conflict wrote managed files");
+      return report;
+    });
+    owned[local.path] = Buffer.from(local.bytes);
+    pair.evidence.customizations![local.path] = hash(owned[local.path]);
   });
   phase("interrupt-and-refuse", () => {
     const preload = join(workspace, "interrupt.mjs");
@@ -233,8 +272,18 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assert.equal(readFileSync(join(app, changed[0].path), "utf8"), to.files[changed[0].path]);
     assert.throws(() => assertCompleteStarter(app, to), /incomplete_application_upgrade/);
   });
-  phase("resume", () => { const resumed = run("apply"); assert(resumed.files.some((file: { action: string }) => file.action === "already-applied")); });
-  phase("replay", () => { assert.deepEqual(run("apply").applied, []); });
+  const checkUpgradeFiles = () => {
+    for (const [path, bytes] of Object.entries(owned))
+      assert.deepEqual(readFileSync(join(app, path)), bytes, `owned customization changed: ${path}`);
+    if (reminderTestReplaced)
+      assert.equal(readFileSync(join(app, reminderInstallationTest), "utf8"), to.files[reminderInstallationTest]);
+  };
+  phase("resume", () => {
+    const resumed = run("apply");
+    assert(resumed.files.some((file: { action: string }) => file.action === "already-applied"));
+    checkUpgradeFiles();
+  });
+  phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
   if (hasSettingsPreview(to) && !hasSettingsPreview(from)) {
     phase("settings-preview-upgrade", () => {
       for (const path of ["host/settings.ts", "host/editor-ports.ts"]) {
@@ -243,9 +292,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert(readFileSync(join(app, "AGENTS.md"), "utf8").includes(previewGuidance));
     });
   }
-  const checkOwned = () => { for (const [path, bytes] of Object.entries(owned)) assert.deepEqual(readFileSync(join(app, path)), bytes, `owned customization changed: ${path}`); };
-  checkOwned(); rmSync(workspace, { recursive: true, force: true });
-  return () => phase("installed-application-and-owned-bytes", () => { assertCompleteStarter(app, to); checkOwned(); });
+  rmSync(workspace, { recursive: true, force: true });
+  return () => phase("installed-application-and-owned-bytes", () => { assertCompleteStarter(app, to); checkUpgradeFiles(); });
 }
 
 // CLI refusal reports can omit the command-specific payload. The assertions

@@ -1478,7 +1478,11 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+      "path": "db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
       "class": "public-output"
     },
     {
@@ -4878,7 +4882,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261125010000_inventory_renewal_protection_validation.sql",
+      "path": "packages/platform/sql/20261123141000_checkout_recovery_reminder_guard.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123142000_inventory_renewal_protection_validation.sql",
       "class": "public-output"
     },
     {
