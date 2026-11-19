@@ -214,7 +214,7 @@ async function frozen(f: Awaited<ReturnType<typeof seed>>, sku = f.code) {
 }
 
 it.each(["attachment", "provisional order", "paid order", "unbound cycle", "frozen basket identity", "wait basket identity",
-  "replacement roster", "contradictory resumed wait", "later attachment", "provisional receipt", "paid receipt",
+  "replacement roster", "contradictory resumed wait", "later attachment", "later attachment with proven edit", "provisional receipt", "paid receipt",
   "replacement receipt", "provisional acceptance", "paid acceptance", "provisional repeated SKU", "paid repeated SKU"] as const)(
   "LC5-PRE obligation sources refuse uncertain %s evidence", async kind => {
   const f = await seed({ other: true }), other = f.payload.skus[1]!;
@@ -280,7 +280,7 @@ it.each(["attachment", "provisional order", "paid order", "unbound cycle", "froz
   } else {
     const id = await order(unrelated, kind.startsWith("provisional") ? "pending_payment" : "fulfilled");
     const lines = [f, unrelated].map((line,index) => ({ lineOrdinal: index+1, sku: line.code, quantity: 1, unitAmountMinor: 617 }));
-    if (kind === "attachment" || kind === "later attachment") {
+    if (kind === "attachment" || kind.startsWith("later attachment")) {
       const { leaf } = await replacement(unrelated,id);
       await db.query("INSERT INTO public.commerce_order_items(order_id,sku_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,$2,2,1,617,617)", [id,f.sku]);
       await db.query("UPDATE public.commerce_orders SET total_amount_minor=1234 WHERE id=$1", [id]);
@@ -292,7 +292,19 @@ it.each(["attachment", "provisional order", "paid order", "unbound cycle", "froz
       await db.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES($1,'XXX','example','sandbox',clock_timestamp(),'example')", [f.subscription]);
       await db.query("INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,2,$2,1,617)", [f.subscription,other.code]);
       await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,1,1,617,'XXX')", [f.subscription,other.id]);
-      if (kind === "later attachment") await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
+      if (kind.startsWith("later attachment")) await db.query("UPDATE public.subscriptions SET template_version=template_version+1 WHERE id=$1", [f.subscription]);
+      if (kind === "later attachment with proven edit") {
+        const event = randomUUID(), hash = "c".repeat(64);
+        await db.query("INSERT INTO public.subscription_events(id,subscription_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.customer_self_service.update_bundle',$3,$4::jsonb)",
+          [event,f.subscription,`edit:${event}`,JSON.stringify({ action: "update_bundle", templateVersion: 2, quoteHash: hash })]);
+        await db.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,request_fingerprint,quote_hash,expected_template_version,
+          proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,status,expires_at,accepted_event_id,accepted_at)
+          VALUES($1,$2,$3,$4,1,$5::jsonb,28,1234,617,'XXX','accepted',clock_timestamp()+interval '1 hour',$6,
+            (SELECT occurred_at FROM public.subscription_events WHERE id=$6))`, [f.subscription,`quote:${event}`,"b".repeat(64),hash,
+          JSON.stringify([{ variantId: unrelated.sku, quantity: 1, sortOrder: 0, isAddon: false, unitPriceMinor: 617 }]),event]);
+        expect(await obligations(f.sku)).toEqual({ schemaVersion: 2, outcome: "complete", obligations: [] });
+        return;
+      }
     } else if (kind.endsWith("receipt")) {
       await saveOrderQuote(id,lines);
     } else {
@@ -1109,7 +1121,7 @@ it.each([
   expect((await db.query("SHOW extra_float_digits")).rows).toEqual([{ extra_float_digits: "0" }]);
 });
 
-it.each(["empty logistics", "scalar option", "noncanonical sibling", "tabbed membership", "bad GTIN checksum", "UTF-16 memberships"] as const)(
+it.each(["empty logistics", "scalar option", "noncanonical sibling", "tabbed membership", "bad GTIN checksum", "UTF-16 memberships", "UTF-8-only memberships"] as const)(
   "LC5-PRE shared authority and codecs agree on %s on R3, R4, A1 and O", async fault => {
   const f = await seed({ other: true }), standing = await standingActive(f);
   const stored = (await db.query("SELECT * FROM public.catalog_publications WHERE id=$1", [standing.head.publicationId])).rows[0];
@@ -1121,7 +1133,8 @@ it.each(["empty logistics", "scalar option", "noncanonical sibling", "tabbed mem
   if (fault === "tabbed membership") facts.memberships = [{ offerVersion: "\texample:offer@1", admitted: true }];
   if (fault === "bad GTIN checksum") facts.identifiers[0].value = String(facts.identifiers[0].value).slice(0,-1) + "0";
   const admissible = fault === "UTF-16 memberships";
-  if (admissible) facts.memberships = ["𐀀", "\uE000"].map(offerVersion => ({ offerVersion, admitted: false }));
+  if (admissible || fault === "UTF-8-only memberships") facts.memberships = (admissible ? ["𐀀", "\uE000"] : ["\uE000", "𐀀"])
+    .map(offerVersion => ({ offerVersion, admitted: false }));
   const text = (fault === "noncanonical sibling" ? " " : "") + canonicalCatalogDraftJson(facts);
   const output = randomUUID(), revision = randomUUID(), digest = createHash("sha256").update(text).digest("hex");
   Object.assign(bad, { revisionId: revision, revision: 3, digest });
@@ -1427,7 +1440,8 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
   for (const fault of ["different nested basket", "different accepted roster", "wrong fingerprint", "missing fingerprint", "extra key",
     "rehashed total", "rehashed agreement policy", "rehashed nested key", "rehashed cycle counter", "rehashed shipping terms"] as const) {
     const changed = structuredClone(wire) as Record<string, unknown> & {
-      frozenFingerprint?: string; lines: { sku: string }[]; templateSnapshot: { lines: { sku: string }[] }; orderSnapshot: { lines: { sku: string }[] };
+      frozenFingerprint?: string; lines: { sku: string }[]; templateSnapshot: { lines: { sku: string }[] };
+      orderSnapshot: { lines: { sku: string }[]; shippingQuoteRef: unknown };
       pricingSnapshot: Record<string, unknown>; cycle: Record<string, unknown>;
     };
     const wrongLines = fault === "different nested basket" || fault === "different accepted roster";
@@ -1447,7 +1461,11 @@ it("LC5-A-028 native freezes persist exact accepted lines and replay after recon
     if (fault === "rehashed agreement policy") changed.pricingSnapshot.agreementPolicy = "invalid";
     if (fault === "rehashed nested key") changed.pricingSnapshot.extra = true;
     if (fault === "rehashed cycle counter") changed.cycle.logicalCycleNumber = 0;
-    if (fault === "rehashed shipping terms") changed.pricingSnapshot.shippingTerms = { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 149, freeThresholdMinor: 0 };
+    if (fault === "rehashed shipping terms") {
+      const terms = { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 149, freeThresholdMinor: 0 };
+      changed.pricingSnapshot.shippingTerms = terms;
+      changed.orderSnapshot.shippingQuoteRef = { kind: "retained_shipping", shippingAmountMinor: 149, terms };
+    }
     let claimHash = codec.fingerprint(snapshot);
     if (fault.startsWith("rehashed")) {
       delete changed.frozenFingerprint;
