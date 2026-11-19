@@ -8263,7 +8263,7 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "40f730a07fec297211fce1370fbd5eca56433ab1288a07d8d7bc1878af0b615e",
+      "sha256": "e266ca6e6ac103b8242079a82e6ddc6414e98f7abb49f6ee6d0d71d01a005fce",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
