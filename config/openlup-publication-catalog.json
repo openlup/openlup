@@ -21010,6 +21010,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/infra/dhl/courierBookingSoapFault.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/infra/email/README.md",
       "class": "public-output"
     },

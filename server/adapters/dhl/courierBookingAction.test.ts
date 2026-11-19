@@ -55,7 +55,8 @@ describe("carrier pickup booking action", () => {
 
   it("records a fault as non-retryable already_booked provider evidence", async () => {
     const fake = bookingClient();
-    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse("<faultstring>Po przesyłkę o id SHIP-1 jest już zamówiony kurier</faultstring>"));
+    const message = "Supplemental provider context. ".repeat(12) + "Po przesy&#322;k&#281; o id SHIP-1 jest już zamówiony kurier";
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(clientRefusalEnvelope(message), 500));
     const action = createCarrierPickupBookingAction({ client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z" });
 
     await expect(action(input)).rejects.toMatchObject({ provider: CARRIER_PROVIDER_ID, retryable: false, details: { reason: "already_booked", blockingShipmentId: "SHIP-1" } } satisfies Partial<FulfillmentProviderError>);
@@ -186,6 +187,10 @@ describe("carrier pickup booking action", () => {
     ["unwrapped body", "<faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>", 200],
     ["gateway response", clientRefusalEnvelope(), 502],
     ["incomplete SOAP", clientRefusalEnvelope().replace("</SOAP-ENV:Body>", ""), 500],
+    ["unknown namespace", clientRefusalEnvelope().replaceAll("faultcode", "other:faultcode").replace(
+      "<SOAP-ENV:Fault>", '<SOAP-ENV:Fault xmlns:other="urn:unrelated">',
+    ), 500],
+    ["unqualified fault code", clientRefusalEnvelope().replace("SOAP-ENV:Client", "Client"), 500],
   ])("keeps a %s outside the retry path", async (_case, body, status) => {
     const fake = bookingClient();
     const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(body, status));
@@ -425,10 +430,10 @@ function xmlResponse(text: string, status = 200) {
   return { ok: status >= 200 && status < 300, status, text: async () => text };
 }
 
-function clientRefusalEnvelope() {
+function clientRefusalEnvelope(reason = "Invalid pickup window") {
   return `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
     <SOAP-ENV:Body><SOAP-ENV:Fault>
-      <faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>
+      <faultcode>SOAP-ENV:Client</faultcode><faultstring>${reason}</faultstring>
     </SOAP-ENV:Fault></SOAP-ENV:Body>
   </SOAP-ENV:Envelope>`;
 }

@@ -1,5 +1,3 @@
-import { SaxesParser } from "saxes";
-
 export const CARRIER_ENDPOINT = "https://dhl24.com.pl/webapi2/provider/service.html?ws=1";
 export const CARRIER_NAMESPACE = CARRIER_ENDPOINT;
 /** The provider's externally visible name; response and audit text use this exact value. */
@@ -114,61 +112,6 @@ export function extractCarrierPickupOrderId(xml: string): string | null {
 
 export function extractFault(xml: string): string | null {
   return extractXmlValue(xml, "faultstring");
-}
-
-const soap11Namespace = "http://schemas.xmlsoap.org/soap/envelope/";
-
-/** A retry requires a complete SOAP 1.1 client fault from the booking endpoint. */
-export function isCarrierSoapClientRefusal(xml: string): boolean {
-  const parser = new SaxesParser({ xmlns: true });
-  const path: string[] = [];
-  let depth = 0;
-  let valid = true;
-  let bodyCount = 0;
-  let faultCount = 0;
-  let faultCode = "";
-  let faultReason = "";
-  let codeCount = 0;
-  let reasonCount = 0;
-  const faultPath = "Envelope/Body/Fault";
-  const codePath = `${faultPath}/faultcode`;
-  const reasonPath = `${faultPath}/faultstring`;
-  parser.on("error", () => { valid = false; });
-  parser.on("doctype", () => { valid = false; });
-  parser.on("opentag", tag => {
-    depth++;
-    if (depth > 4) {
-      if (depth === 5 && [codePath, reasonPath].includes(path.join("/"))) valid = false;
-      return;
-    }
-    path.push(tag.local);
-    const current = path.join("/");
-    if (path.length === 1) valid &&= current === "Envelope" && tag.uri === soap11Namespace;
-    if (current === "Envelope/Body" && tag.uri === soap11Namespace) bodyCount++;
-    if (path.length === 3 && path[1] === "Body") {
-      valid &&= current === faultPath && tag.uri === soap11Namespace;
-      faultCount++;
-    }
-    if (current === codePath) codeCount++;
-    if (current === reasonPath) reasonCount++;
-  });
-  parser.on("text", text => {
-    if (depth !== 4) return;
-    const current = path.join("/");
-    if (current === codePath) faultCode += text;
-    if (current === reasonPath) faultReason += text;
-  });
-  parser.on("closetag", () => {
-    if (depth-- > 4) return;
-    if (path.join("/") === codePath) {
-      const code = faultCode.trim();
-      const prefix = /^([\w.-]+):Client$/u.exec(code)?.[1];
-      valid &&= code === "Client" || Boolean(prefix && parser.resolve(prefix) === soap11Namespace);
-    }
-    path.pop();
-  });
-  parser.write(xml).close();
-  return valid && bodyCount === 1 && faultCount === 1 && codeCount === 1 && reasonCount === 1 && Boolean(faultReason.trim());
 }
 
 export function buildCreateShipmentEnvelope(input: {

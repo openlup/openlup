@@ -9,10 +9,10 @@ import {
   CARRIER_DISPLAY_NAME,
   extractCarrierPickupOrderId,
   extractFault,
-  isCarrierSoapClientRefusal,
   sanitizeCarrierError,
   type CarrierAdminAuth,
 } from "../../infra/dhl/adminDhlSoap.js";
+import { readCarrierSoapClientRefusal } from "../../infra/dhl/courierBookingSoapFault.js";
 import {
   classifyCarrierProviderMessage,
   loadCarrierShipperContact,
@@ -123,11 +123,10 @@ export function createCarrierPickupBookingAction(deps: {
       : null;
     const courierOrderId = extractCarrierPickupOrderId(response.text);
     if (!response.ok || fault || cException || !courierOrderId) {
-      const confirmedRefusal = fault && !cException && !courierOrderId
-        && (classifyCarrierProviderMessage(fault)
-          || ((response.ok || response.status === 500) && isCarrierSoapClientRefusal(response.text)));
+      const confirmedRefusal = !cException && !courierOrderId && (response.ok || response.status === 500)
+        ? readCarrierSoapClientRefusal(response.text) : null;
       const status = confirmedRefusal ? "failed" : "indeterminate";
-      const message = fault ?? cException ?? (response.ok
+      const message = confirmedRefusal ?? fault ?? cException ?? (response.ok
         ? `${CARRIER_DISPLAY_NAME} nie zwrócił numeru zamówienia kuriera`
         : `${CARRIER_DISPLAY_NAME} HTTP ${response.status}`);
       throw await recordProviderFailure(deps.client, pickupId, now(), message, response.text, status);
@@ -230,7 +229,7 @@ async function recordProviderFailure(
   client: Client, pickupId: string, timestamp: string, message: unknown, rawResponse: string,
   status: "failed" | "indeterminate",
 ): Promise<FulfillmentProviderError> {
-  const provider = createCarrierProviderEvidence(sanitizeCarrierError(message), timestamp, status === "failed");
+  const provider = createCarrierProviderEvidence(message, timestamp, status === "failed");
   const stored = await recordCourierPickup(client, pickupId, {
     status,
     rawResponse,

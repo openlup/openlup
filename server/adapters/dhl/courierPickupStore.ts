@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- shared store accepts the structural database client. */
 import { FulfillmentPreflightError } from "../../../src/domains/fulfillment/ports.js";
-import { CARRIER_DISPLAY_NAME } from "../../infra/dhl/adminDhlSoap.js";
+import { CARRIER_DISPLAY_NAME, sanitizeCarrierError } from "../../infra/dhl/adminDhlSoap.js";
 import { WARSAW_TIME_ZONE } from "../../infra/dhl/commerceShipmentSoap.js";
 
 /**
@@ -201,8 +201,9 @@ export function classifyCarrierProviderMessage(message: string) {
   return match ? { reason: "already_booked" as const, blockingShipmentId: match[1] } : null;
 }
 
-export function createCarrierProviderEvidence(message: string, timestamp: string, retryable: boolean) {
-  const classification = classifyCarrierProviderMessage(message);
+export function createCarrierProviderEvidence(rawMessage: unknown, timestamp: string, retryable: boolean) {
+  const classification = typeof rawMessage === "string" ? classifyCarrierProviderMessage(rawMessage) : null;
+  const message = sanitizeCarrierError(rawMessage);
   return {
     message,
     operatorMessage: `${CARRIER_DISPLAY_NAME}: ${message}`,
@@ -215,8 +216,7 @@ export function createCarrierProviderEvidence(message: string, timestamp: string
 type PickupStatus = "pending" | "succeeded" | "failed" | "indeterminate";
 export type PickupRetryEvidence = "carrier-refused" | "not-dispatched";
 
-// A database-side support code written by this adapter carries retry provenance.
-// Provider response excerpts are truncated and older writers did not serialize attempts.
+// Only an adapter-written support code carries provenance for retry.
 const retryEvidenceSuffix = /:pickup-v1:(carrier-refused|not-dispatched)$/u;
 export type StoredCourierPickup = {
   id: string;
