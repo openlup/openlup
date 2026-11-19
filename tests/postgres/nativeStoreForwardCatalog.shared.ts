@@ -724,13 +724,12 @@ function deferredPin(overrides: Partial<Omit<NativeDeferredTrigger, "sha256">> =
   return { ...entry, sha256: sqlSha256(statement ?? renderNativeDeferredTrigger(entry)) };
 }
 function deferredFixture(slot: NativeStoreSlot, forward: string, setup = ""): Parameters<typeof assertNativeStoreForward> {
-  const bytes = Buffer.from(forward), signatures = slot.createdFunctions.map(fn => fn.signature);
-  const definitions = nativeStoreFunctionDefinitions(Buffer.from(deferredFunction), signatures, true);
+  const bytes = Buffer.from(forward), functions = [...slot.replacedFunctions, ...slot.createdFunctions.map(fn => ({ ...fn, beforeSha256: null }))];
+  const definitions = nativeStoreFunctionDefinitions(Buffer.from(deferredFunction + REPLACE_PART), functions.map(fn => fn.signature), true);
   return [{
     schemaVersion: 1, baselineSha256: sqlSha256(SYNTHETIC_BASE), replacementForwards: [], creationForwards: [],
     nativeStoreForwardClass: { sealed: true, slots: [slot] },
-    nativeStoreForwards: [{ path: slot.path, sha256: sqlSha256(bytes), functions: signatures.map(signature =>
-      ({ signature, beforeSha256: null, afterSha256: definitions.get(signature)! })) }],
+    nativeStoreForwards: [{ path: slot.path, sha256: sqlSha256(bytes), functions: functions.map(({ signature, beforeSha256 }) => ({ signature, beforeSha256, afterSha256: definitions.get(signature)! })) }],
   }, slot.path, bytes, [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.from(SYNTHETIC_BASE) },
     ...(setup ? [{ path: "db/platform/migrations/20261031120000_trigger_history.sql", bytes: Buffer.from(setup) }] : [])]];
 }
@@ -1273,17 +1272,25 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   const successor = deferredPin({ relation: "public.catalog_sku_successors" });
   const renamed = deferredPin({ relation: "public.cat_renamed", function: "public.cat_trigger_fn()" });
   const subset: NativeDeferredTrigger["events"][] = [["INSERT"], ["UPDATE"], ["DELETE"], ["INSERT", "UPDATE"], ["INSERT", "DELETE"], ["UPDATE", "DELETE"], pin.events];
-  type Fixture = { label: string; pins: NativeDeferredTrigger[]; sql?: string; setup?: string; prefixFunction?: boolean; refusal?: string };
+  const otherTable = `ALTER TABLE public.cat_parameters ADD CONSTRAINT ${pin.name} CHECK (true);`;
+  const overload = deferredPin({ function: "public.cat_replaced()" }), signature = "public.cat_replaced(text,boolean)";
+  const functionRule = `createdTriggers entry ${pin.name}: function must be a zero-argument public function of at most 63 bytes`;
+  type Fixture = { label: string; pins: NativeDeferredTrigger[]; sql?: string; setup?: string; prefixFunction?: boolean; refusal?: string; companions?: Partial<NativeStoreSlot> };
   const cases: Fixture[] = [
     ...subset.map(events => ({ label: events.join(" OR "), pins: [deferredPin({ events })] })),
     { label: "63-byte name", pins: [deferredPin({ name: long })] },
-    { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: "reviewed native store invalid created trigger inventory" },
-    { label: "64-byte relation", pins: [deferredPin({ relation: "public." + long + "a" })], refusal: "reviewed native store invalid created trigger inventory" },
-    { label: "64-byte function", pins: [deferredPin({ function: "public." + long + "a()" })], refusal: "reviewed native store invalid created trigger inventory" },
+    { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: `createdTriggers entry ${long}a: name must be an unquoted identifier of at most 63 bytes` },
+    { label: "64-byte relation", pins: [deferredPin({ relation: "public." + long + "a" })], refusal: `createdTriggers entry ${pin.name}: relation must be a public relation with an identifier of at most 63 bytes` },
+    { label: "64-byte function", pins: [deferredPin({ function: "public." + long + "a()" })], refusal: functionRule },
+    { label: "array function", pins: [{ ...pin, function: [pin.function] as unknown as string }], sql: statement, refusal: functionRule },
     { label: "unregistered", pins: [], sql: statement, refusal: `deferred trigger ${pin.name} is not registered; add it to createdTriggers in the same PR` },
     { label: "missing statement", pins: [pin], sql: "", refusal: mismatch },
-    { label: "stale statement hash", pins: [{ ...pin, sha256: "0".repeat(64) }], refusal: mismatch },
-    { label: "duplicate statement", pins: [pin], sql: statement + statement, refusal: mismatch },
+    { label: "stale statement hash", pins: [{ ...pin, sha256: "0".repeat(64) }], refusal: `deferred trigger ${pin.name}: update sha256 in its createdTriggers entry to ${pin.sha256}` },
+    { label: "duplicate statement", pins: [pin], sql: statement + statement, refusal: `deferred trigger ${pin.name} is declared twice; remove the second statement` },
+    { label: "same constraint name on another table", pins: [pin], sql: statement + otherTable, companions: { existingTableStatements: [otherTable] } },
+    { label: "replacement of another overload", pins: [overload], sql: REPLACE_PART + "\n" + renderNativeDeferredTrigger(overload), prefixFunction: true,
+      setup: TRIGGER_FUNCTION.replace("cat_created_guard", "cat_replaced"), companions: { replacedFunctions: [{ signature, searchPath: "pg_catalog, pg_temp",
+        beforeSha256: nativeStoreFunctionDefinitions(Buffer.from(SYNTHETIC_BASE), [signature], true).get(signature)! }] } },
     { label: "missing terminator", pins: [pin], sql: statement.slice(0, -1), refusal: mismatch },
     { label: "extra terminator", pins: [pin], sql: statement + ";", refusal: mismatch },
     { label: "disjoint pins with a shared null-path invoker", pins: [pin, deferredPin({ name: "cat_deferred_other", relation: "public.cat_parameters" })] },
@@ -1307,15 +1314,16 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       ["COMMENT ON TRIGGER", "COMMENT ON TRIGGER cat_deferred_guard ON public.cat_existing_table IS 'note';"],
       ["CREATE OR REPLACE FUNCTION", TRIGGER_FUNCTION.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")],
       ["DROP CONSTRAINT", "ALTER TABLE public.cat_existing_table DROP CONSTRAINT cat_deferred_guard;"],
-      ["CREATE TRIGGER cat_created_guard", TRIGGER_BEFORE],
+      ["CREATE TRIGGER", TRIGGER_BEFORE],
+      ["CREATE OR REPLACE TRIGGER", TRIGGER_BEFORE.replace("CREATE TRIGGER", "CREATE OR REPLACE TRIGGER")],
     ].map(([clause, ddl]) => ({ label: clause!, pins: [pin], sql: statement + ddl, refusal: `remove ${clause} from this forward` })),
     { label: "linked constraint truncation", pins: [deferredPin({ name: long })], sql: renderNativeDeferredTrigger(deferredPin({ name: long }))
       + `ALTER TABLE public.cat_existing_table DROP CONSTRAINT "${long}a";`, refusal: "remove DROP CONSTRAINT from this forward" },
     { label: "duplicate guarded revoke", pins: [pin], sql: statement + guarded("authenticated", "REVOKE ALL ON FUNCTION", "public.cat_created_guard() FROM authenticated;").repeat(2),
       refusal: "reviewed native store permits one conditional block per role, verb and object kind" },
   ];
-  it.each(cases)("admits and verifies the same deferred forward for $label", async ({ pins, sql, setup, prefixFunction, refusal }) => {
-    const slot = { ...DEFERRED_SLOT, createdTriggers: pins, createdFunctions: prefixFunction ? [] : DEFERRED_SLOT.createdFunctions };
+  it.each(cases)("admits and verifies the same deferred forward for $label", async ({ pins, sql, setup, prefixFunction, refusal, companions }) => {
+    const slot = { ...DEFERRED_SLOT, createdTriggers: pins, createdFunctions: prefixFunction ? [] : DEFERRED_SLOT.createdFunctions, ...companions };
     const source = (prefixFunction ? "" : deferredFunction) + (sql ?? pins.map(renderNativeDeferredTrigger).join("\n"));
     const fixture = deferredFixture(slot, source, setup);
     if (refusal) {
