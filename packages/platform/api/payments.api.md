@@ -482,7 +482,7 @@ import type { CheckoutRecoveryPaymentResolver, PaymentProviderRecoveryProvider }
 import type { PaymentVerifyReadPort, PaymentProviderReconciliationPort } from "./contracts/reconciliation.js";
 export declare function createCheckoutRecoveryPaymentResolver(deps: {
     readPort: PaymentVerifyReadPort;
-    applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult">;
+    applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult" | "readCaptureReview">;
     providers: Partial<Record<string, PaymentProviderRecoveryProvider>>;
     now?: () => Date;
 }): CheckoutRecoveryPaymentResolver;
@@ -845,6 +845,10 @@ export type VerifiedPaymentEvidence = VerifiedIdentity & {
     attemptRef: string | null;
     outcome: "succeeded" | "failed" | "pending" | "refunded" | "disputed";
     money: PaymentMoney | null;
+    /** Attests that a verified success used the provider’s collected-money field. Excluded from event identity. */
+    capturedAmountBasis?: "provider_capture_v1";
+    /** Receipt lookup only for a verified event whose prior normalization used different money. */
+    historicalCaptureFingerprint?: string;
     refusal?: PaymentRefusalEnvelope;
     refund?: PaymentRefundObservation;
 };
@@ -902,6 +906,7 @@ export type PaymentReadbackEnvelope = {
     kind: "succeeded" | "failed" | "pending";
     observedMoney: PaymentMoney;
     providerOccurredAt: string | null;
+    capturedAmountBasis?: VerifiedPaymentEvidence["capturedAmountBasis"];
     refusal?: PaymentRefusalEnvelope;
     handoff?: PaymentMethodHandoff;
 } | {
@@ -1074,6 +1079,7 @@ export interface ProviderReconciliationStatus {
     occurredAt: string | null;
     failureReason: string | null;
     amountMinor: number | null;
+    capturedAmountBasis?: "provider_capture_v1";
     currency: string | null;
     rawPayload: Record<string, unknown>;
 }
@@ -1166,6 +1172,12 @@ export interface PaymentProviderReconciliationPort {
         replayed: boolean;
         reconciliationId?: string;
     }>;
+    /** Reads committed capture review for the owned attempt before another provider read. */
+    readCaptureReview?(input: {
+        orderId: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+    }): Promise<boolean>;
     applyTerminalResult(input: {
         idempotencyKey: string;
         expectedOrderId: string;
@@ -1329,6 +1341,8 @@ export interface SilenceWindowLookup {
     } | null;
 }
 export interface VerifiableAttemptSnapshot {
+    /** Committed capture review from the owned attempt snapshot, when available. */
+    captureReviewRequired?: boolean;
     orderId: string;
     orderClientId: string;
     orderMode: string;
@@ -1821,7 +1835,7 @@ export declare const paymentVerifyRequestSchema: z.ZodObject<{
 export type PaymentVerifyRequest = z.infer<typeof paymentVerifyRequestSchema>;
 export declare function createCommercePaymentVerifyHandler(deps: {
     readPort: PaymentVerifyReadPort;
-    applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult">;
+    applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult" | "readCaptureReview">;
     providers: Partial<Record<string, PaymentProviderReconciliationProvider>>;
     mutationsEnabled: () => boolean;
     now?: () => Date;
@@ -1841,7 +1855,7 @@ import type { ClaimedPaymentAttempt, PaymentProviderReconciliationPort, PaymentP
  */
 export declare function verifyPaymentAttemptNow(input: {
     snapshot: VerifiableAttemptSnapshot;
-    applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult">;
+    applyPort: Pick<PaymentProviderReconciliationPort, "applyTerminalResult" | "readCaptureReview">;
     providers: Partial<Record<string, PaymentProviderReconciliationProvider>>;
     now: () => Date;
     providerPaymentId?: string;
@@ -1853,6 +1867,8 @@ export declare function verifyPaymentAttemptNow(input: {
      */
     purpose?: ProviderReadPurpose;
 }): Promise<PaymentVerifyNowResult>;
+export declare function hasCommittedCaptureReview(snapshot: VerifiableAttemptSnapshot, port: Pick<PaymentProviderReconciliationPort, "readCaptureReview">): Promise<boolean>;
+export declare function sameCanonicalAttempt(before: VerifiableAttemptSnapshot, after: VerifiableAttemptSnapshot | null): after is VerifiableAttemptSnapshot;
 export declare function toClaimedAttemptShape(snapshot: VerifiableAttemptSnapshot, providerPaymentId: string): ClaimedPaymentAttempt;
 ```
 ## dist/payments/paymentWebhookPostProcessing.d.ts
@@ -2117,6 +2133,7 @@ export interface PostgresProviderAttemptSnapshot {
     settlementStatus: string;
     amountMinor: number;
     currency: string;
+    captureReviewRequired?: boolean;
     requestPayload: Record<string, unknown>;
     responsePayload: Record<string, unknown>;
     paymentAttempt: {
@@ -2550,6 +2567,7 @@ export interface NormalizedProviderPaymentWebhook {
     paymentAttemptId?: string | null;
     amountMinor?: number | null;
     currency?: string | null;
+    capturedAmountBasis?: VerifiedPaymentEvidence["capturedAmountBasis"];
     occurredAt: string;
     refundKind?: "full" | "partial" | null;
     rawPayload: Record<string, unknown>;
@@ -2566,6 +2584,12 @@ export interface NormalizedProviderPaymentWebhook {
     } | null;
 }
 export interface PaymentWebhookControlPort {
+    findCompletedHistoricalCapture?(input: {
+        provider: string;
+        providerEventId: string;
+        providerPaymentId: string;
+        legacyFingerprint: string;
+    }): Promise<string | null>;
     ingestPaymentEvent(input: NormalizedProviderPaymentWebhook): Promise<{
         paymentEventId: string;
         paymentIntentId: string | null;
@@ -2582,6 +2606,7 @@ export interface PaymentWebhookControlPort {
         failureReason: string | null;
     }): Promise<{
         replayed: boolean;
+        kind?: string;
     }>;
     confirmSubscriptionActivation?(input: {
         idempotencyKey: string;

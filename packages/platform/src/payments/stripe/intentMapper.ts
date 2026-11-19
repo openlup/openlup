@@ -56,3 +56,8 @@ export function mapSetupIntent(intent: StripeIntentShape): StripeIntentLike {
     next_action: intent.next_action ? { type: intent.next_action.type ?? null } : null,
   };
 }
+
+/** PaymentIntent.amount_received is collected money. */
+export function capturedAmountMinor(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}

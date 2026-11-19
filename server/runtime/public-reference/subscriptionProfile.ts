@@ -1,4 +1,4 @@
-import { createCustomerMeHandler, createSupabaseCustomerMePort } from "@openlup/platform/identity";
+import { createCustomerMeHandler, createSupabaseCustomerMePort, createSupabaseIdentityVerifier } from "@openlup/platform/identity";
 import { customerMeResponseSchema } from "../../../src/domains/customers/contracts.js";
 import { createCustomerClient, authenticateCustomerUser } from "../../_lib/customer-domain/auth.js";
 import { readBearerToken } from "../../_lib/admin-domain/auth.js";
@@ -127,7 +127,10 @@ export function createSubscriptionProfile(env: NodeJS.ProcessEnv) {
   const account = createReferenceAccountHandlers(config.data, config.origin);
   const routes = new Map<string, { method: string; handler: ReferenceHandler }>([
     ["/api/bff/catalog/items", { method: "GET", handler: createReferenceCatalogItemsHandler({ catalogPort: createLocalReferenceDemoSellableCatalogPort() }) }],
-    ["/api/bff/commerce/checkouts", { method: "POST", handler: createCapturedReferenceCheckoutHandler({ gateway, outcome: config.outcome, assertDisposable }) }],
+    ["/api/bff/commerce/checkouts", { method: "POST", handler: createCapturedReferenceCheckoutHandler({
+      gateway, outcome: config.outcome, assertDisposable,
+      verifyAccessToken: (token) => createSupabaseIdentityVerifier(createCustomerClient(config.data, token)).verifyAccessToken(token),
+    }) }],
     ["/api/bff/customers/magic-link", { method: "POST", handler: account.requestSignIn }],
     ["/api/bff/customers/reconcile-account", { method: "POST", handler: account.reconcile }],
     ["/api/bff/customers/me", { method: "GET", handler: async (req, res) => {

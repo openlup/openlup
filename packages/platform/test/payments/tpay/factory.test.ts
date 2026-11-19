@@ -317,10 +317,31 @@ it("bounds future signed issue time at the default and configured clock skew", a
 it("deduplicates receipt-independent fingerprints while separating transaction outcomes", async () => {
   const adapter = createTpayPaymentAdapter(config());
   const first = await verify(adapter);
+  expect(first).toMatchObject({ kind: "money", capturedAmountBasis: "provider_capture_v1" });
   expect(await verify(adapter, body(), undefined, "2030-01-01T00:00:00Z")).toEqual(first);
   const failed = await verify(adapter, body("FALSE"));
   expect(failed).toMatchObject({ kind: "money", outcome: "failed", providerEventId: "TR-1:failed" });
+  expect(failed).not.toHaveProperty("capturedAmountBasis");
   expect(failed).not.toEqual(first);
+});
+it("uses a historical fingerprint only to read a completed receipt when collected money is missing", async () => {
+  const adapter = createTpayPaymentAdapter(config());
+  const prior = await verify(adapter);
+  if (prior.kind !== "money") throw new Error("Expected verified legacy identity");
+  const rawBody = body().replace("&tr_paid=25.99", "");
+  expect(await verify(adapter, rawBody)).toMatchObject({ kind: "money", money: null,
+    historicalCaptureFingerprint: prior.fingerprint });
+  const findCompletedHistoricalCapture = vi.fn<() => Promise<string | null>>().mockResolvedValueOnce("prior-local-event").mockResolvedValueOnce(null);
+  const ingestPaymentEvent = vi.fn();
+  const applyPaymentResult = vi.fn();
+  const ingress = createVerifiedPaymentIngress({ provider: "tpay", verifyPort: adapter.verifyPort,
+    paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult } });
+  const delivery = { rawBody: Buffer.from(rawBody), headers: { "x-jws-signature": fixture.signature(rawBody) },
+    receivedAt: new Date(instant * 1000).toISOString() };
+  expect(await ingress.receive(delivery)).toMatchObject({ status: 200, data: { replayed: true, paymentEventId: "prior-local-event" } });
+  expect(await ingress.receive(delivery)).toMatchObject({ status: 503 });
+  expect(ingestPaymentEvent).not.toHaveBeenCalled();
+  expect(applyPaymentResult).not.toHaveBeenCalled();
 });
 it("carries only donor-filtered audit facts outside identity and fingerprints", async () => {
   const adapter = createTpayPaymentAdapter(config());

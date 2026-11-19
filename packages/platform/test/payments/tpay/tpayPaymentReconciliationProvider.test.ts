@@ -17,13 +17,16 @@ describe("normalizeTpayTransaction", () => {
       transactionId: "tr_1",
       title: "TR-1",
       status: "correct",
-      amount: "12.99",
+      amount: "13.99",
+      amountMinor: 1399,
+      payments: { amountPaid: "12.99" },
       currency: "pln",
     })).toMatchObject({
       status: "succeeded",
       providerStatus: "correct",
       amountMinor: 1299,
       currency: "PLN",
+      capturedAmountBasis: "provider_capture_v1",
       failureReason: null,
     });
   });
@@ -44,6 +47,33 @@ describe("normalizeTpayTransaction", () => {
       amountMinor: 1234,
       occurredAt: "2026-07-26T10:01:00.000Z",
     });
+  });
+
+  it.each([undefined, "12.991", ""])("does not infer paid money from the requested amount when paid money is %s", amountPaid => {
+    const observed = normalizeTpayTransaction({
+      transactionId: "tx_partial", status: "correct", amount: "12.99",
+      amountMinor: 1299, payments: { amountPaid }, currency: "PLN",
+    });
+    expect(observed).toMatchObject({ status: "succeeded", amountMinor: null,
+      configuredAmountMinor: 1299, rawPayload: { amountMinorPresent: false } });
+    expect(observed).not.toHaveProperty("capturedAmountBasis");
+  });
+
+  it.each([0, "0.00"])("retains an authoritative zero (%s) without falling back to a paid alias", amountPaid => {
+    const observed = normalizeTpayTransaction({
+      transactionId: "tx_partial", status: "correct", payments: { amountPaid }, paidAmount: "12.99",
+    });
+    expect(observed).toMatchObject({ status: "succeeded", amountMinor: 0, rawPayload: { amountMinorPresent: true } });
+    expect(observed).not.toHaveProperty("capturedAmountBasis");
+  });
+
+  it("refuses a successful readback for a different provider transaction", async () => {
+    const provider = createTpayPaymentReconciliationProvider({ getTransaction: async () => ({
+      transactionId: "tx_other", title: null, status: "correct", transactionPaymentUrl: null,
+      amount: 12.99, payments: { amountPaid: 12.99 }, currency: "PLN", requestId: null,
+    }) });
+    await expect(provider.readPayment({ providerPaymentId: "tx_requested" }))
+      .rejects.toThrow("tpay_readback_payment_identity_mismatch");
   });
 
   it("maps Tpay failed boolean-like states to failed", () => {

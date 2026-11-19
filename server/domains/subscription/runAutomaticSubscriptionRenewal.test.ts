@@ -44,6 +44,19 @@ describe("runOneAutomaticSubscriptionRenewal", () => {
     expect(fixture.failure.handoffFailure).not.toHaveBeenCalled();
   });
 
+  it.each([{ amountMinor: null }, { currency: null }])("awaits complete provider capture money %j", async fields => {
+    const fixture = createFixture();
+    const { totalAmountMinor: amountMinor, currency } = snapshot();
+    fixture.rail.readOutcome.mockResolvedValue({
+      status: "succeeded", occurredAt: NOW, reason: null, amountMinor, currency, ...fields,
+    });
+    await expect(runOneAutomaticSubscriptionRenewal(fixture.deps, due(), NOW)).resolves.toMatchObject({
+      status: "awaiting_provider", reason: "provider_capture_money_incomplete",
+    });
+    expect(fixture.settlement.recordTerminalOutcome).not.toHaveBeenCalled();
+    expect(fixture.failure.handoffFailure).not.toHaveBeenCalled();
+  });
+
   it("refuses insufficient ATP before preparing or executing payment and never opens dunning", async () => {
     const fixture = createFixture();
     fixture.inventory.reserve.mockResolvedValue({
