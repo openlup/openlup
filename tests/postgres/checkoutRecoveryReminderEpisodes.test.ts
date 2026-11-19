@@ -112,6 +112,12 @@ it('blocks a legacy episode of either kind even when the other kind is pinned', 
   await db.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
     VALUES('commerce_order',$1,'commerce.checkout_recovery',$2,'{"stage":"first"}')`, [opened, `checkout_recovery:1h:${opened}`]);
   await expect(installCheckoutRecoveryReminderSchedule(db, schedule(2, 12))).rejects.toMatchObject(blocked);
+  await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [opened]);
+  const other = await order(3, true);
+  await checkout(other, 3);
+  await db.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
+    VALUES('commerce_order',$1,'commerce.order_draft.abandoned.1h',$2,'{}')`, [other, `abandoned_1h:${other}`]);
+  await expect(installCheckoutRecoveryReminderSchedule(db, schedule(2, 12))).rejects.toMatchObject(blocked);
 });
 
 it('drains a legacy episode on CF-R0 terms and fences it until the order closes', async () => {
