@@ -22,8 +22,8 @@ CREATE TABLE public.catalog_publications (
  digest text NOT NULL CHECK (length(digest) = 64 AND translate(digest,'abcdef0123456789','') = ''),
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
  committed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- CONSTRAINT catalog_publication_committed_at_valid CHECK (committed_at BETWEEN CAST('0001-01-01 00:00:00' AS timestamp) AT TIME ZONE 'UTC'
-   AND CAST('9999-12-31 23:59:59.999999' AS timestamp) AT TIME ZONE 'UTC'),
+ CONSTRAINT catalog_publication_committed_at_valid CHECK (committed_at BETWEEN CAST(CAST('0001-01-01 00:00:00' AS timestamp) AT TIME ZONE 'UTC' AS timestamptz)
+   AND CAST(CAST('9999-12-31 23:59:59.999999' AS timestamp) AT TIME ZONE 'UTC' AS timestamptz)),
  UNIQUE(product_id,revision), UNIQUE(product_id,id), UNIQUE(product_id,id,revision), UNIQUE(product_id,command_key),
  CONSTRAINT catalog_publications_previous_fk FOREIGN KEY(product_id,previous_id) REFERENCES public.catalog_publications(product_id,id) DEFERRABLE INITIALLY DEFERRED,
  FOREIGN KEY(product_id,draft_id,draft_revision) REFERENCES public.catalog_draft_revisions(product_id,draft_id,revision),
@@ -90,8 +90,8 @@ CREATE TABLE public.catalog_publication_decisions (
      AND octet_length(post_state_canonical_text) BETWEEN 2 AND 16777216
      AND length(post_state_digest)=64 AND translate(post_state_digest,'abcdef0123456789','')='')),
  decided_at timestamptz NOT NULL DEFAULT clock_timestamp(),
- CONSTRAINT catalog_publication_decided_at_valid CHECK (decided_at BETWEEN CAST('0001-01-01 00:00:00' AS timestamp) AT TIME ZONE 'UTC'
-   AND CAST('9999-12-31 23:59:59.999999' AS timestamp) AT TIME ZONE 'UTC'),
+ CONSTRAINT catalog_publication_decided_at_valid CHECK (decided_at BETWEEN CAST(CAST('0001-01-01 00:00:00' AS timestamp) AT TIME ZONE 'UTC' AS timestamptz)
+   AND CAST(CAST('9999-12-31 23:59:59.999999' AS timestamp) AT TIME ZONE 'UTC' AS timestamptz)),
  UNIQUE(product_id,command_key),
  CONSTRAINT catalog_publication_decisions_receipt_fk FOREIGN KEY(product_id,command_key) REFERENCES public.catalog_operator_receipts(scope_id,command_key) DEFERRABLE INITIALLY DEFERRED
 );

@@ -5668,6 +5668,20 @@
         "dataStatements": []
       },
       {
+        "row": "INVENTORY-ATP-AGGREGATE-RENEWAL-CREDITS",
+        "path": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+            "beforeSha256": "271417d6788f0e55e36f55c3e7415c45d862e4f7a32520eeacbb91655a1a1c1b",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalogue-core-s",
         "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
         "replacedFunctions": [],
@@ -8196,8 +8210,19 @@
       ]
     },
     {
+      "path": "db/platform/migrations/20261123147000_inventory_atp_aggregate_renewal_credits.sql",
+      "sha256": "541c0e6723ad149145b8738e347cf7d8ce08915c6493693f7682a699c975dbf7",
+      "functions": [
+        {
+          "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+          "beforeSha256": "271417d6788f0e55e36f55c3e7415c45d862e4f7a32520eeacbb91655a1a1c1b",
+          "afterSha256": "e27fdcc3840cde832b784cac4f413d0c46a79c20b2d79537e77c552a80c8f66f"
+        }
+      ]
+    },
+    {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "a549a98e8ee9ac530ff2f0e456e1aae5db781274c4c60476fe10dc2157101603",
+      "sha256": "4c8e42e92ad9e7f102bb120f92a837c299e45f76baf5d7692e14398e1d018753",
       "functions": [
         {
           "signature": "public.catalog_publication_receipt_input(text)",

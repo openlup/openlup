@@ -9,7 +9,7 @@ import { needsForwardApproval } from "./agent-review-queue.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { PLATFORM_BASELINE_FILE, PLATFORM_MIGRATION_MANIFEST, sha256 } from "./platform-migration-manifest.ts";
-import { assertCoLocatedForwardApproval, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { admissionRuleFiles, capabilityHint } from "./sql-admit.ts";
 
 const CLI = resolve("scripts/sql-admit.ts");
@@ -73,7 +73,7 @@ function directVerdicts(f: Fixture, base: string, head: string) {
   const added = f.git("diff", "--name-only", "--no-renames", "--diff-filter=A", base, merge, "--", ...RAILS).split("\n").filter((path) => path.endsWith(".sql"));
   const verdicts = added.map((path) => verdict(() => assertAdmittedPlatformForward(f.root, base, merge, path, readFileSync(join(f.root, path)))));
   verdicts.push(verdict(() => assertAppendOnlyMigrationHistory(f.root, base, merge)));
-  if (!needsForwardApproval(f.git("diff", "--name-only", "--no-renames", fork, head).split("\n"))) verdicts.push(["PASS"]);
+  if (!needsForwardApproval(f.git("diff", "--name-only", "--no-renames", fork, head).split("\n"), path => hasExactManagedForward(f.root, fork, path) || hasExactManagedForward(f.root, base, path))) verdicts.push(["PASS"]);
   else verdicts.push(verdict(() => assertCoLocatedForwardApproval(f.root, fork, head)), verdict(() => assertCoLocatedForwardApproval(f.root, base, merge)));
   return { verdicts, fork };
 }
@@ -226,5 +226,100 @@ describe("sql:admit", () => {
     const conflict = cli(f.root, ["--base", base, "--head", head, STALE]);
     expect(conflict.status).toBe(2); expect(conflict.stdout).toBe("");
     expect(conflict.stderr).toContain("head does not merge cleanly into base");
+  });
+});
+
+describe("upstream exact managed migration approval", () => {
+  const path = "supabase/migrations/20271106100000_reviewed.sql";
+  const sql = "REVOKE SELECT ON public.example FROM authenticated;\n";
+  const approve = (f: Fixture) => {
+    const value = registry();
+    value.managedExactForwards = [{ path, sha256: sqlSha256(sql),
+      prefixSha256: managedForwardPrefixSha256(f.root, f.base, path) }];
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+  };
+
+  it("admits the exact bytes from an upstream pin, including in release history", () => {
+    const f = fixture();
+    approve(f);
+    const approval = f.commit();
+    f.put(path, sql);
+    const head = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, approval, head, path, Buffer.from(sql))).not.toThrow();
+    expect(() => assertAdmittedPlatformForward(f.root, f.base, head, path, Buffer.from(sql), true)).not.toThrow();
+  });
+
+  it("refuses exact approval retroactively for an already committed managed migration", () => {
+    const f = fixture();
+    f.put(path, "CREATE TABLE public.example (id uuid);\n");
+    const issued = f.commit();
+    approve(f);
+    const latePin = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, issued, latePin))
+      .toThrow("exact managed forward approval must precede its SQL");
+  });
+
+  it("refuses repairing an unapproved introduction before the first release", () => {
+    const f = fixture();
+    approve(f);
+    f.commit();
+    f.put(path, sql + "-- changed at introduction\n");
+    f.commit();
+    f.put(path, sql);
+    const repaired = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, f.base, repaired, path, Buffer.from(sql), true))
+      .toThrow("exact managed forward introduction differs from upstream approval");
+  });
+
+  it("selects exact-only changes in the trusted queue and refuses a simultaneous machinery edit", () => {
+    const f = fixture();
+    approve(f);
+    const approval = f.commit();
+    expect(needsForwardApproval([path], candidate => hasExactManagedForward(f.root, approval, candidate))).toBe(true);
+    f.put(path, sql);
+    const head = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, approval, head)).not.toThrow();
+    f.put("scripts/oss-source-release-contract.ts", "");
+    const cochanged = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, approval, cochanged)).toThrow(/machinery must be approved separately/);
+  });
+
+  it.each(["edit", "delete", "executable", "registry removal"] as const)("refuses an issued migration %s in the trusted queue", tamper => {
+    const f = fixture();
+    approve(f);
+    f.commit();
+    f.put(path, sql);
+    const issued = f.commit();
+    if (tamper === "edit") f.put(path, sql + "-- changed\n");
+    else if (tamper === "delete") f.git("rm", path);
+    else if (tamper === "registry removal") f.git("rm", REVIEWED_FORWARD_PATH);
+    else f.git("update-index", "--chmod=+x", path);
+    const drift = tamper === "executable"
+      ? (f.git("commit", "-qm", "Change migration file mode"), f.git("rev-parse", "HEAD"))
+      : f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, issued, drift)).toThrow(/issued exact managed forward|requires a regular file/);
+  });
+
+  it("refuses a pin introduced with its migration", () => {
+    const f = fixture();
+    approve(f);
+    f.put(path, sql);
+    const head = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).toThrow(/must be approved separately/);
+  });
+
+  it("refuses a different prefix or bytes, including an expand-only substitution", () => {
+    const f = fixture();
+    approve(f);
+    const approval = f.commit();
+    f.put(path, "CREATE TABLE public.substitute (id uuid);\n");
+    const substitute = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, approval, substitute, path,
+      readFileSync(join(f.root, path)))).toThrow("exact managed forward bytes differ");
+    f.put("supabase/migrations/20271105100000_other.sql", "CREATE TABLE public.other (id uuid);\n");
+    f.put(path, sql);
+    const drift = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, approval, drift, path, Buffer.from(sql)))
+      .toThrow("exact managed forward managed prefix differs");
   });
 });
