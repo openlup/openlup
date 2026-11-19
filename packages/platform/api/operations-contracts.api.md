@@ -268,7 +268,6 @@ export interface SettingDescriptor {
     readonly domain: string;
     readonly kind: "installed" | "code" | "callback" | "cap" | "invariant";
     readonly goal: string;
-    readonly searchTerms?: string;
     readonly schemaVersion: number;
     readonly schema?: Record<string, unknown> | null;
     readonly rules: readonly {

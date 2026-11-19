@@ -1288,7 +1288,6 @@ export interface SettingDescriptor {
     readonly domain: string;
     readonly kind: "installed" | "code" | "callback" | "cap" | "invariant";
     readonly goal: string;
-    readonly searchTerms?: string;
     readonly schemaVersion: number;
     readonly schema?: Record<string, unknown> | null;
     readonly rules: readonly {
@@ -1616,8 +1615,8 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
+export { explainSetting, invalidSettingsCommand, listSettings, settingsReadTools, showSetting, type SettingReader } from "./settingsRead.js";
 export { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
-export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 ```
 ## dist/operations/server/migrations.d.ts
 
@@ -1760,16 +1759,9 @@ export declare function runPlatformWatchdog<Snapshot extends WatchdogSnapshot, C
 ## dist/operations/server/settingsRead.d.ts
 
 ```ts
-import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
-import { settingsVersion } from "./toolSchema.js";
+import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
 import { z } from "zod";
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
-type SettingsDocument = {
-    schemaVersion: typeof settingsVersion;
-};
-type RefusalResult = SettingsDocument & {
-    refusal: SettingRefusal;
-};
 type ListResult = {
     schemaVersion: 1;
     entries: Pick<SettingDescriptor, "key" | "goal" | "kind" | "runtime" | "change">[];
@@ -1806,29 +1798,23 @@ export type SettingReader = () => Promise<{
     refusal: string;
 }>;
 /** @experimental List matching entries from the installed package, offline. */
-export declare function listSettings(input: unknown): ListResult | RefusalResult;
+export declare function listSettings(input: unknown): ListResult | {
+    refusal: SettingRefusal;
+};
 /** @experimental Describe the key and, when a reader is supplied, its observed installed value. */
-export declare function showSetting(input: unknown, readers?: Readonly<Record<string, SettingReader>>): Promise<ShowResult | RefusalResult>;
+export declare function showSetting(input: unknown, readers?: Readonly<Record<string, SettingReader>>): Promise<ShowResult | {
+    refusal: SettingRefusal;
+}>;
 /** @experimental Explain a refusal code or the offline behavior when a key is absent. */
-export declare function explainSetting(codeOrKey: string): (SettingsDocument & {
+export declare function explainSetting(codeOrKey: string): {
     explanation: SettingRefusal;
-}) | ShowResult | RefusalResult;
+} | ShowResult | {
+    refusal: SettingRefusal;
+};
 /** @experimental Reuse the same refusal envelope for local CLI syntax errors. */
-export declare function invalidSettingsCommand(): RefusalResult;
-export declare const settingsPreviewRequest: z.ZodObject<{
-    key: z.ZodString;
-    proposed: z.ZodJSONSchema;
-    skus: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    asOf: z.ZodOptional<z.ZodISODateTime>;
-}, z.core.$strict>;
-/** @experimental A domain preview bound by the host to its intended store. */
-export type SettingPreviewer<Result extends SettingsDocument> = (proposed: JsonValue, input: {
-    asOf: string;
-    skus: readonly string[];
-    lookupRefusal: (code: string) => SettingRefusal;
-}) => Promise<Result>;
-/** @experimental Shared dispatcher for CLI and MCP preview. */
-export declare function previewSetting<Result extends SettingsDocument = never>(input: unknown, previewers?: Readonly<Record<string, SettingPreviewer<Result>>>): Promise<Result | RefusalResult>;
+export declare function invalidSettingsCommand(): {
+    refusal: SettingRefusal;
+};
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export declare const settingsReadTools: readonly [{
     readonly name: "settings__list";
@@ -1846,14 +1832,6 @@ export declare const settingsReadTools: readonly [{
     readonly annotations: {
         readonly readOnlyHint: true;
     };
-}, {
-    readonly name: "settings__preview";
-    readonly description: "Call before any change to the setting. Use settings__show for the value schema. If the value is invalid or preview is refused, read remediation.";
-    readonly inputSchema: Record<string, unknown>;
-    readonly outputSchema: Record<string, unknown>;
-    readonly annotations: {
-        readonly readOnlyHint: true;
-    };
 }];
 export {};
 ```
@@ -1861,7 +1839,6 @@ export {};
 
 ```ts
 import { z, type ZodType } from "zod";
-export declare const settingsVersion = 1;
 /** Project a tool contract as inline Draft 7 JSON Schema. */
 export declare function toolInputSchema(schema: ZodType, io?: "input" | "output"): Record<string, unknown>;
 /** @experimental Schema shared by packaged settings projections and their data reader. */
@@ -1927,7 +1904,7 @@ export declare const settingsToolOutputSchema: ((result: ZodType, refusal: Retur
                 "customer-promise": "customer-promise";
             }>;
         }, z.core.$strict>;
-        runtime: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        runtime: z.ZodUnion<readonly [z.ZodObject<{
             level: z.ZodLiteral<"ready">;
         }, z.core.$strict>, z.ZodObject<{
             level: z.ZodEnum<{
@@ -1935,7 +1912,7 @@ export declare const settingsToolOutputSchema: ((result: ZodType, refusal: Retur
                 "read-only": "read-only";
             }>;
             reason: z.ZodString;
-        }, z.core.$strict>], "level">;
+        }, z.core.$strict>]>;
         change: z.ZodUnion<readonly [z.ZodObject<{
             operation: z.ZodString;
         }, z.core.$strict>, z.ZodObject<{

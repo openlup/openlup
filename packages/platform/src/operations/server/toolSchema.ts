@@ -1,14 +1,12 @@
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor } from "../contracts/settings.js";
 
-export const settingsVersion = 1;
-
 /** Project a tool contract as inline Draft 7 JSON Schema. */
 export function toolInputSchema(schema: ZodType, io: "input" | "output" = "input"): Record<string, unknown> {
   return z.toJSONSchema(schema, { target: "draft-07", io, reused: "inline" });
 }
 
-const schemaObject = z.record(z.string(), z.json()).nullable().optional();
+const schemaObject = () => z.record(z.string(), z.json()).nullable().optional();
 const settingDescriptorSchema = z.strictObject({
   key: z.string().min(1),
   domain: z.string(),
@@ -16,8 +14,8 @@ const settingDescriptorSchema = z.strictObject({
   goal: z.string(),
   searchTerms: z.string().optional(),
   schemaVersion: z.literal(1),
-  schema: schemaObject,
-  previewSchema: schemaObject,
+  schema: schemaObject(),
+  previewSchema: schemaObject(),
   rules: z.array(z.strictObject({ code: z.string(), path: z.array(z.string()), description: z.string() })),
   examples: z.array(z.strictObject({ value: z.json(), code: z.string().optional() })),
   fallback: z.json(),
@@ -29,7 +27,7 @@ const settingDescriptorSchema = z.strictObject({
     frozenOn: z.array(z.string()),
     impact: z.enum(["money", "customer-promise", "operations"]),
   }),
-  runtime: z.discriminatedUnion("level", [
+  runtime: z.union([
     z.strictObject({ level: z.literal("ready") }),
     z.strictObject({ level: z.enum(["read-only", "preview"]), reason: z.string() }),
   ]),
@@ -54,6 +52,6 @@ export function settingRefusalSchema(codes: readonly string[]) {
 /** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
 export const settingsToolOutputSchema = Object.assign(
   (result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown> =>
-    ({ type: "object", ...toolInputSchema(z.union([result, z.strictObject({ schemaVersion: z.literal(settingsVersion), refusal })]), "output") }),
+    ({ type: "object", ...toolInputSchema(z.union([result, z.strictObject({ refusal })]), "output") }),
   { descriptor: settingDescriptorSchema },
 );

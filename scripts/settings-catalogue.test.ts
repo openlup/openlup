@@ -6,7 +6,6 @@ import { globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
-import { configurations } from "../examples/neutral-store/owned/store.config.ts";
 import { checkSettingsCatalogue, parseSettingData, renderSettingsCatalogue } from "./settings-catalogue.ts";
 
 it("reproduces all three committed settings carriers byte for byte", () => {
@@ -32,14 +31,14 @@ it("discovers and validates settings data in a new domain directory", () => {
   const root = mkdtempSync(join(tmpdir(), "settings-catalogue-"));
   const file = join(root, "packages/platform/src/fixture-domain/settings-data.json");
   const [sample] = parseSettingData(readFileSync("packages/platform/src/shipping/settings-data.json", "utf8"), "shipping");
-  const descriptor = { ...sample, key: "fixture.notice", domain: "fixture-domain", searchTerms: "fixture discovery phrase" };
+  const descriptor = { ...sample, key: "fixture.notice", domain: "fixture-domain" };
   try {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify([descriptor]));
     const files = renderSettingsCatalogue(root);
     const catalogue = JSON.parse(files["packages/platform/settings-catalog.json"]!);
     expect(catalogue.entries).toContainEqual(expect.objectContaining({ key: descriptor.key, domain: descriptor.domain }));
-    expect(files["packages/core/docs/guide/how-to/operate/settings-catalogue.md"]).toContain("Search terms include fixture discovery phrase.");
+    expect(files["packages/core/docs/guide/how-to/operate/settings-catalogue.md"]).toContain("## fixture.notice");
 
     writeFileSync(file, JSON.stringify([{ ...descriptor, unknown: true }]));
     expect(() => renderSettingsCatalogue(root)).toThrow(`Invalid settings data in ${file}`);
@@ -69,6 +68,21 @@ it("runs each connected refusal remediation through the connected CLI branch", (
   }
 });
 
+it("advertises settings results that the pinned MCP SDK accepts", () => {
+  expect(ListToolsResultSchema.parse({ tools: settingsReadTools }).tools).toHaveLength(2);
+});
+
+it("refuses unknown descriptor fields, including nested metadata, and a mismatched domain", () => {
+  const contents = readFileSync("packages/platform/src/shipping/settings-data.json", "utf8");
+  const [entry] = parseSettingData(contents, "shipping");
+  expect(entry).toBeDefined();
+  const withEntry = (value: unknown) => JSON.stringify([value]);
+  expect(() => parseSettingData(withEntry({ ...entry, extra: true }), "shipping")).toThrow("Unrecognized key");
+  expect(() => parseSettingData(withEntry({ ...entry, effect: { ...entry!.effect, extra: true } }), "shipping"))
+    .toThrow("Unrecognized key");
+  expect(() => parseSettingData(contents, "fulfillment")).toThrow("Descriptor does not belong to fulfillment");
+});
+
 it("imports unrelated operations when both settings carriers are unreadable", () => {
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
     import assert from "node:assert/strict";
@@ -85,48 +99,4 @@ it("imports unrelated operations when both settings carriers are unreadable", ()
     assert.equal(typeof operations.createPlatformControlPlanePort, "function");
   `], { encoding: "utf8" });
   expect(result.status, result.stderr).toBe(0);
-});
-
-it("advertises settings results that the pinned MCP SDK accepts", () => {
-  expect(ListToolsResultSchema.parse({ tools: settingsReadTools }).tools.map(tool => tool.name))
-    .toEqual(["settings__list", "settings__show", "settings__preview"]);
-});
-
-it("refuses unknown descriptor fields, including nested metadata, and a mismatched domain", () => {
-  const contents = readFileSync("packages/platform/src/shipping/settings-data.json", "utf8");
-  const [entry] = parseSettingData(contents, "shipping");
-  expect(entry).toBeDefined();
-  const withEntry = (value: unknown) => JSON.stringify([value]);
-  expect(() => parseSettingData(withEntry({ ...entry, extra: true }), "shipping")).toThrow("Unrecognized key");
-  expect(() => parseSettingData(withEntry({ ...entry, effect: { ...entry!.effect, extra: true } }), "shipping"))
-    .toThrow("Unrecognized key");
-  expect(() => parseSettingData(contents, "fulfillment")).toThrow("Descriptor does not belong to fulfillment");
-});
-
-it("the offline starter CLI refuses preview and prints the connected command", () => {
-  const result = spawnSync(process.execPath, ["--experimental-strip-types", "host/settings.ts", "preview",
-    "inventory_renewal_protection", '{"revision":"candidate","renewalProtectionDays":21}', "--json"],
-  { cwd: "examples/neutral-store", encoding: "utf8" });
-  expect(result.status, result.stderr).toBe(1);
-  expect(result.stderr).toBe("");
-  expect(JSON.parse(result.stdout)).toEqual({
-    schemaVersion: 1,
-    refusal: expect.objectContaining({
-      code: "commerce_setting_preview_connection_required",
-      remediation: expect.objectContaining({ command: expect.stringContaining("--database-url <read-capable-url>") }),
-    }),
-  });
-});
-
-it("names the unknown configuration and the valid IDs before connecting", () => {
-  const result = spawnSync(process.execPath, ["--experimental-strip-types", "host/settings.ts", "preview",
-    "inventory_renewal_protection", '{"revision":"candidate","renewalProtectionDays":21}', "--configuration", "unknown-store",
-    "--database-url", "postgresql://[", "--json"],
-  { cwd: "examples/neutral-store", encoding: "utf8" });
-  expect(result.status, result.stderr).toBe(1);
-  expect(JSON.parse(result.stdout)).toMatchObject({ schemaVersion: 1, refusal: {
-    code: "commerce_setting_read_input_invalid",
-    path: ["configuration"],
-    hint: `Unknown configuration "unknown-store". Use one of these IDs: ${Object.keys(configurations).join(", ")}.`,
-  } });
 });

@@ -1,12 +1,9 @@
-import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
-import { settingsToolOutputSchema, settingsVersion, toolInputSchema } from "./toolSchema.js";
-import { loadSettingsCatalogue, settingsListRequest } from "./settingsCatalog.js";
+import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
+import { loadSettingsCatalogue, settingsListRequest, settingsVersion } from "./settingsCatalog.js";
+import { settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
-type SettingsDocument = { schemaVersion: typeof settingsVersion };
-type RefusalResult = SettingsDocument & { refusal: SettingRefusal };
-type CatalogueEntry = ReturnType<typeof loadSettingsCatalogue>["entries"][number];
 type ListResult = {
   schemaVersion: 1;
   entries: Pick<SettingDescriptor, "key" | "goal" | "kind" | "runtime" | "change">[];
@@ -25,20 +22,20 @@ export type SettingReader = () => Promise<
   | { refusal: string }
 >;
 
-function refuse(code: string): RefusalResult {
+function refuse(code: string): { refusal: SettingRefusal } {
   const refusal = loadSettingsCatalogue().byCode.get(code);
   if (!refusal) throw new Error(`Unknown internal settings refusal ${code}`);
-  return { schemaVersion: settingsVersion, refusal };
+  return { refusal };
 }
 
 /** @experimental List matching entries from the installed package, offline. */
-export function listSettings(input: unknown): ListResult | RefusalResult {
+export function listSettings(input: unknown): ListResult | { refusal: SettingRefusal } {
   const parsed = settingsListRequest.safeParse(input);
   if (!parsed.success) return refuse("commerce_setting_read_input_invalid");
   const words = parsed.data.goal?.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
   const { entries, listResult, searchTerms } = loadSettingsCatalogue();
   const matches = entries.filter(entry => {
-    const text = `${entry.goal} ${entry.key} ${entry.domain} ${entry.searchTerms ?? searchTerms[entry.domain] ?? ""}`.toLowerCase();
+    const text = `${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`.toLowerCase();
     return words.every(word => text.includes(word));
   });
   return listResult.parse({
@@ -47,7 +44,7 @@ export function listSettings(input: unknown): ListResult | RefusalResult {
   });
 }
 
-function absentObservation(setting: CatalogueEntry, effective?: JsonValue): Observation {
+function absentObservation(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], effective?: JsonValue): Observation {
   const absent = setting.absentMeans;
   return absent
     ? { state: "absent", absentMeans: absent.description, source: absent.source,
@@ -55,7 +52,7 @@ function absentObservation(setting: CatalogueEntry, effective?: JsonValue): Obse
     : { state: "fallback", value: setting.fallback };
 }
 
-async function observe(setting: CatalogueEntry, read?: SettingReader): Promise<Observation | RefusalResult> {
+async function observe(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
   if ("refusal" in observed) return refuse(observed.refusal);
@@ -64,7 +61,7 @@ async function observe(setting: CatalogueEntry, read?: SettingReader): Promise<O
 }
 
 /** @experimental Describe the key and, when a reader is supplied, its observed installed value. */
-export async function showSetting(input: unknown, readers: Readonly<Record<string, SettingReader>> = {}): Promise<ShowResult | RefusalResult> {
+export async function showSetting(input: unknown, readers: Readonly<Record<string, SettingReader>> = {}): Promise<ShowResult | { refusal: SettingRefusal }> {
   const { entries, showRequest, showResult } = loadSettingsCatalogue();
   const parsed = showRequest.safeParse(input);
   if (!parsed.success) return refuse("commerce_setting_unknown");
@@ -80,10 +77,10 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
 }
 
 /** @experimental Explain a refusal code or the offline behavior when a key is absent. */
-export function explainSetting(codeOrKey: string): (SettingsDocument & { explanation: SettingRefusal }) | ShowResult | RefusalResult {
+export function explainSetting(codeOrKey: string): { explanation: SettingRefusal } | ShowResult | { refusal: SettingRefusal } {
   const { byCode, entries, showResult } = loadSettingsCatalogue();
   const explanation = byCode.get(codeOrKey);
-  if (explanation) return { schemaVersion: settingsVersion, explanation };
+  if (explanation) return { explanation };
   const setting = entries.find(entry => entry.key === codeOrKey);
   if (!setting) return refuse("commerce_setting_refusal_unknown");
   return showResult.parse({
@@ -94,41 +91,8 @@ export function explainSetting(codeOrKey: string): (SettingsDocument & { explana
 }
 
 /** @experimental Reuse the same refusal envelope for local CLI syntax errors. */
-export function invalidSettingsCommand(): RefusalResult {
+export function invalidSettingsCommand(): { refusal: SettingRefusal } {
   return refuse("commerce_setting_read_input_invalid");
-}
-
-export const settingsPreviewRequest = z.strictObject({
-  key: z.string().min(1),
-  proposed: z.json(),
-  skus: z.array(z.string().trim().min(1)).max(200).optional(),
-  asOf: z.iso.datetime().optional(),
-});
-
-/** @experimental A domain preview bound by the host to its intended store. */
-export type SettingPreviewer<Result extends SettingsDocument> = (proposed: JsonValue, input: {
-  asOf: string; skus: readonly string[]; lookupRefusal: (code: string) => SettingRefusal;
-}) => Promise<Result>;
-
-/** @experimental Shared dispatcher for CLI and MCP preview. */
-export async function previewSetting<Result extends SettingsDocument = never>(
-  input: unknown, previewers: Readonly<Record<string, SettingPreviewer<Result>>> = {},
-): Promise<Result | RefusalResult> {
-  const parsed = settingsPreviewRequest.safeParse(input);
-  if (!parsed.success) return invalidSettingsCommand();
-  const { key, skus = [], asOf = new Date().toISOString() } = parsed.data;
-  const setting = loadSettingsCatalogue().entries.find(entry => entry.key === key);
-  if (!setting) return refuse("commerce_setting_unknown");
-  if (!setting.previewSchema) return refuse("commerce_setting_preview_unsupported");
-  const preview = Object.hasOwn(previewers, key) ? previewers[key] : undefined;
-  if (!preview) return refuse("commerce_setting_preview_connection_required");
-  try {
-    // Zod checks the request but drops own __proto__ keys when copying JSON objects.
-    const { proposed } = input as { proposed: JsonValue };
-    return await preview(proposed, { skus: [...new Set(skus)], asOf, lookupRefusal: code => refuse(code).refusal });
-  } catch {
-    return refuse("commerce_setting_preview_unavailable");
-  }
 }
 
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
@@ -151,13 +115,6 @@ export const settingsReadTools = [
       const { showResult, refusalSchema } = loadSettingsCatalogue();
       return settingsToolOutputSchema(showResult, refusalSchema);
     },
-    annotations: { readOnlyHint: true },
-  },
-  {
-    name: "settings__preview",
-    description: "Call before any change to the setting. Use settings__show for the value schema. If the value is invalid or preview is refused, read remediation.",
-    inputSchema: toolInputSchema(settingsPreviewRequest),
-    get outputSchema() { return loadSettingsCatalogue().previewOutputSchema; },
     annotations: { readOnlyHint: true },
   },
 ] as const;

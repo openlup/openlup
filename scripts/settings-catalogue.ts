@@ -3,10 +3,11 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "@openlup/platform/operations/contracts";
-import { settingsToolOutputSchema, settingRefusalSchema, toolInputSchema } from "@openlup/platform/operations/server";
-import { describeRenewalStockProtectionSetting, renewalStockProtectionPreviewResult } from "@openlup/platform/inventory";
+import { describeRenewalStockProtectionSetting } from "@openlup/platform/inventory";
+import { settingsToolOutputSchema, toolInputSchema } from "@openlup/platform/operations/server";
 
 type SourceDescriptor = Omit<SettingDescriptor, "schema" | "previewSchema"> & {
+  searchTerms?: string;
   schema?: ZodType | SettingDescriptor["schema"];
   previewSchema?: ZodType | SettingDescriptor["previewSchema"];
 };
@@ -36,7 +37,7 @@ function readSettingDescriptors(root: string): readonly SourceDescriptor[] {
       throw new Error(`Invalid settings data in ${path}`, { cause });
     }
   });
-  return [describeRenewalStockProtectionSetting(), ...data];
+  return [{ ...describeRenewalStockProtectionSetting(), searchTerms: "stock lookahead, inventory buffer, renewal allocation, available to promise" }, ...data];
 }
 
 function settingCommand(key: string, connected = false): string {
@@ -49,7 +50,7 @@ function isZod(schema: ZodType | Record<string, unknown>): schema is ZodType {
 }
 
 function describeSetting(entry: SourceDescriptor) {
-  const { schema, previewSchema, rules, ...metadata } = entry;
+  const { schema, previewSchema, rules, searchTerms: _searchTerms, ...metadata } = entry;
   return {
     ...metadata,
     schema: schema ? (isZod(schema) ? toolInputSchema(schema) : schema) : null,
@@ -73,6 +74,10 @@ const searchTerms: Record<string, string> = {
   shipping: "delivery destination, address details",
   subscriptions: "recurring orders, renewals",
 };
+
+function settingSynonyms(entry: { key: string; domain: string }, terms: Record<string, string>): string {
+  return terms[entry.key] ?? searchTerms[entry.domain] ?? entry.domain.replaceAll("-", " ");
+}
 
 const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly SettingRefusal[] => [
   {
@@ -114,35 +119,6 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
     hint: "Read the key's runtime reason and existing change mechanism.",
     remediation: { retry: false, action: "Review the catalogue for the key's documented change mechanism.", command: "node --experimental-strip-types host/settings.ts list" },
   },
-  {
-    code: "commerce_setting_preview_unsupported",
-    path: ["key"],
-    rule: "Connected preview requires a key with an executable preview.",
-    hint: "Check the runtime level in the catalogue.",
-    remediation: { retry: false, action: "Read the key's documented effect and change mechanism.", command: settingCommand("<key>") },
-  },
-  {
-    code: "commerce_setting_preview_connection_required",
-    path: [],
-    rule: "Preview reads live settings and stock from the intended store.",
-    hint: "Use the connected form of preview.",
-    remediation: {
-      retry: true,
-      action: "Connect to the intended store with a read-capable URL and include the SKUs you want to inspect.",
-      command: "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --sku <sku> --json",
-    },
-  },
-  {
-    code: "commerce_setting_preview_unavailable",
-    path: ["key"],
-    rule: "Preview requires a valid installed policy, stock read access, and a working validator.",
-    hint: "Check the intended store's connection, installed value, and read access.",
-    remediation: {
-      retry: true,
-      action: "Verify the installed policy. Use a role that can read it from public.commerce_settings, run public.inventory_new_purchase_stock_read, and has EXECUTE on public.inventory_renewal_protection_validate(jsonb). If the validator is missing, apply the inventory renewal protection validation migration.",
-      command: "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --sku <sku> --json",
-    },
-  },
   ...descriptors.flatMap(entry => entry.rules.map(rule => ({
     code: rule.code,
     path: rule.path,
@@ -167,8 +143,10 @@ const paths = {
 
 export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<string, string>> {
   const descriptors = readSettingDescriptors(root);
-  const refusals = settingRefusals(descriptors);
-  const previewOutputSchema = settingsToolOutputSchema(renewalStockProtectionPreviewResult, settingRefusalSchema(refusals.map(({ code }) => code)));
+  // Preserve the packaged search map while moving its authored terms to the entries.
+  const terms = Object.fromEntries(descriptors.filter(entry => entry.searchTerms !== undefined)
+    .sort((left, right) => right.kind.localeCompare(left.kind))
+    .map(entry => [entry.key, entry.searchTerms!]));
   const settingsCatalogue = [...descriptors]
     .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
     .map(describeSetting);
@@ -184,26 +162,24 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
       `## ${entry.key}`,
       "",
       entry.goal,
-      `Search terms include ${entry.searchTerms ?? searchTerms[entry.domain] ?? entry.domain.replaceAll("-", " ")}.`,
-      "",
-      "```sh",
-      settingCommand(entry.key),
-      "```",
+      `Search terms include ${settingSynonyms(entry, terms)}.`,
       "",
       `- Owner **${entry.domain}** · kind **${entry.kind}** · runtime **${entry.runtime.level}**`,
-      ...("reason" in entry.runtime ? [`- ${entry.runtime.reason}`] : []),
-      `- Frozen on: ${entry.effect.frozenOn.join(" ") || "No records named."}`,
       `- Default ${entry.fallback === null ? "uses the documented behavior below." : `is \`${JSON.stringify(entry.fallback)}\`.`}`,
       `- Basis \`${entry.defaultBasis.kind}\`${entry.defaultBasis.kind === "reference-code" ? " (matches the reference deployment's code)" : ""}.`,
       `- ${entry.whyThisDefault}`,
       ...(entry.absentMeans ? [`- When absent, ${entry.absentMeans.description.charAt(0).toLowerCase()}${entry.absentMeans.description.slice(1)}`] : []),
       "",
+      "```sh",
+      settingCommand(entry.key),
+      "```",
+      "",
     ]),
   ].join("\n");
   const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
   return {
-    [paths.catalogue]: json({ schemaVersion: settingsVersion, entries: settingsCatalogue, searchTerms, previewOutputSchema }),
-    [paths.refusals]: json({ schemaVersion: settingsVersion, refusals }),
+    [paths.catalogue]: json({ schemaVersion: settingsVersion, entries: settingsCatalogue, searchTerms: { ...terms, ...searchTerms } }),
+    [paths.refusals]: json({ schemaVersion: settingsVersion, refusals: settingRefusals(descriptors) }),
     [paths.guide]: guide,
   };
 }
