@@ -82,8 +82,9 @@ body of `public.inventory_renewal_protection_days()`. The validator preserves
 the revision text and normalizes the horizon to an integer. Invalid input and
 malformed stored JSON retain SQLSTATE `22023` and
 `inventory_renewal_protection_policy_invalid`. The reader still returns 14
-for an absent row and retains its owner, ACL and pinned search path. Direct
-validator execution is reserved for the migration owner.
+for an absent row and retains its owner, ACL and pinned search path. Where
+`service_role` exists, it has permission to execute both the validator and the
+horizon reader. Both qualified runtime profiles inherit that grant.
 
 `inventory_new_purchase_stock_read` calls native ATP inside a single STABLE
 statement, so ATP reads settings and stock against the same snapshot. Its

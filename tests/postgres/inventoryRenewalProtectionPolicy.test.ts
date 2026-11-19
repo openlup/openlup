@@ -11,6 +11,7 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPo
 import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
 import { composeNativeBindings } from "../../examples/neutral-store/host/native-composition.ts";
 import { createOriginPolicy } from "../../examples/neutral-store/host/origin-policy.ts";
+import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 
 const corpus = JSON.parse(readFileSync(
   new URL("../../packages/platform/test/inventory/inventory_renewal_protection.json", import.meta.url), "utf8",
@@ -167,6 +168,34 @@ it("malformed installed policy always names the error, including empty demand an
   }
 });
 
+async function expectValidatorAccess(runtime: Pool) {
+  const sql = "SELECT public.inventory_renewal_protection_validate($1::jsonb) AS result";
+  const valid = '{"revision":"fixture","renewalProtectionDays":14.0}';
+  expect((await runtime.query(sql, [valid])).rows).toEqual([{ result: { revision: "fixture", renewalProtectionDays: 14 } }]);
+  await expect(runtime.query(sql, ['{"revision":"fixture","renewalProtectionDays":0}']))
+    .rejects.toMatchObject({ code: "22023", message: "inventory_renewal_protection_policy_invalid" });
+  expect((await runtime.query(`SELECT rolname FROM pg_catalog.pg_roles
+    WHERE has_function_privilege(oid, 'public.inventory_renewal_protection_validate(jsonb)', 'EXECUTE')
+    <> has_function_privilege(oid, 'public.inventory_renewal_protection_days()', 'EXECUTE')`)).rows).toEqual([]);
+
+  const client = await runtime.connect();
+  try {
+    await client.query("SET ROLE anon");
+    await expect(client.query(sql, [valid]))
+      .rejects.toMatchObject({ code: "42501", message: "permission denied for function inventory_renewal_protection_validate" });
+  } finally {
+    try { await client.query("RESET ROLE"); } finally { client.release(); }
+  }
+}
+
+it.each(["legacy", "separate", "admin-managed", "admin-operator"] as const)(
+  "matches horizon reader permissions for the %s runtime", async profile => {
+    const fixture = await installAccountMutations(profile);
+    try { await expectValidatorAccess(fixture.runtime); }
+    finally { await fixture.close(); }
+  }, postgresSetupTimeoutMs,
+);
+
 it("restricted native startup refuses drift before serving or writing, with installer-only policy writes", async () => {
   const config = structuredClone(Object.values(configurations)[0]!);
   // Deliberately avoid assuming a built-in configuration ID.
@@ -187,8 +216,7 @@ it("restricted native startup refuses drift before serving or writing, with inst
       .toMatchObject({ availableQuantity: 61 });
     expect((await createPostgresStockAvailability(runtime, { sourceKey: source, now: () => asOf }).readInstalled([sku])).get(sku))
       .toMatchObject({ availableForNewPurchases: 61 });
-    await expect(runtime.query("SELECT public.inventory_renewal_protection_validate($1::jsonb)", [JSON.stringify(config.inventory.renewalProtection)]))
-      .rejects.toMatchObject({ code: "42501" });
+    await expectValidatorAccess(runtime);
     await expect(installRenewalStockProtectionPolicy(runtime, config.inventory.renewalProtection)).rejects.toMatchObject({ code: "42501" });
     await installCheckoutRecoveryReminderSchedule(db, config.checkoutRecoveryReminders);
     const bindings = await composeNativeBindings(url.toString(), createOriginPolicy(config, 4319), config);

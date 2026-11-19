@@ -625,7 +625,7 @@
       },
       {
         "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-        "sha256": "d7aad9a18709b2221f9fa93f9f58825e07d3bad264dcc454d7b614680ebb8e35"
+        "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
       }
     ],
     "objectInventorySha256": "7fb958d03968cad4a037dc4df29feea6ccfea28ebe972e9c2e487901ce11725c",
@@ -1273,15 +1273,15 @@
         },
         {
           "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-          "sha256": "d7aad9a18709b2221f9fa93f9f58825e07d3bad264dcc454d7b614680ebb8e35"
+          "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "dfee9990ce07f0fe8624b28febaafdadbf8ed501e8b8d141293452a6be6f42e9"
+          "withRestore": "e0fa2384be3b6dee1e43ec917884d01ff1855502a4f11847c4b17352d0a7b6f8"
         },
         "separateMigrator": {
-          "withRestore": "0934dcb11a21d5d885d4b090f009570866a6ae79efc23da639b53758396d1750"
+          "withRestore": "cde2d2758da4ad049fd5224486865b4101eec95ae33b4847b0e6522d4064dd5e"
         }
       }
     },
@@ -1925,12 +1925,12 @@
         },
         {
           "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-          "sha256": "d7aad9a18709b2221f9fa93f9f58825e07d3bad264dcc454d7b614680ebb8e35"
+          "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "5b528fe5a55f26af94bf0c15b824737b27879aeef4c68a1a6265aaed961abb83",
-        "operatorProvisioned": "cc48635b40773510e28bf9c93048224ab5963c6688807ff7fb5c7fb8b4161423"
+        "installerManaged": "6bba4cc4e1f8ec820b8e5e91aec0c225fee605dd1a978bc9100186aa67a2ab1b",
+        "operatorProvisioned": "8ecb37b52f67996199b44ad2a8f6da9a8855038c8e6463b4936495b34470b2e6"
       }
     }
   },
@@ -2713,7 +2713,7 @@
     {
       "file": "20261125010000_inventory_renewal_protection_validation.sql",
       "source": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-      "sha256": "d7aad9a18709b2221f9fa93f9f58825e07d3bad264dcc454d7b614680ebb8e35"
+      "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
