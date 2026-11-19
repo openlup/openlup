@@ -101,9 +101,11 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
   const catalogueUpgrade = "installation/catalogue-upgrade.ts";
+  const catalogueDefault = "installation/defaults/catalogue.ts.txt";
   const packEntry = "owned/catalog-packs/supplements/pack.ts";
   const introducesPack = existsSync(join(pair.to, packEntry)) && !existsSync(join(app, packEntry));
-  if (Object.hasOwn(to.files, catalogueUpgrade) && (!Object.hasOwn(from.files, catalogueUpgrade) || introducesPack)) {
+  if (Object.hasOwn(to.files, catalogueUpgrade) && (!Object.hasOwn(from.files, catalogueUpgrade)
+    || introducesPack || from.files[catalogueDefault] !== to.files[catalogueDefault])) {
     phase("upgrade-catalogue", () => execFileSync(process.execPath, [join(pair.to, "lifecycle.mjs"), "upgrade-catalogue", app],
       { cwd: pair.to, env: isolatedConsumerEnv() }));
   }

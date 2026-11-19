@@ -80,7 +80,29 @@ for (const entry of configuredEntries) test(`MC5-N-005 ${entry.configuration.id}
     { message: 'starter_catalogue_registration_invalid' });
 });
 
+test('a deferred registration resolves only when selected', () => {
+  const config = starterCatalogue.select().configuration;
+  const pack = { id: 'synthetic:articles', namespace: 'synthetic', version: 1,
+    openlupRange: '0.43.x', capabilities: {}, taxClasses: [], types: [articleType] };
+  const id = 'deferred-articles';
+  let reads = 0;
+  const registry = createStarterCatalogueRegistry([
+    { configuration: config, pack, draftType: articleType, offerVersion: 'classic' },
+    { configurationId: id, pack, draftType: articleType, offerVersion: 'classic',
+      get configuration() { reads++; return { ...config, id }; } },
+  ], config.id);
+  assert.equal(registry.list().length, 2);
+  assert.equal(registry.select().configuration, config);
+  assert.equal(reads, 0);
+  assert.equal(registry.select(id).pack, pack);
+  assert.equal(reads, 1);
+});
+
 test('RP1-D-003a selects the supplements pack through the explicit LC8 binding', async () => {
+  if (!Object.hasOwn(configurations, 'supplements')) {
+    assert.throws(() => starterCatalogue.select('supplements-pack'), { message: 'starter_configuration_unknown' });
+    return;
+  }
   const selected = starterCatalogue.select('supplements-pack');
   const transactions = { async run(): Promise<never> { throw new Error('binding must perform no effects'); } };
   assert.equal(selectCatalogueConfiguration('supplements-pack'), selected.configuration);

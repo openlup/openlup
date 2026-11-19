@@ -183,6 +183,10 @@ configuration. For subscription quotes, the pack binds each line's demand
 using its published content unit and assigns capsules to their declared swap
 group.
 
+The reference pack is listed when the application keeps the supplied
+`supplements` demo configuration. A registry with only an independent
+configuration can start and serve its own offer rules.
+
 The selected pack's declared offer version is eligible for the classic editor
 lane. Existing classic and sized subscriptions keep their own lanes. Use
 `operator.stockWait` with `view: summary`, `evidence` or `admin` for

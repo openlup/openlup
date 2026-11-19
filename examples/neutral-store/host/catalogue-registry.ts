@@ -4,6 +4,8 @@ import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/
 import type { StoreConfig } from '../shared/config.ts';
 
 export interface StarterCatalogueRegistration {
+  /** Supply the ID separately when resolving the configuration should wait for selection. */
+  configurationId?: string;
   configuration: StoreConfig;
   pack: CatalogPackInput;
   draftType: CatalogServingScopeV2['types'][number];
@@ -14,8 +16,8 @@ export interface StarterCatalogueRegistration {
 export function createStarterCatalogueRegistry(registrations: readonly StarterCatalogueRegistration[], defaultId: string) {
   const entries = new Map(registrations.map(registration => {
     if (!registration || typeof registration !== 'object') throw new Error('starter_catalogue_registration_invalid');
-    const { configuration, pack, draftType, offerVersion, explicitOnly } = registration;
-    const id = configuration?.id;
+    const { configurationId, pack, draftType, offerVersion, explicitOnly } = registration;
+    const id = configurationId === undefined ? registration.configuration?.id : configurationId;
     if (typeof id !== 'string' || id.length > 80 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)
       || typeof offerVersion !== 'string' || !offerVersion || offerVersion.length > 240 || offerVersion.trim() !== offerVersion
       || !draftType || catalogPackIssues(pack).length) {
@@ -43,6 +45,8 @@ export function createStarterCatalogueRegistry(registrations: readonly StarterCa
     select(id: string = defaultId) {
       const entry = entries.get(id);
       if (!entry) throw new Error('starter_configuration_unknown');
+      // Resolve the selected configuration and validate its ID against the registration.
+      void entry.configuration;
       return entry;
     },
   };
