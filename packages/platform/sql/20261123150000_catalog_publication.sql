@@ -141,14 +141,20 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_publication_heads, public.catalog_publications, public.catalog_sku_revisions, public.catalog_operator_receipts, public.catalog_publication_decisions, public.catalog_publication_pointer_capabilities FROM authenticated;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON TABLE public.catalog_publication_heads, public.catalog_publications, public.catalog_sku_revisions, public.catalog_operator_receipts, public.catalog_publication_decisions, public.catalog_publication_pointer_capabilities FROM service_role;'; END IF; END; $$;
 
+CREATE FUNCTION public.catalog_publication_max_depth() RETURNS integer
+LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$ SELECT 48 $$;
+REVOKE ALL ON FUNCTION public.catalog_publication_max_depth() FROM PUBLIC;
+
 -- Canonicalize the neutral wire. Array indices sort numerically before other
 -- keys, which ECMAScript orders by UTF-16 code units. The document is opaque.
 CREATE FUNCTION public.catalog_publication_canonical(p_value jsonb, p_depth integer) RETURNS text
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE result text; number_text text; number_value numeric; original_precision text;
+ max_depth CONSTANT integer := public.catalog_publication_max_depth();
 BEGIN
- IF p_depth > 48 THEN
-  RAISE EXCEPTION 'catalog_publication_wire_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_wire_invalid';
+ -- Root depth is zero. Count values, including empty containers, but not keys.
+ IF p_depth > max_depth THEN
+  RAISE EXCEPTION 'catalog_publication_wire_invalid' USING ERRCODE='22023';
  END IF;
  CASE jsonb_typeof(p_value)
  WHEN 'object' THEN
@@ -415,7 +421,7 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_presentation_valid(jsonb) FROM PUBLIC;
 
-CREATE FUNCTION public.catalog_publication_facts_valid(p_value jsonb) RETURNS boolean
+CREATE FUNCTION public.catalog_publication_carriers_valid(p_value jsonb) RETURNS boolean
 LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
  WITH RECURSIVE nodes(key,value) AS (
   SELECT NULL::text,p_value
@@ -426,10 +432,9 @@ LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS 
    SELECT NULL::text,item.value FROM jsonb_array_elements(CASE WHEN jsonb_typeof(n.value)='array' THEN n.value ELSE '[]'::jsonb END) item
   ) item
  )
- SELECT jsonb_typeof(p_value)='object'
-  AND NOT EXISTS (SELECT 1 FROM nodes WHERE translate(lower(key),'_','') IN ('document','documentpayload','canonicaltext'))
+ SELECT NOT EXISTS (SELECT 1 FROM nodes WHERE translate(lower(key),'_','') IN ('document','documentpayload','canonicaltext'))
 $$;
-REVOKE ALL ON FUNCTION public.catalog_publication_facts_valid(jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.catalog_publication_carriers_valid(jsonb) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_publication_content_problem(p_content jsonb) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
@@ -438,7 +443,7 @@ BEGIN
  IF NOT public.catalog_publication_presentation_valid(p_content->'presentation') THEN RETURN 'presentation'; END IF;
  FOREACH field IN ARRAY ARRAY['offerMemberships','requestedModes','publicationSkus'] LOOP
   items := p_content->field;
-  IF jsonb_array_length(items)>10000
+  IF NOT public.catalog_publication_carriers_valid(items) OR jsonb_array_length(items)>10000
    OR EXISTS (SELECT 1 FROM jsonb_array_elements(items) item GROUP BY item->>'skuCode' HAVING count(*)>1)
    OR EXISTS (
     SELECT 1 FROM jsonb_array_elements(items) item
@@ -458,7 +463,7 @@ BEGIN
          AND public.catalog_publication_text_valid(item->'title',500,true)
          AND CASE WHEN jsonb_typeof(item->'minQuantity')='number' AND item->>'minQuantity' ~ '^[1-9][0-9]{0,9}$'
            THEN (item->>'minQuantity')::numeric<=2147483647 ELSE false END
-         AND jsonb_typeof(item->'isAddon')='boolean' AND public.catalog_publication_facts_valid(item->'facts')
+         AND jsonb_typeof(item->'isAddon')='boolean' AND jsonb_typeof(item->'facts')='object'
       END) IS DISTINCT FROM true
    ) THEN RETURN field; END IF;
  END LOOP;
@@ -494,6 +499,7 @@ BEGIN
    OR jsonb_typeof(body->'assetRefs') IS DISTINCT FROM 'array'
    OR jsonb_typeof(body->'logisticsRef') NOT IN ('string','null')
    OR jsonb_typeof(body->'memberships') IS DISTINCT FROM 'array'
+   -- Exact detail places each SKU at $.items[index].facts, three levels deep.
    OR public.catalog_publication_canonical(body,3)<>p_sku.full_facts
    OR encode(sha256(convert_to(p_sku.full_facts,'UTF8')),'hex')<>p_sku.digest THEN
   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
@@ -534,7 +540,7 @@ BEGIN
   OR public.catalog_publication_text_valid(body #> '{source,commandKey}',240,true) IS DISTINCT FROM true THEN
   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
  END IF;
- IF public.catalog_publication_facts_valid(body->'facts') IS DISTINCT FROM true THEN
+ IF jsonb_typeof(body->'facts') IS DISTINCT FROM 'object' OR NOT public.catalog_publication_carriers_valid(body) THEN
   RAISE EXCEPTION 'catalog_publication_facts_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_facts_invalid';
  END IF;
  IF public.catalog_publication_text_valid(body->'title',500,false) IS DISTINCT FROM true THEN
@@ -596,8 +602,11 @@ BEGIN
  END IF;
 
  IF p_approval AND EXISTS (
-  SELECT 1 FROM jsonb_array_elements(manifest->'skus') member
-   WHERE (jsonb_typeof(member)='object' AND member ?& ARRAY['skuId','digest']
+  SELECT 1 FROM (
+   SELECT member, count(*) OVER (PARTITION BY member->>'skuId') AS sku_count
+   FROM jsonb_array_elements(manifest->'skus') member
+  ) AS roster
+   WHERE (sku_count=1 AND jsonb_typeof(member)='object' AND member ?& ARRAY['skuId','digest']
     AND member - ARRAY['skuId','digest']='{}'::jsonb
     AND jsonb_typeof(member->'skuId')='string' AND member->>'skuId' ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
     AND jsonb_typeof(member->'digest')='string' AND member->>'digest' ~ '^[0-9a-f]{64}$') IS DISTINCT FROM true
@@ -648,6 +657,10 @@ BEGIN
   OR public.catalog_publication_text_valid(product #> '{document,documentRef}',240,true) IS DISTINCT FROM true
   OR public.catalog_publication_text_valid(product #> '{document,sourceRef}',240,true) IS DISTINCT FROM true THEN
   RAISE EXCEPTION 'catalog_publication_document_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_document_invalid';
+ END IF;
+ -- Content has been checked by field. The document reference contains only its exact identity.
+ IF NOT public.catalog_publication_carriers_valid(manifest #- '{product,document}' #- '{product,content}') THEN
+  RAISE EXCEPTION 'catalog_publication_facts_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_facts_invalid';
  END IF;
  RETURN p_text;
 EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range OR untranslatable_character OR statement_too_complex THEN
@@ -704,10 +717,17 @@ BEGIN
        'id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,'schemaId',d.schema_id,
        'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest)
      AND (prior.document_revision_id=d.id OR EXISTS (
-       SELECT 1 FROM jsonb_array_elements(
-         (origin.payload #> '{publication,operations}') || (authored #> '{publication,operations}')) operation
+       SELECT 1 FROM (VALUES (origin.payload,d.provenance),
+        (authored,jsonb_build_object('draftId',product #> '{source,draftId}','draftRevision',product #> '{source,revision}',
+          'draftCommandKey',product #> '{source,commandKey}','draftFingerprint',product #> '{source,fingerprint}'))) registration(payload,claim)
+       CROSS JOIN LATERAL jsonb_array_elements(registration.payload #> '{publication,operations}') operation
        WHERE operation->>'op'='register_document_revision'
+        AND operation->'productSlug'=registration.payload #> '{product,slug}'
         AND operation->'revisionId'=to_jsonb(d.id) AND operation->'revisionNo'=to_jsonb(d.revision_no)
+        AND (CASE
+         WHEN operation->'provenance'='{"source":"current_draft"}'::jsonb THEN registration.claim
+         WHEN operation #>> '{provenance,source}'='retained_draft' THEN (operation->'provenance') - 'source'
+        END) IS NOT DISTINCT FROM d.provenance
         AND operation->'documentRef'=to_jsonb(d.document_ref) AND operation->'sourceRef'=to_jsonb(d.source_ref)
         AND operation->'digest'=to_jsonb(d.digest)
         AND (operation->>'canonicalText')::jsonb=d.document_payload
@@ -891,6 +911,12 @@ BEGIN
    RAISE EXCEPTION 'catalog_publication_candidate_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_candidate_invalid';
   END IF;
   PERFORM public.catalog_publication_assert_issued(NEW.product_id,NEW.id);
+ WHEN 'catalog_skus' THEN
+  IF NEW.publication_facts IS NULL OR
+   (TG_OP='UPDATE' AND NEW.publication_facts IS NOT DISTINCT FROM OLD.publication_facts) THEN RETURN NULL; END IF;
+  IF NOT public.catalog_publication_carriers_valid(NEW.publication_facts) THEN
+   RAISE EXCEPTION 'catalog_publication_facts_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_facts_invalid';
+  END IF;
  WHEN 'catalog_operator_receipts' THEN
   PERFORM public.catalog_publication_assert_receipt(NEW.scope_id,NEW.command_key);
  WHEN 'catalog_publication_decisions' THEN
@@ -926,6 +952,7 @@ REVOKE ALL ON FUNCTION public.catalog_publication_admit() FROM PUBLIC;
 
 CREATE CONSTRAINT TRIGGER catalog_publications_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publications DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_sku_revisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_sku_revisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_sku_admit();
+CREATE CONSTRAINT TRIGGER catalog_skus_publication_facts_admitted AFTER INSERT OR UPDATE ON public.catalog_skus DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_receipts_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_operator_receipts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_decisions_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_decisions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_heads_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_heads DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
