@@ -77,7 +77,9 @@ const upsertPolicySetting = `INSERT INTO public.commerce_settings(key,value_text
         ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`;
 const installReminderSchedule = 'SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)';
 
-// The platform's PostgreSQL tests prove replace-on-conflict semantics for each allowed write.
+// The platform's PostgreSQL tests prove replace-on-conflict for the upsert.
+// The second reminder statement belongs to the separately reviewed guard installer.
+// That change's PostgreSQL tests prove replace-on-conflict for the guard call.
 // A new installer statement needs a new entry in the corresponding list.
 const inventoryProtectionStatements = [upsertPolicySetting];
 const reminderScheduleStatements = [upsertPolicySetting, installReminderSchedule];

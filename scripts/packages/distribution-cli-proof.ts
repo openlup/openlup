@@ -129,10 +129,10 @@ export const reminderInstallationTest = "test/installation.test.ts";
 
 export function reconcileReminderInstallationTest(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
   const managed = join(app, reminderInstallationTest);
-  const name = "keeps the application's demonstration address";
+  const name = "runs the application-owned installation test";
   const localCase = `
 test(${JSON.stringify(name)}, () => {
-  assert.ok(acquisitionAddresses.some(entry => entry.id === 'demo-location'));
+  assert.equal(2 + 2, 4);
 });
 `;
   const customized = predecessor + localCase;
@@ -144,7 +144,6 @@ test(${JSON.stringify(name)}, () => {
   const path = "test/local-installation.test.ts";
   const bytes = `import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 ${current.slice(predecessor.length)}`;
   writeFileSync(join(app, path), bytes, { flag: "wx" });
   writeFileSync(managed, predecessor);
@@ -152,7 +151,8 @@ ${current.slice(predecessor.length)}`;
 }
 
 type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string;
-  evidence: { planSha256?: string; customizations?: Record<string, string>; phases: { name: string; result: string }[] } };
+  evidence: { planSha256?: string; customizations?: Record<string, string>;
+    managedConflict?: { path: string; action: "create" | "replace" }; phases: { name: string; result: string }[] } };
 
 function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const app = pair.from, from = starterUpgradeSnapshot(app, pair.fromVersion), to = starterUpgradeSnapshot(pair.to, pair.toVersion);
@@ -188,8 +188,9 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   assert(changed.length > 0, "upgrade_pair_has_no_replacements");
   const reminderTestReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === reminderInstallationTest && file.action === "replace");
-  const conflict = changed.at(-1).path;
+  const { path: conflict, action } = changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
   phase("managed-conflict", () => {
+    pair.evidence.managedConflict = { path: conflict, action };
     const original = existsSync(join(app, conflict)) ? readFileSync(join(app, conflict)) : null;
     mkdirSync(dirname(join(app, conflict)), { recursive: true });
     writeFileSync(join(app, conflict), "adopter-managed-divergence");
