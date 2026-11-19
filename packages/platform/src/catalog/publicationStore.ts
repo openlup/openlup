@@ -520,28 +520,38 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
           require(live && String(live.net_weight_g) === catalogPublicationIntegralGrams(operation.netContent, prepared.definition),
             "catalog_publication_derived_source_mismatch");
         }
+        const mediaBySku = new Map(prepared.payload.publication.evidence.media?.map(claim => [claim.skuCode, claim]));
+        const verifiedMedia = new Set<string>();
+        const retainedByCode = new Map(preliminary.skus.map(sku => [sku.code, sku]));
+        const presentationEffect = prepared.payload.publication.operations.findLast(op => op.op === "set_product_presentation");
+        const mediaRef = (presentationEffect ? presentationEffect.presentation : preliminary.product?.presentation)?.mediaRef;
+        async function checkActivationSources(liveSkus: RetainedState["liveSkus"]) {
+          const { activationCodes, selectedSources } = selectActivationSources(liveSkus);
+          for (const code of activationCodes) {
+            const source = selectedSources.get(code);
+            const authored = source?.payload.skus.find(sku => sku.code === code);
+            const sku = liveSkus.find(sku => sku.sku === code);
+            require(authored?.netContent && sku?.id === authored.id && sku.product_id === authored.productId
+              && String(sku.net_weight_g) === catalogPublicationIntegralGrams(authored.netContent, prepared.definition)
+              && equal(sku.option_values, authored.options), "catalog_publication_operation_source_mismatch");
+            assertCatalogPublicationGrossMass(authored!.netContent!, authored!.grossMass ?? null, prepared.definition);
+            const assets = authored!.assetRefs ?? retainedByCode.get(code)?.assetRefs ?? [];
+            const claim = mediaBySku.get(code);
+            require(!catalogPublicationMediaIssue(mediaRef, assets, claim), "catalog_publication_media_readiness_unproven");
+            if (claim && !verifiedMedia.has(code)) {
+              const verdict = await deps.verifyMedia(db, claim);
+              require(typeof verdict === "boolean", "catalog_publication_readiness_invalid", "dependency_unavailable");
+              require(verdict, "catalog_publication_media_readiness_unproven");
+              verifiedMedia.add(code);
+            }
+          }
+          return activationCodes;
+        }
+        await checkActivationSources(preliminary.liveSkus);
         await lockLineage(db, command.productId);
         const liveSkus = (await tuple(db, `SELECT id,product_id,sku,status,sellable_standalone,sellable_in_subscription,net_weight_g,option_values
           FROM public.catalog_skus WHERE product_id=$1::uuid`, [command.productId])) as RetainedState["liveSkus"];
-        const { activationCodes, selectedSources } = selectActivationSources(liveSkus);
-        const mediaBySku = new Map(prepared.payload.publication.evidence.media?.map(claim => [claim.skuCode, claim]));
-        for (const code of activationCodes) {
-          const source = selectedSources.get(code);
-          const authored = source?.payload.skus.find(sku => sku.code === code);
-          const sku = liveSkus.find(sku => sku.sku === code);
-          require(authored?.netContent && sku?.id === authored.id && sku.product_id === authored.productId
-            && String(sku.net_weight_g) === catalogPublicationIntegralGrams(authored.netContent, prepared.definition)
-            && equal(sku.option_values, authored.options), "catalog_publication_operation_source_mismatch");
-          assertCatalogPublicationGrossMass(authored!.netContent!, authored!.grossMass ?? null, prepared.definition);
-          const mediaRef = source!.payload.product.sharedContent.presentation?.mediaRef, assets = authored!.assetRefs ?? [];
-          const claim = mediaBySku.get(code);
-          require(!catalogPublicationMediaIssue(mediaRef, assets, claim), "catalog_publication_media_readiness_unproven");
-          if (claim) {
-            const verdict = await deps.verifyMedia(db, claim);
-            require(typeof verdict === "boolean", "catalog_publication_readiness_invalid", "dependency_unavailable");
-            require(verdict, "catalog_publication_media_readiness_unproven");
-          }
-        }
+        const activationCodes = await checkActivationSources(liveSkus);
         const priceCommands = prepared.payload.skus.flatMap(sku => sku.priceOperations ?? []);
         let prelockedBatch: unknown;
         if (priceCommands.length) {

@@ -3397,6 +3397,15 @@ it.each([
   const before = await snapshot();
   expect(await authority.publish({ ...command, expectedHead: { ...command.expectedHead!, publicationId: randomUUID() } }, actor))
     .toEqual({ outcome: "validation_issue", reason });
+  const held = await db.connect();
+  try {
+    await held.query("BEGIN");
+    await held.query("SELECT pg_advisory_xact_lock(hashtextextended('catalog-publication-global',0))");
+    expect(await authority.publish(command, actor)).toEqual({ outcome: "validation_issue", reason });
+  } finally {
+    await held.query("ROLLBACK");
+    held.release();
+  }
   expect(await snapshot()).toEqual(before);
 }));
 
