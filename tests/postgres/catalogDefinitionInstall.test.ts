@@ -122,8 +122,9 @@ it("definition installation uses shared pack closure before SQL", async () => {
 it("pack_custom_unit_needs_no_ddl", async () => {
   const ddl = async () => (await owner.query("SELECT oid,relname,relkind FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY oid")).rows;
   const before = await ddl();
-  const input: CatalogPackInput = { ...pack("custom"), types: [{ ...installedDefinition(), key: "example:custom", units: [{ code: "example:pair", dimension: "count", integral: true,
-    factor: { canonicalUnit: "openlup:piece", unscaled: "2", scale: 0 } }], netContentUnits: ["example:pair"] }] };
+  const input = withCatalogPublicationRules<CatalogPackInput>({ ...pack("custom"), types: [{ ...definition(), key: "example:custom",
+    units: [{ code: "example:pair", dimension: "count", integral: true,
+      factor: { canonicalUnit: "openlup:piece", unscaled: "2", scale: 0 } }], netContentUnits: ["example:pair"] }] }, () => Buffer.from(artifact));
   await installCatalogDefinitions(owner, input);
   expect(await ddl()).toEqual(before);
   expect((await owner.query("SELECT definition->'units' AS units FROM public.catalog_type_versions WHERE type_key='example:custom'")).rows[0].units)
