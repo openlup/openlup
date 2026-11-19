@@ -1318,6 +1318,24 @@ async function assertBusy(result: unknown, before: Record<string, unknown>) {
   expect(result).toMatchObject({ outcome: "conflict",reason: "catalog_publication_busy" });
   expect(await snapshot()).toEqual(before);
 }
+it("LC5 archive handoff observes a governed draft only after provisional activation", async () => {
+  const f = await fixture(packs[0]), change = await changedDocument(f), purchase = purchaseInput(f);
+  await pool.query("UPDATE public.subscriptions SET status='cancelled' WHERE id=$1", [f.subscription]);
+  const creator = await session(), publisher = await pool.connect();
+  try {
+    const before = await snapshot();
+    const result = await rpc(creator,"commerce_create_order_draft_with_outbox",purchase.args);
+    await assertBusy(await publishOn(publisher,change.publication),before);
+    await creator.query("COMMIT");
+    const order = result.orderDraft.orderId.replace(/^order_/u,"");
+    expect((await publisher.query("SELECT status,catalog_acceptance FROM public.commerce_orders WHERE id=$1", [order])).rows)
+      .toEqual([{ status: "pending_payment",catalog_acceptance: { schemaVersion: 2,lines: [f.reference] } }]);
+    const obligations = async () => (await publisher.query("SELECT public.catalog_bound_obligations_v2($1) AS evidence", [f.sku])).rows[0].evidence;
+    expect(await obligations()).toMatchObject({ outcome: "complete",obligations: [] });
+    await rpc(creator,"subscription_declare_provisional_activation",[`declare:${purchase.args[0]}`,order,28,f.at]);
+    expect(await obligations()).toMatchObject({ outcome: "complete",obligations: [{ family: "pending_activation",sourceId: order }] });
+  } finally { await creator.query("ROLLBACK"); creator.release(); publisher.release(); }
+});
 it.each(packs.flatMap(pack => lanes.map(lane => ({ pack,lane }))))("F5 edit excludes publication with donor busy refusal, then publisher retry succeeds $pack $lane", async ({ pack,lane }) => {
   const f = await fixture(pack), command = await edit(f,lane), next = await changedDocument(f);
   const h = await pool.connect(), e = await session(), w = await pool.connect(), stop = await gate(h);
