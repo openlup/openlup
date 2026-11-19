@@ -6,6 +6,7 @@ import type { CustomizationFragments } from '../owned/fragments.ts';
 
 export interface PageContext {
   config: StoreConfig;
+  governedCatalogue?: boolean;
   catalogueDraftType: import('../shared/api.ts').AppConfigurationResponse['catalogueDraftType'];
   locale: Locale;
   route: ResolvedRoute;

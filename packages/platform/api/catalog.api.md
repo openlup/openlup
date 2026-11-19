@@ -5291,7 +5291,7 @@ export declare const sellableCatalogListResponseSchema: z.ZodObject<{
 
 ```ts
 import type { PgQueryExecutor } from "../data/index.js";
-import { type CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
+import { type CommercePriceAuthorityQuery, type CommercePriceAuthorityReadPort, type CommerceQuoteCatalogItemV2 } from "../pricing/index.js";
 import { type NeutralSkuEnvelopeV1 } from "./contracts/foundation.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogAcceptedReferenceV2, CatalogProductState, CatalogSkuState } from "./contracts/lifecycleV2.js";
@@ -5314,6 +5314,11 @@ export interface NeutralSkuEnvelopeV2 {
         minQuantity: number;
         options: CatalogSkuState["options"];
         attributes: CatalogSkuState["attributes"];
+        /** Effective storefront sale-unit money from the same observation. @experimental */
+        unitPrice?: {
+            amountMinor: number;
+            currency: string;
+        } | null;
     };
     documentRevision: NeutralSkuEnvelopeV1["documentRevision"];
     identifiers: NeutralSkuEnvelopeV1["identifiers"];
@@ -5324,6 +5329,10 @@ export interface CatalogServingScopeV2 {
     types: readonly CatalogProductTypeRef[];
     offerVersion: string;
     maxItems?: number;
+    /** Select the storefront market and bind its price reads to the supplied snapshot executor. @experimental */
+    priceContext?: Pick<CommercePriceAuthorityQuery, "regionCode" | "currency" | "channel"> & {
+        readPrices(db: PgQueryExecutor): CommercePriceAuthorityReadPort;
+    };
 }
 /** Current listing, detail and commerce reads share one installed authority. @experimental */
 export interface CatalogServingReadPortV2 {
