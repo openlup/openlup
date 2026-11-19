@@ -11930,23 +11930,7 @@
       "class": "public-output"
     },
     {
-      "path": "playwright.checkout.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.promotion-rollout.config.ts",
-      "class": "public-output"
-    },
-    {
       "path": "playwright.ssg.config.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "playwright.subscription.config.ts",
       "class": "public-output"
     },
     {
@@ -31083,10 +31067,6 @@
     },
     {
       "path": "tests/preview/account/identity-composition.spec.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/preview/checkout/helpers/env.ts",
       "class": "public-output"
     },
     {
