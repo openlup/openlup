@@ -19,6 +19,7 @@ import { COMMERCE_MIN_ORDER_UNITS } from "./recommendationPolicyDeps.js";
 import { starterOfferIntentSchema } from "./starterOfferContracts.js";
 
 export { CONFIGURATOR_INTENT_VERSION, configuratorModeSchema } from "@openlup/platform/commerce";
+export const CONFIGURATOR_SHIPPING_COUNTRY = "PL";
 export const CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION =
   "commerce.configurator_fixed_cadence_14_21_28.v1";
 
@@ -72,7 +73,7 @@ export const configuratorIntentSchema = configuratorIntentCoreSchema
       })
       .strict(),
     contact: configuratorContactSchema,
-    address: configuratorAddressCoreSchema.extend({ country: z.literal("PL") }),
+    address: configuratorAddressCoreSchema.extend({ country: z.literal(CONFIGURATOR_SHIPPING_COUNTRY) }),
     selectedDelivery: z
       .object({
         kind: configuratorDeliveryKindSchema,

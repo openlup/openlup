@@ -68,7 +68,57 @@ export type NativeStoreCheck = { table: string; constraint: string; column: stri
   { values: string[] } | { range: { lower: number; upper: number }; beforeSha256: string }
 );
 export type NativeStoreUnique = { table: string; constraint: string; columns: string[]; nullsNotDistinct: boolean };
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: { name: string; table: string; sha256: string }[]; purposeCheck?: { beforeSha256: string; values: string[] } };
+const deferredEvents = ["INSERT", "UPDATE", "DELETE"] as const;
+// Native catalogue pin: test-postgres 16 in config/ci-images.json. All PostgreSQL 16 keywords from https://github.com/postgres/postgres/blob/REL_16_STABLE/src/include/parser/kwlist.h
+const deferredKeyword = new Set(`
+  abort absent absolute access action add admin after aggregate all also alter always analyse analyze and any
+  array as asc asensitive assertion assignment asymmetric at atomic attach attribute authorization backward
+  before begin between bigint binary bit boolean both breadth by cache call called cascade cascaded case cast
+  catalog chain char character characteristics check checkpoint class close cluster coalesce collate collation
+  column columns comment comments commit committed compression concurrently configuration conflict connection
+  constraint constraints content continue conversion copy cost create cross csv cube current current_catalog
+  current_date current_role current_schema current_time current_timestamp current_user cursor cycle data
+  database day deallocate dec decimal declare default defaults deferrable deferred definer delete delimiter
+  delimiters depends depth desc detach dictionary disable discard distinct do document domain double drop each
+  else enable encoding encrypted end enum escape event except exclude excluding exclusive execute exists
+  explain expression extension external extract false family fetch filter finalize first float following for
+  force foreign format forward freeze from full function functions generated global grant granted greatest
+  group grouping groups handler having header hold hour identity if ilike immediate immutable implicit import
+  in include including increment indent index indexes inherit inherits initially inline inner inout input
+  insensitive insert instead int integer intersect interval into invoker is isnull isolation join json
+  json_array json_arrayagg json_object json_objectagg key keys label language large last lateral leading
+  leakproof least left level like limit listen load local localtime localtimestamp location lock locked logged
+  mapping match matched materialized maxvalue merge method minute minvalue mode month move name names national
+  natural nchar new next nfc nfd nfkc nfkd no none normalize normalized not nothing notify notnull nowait null
+  nullif nulls numeric object of off offset oids old on only operator option options or order ordinality
+  others out outer over overlaps overlay overriding owned owner parallel parameter parser partial partition
+  passing password placing plans policy position preceding precision prepare prepared preserve primary prior
+  privileges procedural procedure procedures program publication quote range read real reassign recheck
+  recursive ref references referencing refresh reindex relative release rename repeatable replace replica
+  reset restart restrict return returning returns revoke right role rollback rollup routine routines row rows
+  rule savepoint scalar schema schemas scroll search second security select sequence sequences serializable
+  server session session_user set setof sets share show similar simple skip smallint snapshot some sql stable
+  standalone start statement statistics stdin stdout storage stored strict strip subscription substring
+  support symmetric sysid system system_user table tables tablesample tablespace temp template temporary text
+  then ties time timestamp to trailing transaction transform treat trigger trim true truncate trusted type
+  types uescape unbounded uncommitted unencrypted union unique unknown unlisten unlogged until update user
+  using vacuum valid validate validator value values varchar variadic varying verbose version view views
+  volatile when where whitespace window with within without work wrapper write xml xmlattributes xmlconcat
+  xmlelement xmlexists xmlforest xmlnamespaces xmlparse xmlpi xmlroot xmlserialize xmltable year yes zone
+`.trim().split(/\s+/u));
+export type NativeDeferredTrigger = { name: string; relation: string; events: (typeof deferredEvents)[number][]; function: string; deferred: true; sha256: string };
+const deferredTriggerMessages = {
+  unregistered: (name: PlatformSqlToken | undefined, supported: boolean) => `deferred trigger ${name?.value ?? "<missing name>"} is not registered; ${!supported ? "remove it" : name?.kind !== "word" || deferredNameRule(name.value)
+    ? "rename it to a lowercase, unquoted, non-keyword identifier of at most 63 bytes and add it to createdTriggers"
+    : "remove it, or register it and use the statement the registry renders"}`,
+  hash: (name: string, digest: string) => `deferred trigger ${name}: update sha256 in its createdTriggers entry to ${digest}`,
+  duplicateEntry: (name: string) => `createdTriggers entry ${name} is listed twice; delete the duplicate entry`,
+  pinned: (pin: NativeDeferredTrigger, name: string, creation?: string) =>
+    `deferred trigger ${pin.name} is pinned; only these statements may name ${name}: ${renderNativeDeferredTrigger(pin)}${creation ? ` ${creation} REVOKE ALL ON FUNCTION ${pin.function} FROM PUBLIC;` : ""} remove it, or rewrite it to exactly one of these`,
+  field: (name: unknown, field: string, rule: string) => `createdTriggers entry ${typeof name === "string" ? name : "<unnamed>"}: ${field} ${rule}`,
+};
+type NativeCreatedTrigger = { name: string; table: string; sha256: string; deferred?: never } | NativeDeferredTrigger;
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] } };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 type ManagedExactForward = { path: string; sha256: string; prefixSha256: string };
 export type ReviewedForwardRegistry = { managedExactForwards?: ManagedExactForward[]; nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
@@ -2198,6 +2248,8 @@ export const isNativeStoreMigrationPath = (path: string, slots?: readonly Pick<N
 };
 
 const nativeStoreName = (name: unknown): name is string => typeof name === "string" && /^[a-z_][a-z0-9_]*$/u.test(name);
+const deferredNameRule = (name: unknown) => !nativeStoreName(name) || name.length > 63 ? "must be an unquoted identifier of at most 63 bytes"
+  : deferredKeyword.has(name) ? "is a PostgreSQL keyword. Rename the trigger (for example, add a prefix) and register the new name." : undefined;
 const nativeStoreTable = (name: unknown): name is string => typeof name === "string" && /^public\.[a-z_][a-z0-9_]*$/u.test(name);
 const nativeStoreList = (values: unknown): values is string[] => Array.isArray(values) && values.length > 0 && values.every(nativeStoreName) && new Set(values).size === values.length;
 const nativeStoreInteger = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
@@ -2219,13 +2271,6 @@ function nativeStoreAlter(statement: string): { table: string; actions: string[]
   const { tokens, complete } = platformSqlTokens(statement, false, true), head = nativeTableHead(tokens);
   if (!complete || head?.verb !== "ALTER" || head.kind !== "TABLE" || !head.table || !nativeSymbol(tokens, tokens.length - 1, ";") || head.next >= tokens.length - 1) return null;
   return { table: head.table, actions: nativeStoreArguments(statement.slice(tokens[head.next]!.start, tokens.at(-1)!.start)).map(nativeStoreTrim) };
-}
-function nativeConstraintAction(statement: string): { table: string; name: string; verb: string; tail: PlatformSqlToken[] } | null {
-  const alter = nativeStoreAlter(statement);
-  if (!alter || alter.actions.length !== 1) return null;
-  const parsed = platformSqlTokens(alter.actions[0]!, false, true), tokens = parsed.tokens, name = nativeIdentifier(tokens[2]);
-  if (!parsed.complete || !nativeWord(tokens, 1, "CONSTRAINT") || name === null || !["ADD", "DROP"].some(verb => nativeWord(tokens, 0, verb))) return null;
-  return { table: alter.table, name, verb: tokens[0]!.value.toUpperCase(), tail: tokens.slice(3) };
 }
 const sameSkuConstraint = "subscription_lines_catalog_sku_revision_fkey";
 // Keep the single-column grammar; the composite exception is one closed token shape.
@@ -2362,7 +2407,23 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     if (new Set(constraints).size !== constraints.length) throw new Error("reviewed native store duplicate constraint entry");
     if (slot.droppedIndexes !== undefined && (!Array.isArray(slot.droppedIndexes) || slot.droppedIndexes.some(index => !keysAre(index, "beforeSha256,name,table") || !nativeStoreTable(index.table) || !nativeStoreName(index.name) || !hash(index.beforeSha256)) || new Set(slot.droppedIndexes.map(index => index.name)).size !== slot.droppedIndexes.length)) throw new Error("reviewed native store invalid dropped index inventory");
     if (slot.createdViews !== undefined && (!Array.isArray(slot.createdViews) || slot.createdViews.some(view => !keysAre(view, "name,sha256") || !nativeStoreTable(view.name) || !hash(view.sha256)) || new Set(slot.createdViews.map(view => view.name)).size !== slot.createdViews.length)) throw new Error("reviewed native store invalid created view inventory");
-    if (slot.createdTriggers !== undefined && (!Array.isArray(slot.createdTriggers) || slot.createdTriggers.some(trigger => !keysAre(trigger, "name,sha256,table") || !nativeStoreName(trigger.name) || !nativeStoreTable(trigger.table) || !hash(trigger.sha256)) || new Set(slot.createdTriggers.map(trigger => trigger.name)).size !== slot.createdTriggers.length)) throw new Error("reviewed native store invalid created trigger inventory");
+    if (slot.createdTriggers !== undefined && (!Array.isArray(slot.createdTriggers) || slot.createdTriggers.some((trigger, index, entries) => {
+      if (!trigger || typeof trigger !== "object") throw new Error(deferredTriggerMessages.field(null, "entry", "must be an object"));
+      const prior = entries.find((entry, position) => position < index && entry.name === trigger.name);
+      if (prior && (trigger.deferred === true || prior.deferred === true)) throw new Error(deferredTriggerMessages.duplicateEntry(trigger.name));
+      if (trigger.deferred !== true && !("deferred" in trigger || "relation" in trigger)) return Boolean(prior)
+        || !nativeStoreName(trigger.name) || !hash(trigger.sha256) || !keysAre(trigger, "name,sha256,table") || !nativeStoreTable(trigger.table);
+      const invalid = (field: string, rule: string): never => { throw new Error(deferredTriggerMessages.field(trigger.name, field, `must be ${rule}`)); };
+      if (trigger.deferred !== true) return invalid("deferred", "true");
+      const rule = deferredNameRule(trigger.name);
+      if (rule) throw new Error(deferredTriggerMessages.field(trigger.name, "name", rule));
+      if (!nativeStoreTable(trigger.relation) || trigger.relation.length > 70) invalid("relation", "a public relation with an identifier of at most 63 bytes");
+      if (typeof trigger.function !== "string" || !/^public\.[a-z_][a-z0-9_]{0,62}\(\)$/u.test(trigger.function)) invalid("function", "a zero-argument public function of at most 63 bytes");
+      if (deferredKeyword.has(trigger.function.slice(7, -2))) throw new Error(deferredTriggerMessages.field(trigger.name, "function", "name is a PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name."));
+      if (!Array.isArray(trigger.events) || !trigger.events.length || canonical(trigger.events) !== canonical(deferredEvents.filter(event => trigger.events.includes(event)))) invalid("events", "a nonempty ordered subset of INSERT, UPDATE, DELETE");
+      if (!hash(trigger.sha256)) invalid("sha256", "the 64-character SHA-256 digest of the statement");
+      return !keysAre(trigger, "deferred,events,function,name,relation,sha256") && invalid("fields", "name, relation, events, function, deferred and sha256");
+    }))) throw new Error("reviewed native store invalid created trigger inventory");
     if (slot.purposeCheck && (slot.row !== "G11-c" || !keysAre(slot.purposeCheck, "beforeSha256,values") || !hash(slot.purposeCheck.beforeSha256) || !Array.isArray(slot.purposeCheck.values) || slot.purposeCheck.values.length === 0 || slot.purposeCheck.values.some(value => !/^[a-z][a-z0-9_]*$/u.test(value)) || new Set(slot.purposeCheck.values).size !== slot.purposeCheck.values.length)) throw new Error("reviewed native store permits only the account-consent purpose CHECK");
   }
   const forwards = registry.nativeStoreForwards;
@@ -2428,11 +2489,10 @@ const nativeStoreRolePrivilege = /^DO \$\$[ \t\n]*BEGIN[ \t\n]+IF EXISTS[ \t\n]*
 
 // The sole DO exception. Keep its grammar and role policy together so a later
 // control can tighten or remove it without changing the generic SQL splitter.
-function nativeStorePrivilege(statement: string, tables: Set<string>, insertSelectTables: string[], views = new Set<string>(), triggerFunctions = new Set<string>(), censusTables: string[] = []): { kind: "RLS" } | { kind: "POLICY" } | { kind: "BASELINE"; action: number } | { kind: "CENSUS"; table: string; action: "grant" | "policy" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
+function nativeStorePrivilege(statement: string, tables: Set<string>, insertSelectTables: string[], views = new Set<string>(), triggerFunctions = new Set<string>(), censusTables: string[] = [], block: RegExpExecArray | null = null): { kind: "RLS" } | { kind: "POLICY" } | { kind: "BASELINE"; action: number } | { kind: "CENSUS"; table: string; action: "grant" | "policy" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
   let sql = statement, exactSql = statement, roleGuard: string | undefined;
   const conditional = /^DO\b/iu.test(statement);
   if (conditional) {
-    const block = nativeStoreRolePrivilege.exec(statement);
     if (!block || !nativeStoreRoles.includes(block[1]!)) throw new Error("reviewed native store refuses DO outside the single constant role privilege shape");
     if (!nativeStoreAscii(block[2]!)) throw new Error("reviewed native store conditional privilege requires ASCII identifiers and verbs");
     exactSql = block[2]!;
@@ -2566,8 +2626,16 @@ export function nativeStoreTriggerDefinition(statement: string): { name: string;
   return { name, table: table.name, signature: `${fn.name}()`, timing, events };
 }
 
+const deferredTriggerSql = (name: string, events: string, relation: string, fn: string) =>
+  `CREATE CONSTRAINT TRIGGER ${name} AFTER ${events} ON ${relation} DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION ${fn};`;
+export const renderNativeDeferredTrigger = (entry: Omit<NativeDeferredTrigger, "sha256">) =>
+  deferredTriggerSql(entry.name, entry.events.join(" OR "), entry.relation, entry.function);
+const deferredTarget = String.raw`public\.[a-z_][a-z0-9_]{0,62}`;
+const deferredEventPattern = "(?:INSERT(?: OR UPDATE)?(?: OR DELETE)?|UPDATE(?: OR DELETE)?|DELETE)";
+const deferredTriggerForm = new RegExp(`^${deferredTriggerSql("<name>", deferredEventPattern, deferredTarget, String.raw`${deferredTarget}\(\)`)}$`, "iu");
+
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
-export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]): void {
+export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]) {
   validateNativeStoreClass(registry, new Set());
   const control = registry.nativeStoreForwardClass, slot = control?.slots.find(slot => slot.path === path);
   const forward = registry.nativeStoreForwards?.find(pin => pin.path === path);
@@ -2582,9 +2650,18 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const source = preceding.find(source => source.path === pin.path);
     if (!source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed native store prior issued file drifted");
   }
+  const pins = (slot.createdTriggers ?? []).filter((entry): entry is NativeDeferredTrigger => entry.deferred === true);
+  const created = new Set(slot.createdFunctions.map(fn => fn.signature));
+  const statements = sqlStatements(bytes.toString("utf8"), false, false, true);
+  const pinnedMessage = (pin: NativeDeferredTrigger, name = pin.name) => {
+    const digest = created.has(pin.function) && forward.functions.find(binding => binding.signature === pin.function)?.afterSha256;
+    const creation = digest ? statements.find(sql => sqlSha256(sql) === digest) : undefined;
+    return new Error(deferredTriggerMessages.pinned(pin, name, creation));
+  };
+  const triggerFunctions = new Set<string>(), granted = new Set<string>();
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
   const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), priorStatements = new Map<string, string>();
-  const checks = slot.checkSupersets ?? [], uniques = slot.uniqueSupersets ?? [], droppedIndexes = slot.droppedIndexes ?? [];
+  const replacements = [...slot.checkSupersets ?? [], ...slot.uniqueSupersets ?? []], droppedIndexes = slot.droppedIndexes ?? [];
   const indexCreates = new Set<string>();
   let checkSource: string | undefined;
   for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true, false, true)) {
@@ -2613,86 +2690,115 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const chained = new Set(control!.slots.slice(0, control!.slots.indexOf(slot)).flatMap(slot => nativeStoreFunctions(slot).map(fn => fn.signature)));
   for (const fn of functions) if ((!chained.has(fn.signature) && (baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256) || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
   for (const fn of slot.grantOnlyFunctions) if (!baseDefinitions.has(fn.signature)) throw new Error("reviewed native store grant-only function absent from base chain");
-  const statements = sqlStatements(bytes.toString("utf8"), false, false, true), definitions = nativeStoreFunctionDefinitions(bytes, functions.map(fn => fn.signature));
-  if (definitions.size !== functions.length || functions.some(fn => definitions.get(fn.signature) !== forward.functions.find(pin => pin.signature === fn.signature)?.afterSha256)) throw new Error("reviewed native store unlisted, missing or drifted function definition");
-  const triggerFunctions = new Set<string>();
-  for (const statement of statements) {
-    const { tokens } = platformSqlTokens(statement, false, true);
-    if (!nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, nativeWord(tokens, 1, "CONSTRAINT") ? 2 : 1, "TRIGGER")) continue;
-    const trigger = nativeStoreTriggerDefinition(statement);
-    if (!trigger) throw new Error("reviewed native store created trigger shape refused");
-    triggerFunctions.add(trigger.signature);
-  }
-  const created = new Set(slot.createdFunctions.map(fn => fn.signature));
   const existingTableStatements = slot.existingTableStatements ?? [];
-  const revoked = new Set<string>(), defined = new Set<string>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
-  const dropped = new Set<string>(), triggers = new Set<string>(), views = new Set<string>(), revokedViews = new Set<string>(), completedChecks = new Set<string>(), completedUniques = new Set<string>();
+  const revoked = new Set<string>(), defined = new Map<string, boolean>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
+  const dropped = new Set<string>(), triggers = new Set<string>(), views = new Set<string>(), revokedViews = new Set<string>(), completedConstraints = new Set<string>();
+  const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
   const censusTables = slot.absorptionCensusTables ?? [], censusGrants = new Set<string>(), censusPolicies = new Set<string>();
-  let pending: { kind: "CHECK" | "UNIQUE"; key: string } | undefined;
+  let pending: string | undefined;
   const baselineActions = new Set<number>();
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
   for (const statement of statements) {
-    const lexical = platformSqlTokens(statement, false, true), tokens = lexical.tokens, head = nativeTableHead(tokens), action = nativeConstraintAction(statement);
-    if (pending && (!action || action.verb !== "ADD" || `${action.table}.${action.name}` !== pending.key)) throw new Error("reviewed native store requires the adjacent named constraint replacement");
+    const parsed = platformSqlTokens(statement, false, true), { tokens } = parsed, head = nativeTableHead(tokens);
+    const word = (i: number, value: string) => nativeWord(tokens, i, value);
+    const create = word(0, "CREATE"), drop = word(0, "DROP"), changing = word(0, "ALTER");
+    const replacement = create && word(1, "OR") && word(2, "REPLACE"), kind = replacement ? 3 : word(0, "COMMENT") ? 2 : 1;
+    const constraint = create && word(kind, "CONSTRAINT"), triggerAt = kind + Number(constraint);
+    const nameIndex = triggerAt + (word(triggerAt + 1, "IF") && word(triggerAt + 2, "NOT") && word(triggerAt + 3, "EXISTS") ? 4 : 1);
+    const id = (i: number) => nativeIdentifier(tokens[i])?.slice(0, 63);
+    const next = (i: number) => i + (nativeSymbol(tokens, i + 1, ".") ? 3 : 1);
+    const relation = (i: number) => next(i) === i + 3 ? `${id(i)}.${id(i + 2)}` : `public.${id(i)}`;
+    const entry = create && word(triggerAt, "TRIGGER") && pins.find(pin => pin.name === id(nameIndex));
+    const block = nativeStoreRolePrivilege.exec(statement), pinScan = pins.length && block ? platformSqlTokens(block[2]!, false, true) : parsed;
+    // The pin scan reads unquoted and double-quoted identifiers in full. Exact statement pins cover text inside string literals and function bodies.
+    const unicodeEscape = pins.length && pinScan.tokens.some((token, i, scan) => nativeWord(scan, i, "UESCAPE")
+      || (nativeWord(scan, i, "U") && nativeSymbol(scan, i + 1, "&") && token.end === scan[i + 1]!.start
+        && scan[i + 1]!.end === scan[i + 2]?.start && (scan[i + 2]?.kind === "quoted" || scan[i + 2]?.kind === "string")));
+    if (pins.length && (!parsed.complete || !pinScan.complete || unicodeEscape)) throw new Error(`The statement cannot be checked for pinned objects. ${pinnedMessage(pins[0]!).message}`);
+    if (entry) {
+      if (statement !== renderNativeDeferredTrigger(entry) || triggers.has(entry.name)) throw pinnedMessage(entry);
+      const digest = sqlSha256(statement);
+      if (digest !== entry.sha256) throw new Error(deferredTriggerMessages.hash(entry.name, digest));
+    } else if (pins.length) {
+      const revoke = word(0, "REVOKE") && tokens.filter((_, i) => i !== 2 || !word(i, "PRIVILEGES")).map(token => nativeIdentifier(token) ?? token.value).join(" ");
+      const own = pins.find(pin => created.has(pin.function) && (create && word(1, "FUNCTION")
+        ? nativeQualified(tokens, 2)?.name === pin.function.slice(0, -2) && nativeSymbol(tokens, 5, "(") && nativeSymbol(tokens, 6, ")")
+        : revoke === `revoke all on function public . ${pin.function.slice(7, -2)} ( ) from public ;`))?.function.slice(7, -2);
+      for (const token of pinScan.tokens) {
+        const name = nativeIdentifier(token)?.slice(0, 63);
+        if (!name || name === own) continue;
+        const pin = pins.find(pin => pin.name === name || pin.function === `public.${name}()`);
+        if (pin) throw pinnedMessage(pin, name);
+      }
+    }
+    const alter = nativeStoreAlter(statement), start = word(2, "IF") ? 4 : 2, table = start + Number(word(start, "ONLY"));
+    const actions = alter?.actions ?? (pins.length && changing && word(1, "TABLE") ? nativeStoreArguments(statement.slice(tokens[next(table)]?.start ?? -1, -1)) : []);
+    const parts = actions.map(part => platformSqlTokens(part, false, true));
+    const named = parts.length === 1 && parts[0]!.complete ? parts[0]!.tokens : [];
+    const name = nativeIdentifier(named[2]), verb = named[0]?.value.toUpperCase();
+    const action = alter && name !== null && nativeWord(named, 1, "CONSTRAINT") && (nativeWord(named, 0, "ADD") || nativeWord(named, 0, "DROP"))
+      ? { table: alter.table, name, verb, tail: named.slice(3) } : null;
+    if (pending && (!action || action.verb !== "ADD" || `${action.table}.${action.name}` !== pending)) throw new Error("reviewed native store requires the adjacent named constraint replacement");
     if (droppedCheck && !addedCheck && !statement.startsWith(`ALTER TABLE ${purposeTable} ADD CONSTRAINT ${purposeConstraint} `)) throw new Error("reviewed native store requires the adjacent purpose CHECK replacement");
-    if (nativeWord(tokens, 0, "DROP") && nativeWord(tokens, 1, "INDEX")) {
+    if (entry) { triggers.add(entry.name); continue; }
+    const triggerDdl = word(triggerAt, "TRIGGER") && (create || drop || changing || kind === 2);
+    const toggle = parts.some(({ tokens: sub }) => (nativeWord(sub, 0, "ENABLE") || nativeWord(sub, 0, "DISABLE"))
+      && nativeWord(sub, ["ALWAYS", "REPLICA"].some(word => nativeWord(sub, 1, word)) ? 2 : 1, "TRIGGER"));
+    const target = triggerDdl ? tokens.findIndex((_, i) => i > triggerAt && word(i, "ON")) + 1 : table;
+    const relationPin = (triggerDdl || toggle) && pins.find(pin => pin.relation === relation(target));
+    if (relationPin) throw pinnedMessage(relationPin);
+    if (triggerDdl && constraint) {
+      const shape = tokens.map((token, i) => i === nameIndex ? "<name>" : statement.slice(token.start, token.end)).join(" ").replace(/ *([.();]) */gu, "$1");
+      throw new Error(deferredTriggerMessages.unregistered(tokens[nameIndex], deferredTriggerForm.test(shape)));
+    }
+    if ((triggerDdl && (drop || changing)) || (toggle && alter)) throw new Error("reviewed native store trigger mutation refused");
+    if (triggerDdl && create && !replacement) {
+      const trigger = nativeStoreTriggerDefinition(statement);
+      if (!trigger) throw new Error("reviewed native store created trigger shape refused");
+      const listed = slot.createdTriggers?.find(entry => entry.deferred !== true && entry.name === trigger.name && entry.table === trigger.table);
+      if (!listed || triggers.has(trigger.name) || sqlSha256(statement) !== listed.sha256) throw new Error("reviewed native store unlisted, duplicate or drifted trigger statement");
+      if (!created.has(trigger.signature) || !defined.has(trigger.signature)) throw new Error("reviewed native store created trigger requires a same-slot created function");
+      if (!defined.get(trigger.signature)) throw new Error("reviewed native store trigger function requires RETURNS trigger, SECURITY INVOKER and pinned search_path");
+      if (granted.has(trigger.signature)) throw new Error("reviewed native store trigger function GRANT EXECUTE refused");
+      triggerFunctions.add(trigger.signature); triggers.add(trigger.name);
+      ordinaryProof.set(trigger.name, { definition: trigger, localTable: tables.has(trigger.table) });
+      continue;
+    }
+    if (drop && word(1, "INDEX")) {
       const index = droppedIndexes.find(index => statement === `DROP INDEX public.${index.name};`);
       if (!index || dropped.has(index.name)) throw new Error("reviewed native store unlisted, duplicate or non-plain index drop");
       dropped.add(index.name); continue;
     }
-    const alter = nativeStoreAlter(statement);
-    const mutation = (["DROP", "ALTER"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, 1, "TRIGGER")) || alter?.actions.some(action => {
-      const { tokens } = platformSqlTokens(action, false, true);
-      return ["ENABLE", "DISABLE"].some(word => nativeWord(tokens, 0, word)) && (nativeWord(tokens, 1, "TRIGGER") || (["ALWAYS", "REPLICA"].some(word => nativeWord(tokens, 1, word)) && nativeWord(tokens, 2, "TRIGGER")));
-    });
-    if (mutation) throw new Error("reviewed native store trigger mutation refused");
-    if (nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, 1, "TRIGGER")) {
-      const trigger = nativeStoreTriggerDefinition(statement)!;
-      const entry = slot.createdTriggers?.find(entry => entry.name === trigger.name && entry.table === trigger.table);
-      if (!entry || triggers.has(trigger.name) || sqlSha256(statement) !== entry.sha256) throw new Error("reviewed native store unlisted, duplicate or drifted trigger statement");
-      if (!created.has(trigger.signature) || !defined.has(trigger.signature)) throw new Error("reviewed native store created trigger requires a same-slot created function");
-      triggers.add(trigger.name); continue;
-    }
-    let constraintStatement = false;
-    for (const check of checks) {
-      const key = `${check.table}.${check.constraint}`;
-      if (!action || action.table !== check.table || action.name !== check.constraint) continue;
+    const constraintPin = action && replacements.find(entry => entry.table === action.table && entry.constraint === action.name);
+    if (action && constraintPin) {
+      const key = `${action.table}.${action.name}`;
       if (action.verb === "DROP" && action.tail.length === 0) {
-        if (pending || completedChecks.has(key)) throw new Error("reviewed native store duplicate CHECK replacement");
-        pending = { kind: "CHECK", key }; constraintStatement = true; break;
+        if (pending || completedConstraints.has(key)) throw new Error(`reviewed native store duplicate ${"columns" in constraintPin ? "UNIQUE" : "CHECK"} replacement`);
+        pending = key; continue;
       }
       if (action.verb === "ADD") {
-        const parsed = "values" in check ? nativeCheckValues(action.tail, 0, check.column) : nativeCheckRange(action.tail, check.column);
-        const next = parsed && nativeWord(action.tail, parsed.next, "NOT") && nativeWord(action.tail, parsed.next + 1, "VALID") ? parsed.next + 2 : parsed?.next;
-        const matches = parsed && ("values" in check ? "values" in parsed && canonical(parsed.values) === canonical(check.values)
-          : "lower" in parsed && parsed.lower === check.range.lower && parsed.upper === check.range.upper);
-        if (pending?.kind !== "CHECK" || pending.key !== key || !matches || next !== action.tail.length) throw new Error(`reviewed native store CHECK must match its listed ${"values" in check ? "values" : "range"}`);
-        pending = undefined; completedChecks.add(key); constraintStatement = true; break;
+        if ("columns" in constraintPin) {
+          const parsed = nativeUniqueValues(action.tail, 0);
+          if (pending !== key || !parsed || parsed.next !== action.tail.length || canonical(parsed.columns) !== canonical(constraintPin.columns) || parsed.nullsNotDistinct !== constraintPin.nullsNotDistinct) throw new Error("reviewed native store UNIQUE must match its listed key");
+        } else {
+          const check = constraintPin, parsed = "values" in check ? nativeCheckValues(action.tail, 0, check.column) : nativeCheckRange(action.tail, check.column);
+          const next = parsed && nativeWord(action.tail, parsed.next, "NOT") && nativeWord(action.tail, parsed.next + 1, "VALID") ? parsed.next + 2 : parsed?.next;
+          const listed = parsed && ("values" in check ? "values" in parsed && canonical(parsed.values) === canonical(check.values)
+            : "lower" in parsed && parsed.lower === check.range.lower && parsed.upper === check.range.upper);
+          if (pending !== key || !listed || next !== action.tail.length) throw new Error(`reviewed native store CHECK must match its listed ${"values" in check ? "values" : "range"}`);
+        }
+        pending = undefined; completedConstraints.add(key); continue;
       }
     }
-    if (constraintStatement) continue;
-    for (const unique of uniques) {
-      const key = `${unique.table}.${unique.constraint}`;
-      if (!action || action.table !== unique.table || action.name !== unique.constraint) continue;
-      if (action.verb === "DROP" && action.tail.length === 0) {
-        if (pending || completedUniques.has(key)) throw new Error("reviewed native store duplicate UNIQUE replacement");
-        pending = { kind: "UNIQUE", key }; constraintStatement = true; break;
-      }
-      if (action.verb === "ADD") {
-        const parsed = nativeUniqueValues(action.tail, 0);
-        if (pending?.kind !== "UNIQUE" || pending.key !== key || !parsed || parsed.next !== action.tail.length || canonical(parsed.columns) !== canonical(unique.columns) || parsed.nullsNotDistinct !== unique.nullsNotDistinct) throw new Error("reviewed native store UNIQUE must match its listed key");
-        pending = undefined; completedUniques.add(key); constraintStatement = true; break;
-      }
-    }
-    if (constraintStatement) continue;
     if (head?.verb === "CREATE" && head.kind === "VIEW" && head.table && nativeWord(tokens, head.next, "AS")) {
       const view = head.table, entry = slot.createdViews?.find(entry => entry.name === view);
       if (!entry || views.has(view) || sqlSha256(statement) !== entry.sha256) throw new Error("reviewed native store unlisted, duplicate or drifted view definition");
       views.add(view); continue;
     }
-    const replacement = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE");
-    if (nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, replacement ? 3 : 1, "FUNCTION")) {
-      const signature = [...nativeStoreFunctionDefinitions(Buffer.from(statement), signatures).keys()][0]!, fixed = functions.find(fn => fn.signature === signature);
+    if (create && word(kind, "FUNCTION")) {
+      const signature = [...nativeStoreFunctionDefinitions(Buffer.from(statement), functions.map(fn => fn.signature)).keys()][0]!, fixed = functions.find(fn => fn.signature === signature);
+      if (defined.has(signature)) throw new Error("reviewed native store duplicate function definition");
+      if (sqlSha256(statement) !== forward.functions.find(pin => pin.signature === signature)?.afterSha256) throw new Error("reviewed native store unlisted, missing or drifted function definition");
       if (!fixed || replacement !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
       const header = nativeStoreTrim(headerAttributes(statement).replace(/[ \t\n]+/gu, " "));
       if (fixed.beforeSha256 !== null && nativeStoreTrim(headerAttributes(statement)) !== nativeStoreTrim(headerAttributes(priorStatements.get(signature)!))) throw new Error("reviewed native store replacement header drifted");
@@ -2700,11 +2806,12 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(pathHeader)?.[1] ?? null;
       if (rawSearchPath && !nativeStoreAscii(rawSearchPath)) throw new Error("reviewed native store non-ASCII search_path refused");
       const searchPath = rawSearchPath?.toLowerCase() ?? null;
-      if (triggerFunctions.has(signature) && (!/^CREATE FUNCTION public\.[a-z_][a-z0-9_]* *\( *\) RETURNS trigger /iu.test(header) || !/\bSECURITY INVOKER\b/iu.test(header) || /\bSECURITY DEFINER\b/iu.test(header) || !fixed.searchPath)) throw new Error("reviewed native store trigger function requires RETURNS trigger, SECURITY INVOKER and pinned search_path");
       if (/--|\/\*|["\\]/u.test(header) || searchPath !== fixed.searchPath || (/\bSECURITY DEFINER\b/iu.test(header) && !searchPath) || (header.match(/\bSET search_path\b/giu)?.length ?? 0) > 1) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
-      defined.add(signature); continue;
+      defined.set(signature, /^CREATE FUNCTION public\.[a-z_][a-z0-9_]* *\( *\) RETURNS trigger /iu.test(header)
+        && /\bSECURITY INVOKER\b/iu.test(header) && !/\bSECURITY DEFINER\b/iu.test(header) && Boolean(fixed.searchPath));
+      continue;
     }
-    const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions, censusTables);
+    const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions, censusTables, block);
     if (privilege) {
       if (privilege.kind === "BASELINE") {
         if (baselineActions.has(privilege.action)) throw new Error("reviewed native store duplicate baseline privilege");
@@ -2724,6 +2831,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (privilege.kind === "TABLE" && privilege.role === "public") for (const target of privilege.targets) if (views.has(target)) revokedViews.add(target);
       if (privilege.kind === "FUNCTION") {
         for (const signature of privilege.targets) {
+          if (privilege.grant) granted.add(signature);
           const grantOnly = slot.grantOnlyFunctions.find(fn => fn.signature === signature);
           if (grantOnly) {
             if (!privilege.conditional || !(privilege.grant ? grantOnly.grantTo : grantOnly.revokeFrom).includes(privilege.role)) throw new Error("reviewed native store grant-only privilege must use its closed conditional role/verb");
@@ -2767,15 +2875,17 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     throw new Error("reviewed native store refuses statement outside its closed shapes");
   }
+  if (defined.size !== functions.length) throw new Error("reviewed native store unlisted, missing or drifted function definition");
   if ([...created].some(signature => !revoked.has(signature))) throw new Error("reviewed native store created function missing PUBLIC revoke");
   if (droppedCheck !== addedCheck || Boolean(slot.purposeCheck) !== addedCheck) throw new Error("reviewed native store requires the complete named CHECK replacement");
-  if (pending || completedChecks.size !== checks.length || completedUniques.size !== uniques.length) throw new Error("reviewed native store requires the complete named CHECK replacement");
+  if (pending || completedConstraints.size !== replacements.length) throw new Error("reviewed native store requires the complete named CHECK replacement");
   if (dropped.size !== droppedIndexes.length) throw new Error("reviewed native store listed index drop missing");
-  if (triggers.size !== (slot.createdTriggers?.length ?? 0)) throw new Error("reviewed native store created trigger statement missing");
+  if (triggers.size !== (slot.createdTriggers?.length ?? 0)) throw new Error(["reviewed native store created trigger statement missing", pins.find(pin => !triggers.has(pin.name))?.name].filter(Boolean).join(": "));
   if (views.size !== (slot.createdViews?.length ?? 0)) throw new Error("reviewed native store created view missing");
   if ([...views].some(view => !revokedViews.has(view))) throw new Error("reviewed native store created view missing PUBLIC revoke");
   if (data.size !== slot.dataStatements.length) throw new Error("reviewed native store named data statement missing");
   if (censusTables.some(table => !censusGrants.has(table) || !censusPolicies.has(table))) throw new Error("reviewed native store absorption census requires exactly one grant and policy per listed table");
   if (slot.insertSelectTables?.includes(baselineTable) && baselineActions.size !== baselinePrivileges.length) throw new Error("reviewed native store baseline requires its grant and both policies");
   if (existingTablePosition !== existingTableStatements.length) throw new Error("reviewed native store existing-table statement missing");
+  return { slot, ordinaryProof };
 }

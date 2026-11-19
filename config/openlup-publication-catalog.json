@@ -9650,6 +9650,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/apiContractScoping.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
@@ -12119,6 +12123,10 @@
     },
     {
       "path": "scripts/ast-grep/rules/portable-no-industry-contracts.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/benchmarks/outbox-claim.sql",
       "class": "public-output"
     },
     {
@@ -22383,6 +22391,10 @@
     },
     {
       "path": "src/checkout/composer/deliverySelectionFlags.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/legacyCheckoutIntentPolicy.ts",
       "class": "public-output"
     },
     {

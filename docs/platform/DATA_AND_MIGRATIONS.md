@@ -2463,20 +2463,39 @@ existing guarded role revokes are allowed. Every GRANT on a created view refuses
 Views gain no RLS or table-grant capability. The real catalog checks the declared
 new view inventory, ownership and owner-only privileges.
 
-`createdTriggers` entries name a fresh trigger, a qualified target table and the
-exact CREATE TRIGGER statement hash. The target must exist in the prefix or be
-created by an earlier plain CREATE TABLE in this same slot, owned by the migrator.
-Only BEFORE/AFTER INSERT, DELETE or UPDATE
-(with an optional OF column list), combined with OR, FOR EACH ROW and a
-zero-argument public function are admitted. That function must be created in the
-same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
-path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
-allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
-trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
-OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
-triggers and missing targets; the catalog witness proves prefix membership or
-earlier same-slot table creation and ownership,
-name freshness, enabled binding, events and owner-only function ACL.
+<a id="declare-a-reviewed-trigger"></a>
+
+**Declare a deferred trigger.** Add the `createdTriggers` entry and exact SQL in
+the same PR. Use 63-byte identifiers at most and `INSERT`, `UPDATE`, `DELETE` order.
+
+```json
+{
+  "name": "example_guard",
+  "relation": "public.example_items",
+  "events": ["INSERT", "UPDATE"],
+  "function": "public.example_guard()",
+  "deferred": true,
+  "sha256": "9331c59ff1708220da4c99634c53ccade813038aadfa9f183baf00ffd9eea51a"
+}
+```
+
+```sql
+CREATE CONSTRAINT TRIGGER example_guard AFTER INSERT OR UPDATE ON public.example_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.example_guard();
+```
+
+Use a public zero-argument invoker returning `trigger`. Reserve the pinned names
+for declarations, new functions and their PUBLIC revokes. Fix parse errors first.
+For a pinned function created in the same forward, use either `REVOKE ALL ... FROM PUBLIC` or `REVOKE ALL PRIVILEGES ... FROM PUBLIC`.
+For a pinned object, remove the refused statement or use one of the listed exact
+statements. Remove an unregistered trigger, or register it and use the rendered
+SQL when its form is supported.
+Rename any identifier the checker cannot read fully (such as `";"` or a Unicode-escaped identifier), or move its statement to a forward without trigger pins.
+Pins may share a relation. Reuse prefix invokers without a revoke and keep other trigger DDL off it.
+
+Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and
+a same-slot function with explicit `SECURITY INVOKER`, a pinned `search_path`
+and an owner-only ACL. Ordinary triggers also allow `UPDATE OF`.
+Ordinary triggers refuse `WHEN`, transition tables, statement-level and `INSTEAD OF` forms, trigger mutation, `OR REPLACE`, and `IF NOT EXISTS`. Revoke the function’s privileges from `PUBLIC`, grant no `EXECUTE`, and target a table in the prefix or created earlier in the same slot.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
