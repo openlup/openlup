@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import type { RenewalLine, RenewalLinePricing, RenewalPricingSnapshot, RenewalRetainedTerms } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 import { bestEffortNativePurchaseTemplate, resolveNativePurchasePriceList } from "./nativePurchasePriceList.js";
@@ -138,9 +139,23 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
     const unique = new Set(next.map(line => line.sku));
     if (unique.size !== next.length || next.some(line => addons.has(line.sku))) throw new Error("subscription_starter_graduation_invalid_lines");
     const needed = [...unique, ...addons];
-    const known = await db.query("SELECT sku,id FROM public.catalog_skus WHERE sku=ANY($1::text[])", [needed]);
+    const known = await db.query(`SELECT k.sku,k.id,(to_jsonb(k)#>'{publication_facts,schemaVersion}'='3'::jsonb
+      OR to_jsonb(p)#>'{publication_facts,schemaVersion}'='3'::jsonb) AS governed
+      FROM public.catalog_skus k JOIN public.catalog_products p ON p.id=k.product_id WHERE k.sku=ANY($1::text[])`, [needed]);
     if (known.rows.length !== needed.length) throw new Error("subscription_starter_graduation_unknown_sku");
     const ids = new Map(known.rows.map(value => [String(value.sku), String(value.id)]));
+    const retained = row.catalog_acceptance as CatalogAcceptanceV2 | null | undefined;
+    const references = new Map(retained?.lines.map(ref => [ref.skuCode, ref]));
+    if (retained && known.rows.some(value => value.governed === true && !references.has(String(value.sku)))) {
+      const supported = (await db.query("SELECT to_regprocedure('public.catalog_admission_graduation_proof(uuid)') IS NOT NULL AS present")).rows[0]?.present;
+      const phase = supported === true
+        ? (await db.query("SELECT public.catalog_admission_graduation_proof($1::uuid) AS proof", [id])).rows[0]?.proof as CatalogAcceptanceV2 | null | undefined
+        : undefined;
+      for (const ref of phase?.lines ?? []) references.set(ref.skuCode, ref);
+      if (known.rows.some(value => value.governed === true && references.get(String(value.sku))?.skuId !== value.id)) {
+        throw new Error("catalog_retained_revision_unavailable");
+      }
+    }
     const sortOrder = (sku: string) => marker.graduation.lines.find(line => line.sku === sku)?.sortOrder
       ?? Number(roles.get(sku)?.sort_order ?? original.find(line => line.sku === sku)!.lineOrdinal - 1);
     finalLines = [...next, ...original.filter(line => addons.has(line.sku))]
@@ -152,9 +167,13 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
       return price ? [price] : [];
     });
     await db.query("DELETE FROM public.subscription_lines WHERE subscription_id=$1::uuid AND NOT is_addon", [id]);
-    for (const line of next) await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
-      VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7)`, [id, ids.get(line.sku), line.quantity,
-      marker.graduation.lines.find(value => value.sku === line.sku)!.sortOrder, line.isAddon, line.unitAmountMinor, row.currency_code]);
+    for (const line of next) {
+      const revisionId = references.get(line.sku)?.skuRevisionId;
+      await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code${revisionId ? ",catalog_sku_revision_id" : ""})
+        VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7${revisionId ? ",$8::uuid" : ""})`, [id, ids.get(line.sku), line.quantity,
+        marker.graduation.lines.find(value => value.sku === line.sku)!.sortOrder, line.isAddon, line.unitAmountMinor, row.currency_code,
+        ...(revisionId ? [revisionId] : [])]);
+    }
     // Purchase attachment materializes renewal lines first. Retain an acquisition
     // addon in the template too when no template row has yet been materialized.
     for (const line of original.filter(value => addons.has(value.sku) && !roles.has(value.sku))) {
@@ -164,6 +183,12 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
     await db.query("DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1::uuid", [id]);
     for (const line of finalLines) await db.query(`INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
       VALUES($1::uuid,$2,$3,$4,$5)`, [id, line.lineOrdinal, line.sku, line.quantity, line.unitAmountMinor]);
+    if (retained) {
+      const refs = finalLines.flatMap(line => references.has(line.sku) ? [references.get(line.sku)!] : [])
+        .sort((a, b) => a.skuId.localeCompare(b.skuId));
+      await db.query("UPDATE public.subscription_renewal_terms SET catalog_acceptance=$2::jsonb WHERE subscription_id=$1::uuid",
+        [id, refs.length ? JSON.stringify({ schemaVersion: 2, lines: refs }) : null]);
+    }
   }
   await db.query("UPDATE public.subscriptions SET cadence_days=$2,template_version=template_version+1,updated_at=now() WHERE id=$1::uuid", [id, marker.graduation.cadenceDays]);
   const mode = full ? "full" : "cadence_only";

@@ -24,6 +24,10 @@ Fully governed renewals still produce `native.purchase-renewal.v3`. The same
 reader also accepts `native.purchase-renewal.v4` for mixed carts. The new
 snapshot freezes the governed references and exact legacy renewal lines and
 requires both to agree with the retained terms.
+An authenticated graduation reference can retain a distinct governed SKU agreed
+at checkout. It binds the quoted publication and SKU revision to the frozen
+graduation marker. Attachment verifies the marker and servicing uses the
+captured reference after later publications.
 Hosts admitting governed sized checkout supply their existing availability port
 and the accepted server quote's offer binding. The trusted quote reader also
 supplies the product heads observed in its quote snapshot. Editors on older installed

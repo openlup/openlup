@@ -5869,6 +5869,14 @@
           {
             "signature": "public.catalog_admission_verified_heads(uuid[],boolean)",
             "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_capture_graduation(jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_admission_graduation_proof(uuid)",
+            "searchPath": "pg_catalog, pg_temp"
           }
         ],
         "grantOnlyFunctions": [],
@@ -8239,12 +8247,12 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_admission.sql",
-      "sha256": "99c0b4a1a57434b66f0cfbd96f496d1e93875291d65af5406e68bf4bc7408472",
+      "sha256": "52cf7c9226c33991e1d51f66eea0d79b761f4c2a524447d15ef293b002e9f4ad",
       "functions": [
         {
           "signature": "public.commerce_create_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
           "beforeSha256": "687fdfb48ad2fa9400832407e0a12b5d59126df0ce06732e04e761ef6c450c8d",
-          "afterSha256": "83970add0d85e8d222c43d2f0d70b8f840e7c3cc3a6e37c283c9772565548134"
+          "afterSha256": "0211a039d206ee7fb5f9497b7fc0b27e736c5438d5b2bf5ffeaaf30e58546f34"
         },
         {
           "signature": "public.commerce_create_promoted_order_draft_with_outbox(text,jsonb,jsonb,uuid)",
@@ -8299,7 +8307,7 @@
         {
           "signature": "public.subscription_complete_renewal_attachment(uuid)",
           "beforeSha256": "61550482c4a29de324fc80877eb7c0e2e8becc55a6e51ee12df6723db24b2b26",
-          "afterSha256": "b1bea478be82384a8ad630a4827d219496931455bfa16884a53bfcbf1e8a1a31"
+          "afterSha256": "ff7589e4bce58bf4f8507db445692439e5bd57500bbc08891073598430267c41"
         },
         {
           "signature": "public.subscription_sized_edit_context(uuid,uuid,boolean)",
@@ -8314,27 +8322,27 @@
         {
           "signature": "public.catalog_admission_sized_baseline(uuid)",
           "beforeSha256": null,
-          "afterSha256": "d0b6ee6b7e78fa71e0987009891044334079e50d4de45da85e5a251e84907155"
+          "afterSha256": "8748b5a8535573392a9fe06c943a66c473fa1e8bcc89c46db4bd9c79be70e74f"
         },
         {
           "signature": "public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "65b1e60d13bd29efef3488f35c0f3e19b4421e4f308e0729fdaa622d055594a0"
+          "afterSha256": "28b5d481c6387b69dc4acac5899601d364e502b125ea34a45c86eabd54c2547a"
         },
         {
           "signature": "public.catalog_admission_build_evidence(jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "3887d3b8a51692e3d6d7d5a6b7dfc3b32c5f664acd67df6fc3e953a4065e2961"
+          "afterSha256": "12bc28c01cf63cb93f0ef3a3d3fc708947c4ff5ae5259ac4958ec8429c2d7a9c"
         },
         {
           "signature": "public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "aec5b1f44c39f09513885d56fa33ce3f3575e3cafc3a4ab2ea9ac2d22f6261d9"
+          "afterSha256": "5b95816d2732e27fee11e5e8893ec5b70a0db157ecdbfd4e3e5acd934fe1b890"
         },
         {
           "signature": "public.catalog_admission_frozen_order(uuid)",
           "beforeSha256": null,
-          "afterSha256": "a105d664fec6a714f4c94806f10cf0912b1e12fed4e3f3d88cb79cce80e25087"
+          "afterSha256": "0b744270796d5264855022ddab3464157f50ce6dc2d74acb12e5843d45da22d8"
         },
         {
           "signature": "public.catalog_admission_bind_purchase(uuid,uuid)",
@@ -8390,6 +8398,16 @@
           "signature": "public.catalog_admission_verified_heads(uuid[],boolean)",
           "beforeSha256": null,
           "afterSha256": "9aa01dedb72cda97dfef087eab77c4528e5e80ae26b47721bba7e1c459bc3d21"
+        },
+        {
+          "signature": "public.catalog_admission_capture_graduation(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "12848680a4a29f53312a93bff553194bb774e6e24edd751b7467020c683282e5"
+        },
+        {
+          "signature": "public.catalog_admission_graduation_proof(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "b1010a4ed08162ad11aff588c5c95cb9b2a7c20829caf662473ed4c11659703e"
         }
       ]
     }

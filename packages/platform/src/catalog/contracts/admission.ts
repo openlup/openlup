@@ -1,4 +1,4 @@
-import type { CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
+import type { CatalogAcceptanceV2, CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
 import type { CatalogHeadRef } from "./lifecycle.js";
 
 /** Immutable publication evidence beside the existing pricing provenance.
@@ -21,6 +21,15 @@ export interface CatalogAdmissionPriceContext {
    */
   policy?: { revisionId: string; digest: string };
 }
+/** Authenticated references for catalogue lines first used at graduation.
+ * @experimental
+ */
+export interface CatalogGraduationPhaseReference {
+  schemaVersion: 1;
+  phase: "graduation";
+  markerDigest: string;
+  proof: CatalogAcceptanceV2;
+}
 /** A trusted server supplies this evidence; an account baseline is read under its subscription lock.
  * @experimental
  */
@@ -34,5 +43,9 @@ export interface CatalogAdmissionInput {
    * @experimental
    */
   retainedPriceContextVersions?: readonly CatalogAdmissionPriceContext[];
+  /** Frozen by purchase admission for a distinct governed graduation SKU.
+   * @experimental
+   */
+  phaseReference?: CatalogGraduationPhaseReference;
   purpose: "order" | "account";
 }

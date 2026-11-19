@@ -80,7 +80,7 @@ $$;
 
 CREATE FUNCTION public.catalog_admission_sized_baseline(p_subscription_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
-DECLARE s public.subscriptions; context jsonb; phase jsonb; upcoming integer;
+DECLARE s public.subscriptions; context jsonb; phase jsonb; upcoming integer; phase_proof jsonb;
 BEGIN
  SELECT * INTO s FROM public.subscriptions WHERE id=p_subscription_id;
  context:=public.subscription_sized_edit_context(s.client_id,s.id,false);
@@ -90,7 +90,11 @@ BEGIN
   upcoming:=(context->>'logicalUpcomingCycle')::integer;
   IF upcoming=(phase->>'graduationCycle')::integer
    AND s.template_version=(context#>>'{marker,basisTemplateVersion}')::integer THEN
-   RETURN (SELECT coalesce(jsonb_agg(l),'[]') FROM jsonb_array_elements(context->'graduationLines') l WHERE l->'isAddon'='false'::jsonb)
+   phase_proof:=public.catalog_admission_graduation_proof(s.id);
+   RETURN (SELECT coalesce(jsonb_agg(CASE WHEN r.ref IS NULL THEN l ELSE l||jsonb_build_object('catalogReference',r.ref) END),'[]')
+       FROM jsonb_array_elements(context->'graduationLines') l LEFT JOIN LATERAL (
+        SELECT ref FROM jsonb_array_elements(phase_proof->'lines') ref WHERE ref->>'skuId'=l->>'variantId') r ON true
+       WHERE l->'isAddon'='false'::jsonb)
       || (SELECT coalesce(jsonb_agg(l),'[]') FROM jsonb_array_elements(context->'lines') l WHERE l->'isAddon'='true'::jsonb);
   END IF;
  END IF;
@@ -187,7 +191,7 @@ CREATE FUNCTION public.catalog_admission_assert_current(
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE selection jsonb; reference jsonb; expected jsonb; price_context jsonb;
  sku public.catalog_skus; product public.catalog_products; publication public.catalog_publications;
- subscription public.subscriptions; retained jsonb; baseline jsonb; scope_demand jsonb; demand jsonb;
+ subscription public.subscriptions; retained jsonb; baseline jsonb; scope_demand jsonb; demand jsonb; phase_reference jsonb;
  fresh boolean; product_id uuid; fresh_ids uuid[] := '{}'; retained_ids uuid[] := '{}'; agreed_price_ids uuid[] := '{}';
  retained_prices jsonb; prices jsonb; scoped_skus uuid[]; price_key record;
  consulted uuid[]; actual_heads jsonb;
@@ -317,7 +321,10 @@ BEGIN
   SELECT p.* INTO publication FROM public.catalog_publications p WHERE p.id=(expected->>'publicationId')::uuid;
   fresh:=sku.id<>ALL(retained_ids);
   IF NOT fresh THEN
-   IF retained IS NULL OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(retained->'lines') l WHERE l=reference) THEN
+   SELECT b->'catalogReference' INTO phase_reference FROM jsonb_array_elements(baseline) b
+    WHERE b->>'variantId'=sku.id::text AND b ? 'catalogReference';
+   IF (phase_reference IS NOT NULL AND reference IS DISTINCT FROM phase_reference)
+    OR (phase_reference IS NULL AND (retained IS NULL OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(retained->'lines') l WHERE l=reference))) THEN
     RAISE EXCEPTION 'catalog_retained_revision_unavailable' USING ERRCODE='22023'; END IF;
   ELSE
    fresh_ids:=array_append(fresh_ids,sku.id);
@@ -479,6 +486,52 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_members(text,text,uuid[],boolean) FROM PUBLIC;
 
+-- The phase quote must already carry the exact publication stamp. Membership
+-- validation observes the stamp under the same shared publication guard.
+CREATE FUNCTION public.catalog_admission_capture_graduation(p_quote jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE marker jsonb; phase_lines jsonb; scope uuid[]; members jsonb; entry record; member jsonb;
+ sku_facts jsonb; product_facts jsonb; reference jsonb; refs jsonb:='[]';
+BEGIN
+ marker:=p_quote#>'{quote,context,starterRenewalTerms,starterPack}';
+ phase_lines:=marker#>'{graduation,lines}';
+ IF p_quote#>>'{quote,context,mode}' IS DISTINCT FROM 'subscription' OR jsonb_typeof(phase_lines) IS DISTINCT FROM 'array' THEN RETURN NULL; END IF;
+ SELECT coalesce(array_agg(s.id ORDER BY s.id),'{}') INTO scope
+ FROM jsonb_array_elements(phase_lines) l JOIN public.catalog_skus s ON s.sku=l->>'sku'
+ JOIN public.catalog_products p ON p.id=s.product_id
+ WHERE (s.publication_facts->'schemaVersion'='3'::jsonb OR p.publication_facts->'schemaVersion'='3'::jsonb)
+ AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(p_quote#>'{quote,lines}') purchase WHERE purchase->>'sku'=s.sku);
+ IF cardinality(scope)=0 THEN RETURN NULL; END IF;
+ IF jsonb_array_length(phase_lines)>100 OR cardinality(scope)<>(SELECT count(DISTINCT id) FROM unnest(scope) id)
+ OR jsonb_typeof(marker->'basisTemplateVersion') IS DISTINCT FROM 'number' THEN
+  RAISE EXCEPTION 'catalog_graduation_reference_invalid' USING ERRCODE='22023'; END IF;
+ members:=public.catalog_admission_members(public.catalog_price_setup_order_offer_version(p_quote),'subscription',scope,true);
+ FOR entry IN SELECT s.id,s.product_id,l FROM jsonb_array_elements(phase_lines) l
+  JOIN public.catalog_skus s ON s.sku=l->>'sku' AND s.id=ANY(scope) ORDER BY s.id LOOP
+  member:=members->entry.id::text;
+  IF entry.l#>'{quoteLine,catalogFacts,publication}' IS DISTINCT FROM
+     jsonb_build_object('productId',entry.product_id,'skuRevisionId',member->'skuRevisionId','head',member->'head')
+   OR entry.l#>>'{quoteLine,catalogFacts,skuId}' IS DISTINCT FROM entry.id::text
+   OR entry.l#>'{quoteLine,catalogFacts,documentRevisionId}' IS DISTINCT FROM member#>'{document,id}'
+   OR entry.l#>'{quoteLine,catalogFacts,documentDigest}' IS DISTINCT FROM member#>'{head,documentDigest}' THEN
+   RAISE EXCEPTION 'catalog_graduation_publication_head_moved' USING ERRCODE='40001'; END IF;
+  SELECT r.full_facts::jsonb,p.canonical_state::jsonb->'product' INTO STRICT sku_facts,product_facts
+  FROM public.catalog_sku_revisions r JOIN public.catalog_publications p ON p.product_id=r.product_id
+  WHERE r.id=(member->>'skuRevisionId')::uuid AND p.id=(member#>>'{head,publicationId}')::uuid;
+  reference:=jsonb_build_object('schemaVersion',2,'skuId',entry.id,'skuCode',member->'skuCode',
+   'skuRevisionId',member->'skuRevisionId','publicationHead',member->'head','typeRef',product_facts->'type',
+   'definitionDigest',product_facts->'definitionDigest','optionDigest',sku_facts->'optionDigest','netContent',sku_facts->'netContent');
+  IF sku_facts->'demandPolicyRef' IS NOT NULL AND sku_facts->'demandPolicyRef'<>'null'::jsonb THEN
+   reference:=reference||jsonb_build_object('demandPolicyRef',sku_facts->'demandPolicyRef'); END IF;
+  PERFORM public.catalog_accepted_reference_assert_v2(reference);
+  refs:=refs||jsonb_build_array(reference);
+ END LOOP;
+ RETURN jsonb_build_object('schemaVersion',1,'phase','graduation','markerDigest',encode(sha256(convert_to(marker::text,'UTF8')),'hex'),
+  'proof',jsonb_build_object('schemaVersion',2,'lines',refs));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_capture_graduation(jsonb) FROM PUBLIC;
+
 -- Only the governed portion of a host discovery roster is publication scoped.
 -- Legacy facts and their interpretation remain with the host.
 CREATE FUNCTION public.catalog_admission_candidate_members(p_sku_ids uuid[],p_offer_version text)
@@ -505,7 +558,7 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg
 DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]; requested jsonb; line jsonb;
  member jsonb; offer_version text; quoted_heads jsonb; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
- retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text; keep_price boolean; price_context jsonb;
+ retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text; keep_price boolean; price_context jsonb; phase_reference jsonb;
 BEGIN
  IF p_purpose NOT IN ('order','account') OR p_purpose IS NULL OR jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;
@@ -572,8 +625,10 @@ BEGIN
    reference:=reference||jsonb_build_object('demandPolicyRef',sku_facts->'demandPolicyRef'); END IF;
   heads:=heads||jsonb_build_object(line->>'productId',member->'head');
   ELSE
-   SELECT a INTO reference FROM jsonb_array_elements(retained->'lines') a WHERE a->>'skuId'=line->>'skuId';
-   IF NOT FOUND THEN RAISE EXCEPTION 'catalog_retained_revision_unavailable' USING ERRCODE='22023'; END IF;
+   SELECT b->'catalogReference' INTO reference FROM jsonb_array_elements(baseline) b
+    WHERE b->>'variantId'=line->>'skuId' AND b ? 'catalogReference';
+   IF reference IS NULL THEN SELECT a INTO reference FROM jsonb_array_elements(retained->'lines') a WHERE a->>'skuId'=line->>'skuId'; END IF;
+   IF reference IS NULL THEN RAISE EXCEPTION 'catalog_retained_revision_unavailable' USING ERRCODE='22023'; END IF;
   END IF;
   PERFORM public.catalog_accepted_reference_assert_v2(reference);
   selections:=selections||jsonb_build_array(jsonb_build_object('reference',reference,'quantity',coalesce(line->'qty',line->'quantity')));
@@ -604,8 +659,10 @@ BEGIN
   SELECT jsonb_object_agg(h->>'productId',h->'head') INTO quoted_heads FROM jsonb_array_elements(p_binding->'quoteTimeHeads') h;
   IF quoted_heads IS DISTINCT FROM heads THEN RAISE EXCEPTION 'catalog_publication_head_moved' USING ERRCODE='40001'; END IF;
  END IF;
+ IF p_purpose='order' THEN phase_reference:=public.catalog_admission_capture_graduation(p_binding->'quoteSnapshot'); END IF;
  RETURN jsonb_build_object('heads',(SELECT coalesce(jsonb_agg(jsonb_build_object('productId',key,'head',value) ORDER BY key),'[]') FROM jsonb_each(heads)),
-   'skuRevisions',selections,'priceContextVersions',prices,'retainedPriceContextVersions',retained_prices,'offerEvidence',p_binding-ARRAY['quoteSnapshot','quoteTimeHeads']||jsonb_build_object('offerVersion',offer_version),'mode',p_mode,'purpose',p_purpose);
+   'skuRevisions',selections,'priceContextVersions',prices,'retainedPriceContextVersions',retained_prices,'offerEvidence',p_binding-ARRAY['quoteSnapshot','quoteTimeHeads']||jsonb_build_object('offerVersion',offer_version),'mode',p_mode,'purpose',p_purpose)
+   ||CASE WHEN phase_reference IS NOT NULL THEN jsonb_build_object('phaseReference',phase_reference) ELSE '{}'::jsonb END;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_build_evidence(jsonb,text,jsonb,text) FROM PUBLIC;
@@ -642,6 +699,10 @@ BEGIN
  END IF;
  PERFORM public.catalog_admission_assert_current(p_evidence->'heads',p_evidence->'skuRevisions',p_mode,
   offer||jsonb_build_object('clearSelection',scope='[]'::jsonb),p_evidence->'priceContextVersions',p_purpose);
+ IF p_purpose='order' AND p_evidence ? 'phaseReference' AND (
+   jsonb_typeof(p_evidence->'phaseReference') IS DISTINCT FROM 'object'
+   OR p_evidence->'phaseReference' IS DISTINCT FROM public.catalog_admission_capture_graduation(p_binding->'quoteSnapshot')
+ ) THEN RAISE EXCEPTION 'catalog_graduation_reference_invalid' USING ERRCODE='22023'; END IF;
  binding_refusal:=CASE WHEN p_purpose='order' THEN 'commerce_order_draft_offer_membership_refused' ELSE 'customer_self_service_invalid_offer_membership' END;
  SELECT coalesce(jsonb_agg(jsonb_build_object('skuId',(l#>>'{reference,skuId}')::uuid,'quantity',l->'quantity') ORDER BY (l#>>'{reference,skuId}')::uuid),'[]')
   INTO selected FROM jsonb_array_elements(p_evidence->'skuRevisions') l;
@@ -701,8 +762,9 @@ BEGIN
  IF o.catalog_acceptance IS NULL AND frozen IS NULL THEN RETURN NULL; END IF;
  IF o.catalog_acceptance IS NULL OR jsonb_typeof(frozen) IS DISTINCT FROM 'object'
   OR jsonb_typeof(evidence) IS DISTINCT FROM 'object' OR quote#>>'{quote,context,mode}' IS DISTINCT FROM 'subscription'
-  OR frozen IS DISTINCT FROM jsonb_build_object('offerVersion',public.catalog_price_setup_order_offer_version(quote),
+ OR frozen IS DISTINCT FROM (jsonb_build_object('offerVersion',public.catalog_price_setup_order_offer_version(quote),
    'sizeConstraint',quote#>'{quote,context,sizeConstraint}','heads',evidence->'heads','selections',evidence->'skuRevisions','proof',o.catalog_acceptance)
+   || CASE WHEN evidence ? 'phaseReference' THEN jsonb_build_object('phaseReference',evidence->'phaseReference') ELSE '{}'::jsonb END)
   OR jsonb_typeof(evidence->'skuRevisions') IS DISTINCT FROM 'array'
   OR jsonb_typeof(draft->'lines') IS DISTINCT FROM 'array'
   OR NOT EXISTS(SELECT 1 FROM public.commerce_order_draft_receipts r WHERE r.order_id=o.id
@@ -719,6 +781,27 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_admission_frozen_order(uuid) FROM PUBLIC;
+
+-- Reads the authenticated acquisition tuple after attachment. The recorded
+-- contract carries the phase proof through publishing and catalogue transfer.
+CREATE FUNCTION public.catalog_admission_graduation_proof(p_subscription_id uuid)
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE selected_order uuid; marker jsonb; phase_reference jsonb;
+BEGIN
+ SELECT o.id,r.purchase_facts#>'{renewalTerms,starterPack}' INTO selected_order,marker
+ FROM public.subscription_activations a JOIN public.commerce_orders o ON o.id=a.order_id
+ JOIN public.subscription_renewal_attachments r ON r.order_id=a.order_id AND r.subscription_id=a.subscription_id
+ WHERE a.subscription_id=p_subscription_id AND a.state='active' AND r.completed_at IS NOT NULL
+  AND o.metadata#>'{catalogAcquisition,phaseReference}' IS NOT NULL;
+ IF NOT FOUND THEN RETURN NULL; END IF;
+ phase_reference:=public.catalog_admission_frozen_order(selected_order)->'phaseReference';
+ IF phase_reference->>'markerDigest' IS DISTINCT FROM encode(sha256(convert_to(marker::text,'UTF8')),'hex') THEN
+  RAISE EXCEPTION 'catalog_graduation_reference_invalid' USING ERRCODE='22023'; END IF;
+ PERFORM public.catalog_accepted_reference_assert_v2(ref) FROM jsonb_array_elements(phase_reference#>'{proof,lines}') ref;
+ RETURN phase_reference->'proof';
+END;
+$$;
+REVOKE ALL ON FUNCTION public.catalog_admission_graduation_proof(uuid) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_admission_bind_purchase(p_subscription_id uuid,p_order_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -900,7 +983,8 @@ BEGIN
       jsonb_build_object('catalogAcquisition',jsonb_build_object(
         'offerVersion',coalesce(p_quote_snapshot#>>'{quote,context,offerVersion}','classic'),
         'sizeConstraint',p_quote_snapshot#>'{quote,context,sizeConstraint}',
-        'heads',v_catalog_evidence->'heads','selections',v_catalog_evidence->'skuRevisions','proof',v_catalog_acceptance))
+        'heads',v_catalog_evidence->'heads','selections',v_catalog_evidence->'skuRevisions','proof',v_catalog_acceptance)
+        || CASE WHEN v_catalog_evidence ? 'phaseReference' THEN jsonb_build_object('phaseReference',v_catalog_evidence->'phaseReference') ELSE '{}'::jsonb END)
       ELSE '{}'::jsonb END, v_catalog_acceptance
   ) RETURNING id INTO v_order_id;
 
@@ -2445,6 +2529,8 @@ BEGIN
   IF frozen IS NOT NULL AND (
    frozen->'orderLines' IS DISTINCT FROM (SELECT jsonb_agg(l ORDER BY (l->>'lineOrdinal')::integer) FROM jsonb_array_elements(v_facts->'lines') l)
    OR frozen->>'currency' IS DISTINCT FROM v_facts->>'currency'
+   OR (frozen ? 'phaseReference' AND frozen#>>'{phaseReference,markerDigest}' IS DISTINCT FROM
+     encode(sha256(convert_to((v_facts#>'{renewalTerms,starterPack}')::text,'UTF8')),'hex'))
    OR NOT EXISTS(SELECT 1 FROM public.subscriptions s WHERE s.id=v_row.subscription_id AND s.id=v_activation.subscription_id
      AND s.configured_offer_version=frozen->>'offerVersion'
      AND (s.configured_offer_version<>'sized.v1' OR s.composition_constraint IS NOT DISTINCT FROM NULLIF(frozen->'sizeConstraint','null'::jsonb)))
@@ -2474,3 +2560,4 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text) FROM authenticated'; END IF; END; $$;
 
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_members(text,text,uuid[],boolean), public.catalog_admission_candidate_members(uuid[],text), public.catalog_admission_preview_bound(uuid,uuid,uuid,text,text,integer), public.catalog_admission_assert_current(jsonb,jsonb,text,jsonb,jsonb,text), public.catalog_admission_build_evidence(jsonb,text,jsonb,text), public.catalog_admission_accept(jsonb,jsonb,text,jsonb,text), public.catalog_admission_bind_purchase(uuid,uuid), public.catalog_admission_validate_proof(jsonb) TO service_role'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_admission_graduation_proof(uuid) TO service_role'; END IF; END; $$;

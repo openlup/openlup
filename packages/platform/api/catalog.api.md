@@ -1302,7 +1302,7 @@ export declare function createPostgresCommerceQuoteCatalogReadPort(executor: PgQ
 ## dist/catalog/contracts/admission.d.ts
 
 ```ts
-import type { CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
+import type { CatalogAcceptanceV2, CatalogAcceptedReferenceV2 } from "@openlup/core/catalog";
 import type { CatalogHeadRef } from "./lifecycle.js";
 /** Immutable publication evidence beside the existing pricing provenance.
  * @experimental
@@ -1327,6 +1327,15 @@ export interface CatalogAdmissionPriceContext {
         digest: string;
     };
 }
+/** Authenticated references for catalogue lines first used at graduation.
+ * @experimental
+ */
+export interface CatalogGraduationPhaseReference {
+    schemaVersion: 1;
+    phase: "graduation";
+    markerDigest: string;
+    proof: CatalogAcceptanceV2;
+}
 /** A trusted server supplies this evidence; an account baseline is read under its subscription lock.
  * @experimental
  */
@@ -1348,6 +1357,10 @@ export interface CatalogAdmissionInput {
      * @experimental
      */
     retainedPriceContextVersions?: readonly CatalogAdmissionPriceContext[];
+    /** Frozen by purchase admission for a distinct governed graduation SKU.
+     * @experimental
+     */
+    phaseReference?: CatalogGraduationPhaseReference;
     purpose: "order" | "account";
 }
 ```
@@ -2649,7 +2662,7 @@ export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogPublishe
 export type { CatalogLifecycleStateV2, CatalogLifecycleOperationV2, CatalogDraftPublicationOperationV4, CatalogDraftPayloadV4, CatalogDraftCommandV4, CatalogLifecycleStoredPayload, CatalogLifecycleStoredCommand, CatalogLifecycleStoredRecord, CatalogPublishedProductV3, CatalogPublishedSkuV3, CatalogProductState, CatalogSkuState, CatalogAcceptedReferenceV2, CatalogObligationFamilyV2, CatalogBoundObligationV2, CatalogBoundObligationsV2 } from "./lifecycleV2.js";
 export type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 export type { CatalogFullPublicationV3 } from "./lifecycleV2.js";
-export type { CatalogAdmissionSelection, CatalogAdmissionPriceContext, CatalogAdmissionInput } from "./admission.js";
+export type { CatalogAdmissionSelection, CatalogAdmissionPriceContext, CatalogAdmissionInput, CatalogGraduationPhaseReference } from "./admission.js";
 ```
 ## dist/catalog/contracts/lifecycle.d.ts
 
@@ -5212,7 +5225,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261123190000_catalog_admission";
     readonly catalogPath: "db/platform/migrations/20261123190000_catalog_admission.sql";
     readonly position: 153;
-    readonly sha256: "99c0b4a1a57434b66f0cfbd96f496d1e93875291d65af5406e68bf4bc7408472";
+    readonly sha256: "bcf4050cd5ec9b6c05576d1fcec12a8ac83607e272314f0fcd3b23b66a98c40b";
     readonly url: URL;
 }];
 ```

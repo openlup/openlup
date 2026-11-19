@@ -2976,6 +2976,81 @@ async function acquisitionCase({ offerVersion,result,offerInput }: {
 it.each((["classic", "sized.v1"] as const).flatMap(offerVersion => (["bound", "missing", "mismatch", "attachment mismatch", "unpaid", "abandoned", "promoted split", "qualified runtime"] as const)
   .map(result => ({ offerVersion,result }))))("LC6-D-041 and LC6-D-146 $offerVersion $result through native acquisition", acquisitionCase);
 
+it.for(["exact frozen phase", "different attachment marker"] as const)(
+  "LC6-D-060/D-063/D-144 graduation uses the authenticated phase and refuses a live reconstruction: %s", async (scenario, test) => {
+    const installed = (await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present;
+    if (!installed) { test.skip("Membership page comes from the predecessor installation"); return; }
+    const f = await fixture(packs[0]), next = await fixture(packs[1]);
+    const quote = governedCheckoutQuote(f,"subscription","sized.v1",{ basis: "synthetic" });
+    const phaseLine = governedCheckoutQuote(next,"subscription","sized.v1").quote.lines[0];
+    Object.assign(phaseLine.catalogFacts,{ publication: { productId: next.product,skuRevisionId: next.reference.skuRevisionId,head: next.head } });
+    const terms = { version: "native.renewal-terms.v1" as const,minimumPayableMinor: 1,normalCadenceDays: [28],
+      linePricing: [{ sku: f.code,quantity: 2,unitAmountMinor: 617,isAddon: false,quoteLine: quote.quote.lines[0] }],
+      starterPack: { schemaVersion: "1" as const,starterIntervalDays: 28,basisTemplateVersion: 1,
+        delivery2: { discountBps: 0,discountMinor: 0,basisSubtotalMinor: 1234 },
+        graduation: { cadenceDays: 28,lines: [{ sku: next.code,qty: 2,sortOrder: 0,isAddon: false,quoteLine: phaseLine }] } } };
+    Object.assign(quote.quote.context,{ starterRenewalTerms: terms,sizeConstraint: { kind: "unit_count",value: 2,dailyNeed: 1 } });
+    const port = createPostgresAcquisitionCheckoutPersistence(runtime,{ regionCode: "ZZ",isAcquisitionDiscount: () => false,
+      financialPolicy: { facts: () => ({ regionCodes: [],metadataPresent: false }) } as never,
+      availability: { async getAvailability() { return [{ sku: f.code,productSlug: f.value.product.slug!,variantId: f.sku,
+        visibleInConfigurator: true,sellableNow: 2,status: "available",reasonCode: "synthetic",source: "fixture" }]; } } });
+    const key = randomUUID(), evidence = await port.captureCatalogAdmission(quote,f.admission.heads);
+    const phaseProof = { schemaVersion: 2,lines: [next.reference] };
+    expect(evidence).toMatchObject({ phaseReference: { schemaVersion: 1,phase: "graduation",proof: phaseProof } });
+    const { orderDraft } = await port.createOrderDraft({ idempotencyKey: key,quoteSnapshot: quote },{ clientId: f.client,catalogAdmission: evidence });
+    const order = orderDraft.orderId.replace(/^order_/u,""), intent = await rpc(pool,"commerce_open_settlement_intent",[`open:${key}`,order,"sandbox",1234,"XXX",{},f.at]);
+    await rpc(pool,"subscription_declare_provisional_activation",[`declare:${key}`,order,28,f.at]);
+    await captureSandboxPurchase(createPostgresSandboxPaymentSimulator(pool,{ dunningTemplateSlug: "failed",recoveryUrlPath: "/recover",recoveryTemplateSlug: "recovered" }),
+      { settlementIntentId: intent.settlement.id,key,at: f.at });
+    const paid = (await pool.query("SELECT coalesce(external_ref,id::text) AS ref FROM public.commerce_settlement_intents WHERE id=$1", [intent.settlement.id])).rows[0].ref;
+    const writer = createPostgresPurchaseRenewalWriter(runtime);
+    if (scenario === "different attachment marker") terms.starterPack.graduation.lines[0].sortOrder = 1;
+    await writer.register(order,{ settlementChannelKey: "sandbox",authorizationRef: "synthetic",unattendedChargeAuthorizedAt: f.at,payerAccountRef: null,
+      methodRef: "synthetic",methodEvidenceRef: "synthetic",stockSourceKey: "synthetic",templateId: "synthetic",cadenceDays: 28,currency: "XXX",
+      lines: [{ lineOrdinal: 1,sku: f.code,quantity: 2,unitAmountMinor: 617 }],shippingAmountMinor: 0,acquisitionRef: null,renewalTerms: terms });
+    const activated = await rpc(runtime,"subscription_activate_from_captured_payment",[`activate:${key}`,order,digest(paid)]);
+    const id = activated.subscriptionId;
+    if (scenario === "different attachment marker") {
+      const before = await snapshot();
+      await expect(writer.complete(order)).rejects.toMatchObject({ code: "22023",message: "subscription_activation_catalog_acceptance_mismatch" });
+      expect(await snapshot()).toEqual(before);
+      return;
+    }
+    expect(await writer.complete(order)).toMatchObject({ subscriptionId: id,replayed: false });
+    const publisher = await pool.connect(), revision = await changedDocument(next);
+    let newHead: CatalogHeadRef;
+    try {
+      const result = await publishOn(publisher,revision.publication);
+      if (result.outcome !== "committed") throw new Error(JSON.stringify(result));
+      newHead = result.receipt.head;
+    } finally { publisher.release(); }
+    const liveRevision = (await pool.query(`SELECT item->>'revisionId' AS revision FROM public.catalog_publications p
+      CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') item WHERE p.id=$1 AND item->>'skuId'=$2`, [newHead.publicationId,next.sku])).rows[0].revision;
+    expect(liveRevision).not.toBe(next.reference.skuRevisionId);
+    const rebuilt = { ...next.reference,skuRevisionId: liveRevision,publicationHead: newHead };
+    await pool.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_sized_intro_phase','{\"fixedThroughCycle\":2,\"graduationCycle\":3}') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
+    await pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) SELECT id,started_at+interval '1 day','paid' FROM public.subscriptions WHERE id=$1", [id]);
+    const dueAt = (await pool.query(`UPDATE public.subscriptions SET next_cycle_at=date_trunc('second',clock_timestamp())-interval '1 second' WHERE id=$1
+      RETURNING to_char(next_cycle_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at`, [id])).rows[0].at;
+    await pool.query("UPDATE public.subscription_renewal_terms SET next_cycle_number=2 WHERE subscription_id=$1", [id]);
+    const binding = { subscriptionId: id,offerVersion: "sized.v1",lane: "sized",scopeSkuIds: [next.sku],
+      scopeDemand: [{ skuId: next.sku,quantity: 2,isAddon: false }] };
+    const assertReference = (reference: CatalogAcceptedReferenceV2) => rpc(runtime,"catalog_admission_assert_current",
+      ["[]",JSON.stringify([{ reference,quantity: 2 }]),"subscription",binding,"[]","account"]);
+    await expect(assertReference(rebuilt)).rejects.toMatchObject({ code: "22023",message: "catalog_retained_revision_unavailable" });
+    await assertReference(next.reference);
+    const db = await session(), codec = createNativeCatalogRenewalCodecV2(value => catalogAcceptedReferenceV2Schema.parse(value));
+    try {
+      const store = createPostgresRenewalStore(db,codec,work => work(db));
+      const due = (await store.listDue(500,dueAt)).find(row => row.subscriptionId === id)!;
+      expect(await store.buildCycleSnapshots(due)).toMatchObject({ scheduledAt: dueAt,catalogAcceptance: phaseProof,
+        templateSnapshot: { lines: [{ sku: next.code,quantity: 2,unitAmountMinor: 617 }] } });
+      expect((await db.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [id])).rows)
+        .toEqual([{ catalog_sku_revision_id: next.reference.skuRevisionId }]);
+    } finally { await db.query("ROLLBACK"); db.release(); }
+  },
+);
+
 
 it.each((["missing","null"] as const).flatMap(offerInput => [false,true].map(control => ({ offerInput,control }))))(
   "LC6-D-040 acquisition defaults $offerInput configured offer, control=$control", async ({ offerInput,control }) => {

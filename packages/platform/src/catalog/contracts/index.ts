@@ -36,4 +36,4 @@ export type { CatalogPublishCommandV2, CatalogDecisionCommandV2, CatalogPublishe
 export type { CatalogLifecycleStateV2, CatalogLifecycleOperationV2, CatalogDraftPublicationOperationV4, CatalogDraftPayloadV4, CatalogDraftCommandV4, CatalogLifecycleStoredPayload, CatalogLifecycleStoredCommand, CatalogLifecycleStoredRecord, CatalogPublishedProductV3, CatalogPublishedSkuV3, CatalogProductState, CatalogSkuState, CatalogAcceptedReferenceV2, CatalogObligationFamilyV2, CatalogBoundObligationV2, CatalogBoundObligationsV2 } from "./lifecycleV2.js";
 export type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 export type { CatalogFullPublicationV3 } from "./lifecycleV2.js";
-export type { CatalogAdmissionSelection, CatalogAdmissionPriceContext, CatalogAdmissionInput } from "./admission.js";
+export type { CatalogAdmissionSelection, CatalogAdmissionPriceContext, CatalogAdmissionInput, CatalogGraduationPhaseReference } from "./admission.js";
