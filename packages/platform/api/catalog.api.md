@@ -1099,7 +1099,7 @@ export declare function evaluateBundleCompositionConstraint(port: CompositionRul
 ## dist/catalog/candidate.d.ts
 
 ```ts
-import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison, CatalogCandidateIssue } from "./contracts/candidate.js";
+import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
@@ -1110,8 +1110,7 @@ import type { CatalogValidationPort } from "./publicationPorts.js";
 /** @experimental */
 export declare class CatalogCandidateError extends Error {
     readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable";
-    readonly diagnostic?: CatalogCandidateIssue | undefined;
-    constructor(code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable", diagnostic?: CatalogCandidateIssue | undefined);
+    constructor(code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable");
 }
 /** @experimental */
 export interface CatalogCandidateDeps {
@@ -1222,19 +1221,23 @@ export declare function catalogPackManifest(pack: CatalogPackInput): CatalogPack
 
 ```ts
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
-import type { CatalogProductTypeRef, CatalogDraftIssue } from "./contracts/productTypes.js";
+import type { CatalogProductTypeInput, CatalogProductTypeRef, CatalogDraftIssue } from "./contracts/productTypes.js";
 import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
 /** Export this interface as module.exports in a self-contained publication rules bundle.
  * @experimental
  */
 export interface CatalogPublicationRulesModule {
+    /** Check the supplied draft content and return field paths and stable reason codes. */
     validateContent(content: unknown): readonly CatalogDraftIssue[];
+    /** Check the effective product and SKU roster with their document text. Return stable reason codes. */
     validateProduct(product: RulesProduct, skus: readonly RulesSku[], documents: readonly string[]): readonly string[];
+    /** Return whether the selected membership change is allowed for this SKU. */
     validateMembershipChange?(sku: Readonly<RulesSku>, change: {
         offerVersion: string;
         admitted: boolean;
     }): boolean;
+    /** Check document text and report its identity and exact canonicality. Return null for an invalid document. */
     inspectDocument(canonicalText: string): {
         schemaId: string;
         documentRef: string;
@@ -1242,20 +1245,25 @@ export interface CatalogPublicationRulesModule {
         revisionNo: number;
         name?: string;
         canonicallyEncoded: boolean;
-    };
+    } | null;
+    /** Return whether the authored document and the selected document text describe the same canonical value. */
     matchesDocument(document: unknown, canonicalText: string): boolean;
+    /** Return the authored document identity and optional display name, or null for invalid input. */
     identifyDocument(document: unknown): {
         schemaId: string;
         documentRef: string;
         productSlug: string;
         revisionNo: number;
         name?: string;
-    };
+    } | null;
+    /** Apply the installed net-amount rule to the SKU and positive integer grams. */
     validateSkuAmounts?(sku: {
         code: string;
         netGrams: string;
     }): boolean;
+    /** Return scalar published SKU facts derived from the selected document and SKU. */
     deriveSkuFacts(canonicalText: string, sku: RulesSku): CatalogPublicationFacts;
+    /** Classify a change to an existing SKU using the before and after product and document. */
     classifySkuChange(before: RulesSku, after: RulesSku, context: {
         beforeProduct: RulesProduct;
         afterProduct: RulesProduct;
@@ -1263,10 +1271,22 @@ export interface CatalogPublicationRulesModule {
         afterDocument: string;
     }): "compatible" | "material" | "inconclusive";
 }
+/** A pack can omit an inline validator when its type supplies a rules build.
+ * @experimental
+ */
+export type CatalogPublicationRulesPack = Omit<CatalogPackInput, "types"> & {
+    types: readonly (Omit<CatalogProductTypeInput, "validateContent"> & Partial<Pick<CatalogProductTypeInput, "validateContent">>)[];
+};
 /** Attach built rules to a pack during deployment. Installation derives and verifies their identity.
  * @experimental
  */
 export declare function withCatalogPublicationRules<P extends CatalogPackInput>(pack: P, rulesFor: (type: CatalogProductTypeRef) => Uint8Array | undefined): P;
+/** @experimental */
+export declare function withCatalogPublicationRules(pack: CatalogPublicationRulesPack, rulesFor: (type: CatalogProductTypeRef) => Uint8Array | undefined): CatalogPackInput;
+/** Load a rules build for local tests under the same execution limits as installation.
+ * @experimental
+ */
+export declare function loadCatalogRules(artifact: Uint8Array): Readonly<CatalogPublicationRulesModule>;
 ```
 ## dist/catalog/catalogSkuEnvelope.d.ts
 
@@ -1848,12 +1868,14 @@ export interface CatalogCandidateIssue extends CatalogDraftIssue {
     phase?: "structural" | "pricing" | "activation";
     subject?: string;
     message?: string;
+    hook?: string;
+    cause?: "throw" | "undefined_result" | "realm_limit";
 }
 /** @experimental */
 export interface CatalogCandidatePreview {
     candidateRef: string;
     candidateDigest: string;
-    issues: readonly CatalogCandidateIssue[];
+    issues: readonly CatalogDraftIssue[];
     /** @experimental Reports what needs attention before the draft is ready. */
     preparation?: {
         structural: {
@@ -2906,7 +2928,7 @@ export declare function canonicalCatalogOption(value: CatalogOptionValue): strin
 import type { CatalogProductTypeRef, CatalogQuantity, CatalogOptionValue } from "./productTypes.js";
 import type { CatalogAttributeValue } from "./draftV2.js";
 import type { CatalogPublicationFacts } from "./draftV3.js";
-/** @internal */
+/** Neutral identifier data supplied to installed rules. @experimental */
 export interface RulesIdentifier {
     scheme: string;
     issuer: string;
@@ -2917,7 +2939,7 @@ export interface RulesIdentifier {
     label: string | null;
     sourceRef: string | null;
 }
-/** @internal */
+/** Neutral product data supplied to installed rules. @experimental */
 export interface RulesProduct {
     id: string;
     slug: string;
@@ -2929,7 +2951,7 @@ export interface RulesProduct {
     primarySkuId: string | null;
     presentation: CatalogPublicationFacts | null;
 }
-/** @internal */
+/** Neutral SKU data supplied to installed rules. @experimental */
 export interface RulesSku {
     id: string;
     productId: string;
@@ -3753,8 +3775,6 @@ export declare function catalogDraftV3ValidationPayload(payload: CatalogDraftPay
 export declare const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3>;
 /** @internal Checks the neutral envelope and retains the opaque value for the installed rules. */
 export declare const catalogPublicationDraftPayloadSchema: z.ZodType<CatalogDraftPayloadV3>;
-/** @internal */
-export declare const catalogPublicationDraftRecordSchema: z.ZodType<CatalogDraftPublicationStoredRecord>;
 /** @experimental */
 export declare const catalogDraftCommandV3Schema: z.ZodType<CatalogDraftCommandV3>;
 /** @experimental */
@@ -3987,8 +4007,9 @@ export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema, catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema, catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
-export { withCatalogPublicationRules } from "./catalogPublicationRules.js";
-export type { CatalogPublicationRulesModule } from "./catalogPublicationRules.js";
+export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
+export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack } from "./catalogPublicationRules.js";
+export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 

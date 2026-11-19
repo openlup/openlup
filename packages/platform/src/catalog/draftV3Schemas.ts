@@ -126,9 +126,6 @@ export const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3> = dra
 export const catalogPublicationDraftPayloadSchema: z.ZodType<CatalogDraftPayloadV3> = draftPayloadV3Schema(
   z.object({ ...sharedContentShape, document: z.custom<CatalogPublicationFacts>().optional() }).strict().superRefine(uniqueSkuIntents),
 );
-/** @internal */
-export const catalogPublicationDraftRecordSchema: z.ZodType<CatalogDraftPublicationStoredRecord> = catalogDraftSummarySchema.extend({ payload: catalogPublicationDraftPayloadSchema }).strict()
-  .refine(record => record.productId === record.payload.product.id, "record product must own payload");
 /** @experimental */
 export const catalogDraftCommandV3Schema: z.ZodType<CatalogDraftCommandV3> = z.object({
   schemaVersion: z.literal(3), action: z.enum(["create", "revise", "abandon", "resume"]),

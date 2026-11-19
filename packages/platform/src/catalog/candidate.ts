@@ -1,4 +1,4 @@
-import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison, CatalogCandidateIssue } from "./contracts/candidate.js";
+import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
@@ -10,8 +10,8 @@ import { createCatalogCandidateServiceWithPublication } from "./candidateService
 
 /** @experimental */
 export class CatalogCandidateError extends Error {
-  constructor(readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable", readonly diagnostic?: CatalogCandidateIssue) {
-    super(diagnostic?.message ?? code); this.name = "CatalogCandidateError";
+  constructor(readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable") {
+    super(code); this.name = "CatalogCandidateError";
   }
 }
 /** @experimental */

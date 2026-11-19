@@ -68,12 +68,18 @@ export function publicationIntent(input: unknown): PublicationIntent | null {
   return { ...common.data, schemaVersion: 4, skus, publication: { ...common.data.publication, operations } };
 }
 
-export function readPublicationDraftRecord(input: unknown): PublicationDraftRecord | null {
+/** Read only the revision identity. The interpreter owns payload admission. */
+export function readPublicationDraftEnvelope(input: unknown): PublicationDraftRecord | null {
   const row = summary.safeParse(input);
   if (!row.success) return null;
-  const payload = publicationIntent(row.data.payload);
-  if (!payload || row.data.productId !== payload.product.id) return null;
-  return { ...row.data, payload: row.data.payload } as PublicationDraftRecord;
+  return row.data as PublicationDraftRecord;
+}
+
+export function readPublicationDraftRecord(input: unknown): PublicationDraftRecord | null {
+  const row = readPublicationDraftEnvelope(input);
+  if (!row) return null;
+  const payload = publicationIntent(row.payload);
+  return payload?.product.id === row.productId ? row : null;
 }
 
 export function lifecycleTransition(from: PublicationLifecycleState, to: PublicationLifecycleState, restore: boolean): boolean {

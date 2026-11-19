@@ -551,12 +551,14 @@ export interface CatalogCandidateIssue extends CatalogDraftIssue {
     phase?: "structural" | "pricing" | "activation";
     subject?: string;
     message?: string;
+    hook?: string;
+    cause?: "throw" | "undefined_result" | "realm_limit";
 }
 /** @experimental */
 export interface CatalogCandidatePreview {
     candidateRef: string;
     candidateDigest: string;
-    issues: readonly CatalogCandidateIssue[];
+    issues: readonly CatalogDraftIssue[];
     /** @experimental Reports what needs attention before the draft is ready. */
     preparation?: {
         structural: {
