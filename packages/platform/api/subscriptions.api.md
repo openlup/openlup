@@ -2109,6 +2109,12 @@ export interface NativeLifecycleMessagesOptions {
     }, recipient: {
         email: string;
     }): Promise<Omit<NoticeCommand, "idempotencyKey">>;
+    /** Optional sink notified when per-notice dispatch throws; never aborts the batch. */
+    onError?(context: {
+        source: NativeLifecycleNotice["source"];
+        id: string;
+        subscriptionId: string;
+    }, error: unknown): void;
 }
 /** Scheduled trusted-host binding. Existing ledgers own facts; the transactional delivery engine owns delivery receipts.
  * Session advisory locks serialize this binding's sends without a transaction across transport.

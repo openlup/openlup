@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { createPostgresAcquisitionEvidencePort } from "../../../../src/marketing/server/postgres/acquisitionEvidenceRoutines.js";
@@ -58,5 +59,53 @@ describe("postgres acquisition evidence adapter", () => {
       .resolves.toEqual({ ok: false, error: { kind: "not_found" } });
     expect(() => createPostgresAcquisitionEvidencePort({ connectionString: " " }))
       .toThrow("acquisition_evidence_database_url_required");
+  });
+
+  it("attaches a single non-throwing idle pool error listener", async () => {
+    const stub = stubPool([{ rows: [], totalCount: "0" }]);
+    const emitterPool = Object.assign(new EventEmitter(), stub.pool);
+    const seen: Error[] = [];
+    const port = createPostgresAcquisitionEvidencePort(
+      { connectionString: "postgres://local" },
+      {
+        poolFactory: () => emitterPool as unknown as Pool,
+        onPoolError: (error) => {
+          seen.push(error);
+          throw new Error("sink boom");
+        },
+      },
+    );
+    await port.listSurveys({ view: "acquisition_survey_v1", actorReference: "9f576216-011a-4f67-8404-3f28f7f624d5", limit: 10 });
+    expect(emitterPool.listenerCount("error")).toBe(1);
+    const idleError = new Error("idle disconnect");
+    expect(() => emitterPool.emit("error", idleError)).not.toThrow();
+    expect(seen).toEqual([idleError]);
+  });
+
+  it("accepts a borrowed pool without calling end() and rethrows OPENLUP_E_PEER_MISSING", async () => {
+    const stub = stubPool([{ rows: [evidence], totalCount: 1 }]);
+    const port = createPostgresAcquisitionEvidencePort({ connectionString: "" }, { pool: stub.pool });
+    await expect(port.listSurveys({
+      view: "acquisition_survey_v1",
+      actorReference: "9f576216-011a-4f67-8404-3f28f7f624d5",
+      limit: 10,
+    })).resolves.toMatchObject({ ok: true, value: { totalCount: 1 } });
+    await port.close();
+    expect(stub.end).not.toHaveBeenCalled();
+
+    expect(() => createPostgresAcquisitionEvidencePort(
+      { connectionString: "postgres://local" },
+      { pool: stub.pool, poolFactory: () => stub.pool },
+    )).toThrow("postgres_pool_and_factory_mutually_exclusive");
+
+    const missingPeerPort = createPostgresAcquisitionEvidencePort(
+      { connectionString: "postgres://local" },
+      { poolFactory: () => { throw new Error("OPENLUP_E_PEER_MISSING: pg is required"); } },
+    );
+    await expect(missingPeerPort.listSurveys({
+      view: "acquisition_survey_v1",
+      actorReference: "9f576216-011a-4f67-8404-3f28f7f624d5",
+      limit: 10,
+    })).rejects.toThrow("OPENLUP_E_PEER_MISSING: pg is required");
   });
 });

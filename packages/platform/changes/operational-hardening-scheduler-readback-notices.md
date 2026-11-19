@@ -1,0 +1,3 @@
+- Recover `createEnvAdvisoryLock` after transient connect errors or idle client disconnects when zero locks are held while preserving fail-closed session-affinity refusals on active locks, and report lock acquisition/release errors to `onError` in `withAdvisoryLock`.
+- Add optional `readbackMaxPages` (default `1`) to the warehouse fulfillment adapter so hosts can opt into bounded multi-page whole-collection readback verification beyond 100 fulfilments.
+- Honor `dispatch.maxAttempts` in `createPostgresLifecycleMessages` source queries instead of a hardcoded limit of 6, and add an optional non-throwing `onError` callback for per-notice delivery failures.

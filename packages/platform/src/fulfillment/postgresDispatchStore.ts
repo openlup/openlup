@@ -16,6 +16,8 @@ export function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
   /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
   prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
   readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+  /** Optional single-transaction prepare + authoritative candidate read. */
+  prepareCandidate?: FulfillmentStorePort['prepareCandidate'];
   /** Selected descriptor declaration; omitted preserves push. Requires the intake-channel SQL forward. */
   intakeMode?: FulfillmentCapabilityDescriptor['intakeMode'];
   /** Selected native commerce composition adds its recorded-parcel admission fence. */
@@ -24,6 +26,7 @@ export function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
   return {
     readCandidate: ref => host.readCandidate(ref),
     prepare: ref => host.prepare(ref),
+    ...(host.prepareCandidate ? { prepareCandidate: ref => host.prepareCandidate!(ref) } : {}),
     async read(key) {
       const result = await db.query("SELECT public.fulfillment_dispatch_read(ref) || jsonb_build_object('acceptance',ref.acceptance,'outcome',to_jsonb(ref)->'outcome') AS response FROM public.fulfillment_dispatch_refs ref WHERE request_key=$1", [key]);
       return result.rows[0]?.response as DispatchRecord | undefined ?? null;

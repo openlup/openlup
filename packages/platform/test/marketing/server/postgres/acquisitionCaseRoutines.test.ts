@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
@@ -180,6 +181,49 @@ describe("createPostgresAcquisitionCasePort", () => {
     expect(() => createPostgresAcquisitionCasePort({ connectionString: " " }, { poolFactory }))
       .toThrow("acquisition_case_database_url_required");
     expect(poolFactory).not.toHaveBeenCalled();
+  });
+
+  it("attaches a single non-throwing idle pool error listener", async () => {
+    const stub = stubPool([{ count: 0 }]);
+    const emitterPool = Object.assign(new EventEmitter(), stub.pool);
+    const seen: Error[] = [];
+    const port = createPostgresAcquisitionCasePort(
+      { connectionString: "postgres://local" },
+      {
+        poolFactory: () => emitterPool as unknown as Pool,
+        onPoolError: (error) => {
+          seen.push(error);
+          throw new Error("sink boom");
+        },
+      },
+    );
+    await port.activeCount("public_tester_application");
+    expect(emitterPool.listenerCount("error")).toBe(1);
+    const idleError = new Error("idle disconnect");
+    expect(() => emitterPool.emit("error", idleError)).not.toThrow();
+    expect(seen).toEqual([idleError]);
+  });
+
+  it("accepts a borrowed pool without calling end() and rethrows OPENLUP_E_PEER_MISSING", async () => {
+    const stub = stubPool([5]);
+    const end = vi.fn(async () => {});
+    const borrowed = Object.assign(stub.pool, { end });
+    const port = createPostgresAcquisitionCasePort({ connectionString: "" }, { pool: borrowed });
+    await expect(port.activeCount("public_tester_application")).resolves.toEqual({ ok: true, value: 5 });
+    await port.close();
+    expect(end).not.toHaveBeenCalled();
+
+    expect(() => createPostgresAcquisitionCasePort(
+      { connectionString: "postgres://local" },
+      { pool: borrowed, poolFactory: () => borrowed },
+    )).toThrow("postgres_pool_and_factory_mutually_exclusive");
+
+    const missingPeerPort = createPostgresAcquisitionCasePort(
+      { connectionString: "postgres://local" },
+      { poolFactory: () => { throw new Error("OPENLUP_E_PEER_MISSING: pg is required"); } },
+    );
+    await expect(missingPeerPort.activeCount("public_tester_application"))
+      .rejects.toThrow("OPENLUP_E_PEER_MISSING: pg is required");
   });
 });
 

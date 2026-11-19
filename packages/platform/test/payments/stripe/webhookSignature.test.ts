@@ -88,6 +88,64 @@ describe("payment webhook signature helpers", () => {
     })).toBe(false);
   });
 
+  it("verifies rolling multi-v1 headers across secret rotation and fails closed on invalid headers", () => {
+    const rawBody = JSON.stringify({ id: "evt_rotate", type: "payment_intent.succeeded" });
+    const timestamp = "1800000010";
+    const oldSecret = "whsec_old_secret";
+    const newSecret = "whsec_new_secret";
+    const sigOld = hmac(`${timestamp}.${rawBody}`, oldSecret);
+    const sigNew = hmac(`${timestamp}.${rawBody}`, newSecret);
+    const bogus = "0".repeat(sigNew.length);
+
+    // Valid signature in FIRST v1 slot (previously overwritten by Object.fromEntries).
+    expect(verifyStripeSignature({
+      rawBody,
+      endpointSecret: newSecret,
+      signatureHeader: `t=${timestamp},v1=${sigNew},v1=${bogus}`,
+      now: () => 1_800_000_010,
+    })).toBe(true);
+
+    // Valid signature in SECOND v1 slot.
+    expect(verifyStripeSignature({
+      rawBody,
+      endpointSecret: newSecret,
+      signatureHeader: `t=${timestamp},v1=${bogus},v1=${sigNew}`,
+      now: () => 1_800_000_010,
+    })).toBe(true);
+
+    // Multi-v1 combined with multi-secret array and whitespace / v0 entries.
+    expect(verifyStripeSignature({
+      rawBody,
+      endpointSecret: [oldSecret, newSecret],
+      signatureHeader: `t=${timestamp}, v0=legacy, v1=${sigOld}, v1=${bogus}`,
+      now: () => 1_800_000_010,
+    })).toBe(true);
+
+    // Multiple invalid v1 signatures (including differing lengths) -> false.
+    expect(verifyStripeSignature({
+      rawBody,
+      endpointSecret: newSecret,
+      signatureHeader: `t=${timestamp},v1=deadbeef,v1=${bogus}`,
+      now: () => 1_800_000_010,
+    })).toBe(false);
+
+    // Conflicting duplicate t= timestamps -> fail closed.
+    expect(verifyStripeSignature({
+      rawBody,
+      endpointSecret: newSecret,
+      signatureHeader: `t=${timestamp},t=1800000099,v1=${sigNew}`,
+      now: () => 1_800_000_010,
+    })).toBe(false);
+
+    // Multi-v1 with stale timestamp -> false.
+    expect(verifyStripeSignature({
+      rawBody,
+      endpointSecret: newSecret,
+      signatureHeader: `t=${timestamp},v1=${sigNew},v1=${sigOld}`,
+      now: () => 1_800_000_010 + STRIPE_TIMESTAMP_TOLERANCE_SECONDS + 1,
+    })).toBe(false);
+  });
+
 });
 function hmac(value: string, secret: string): string {
   return createHmac("sha256", secret).update(value).digest("hex");

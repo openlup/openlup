@@ -880,6 +880,12 @@ export interface FulfillmentStorePort {
         disposition: "ready" | "withheld";
         contactRevision: number | null;
     }>;
+    /** Optional single-transaction prepare + authoritative candidate read; workers fall back to prepare() + readCandidate() when absent. */
+    prepareCandidate?(fulfillmentRef: string): Promise<{
+        disposition: "ready" | "withheld";
+        contactRevision: number | null;
+        candidate: FulfillmentDispatchRequest | null;
+    }>;
     /** Evidence comes from adapter prepare, before any external submission. */
     claim(input: {
         requestKey: string;

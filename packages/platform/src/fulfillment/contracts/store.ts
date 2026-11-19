@@ -16,6 +16,12 @@ export interface FulfillmentStorePort {
   read(requestKey: string): Promise<DispatchRecord | null>;
   readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
   prepare(fulfillmentRef: string): Promise<{ disposition: "ready" | "withheld"; contactRevision: number | null }>;
+  /** Optional single-transaction prepare + authoritative candidate read; workers fall back to prepare() + readCandidate() when absent. */
+  prepareCandidate?(fulfillmentRef: string): Promise<{
+    disposition: "ready" | "withheld";
+    contactRevision: number | null;
+    candidate: FulfillmentDispatchRequest | null;
+  }>;
   /** Evidence comes from adapter prepare, before any external submission. */
   claim(input: { requestKey: string; fulfillmentRef: string; orderRef: string; parcelRef: string | null; mode: DispatchRecord["mode"]; evidence: DispatchEvidence }): Promise<{ kind: "claimed"; record: DispatchRecord } | { kind: "refused"; refusal: FulfillmentRefusal }>;
   /** G14: idempotent mapped attempt; persist only prepared, sanitized evidence. */

@@ -1,0 +1,1 @@
+- Accept all `v1` signatures in a webhook signature header during signing secret rotation instead of retaining only the last `v1` entry, while failing closed on conflicting timestamps or stale payloads.

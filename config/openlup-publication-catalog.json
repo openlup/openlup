@@ -6930,6 +6930,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/data/pgErrorListener.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/data/postgresGateway.ts",
       "class": "public-output"
     },
@@ -8190,6 +8194,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/server/postgres/pgErrorListener.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/server/prelaunchAcquisitionDirect.ts",
       "class": "public-output"
     },
@@ -8223,6 +8231,10 @@
     },
     {
       "path": "packages/platform/src/migrations/packagedCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/migrations/pgErrorListener.ts",
       "class": "public-output"
     },
     {
@@ -10562,6 +10574,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/dispatchComposition.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/dispatchRecovery.test.ts",
       "class": "public-output"
     },
@@ -11262,6 +11278,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/postgresProviderRail.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/preparedAttempt.test.ts",
       "class": "public-output"
     },
@@ -11843,6 +11863,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/postgresCommandStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/postgresLifecycleMessages.test.ts",
       "class": "public-output"
     },
     {

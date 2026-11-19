@@ -211,4 +211,13 @@ describe("injected Postgres gateway factory", () => {
     expect(bindings.bindDataPort("supabase", {})).not.toBe(gateway);
     expect(createPostgresGateway).toHaveBeenCalledOnce();
   });
+
+  it("allows direct-PostgreSQL hosts to omit createSupabaseClient and fails closed if supabase is bound", () => {
+    const bindings = createDataBindings();
+    const pgPort = bindings.bindDataPort("postgres", { DATABASE_URL: "postgres://fixture" });
+    expect(pgPort).not.toBeNull();
+    expect(typeof pgPort?.asActor).toBe("function");
+    expect(() => bindings.bindDataPort("supabase", {}))
+      .toThrow("OPENLUP_E_DATA_BINDING_SUPABASE_CLIENT_REQUIRED");
+  });
 });

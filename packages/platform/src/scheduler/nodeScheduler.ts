@@ -69,8 +69,22 @@ export function withAdvisoryLock(
   body: () => Promise<void> | void,
   onError: (jobId: string, error: unknown) => void,
 ): () => Promise<void> {
+  const releaseLock = async () => {
+    try {
+      await lock.release(jobId);
+    } catch (error) {
+      onError(jobId, error);
+      throw error;
+    }
+  };
   return async () => {
-    const acquired = await lock.tryAcquire(jobId);
+    let acquired: boolean;
+    try {
+      acquired = await lock.tryAcquire(jobId);
+    } catch (error) {
+      onError(jobId, error);
+      throw error;
+    }
     if (!acquired) {
       // Another instance holds the lock for this minute — skip (no double-run).
       return;
@@ -80,7 +94,7 @@ export function withAdvisoryLock(
     } catch (error) {
       onError(jobId, error);
     } finally {
-      await lock.release(jobId);
+      await releaseLock();
     }
   };
 }

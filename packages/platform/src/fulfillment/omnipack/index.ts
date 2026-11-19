@@ -51,6 +51,8 @@ export interface OmnipackFulfillmentAdapterConfig {
   selected?: boolean;
   /** Per-instance retention target; default 10,000. Evicts oldest completed submissions, never in-flight. */
   maxRetainedSubmissions?: number;
+  /** Maximum pages readback.read may walk to prove whole-collection uniqueness; default 1 (single-page only). */
+  readbackMaxPages?: number;
   /** Host account evidence, independent of credentials. Omission remains not ready. */
   readiness?: FulfillmentCapabilityDescriptor["readiness"];
   /** Called in prepare and again for new dispatches; return identical metadata for the same request or dispatch refuses. */
@@ -78,9 +80,11 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
   productSync: FulfillmentProductSyncProvider;
 } {
   const maxRetainedSubmissions = config.maxRetainedSubmissions === undefined ? 10_000 : config.maxRetainedSubmissions;
+  const readbackMaxPages = config.readbackMaxPages === undefined ? 1 : config.readbackMaxPages;
   const base = new URL(config.http.baseUrl);
   if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash
     || !Number.isSafeInteger(maxRetainedSubmissions) || maxRetainedSubmissions <= 0
+    || !Number.isSafeInteger(readbackMaxPages) || readbackMaxPages < 1 || readbackMaxPages > 100
     || typeof config.http.fetchImpl !== "function" || typeof config.http.credentials !== "function"
     || !Number.isSafeInteger(config.http.timeoutMs) || config.http.timeoutMs <= 0
     || !Number.isSafeInteger(config.http.safeReadRetries) || config.http.safeReadRetries < 0
@@ -279,9 +283,33 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         if (!capabilities.selected || !capabilities.readiness.ready) return { kind: "unsupported", refusal: refusal(capabilities.selected ? "not_ready" : "disabled", "readback") };
         if (!reference(input.externalRef)) return { kind: "unsupported", refusal: refusal("unsupported", "readback") };
         try {
-          const collection = await client.getFulfilmentsPage({ page: 0, size: 100 });
-          if (!collection.complete) return { kind: "unknown", refusal: refusal("local_missing", "readback") };
-          const matches = collection.rows.filter(row => input.mode === "parcel"
+          const first = await client.getFulfilmentsPage({ page: 0, size: 100 });
+          let rows = first.rows;
+          if (!first.complete) {
+            const meta = first.page;
+            if (readbackMaxPages <= 1 || !meta || meta.number !== 0
+              || meta.totalPages < 2 || !meta.hasNext || meta.totalPages > readbackMaxPages) {
+              return { kind: "unknown", refusal: refusal("local_missing", "readback") };
+            }
+            const collected = [...first.rows];
+            for (let pageIndex = 1; pageIndex < meta.totalPages; pageIndex += 1) {
+              const next = await client.getFulfilmentsPage({ page: pageIndex, size: 100 });
+              const nextMeta = next.page;
+              if (!nextMeta || nextMeta.number !== pageIndex
+                || nextMeta.totalPages !== meta.totalPages
+                || nextMeta.totalElements !== meta.totalElements
+                || (pageIndex < meta.totalPages - 1 && !nextMeta.hasNext)
+                || (pageIndex === meta.totalPages - 1 && nextMeta.hasNext)) {
+                return { kind: "unknown", refusal: refusal("local_missing", "readback") };
+              }
+              collected.push(...next.rows);
+            }
+            if (collected.length !== meta.totalElements) {
+              return { kind: "unknown", refusal: refusal("local_missing", "readback") };
+            }
+            rows = collected;
+          }
+          const matches = rows.filter(row => input.mode === "parcel"
             ? row.fulfilmentNumber === input.externalRef : row.providerOrderId === input.externalRef);
           if (matches.length !== 1) return { kind: "unknown", refusal: refusal("local_missing", "readback") };
           const mapped = reconciliationObservation(matches[0]!, config, input.fulfillmentRef);
