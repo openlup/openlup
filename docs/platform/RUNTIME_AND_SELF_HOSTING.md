@@ -852,7 +852,7 @@ no settings-table `SELECT`; the TypeScript policy reader still needs `SELECT`
 on `public.commerce_settings` to read revision and days. Qualified service-role
 bindings already receive helper execution.
 
-After applying `20261125010000_inventory_renewal_protection_validation.sql`,
+After applying `20261123142000_inventory_renewal_protection_validation.sql`,
 add this separate grant only for connected settings validation or preview.
 It is optional for ATP.
 

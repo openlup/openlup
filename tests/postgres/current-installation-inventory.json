@@ -7,7 +7,7 @@
         "objectInventorySha256": "7fb958d03968cad4a037dc4df29feea6ccfea28ebe972e9c2e487901ce11725c",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+            "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
             "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
@@ -638,7 +638,7 @@
         "objectInventorySha256": "e0fa2384be3b6dee1e43ec917884d01ff1855502a4f11847c4b17352d0a7b6f8",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+            "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
             "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
@@ -1289,7 +1289,7 @@
         "objectInventorySha256": "cde2d2758da4ad049fd5224486865b4101eec95ae33b4847b0e6522d4064dd5e",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+            "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
             "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
@@ -1940,7 +1940,7 @@
         "objectInventorySha256": "6bba4cc4e1f8ec820b8e5e91aec0c225fee605dd1a978bc9100186aa67a2ab1b",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+            "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
             "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
@@ -2587,7 +2587,7 @@
         "objectInventorySha256": "8ecb37b52f67996199b44ad2a8f6da9a8855038c8e6463b4936495b34470b2e6",
         "tail": [
           {
-            "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+            "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
             "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {

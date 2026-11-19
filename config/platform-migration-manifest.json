@@ -622,7 +622,7 @@
       "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
     },
     {
-      "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+      "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
       "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
     }
   ],
@@ -1270,7 +1270,7 @@
         "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
       },
       {
-        "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+        "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
         "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
       }
     ],
@@ -1922,7 +1922,7 @@
         "sha256": "e61d9bbaf21786ca0015787a8050918f6274b4975a7681f1363a707aed272802"
       },
       {
-        "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+        "file": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
         "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
       }
     ],

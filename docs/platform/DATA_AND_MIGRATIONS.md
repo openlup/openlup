@@ -76,7 +76,7 @@ as the installed fence subtracts stored hours from the next cycle instant.
 
 ## Native renewal stock protection
 
-The [inventory validation forward](../../db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql)
+The [inventory validation forward](../../db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql)
 creates `public.inventory_renewal_protection_validate(jsonb)` and replaces the
 body of `public.inventory_renewal_protection_days()`. The validator preserves
 the revision text and normalizes the horizon to an integer. Invalid input and

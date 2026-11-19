@@ -5618,7 +5618,7 @@
       },
       {
         "row": "F2A-INVENTORY-RENEWAL-PROTECTION-VALIDATION",
-        "path": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+        "path": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
         "replacedFunctions": [
           {
             "signature": "public.inventory_renewal_protection_days()",
@@ -7946,7 +7946,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
+      "path": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
       "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481",
       "functions": [
         {

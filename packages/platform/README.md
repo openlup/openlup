@@ -1056,7 +1056,7 @@ resolves the horizon in the same statement snapshot as stock and renewal demand.
 An empty list returns an empty map. Hosts supplying an explicit horizon can
 continue to use `readPort.read` and its existing option checks.
 
-Apply `20261125010000_inventory_renewal_protection_validation.sql` from the
+Apply `20261123142000_inventory_renewal_protection_validation.sql` from the
 complete native catalogue. The existing horizon reader now calls
 `public.inventory_renewal_protection_validate(jsonb)`. The validator returns
 the normalized policy with the original revision string and an integer horizon,
