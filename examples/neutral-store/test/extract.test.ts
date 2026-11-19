@@ -408,10 +408,59 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
     const catalogue = await readFile(cataloguePath, 'utf8');
     await writeFile(cataloguePath, catalogue.replace(/ {2}\{ get configuration\(\) \{ return configurations\.supplements!.*\n {2}\{ get configuration\(\) \{ return configurations\.coffee!.*\n/u,
       "  { get configuration() { return configurations[defaultConfigurationId]!; }, pack: demonstrationPack, draftType, offerVersion: 'classic' },\n"));
+    execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '--eval', `
+import assert from 'node:assert/strict';
+import { starterCatalogue } from './host/catalogue-selection.ts';
+assert.equal(starterCatalogue.select().configuration.id, 'harbor-objects');
+assert.throws(() => starterCatalogue.select('supplements-pack'), { message: 'starter_configuration_unknown' });
+`], { cwd: target, stdio: 'pipe', env: {} });
+    await writeFile(cataloguePath, `import type { CatalogProductTypeInput } from '@openlup/platform/catalog';
+import { createCatalogRuntimeBinding } from '@openlup/platform/catalog';
+import { defineCatalogPack } from '@openlup/platform/catalog/contracts';
+import { createStarterCatalogueRegistry } from '../host/catalogue-registry.ts';
+import { configurations, defaultConfigurationId } from './store.config.ts';
+
+const legacyType = {
+  key: 'starter:harbor-item', version: 1, dimensions: [],
+  units: [{ code: 'starter:each', dimension: 'count', integral: true }], netContentUnits: ['starter:each'],
+  validatorRef: 'sha256:${'a'.repeat(64)}',
+  validateContent: content => content && typeof content === 'object' && 'fixture' in content && content.fixture === 'harbor-objects'
+    ? [] : [{ path: 'fixture', code: 'fixture_required' }],
+} as const satisfies CatalogProductTypeInput;
+const currentType = { ...legacyType, version: 2,
+  units: [{ code: 'openlup:g', dimension: 'mass', integral: false }], netContentUnits: ['openlup:g'],
+} as const;
+const draftType = { key: currentType.key, version: currentType.version };
+const pack = defineCatalogPack({
+  id: 'starter:harbor-objects', namespace: 'starter', version: 1, openlupRange: '0.43.x',
+  capabilities: { publish: false }, types: [legacyType, currentType], taxClasses: [],
+});
+export const starterCatalogue = createStarterCatalogueRegistry([
+  { get configuration() { return configurations[defaultConfigurationId]!; }, pack, draftType, offerVersion: 'harbor:regular' },
+], defaultConfigurationId);
+let effects = 0;
+const runtime = createCatalogRuntimeBinding({ writerEnabled: () => pack.capabilities.publish, ports: {
+  publish: { port: {}, enabled: () => true, observe: async () => {
+    effects++;
+    return { schemaCompatible: true, privilegeGranted: true, state: 'ready' };
+  } },
+} });
+const refusal = await runtime.use('publish', async () => { effects++; });
+export const catalogueConformance = { packs: [{ pack, refusals: [{
+  name: 'disabled publication', capability: 'publish', expectedCode: 'catalog_capability_unsupported',
+  observedCode: refusal.outcome === 'ready' ? 'unexpected_ready' : refusal.reason, zeroEffects: effects === 0,
+}], drafts: [{
+  schemaVersion: 1,
+  product: { id: '00000000-0000-4000-8000-000000000001', type: draftType,
+    dimensions: [], sharedContent: { fixture: 'harbor-objects' } },
+  skus: [],
+}] }] };
+`);
     const tests = execFileSync(process.execPath, ['--experimental-strip-types', '--test'], {
       cwd: target, encoding: 'utf8', stdio: 'pipe', env: {},
     });
     assert.match(tests, /fail 0/);
+    assert.match(tests, /✔ catalogue_transport_matrix RP2-D-002 projects each conformance pack/u);
     const probe = createServer();
     probe.listen(0, '127.0.0.1');
     await once(probe, 'listening');
