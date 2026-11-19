@@ -201,9 +201,9 @@ The installer reports `checkout_recovery_schedule_change_blocked_open_episodes`
 with the number of blocking orders when a pending order has a wave from
 before pinning. Old checkout episodes block regardless of age. Old cart
 episodes block while they have a valid draft receipt and no settlement intent.
-Keep using the incumbent schedule and retry after the orders are paid or
-cancelled. For carts, retry also after the draft receipt is invalidated or a
-settlement intent exists.
+When `./lifecycle up` reports `checkout_recovery_schedule_change_blocked_open_episodes`,
+the current schedule stays in effect and you can retry after the blocking
+orders are paid, cancelled, or their carts are no longer eligible.
 
 The host checkout window, activity, consent and payment gates, and token expiry
 still apply. For example, a 48-hour final checkout reminder needs a host window
