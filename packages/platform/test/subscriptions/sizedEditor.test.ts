@@ -181,6 +181,13 @@ it("keeps unavailable stock as infrastructure error and maps bounded policy and 
   expect(mapSizedEditError(new Error("subscription_edit_invalid_intro_fixed"), "preview").status).toBe(409);
   expect(mapSizedEditError(new Error("subscription_edit_invalid_agreed_price"), "preview")).toMatchObject({ status: 400, reason: "subscription_reprice_sized_agreed_price_unreadable" });
 });
+it.each([
+  { message: "customer_self_service_invalid_catalog_head", status: 409, reason: "customer_self_service_invalid_catalog_head" },
+  { message: "catalog_propagation_head_unreadable", status: 503, reason: undefined },
+])("LC6-D-157 sized apply maps $message", ({ message, status, reason }) => {
+  expect(mapSizedEditError(Object.assign(new Error(message), { code: "55000" }), "apply"))
+    .toMatchObject({ status, ...(reason ? { reason } : {}) });
+});
 it("refuses caller price and subject evidence before database access", async () => {
   const transaction = vi.fn(async () => { throw new Error("database must not run"); });
   const editor = createPostgresSizedEditor({ ...host(), policy, now: () => "2026-11-06T12:00:00Z", withTransaction: transaction });
