@@ -637,7 +637,7 @@ export interface CatalogCandidatePreview {
     candidateRef: string;
     candidateDigest: string;
     issues: readonly CatalogCandidateIssue[];
-    /** @experimental Phase reports for sealed publication inputs. */
+    /** @experimental Reports what needs attention before the draft is ready. */
     preparation?: {
         structural: {
             outcome: "staged" | "blocked-input" | "unknown";
@@ -1064,7 +1064,7 @@ export interface CatalogDraftListQuery {
 }
 /** Reject lossy JSON inputs, prototype keys and excessive recursion before validation or hashing. */
 export declare function canonicalCatalogDraftJson(input: unknown): string;
-/** Shared safe scalar/JSON rules; publication owners supply their separately bounded envelope ceiling. */
+/** @internal Shared scalar and JSON rules for publication envelopes. */
 export declare function canonicalCatalogPublicationJson(input: unknown): string;
 ```
 ## dist/catalog/contracts/draftV2.d.ts

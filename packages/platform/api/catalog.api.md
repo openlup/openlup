@@ -1854,7 +1854,7 @@ export interface CatalogCandidatePreview {
     candidateRef: string;
     candidateDigest: string;
     issues: readonly CatalogCandidateIssue[];
-    /** @experimental Phase reports for sealed publication inputs. */
+    /** @experimental Reports what needs attention before the draft is ready. */
     preparation?: {
         structural: {
             outcome: "staged" | "blocked-input" | "unknown";
@@ -2281,7 +2281,7 @@ export interface CatalogDraftListQuery {
 }
 /** Reject lossy JSON inputs, prototype keys and excessive recursion before validation or hashing. */
 export declare function canonicalCatalogDraftJson(input: unknown): string;
-/** Shared safe scalar/JSON rules; publication owners supply their separately bounded envelope ceiling. */
+/** @internal Shared scalar and JSON rules for publication envelopes. */
 export declare function canonicalCatalogPublicationJson(input: unknown): string;
 ```
 ## dist/catalog/contracts/draftV2.d.ts
@@ -3727,6 +3727,7 @@ export declare function validateCatalogDraftV2(payload: CatalogDraftPayloadV2, r
 ```ts
 import { z } from "./validation.js";
 import type { CatalogDraftPayloadV3, CatalogDraftCommandV3, CatalogDraftSharedContentV3, CatalogDraftProvenanceV3, CatalogDraftPublicationOperationV3, CatalogDraftPublicationInputsV3, CatalogDraftPublicationStoredPayload, CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord, CatalogDraftPublicationStoredApplyResult } from "./contracts/draftV3.js";
+/** @internal Published neutral content excludes the authored document. */
 export declare const catalogPublicationContentSchema: z.ZodType<Omit<CatalogDraftSharedContentV3, "document">>;
 /** @experimental */
 export declare const catalogDraftSharedContentV3Schema: z.ZodType<CatalogDraftSharedContentV3>;
@@ -3749,8 +3750,10 @@ export declare function catalogDraftV3ValidationPayload(payload: CatalogDraftPay
     })[];
 };
 /** @experimental */
-export declare const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3, unknown, z.core.$ZodTypeInternals<CatalogDraftPayloadV3, unknown>>;
-export declare const catalogPublicationDraftPayloadSchema: z.ZodType<CatalogDraftPayloadV3, unknown, z.core.$ZodTypeInternals<CatalogDraftPayloadV3, unknown>>;
+export declare const catalogDraftPayloadV3Schema: z.ZodType<CatalogDraftPayloadV3>;
+/** @internal Checks the neutral envelope and retains the opaque value for the installed rules. */
+export declare const catalogPublicationDraftPayloadSchema: z.ZodType<CatalogDraftPayloadV3>;
+/** @internal */
 export declare const catalogPublicationDraftRecordSchema: z.ZodType<CatalogDraftPublicationStoredRecord>;
 /** @experimental */
 export declare const catalogDraftCommandV3Schema: z.ZodType<CatalogDraftCommandV3>;

@@ -144,9 +144,9 @@ test('local rules run before installation and derive an immutable product type o
         deepEqual(rules.validateContent(''), [{ code: 'title_required' }]);
       });
     `);
-    const { NODE_TEST_CONTEXT: _parentTest, ...testEnvironment } = process.env;
+    // Start a standalone invocation, without inheriting the parent Node test runner context.
     const output = execFileSync(process.execPath, ['--test', 'owned/catalogue-rules.test.cjs'],
-      { cwd: directory, env: testEnvironment, encoding: 'utf8' });
+      { cwd: directory, env: {}, encoding: 'utf8' });
     assert.match(output, /pass 1\b/u);
     async function installed(bytes: Buffer) {
       const fixture = installation();
