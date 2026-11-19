@@ -71,15 +71,18 @@ describe("subscription reference account", () => {
     expect(await screen.findByText("Refill")).toBeInTheDocument();
     expect(screen.getByText("14.90 USD every 28 days, one item per order.")).toBeInTheDocument();
     for (const [label, value] of [
-      ["First name", "Ada"], ["Last name", "Buyer"], ["Email", "ada@example.com"],
+      ["First name", "Ada"], ["Last name", "Buyer"], ["Email", "buyer@example.com"],
       ["Phone", "123456789"], ["Street address", "Example 1"], ["Postal code", "00-001"], ["City", "Warsaw"],
     ]) fireEvent.change(screen.getByLabelText(label), { target: { value } });
-    fireEvent.click(screen.getByRole("button", { name: "Place recurring order" }));
+    const submit = screen.getByRole("button", { name: "Place recurring order" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
     await waitFor(() => expect(mocks.checkout).toHaveBeenCalledOnce());
     expect(mocks.checkout.mock.calls[0]?.[0]).toMatchObject({ command: {
       mode: "subscription", cadenceDays: 28, currency: "USD", lines: [{ sku: "NORTHSTAR-REFILL-001", quantity: 1 }],
-      customer: { email: "ada@example.com" },
+      customer: { email: "buyer@example.com" },
     } });
+    expect(mocks.checkout.mock.calls[0]?.[1]).toBe("private-token");
     expect(await screen.findByText(/Captured in the local reference/)).toBeInTheDocument();
     expect(screen.getByText(/durable account state/)).toBeInTheDocument();
   });

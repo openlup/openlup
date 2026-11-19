@@ -218,13 +218,13 @@ export async function authorizeLocalReferenceAdmin(
     accessToken,
   );
 }
-export function createLocalReferenceCheckoutRuntimePort(client: unknown) {
+export function createLocalReferenceCheckoutRuntimePort(client: unknown, authenticatedUserId: string | null = null) {
   const {
     serviceClient,
     persistencePort,
     orderDraftPort,
     canonicalQuotePort,
-  } = localReferenceCheckoutComposition(client);
+  } = localReferenceCheckoutComposition(client, authenticatedUserId);
   return createHiddenCommerceRuntimePort(serviceClient, {
     persistencePort,
     quotePort: createLocalReferenceDemoQuotePort(canonicalQuotePort),
@@ -258,9 +258,9 @@ export function createLocalReferenceSharedCheckoutRuntime(client: unknown) {
     }),
   };
 }
-function localReferenceCheckoutComposition(client: unknown) {
+function localReferenceCheckoutComposition(client: unknown, authenticatedUserId: string | null = null) {
   const serviceClient = client as LocalReferenceCheckoutClient;
-  const persistencePort = createSupabaseConfiguratorIntentPersistencePort(serviceClient);
+  const persistencePort = createSupabaseConfiguratorIntentPersistencePort(serviceClient, { authenticatedUserId });
   const orderDraftPort = createSupabaseCommerceOrderDraftPort(serviceClient);
   const catalogReadPort = createSupabaseCatalogReadPort({
     client: serviceClient,

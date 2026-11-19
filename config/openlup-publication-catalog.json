@@ -28738,6 +28738,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261123144000_checkout_account_ownership.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -28959,6 +28963,10 @@
     },
     {
       "path": "supabase/tests/communication_email_provider_event_convergence_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/configurator_intent_account_ownership_test.sql",
       "class": "public-output"
     },
     {

@@ -209,6 +209,24 @@ async function main() {
     method: "POST", body: {}, bearer: buyerToken,
   }), "buyer reconcile");
   requireFact(uuid(linked.accountId), "Reconcile did not link an account");
+  const linkedGuestReplay = accepted(await bff(origin, "/api/bff/commerce/checkouts", {
+    method: "POST", body: { command }, bearer: buyerToken,
+  }), "verified owner replay of initial guest checkout");
+  requireFact(linkedGuestReplay.replayed === true && linkedGuestReplay.orderId === first.orderId
+    && linkedGuestReplay.clientId === first.clientId && linkedGuestReplay.paymentAttemptId === first.paymentAttemptId,
+  "Signing in before retry changed the original order or attempt");
+  const repeatCommand = { ...command, idempotencyKey: `reference:http:${randomUUID()}` };
+  const repeatCheckout = () => bff(origin, "/api/bff/commerce/checkouts", {
+    method: "POST", body: { command: repeatCommand }, bearer: buyerToken,
+  });
+  const repeat = accepted(await repeatCheckout(), "verified returning buyer checkout");
+  requireFact(uuid(repeat.orderId) && repeat.orderId !== first.orderId
+    && repeat.clientId === first.clientId && repeat.paymentStatus === "succeeded" && repeat.replayed === false,
+  "Returning checkout did not persist a distinct order under the linked client");
+  const repeatReplay = accepted(await repeatCheckout(), "verified returning buyer checkout replay");
+  requireFact(repeatReplay.replayed === true && repeatReplay.orderId === repeat.orderId
+    && repeatReplay.clientId === repeat.clientId && repeatReplay.paymentAttemptId === repeat.paymentAttemptId,
+  "Returning checkout retry changed the linked order or attempt");
   const account = () => bff(origin, "/api/bff/customers/account", { bearer: buyerToken });
   const before = accepted(await account(), "buyer account");
   const ownedOrder = before.recentOrders?.find((entry) => entry.orderId === first.orderId);
