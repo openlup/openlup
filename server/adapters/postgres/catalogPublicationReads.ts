@@ -1,11 +1,11 @@
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { z } from "zod";
 import type { VerifiedCatalogPublisher, CatalogPublicationReadPort } from "@openlup/platform/catalog";
-import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublishedSku, CatalogSkuRevisionRef,
+import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublicationManifestV2, CatalogPublishedSku, CatalogSkuRevisionRef,
   CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./catalogPublicationWire.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
 import { CATALOG_PUBLICATION_LIMITS as limits } from "./catalogPublicationWire.js";
-import { catalogPublishedSkuSchema, catalogPublicationManifestSchema, CatalogPublicationError,
+import { CatalogPublicationError,
   publicationJson, publicationDigest, publicationRefuse } from "./catalogPublicationWire.js";
 
 declare const verifiedReadScope: unique symbol;
@@ -28,11 +28,6 @@ const key = z.string().min(1).refine(value => Buffer.byteLength(value) <= 200 &&
 const headSchema = z.object({ publicationId: id, revision, documentDigest: digest }).strict();
 const selectorSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"]), sourceId: id, lineId: id,
   productId: id, skuId: id, skuRevisionId: id, publicationId: id, documentRevisionId: id }).strict();
-const instant = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u);
-const observation = z.object({ productId: id, variantId: id, sku: z.string().min(1), state: z.enum(["draft", "active", "withdrawn"]), variantRevision: revision,
-  publicationHead: headSchema.nullable(), draftRef: z.object({ draftId: id, revision }).strict().nullable() }).strict();
-const receiptSchema: z.ZodType<CatalogPublicationReceiptV2> = z.object({ schemaVersion: z.literal(2), productId: id, commandKey: key, fingerprint: digest,
-  actorId: id, previousHead: headSchema.nullable(), head: headSchema, publicationDigest: digest, committedAt: instant, changes: z.array(observation) }).strict();
 const sqlRefusals = {
   catalog_publication_wire_invalid: ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."],
   catalog_publication_axes_invalid: ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."],
@@ -49,8 +44,18 @@ const sqlRefusals = {
   catalog_publication_record_immutable: ["publication_requires_new_revision", "Saved publication details cannot be changed. Reload the product and prepare a new publication."],
   catalog_publication_issue_sealed: ["publication_requires_new_revision", "This publication is complete. Create a new publication to add the revision."],
   catalog_publication_sku_revision_invalid: ["publication_revision_invalid", "The product revisions do not match this publication. Reload the product and prepare it again."],
-  catalog_publication_receipt_input_invalid: ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Re-export the original result and retry the restore."],
   catalog_publication_receipt_invalid: ["publication_incomplete", "The publication is incomplete. Reload the product and check its publication status before you try again."],
+  catalog_publication_approval_missing: ["publication_approval_missing", "This publication needs an active approval. Approve the proposed revision first."],
+  catalog_publication_approval_wrong: ["publication_approval_wrong", "The approval has changed. Reload the active decision and try again."],
+  catalog_publication_approval_state_valid: ["publication_approval_state_invalid", "The approved product details are invalid. Prepare and approve the product again."],
+  catalog_publication_post_state_changed: ["publication_post_state_changed", "The product or its SKUs differ from the approval. Prepare the publication again."],
+  catalog_publication_roster_limit: ["publication_roster_limit", "A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again."],
+  catalog_publication_facts_invalid: ["publication_facts_invalid", "The SKU facts contain an unsupported field. Keep the document in its designated field and prepare the product again."],
+  catalog_publication_receipt_input_invalid: ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Re-export the original result and retry the restore."],
+  catalog_publication_committed_at_valid: ["publication_time_invalid", "The publication date is out of range. Re-export a result dated between years 0001 and 9999."],
+  catalog_publication_decided_at_valid: ["publication_decision_time_invalid", "The approval date is out of range. Re-export a decision dated between years 0001 and 9999."],
+  catalog_publications_canonical_state_check: ["publication_details_invalid", "The saved product details are too large or empty. Review the product and prepare it again."],
+  catalog_sku_revisions_full_facts_check: ["publication_revision_invalid", "A SKU's saved details are too large or empty. Review the SKU and prepare the product again."],
   catalog_publication_candidate_invalid: ["publication_approval_invalid", "Approval does not match the selected product revision. Review and approve that revision again."],
   catalog_publication_pointer_capability_unconsumed: ["publication_content_not_saved", "The selected product content was not saved. Select the content again and retry."],
 } as const;
@@ -63,7 +68,6 @@ function requireCondition(condition: unknown, reason = readInvalid, outcome: Cat
 }
 
 const deferredForeignKeys = new Map([
-  ["catalog_publications_primary_sku_revision_fk", "catalog_publication_sku_revision_invalid"],
   ["catalog_publications_previous_fk", "catalog_publication_lineage_invalid"],
   ["catalog_publication_heads_issue_fk", "catalog_publication_head_invalid"],
   ["catalog_sku_revisions_issue_fk", "catalog_publication_issue_sealed"],
@@ -115,41 +119,47 @@ const equal = (left: unknown, right: unknown) => publicationJson(left) === publi
 async function verifiedIssue(db: PgQueryExecutor, publicationId: string, productId?: string) {
   // Admission seals the graph. Bind the exact document and original result
   // without replaying every issued SKU to read one retained page.
-  const { rows } = await db.query(`SELECT p.id,p.product_id,p.revision,p.canonical_state,p.digest,r.result,
+  const { rows } = await db.query(`SELECT p.id,p.product_id,p.revision,public.catalog_publication_manifest_text(p.product_id,p.canonical_state,p.digest,false) AS canonical_state,p.digest,r.result,
+    p.command_key,p.command_fingerprint,p.actor_id,
+    to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at,
     d.digest AS document_digest,
     jsonb_build_object('id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,
       'schemaId',d.schema_id,'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest) AS document_reference
     FROM public.catalog_publications p
     LEFT JOIN public.catalog_product_document_revisions d ON (d.product_id,d.id)=(p.product_id,p.document_revision_id)
-    LEFT JOIN public.catalog_operator_receipts r ON (r.scope_id,r.command_key)=(p.product_id,p.command_key)
+    JOIN public.catalog_operator_receipts r ON (r.scope_id,r.command_key)=(p.product_id,p.command_key)
+      AND r.kind='publish' AND r.publication_id=p.id AND r.actor_id=p.actor_id AND r.fingerprint=p.command_fingerprint
     WHERE p.id=$1::uuid AND ($2::uuid IS NULL OR p.product_id=$2::uuid)`, [publicationId, productId ?? null]);
   if (!rows.length) return null;
   const row = rows[0]!;
   requireCondition(rows.length === 1 && row.id === publicationId && (productId === undefined || row.product_id === productId));
   const head = headSchema.parse({ publicationId, revision: row.revision, documentDigest: row.document_digest });
-  const manifest = catalogPublicationManifestSchema.parse(JSON.parse(row.canonical_state as string));
+  const manifest = JSON.parse(row.canonical_state as string) as CatalogPublicationManifestV2;
   requireCondition(equal(manifest.product.document, row.document_reference), "catalog_publication_document_invalid");
   requireCondition(manifest.product.id === row.product_id && manifest.product.document?.digest === head.documentDigest
     && publicationJson(manifest) === row.canonical_state
     && publicationDigest(manifest) === row.digest, "catalog_publication_manifest_invalid");
-  const receipt = receiptSchema.parse(JSON.parse(row.result as string));
+  const receipt = JSON.parse(row.result as string) as CatalogPublicationReceiptV2;
   requireCondition(receipt.productId === manifest.product.id && receipt.publicationDigest === row.digest && equal(receipt.head, head)
-    && publicationJson(receipt, limits.receiptBytes) === row.result, "catalog_publication_receipt_invalid");
+    && receipt.commandKey === row.command_key && receipt.fingerprint === row.command_fingerprint && receipt.actorId === row.actor_id
+    && receipt.committedAt === row.committed_at && publicationJson(receipt, limits.receiptBytes) === row.result,
+    "catalog_publication_receipt_invalid");
   publicationJson({ outcome: "found", receipt }, limits.receiptBytes);
   return { head, manifest, receipt };
 }
 type Issue = NonNullable<Awaited<ReturnType<typeof verifiedIssue>>>;
 
 async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonly CatalogSkuRevisionRef[]) {
-  const { rows } = await db.query(`SELECT id,sku_id,sku_code,digest,revision,full_facts FROM public.catalog_sku_revisions
-    WHERE product_id=$1 AND id=ANY($2::uuid[])`, [issue.manifest.product.id, references.map(ref => ref.revisionId)]);
+  const { rows } = await db.query(`SELECT r.id,r.sku_id,r.sku_code,r.digest,r.revision,
+    CASE WHEN public.catalog_publication_sku_facts(r) IS NOT NULL THEN r.full_facts END AS full_facts
+    FROM public.catalog_sku_revisions r WHERE r.product_id=$1 AND r.id=ANY($2::uuid[])`, [issue.manifest.product.id, references.map(ref => ref.revisionId)]);
   const byId = new Map(rows.map(row => [row.id, row]));
   requireCondition(rows.length === references.length && rows.length === byId.size, "catalog_publication_sku_revision_invalid");
   return references.map(reference => {
     const row = byId.get(reference.revisionId);
     requireCondition(row && row.sku_id === reference.skuId && row.digest === reference.digest && row.revision === reference.revision,
       "catalog_publication_sku_revision_invalid");
-    const facts = catalogPublishedSkuSchema.parse(JSON.parse(row.full_facts as string));
+    const facts = JSON.parse(row.full_facts as string) as CatalogPublishedSku;
     requireCondition(facts.id === reference.skuId && facts.productId === issue.manifest.product.id && facts.code === row.sku_code
       && publicationJson(facts, limits.skuBytes) === row.full_facts && publicationDigest(facts, limits.skuBytes) === reference.digest,
     "catalog_publication_sku_revision_invalid");
@@ -195,10 +205,27 @@ function decodeCursor(value: string | null, productId: string, kind: Cursor["kin
   } catch { return publicationRefuse("catalog_publication_cursor_invalid"); }
 }
 
-function observations(issue: Issue, facts: { facts: CatalogPublishedSku; reference: CatalogSkuRevisionRef }[]) {
-  return facts.map(({ facts: sku, reference }) => ({ productId: sku.productId, variantId: sku.id, sku: sku.code,
-    state: sku.status === "archived" ? "withdrawn" as const : sku.status, variantRevision: reference.revision,
-    publicationHead: issue.head, draftRef: { draftId: sku.source.draftId, revision: sku.source.revision } }));
+async function observations(db: PgQueryExecutor, issue: Issue): Promise<CatalogPublicationReceipt["changes"]> {
+  const { product, skus } = issue.manifest;
+  const { rows } = await db.query(`SELECT r.id,r.sku_id,r.sku_code,r.digest,r.revision,
+    r.full_facts::jsonb->>'status' AS status,p.draft_id,p.draft_revision
+    FROM public.catalog_sku_revisions r
+    JOIN public.catalog_publications p ON (p.product_id,p.id)=(r.product_id,r.publication_id)
+    WHERE r.product_id=$1 AND r.id=ANY($2::uuid[])`,
+    [product.id, skus.map(ref => ref.revisionId)]);
+  const byId = new Map(rows.map(row => [row.id, row]));
+  requireCondition(rows.length === skus.length && rows.length === byId.size, "catalog_publication_sku_revision_invalid");
+  return skus.map(reference => {
+    const row = byId.get(reference.revisionId);
+    requireCondition(row && row.sku_id === reference.skuId && row.digest === reference.digest && row.revision === reference.revision,
+      "catalog_publication_sku_revision_invalid");
+    const { sku_code: sku, status, draft_id: draftId, draft_revision: draftRevision } = row;
+    requireCondition(typeof sku === "string" && typeof draftId === "string" && typeof draftRevision === "number"
+      && (status === "draft" || status === "active" || status === "archived"), "catalog_publication_sku_revision_invalid");
+    return { productId: product.id, variantId: reference.skuId, sku,
+      state: status === "archived" ? "withdrawn" : status, variantRevision: reference.revision,
+      publicationHead: issue.head, draftRef: { draftId, revision: draftRevision } };
+  });
 }
 
 /** Reads admitted native history in one snapshot. The host controls whether to bind it.
@@ -264,7 +291,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
           if (!issue) return { outcome: "unpublished" };
           await assertCurrentProjection(db, issue);
           const result = { outcome: "found" as const, head: issue.head, documentRef: issue.manifest.product.document!.documentRef,
-            observations: observations(issue, await issueFacts(db, issue, issue.manifest.skus)) };
+            observations: await observations(db, issue) };
           publicationJson(result, limits.pageBytes);
           return result;
         });
@@ -275,7 +302,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
         return await read(async db => {
           const issue = await exact(db, head);
           const result = { outcome: "found" as const, head: issue.head, documentRef: issue.manifest.product.document!.documentRef,
-            observations: observations(issue, await issueFacts(db, issue, issue.manifest.skus)) };
+            observations: await observations(db, issue) };
           publicationJson(result, limits.pageBytes);
           return result;
         });

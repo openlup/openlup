@@ -199,6 +199,8 @@ export async function captureConnectedNativeStore(input: {
         FROM public.catalog_publications p`);
       await db.query(`SELECT public.catalog_publication_assert_receipt(r.scope_id,r.command_key)
         FROM public.catalog_operator_receipts r`);
+      await db.query(`SELECT public.catalog_publication_assert_candidate(d,NULL,NULL)
+        FROM public.catalog_publication_decisions d`);
       await db.query(`SELECT public.catalog_publication_assert_head(h.product_id,true)
         FROM public.catalog_publication_heads h`);
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);

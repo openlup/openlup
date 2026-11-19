@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { actorId, fixture, graph, insertGraph, installPublicationActors, json, transaction } from "./catalogPublicationFixture.js";
+import { actorId, decisionReceipt, decisionRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -154,6 +154,9 @@ it("restores reordered sealed history and recovers the original publication afte
     const receipt = await insertGraph(db, first);
     const second = await graph(db, data, first.head);
     await insertGraph(db, second);
+    const unpublished = await graph(db, fixture(), null, false);
+    await decisionRow(db, unpublished);
+    await decisionReceipt(db, unpublished);
     return { first, second, receipt };
   });
   await source.owner.query("UPDATE public.catalog_products SET name='Later draft name' WHERE id=$1", [data.productId]);
@@ -184,7 +187,7 @@ it("restores reordered sealed history and recovers the original publication afte
   const malformed = structuredClone(captured);
   const skuRows = malformed.owned.find(table => table.table === "catalog_sku_revisions")!;
   const sku = JSON.parse(skuRows.rows[0]!) as { full_facts: string; digest: string };
-  sku.full_facts = sku.full_facts.replace(/"Article [12]"/, '"\\u0000"');
+  sku.full_facts = sku.full_facts.replace(/"Article(?: 2)?"/, '"\\u0000"');
   sku.digest = createHash("sha256").update(sku.full_facts).digest("hex");
   skuRows.rows[0] = (await source.owner.query<{ value: string }>(`SELECT to_jsonb(x)::text AS value FROM
     jsonb_populate_record(NULL::public.catalog_sku_revisions,$1::jsonb) x`, [JSON.stringify(sku)])).rows[0]!.value;
@@ -194,11 +197,54 @@ it("restores reordered sealed history and recovers the original publication afte
   });
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 
+  const edited = structuredClone(captured);
+  const historyRows = edited.owned.find(table => table.table === "catalog_publications")!.rows;
+  const receiptRows = edited.owned.find(table => table.table === "catalog_operator_receipts")!.rows;
+  const oldIndex = historyRows.findIndex(text => JSON.parse(text).id === first.issueId);
+  const oldPublication = JSON.parse(historyRows[oldIndex]!);
+  const oldState = JSON.parse(oldPublication.canonical_state);
+  oldState.product.name = "Different historic title";
+  oldPublication.canonical_state = json(oldState);
+  oldPublication.digest = createHash("sha256").update(oldPublication.canonical_state).digest("hex");
+  historyRows[oldIndex] = JSON.stringify(oldPublication);
+  const oldReceiptIndex = receiptRows.findIndex(text => JSON.parse(text).publication_id === first.issueId);
+  const oldReceipt = JSON.parse(receiptRows[oldReceiptIndex]!);
+  oldReceipt.result = json({ ...JSON.parse(oldReceipt.result), publicationDigest: oldPublication.digest });
+  receiptRows[oldReceiptIndex] = JSON.stringify(oldReceipt);
+  rehash(edited);
+  await expect(restore(target.owner, edited)).rejects.toMatchObject({
+    code: "target_conflict", cause: { reason: "publication_post_state_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+
+  for (const [kind, result] of Object.entries(invalidReceiptResults)) {
+    const invalidResult = structuredClone(captured);
+    const invalidRows = invalidResult.owned.find(table => table.table === "catalog_operator_receipts")!.rows;
+    invalidRows[oldReceiptIndex] = JSON.stringify({ ...JSON.parse(invalidRows[oldReceiptIndex]!), result });
+    rehash(invalidResult);
+    const failedStatements: string[] = [];
+    const owner = observedOwner(async () => undefined, sql => { failedStatements.push(sql); });
+    await expect(restore(owner, invalidResult), kind).rejects.toMatchObject({
+      code: "target_conflict", cause: { reason: "publication_receipt_input_invalid",
+        message: "The saved command result contains invalid text or structure. Re-export the original result and retry the restore." },
+    });
+    expect(failedStatements, kind).toEqual(["SET CONSTRAINTS ALL IMMEDIATE"]);
+    expect(await journeyCensus(target.owner), kind).toEqual(pristine);
+  }
+
+  const disconnected = { async connect() {
+    const client = await target.owner.connect();
+    client.release(true);
+    return { query: client.query.bind(client), release: () => undefined };
+  } } as unknown as Pool;
+  await expect(restore(disconnected, captured)).rejects.toMatchObject({ code: "database_unavailable" });
+
   captured.owned.reverse();
   for (const table of captured.owned) table.rows.reverse();
   rehash(captured);
   expect(await restore(target.owner, captured)).toEqual({ captureSha256: captured.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(await journeyCensus(target.owner)).toEqual(await journeyCensus(source.owner));
+  expect(await restore(target.owner, captured)).toMatchObject({ replayed: true });
   const reader = createPostgresCatalogPublicationReads({
     transactions: { run: work => transaction(target.owner, work) },
     authorizeHuman: async () => ({ ok: true, userId: actorId, role: "admin", isMachineActor: false }),

@@ -922,22 +922,31 @@ projection. A document enters publication by its exact reference and the
 opaque bytes of its original draft operation. Pointer capabilities are
 transaction-local and must be empty on capture.
 
-The publication trigger checks the exact document and draft evidence, approval
-balance, immediate predecessor, roster overlay, issuance count, response size and
-receipt. The latest issue also checks live product and SKU projections, using the
-same comparison as a current read. Work scales with the predecessor roster, the
-issued SKU facts, and the indexed decisions for this candidate, with a sort to
-compare the resulting roster in canonical order. Each SKU insert checks its
-parent by key. The ordinal and SKU keys make each issued slot unique. A deferred
-foreign key from each publication to its primary SKU revision prevents independent
-truncation of SKU history. Receipt, head and pointer events look up their
-associated rows by key. An approval change uses the existing draft head to
-serialize with issuance. The pinned triggers refuse changes to saved history and
-retargeting a pointer authorization without a lookup. The constraints run at
-commit or when the owner explicitly makes them immediate.
+The publication assertion checks the exact document and draft evidence, the
+approval active at publication time, the immediate predecessor, the resolved SKU
+roster, response size and the original command result. Approval records the
+expected product and SKU facts. An issue must match those facts, and the latest
+issue must also match the live product and SKU projections. Decision transitions
+use the existing draft head to serialize with issuance, including before the
+product exists. Capture applies the same read-only decision assertion.
 
-Exact reads bind the stored issue, document and original command result by key
-and verify their recorded values. A full page checks at most 100 SKU sizes and
+Runtime roles, application principals and roles they can assume cannot insert,
+update, delete or truncate any of these six relations. The schema owner,
+migration role and superuser are trusted with destructive operations. The pinned
+row constraints still protect owner inserts, changes to saved history and
+retargeting of pointer authorization at commit or when made immediate. A saved
+command result has an immediate size bound. The deferred receipt, decision and
+publication events use the same checked text before comparing the original
+result. Invalid saved result text refuses the entire transaction. Work on
+an issue scales with the predecessor roster and issued SKU facts, with a sort
+for canonical order. SKU, receipt, head and pointer events use their indexed
+keys. Decision events use the candidate and event-order index to check adjacent
+transitions and the approval active at the issue's saved time.
+
+A product can retain up to 10,000 SKUs. Exact reads bind the stored issue,
+document and original result by key. Admission and selected reads use the same
+native product and SKU checks. Current and legacy reads select observation
+fields for the bounded roster. A full page checks at most 100 SKU sizes and
 loads only the selected SKU revisions, up to the 8 MiB response limit.
 
 Apply the complete native chain before binding native publication reads.
