@@ -2130,12 +2130,14 @@ it.each((["first open ordinal","next after closed ordinal","different marker bas
   },
 );
 
-it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation","numbered different basis","repeat after same-money publication","candidate offer scope","candidate document drift","candidate sibling drift","candidate snapshot","candidate snapshot control"] as const)(
+it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation","numbered different basis","repeat after same-money publication","opt in composition head moved","opt in composition head control","candidate offer scope","candidate document drift","candidate parent drift","candidate measure drift","candidate sibling drift","candidate snapshot","candidate snapshot control"] as const)(
   "LC6-D-067 and LC6-D-132 shipped sized preview and apply keep the owned price: %s", async (action,test) => {
-    const optIn = action === "opt in unchanged" || action === "opt in with historical entry" || action === "repeat after same-money publication";
+    const compositionRace = action === "opt in composition head moved" || action === "opt in composition head control";
+    const optIn = action === "opt in unchanged" || action === "opt in with historical entry" || action === "repeat after same-money publication" || compositionRace;
     const graduation = action === "numbered graduation" || action === "numbered different basis";
     let unavailable = false;
     const discovery = action === "candidate offer scope" || action === "candidate document drift" || action === "candidate sibling drift"
+      || action === "candidate parent drift" || action === "candidate measure drift"
       || action === "candidate snapshot" || action === "candidate snapshot control";
     if ((optIn || discovery) && !(await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present) {
       test.skip("Membership page comes from the predecessor installation"); return;
@@ -2199,6 +2201,13 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
         await numberedCycle(setup,f,2,"planned");
         await setup.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_sized_intro_phase','{\"fixedThroughCycle\":2,\"graduationCycle\":3}') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
       }
+      let publishComposition: CatalogPublishCommand | undefined;
+      if (compositionRace) {
+        const change = structuredClone(f.value), membership = { skuCode: f.code,offerVersion: "example:later",admitted: false };
+        change.product.sharedContent = { ...change.product.sharedContent,catalogAction: "revise",offerMemberships: [membership] };
+        change.publication.operations = [{ op: "set_offer_membership",...membership }];
+        publishComposition = (await candidate(setup,change,f.draft,1,f.head)).publication;
+      }
       repriced.length = 0;
       const editor = createPostgresSizedEditor({ quotePort: engine,now: () => f.at,
         async withTransaction(work) {
@@ -2225,13 +2234,20 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
         async readCatalog(db) {
           expect(unavailable,"replay must precede catalogue read").toBe(false);
           const ids = [f.sku,variantId,...(outsideOffer ? [outsideOffer.sku] : [])];
-          return (await db.query("SELECT * FROM public.catalog_skus WHERE id=ANY($1::uuid[])", [ids])).rows.map(row => {
-            const current = discovery && row.id === f.sku && action !== "candidate document drift";
-            return { variantId: String(row.id),sku: String(row.sku),groupId: String(row.product_id),isAddon: row.is_addon === true,
-              sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: 100,demandPerUnit: 28,
-              documentRevisionId: current ? f.value.product.documentRevision!.id : String(row.id),
-              documentDigest: current ? f.head.documentDigest : digest(String(row.id)),verified: true,exclusions: [],sellableNow: row.is_addon ? null : 100 };
+          const facts = (await db.query(`SELECT s.*,p.publication_facts#>>'{document,id}' AS document_id,p.publication_facts#>>'{document,digest}' AS document_digest
+            FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id WHERE s.id=ANY($1::uuid[])`, [ids])).rows.map(row => {
+            const wrongDoc = row.id === f.sku && action === "candidate document drift";
+            return { variantId: String(row.id),sku: String(row.sku),groupId: row.id === f.sku && action === "candidate parent drift" ? randomUUID() : String(row.product_id),isAddon: row.is_addon === true,
+              sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: row.id === f.sku && action === "candidate measure drift" ? 101 : 100,demandPerUnit: 28,
+              documentRevisionId: wrongDoc ? String(row.id) : String(row.document_id ?? row.id),
+              documentDigest: wrongDoc ? digest(String(row.id)) : String(row.document_digest ?? digest(String(row.id))),verified: true,exclusions: [],sellableNow: row.is_addon ? null : 100 };
           });
+          if (publishComposition) {
+            const published = await publishOn(setup,publishComposition);
+            expect(published).toMatchObject({ outcome: "committed",receipt: { head: { revision: f.head.revision+1,documentDigest: f.head.documentDigest } } });
+            publishComposition = undefined;
+          }
+          return facts;
         },
         async resolveOptInNeed() { expect(optIn).toBe(true); return { dailyNeed: 1,snapshot: { dailyNeed: 1 } }; },
         async assertCurrentFacts(db,context,expected,need,catalog) {
@@ -2255,7 +2271,7 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
             try { expect((await editor.candidates(actor,f.subscription)).catalog.map(fact => fact.variantId).sort()).toEqual([f.sku,variantId].sort()); }
             finally { await restore(); }
           } finally { await setup.query("UPDATE public.catalog_skus SET is_addon=false WHERE id=$1", [f.sibling]); }
-        } else if (action === "candidate document drift") {
+        } else if (action === "candidate document drift" || action === "candidate parent drift" || action === "candidate measure drift") {
           await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
         } else {
           const result = await editor.candidates(actor,f.subscription);
@@ -2280,6 +2296,20 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
         : action === "remove_addon" ? { subscriptionId: f.subscription,action,variantId } : { subscriptionId: f.subscription,action,variantId,qty: 2 };
       if (action === "numbered different basis") {
         await expect(editor.preview(actor,request)).rejects.toMatchObject({ message: "subscription_reprice_base_total_mismatch" });
+        return;
+      }
+      if (compositionRace) {
+        const control = action.endsWith("control");
+        const restore = control ? await hook("public.catalog_admission_build_evidence(jsonb,text,jsonb,text)","DECLARE desired jsonb;","",body => {
+          const condition = "IF composition_publication IS NOT NULL AND composition_publication IS DISTINCT FROM";
+          expect(body.split(condition)).toHaveLength(2);
+          return body.replace(condition,"IF false AND composition_publication IS DISTINCT FROM");
+        }) : undefined;
+        try {
+          if (control) expect(await editor.preview(actor,request)).toMatchObject({ newTotal: money(617) });
+          else await expect(editor.preview(actor,request)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
+          expect(repriced).toEqual([]);
+        } finally { await restore?.(); }
         return;
       }
       const preview = await editor.preview(actor,request);

@@ -13,7 +13,8 @@ export function selectSizedAgreements(context: SizedEditContext, policy: SizedEd
     ? [...context.graduationLines.filter(line => !line.isAddon), ...context.lines.filter(line => line.isAddon)] : context.lines;
 }
 export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; context: SizedEditContext; request: SizedEditRequest;
-  policy: SizedEditPolicy; host: SizedHostPorts; point: "preview" | "apply" }) {
+  policy: SizedEditPolicy; host: SizedHostPorts; point: "preview" | "apply";
+  scopeCatalog?(catalog: SizedCatalogFact[]): Promise<SizedCatalogFact[]> }) {
   const { db, context, request, policy, host } = input;
   const facts = await host.readFacts(db, context, input.point);
   assertSizedSubjectFacts(facts, context, policy);
@@ -31,7 +32,8 @@ export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; con
   if (!constraint || constraint.kind !== "unit_count" || !Number.isSafeInteger(dailyNeed) || Number(dailyNeed) <= 0 || !Number.isSafeInteger(constraint.value)) throw new Error("subscription_reprice_sized_need_unreadable");
   if ("compositionConstraint" in request && !sameSizedPinnedConstraint(request.compositionConstraint, constraint)) throw new Error("subscription_reprice_sized_lever_mismatch");
   const baseline = selectSizedAgreements(context, policy), current = agreedSubscriptionTotal(baseline);
-  const catalog = (await host.readCatalog(db, context)).map(fact => ({ ...fact, variantId: fact.variantId.toLowerCase(),
+  const discovered = await host.readCatalog(db, context);
+  const catalog = discovered.map(fact => ({ ...fact, variantId: fact.variantId.toLowerCase(),
     exclusions: fact.exclusions === null ? null : [...fact.exclusions].sort() }));
   const cadenceDays = request.action === "update_plan_length" ? request.planDays : "cadenceDays" in request ? request.cadenceDays ?? context.cadenceDays : context.cadenceDays;
   const rules = createSizedCompositionRules({ policy, catalog, baseline, exclusions: facts.exclusions, dailyNeed: Number(dailyNeed), cadenceDays,
@@ -81,6 +83,7 @@ export async function quoteSizedEdit(input: { db: SubscriptionQueryExecutor; con
     promoCodes: [], lines: references.map(line => ({ sku: line.sku, quantity: line.qty, modeAtLine: "subscription" as const, isAddon: line.isAddon })) };
   const split = splitBySubscriptionAgreement(quoteRequest, baseline);
   const changed = split.changed.length ? (await host.quotePort.createServerAuthoritativeQuote({ ...quoteRequest, lines: split.changed.map(value => value.line) })).quote : null;
+  if (input.scopeCatalog) await input.scopeCatalog(discovered);
   const quote = mergeSubscriptionAgreedQuote({ request: quoteRequest, unchanged: split.unchanged, changedQuote: changed, currency: current.currency });
   const lines = references.map((line, index) => ({ ...line, quoteLine: quote.lines[index] as SizedAgreedLine["quoteLine"] }));
   const catalogFacts = [...new Set(desired.map(line => line.variantId.toLowerCase()))].sort().map(id => {

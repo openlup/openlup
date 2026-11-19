@@ -13,10 +13,14 @@ import { hasBoundPackageEditQuote, recordedPackageEditQuoteHash } from "./classi
 interface CandidateMembership {
   skuCode: string;
   isAddon: boolean;
+  productId: string;
+  netWeightG: number;
+  skuRevisionId: string;
+  head: { publicationId: string; revision: number; documentDigest: string };
   document: { id: string; digest: string };
 }
 
-async function scopeCatalogCandidates(db: SubscriptionQueryExecutor, catalog: SizedCatalogFact[]) {
+async function scopeCatalogCandidates(db: SubscriptionQueryExecutor, catalog: SizedCatalogFact[], observations?: Map<string, CandidateMembership>) {
   if (!catalog.length) return catalog;
   const { rows } = await db.query(`SELECT to_regprocedure('public.catalog_admission_candidate_members(uuid[],text)') IS NOT NULL AS installed`);
   if (!rows[0]?.installed) return catalog;
@@ -28,12 +32,14 @@ async function scopeCatalogCandidates(db: SubscriptionQueryExecutor, catalog: Si
     const id = fact.variantId.toLowerCase();
     if (!governed.has(id)) return true;
     const member = scoped.members[id];
-    if (!member) return false;
+    if (!member) return observations !== undefined;
     if (seen.has(id) || !fact.verified || !fact.sellable || member.skuCode !== fact.sku || member.isAddon !== fact.isAddon ||
+      member.productId !== fact.groupId.toLowerCase() || member.netWeightG !== fact.physicalSize ||
       member.document.id !== fact.documentRevisionId || member.document.digest !== fact.documentDigest) {
       throw Object.assign(new Error("catalog_publication_head_moved"), { code: "40001" });
     }
     seen.add(id);
+    observations?.set(id, member);
     return true;
   });
 }
@@ -150,11 +156,31 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
         const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
         const request = normalizeSizedEdit(parsed, context, policy), preview = blocked(row, request);
         if (!preview.preview.canApply) return preview;
-        const priced = await quote(db, context, request, "preview"), { subscriptionId: _id, ...raw } = request;
+        const installed = (await db.query(`SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS installed`)).rows[0]?.installed === true;
+        const observations = new Map<string, CandidateMembership>();
+        const read = async (snapshot: SubscriptionQueryExecutor) => {
+          const current = await scope(snapshot, actor)(request.subscriptionId, isSizedOptIn(request));
+          if (current.templateVersion !== context.templateVersion) throw new Error("subscription_edit_stale_template");
+          return quoteSizedEdit({ db: snapshot, context: current, request, policy, point: "preview", host: options,
+            scopeCatalog: catalog => scopeCatalogCandidates(snapshot, catalog, observations) });
+        };
+        const priced = installed ? options.withCandidateSnapshot ? await options.withCandidateSnapshot(read)
+          : await options.withTransaction(async snapshot => {
+            await snapshot.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+            return read(snapshot);
+          }) : await quote(db, context, request, "preview");
+        const { subscriptionId: _id, ...raw } = request;
+        const catalogPublications = Object.fromEntries(priced.lines.flatMap(line => {
+          const observation = observations.get(line.variantId.toLowerCase());
+          if (!observation) return [];
+          const { productId, skuRevisionId, head, document } = observation;
+          return [[line.variantId, { productId, skuRevisionId, head, document: { id: document.id, digest: document.digest } }]];
+        }));
         const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
         const recorded = await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
           [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
-            { lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts },
+            { lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts,
+              ...(installed ? { catalogPublications } : {}) },
             { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
         const quoteHash = recordedPackageEditQuoteHash(recorded.rows[0], priced.quoteHash);
         return { ...preview, quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,

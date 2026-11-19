@@ -591,6 +591,7 @@ DECLARE desired jsonb; baseline jsonb; retained_prices jsonb:='[]'; scope uuid[]
  member jsonb; offer_version text; quoted_heads jsonb; members jsonb:='{}';
  heads jsonb:='{}'; selections jsonb:='[]'; prices jsonb:='[]'; price public.price_entries;
  retained jsonb; reference jsonb; sku_facts jsonb; product_facts jsonb; sku_id uuid; price_id text; keep_price boolean; price_context jsonb; phase_reference jsonb;
+ composition_publication jsonb;
 BEGIN
  IF p_purpose NOT IN ('order','account') OR p_purpose IS NULL OR jsonb_typeof(p_lines) IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'catalog_propagation_admission_boundary_invalid' USING ERRCODE='22023'; END IF;
@@ -639,6 +640,13 @@ BEGIN
    OR member->'document' IS DISTINCT FROM product_facts->'document'
    OR member#>>'{head,documentDigest}' IS DISTINCT FROM product_facts#>>'{document,digest}' THEN
    RAISE EXCEPTION 'catalog_admission_membership_authority_unavailable' USING ERRCODE='55000'; END IF;
+  composition_publication:=p_binding->'catalogPublications'->(line->>'skuId');
+  IF keep_price AND composition_publication IS NULL THEN
+   RAISE EXCEPTION 'catalog_admission_quote_authority_required' USING ERRCODE='22023'; END IF;
+  IF composition_publication IS NOT NULL AND composition_publication IS DISTINCT FROM jsonb_build_object(
+   'productId',member->'productId','skuRevisionId',member->'skuRevisionId','head',member->'head',
+   'document',jsonb_build_object('id',member#>'{document,id}','digest',member#>'{document,digest}')) THEN
+   RAISE EXCEPTION 'catalog_publication_head_moved' USING ERRCODE='40001'; END IF;
   IF requested IS NOT NULL AND keep_price IS NOT TRUE AND (requested->>'skuId' IS DISTINCT FROM line->>'skuId'
     OR requested->>'documentRevisionId' IS DISTINCT FROM member#>>'{document,id}'
    OR requested->>'documentDigest' IS DISTINCT FROM member#>>'{head,documentDigest}') THEN
@@ -693,7 +701,7 @@ BEGIN
  END IF;
  IF p_purpose='order' THEN phase_reference:=public.catalog_admission_capture_graduation(p_binding->'quoteSnapshot'); END IF;
  RETURN jsonb_build_object('heads',(SELECT coalesce(jsonb_agg(jsonb_build_object('productId',key,'head',value) ORDER BY key),'[]') FROM jsonb_each(heads)),
-   'skuRevisions',selections,'priceContextVersions',prices,'retainedPriceContextVersions',retained_prices,'offerEvidence',p_binding-ARRAY['quoteSnapshot','quoteTimeHeads']||jsonb_build_object('offerVersion',offer_version),'mode',p_mode,'purpose',p_purpose)
+   'skuRevisions',selections,'priceContextVersions',prices,'retainedPriceContextVersions',retained_prices,'offerEvidence',p_binding-ARRAY['quoteSnapshot','quoteTimeHeads','catalogPublications']||jsonb_build_object('offerVersion',offer_version),'mode',p_mode,'purpose',p_purpose)
    ||CASE WHEN phase_reference IS NOT NULL THEN jsonb_build_object('phaseReference',phase_reference) ELSE '{}'::jsonb END;
 END;
 $$;
@@ -1442,7 +1450,7 @@ BEGIN
   IF jsonb_typeof(lines)='array' THEN
    evidence:=public.catalog_admission_build_evidence(lines,'subscription',
     jsonb_build_object('subscriptionId',s.id,'offerVersion',CASE WHEN opt_in THEN 'sized.v1' ELSE s.configured_offer_version END,
-    'lane',lane,'optIn',coalesce(opt_in,false)),'account');
+    'lane',lane,'optIn',coalesce(opt_in,false),'catalogPublications',p_snapshot->'catalogPublications'),'account');
    IF evidence IS NOT NULL THEN
     accepted_hash:=fresh_hash;
     p_snapshot:=p_snapshot||jsonb_build_object('catalogAdmission',evidence,'catalogQuoteBound',true);

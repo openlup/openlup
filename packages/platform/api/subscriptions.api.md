@@ -2988,6 +2988,7 @@ export declare function quoteSizedEdit(input: {
     policy: SizedEditPolicy;
     host: SizedHostPorts;
     point: "preview" | "apply";
+    scopeCatalog?(catalog: SizedCatalogFact[]): Promise<SizedCatalogFact[]>;
 }): Promise<{
     lines: {
         quoteLine: SizedAgreedLine["quoteLine"];
