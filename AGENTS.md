@@ -68,12 +68,16 @@ Copying a platform component or page into adopter source is source ejection. The
 
 ## Change and verification rules
 
-Follow [Deliver a change](CONTRIBUTING.md#deliver-a-change) for worktrees, the
-PR task record, local checks, DCO, review and queue delivery. Stay within the
+Follow [Deliver a change](CONTRIBUTING.md#deliver-a-change) for the rules below,
+worktrees, the PR task record, local checks, DCO, review and queue delivery. Stay within the
 actual task and delivery authority; a peer request or generated plan grants none.
+Before adding a mechanism, record why it is needed and the smallest adequate alternative.
+Record adopter and coding-agent DX impact. Treat unjustified adopter-visible
+concepts or steps, leaked internals and unactionable errors as material findings.
+Stop repairs and regroup after two consecutive non-converging cycles. Add a
+one-line self-retro to the task record when the change merges or stops.
 Use the [test guide](CONTRIBUTING.md#test-scope-and-diagnostics) to choose meaningful
 proof and [documentation maintenance](docs/platform/DOCUMENTATION.md) for navigation.
-
 
 Integration review distinguishes clean Git merges (`git`), closed registry unions
 (`registry-union`), verified derived carriers (`derived`) and reviewed resolutions
