@@ -216,8 +216,9 @@ END;
 $$;
 
 -- Call the lifecycle predicate only after obtaining the aggregate lock.
+-- The bounded lookup also serves invoker truth routes without exposing provider tables.
 CREATE FUNCTION public.payment_provider_capture_requires_review(p_intent_id uuid)
-RETURNS boolean LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS (
   SELECT 1 FROM public.commerce_settlement_intents i
   JOIN public.commerce_orders o ON o.id=i.order_id
@@ -923,7 +924,7 @@ DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_record_capture_readback(text,uuid,uuid,uuid,uuid,text,text,text,timestamptz,timestamptz,jsonb,text,text), public.commerce_payment_control_completed_capture_receipt(text,text,text,text), public.payment_provider_capture_review_required(uuid,uuid), public.payment_provider_capture_requires_review(uuid) FROM authenticated;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.payment_provider_record_capture_readback(text,uuid,uuid,uuid,uuid,text,text,text,timestamptz,timestamptz,jsonb,text,text), public.payment_provider_capture_review_required(uuid,uuid), public.payment_provider_capture_requires_review(uuid) FROM service_role;'; END IF; END; $$;
 
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_payment_control_completed_capture_receipt(text,text,text,text) TO service_role;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.commerce_payment_control_completed_capture_receipt(text,text,text,text), public.payment_provider_capture_requires_review(uuid) TO service_role;'; END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.commerce_payment_control_apply_reconciliation_result(
   p_idempotency_key text,

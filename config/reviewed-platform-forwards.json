@@ -8175,7 +8175,7 @@
     },
     {
       "path": "db/platform/migrations/20261123149000_native_durable_capture_evidence.sql",
-      "sha256": "8c2c2c0614f88f138b1ede8d583327e037e26b88c92765b7c2c3e8b85651c6ce",
+      "sha256": "5fa6c0848f28d44aa795956b96a734fe2aea15674d76e9f42150636425bb8207",
       "functions": [
         {
           "signature": "public.payment_provider_assert_truth(uuid,text,bigint,text,timestamptz,jsonb)",
@@ -8230,7 +8230,7 @@
         {
           "signature": "public.payment_provider_capture_requires_review(uuid)",
           "beforeSha256": null,
-          "afterSha256": "ac7c94dce5de3b10ae1c08b9a1f5dbddac48cb9ed135b5a87b3b5b538655ca2a"
+          "afterSha256": "92151f240243070d391e6359a24df9001608946b42a33a9b208333e6eef08445"
         },
         {
           "signature": "public.payment_provider_capture_review_required(uuid,uuid)",

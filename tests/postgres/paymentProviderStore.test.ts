@@ -231,11 +231,15 @@ it("keeps provider tables private and exposes bounded readback through the servi
   for (const table of ["payment_provider_states", "payment_provider_attempts", "payment_provider_attempt_evidence", "payment_provider_receipts", "payment_provider_transitions"]) {
     expect((await env.owner.query("SELECT relrowsecurity AS rls FROM pg_class WHERE oid=$1::regclass", [`public.${table}`])).rows[0].rls).toBe(true);
   }
-  const signature = "public.payment_provider_retry_failure_recorded(uuid,text,text)";
-  for (const role of ["anon", "authenticated", "service_role"]) {
+  const serviceLookups = ["public.payment_provider_retry_failure_recorded(uuid,text,text)",
+    "public.payment_provider_capture_requires_review(uuid)"];
+  for (const signature of serviceLookups) for (const role of ["anon", "authenticated", "service_role"]) {
     expect((await env.owner.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, signature])).rows[0].allowed).toBe(role === "service_role");
   }
   expect(await call(env.runtime, "payment_provider_retry_failure_recorded", [f.intent, "unrecorded", a.paymentAttemptId])).toBe(false);
+  await expect(env.runtime.query("SELECT status FROM public.payment_provider_states WHERE id=$1", [f.intent]))
+    .rejects.toMatchObject({ code: "42501" });
+  expect(await call(env.runtime, "payment_provider_capture_requires_review", [f.intent])).toBe(false);
 });
 
 it("fences compensation, reminders, abandonment and recovery on in-flight or durably successful provider evidence", async () => {
