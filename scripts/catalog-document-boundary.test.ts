@@ -192,12 +192,12 @@ function readsWholeDocumentRow(source: string): boolean {
   return source.split(/[`;]/).some(statement => {
     statement = statement.replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\//g, " ");
     if (/^\s*table\s+(?:"?public"?\s*\.\s*)?"?catalog_product_document_revisions\b/i.test(statement)) return true;
-    const tables = [...statement.matchAll(/(?:\b(?:from|join|update|into)\s+|,\s*)(?:"?public"?\s*\.\s*)?"?(catalog_product_document_revisions)\b"?(?:\s+(?:as\s+)?"?([a-z_][\w]*)"?\b)?/gi)];
+    const tables = [...statement.matchAll(/(?:\b(?:from|join|update|into)\s+|,\s*)(?:"?public"?\s*\.\s*)?"?(catalog_product_document_revisions)\b"?(?:\s+(?:as\s+)?(?:"([^"]+)"|([a-z_][\w]*)\b))?/gi)];
     if (!tables.length) return false;
     const projections = [];
     const selects = new Map<number, number>();
     let depth = 0;
-    for (const { 0: token, index } of statement.matchAll(/\b(?:select|from|returning)\b|[()]/gi)) {
+    for (const { 0: token, index } of statement.matchAll(/"(?:[^"]|"")*"|\b(?:select|from|returning)\b|[()]/gi)) {
       switch (token.toLowerCase()) {
         case "(": depth++; break;
         case ")": selects.delete(depth--); break;
@@ -212,13 +212,16 @@ function readsWholeDocumentRow(source: string): boolean {
         case "returning": projections.push(statement.slice(index + token.length)); break;
       }
     }
-    return tables.some(([, table, alias]) => {
+    return tables.some(([, table, quotedAlias, alias]) => {
       const row = alias && !SQL_RESERVED_WORDS.has(alias.toLowerCase()) ? alias : table;
+      const rowToken = quotedAlias && !/^[a-z_]\w*$/.test(quotedAlias)
+        ? `"${quotedAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`
+        : String.raw`(?:"${quotedAlias ?? row}"|\b${quotedAlias ?? row}\b)`;
       return projections.some(projection =>
         /(?:^|,)\s*\*\s*(?:,|$)/.test(projection)
-        || new RegExp(String.raw`\b${row}\b["]?\s*\.\s*\*`, "i").test(projection)
-        || new RegExp(String.raw`(?<![.\w])["]?\b${row}\b["]?(?!\s*["]?\s*\.)`, "i")
-          .test(projection.replace(new RegExp(String.raw`\bAS\s+["]?${row}\b["]?`, "gi"), "")));
+        || new RegExp(String.raw`${rowToken}\s*\.\s*\*`, "i").test(projection)
+        || new RegExp(String.raw`(?<![."\w])${rowToken}(?!\s*["]?\s*\.)`, "i")
+          .test(projection.replace(new RegExp(String.raw`\bAS\s+${rowToken}`, "gi"), "")));
     });
   });
 }
@@ -363,6 +366,8 @@ describe("portable catalog document boundary", () => {
     "SELECT DISTINCT ON (d.id) d FROM public.catalog_product_document_revisions d;",
     "SELECT DISTINCT ON (d.id) * FROM public.catalog_product_document_revisions d;",
     'SELECT d FROM "public"."catalog_product_document_revisions" AS "d";',
+    'SELECT "select" FROM public.catalog_product_document_revisions AS "select";',
+    'SELECT ROW("saved revision") FROM public.catalog_product_document_revisions AS "saved revision";',
     "SELECT (SELECT x.value FROM other_table x), d FROM public.catalog_product_document_revisions d;",
     "SELECT d.id IS DISTINCT FROM x.id, d FROM other_table x, public.catalog_product_document_revisions d;",
     "UPDATE public.catalog_product_document_revisions d SET revision_no=2 RETURNING d;",
