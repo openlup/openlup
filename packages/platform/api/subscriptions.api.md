@@ -3140,10 +3140,10 @@ export declare const successorCaseReadSchema: z.ZodDiscriminatedUnion<[z.ZodObje
         scheduled_at: z.ZodISODateTime;
         cycle_number: z.ZodNumber;
         state: z.ZodEnum<{
-            resumed: "resumed";
-            closed: "closed";
             waiting: "waiting";
             stock_secured: "stock_secured";
+            resumed: "resumed";
+            closed: "closed";
         }>;
         deficits: z.ZodArray<z.ZodObject<{
             sku: z.ZodString;
@@ -3177,10 +3177,10 @@ export declare const successorCaseReadSchema: z.ZodDiscriminatedUnion<[z.ZodObje
         scheduled_at: z.ZodISODateTime;
         cycle_number: z.ZodNumber;
         state: z.ZodEnum<{
-            resumed: "resumed";
-            closed: "closed";
             waiting: "waiting";
             stock_secured: "stock_secured";
+            resumed: "resumed";
+            closed: "closed";
         }>;
         deficits: z.ZodArray<z.ZodObject<{
             sku: z.ZodString;
