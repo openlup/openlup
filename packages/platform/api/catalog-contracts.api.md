@@ -1404,6 +1404,10 @@ export type CatalogHistoryResult = {
     receipts: readonly CatalogPublicationReceipt[];
     limit: number;
     nextCursor: string | null;
+} | {
+    outcome: "validation_issue";
+    reason: "catalog_publication_cursor_invalid";
+    message: string;
 } | CatalogPublicationRefusal;
 ```
 ## dist/catalog/contracts/productMediaContracts.d.ts

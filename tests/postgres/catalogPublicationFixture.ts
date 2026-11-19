@@ -40,9 +40,11 @@ export const fixture = () => ({ productId: randomUUID(), skuId: randomUUID(), dr
 type Fixture = ReturnType<typeof fixture> & { skuCode?: string };
 type Head = { publicationId: string; revision: number; documentDigest: string };
 
-export async function graph(db: PoolClient, data: Fixture, before: Head | null = null, stageProduct = true) {
+export async function graph(db: PoolClient, data: Fixture, before: Head | null = null, stageProduct = true,
+  options: { draftRevision?: number; registerExisting?: boolean } = {}) {
   const { productId, skuId, draftId, documentId } = data;
   const revision = (before?.revision ?? 0) + 1;
+  const draftRevision = options.draftRevision ?? revision;
   const issueId = randomUUID(), skuRevisionId = randomUUID(), approvalId = randomUUID();
   const slug = `article-${productId}`, code = data.skuCode ?? `sku-${skuId}`;
   const canonicalText = json({ label: "retained immutable bytes" });
@@ -50,30 +52,31 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   const content: CatalogPublishedProduct["content"] = { schemaVersion: 1, catalogAction: before ? "revise" : "create", presentation: {},
     requestedModes: [], offerMemberships: [], publicationSkus: [] };
   const quantity = { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 };
+  const registerDocument = { op: "register_document_revision", productSlug: slug, revisionId: documentId, revisionNo: 1,
+    sourceRef: document.sourceRef, documentRef: document.documentRef, canonicalText, digest: document.digest,
+    provenance: { source: "current_draft" } };
   const payload = { schemaVersion: 3, product: { id: productId, slug, type, dimensions: [], primarySkuId: skuId, documentRevision: document, sharedContent: content },
     skus: [{ id: skuId, productId, code, options: {}, netContent: quantity }],
-    publication: { kind: "release", evidence: {}, operations: before ? [] : [
+    publication: { kind: "release", evidence: {}, operations: before ? (options.registerExisting ? [registerDocument] : []) : [
       { op: "create_product", productId, productSlug: slug, name: "Article" },
-      { op: "register_document_revision", productSlug: slug, revisionId: documentId, revisionNo: 1,
-        sourceRef: document.sourceRef, documentRef: document.documentRef, canonicalText, digest: document.digest,
-        provenance: { source: "current_draft" } },
+      registerDocument,
       { op: "move_document_pointer", productSlug: slug, documentRevisionNo: 1 },
       { op: "create_sku", skuId, productSlug: slug, documentRevisionNo: 1, skuCode: code, title: "Article", minQuantity: 1, isAddon: false, facts: {} },
       { op: "set_primary_sku", productSlug: slug, skuCode: code },
     ] } };
-  const draftKey = `draft:${revision}`;
-  const source = { draftId, revision, commandKey: draftKey, fingerprint: hash(json(payload)) };
-  if (!before) {
-    if (stageProduct) await stageProductRows(db, data, slug, code);
+  const draftKey = `draft:${draftRevision}`;
+  const source = { draftId, revision: draftRevision, commandKey: draftKey, fingerprint: hash(json(payload)) };
+  if (!before && stageProduct) await stageProductRows(db, data, slug, code);
+  if (draftRevision === 1) {
     await db.query("INSERT INTO public.catalog_draft_heads(draft_id,product_id,revision,status) VALUES($1,$2,1,'open')", [draftId, productId]);
   } else {
-    await db.query("UPDATE public.catalog_draft_heads SET revision=$2 WHERE draft_id=$1", [draftId, revision]);
+    await db.query("UPDATE public.catalog_draft_heads SET revision=$2 WHERE draft_id=$1", [draftId, draftRevision]);
   }
   await db.query(`INSERT INTO public.catalog_draft_revisions(draft_id,revision,product_id,status,payload,command_key,fingerprint,actor_id)
-    VALUES($1,$2,$3,'open',$4,$5,$6,'test-fixture')`, [draftId, revision, productId, json(payload), draftKey, source.fingerprint]);
+    VALUES($1,$2,$3,'open',$4,$5,$6,'test-fixture')`, [draftId, draftRevision, productId, json(payload), draftKey, source.fingerprint]);
   await db.query("INSERT INTO public.catalog_draft_command_receipts(draft_id,command_key,fingerprint,revision) VALUES($1,$2,$3,$4)",
-    [draftId, draftKey, source.fingerprint, revision]);
-  const candidateRef = `v1:${draftId}@${revision}/${before ? `${before.publicationId}@${before.revision}` : "unpublished"}`;
+    [draftId, draftKey, source.fingerprint, draftRevision]);
+  const candidateRef = `v1:${draftId}@${draftRevision}/${before ? `${before.publicationId}@${before.revision}` : "unpublished"}`;
   const candidateDigest = hash(json(["catalog-candidate", 1, payload, [{ ...type, definitionDigest }], before]));
   const commandKey = `issue:${revision}`, fingerprint = hash(commandKey);
   const decisionKey = `approve:${revision}`;
@@ -183,14 +186,14 @@ export async function insertGraph(db: PoolClient, value: Graph, options: {
     schemaVersion: 2, productId, commandKey: value.commandKey, fingerprint: value.fingerprint, actorId, previousHead: before, head,
     publicationDigest: hash(state), committedAt: options.receipt === "timestamp" ? "2000-01-01T00:00:00.000000Z" : value.time,
     changes: issued.map(sku => ({ productId, variantId: sku.skuId, sku: sku.facts.code, state: sku.facts.status === "archived" ? "withdrawn" : sku.facts.status, variantRevision: sku.revision,
-      publicationHead: head, draftRef: { draftId: value.draftId, revision } })),
+      publicationHead: head, draftRef: { draftId: value.draftId, revision: value.source.revision } })),
   };
   async function issue() {
     await db.query(`INSERT INTO public.catalog_publications
       (id,product_id,revision,issued_count,approval_id,command_fingerprint,previous_id,draft_id,draft_revision,command_key,
         candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at)
       VALUES($1,$2,$3,$17,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-    [issueId, productId, revision, value.approvalId, value.fingerprint, before?.publicationId, value.draftId, revision, value.commandKey,
+    [issueId, productId, revision, value.approvalId, value.fingerprint, before?.publicationId, value.draftId, value.source.revision, value.commandKey,
       value.candidateRef, value.candidateDigest, value.documentId, state, hash(state), actorId, value.time, issued.length]);
   }
   if (options.order !== "child-first") await issue();

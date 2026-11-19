@@ -71,4 +71,5 @@ export type CatalogPublicationReceiptResult =
  */
 export type CatalogHistoryResult =
   | { outcome: "page"; receipts: readonly CatalogPublicationReceipt[]; limit: number; nextCursor: string | null }
+  | { outcome: "validation_issue"; reason: "catalog_publication_cursor_invalid"; message: string }
   | CatalogPublicationRefusal;

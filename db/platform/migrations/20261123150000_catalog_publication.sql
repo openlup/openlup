@@ -601,16 +601,18 @@ BEGIN
   RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_manifest_invalid';
  END IF;
 
- IF p_approval AND EXISTS (
+ IF p_approval AND (NOT EXISTS (SELECT 1 FROM jsonb_array_elements(manifest->'skus') member
+   WHERE member->'skuId'=product->'primarySkuId') OR EXISTS (
   SELECT 1 FROM (
-   SELECT member, count(*) OVER (PARTITION BY member->>'skuId') AS sku_count
-   FROM jsonb_array_elements(manifest->'skus') member
+   SELECT member, lag(member->>'skuId') OVER (ORDER BY position) AS previous_sku
+   FROM jsonb_array_elements(manifest->'skus') WITH ORDINALITY AS r(member,position)
   ) AS roster
-   WHERE (sku_count=1 AND jsonb_typeof(member)='object' AND member ?& ARRAY['skuId','digest']
+   WHERE ((previous_sku IS NULL OR previous_sku COLLATE "C"<(member->>'skuId') COLLATE "C")
+    AND jsonb_typeof(member)='object' AND member ?& ARRAY['skuId','digest']
     AND member - ARRAY['skuId','digest']='{}'::jsonb
     AND jsonb_typeof(member->'skuId')='string' AND member->>'skuId' ~ '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
     AND jsonb_typeof(member->'digest')='string' AND member->>'digest' ~ '^[0-9a-f]{64}$') IS DISTINCT FROM true
- ) THEN
+ )) THEN
   RAISE EXCEPTION 'catalog_publication_approval_state_valid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_approval_state_valid';
  END IF;
  IF (CASE WHEN jsonb_typeof(product->'axes')='array' THEN jsonb_array_length(product->'axes')>16
@@ -716,22 +718,25 @@ BEGIN
      AND origin.payload #> '{product,documentRevision}'=jsonb_build_object(
        'id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,'schemaId',d.schema_id,
        'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest)
-     AND (prior.document_revision_id=d.id OR EXISTS (
-       SELECT 1 FROM (VALUES (origin.payload,d.provenance),
-        (authored,jsonb_build_object('draftId',product #> '{source,draftId}','draftRevision',product #> '{source,revision}',
-          'draftCommandKey',product #> '{source,commandKey}','draftFingerprint',product #> '{source,fingerprint}'))) registration(payload,claim)
-       CROSS JOIN LATERAL jsonb_array_elements(registration.payload #> '{publication,operations}') operation
-       WHERE operation->>'op'='register_document_revision'
-        AND operation->'productSlug'=registration.payload #> '{product,slug}'
-        AND operation->'revisionId'=to_jsonb(d.id) AND operation->'revisionNo'=to_jsonb(d.revision_no)
-        AND (CASE
-         WHEN operation->'provenance'='{"source":"current_draft"}'::jsonb THEN registration.claim
-         WHEN operation #>> '{provenance,source}'='retained_draft' THEN (operation->'provenance') - 'source'
-        END) IS NOT DISTINCT FROM d.provenance
-        AND operation->'documentRef'=to_jsonb(d.document_ref) AND operation->'sourceRef'=to_jsonb(d.source_ref)
-        AND operation->'digest'=to_jsonb(d.digest)
-        AND (operation->>'canonicalText')::jsonb=d.document_payload
-        AND encode(sha256(convert_to(operation->>'canonicalText','UTF8')),'hex')=d.digest)))
+     AND (
+       SELECT CASE WHEN bool_or(issuing) THEN bool_and(matches) FILTER (WHERE issuing)
+         ELSE prior.document_revision_id=d.id OR bool_or(matches) END
+       FROM (
+        SELECT issuing, (operation->'productSlug'=registration.payload #> '{product,slug}'
+         AND operation->'revisionId'=to_jsonb(d.id) AND operation->'revisionNo'=to_jsonb(d.revision_no)
+         AND CASE WHEN operation->'provenance'='{"source":"current_draft"}'::jsonb THEN registration.claim
+           WHEN operation #>> '{provenance,source}'='retained_draft' THEN (operation->'provenance') - 'source'
+         END IS NOT DISTINCT FROM d.provenance
+         AND operation->'documentRef'=to_jsonb(d.document_ref) AND operation->'sourceRef'=to_jsonb(d.source_ref)
+         AND operation->'digest'=to_jsonb(d.digest) AND (operation->>'canonicalText')::jsonb=d.document_payload
+         AND encode(sha256(convert_to(operation->>'canonicalText','UTF8')),'hex')=d.digest) IS TRUE AS matches
+        FROM (VALUES (false,origin.payload,d.provenance),
+         (true,authored,jsonb_build_object('draftId',product #> '{source,draftId}','draftRevision',product #> '{source,revision}',
+           'draftCommandKey',product #> '{source,commandKey}','draftFingerprint',product #> '{source,fingerprint}'))) registration(issuing,payload,claim)
+        CROSS JOIN LATERAL jsonb_array_elements(registration.payload #> '{publication,operations}') operation
+        WHERE operation->>'op'='register_document_revision' AND (operation->'revisionId'=to_jsonb(d.id)
+         OR (operation->'productSlug'=registration.payload #> '{product,slug}' AND operation->'revisionNo'=to_jsonb(d.revision_no)))
+       ) evidence))
  INTO doc_reference,doc_valid
  FROM public.catalog_product_document_revisions d WHERE d.product_id=p_product AND d.id=issue.document_revision_id;
  IF doc_valid IS DISTINCT FROM true OR doc_reference IS DISTINCT FROM product->'document'

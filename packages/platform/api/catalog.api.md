@@ -2650,6 +2650,10 @@ export type CatalogHistoryResult = {
     receipts: readonly CatalogPublicationReceipt[];
     limit: number;
     nextCursor: string | null;
+} | {
+    outcome: "validation_issue";
+    reason: "catalog_publication_cursor_invalid";
+    message: string;
 } | CatalogPublicationRefusal;
 ```
 ## dist/catalog/contracts/productMediaContracts.d.ts
@@ -4606,7 +4610,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123150000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
         readonly position: 159;
-        readonly sha256: "ce6e715caf4c8222b46415f473cc96cbc0f7114c3c57fa25052f69b8fb0767a7";
+        readonly sha256: "ef01255e833933f9de03e30158c0cd5fd01a1e9cb5c16f4bdaff939cfb179bfc";
         readonly url: URL;
     }
 ];

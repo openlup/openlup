@@ -30,6 +30,7 @@ const selectorSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"
   productId: id, skuId: id, skuRevisionId: id, publicationId: id, documentRevisionId: id }).strict();
 const publicationRefusals = {
   catalog_publication_cursor_invalid: ["catalog_publication_cursor_invalid", "Restart from the first page or reuse the continuation returned for this product."],
+  catalog_publication_query_invalid: ["catalog_publication_query_invalid", "Reload the product and use the publication identifiers returned for it."],
   catalog_publication_wire_invalid: ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."],
   catalog_publication_axes_invalid: ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."],
   catalog_publication_attributes_invalid: ["publication_attributes_invalid", "An attribute value is invalid. Check the value type in the product or SKU definition."],
@@ -348,7 +349,11 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
           publicationJson(result, limits.historyBytes);
           return result;
         });
-      } catch (error) { return legacyFailure(failure(error)); }
+      } catch (error) {
+        const { outcome, reason, message } = failure(error);
+        return outcome === "validation_issue" && reason === "catalog_publication_cursor_invalid" && message !== undefined
+          ? { outcome, reason, message } : legacyFailure({ outcome, reason });
+      }
     },
     async receipt() { return { outcome: "unsupported", reason: "publication_not_supported" }; },
   };
