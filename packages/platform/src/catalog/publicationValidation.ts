@@ -442,6 +442,11 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
   function knownSku(code: string): CatalogPublishedSku { return skus.get(code) ?? publicationRefuse("catalog_publication_v3_compile_sku_absent"); }
   function documentAt(no: number): CatalogPublicationDocument { return documents.find(document => document.reference.revisionNo === no) ?? publicationRefuse("catalog_publication_v3_compile_document_absent"); }
   function currentDocument(): CatalogPublicationDocument { return documents.find(document => document.reference.id === knownProduct().document?.id) ?? publicationRefuse("catalog_publication_v3_compile_document_absent"); }
+  function currentDocumentValue() {
+    const document = currentDocument();
+    try { return input.rules.decodeDocument(document.canonicalText); }
+    catch { return publicationRefuse("catalog_publication_v3_document_invalid"); }
+  }
   let activation = false;
   let clearedPresentation = false;
   for (const operation of payload.publication.operations) {
@@ -502,11 +507,6 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
     } else if (operation.op === "set_eligibility") {
       const sku = knownSku(operation.skuCode), source = authorship.skuOperation(operation);
       const on = operation.sellableStandalone || operation.sellableInSubscription;
-  function currentDocumentValue() {
-    const document = currentDocument();
-    try { return input.rules.decodeDocument(document.canonicalText); }
-    catch { return publicationRefuse("catalog_publication_v3_document_invalid"); }
-  }
       const materialized = originalById.get(sku.id);
       need(!on || materialized && materialized.id === source.sku.id && materialized.productId === source.sku.productId
         && equal(source.sku.netContent, materialized.netContent) && equal(source.sku.options, materialized.options),
