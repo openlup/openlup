@@ -582,7 +582,11 @@ through native writers. Neither draft authoring nor bundle activation adds a
 product to the starter's configured storefront or checkout selection.
 
 Replace the fictional `starter:item@1` registry and content validator in
-`owned/catalogue.ts` for your application. Draft payloads cannot install
+`owned/catalogue.ts` for your application.
+Mirror the type key and version, unit codes, dimension, integrality, factor,
+`netContentUnits` and `dimensions` in the `owned/catalogue.json` pack so the
+starter's npm `test` script can report any differences.
+Draft payloads cannot install
 executable validators. The operator can create, revise, abandon, list and read
 drafts; the host supplies the actor and command key. Provision and deactivate
 support access through the [operator roster](#provision-operator-rosters).

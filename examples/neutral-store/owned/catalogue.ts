@@ -10,4 +10,5 @@ const types: CatalogProductTypeInput[] = [{
     && 'title' in content && typeof content.title === 'string' && content.title.trim()
     ? [] : [{ path: 'title', code: 'title_required' }],
 }];
+export const catalogDraftTypeRefs = types.map(({ key, version }) => ({ key, version }));
 export const catalogDraftRegistry = createCatalogProductTypeRegistry(types);
