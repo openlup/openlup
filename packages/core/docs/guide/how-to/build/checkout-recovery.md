@@ -159,6 +159,53 @@ waves require confirmed acceptance of the first configured wave when one exists.
 A schedule containing only `last` has no predecessor requirement. Enqueue result
 counter names remain the legacy names, counted by stage.
 
+After the reminder guard migration, creating a wave consumes that stage for the
+order even if you later change its configured hour. A wave created under a
+custom schedule still consumes its recorded stage after the schedule row is removed.
+Checkout waves written before stage labels were added use the historical first
+and last hour mapping.
+An unlabeled wave at any other hour consumes both stages. With an installed
+schedule, a compacted checkout wave consumes both stages because retention
+removed its stage label. With no installed schedule, compacted checkout waves
+use the historical hour mapping. Abandoned-cart stages remain identifiable
+through their event types after compaction.
+
+Use `READ COMMITTED` for reminder producers and schedule changes.
+`REPEATABLE READ` and `SERIALIZABLE` refuse with
+`checkout_recovery_schedule_isolation_unsupported`. An identical installation
+replay succeeds at any isolation level and performs no write. Installing an
+explicit schedule where none was stored counts as a change, even if it contains
+the default values. An empty shop accepts its first install at `READ COMMITTED`.
+
+On qualified profiles, run the installer as the declared migration owner.
+Qualified migration status and apply refuse grants to roles outside the
+selected profile with `outside_principal_references_selected_catalog`.
+
+On the legacy profile, the function owner can delegate installation to a role
+with settings-table read and write permissions. For a role named
+`schedule_installer`, grant execution as follows:
+
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_install_checkout_recovery_reminder_schedule(text, jsonb),
+  public.commerce_checkout_recovery_schedule_change_guard(jsonb, jsonb),
+  public.commerce_checkout_recovery_reminder_schedule()
+TO schedule_installer;
+```
+
+The installer reports `checkout_recovery_schedule_change_blocked_open_episodes
+(N blocking orders)` when a pending checkout order has any reminder wave,
+including a final or compacted wave. A pending abandoned cart with a wave blocks
+while it has a valid draft receipt and no settlement intent. The guard uses no
+age cutoff because the host controls the checkout window and the producer's
+reference time. Orders that have aged past their original reminder window can
+still block a change.
+
+If an active shop refuses the change, keep using its current schedule. If no
+schedule is stored, defer the first explicit install. Retry after the blocking
+orders are paid or cancelled, or, for abandoned carts, after the draft receipt
+is invalidated or a settlement intent exists. Schedule changes during open
+episodes require per-episode scheduling support.
+
 An installed schedule determines eligibility offsets and takes precedence over
 `firstOffsetSeconds` and `finalOffsetSeconds`; those legacy overrides remain
 active only with an absent setting. The existing request-policy validator still
@@ -166,9 +213,8 @@ checks its legacy offsets, including defaults; keep them inside `checkoutSeconds
 even when the installed schedule supplies timing. `checkoutSeconds`, payment/consent gates,
 expiry and token lifetimes retain their independent limits. For example, a
 48-hour final checkout reminder requires a checkout window longer than 48 hours.
-Changing a schedule never rewrites pending events or tokens; changing an hour
-creates a different dedup identity, so coordinate schedule changes with in-flight
-reminders.
+Existing events and tokens keep their recorded expiry. The hour remains in
+the event key, and the stage check prevents a second wave after an hour change.
 
 For a separate native runtime role, keep its existing producer and relation
 privileges and add `GRANT EXECUTE ON FUNCTION

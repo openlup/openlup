@@ -70,7 +70,7 @@ interface Executor {
 const store = (db: Executor) => installedPolicy(db, key, validateCheckoutRecoveryReminderSchedule, structuredClone(fallback), code);
 /** Explicit installation on a host-owned write-capable connection. Reads never install. */
 export async function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void> {
-  await store(db).install(schedule);
+  await db.query("SELECT public.commerce_install_checkout_recovery_reminder_schedule($1::text, $2::jsonb)", [key, JSON.stringify(validateCheckoutRecoveryReminderSchedule(schedule))]);
 }
 /** Read the installed schedule or its nominal default. Requires settings SELECT. */
 export async function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule> {
