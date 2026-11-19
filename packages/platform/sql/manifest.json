@@ -616,7 +616,7 @@
         "sha256": "46182ab7b3fa296c8d722ce059f024156298904fec31e8dedcf0aa3c017b17f0"
       }
     ],
-    "objectInventorySha256": "0ae16e22730ad7fd665347c5b6f5a41b622bff3bb493ac1a5606c2052cecff68",
+    "objectInventorySha256": "88861c0e0b91df4f8a63f629f28654f6c1a0d0ad125432561a5b3a0022162c25",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1254,10 +1254,10 @@
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "17186e856470792bb264adf94fb1a99803289b16e39b48d1ac81be765c91bd25"
+          "withRestore": "d3a81c2dcc6ded5bef28034dcfdbfea99d30beeb84801173ea17a4773606049c"
         },
         "separateMigrator": {
-          "withRestore": "bc3400f2b3279621db9428ca61a8578911014f51a1c7b3ec3b0f4350b089dc38"
+          "withRestore": "4fa866b6feebf90c9332a066042c9001237edef179fd1265f791b46c630df7dc"
         }
       }
     },
@@ -1893,8 +1893,8 @@
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "0be17600dc7e3f1739055c3ddd35826b94f66750a155a508b96bcf6777feb3ca",
-        "operatorProvisioned": "05d0a326850f2efd183148f18e2b4dabbf76edd3abf9681e06f862e3ed319313"
+        "installerManaged": "a12242aa7a3ad7ed9499af185e3db066bbb364b65831045b5b09e44eccc9b26d",
+        "operatorProvisioned": "3d966e53b382358cc11466478537f83470fe850a09874bd999ca78ded8ee68ac"
       }
     }
   },
