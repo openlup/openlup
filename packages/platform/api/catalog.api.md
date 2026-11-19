@@ -1104,29 +1104,13 @@ export declare function evaluateBundleCompositionConstraint(port: CompositionRul
 
 ```ts
 import type { CatalogCandidateQuery, CatalogCandidatePreview, CatalogCandidateComparison } from "./contracts/candidate.js";
-import type { CatalogPublishedProduct } from "./contracts/publication.js";
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
-import type { CatalogDraftMediaClaimV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import type { CatalogDraftIssue, CatalogProductTypeRef, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogHeadRef, CatalogPublicationReadResult } from "./contracts/lifecycle.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
-import { compileCatalogPublication, type CatalogPublicationCompileInput, type CatalogPublicationRules } from "./publicationValidation.js";
-/** Exact reference decoding shared by the facade and the transaction admission.
- * @experimental
- */
-export declare function parseCatalogCandidateReference(value: string): {
-    draftId: string;
-    draftRevision: number;
-    head: null;
-} | {
-    draftId: string;
-    draftRevision: number;
-    head: {
-        publicationId: string;
-        revision: number;
-    };
-} | null;
+import type { CatalogValidationPort } from "./publicationPorts.js";
 /** @experimental */
 export declare class CatalogCandidateError extends Error {
     readonly code: "candidate_invalid" | "head_conflict" | "candidate_digest_mismatch" | "catalog_definition_drift" | "candidate_dependency_unavailable";
@@ -1148,28 +1132,11 @@ export interface CatalogCandidateDeps {
     attributeReferences?: CatalogAttributeReferencePort;
     /** The price owner validates proposed operations; its absence blocks a price-bearing preview. */
     validatePrices?: (payload: CatalogDraftPayloadV2) => Promise<readonly CatalogDraftIssue[]>;
-    /** @experimental Installed rules for sealed v3 publication inputs. */
-    publicationRules?: CatalogPublicationRules;
-    /** @experimental Reads the exact retained snapshot at the requested head. */
-    readPublicationState?: (head: CatalogHeadRef) => Promise<Pick<CatalogPublicationCompileInput, "product" | "skus" | "documents" | "retainedSources"> | null>;
-    /** @experimental Checks proposed routes against current, independently owned presentations. */
-    presentationReadiness?: (productId: string, presentation: NonNullable<CatalogPublishedProduct["presentation"]>) => Promise<{
-        ready: boolean;
-        reasons: readonly string[];
-    }>;
-    /** @experimental Supplies current evidence for an explicit enabling phase. */
-    assessActivation?: (state: Pick<ReturnType<typeof compileCatalogPublication>, "product" | "skus">, head: CatalogHeadRef, verifiedMedia: readonly CatalogDraftMediaClaimV3[]) => Promise<{
-        ready: boolean;
-        reasons: readonly string[];
-    } | null>;
-    /** @experimental Independently verifies the sealed claim, including its revision digest. */
-    verifyMedia?: (claim: CatalogDraftMediaClaimV3, head: CatalogHeadRef) => Promise<boolean>;
 }
 /** No candidate state: each call reconstructs every digest input through the supplied readers.
  * @experimental
  */
-export declare function createCatalogCandidateService(deps: CatalogCandidateDeps): {
-    validate(candidateRef: string): Promise<CatalogCandidatePreview>;
+export declare function createCatalogCandidateService(deps: CatalogCandidateDeps): CatalogValidationPort & {
     prepareCandidate(query: CatalogCandidateQuery): Promise<CatalogCandidatePreview>;
     compareCandidate(input: CatalogCandidateComparison): Promise<CatalogCandidatePreview>;
 };
@@ -1832,19 +1799,6 @@ export interface CatalogCandidatePreview {
     candidateRef: string;
     candidateDigest: string;
     issues: readonly CatalogDraftIssue[];
-    /** @experimental Phase reports for sealed publication inputs. */
-    preparation?: {
-        structural: {
-            outcome: "staged" | "blocked-input" | "unknown";
-            issues: readonly CatalogDraftIssue[];
-        };
-        activation: {
-            outcome: "ready" | "pending" | "blocked-input" | "unknown";
-            issues: readonly (CatalogDraftIssue & {
-                channel?: "one_time" | "subscription";
-            })[];
-        };
-    };
     impact: {
         productId: string;
         skuIds: readonly string[];
@@ -4579,6 +4533,8 @@ export interface CatalogPublicationDocument {
 }
 /** @experimental */
 export interface CatalogPublicationRules {
+    /** Build-pinned artifact identity, verified against the installed type before publication. */
+    readonly validatorRef: string;
     /** Installed code only. Validate/canonicalize opaque documents, presentations, vocabularies and full affected-set facts. */
     validateProduct(product: CatalogPublishedProduct, skus: readonly CatalogPublishedSku[], documents: readonly CatalogPublicationDocument[]): readonly string[];
     /** Rejects a membership effect against the SKU's ordered prefix, including a no-op on a frozen roster. */
@@ -5109,7 +5065,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261123150000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123150000_catalog_publication.sql";
         readonly position: 155;
-        readonly sha256: "35b4d3bddc9dc25cf6ba8147726bf4645b197aed45b131e855150bce4ce79ebc";
+        readonly sha256: "c8a7702384eb0236b6ab12be56b2411d961a1d6815e415a273d2b53a2b554ba1";
         readonly url: URL;
     }
 ];
