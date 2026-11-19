@@ -197,11 +197,7 @@ function bundleActions(context: PageContext): HTMLElement {
 
 function catalogDraftActions(context: PageContext): HTMLElement {
   const productId = crypto.randomUUID();
-  return el('section', { id: 'catalogue-drafts' },
-    readPanel(context, 'catalogDrafts', 'operator.catalogDrafts'),
-    actionForm(context, { operation: 'operator.catalogDrafts', submit: 'catalogDraftRead',
-      fields: [{ name: 'draftId', label: 'catalogDraftId' }], input: () => ({ action: 'get' }) }),
-    actionForm(context, { operation: 'operator.catalogDrafts', title: 'catalogDraftCommand', submit: 'save',
+  const draftEditor = actionForm(context, { operation: 'operator.catalogDrafts', title: 'catalogDraftCommand', submit: 'save',
       fields: [
         { name: 'action', label: 'catalogDraftAction', type: 'select', options:
           ([['create', 'catalogDraftCreate'], ['revise', 'catalogDraftRevise'], ['abandon', 'catalogDraftAbandon']] as const)
@@ -215,7 +211,26 @@ function catalogDraftActions(context: PageContext): HTMLElement {
       ], transform: values => ({ action: values.action, draftId: values.draftId,
         expectedRevision: values.expectedRevision,
         ...(values.action === 'abandon' ? {} : { payload: JSON.parse(String(values.payload)) as unknown }) }),
-    }));
+    });
+
+
+  const polski = context.locale === 'pl';
+  const example = actionForm(context, { operation: 'operator.catalogDrafts',
+    submit: { label: polski ? 'Wczytaj przykładowy szkic' : 'Load draft example' }, input: () => ({ action: 'example' }),
+    onSuccess(value) {
+      const payload = draftEditor.querySelector<HTMLTextAreaElement>('textarea[name=payload]');
+      if (!payload) return;
+      payload.value = JSON.stringify(value, null, 2);
+      payload.dispatchEvent(new Event('input', { bubbles: true }));
+    } });
+  const prepare = actionForm(context, { operation: 'operator.catalogDrafts',
+    submit: { label: polski ? 'Przygotuj zapisany szkic' : 'Prepare saved draft' }, input: () => ({ action: 'prepare' }),
+    fields: [{ name: 'draftId', label: 'catalogDraftId' }, { name: 'expectedRevision', label: 'catalogDraftRevision', type: 'number', min: 1, value: '1' }] });
+  return el('section', { id: 'catalogue-drafts' },
+    readPanel(context, 'catalogDrafts', 'operator.catalogDrafts'),
+    actionForm(context, { operation: 'operator.catalogDrafts', submit: 'catalogDraftRead',
+      fields: [{ name: 'draftId', label: 'catalogDraftId' }], input: () => ({ action: 'get' }) }),
+    draftEditor, example, prepare);
 }
 
 function reviewActions(context: PageContext): HTMLElement {

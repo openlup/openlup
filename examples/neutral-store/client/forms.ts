@@ -22,7 +22,7 @@ export interface FieldSpec {
 export interface ActionFormOptions {
   operation: Operation;
   title?: CopyKey;
-  submit: CopyKey;
+  submit: CopyKey | { label: string };
   fields?: FieldSpec[];
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
@@ -71,7 +71,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     controls.push({ spec, control: item.control });
     append(form, item.wrapper);
   }
-  const submit = el('button', { type: 'submit' }, context.t(options.submit));
+  const submit = el('button', { type: 'submit' }, typeof options.submit === 'string' ? context.t(options.submit) : options.submit.label);
   // Keep command identity on an uncertain transport result. A changed input is a new command.
   let commandKey = crypto.randomUUID();
   let priorInput: string | null = null;

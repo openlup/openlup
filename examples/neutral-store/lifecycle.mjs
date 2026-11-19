@@ -111,9 +111,11 @@ if (command === 'candidate') {
 } else if (command === 'install') {
   // Internal one-shot Compose entry; no install connection reaches the HTTP host.
   const { installDemonstration, bootstrapDemonstration } = await import('./installation/install.ts');
+  const { retainStarterCatalogueBuild } = await import('./host/editor-catalogue.ts');
   const { selectConfiguration } = await import('./owned/store.config.ts');
   try {
-    await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
+    const build = await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
+    if (build) retainStarterCatalogueBuild(build.bytes, build.receipt);
   } catch (error) {
     const code = error instanceof Error ? error.message : 'starter_installation_failed';
     process.stderr.write(`${code}\n`);

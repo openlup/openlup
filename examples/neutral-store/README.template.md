@@ -53,13 +53,15 @@ Edit `owned/catalogue-rules.cjs` and update the examples in
 node --test owned/catalogue-rules.test.cjs
 ```
 
-The test runs the same hooks and execution limits as installation. Use their
-input values in place of `Date` or `Math.random`, and include dependencies
-in the build so the rules need neither `require` nor Node APIs.
+The test runs the same hooks as installation. Keep the rules pure and use the
+supplied arguments for time, locale and time zone. Include dependencies in the
+build so the rules need neither `require` nor Node APIs.
 
 Run `./lifecycle up` when you want to try the updated rules in **Catalogue
-drafts**. The starter installs and selects the updated type for you. If a
-draft refuses, use the issue's path and reason to fix the input and save again.
+drafts**. Choose **Load draft example**, save it, then use **Prepare saved draft**
+with the saved draft ID and revision. Fix a refusal at the field named in its
+path and save again. The preparation report can wait for publication evidence.
+The starter keeps earlier builds available for drafts already saved.
 
 The owned market registry in `owned/market.config.ts` selects `locales` and
 `defaultLocale`; supply copy for every configured locale.

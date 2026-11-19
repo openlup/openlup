@@ -57,14 +57,17 @@ export interface DemonstrationInstallation {
 export type InstallationBootstrap = (config: StoreConfig) => Promise<DemonstrationInstallation>;
 
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
-export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap): Promise<void> {
+export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap) {
   const installation = await bootstrap(config);
-  try { await applyDemoSeed(config, installation); }
+  try {
+    const receipt = await applyDemoSeed(config, installation);
+    if (receipt && installation.catalogueRules) return { receipt, bytes: Buffer.from(installation.catalogueRules) };
+  }
   finally { await installation.close(); }
 }
 
 /** Idempotent demo composition; stock uses its native writer. No schema, clients or subscription truth. */
-export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation): Promise<void> {
+export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation) {
   const { connection, installRole, runtimeRole } = installation;
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw new Error('starter_seed_install_role_required');
   const seed = buildDemoSeed(config);
@@ -82,7 +85,8 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       throw new Error('starter_seed_install_role_required');
     }
     if (target.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
-    if (installation.catalogueRules) await installCatalogDefinitions(connection, starterCataloguePack(installation.catalogueRules));
+    const catalogueReceipt = installation.catalogueRules
+      ? await installCatalogDefinitions(connection, starterCataloguePack(installation.catalogueRules)) : undefined;
     for (const row of seed.products) await connection.query(`INSERT INTO public.catalog_products
       (id, slug, status, name, description) VALUES ($1,$2,$3,$4,$5)
       ON CONFLICT (id) DO UPDATE SET slug=EXCLUDED.slug, status=EXCLUDED.status,
@@ -138,6 +142,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         || existing.rows[0]?.active !== true) throw new Error('starter_acquisition_seed_conflict');
     }
     await connection.query('COMMIT');
+    return catalogueReceipt;
   } catch (error) {
     await connection.query('ROLLBACK');
     throw error;

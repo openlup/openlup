@@ -254,6 +254,26 @@ test('native support roster, catalogue administration, replay and operator admis
   expect((await action('operator.catalogDrafts')).value.page.items.some((row: { draftId: string }) => row.draftId === draftId)).toBe(true);
   expect((await action('operator.catalogDrafts', { action: 'revise', draftId, expectedRevision: 1, payload: created.value.record.payload })).ok).toBe(true);
   expect((await action('operator.catalogDrafts', { action: 'abandon', draftId, expectedRevision: 2 })).ok).toBe(true);
+  await draftPanel.getByRole('button', { name: /Load draft example|Wczytaj przykładowy szkic/u }).click();
+  const draftInput = draftForm.locator('[name=payload]');
+  await expect(draftInput).toHaveValue(/"schemaVersion": 3/u);
+  const example = JSON.parse(await draftInput.inputValue());
+  expect(example.product.type.version).toBe(typeVersion);
+  const exampleId = randomUUID();
+  await draftForm.locator('[name=draftId]').fill(exampleId);
+  await draftInput.fill(JSON.stringify({ ...example, product: { ...example.product,
+    sharedContent: { ...example.product.sharedContent, presentation: {} } } }));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  await expect(draftForm.locator('.action-result')).toContainText('product.sharedContent.presentation.title');
+  await draftInput.fill(JSON.stringify(example));
+  const savedExample = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  expect(await (await savedExample).json()).toMatchObject({ ok: true, value: { record: { draftId: exampleId, revision: 1 } } });
+  const prepareDraft = draftPanel.locator('form').filter({ has: page.getByRole('button', { name: /Prepare saved draft|Przygotuj zapisany szkic/u }) });
+  await prepareDraft.locator('[name=draftId]').fill(exampleId);
+  const preparedExample = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await prepareDraft.locator('button[type=submit]').click();
+  expect(await (await preparedExample).json()).toMatchObject({ ok: true, value: { structural: { outcome: 'unknown' } } });
   expect((await action('operator.catalogDrafts', { action: 'create', draftId: randomUUID(), expectedRevision: 0, payload: {} })).code).toBe('catalog_draft_input_invalid');
   expect((await action('operator.catalogDrafts', { actorRef: principal })).code).toBe('starter_input_invalid');
   await action('auth.signOut');
