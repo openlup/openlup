@@ -2243,15 +2243,13 @@ it.each((["first open ordinal","next after closed ordinal","different marker bas
   },
 );
 
-it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation","numbered different basis","repeat after same-money publication","opt in composition head moved","opt in composition head control","candidate offer scope","candidate document drift","candidate parent drift","candidate measure drift","candidate sibling drift","candidate snapshot","candidate snapshot control"] as const)(
+it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","opt in with historical entry","numbered graduation","numbered different basis","repeat after same-money publication","opt in composition head moved","opt in composition head control","candidate offer scope","candidate document drift","candidate parent drift","candidate measure drift","preview parent drift","preview measure drift","candidate sibling drift","candidate snapshot","candidate snapshot control"] as const)(
   "LC6-D-067 and LC6-D-132 shipped sized preview and apply keep the owned price: %s", async (action,test) => {
     const compositionRace = action === "opt in composition head moved" || action === "opt in composition head control";
     const optIn = action === "opt in unchanged" || action === "opt in with historical entry" || action === "repeat after same-money publication" || compositionRace;
     const graduation = action === "numbered graduation" || action === "numbered different basis";
     let unavailable = false;
-    const discovery = action === "candidate offer scope" || action === "candidate document drift" || action === "candidate sibling drift"
-      || action === "candidate parent drift" || action === "candidate measure drift"
-      || action === "candidate snapshot" || action === "candidate snapshot control";
+    const discovery = action.startsWith("candidate ") || action.startsWith("preview ");
     if ((optIn || discovery) && !(await pool.query("SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS present")).rows[0].present) {
       test.skip("Membership page comes from the predecessor installation"); return;
     }
@@ -2350,8 +2348,8 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
           const facts = (await db.query(`SELECT s.*,p.publication_facts#>>'{document,id}' AS document_id,p.publication_facts#>>'{document,digest}' AS document_digest
             FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id WHERE s.id=ANY($1::uuid[])`, [ids])).rows.map(row => {
             const wrongDoc = row.id === f.sku && action === "candidate document drift";
-            return { variantId: String(row.id),sku: String(row.sku),groupId: row.id === f.sku && action === "candidate parent drift" ? randomUUID() : String(row.product_id),isAddon: row.is_addon === true,
-              sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: row.id === f.sku && action === "candidate measure drift" ? 101 : 100,demandPerUnit: 28,
+            return { variantId: String(row.id),sku: String(row.sku),groupId: row.id === f.sku && action.endsWith("parent drift") ? randomUUID() : String(row.product_id),isAddon: row.is_addon === true,
+              sellable: row.status === "active" && row.sellable_in_subscription === true,physicalSize: row.id === f.sku && action.endsWith("measure drift") ? 101 : 100,demandPerUnit: 28,
               documentRevisionId: wrongDoc ? String(row.id) : String(row.document_id ?? row.id),
               documentDigest: wrongDoc ? digest(String(row.id)) : String(row.document_digest ?? digest(String(row.id))),verified: true,exclusions: [],sellableNow: row.is_addon ? null : 100 };
           });
@@ -2386,11 +2384,12 @@ it.for(["add_addon","remove_addon","update_addon_quantity","opt in unchanged","o
               finally { await restoreCheck(); }
             } finally { await restoreDrift(); }
           }
-        } else if (action === "candidate document drift" || action === "candidate parent drift" || action === "candidate measure drift") {
-          await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
+        } else if (action === "preview parent drift" || action === "preview measure drift") {
           await expect(editor.preview(actor,{ subscriptionId: f.subscription,action: "resize_bundle",cadenceDays: 28,compositionConstraint: constraint,
             resizeLever: { kind: "subscription.sized.parcel",value: { coreLines: [{ variantId: f.sku,qty: coreQuantity }] } } }))
             .rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
+        } else if (action === "candidate document drift" || action === "candidate parent drift" || action === "candidate measure drift") {
+          await expect(editor.candidates(actor,f.subscription)).rejects.toMatchObject({ code: "40001",message: "catalog_publication_head_moved" });
         } else {
           const result = await editor.candidates(actor,f.subscription);
           expect(result.catalog.map(fact => fact.variantId).sort()).toEqual([f.sku,variantId].sort());
