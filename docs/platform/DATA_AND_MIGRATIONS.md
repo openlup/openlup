@@ -399,7 +399,10 @@ revocation leaves the publication and its original replay receipt intact.
 The candidate facade reconstructs sealed v3 inputs at the requested head. Its
 structural report distinguishes staged input, a confirmed refusal and unknown
 evidence. The activation report carries per-channel pending issues and uses
-current installed evidence before marking an enabling candidate ready. The host's
+current installed evidence before marking an enabling candidate ready. A
+retained SKU or primary can satisfy an omitted roster field. Activation still
+requires authored gross mass and independent verification of the exact sealed
+media claim. The host's
 presentation adapter checks route ownership during preparation and immediately
 before each presentation write. A route conflict refuses before any later
 catalogue effect or child price application. A matching

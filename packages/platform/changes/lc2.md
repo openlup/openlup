@@ -55,9 +55,10 @@ requires immutable draft v3 inputs; v1/v2 draft bytes and replay stay unchanged.
 Registration checks each source against its immutable draft receipt. A new SKU
 can be created and priced in the same issuance. Enabling sale requires a later
 issuance with a current source that matches the materialized SKU. Installed
-publication rules supply the document decoder and return the authored name
-with the document identity. Legacy GTIN writes use Read Committed and check
-cross-issuer collisions after taking the identifier lock.
+publication rules interpret document bytes and return typed metadata and
+derived SKU facts. Legacy GTIN writes use Read Committed and check cross-issuer
+collisions under one transaction lock. Successor manifests retain every
+previously issued SKU, including unchanged and archived rows.
 The price boundary uses the existing version 2 command through the price owner's
 same-transaction writer. The shared price-owner phases reserve sorted receipt
 keys before sorted contexts, verify every child belongs to the parent, and apply
