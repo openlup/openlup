@@ -1,6 +1,6 @@
 import type { CatalogPublicationRulesModule } from "../../../src/catalog/catalogPublicationRules.js";
 import type { categoryDocument } from "./categoryDocumentInput.js";
-import { productDocumentV2Schema } from "./categoryDocument.js";
+import { categoryDocumentSchema } from "./categoryDocument.js";
 
 type Document = ReturnType<typeof categoryDocument> & { name: string };
 const canonical = (value: unknown) => JSON.stringify(value, (_key, entry) =>
@@ -10,20 +10,15 @@ function identifyDocument(value: unknown) {
   const { schemaVersion, id, productSlug, revisionNo, name } = value as Document;
   return { schemaId: schemaVersion, documentRef: id, productSlug, revisionNo, name };
 }
-function validateDocument(value: unknown) {
-  const { name: _name, ...category } = value as Document;
-  productDocumentV2Schema.parse(category);
-}
 const rules: CatalogPublicationRulesModule = {
   identifyDocument,
   inspectDocument(canonicalText) {
     const document: unknown = JSON.parse(canonicalText);
-    validateDocument(document);
+    if (!categoryDocumentSchema.safeParse(document).success) return null;
     return { ...identifyDocument(document), canonicallyEncoded: canonical(document) === canonicalText };
   },
   matchesDocument(value, canonicalText) {
-    validateDocument(value);
-    return canonical(value) === canonicalText;
+    return categoryDocumentSchema.safeParse(value).success && canonical(value) === canonicalText;
   },
   validateContent: () => [],
   validateSkuAmounts: ({ netGrams }) => BigInt(netGrams) <= 9_999_999n,
