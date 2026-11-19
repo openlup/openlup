@@ -22,6 +22,8 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION public.inventory_renewal_protection_validate(jsonb) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_renewal_protection_validate(jsonb) FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.inventory_renewal_protection_validate(jsonb) FROM authenticated;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_validate(jsonb) TO service_role;'; END IF; END; $$;
 
 -- The existing STABLE stock read calls native ATP and this reader within its statement snapshot.

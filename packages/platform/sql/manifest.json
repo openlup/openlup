@@ -625,7 +625,7 @@
       },
       {
         "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-        "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+        "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
       }
     ],
     "objectInventorySha256": "7fb958d03968cad4a037dc4df29feea6ccfea28ebe972e9c2e487901ce11725c",
@@ -1273,7 +1273,7 @@
         },
         {
           "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-          "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+          "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
         }
       ],
       "objectInventorySha256": {
@@ -1925,7 +1925,7 @@
         },
         {
           "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-          "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+          "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
         }
       ],
       "objectInventorySha256": {
@@ -2713,7 +2713,7 @@
     {
       "file": "20261125010000_inventory_renewal_protection_validation.sql",
       "source": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-      "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+      "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

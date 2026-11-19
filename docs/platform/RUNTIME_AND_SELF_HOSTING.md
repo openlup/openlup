@@ -863,6 +863,8 @@ GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_validate(jsonb) TO
 The pure validator reads no table. Calling it directly without this grant
 raises SQLSTATE `42501` for the custom role. Qualified service-role bindings
 already receive validator execution.
+The operator grants both functions directly to a separate native runtime role as
+needed because the migrations do not know the host's role name.
 
 Native one-time and replacement allocation remain
 unavailable; this read supplies no allocation authority. Importing

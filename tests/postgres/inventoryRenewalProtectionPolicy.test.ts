@@ -196,6 +196,26 @@ it.each(["legacy", "separate", "admin-managed", "admin-operator"] as const)(
   }, postgresSetupTimeoutMs,
 );
 
+it("revokes default validator execution grants for anon and authenticated", async () => {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    // Replay the unlanded forward as its owner with browser-role defaults in place.
+    await client.query(`DROP FUNCTION public.inventory_renewal_protection_validate(jsonb);
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated`);
+    await client.query(readFileSync("db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql", "utf8"));
+    for (const role of ["anon", "authenticated"]) {
+      await client.query(`SET LOCAL ROLE ${role}; SAVEPOINT validator_call`);
+      await expect(client.query("SELECT public.inventory_renewal_protection_validate($1::jsonb)", [
+        '{"revision":"fixture","renewalProtectionDays":14}',
+      ])).rejects.toMatchObject({ code: "42501", message: "permission denied for function inventory_renewal_protection_validate" });
+      await client.query("ROLLBACK TO SAVEPOINT validator_call; RESET ROLE");
+    }
+  } finally {
+    try { await client.query("ROLLBACK"); } finally { client.release(); }
+  }
+});
+
 it("a custom runtime needs a direct validator grant only for direct calls", async () => {
   const client = await db.connect();
   const proposed = '{"revision":"proposed","renewalProtectionDays":14.0}';

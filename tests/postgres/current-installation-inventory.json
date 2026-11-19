@@ -8,7 +8,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-            "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+            "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
@@ -639,7 +639,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-            "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+            "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
@@ -1290,7 +1290,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-            "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+            "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
@@ -1941,7 +1941,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-            "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+            "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
@@ -2588,7 +2588,7 @@
         "tail": [
           {
             "file": "db/platform/migrations/20261125010000_inventory_renewal_protection_validation.sql",
-            "sha256": "9048968face5aa953cedd144ad0b7a681d32f86ecf7a4163150e301089f1ea74"
+            "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
           },
           {
             "file": "db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql",
