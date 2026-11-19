@@ -69,7 +69,7 @@ Search terms include abandoned basket, reminder cadence, payment follow-up, reco
 - Default is `{"revision":"default","abandonedCart":[{"stage":"first","afterHours":1},{"stage":"gentle","afterHours":24},{"stage":"last","afterHours":72}],"checkoutRecovery":[{"stage":"first","afterHours":1},{"stage":"last","afterHours":20}]}`.
 - Basis `reference-code` (matches the reference deployment's code).
 - The last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.
-- When absent, checkout recovery waves use host call parameters, with SQL defaults for omitted offsets. Abandoned cart waves use 1, 24 and 72 hours.
+- When absent, unpinned checkout recovery episodes use host call parameters, with SQL defaults for omitted offsets. Unpinned abandoned cart episodes use 1, 24 and 72 hours. An existing pin supplies that episode's timing.
 
 ```sh
 node --experimental-strip-types host/settings.ts show checkout_recovery_reminders --json

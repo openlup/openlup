@@ -27,10 +27,12 @@ An offline result reports catalogue defaults. For inventory and reminders, a
 connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
-inventory row uses the platform fallback. An absent reminder row uses the host
-call parameters for checkout recovery and the 1, 24 and 72 hour schedule for
-abandoned carts. The result names the source and includes checkout offsets when
-the host supplies a valid policy. If the effective host policy fails native
+inventory row uses the platform fallback. For unpinned reminder episodes, an
+absent row uses the host call parameters for checkout recovery and the 1, 24 and
+72 hour schedule for abandoned carts. The connected read shows the live setting
+or fallback. For a pinned order and reminder kind, [the pin supplies timing](../build/checkout-recovery.md#install-reminder-stages-and-hours).
+The result names the source and includes checkout offsets when the host
+supplies a valid policy. If the effective host policy fails native
 validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, run
 `node --experimental-strip-types host/settings.ts explain checkout_recovery_reminders`.
