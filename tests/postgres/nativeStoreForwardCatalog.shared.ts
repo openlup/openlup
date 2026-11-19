@@ -1277,6 +1277,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   const inlineColumn = `ALTER TABLE public.cat_existing_table ADD COLUMN cohort integer CONSTRAINT ${pin.name} CHECK (true);`;
   const prefixPin = deferredPin({ function: "public.cat_trigger_fn()" }), freshPin = deferredPin({ relation: "public.cat_fresh" });
   const functionRule = `createdTriggers entry ${pin.name}: function must be a zero-argument public function of at most 63 bytes`;
+  const triggerKeyword = (name: string) => `createdTriggers entry ${name}: name is a PostgreSQL keyword. Rename the trigger (for example, add a prefix) and register the new name.`;
   const quotedView = 'CREATE VIEW public.cat_quoted_view AS SELECT id AS ";" FROM public.cat_existing_table;';
   const viewUsingPinnedFunction = quotedView.replace(/;$/u, " WHERE public.cat_created_guard() IS NOT NULL;");
   const unreadable = `The statement cannot be checked for pinned objects. ${forbidden()}`;
@@ -1311,10 +1312,11 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       refusal: "reviewed native store unlisted, missing or drifted function definition" },
     { label: "restored function body with the pinned signature", pins: [pin] },
     { label: "63-byte name", pins: [deferredPin({ name: long })] },
-    { label: "keyword name select", pins: [deferredPin({ name: "select" })], refusal: "createdTriggers entry select: name must not be an SQL keyword" },
-    { label: "keyword function name replace", pins: [deferredPin({ function: "public.replace()" })], prefixFunction: true,
-      setup: "CREATE FUNCTION public.replace() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;",
-      refusal: `createdTriggers entry ${pin.name}: function name is a PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name.` },
+    ...["select", "between"].map(name => ({ label: `keyword trigger name ${name}`, pins: [deferredPin({ name })],
+      refusal: triggerKeyword(name) })),
+    ...["replace", "between"].map(name => ({ label: `keyword function name ${name}`, pins: [deferredPin({ function: `public.${name}()` })], prefixFunction: true,
+      setup: `CREATE FUNCTION public.${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END; $$;`,
+      refusal: `createdTriggers entry ${pin.name}: function name is a PostgreSQL keyword. Rename the function (for example, add a prefix) and register the new name.` })),
     { label: "64-byte name", pins: [deferredPin({ name: long + "a" })], refusal: `createdTriggers entry ${long}a: name must be an unquoted identifier of at most 63 bytes` },
     { label: "64-byte relation", pins: [deferredPin({ relation: "public." + long + "a" })], refusal: `createdTriggers entry ${pin.name}: relation must be a public relation with an identifier of at most 63 bytes` },
     { label: "64-byte function", pins: [deferredPin({ function: "public." + long + "a()" })], refusal: functionRule },
@@ -1371,7 +1373,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       sql: renderNativeDeferredTrigger(prefixPin) + guarded("authenticated", "REVOKE ALL ON FUNCTION", "public.cat_trigger_fn() FROM authenticated;"),
       companions: { grantOnlyFunctions: [{ signature: prefixPin.function, grantTo: [], revokeFrom: ["authenticated"] }] }, refusal: forbidden(prefixPin, "cat_trigger_fn", false) },
     { label: "drop with keyword pin", pins: [deferredPin({ name: "if" })], sql: statement.replace(pin.name, "if") + "DROP TRIGGER if ON public.cat_existing_table;",
-      refusal: "createdTriggers entry if: name must not be an SQL keyword" },
+      refusal: triggerKeyword("if") },
   ];
   it.each(cases)("admits and verifies the same deferred forward for $label", async ({ pins, sql, setup, prefixFunction, functionSql = deferredFunction, refusal, companions }) => {
     const slot = { ...DEFERRED_SLOT, createdTriggers: pins, createdFunctions: prefixFunction ? [] : DEFERRED_SLOT.createdFunctions, ...companions };

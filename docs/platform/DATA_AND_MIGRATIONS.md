@@ -2474,6 +2474,7 @@ CREATE CONSTRAINT TRIGGER example_guard AFTER INSERT OR UPDATE ON public.example
 
 Use a public zero-argument invoker returning `trigger`. Reserve the pinned names
 for declarations, new functions and their PUBLIC revokes. Fix parse errors first.
+For a pinned function created in the same forward, use either `REVOKE ALL ... FROM PUBLIC` or `REVOKE ALL PRIVILEGES ... FROM PUBLIC`.
 For a pinned object, remove the refused statement or use one of the listed exact
 statements. Remove an unregistered trigger, or register it and use the rendered
 SQL when its form is supported.
@@ -2483,6 +2484,7 @@ Pins may share a relation. Reuse prefix invokers without a revoke and keep other
 Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and
 a same-slot function with explicit `SECURITY INVOKER`, a pinned `search_path`
 and an owner-only ACL. Ordinary triggers also allow `UPDATE OF`.
+Ordinary triggers refuse `WHEN`, transition tables, statement-level and `INSTEAD OF` forms, trigger mutation, `OR REPLACE`, and `IF NOT EXISTS`. Revoke the function’s privileges from `PUBLIC`, grant no `EXECUTE`, and target a table in the prefix or created earlier in the same slot.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
