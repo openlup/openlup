@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  reconcileReminderInstallationTest, reminderInstallationTest, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  reconcileReminderInstallationTest, reminderInstallationTest, starterCatalogueTest, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -143,6 +143,24 @@ it("migrates only the pristine retention contract from 1.0.0 to 1.1.0", () => {
   expect(to.files).toEqual(from.files);
 });
 
+it("takes the target catalogue for a pristine 1.2.0 starter when the target ships the parity test", () => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const path = "owned/catalogue.ts", pack = "owned/catalogue.json";
+  const released = (file: string) => execFileSync("git", ["show", `openlup-core-v1.2.0:examples/neutral-store/${file}`], { encoding: "utf8" });
+  const previous = released(path), packBytes = released(pack);
+  const next = readFileSync(resolve("examples/neutral-store", path), "utf8");
+  expect(previous).not.toBe(next);
+  write(path, previous); write(pack, packBytes); candidate(path, next);
+  const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
+  migrateStarterOwned(app, target, from, to);
+  expect(readFileSync(join(app, path), "utf8")).toBe(previous);
+  to.files[starterCatalogueTest] = readFileSync(resolve("examples/neutral-store", starterCatalogueTest), "utf8");
+  migrateStarterOwned(app, target, from, to);
+  expect(readFileSync(join(app, path), "utf8")).toBe(next);
+  expect(readFileSync(join(app, pack), "utf8")).toBe(packBytes);
+  expect(Object.keys(to.files)).not.toContain(path);
+});
+
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "starter-next-set-"))); directories.push(directory);
   const source = join(directory, "source"), app = join(directory, "app"), target = join(directory, "target");
@@ -172,6 +190,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   };
   const customizations = new Map<string, readonly [string, string]>([
     ["AGENTS.md", ["Its fictional data", "Record local acceptance results in the test log. Its fictional data"]],
+    ["owned/catalogue.ts", ["title_required", "local_title_required"]],
     ["owned/renewal.config.ts", ["batchLimit: 10", "batchLimit: 8"]],
     ["owned/store.config.ts", ["#3d6657", "#663d57"]],
     ["owned/acquisition-policy.ts", ["Invalid recipient", "Enter a recipient name"]],
@@ -245,6 +264,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     "test/policy.test.ts",
     "test/subscription-creation.test.ts",
     reminderInstallationTest,
+    starterCatalogueTest,
   ];
   if (localTest) contracts.push(localTest.path);
   const check = spawnSync(process.execPath, ["--experimental-strip-types", "--test", ...contracts], { cwd: app, encoding: "utf8", timeout: 60_000 });

@@ -79,8 +79,15 @@ export function starterUpgradeSnapshot(directory: string, version: string) {
   return { version, schema: { min: 0, max: 0 }, files: files as Record<string, string> };
 }
 
+export const starterCatalogueTest = "test/catalogue.test.ts";
+
 /** Packaged pristine-file migrations, before the proof adds its owned customizations. */
 export function migrateStarterOwned(app: string, target: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>): void {
+  // The managed parity test identifies the unnumbered target of this migration.
+  if (["1.1.0", "1.2.0"].includes(from.version) && to.version !== from.version && Object.hasOwn(to.files, starterCatalogueTest)) {
+    const path = "owned/catalogue.ts";
+    writeFileSync(join(app, path), readFileSync(join(target, path)));
+  }
   // The next set is not numbered yet. Its managed locale contract identifies
   // this migration without applying it to a released 1.1.0 or synthetic starter.
   if (from.version === "1.1.0" && to.version !== from.version && Object.hasOwn(to.files, "shared/locales.ts")) {
