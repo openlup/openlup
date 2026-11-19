@@ -822,7 +822,9 @@ it.each([
   data.payload.publication.operations = [{ op: "set_eligibility", skuCode: "SECOND", sellableStandalone: enabling, sellableInSubscription: false }];
   if (expected.length) expect(() => compileCatalogPublication(data)).toThrow("catalog_publication_activation_effect_missing");
   const payload = compileCatalogPublicationDraft(data.payload, data.payload.product.sharedContent.presentation, data);
-  expect(payload.publication.operations.slice(1).map(op => op.op)).toEqual(expected);
+  expect(payload.publication.operations.slice(1)).toEqual(expected.map(op => op === "set_sku_status"
+    ? { op, skuCode: "SECOND", status: "active" }
+    : { op, productSlug: "article", status: "active" }));
   expect(compileCatalogPublication({ ...data, payload, record: { ...data.record, payload } }).skus.find(row => row.code === "SECOND"))
     .toMatchObject({ status: enabling ? "active" : sku, sellableStandalone: enabling });
 });
