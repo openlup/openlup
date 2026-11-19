@@ -13,12 +13,13 @@ it("defaults only for an absent row and installs exact validated JSON", async ()
     expect(await readRenewalStockProtectionPolicy({ query })).toEqual(policy);
   }
 });
-it.each(corpus)("shared corpus (TS): $name", async ({ input, accepted, normalized, code }) => {
+it.each(corpus)("shared corpus (TS): $name", async ({ input: rawJson, accepted, normalized, code }) => {
+  const input: unknown = JSON.parse(rawJson);
   if (accepted) {
     expect(validateRenewalStockProtection(input)).toStrictEqual(normalized);
     return;
   }
-  const query = vi.fn().mockResolvedValue({ rows: [{ value_text: JSON.stringify(input) }] });
+  const query = vi.fn().mockResolvedValue({ rows: [{ value_text: rawJson }] });
   expect(() => validateRenewalStockProtection(input)).toThrow(code);
   await expect(installRenewalStockProtectionPolicy({ query }, input as never)).rejects.toThrow(code);
   expect(query).not.toHaveBeenCalled();

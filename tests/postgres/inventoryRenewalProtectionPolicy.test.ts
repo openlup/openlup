@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { createPostgresStockAvailability, installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy } from "@openlup/platform/inventory";
+import { createPostgresStockAvailability, installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, type RenewalStockProtectionPolicy } from "@openlup/platform/inventory";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { assertNativeStoreForward, readReviewedForwardRegistry, sqlStatements } from "../../scripts/reviewed-platform-forward.js";
@@ -14,7 +14,7 @@ import { createOriginPolicy } from "../../examples/neutral-store/host/origin-pol
 
 const corpus = JSON.parse(readFileSync(
   new URL("../../packages/platform/test/inventory/inventory_renewal_protection.json", import.meta.url), "utf8",
-)) as Array<{ name: string; input: unknown; accepted: boolean; normalized?: unknown; code?: string }>;
+)) as Array<{ name: string; input: string; accepted: boolean; normalized?: RenewalStockProtectionPolicy; code?: string }>;
 const source = "policy-fixture", sku = "POLICY-FIXTURE";
 const installation = { generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
   bootstrapLogin: "postgres", runtimeLogin: "starter_runtime", restoreLogin: "starter_restore" } as const;
@@ -35,6 +35,9 @@ beforeAll(async () => {
   const old = sqlStatements(readFileSync("db/platform/migrations/20261024183000_inventory_available_to_promise.sql", "utf8"))
     .find(sql => sql.startsWith("CREATE FUNCTION public.inventory_available_to_promise("))!;
   await db.query(old.replace("public.inventory_available_to_promise(", "public.inventory_policy_before_k7("));
+  const previousReader = sqlStatements(readFileSync("db/platform/migrations/20261123130000_inventory_renewal_protection_policy.sql", "utf8"))
+    .find(sql => sql.startsWith("CREATE FUNCTION public.inventory_renewal_protection_days("))!;
+  await db.query(previousReader.replace("public.inventory_renewal_protection_days(", "public.inventory_renewal_protection_before_f2a("));
   asOf = (await db.query("SELECT date_trunc('second', statement_timestamp())::text AS instant")).rows[0].instant;
   const id = randomUUID();
   await db.query("INSERT INTO public.clients(id,email) VALUES ($1,'policy@example.invalid')", [id]);
@@ -106,11 +109,21 @@ it("D: absence and the adopter 14-day literal equal the historical ATP body; 7/2
 });
 
 it.each(corpus)("shared corpus (PostgreSQL): $name", async ({ input, accepted, normalized, code }) => {
-  const validation = db.query("SELECT public.inventory_renewal_protection_validate($1::jsonb) AS result", [JSON.stringify(input)]);
+  await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('inventory_renewal_protection',$1)", [input]);
+  const previous = () => db.query("SELECT public.inventory_renewal_protection_before_f2a() AS days");
+  const current = () => db.query("SELECT public.inventory_renewal_protection_days() AS days");
+  const validate = () => db.query(`SELECT result, result->>'renewalProtectionDays' AS days_text
+    FROM (SELECT public.inventory_renewal_protection_validate($1::jsonb) AS result) AS validated`, [input]);
   if (accepted) {
-    expect((await validation).rows).toEqual([{ result: normalized }]);
+    const days = normalized!.renewalProtectionDays;
+    expect((await previous()).rows).toEqual([{ days }]);
+    expect((await current()).rows).toEqual([{ days }]);
+    expect((await validate()).rows).toEqual([{ result: normalized, days_text: String(days) }]);
   } else {
-    await expect(validation).rejects.toMatchObject({ code: "22023", message: code });
+    const refusal = { code: "22023", message: code };
+    await expect(previous()).rejects.toMatchObject(refusal);
+    await expect(current()).rejects.toMatchObject(refusal);
+    await expect(validate()).rejects.toMatchObject(refusal);
   }
 });
 
@@ -143,7 +156,7 @@ it("reads the installer change without restart in one query for either 1 or 25 S
 
 it("malformed installed policy always names the error, including empty demand and renewal exemption", async () => {
   const stock = createPostgresStockAvailability(db, { sourceKey: source, now: () => asOf });
-  for (const value of [null, "{bad", ...corpus.filter(row => !row.accepted).map(row => JSON.stringify(row.input))]) {
+  for (const value of [null, "{bad", ...corpus.filter(row => !row.accepted).map(row => row.input)]) {
     await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('inventory_renewal_protection',$1) ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text", [value]);
     for (const renewal of [false, true]) await expect(atp(renewal)).rejects.toMatchObject({ code: "22023", message: "inventory_renewal_protection_policy_invalid" });
     await expect(db.query("SELECT public.inventory_available_to_promise('missing','missing',$1,false)", [asOf]))

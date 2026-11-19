@@ -613,6 +613,18 @@ export function syncGeneratedRegions(source: string, label: string, repositoryRo
   return result;
 }
 
+function sqlFilesAtReleaseTag(repositoryRoot: string, version: string, directory: string): Set<string> | undefined {
+  try {
+    const tagged = execFileSync("git", ["ls-tree", "-r", "--name-only", `refs/tags/openlup-core-v${version}`, "--", directory], {
+      cwd: repositoryRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+    });
+    return new Set(tagged.split("\n"));
+  } catch {
+    // Release preparation can target a version before its tag is created.
+    return undefined;
+  }
+}
+
 /** The generators. Each reads the file that already owns the fact; none keeps a second copy. */
 export function renderGeneratedRegion(name: string, repositoryRoot: string, coreVersion = readCoreVersion(repositoryRoot)): string | undefined {
   const link = (path: string, label = path) => `[${label}](${repositoryUrl}/blob/openlup-core-v${coreVersion}/${path})`;
@@ -628,7 +640,12 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
         .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
         .map((entry) => entry.name)
         .sort();
-      return markdownTable(["File"], files.map((file) => [link(`${base}/sql/${file}`, `\`${file}\``)]));
+      const released = sqlFilesAtReleaseTag(repositoryRoot, coreVersion, `${base}/sql`);
+      return markdownTable(["File"], files.map((file) => {
+        const path = `${base}/sql/${file}`;
+        const label = `\`${file}\``;
+        return [released && !released.has(path) ? label : link(path, label)];
+      }));
     }
     const manifest = readJson<{ exports: Record<string, unknown> }>(repositoryRoot, `${base}/package.json`);
     const gates = readJson<{ packageSurface: Record<string, SurfaceContract> }>(repositoryRoot, `${base}/release-gates.json`);
