@@ -278,11 +278,15 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     assert.equal(readFileSync(join(app, changed[0].path), "utf8"), to.files[changed[0].path]);
     assert.throws(() => assertCompleteStarter(app, to), /incomplete_application_upgrade/);
   });
+  const editorPath = "host/editor-ports.ts";
+  const editorReplaced = changed.some((file: { path: string; action: string }) => file.path === editorPath && file.action === "replace");
   const checkUpgradeFiles = () => {
     for (const [path, bytes] of Object.entries(owned))
       assert.deepEqual(readFileSync(join(app, path)), bytes, `owned customization changed: ${path}`);
     if (reminderTestReplaced)
       assert.equal(readFileSync(join(app, reminderInstallationTest), "utf8"), to.files[reminderInstallationTest]);
+    if (editorReplaced)
+      assert.equal(readFileSync(join(app, editorPath), "utf8"), to.files[editorPath]);
   };
   phase("resume", () => {
     const resumed = run("apply");
