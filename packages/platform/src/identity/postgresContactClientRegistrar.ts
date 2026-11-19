@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "../data/index.js";
+import {
+  createPostgresRoleFreeTransactionLane,
+  type PgQueryExecutor,
+  type PostgresDataGatewayOptions,
+} from "../data/index.js";
 
 export interface EnsureContactClientInput {
   email: string;
@@ -50,8 +54,9 @@ class ContactClientRefusal extends Error {
  * Receipt-bound shells refuse; a freed original email starts a fresh client. */
 export function createPostgresContactClientRegistrar(
   env: { connectionString: string },
+  options: PostgresDataGatewayOptions = {},
 ): PostgresContactClientRegistrar {
-  const lane = createPostgresRoleFreeTransactionLane(env);
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
   return {
     async ensureContactClient(input) {
       const parsed = inputSchema.safeParse(input);
@@ -59,8 +64,7 @@ export function createPostgresContactClientRegistrar(
       const email = parsed.data.email.trim().toLowerCase();
       if (!emailSchema.safeParse(email).success) return { ok: false, code: "contact_client_email_invalid" };
       try {
-        return await lane.run(async executor => {
-          const db = executor as PgQueryExecutor;
+        return await lane.run(async db => {
           await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
           await db.query("SET LOCAL lock_timeout = '5s'");
           await db.query("SET LOCAL statement_timeout = '15s'");

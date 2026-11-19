@@ -1,0 +1,2 @@
+- Attach a non-throwing `'error'` listener once per lazily created PostgreSQL `Pool` or dedicated advisory-lock `Client` across data, marketing acquisition, migrations and scheduler adapters, preventing idle disconnects from terminating the host process.
+- Add optional `onPoolError` and `onClientError` callbacks to `PostgresDataGatewayOptions`, marketing Postgres adapter options, migration runner options and `EnvAdvisoryLockOptions` (`createEnvAdvisoryLock`).

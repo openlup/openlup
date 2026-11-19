@@ -37,6 +37,40 @@ validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, run
 `node --experimental-strip-types host/settings.ts explain checkout_recovery_reminders`.
 
+## Preview before changing a setting
+
+From the extracted starter, preview the proposed inventory policy against the
+intended store. Pass the value as JSON and repeat `--sku` for each SKU to inspect.
+
+```sh
+node --experimental-strip-types host/settings.ts preview inventory_renewal_protection '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
+```
+
+Use `--configuration <id>` to select a stock source when the app has multiple
+configurations. Use `--as-of <UTC-ISO-instant>` to repeat an observation at the
+same instant. The host can also compose the read-only MCP definition
+`settings__preview` with `previewSetting` from `@openlup/platform/operations/server`.
+Bind the inventory key to `previewRenewalStockProtection` from
+`@openlup/platform/inventory` using the intended store's pool and stock source.
+Pass through the options supplied by `previewSetting`.
+The CLI decodes JSON once. Preview and the installer work from decoded values,
+including finite JavaScript numbers and own JSON fields. For example,
+`14.0000000000000001` decodes to `14` and previews as `14`. A raw PostgreSQL
+numeric literal can retain more precision.
+
+Both surfaces return the same version-1 preview document. Preview checks the
+decoded value with the installer rules and the store database and reports one
+validation outcome. A valid result includes the normalized value. An invalid
+result explains how to correct the proposal. Preview observes settings and
+stock in a read-only transaction. A refusal names the failed step and the next
+command.
+
+A longer horizon can only leave availability for new purchases equal or lower.
+A shorter horizon can only leave it equal or higher. Existing reservations
+keep their quantities and expiry times. The result includes current availability
+for the named SKUs and leaves `effect.skus[].proposedAvailableForNewPurchases`
+null pending a proposed-horizon read.
+
 ## Modes and runtime levels
 
 A domain keeps an executable descriptor in code and exports it from a
@@ -50,13 +84,15 @@ invariant (`invariant`) has no editable setting value.
 
 `read-only` covers discovery. `preview` allows inspection of a proposed
 change, and `ready` requires qualification for runtime changes. The current
-catalogue entries use `read-only` and give the reason and existing change
-mechanism for each key.
+catalogue gives the runtime level, reason and existing change mechanism for
+each key. Renewal stock protection is at `preview`; the host installer still
+owns changes.
 
 ## Refusals
 
-Machine-readable refusals carry `code`, `path`, `rule`, `hint` and
-`remediation`. Run `node --experimental-strip-types host/settings.ts explain <refusal-code>` for the
+Preview wraps a refusal in a document with `schemaVersion: 1` on both surfaces. The
+`refusal` object carries `code`, `path`, `rule`, `hint` and `remediation`.
+Run `node --experimental-strip-types host/settings.ts explain <refusal-code>` for the
 recheck command and whether retrying can help.
 
 | Code | Next step |
@@ -65,6 +101,16 @@ recheck command and whether retrying can help.
 | `commerce_setting_refusal_unknown` | Check the exact refusal code from this version. |
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
 | `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
+| `commerce_setting_preview_connection_required` | Repeat preview with a read-capable connection to the intended store. |
+| `commerce_setting_preview_unsupported` | Read the key's runtime level and effect with `show`. |
+| `commerce_setting_preview_json_invalid` | Correct the proposed JSON. |
+| `commerce_setting_preview_configuration_unknown` | Select one of the listed IDs. |
+| `commerce_setting_preview_input_invalid` | Correct the named argument or run `preview --help`. |
+| `commerce_setting_preview_policy_read_denied` | Ask for a connection that can read the installed policy. |
+| `commerce_setting_preview_stock_read_denied` | Ask for a connection that can read stock availability. |
+| `commerce_setting_preview_validation_denied` | Ask for a connection with permission to preview this setting. |
+| `commerce_setting_preview_validation_missing` | Ask your store administrator to update the OpenLup installation. |
+| `commerce_setting_preview_unexpected` | Retry once, then contact your store administrator if the same step still fails. |
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |

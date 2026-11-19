@@ -4,12 +4,14 @@
   {"name": "proposed horizon", "input": "{\"revision\": \"fixture-21\", \"renewalProtectionDays\": 21}", "accepted": true, "normalized": {"revision": "fixture-21", "renewalProtectionDays": 21}},
   {"name": "maximum", "input": "{\"revision\": \"révision\", \"renewalProtectionDays\": 3660}", "accepted": true, "normalized": {"revision": "révision", "renewalProtectionDays": 3660}},
   {"name": "decimal spelling 14.0", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 14.0}", "accepted": true, "normalized": {"revision": "x", "renewalProtectionDays": 14}},
+  {"name": "rounded decimal", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 14.0000000000000001}", "accepted": false, "decodedNormalized": {"revision": "x", "renewalProtectionDays": 14}, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "exponent spelling 1e1", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 1e1}", "accepted": true, "normalized": {"revision": "x", "renewalProtectionDays": 10}},
   {"name": "large exponent within range", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 36600000000000000000000000000000000000000.00e-37}", "accepted": true, "normalized": {"revision": "x", "renewalProtectionDays": 3660}},
   {"name": "exponent above maximum", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 3.661e3}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "null", "input": "null", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "array", "input": "[]", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "number", "input": "14", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
+  {"name": "negative number", "input": "-1", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "string", "input": "\"14\"", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "boolean", "input": "true", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "empty object", "input": "{}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
@@ -25,5 +27,5 @@
   {"name": "negative days", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": -1}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "fractional days", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 1.5}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
   {"name": "above maximum days", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 3661}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"},
-  {"name": "additional field", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 14, \"extra\": true}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"}
+  {"name": "additional field", "input": "{\"revision\": \"x\", \"renewalProtectionDays\": 14, \"__proto__\": true}", "accepted": false, "code": "inventory_renewal_protection_policy_invalid"}
 ]

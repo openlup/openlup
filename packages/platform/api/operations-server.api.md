@@ -181,8 +181,8 @@ export interface DataPortBindingOptions {
     resolveAccessToken?: (claims: ActorClaims) => string | null;
 }
 export interface DataBindingDependencies {
-    /** The supabase-js `createClient` used by every supabase gateway these bindings build. */
-    createSupabaseClient: SupabaseCreateClient;
+    /** The supabase-js `createClient` used by every supabase gateway these bindings build; optional for direct-PostgreSQL hosts. */
+    createSupabaseClient?: SupabaseCreateClient;
     /** Builds the direct-PostgreSQL gateway; defaults to `createPostgresDataGateway`. */
     createPostgresGateway?: (env: PostgresDataGatewayEnv) => DataGatewayPort;
 }
@@ -195,13 +195,14 @@ export interface DataBindings {
     bindBundleDataPort(env: Env): DataGatewayPort | null;
 }
 /** Create one set of data bindings; the bundle data port cache belongs to this set. */
-export declare function createDataBindings(deps: DataBindingDependencies): DataBindings;
+export declare function createDataBindings(deps?: DataBindingDependencies): DataBindings;
 export {};
 ```
 ## dist/data/index.d.ts
 
 ```ts
-export { createPostgresDataGateway, createPostgresGatewayTypeOverrides, createPostgresRoleFreeTransactionLane, postgresTimestampTzToRfc3339, resolvePostgresDataGatewayEnv, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions, type PostgresRoleFreeTransactionLane, } from "./postgresGateway.js";
+export type { SqlExecutor } from "@openlup/core/readiness";
+export { createPostgresDataGateway, createPostgresGatewayTypeOverrides, createPostgresRoleFreeTransactionLane, createPostgresTransactionRunner, postgresTimestampTzToRfc3339, resolvePostgresDataGatewayEnv, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions, type PostgresRoleFreeTransactionLane, type PostgresTransactionRunner, } from "./postgresGateway.js";
 export { PgGatewayClient, PgQueryBuilder, type PgQueryExecutor, type PgShimError, type PgShimResult, } from "./queryBuilder.js";
 export { createActorClient, createServiceClient, readSupabaseActorDataGatewayEnv, readSupabaseDataGatewayEnv, type SupabaseCreateClient, type SupabaseDataGatewayEnv, } from "./supabaseClientFactory.js";
 export { createSupabaseDataGateway, type SupabaseDataGatewayOptions } from "./supabaseGateway.js";
@@ -212,14 +213,29 @@ export { createDataBindings, type ActorOnlyDataPort, type DataBindingDependencie
 ```ts
 import type { Pool } from "pg";
 import type { DataGatewayPort } from "@openlup/core/platform-runtime";
+import type { SqlExecutor } from "@openlup/core/readiness";
+import { PgGatewayClient } from "./queryBuilder.js";
 export interface PostgresDataGatewayEnv {
     /** Postgres connection string (DATABASE_URL). Empty until a node-postgres deploy supplies it. */
     connectionString: string;
 }
 export interface PostgresDataGatewayOptions {
+    /** Borrowed pg.Pool; caller retains lifecycle ownership (`close()` is a no-op). Mutually exclusive with `poolFactory`. */
+    pool?: Pool;
     /** Injection seam: tests pass a stub pool; production lazily builds a real pg.Pool from env. */
     poolFactory?: (env: PostgresDataGatewayEnv) => Pool | Promise<Pool>;
+    /** Optional sink for idle pg.Pool `'error'` events; defaults to a non-throwing stderr logger. */
+    onPoolError?: (error: Error) => void;
 }
+/** Non-owning transaction runner over an application-managed `pg.Pool`. */
+export interface PostgresTransactionRunner<Client = SqlExecutor> {
+    withTransaction<T>(work: (client: Client) => Promise<T>): Promise<T>;
+}
+/**
+ * Wrap a caller-owned `pg.Pool` in a standard `BEGIN`/`COMMIT`/`ROLLBACK`/`release`
+ * transaction runner. Never calls `pool.end()`; the caller retains pool ownership.
+ */
+export declare function createPostgresTransactionRunner(pool: Pool): PostgresTransactionRunner<SqlExecutor>;
 /** Convert node-postgres timestamptz text to lossless RFC 3339. */
 export declare function postgresTimestampTzToRfc3339(value: string): string;
 /** Keep PostgREST-compatible, lossless timestamp strings at the gateway edge. */
@@ -234,8 +250,8 @@ export declare function createPostgresGatewayTypeOverrides(TypeOverridesCtor: ty
  * pooled BEGIN/callback/COMMIT|ROLLBACK/release implementation as the public
  * gateway below, but it never changes the connection role.
  */
-export interface PostgresRoleFreeTransactionLane {
-    run<T>(work: (gateway: unknown) => Promise<T>): Promise<T>;
+export interface PostgresRoleFreeTransactionLane<G = unknown> {
+    run<T>(work: (gateway: G) => Promise<T>): Promise<T>;
     close(): Promise<void>;
 }
 /**
@@ -248,8 +264,13 @@ export declare function createPostgresDataGateway(env: PostgresDataGatewayEnv, o
  * Build one role-free, per-operation lane. Do not use this for generic service
  * work: DataGatewayPort.asService remains the mandatory service_role boundary.
  * Only a named owner-authority capability of the deployment may hold a lane.
+ *
+ * Defaults to `PostgresRoleFreeTransactionLane<unknown>` for 1.x compatibility;
+ * pass a supertype of `PgGatewayClient` (such as `PgGatewayClient`, `SqlExecutor`,
+ * or `PgQueryExecutor`) as the type argument for typed callbacks without casts.
  */
 export declare function createPostgresRoleFreeTransactionLane(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresRoleFreeTransactionLane;
+export declare function createPostgresRoleFreeTransactionLane<G>(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresRoleFreeTransactionLane<[PgGatewayClient] extends [G] ? G : never>;
 /** Resolve the gateway env from process env (DATABASE_URL), mirroring the supabase binding shape. */
 export declare function resolvePostgresDataGatewayEnv(env: Record<string, string | undefined>): PostgresDataGatewayEnv;
 ```
@@ -304,8 +325,8 @@ export declare class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimRe
 export declare class PgGatewayClient {
     private readonly client;
     constructor(client: PgQueryExecutor);
-    query(text: string, values?: unknown[]): Promise<{
-        rows: Record<string, unknown>[];
+    query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values?: readonly unknown[]): Promise<{
+        rows: Row[];
     }>;
     from<T = Record<string, unknown>>(table: string): PgQueryBuilder<T>;
     rpc(functionName: string, args?: Record<string, unknown>): Promise<PgShimResult>;
@@ -1615,7 +1636,7 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
-export { explainSetting, invalidSettingsCommand, listSettings, settingsReadTools, showSetting, type SettingReader } from "./settingsRead.js";
+export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 ```
 ## dist/operations/server/migrations.d.ts
@@ -1815,6 +1836,30 @@ export declare function explainSetting(codeOrKey: string): {
 export declare function invalidSettingsCommand(): {
     refusal: SettingRefusal;
 };
+type PreviewRefusal = {
+    schemaVersion: 1;
+    refusal: SettingRefusal;
+};
+/** @experimental Use the same preview refusal document for host and domain failures. */
+export declare function refuseSettingsPreview(code: string, detail?: Pick<SettingRefusal, "path" | "hint">): PreviewRefusal;
+export declare const settingsPreviewRequest: z.ZodObject<{
+    key: z.ZodString;
+    proposed: z.ZodJSONSchema;
+    skus: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    asOf: z.ZodOptional<z.ZodISODateTime>;
+}, z.core.$strict>;
+/** @experimental A read-only domain preview bound by the host to its store. */
+export type SettingPreviewer<Result extends {
+    schemaVersion: 1;
+}> = (proposed: JsonValue, input: {
+    asOf: string;
+    skus: readonly string[];
+    refuse: typeof refuseSettingsPreview;
+}) => Promise<Result | PreviewRefusal>;
+/** @experimental Shared dispatcher for CLI and host-mounted MCP preview. */
+export declare function previewSetting<Result extends {
+    schemaVersion: 1;
+} = never>(input: unknown, previewers?: Readonly<Record<string, SettingPreviewer<Result>>>): Promise<Result | PreviewRefusal>;
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export declare const settingsReadTools: readonly [{
     readonly name: "settings__list";
@@ -1827,6 +1872,14 @@ export declare const settingsReadTools: readonly [{
 }, {
     readonly name: "settings__show";
     readonly description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.";
+    readonly inputSchema: Record<string, unknown>;
+    readonly outputSchema: Record<string, unknown>;
+    readonly annotations: {
+        readonly readOnlyHint: true;
+    };
+}, {
+    readonly name: "settings__preview";
+    readonly description: "Call before any change to the setting. Use settings__show for the value schema. If the value is invalid or preview is refused, read remediation.";
     readonly inputSchema: Record<string, unknown>;
     readonly outputSchema: Record<string, unknown>;
     readonly annotations: {
@@ -1921,7 +1974,7 @@ export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObj
     }, z.core.$strict>;
 }, z.core.$strict>;
 /** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
-export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>): Record<string, unknown>;
+export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>, schemaVersion?: 1): Record<string, unknown>;
 ```
 ## dist/operations/validation.d.ts
 

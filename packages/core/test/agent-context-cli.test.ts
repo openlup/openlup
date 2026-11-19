@@ -493,4 +493,58 @@ describe("installed agent context", () => {
     symlinkSync(outside, join(directory, "outside.ts"));
     expect(searchContext(root, "outsidePackageNeedle", false, true).hits).toEqual([]);
   });
+
+  it("supports configurable hit limits via searchContext and CLI --limit while failing closed on invalid values", () => {
+    const root = fixture();
+    const core = join(root, "node_modules/@openlup/core");
+    const dist = join(core, "dist");
+    for (let index = 0; index < 12; index++) {
+      writeFileSync(join(dist, `f${String(index).padStart(2, "0")}.d.ts`), "export declare const MultiHitNeedle: number;\n");
+    }
+    expect(searchContext(root, "MultiHitNeedle").hits).toHaveLength(8);
+    expect(searchContext(root, "MultiHitNeedle", false, false, { limit: 12 }).hits).toHaveLength(12);
+    expect(searchContext(root, "MultiHitNeedle", false, false, { limit: 3 }).hits).toHaveLength(3);
+    expect(() => searchContext(root, "MultiHitNeedle", false, false, { limit: 0 })).toThrow(/between 1 and 50/);
+    expect(() => searchContext(root, "MultiHitNeedle", false, false, { limit: 51 })).toThrow(/between 1 and 50/);
+
+    const cli = fileURLToPath(new URL("../src/agent-context-cli.ts", import.meta.url));
+    const spaceFlag = spawnSync(process.execPath, [cli, "search", "MultiHitNeedle", "--limit", "10", "--json"], { cwd: root, encoding: "utf8" });
+    expect(spaceFlag.status, spaceFlag.stderr).toBe(0);
+    expect(JSON.parse(spaceFlag.stdout).hits).toHaveLength(10);
+
+    const equalsFlag = spawnSync(process.execPath, [cli, "search", "MultiHitNeedle", "--limit=4", "--json"], { cwd: root, encoding: "utf8" });
+    expect(equalsFlag.status, equalsFlag.stderr).toBe(0);
+    expect(JSON.parse(equalsFlag.stdout).hits).toHaveLength(4);
+
+    for (const badArgs of [["--limit", "0"], ["--limit", "51"], ["--limit=abc"], ["--limit"]]) {
+      const bad = spawnSync(process.execPath, [cli, "search", "MultiHitNeedle", ...badArgs], { cwd: root, encoding: "utf8" });
+      expect(bad.status).toBe(1);
+      expect(bad.stderr).toContain("Limit must be an integer between 1 and 50");
+    }
+  });
+
+  it("traverses declarations and source trees in deterministic lexicographic order under scanLimits", () => {
+    const root = fixture();
+    const core = join(root, "node_modules/@openlup/core");
+    const dist = join(core, "dist");
+    rmSync(join(dist, "subscription.d.ts"));
+    mkdirSync(join(dist, "b-dir"), { recursive: true });
+    mkdirSync(join(dist, "a-dir"), { recursive: true });
+    writeFileSync(join(dist, "z.d.ts"), "export declare const SortedNeedle: number;\n");
+    writeFileSync(join(dist, "a-dir", "first.d.ts"), "export declare const SortedNeedle: number;\n");
+    writeFileSync(join(dist, "b-dir", "second.d.ts"), "export declare const SortedNeedle: number;\n");
+
+    const bounded = searchContext(root, "SortedNeedle", false, false, { scanLimits: { declarations: 2 } });
+    expect(bounded.scans).toContainEqual({
+      scope: "declarations",
+      packageName: "@openlup/core",
+      scannedFiles: 2,
+      fileLimit: 2,
+      limitReached: true,
+    });
+    expect(bounded.hits.map((hit) => hit.file)).toEqual([
+      join(dist, "a-dir", "first.d.ts"),
+      join(dist, "z.d.ts"),
+    ]);
+  });
 });

@@ -1,9 +1,16 @@
-import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "../data/index.js";
+import {
+  createPostgresRoleFreeTransactionLane,
+  type PgQueryExecutor,
+  type PostgresDataGatewayOptions,
+} from "../data/index.js";
 import type { AccountLinkStore, CustomerAccount } from "./ports.js";
 /** Trusted contact-link capability; conditional writes never replace an existing principal. */
-export function createPostgresAccountLinkStore(env: { connectionString: string }): AccountLinkStore & { close(): Promise<void> } {
-  const lane = createPostgresRoleFreeTransactionLane(env);
-  const run = <T>(work: (db: PgQueryExecutor) => Promise<T>) => lane.run(db => work(db as PgQueryExecutor));
+export function createPostgresAccountLinkStore(
+  env: { connectionString: string },
+  options: PostgresDataGatewayOptions = {},
+): AccountLinkStore & { close(): Promise<void> } {
+  const lane = createPostgresRoleFreeTransactionLane<PgQueryExecutor>(env, options);
+  const run = <T>(work: (db: PgQueryExecutor) => Promise<T>) => lane.run(work);
   const account = (row: Record<string, unknown> | undefined): CustomerAccount | null => row
     ? { id: String(row.id), email: row.email === null ? null : String(row.email), principalId: row.principal_id === null ? null : String(row.principal_id) } : null;
   async function writable(db: PgQueryExecutor, principalId: string, clientId: string | null = null) {

@@ -37,6 +37,14 @@ export interface OmnipackClientConfig {
   productPath: string;
 }
 
+export interface OmnipackFulfilmentsPageMetadata {
+  number: number;
+  size: number;
+  totalPages: number;
+  totalElements: number;
+  hasNext: boolean;
+}
+
 export interface OmnipackClient {
   createOrder(body: string): Promise<OmnipackOrderCreatedEvidence>;
   // Product sync. createProduct/createProductPack are POST, so
@@ -47,7 +55,11 @@ export interface OmnipackClient {
   createProductPack(sku: string, payload: Record<string, unknown>, ean: string): Promise<OmnipackProductPackCreatedEvidence>;
   getStock(options?: { refuseRedirectRetry: boolean }): Promise<OmnipackStockEvidence[]>;
   getStockMovements(params?: OmnipackQueryParams): Promise<OmnipackStockMovementEvidence[]>;
-  getFulfilmentsPage(params?: OmnipackQueryParams): Promise<{ rows: OmnipackFulfilmentEvidence[]; complete: boolean }>;
+  getFulfilmentsPage(params?: OmnipackQueryParams): Promise<{
+    rows: OmnipackFulfilmentEvidence[];
+    complete: boolean;
+    page: OmnipackFulfilmentsPageMetadata | null;
+  }>;
   getFulfilments(params?: OmnipackQueryParams): Promise<OmnipackFulfilmentEvidence[]>;
   getFulfilmentRequests(params?: OmnipackQueryParams): Promise<OmnipackFulfilmentRequestEvidence[]>;
 }
@@ -105,13 +117,26 @@ export function createOmnipackClient(
     async getFulfilmentsPage(params) {
       const body = await requestJson(fetchImpl, config, "getFulfilments", withQuery("/fulfilments", params), { method: "GET" });
       const rows = mapOmnipackFulfilmentsResponse(body);
-      // Only explicit single-page totals establish whole-collection uniqueness.
       const record = body as { page?: { number?: unknown; size?: unknown; totalPages?: unknown; totalElements?: unknown }; _links?: { next?: unknown }; incomplete?: unknown; partial?: unknown } | null;
-      const page = record?.page;
-      const complete = page?.number === 0 && page.totalPages === 1 && page.totalElements === rows.length
-        && typeof page.size === "number" && Number.isSafeInteger(page.size) && page.size >= rows.length && page.size > 0
-        && !record?._links?.next && !record?.incomplete && !record?.partial;
-      return { rows, complete };
+      const rawPage = record?.page;
+      const hasNext = Boolean(record?._links?.next);
+      const validPage = !record?.incomplete && !record?.partial
+        && typeof rawPage?.number === "number" && Number.isSafeInteger(rawPage.number) && rawPage.number >= 0
+        && typeof rawPage?.size === "number" && Number.isSafeInteger(rawPage.size) && rawPage.size > 0 && rawPage.size >= rows.length
+        && typeof rawPage?.totalPages === "number" && Number.isSafeInteger(rawPage.totalPages) && rawPage.totalPages >= 1 && rawPage.number < rawPage.totalPages
+        && typeof rawPage?.totalElements === "number" && Number.isSafeInteger(rawPage.totalElements) && rawPage.totalElements >= rows.length;
+      const page: OmnipackFulfilmentsPageMetadata | null = validPage
+        ? {
+          number: rawPage.number as number,
+          size: rawPage.size as number,
+          totalPages: rawPage.totalPages as number,
+          totalElements: rawPage.totalElements as number,
+          hasNext,
+        }
+        : null;
+      const complete = page !== null && page.number === 0 && page.totalPages === 1
+        && page.totalElements === rows.length && !page.hasNext;
+      return { rows, complete, page };
     },
 
     async getFulfilments(params) {
