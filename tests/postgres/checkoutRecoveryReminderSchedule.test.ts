@@ -252,6 +252,29 @@ it('CF-R0 (1, 2, 5): refuses between and after checkout waves, then installs aft
   expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(changed);
 });
 
+it('CF-R0: an uncompacted last-only checkout wave blocks schedule changes until closure', async () => {
+  const schedule = { ...defaults, checkoutRecovery: [{ stage: 'last', afterHours: 20 }] } as const;
+  const changed = { ...schedule, checkoutRecovery: [{ stage: 'last', afterHours: 21 }] } as const;
+  await installCheckoutRecoveryReminderSchedule(db, schedule);
+  const id = await order(22);
+  await enqueue();
+
+  const waves = await checkoutEvents(id);
+  expect(waves).toMatchObject([{ idempotency_key: `checkout_recovery:20h:${id}`, payload: { stage: 'last' } }]);
+  expect(waves[0]?.metadata).not.toHaveProperty('retentionCompactedAt');
+  const { rows } = await db.query(`SELECT public.commerce_checkout_recovery_event_stage(e, true) AS stage
+    FROM public.outbox_events e WHERE aggregate_id=$1 AND event_type='commerce.checkout_recovery'`, [id]);
+  expect(rows).toEqual([{ stage: 'last' }]);
+  await expect(installCheckoutRecoveryReminderSchedule(db, changed)).rejects.toMatchObject({
+    code: '55000', message: `${blockedMessage} (1 blocking orders)`,
+  });
+  expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(schedule);
+
+  await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [id]);
+  await installCheckoutRecoveryReminderSchedule(db, changed);
+  expect(await readCheckoutRecoveryReminderSchedule(db)).toEqual(changed);
+});
+
 it('CF-R0 (3): both producers preserve one event per stage after an owner-only hour change', async () => {
   const schedule = { ...defaults, abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'last', afterHours: 20 }] } as const;
   const changed = { ...checkoutSchedule(1, 21), abandonedCart: [{ stage: 'first', afterHours: 1 }, { stage: 'last', afterHours: 21 }] } as const;
