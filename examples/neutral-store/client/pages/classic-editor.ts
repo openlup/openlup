@@ -138,7 +138,7 @@ export function classicEditorPage(context: PageContext): HTMLElement {
   }
   void (async () => {
     try {
-      const found = (await editorAccount()).find(item => item.subscriptionId === id && item.offerVersion === 'classic');
+      const found = (await editorAccount()).find(item => item.subscriptionId === id && (item.editorLane ?? item.offerVersion) === 'classic');
       if (!found) throw new Error('subscription_unavailable');
       subscription = found; baseline = classicDraft(found); draft = structuredClone(baseline); render();
       try {

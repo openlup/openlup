@@ -9,6 +9,7 @@ import type { ActionContext, ApplicationBindings, VerifiedActor } from './bindin
 import { isRecord } from '../shared/offer.ts';
 import { editorProducts } from './editor-catalogue.ts';
 import { editorQuotePorts, sizedHostPorts } from './editor-ports.ts';
+import type { StarterCatalogueSelection } from './catalogue-selection.ts';
 import { StarterCatalogueRefusal } from './catalogue-binding.ts';
 
 const success = (value: unknown) => ({ ok: true as const,value });
@@ -16,8 +17,17 @@ const refused = (code: string, status: 400 | 403 | 409 | 503 = 409) => ({ ok: fa
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/iu.test(value);
 const unavailable = () => { throw new Error('starter_account_projection_binding_required'); };
 
+function editorBinding(offerVersion: unknown, registration?: StarterCatalogueSelection):
+  { offerVersion: string; lane: 'classic' | 'sized.v1' } {
+  if (offerVersion === 'classic' || offerVersion === 'sized.v1') return { offerVersion, lane: offerVersion };
+  if (typeof offerVersion === 'string' && registration?.scope?.offerVersion === offerVersion) {
+    return { offerVersion, lane: 'classic' as const };
+  }
+  throw new Error('subscription_edit_invalid_offer_binding');
+}
+
 /** Narrow account projection, using the package's owned sources and eligibility functions. */
-export async function readEditorSubscriptions(db: SubscriptionQueryExecutor, actor: VerifiedActor): Promise<EditorSubscription[]> {
+export async function readEditorSubscriptions(db: SubscriptionQueryExecutor, actor: VerifiedActor, registration?: StarterCatalogueSelection): Promise<EditorSubscription[]> {
   if (!actor.customerRef || !actor.principalRef) throw new Error('customer_session_required');
   const scope = { clientId: actor.customerRef,principalId: actor.principalRef };
   const sources = createPostgresAccountReadSources(db, { ...scope,now: () => new Date().toISOString(),
@@ -30,14 +40,15 @@ export async function readEditorSubscriptions(db: SubscriptionQueryExecutor, act
   const [lines,blockers,methods] = await Promise.all([sources.readSubscriptionLines(ids),sources.readSubscriptionBlockers(ids,cycles),sources.readPaymentEvidence(ids)]);
   return rows.map(row => {
     const id = String(row.id), nextCycleAt = cycles.get(id) ?? null, cutoff = editCutoff(nextCycleAt,Number(row.edit_window_hours));
-    if (row.configured_offer_version !== 'classic' && row.configured_offer_version !== 'sized.v1') throw new Error('subscription_edit_invalid_offer_binding');
+    const binding = editorBinding(row.configured_offer_version, registration);
     const items = lines.get(id) ?? [];
     const state = computeEditState({ subscriptionId: id,status: row.status as 'active',nextCycleAt,editCutoffAt: cutoff,
       paymentMethodKind: 'native',paymentMethodRefPresent: methods.get(id)?.healthState === 'healthy' },blockers,() => true);
     const templatePresent = items.some(line => !line.isAddon) && typeof row.price_list_id === 'string' && typeof row.currency_code === 'string';
     return { subscriptionId: id,status: String(row.status),cadenceDays: Number(row.cadence_days),nextCycleAt,editCutoffAt: cutoff,
       templateVersion: Number(row.template_version),compositionConstraint: isRecord(row.size_constraint) ? row.size_constraint : null,
-      offerVersion: row.configured_offer_version,canEditUpcomingPackage: state.canEdit && templatePresent,
+      offerVersion: binding.offerVersion, ...(binding.offerVersion === binding.lane ? {} : { editorLane: binding.lane }),
+      canEditUpcomingPackage: state.canEdit && templatePresent,
       editBlockedReason: state.reason ?? (templatePresent ? null : 'starter_subscription_template_unavailable'),
       recurringTotal: recurringPrice(items)?.totalGross ?? null,
       lines: items.map(line => ({ lineId: line.lineId,variantId: line.variantId,qty: line.qty,isAddon: line.isAddon,sortOrder: line.sortOrder,
@@ -57,8 +68,7 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
     const row = (await db.query(`SELECT s.configured_offer_version FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id
       WHERE s.id=$1::uuid AND s.client_id=$2::uuid AND c.principal_id=$3::uuid ${lock ? 'FOR UPDATE OF s' : ''}`, [id,actor.customerRef,actor.principalRef])).rows[0];
     if (!row) throw new Error('subscription_command_forbidden');
-    if (row.configured_offer_version !== 'classic' && row.configured_offer_version !== 'sized.v1') throw new Error('subscription_edit_invalid_offer_binding');
-    return row.configured_offer_version;
+    return editorBinding(row.configured_offer_version, context.catalogueRegistration).lane;
   };
   const compose = (db: SubscriptionQueryExecutor, context: ActionContext,id: string) => {
     const config = context.config, now = () => new Date().toISOString();
@@ -100,6 +110,7 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
       });
     } catch (error) {
       if (error instanceof Error && error.message === 'subscription_command_forbidden') return refused(error.message,403);
+      if (error instanceof Error && error.message === 'subscription_edit_invalid_offer_binding') return refused(error.message);
       if (error instanceof StarterCatalogueRefusal) return refused(error.message);
       const mapped = mapSizedEditError(error,phase,typeof request.action === 'string' ? request.action : undefined);
       return refused(mapped.reason ?? (phase === 'preview' ? 'starter_subscription_preview_unavailable' : 'starter_subscription_save_unavailable'),mapped.status);
@@ -133,6 +144,7 @@ export function composeSubscriptionEditors(pool: Pool): ApplicationBindings['act
         });
       } catch (error) {
         if (error instanceof Error && error.message === 'subscription_command_forbidden') return refused(error.message,403);
+        if (error instanceof Error && error.message === 'subscription_edit_invalid_offer_binding') return refused(error.message);
         const mapped = mapSizedEditError(error,'preview'); return refused(mapped.reason ?? 'starter_subscription_catalog_unavailable',mapped.status);
       }
     },

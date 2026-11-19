@@ -150,18 +150,20 @@ grants runtime registry writes or customer delivery qualification.
 
 ### Bind the installed publication catalogue
 
-The starter starts with its existing catalogue. To select installed publication
-authority, export `bindCatalogue(selection, databaseUrl)` from the application's
-`owned/catalogue.ts` and start the host with `--catalogue-publication on`. The function returns
-`StarterCatalogueOptions` for the supplied registry selection. Supply the
-publication transaction, pack validators and per-use readiness and media proofs.
-The runtime database login supplies shopper and commerce reads. The publication
-transaction supplies the restricted write grants. The application verifies the
-operator session again for each publication action.
+The starter uses its existing catalogue by default. Export
+`bindCatalogue(selection, transactions)` from the application's
+`owned/catalogue.ts` and start the host with
+`--configuration <pack> --catalogue-publication on` to select the installed
+authority. The function returns `StarterCatalogueOptions` for the selected
+registry entry. It supplies pack validators, the trusted transaction and
+optional policy and media proofs. A pack can explicitly decline publication.
 
-Set `readEnabled` explicitly to serve the selected listing, product and editor
-catalogue. Grant the write transaction access and set `writerEnabled` separately
-to approve or publish. Existing checkout settlement, account history and renewal
+Set `readEnabled` to serve the selected listing, product and editor catalogue.
+The explicit host opt-in enables the selected pack's writer when the installed
+role has the required grants. A verified human administrator can approve and
+publish. The publication transaction checks the installed definition, SKU
+guards and native commerce readiness. Use `--catalogue-publication off` to
+stop serving and writing through the binding. Existing checkout settlement, account history and renewal
 use their recorded evidence when the writer is disabled. Existing installations
 can supply an adoption transaction and follow the native adoption runbook.
 Load the successor store with its prelocked preview binding before advertising
@@ -173,3 +175,11 @@ when its capability and the installed profile and cadence evidence are ready.
 Checkout and editor preview attach exact catalogue and price identities for
 the native acceptance transaction to verify. When the installed catalogue is
 selected, stock comes from the installed inventory authority.
+
+The selected pack's declared offer version is eligible for the classic editor
+lane. Existing classic and sized subscriptions keep their own lanes. Use
+`operator.stockWait` with `view: summary`, `evidence` or `admin` for
+authorized operator reads. `subscription.stockWait` shows eligible cases for
+the signed-in account and accepts an optional owned `subscriptionRef`. The
+ordinary edit preview and offer response provide the customer's proposal
+readback.

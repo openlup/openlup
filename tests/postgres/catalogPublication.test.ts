@@ -1721,3 +1721,72 @@ it.each(["listing", "PDP"] as const)("G1-D2 %s carries and renders the effective
     window.close();
   }
 }));
+
+it.each(['on', 'off', 'operator missing', 'executor missing grants', 'global readiness red'] as const)('G1-D3 installed starter publication %s', async mode =>
+  inPriceDatabase(async () => {
+    const { bindRegisteredCatalogue } = await import('../../examples/neutral-store/host/catalogue-selection.ts');
+    const { createStarterCatalogueRegistry } = await import('../../examples/neutral-store/host/catalogue-registry.ts');
+    const { bindStarterCatalogue } = await import('../../examples/neutral-store/host/catalogue-binding.ts');
+    const { dispatchAction, pendingBindings } = await import('../../examples/neutral-store/host/bindings.ts');
+    const { parseHostArguments } = await import('../../examples/neutral-store/shared/config.ts');
+    const configuration = configurations[defaultConfigurationId]!;
+    if (mode === 'executor missing grants') await db.query('CREATE ROLE lc8_ungranted NOLOGIN NOSUPERUSER NOBYPASSRLS');
+    const authoring = { ...dependencies(), transactions: { async run<T>(work: (sql: PgQueryExecutor) => Promise<T>) {
+      const connection = await db.connect();
+      try {
+        await connection.query('BEGIN');
+        if (mode === 'executor missing grants') await connection.query('SET LOCAL ROLE lc8_ungranted');
+        const result = await work(connection); await connection.query('COMMIT'); return result;
+      }
+      catch (error) { await connection.query('ROLLBACK'); throw error; }
+      finally { connection.release(); }
+    } } };
+    const registration = createStarterCatalogueRegistry([{ configuration, draftType: definition, offerVersion: 'example:offer',
+      pack: { id: 'example:publication', namespace: 'example', version: 1, openlupRange: '0.44.x',
+        capabilities: {}, types: [definition], taxClasses: [] } }], configuration.id).select();
+    const args = parseHostArguments(['--configuration', configuration.id, '--catalogue-publication', mode === 'off' ? 'off' : 'on',
+      '--database-url', 'postgresql://starter_runtime@127.0.0.1/neutral_store']);
+    const selected = await bindRegisteredCatalogue(registration, authoring.transactions, args.cataloguePublication === true,
+      (entry, transactions) => ({ registration: entry, writerEnabled: () => false, readEnabled: () => true, publication: {
+        rules: authoring.rules, verifyMedia: authoring.verifyMedia, transactions,
+        readiness: async () => ({ ready: false, reasons: ['catalog_capability_unsupported'] }),
+      } }));
+    const bindings = pendingBindings();
+    if (selected) Object.assign(bindings, bindStarterCatalogue({ db, options: selected, actions: bindings.actions,
+      authorizeHuman: async () => mode === 'operator missing' ? { ok: false } : authoring.authorizeHuman(null) }));
+    const data = await priceDraft();
+    data.payload.publication.operations.push({ op: 'set_product_status', productSlug: data.payload.product.slug!, status: 'active' });
+    const publication = await save(data.payload, data.draftId, 2);
+    const context = { config: configuration, actor: { customerRef: null, principalRef: admin, operatorRef: admin } };
+    const perform = (action: string, command: object, commandKey: string) =>
+      dispatchAction(bindings, 'operator.catalogPublication', { action, command }, { ...context, commandKey });
+    const decision = { schemaVersion: 2, action: 'approve', productId: publication.productId, candidateRef: publication.candidateRef,
+      candidateDigest: publication.candidateDigest, reason: 'Verified installed candidate' };
+    const approved = await perform('decide', decision, 'starter-g1-approved');
+    if (mode === 'off' || mode === 'operator missing') {
+      expect(approved).toEqual({ ok: false, code: mode === 'off' ? 'host_binding_required' : 'publisher_not_authorized' });
+      return;
+    }
+    if (mode === 'executor missing grants') {
+      expect(approved).toEqual({ ok: false, code: 'catalog_capability_unsupported' });
+      expect(await bindings.catalogueStatus?.()).toMatchObject({ capabilities: { publish: false, lifecycleWrite: false } });
+      return;
+    }
+    expect(await bindings.catalogueStatus?.()).toMatchObject({ capabilities: { publish: true, lifecycleWrite: true } });
+    expect(approved).toMatchObject({ ok: true, value: { outcome: 'committed' } });
+    const health = (await db.query("SELECT last_status FROM public.platform_job_controls WHERE job_name='platform-watchdog'")).rows[0]?.last_status;
+    if (mode === 'global readiness red') await db.query("UPDATE public.platform_job_controls SET last_status='failed' WHERE job_name='platform-watchdog'");
+    try {
+      const result = await perform('publish', publication, 'starter-g1-publish');
+      if (mode === 'on') {
+        expect(result).toMatchObject({ ok: true, value: { outcome: 'committed' } });
+        expect((await db.query('SELECT unit_price_minor FROM public.price_entries WHERE variant_id=$1', [data.skuId])).rows)
+          .toEqual([{ unit_price_minor: 1000 }]);
+      } else {
+        expect(result).toEqual({ ok: false, code: 'catalog_publication_v3_activation_readiness_failed' });
+        expect((await db.query('SELECT id FROM public.catalog_products WHERE id=$1', [data.payload.product.id])).rows).toEqual([]);
+      }
+    } finally {
+      if (mode === 'global readiness red') await db.query("UPDATE public.platform_job_controls SET last_status=$1 WHERE job_name='platform-watchdog'", [health]);
+    }
+  }));

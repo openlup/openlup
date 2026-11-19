@@ -2247,6 +2247,7 @@ export type ReadSubscriptionEditCatalogAdmission = (db: SubscriptionQueryExecuto
         qty: number;
         isAddon: boolean;
     }[];
+    optIn?: boolean;
 }) => Promise<{
     heads: readonly {
         productId: string;

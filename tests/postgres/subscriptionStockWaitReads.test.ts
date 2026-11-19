@@ -442,3 +442,47 @@ async function seedMany(count: number) {
      gen_random_uuid(),2,repeat('a',64),'fixture','{}','{}' FROM generate_series(1,$3::integer) n`, [client, now, count]);
   await db.query("SET LOCAL session_replication_role = origin");
 }
+
+it.each(['summary', 'evidence', 'admin', 'owned', 'foreign', 'non-operator', 'machine'] as const)(
+  'G1-D5 starter stock-wait route %s', async view => {
+    const { bindStarterCatalogue } = await import('../../examples/neutral-store/host/catalogue-binding.ts');
+    const { starterCatalogue } = await import('../../examples/neutral-store/host/catalogue-selection.ts');
+    const { dispatchAction, pendingBindings } = await import('../../examples/neutral-store/host/bindings.ts');
+    const { canonicalCatalogDraftJson } = await import('@openlup/platform/catalog');
+    await seed({ [caseB]: { state: 'waiting', deficits: [line(3)] } }, 'payment_pending');
+    const registration = starterCatalogue.select(), bindings = pendingBindings();
+    const customer = view === 'owned' || view === 'foreign';
+    const actor = customer ? { principalRef: principal, customerRef: client, operatorRef: null }
+      : { principalRef: principal, customerRef: null, operatorRef: view === 'non-operator' ? null : principal };
+    const isolated: string[] = [];
+    bindStarterCatalogue({ db, actions: bindings.actions, authorizeHuman: async () => ({ ok: true,
+      role: 'admin', userId: principal, isMachineActor: view === 'machine' }),
+    options: { registration, readEnabled: () => true, writerEnabled: () => false, publication: {
+      transactions: { run: work => work({ async query(sql, args) {
+        // The fixture is intentionally uncommitted. Record the host's isolation request on this same connection.
+        if (sql.startsWith('SET TRANSACTION')) { isolated.push(sql); return { rows: [] }; }
+        return db.query(sql, args);
+      } }) },
+      rules: { canonicalizeDocument: canonicalCatalogDraftJson, classifySkuChange: () => 'inconclusive',
+        deriveSkuFacts: () => ({}), validateProduct: () => [] },
+      readiness: async () => ({ ready: false, reasons: [] }), verifyMedia: async () => false,
+    } } });
+    const result = await dispatchAction(bindings, customer ? 'subscription.stockWait' : 'operator.stockWait',
+      customer ? { subscriptionRef: view === 'foreign' ? otherSubscription : subscription }
+        : { view: view === 'non-operator' ? 'summary' : view === 'machine' ? 'evidence' : view },
+      { actor, config: registration.configuration, commandKey: 'starter-stock-wait-witness' });
+    if (view === 'foreign' || view === 'non-operator' || view === 'machine') {
+      expect(result).toMatchObject({ ok: false, code: view === 'foreign' ? 'stock_wait_customer_forbidden'
+        : view === 'machine' ? 'stock_wait_evidence_forbidden' : 'operator_required' });
+      expect(isolated).toEqual([]);
+      return;
+    }
+    const wait = { id: caseB, caseKind: 'successor', subscriptionId: subscription, state: 'waiting',
+      automaticRecoveryEligible: true };
+    if (view === 'summary') expect(result).toMatchObject({ ok: true, value: { totalCount: 3, productTotals: total(7, 3) } });
+    else if (view === 'admin') expect(result).toMatchObject({ ok: true, value: { cases: expect.arrayContaining([expect.objectContaining({
+      ...wait, paymentStatus: 'created',
+    })]) } });
+    else expect(result).toMatchObject({ ok: true, value: expect.arrayContaining([expect.objectContaining(wait)]) });
+    expect(isolated).toEqual(['SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY']);
+  });

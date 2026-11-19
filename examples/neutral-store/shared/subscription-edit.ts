@@ -29,7 +29,8 @@ export interface EditorSubscription {
   editCutoffAt: string | null;
   templateVersion: number;
   compositionConstraint: Record<string, unknown> | null;
-  offerVersion: 'classic' | 'sized.v1';
+  offerVersion: string;
+  editorLane?: 'classic' | 'sized.v1';
   canEditUpcomingPackage: boolean;
   editBlockedReason: string | null;
   recurringTotal: PackageEditMoney | null;

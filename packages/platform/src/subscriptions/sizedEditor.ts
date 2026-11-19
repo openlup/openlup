@@ -90,7 +90,7 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
       const priced = await quote(db, context, request, "preview", baseline, row), { subscriptionId: _id, ...raw } = request;
       const catalogAdmission = await readEditCatalogEvidence(db, options.readCatalogAdmission, {
         subscriptionId: request.subscriptionId, lane: ["add_addon", "remove_addon", "update_addon_quantity"].includes(request.action) ? "exact" : "sized",
-        cadenceDays: priced.cadenceDays, lines: priced.lines,
+        cadenceDays: priced.cadenceDays, lines: priced.lines, optIn: isSizedOptIn(parsed),
       });
       const snapshot = { editConsent: priced.editConsent, consentRequest: consentRequest(parsed), catalogAdmission, lines: priced.lines,
         cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint,

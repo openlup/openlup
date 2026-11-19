@@ -78,6 +78,7 @@ export function createPostgresCatalogPublication<Context>(deps: CatalogPublicati
     require(actorId, "publisher_not_authorized", "unauthorized");
     const rows = await tuple(db, "SELECT public.platform_human_membership_is_administrator($1::uuid) AS allowed", [actorId]);
     require(rows.length === 1 && rows[0]!.allowed === true, "publisher_not_authorized", "unauthorized");
+    await deps.bindHumanTransaction?.(db, actorId!);
     return actorId!;
   }
   async function load(db: PgQueryExecutor, productId: string, historical?: CatalogHeadRef, allowDrift = false, documentRevisions: readonly number[] = []): Promise<RetainedState> {

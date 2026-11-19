@@ -1853,3 +1853,62 @@ it.each((["classic","exact","legacy","sized opt-in","sized bundle"] as const).fl
     }
   },
 );
+
+it.each(['registered', 'foreign registration', 'classic', 'unknown'] as const)(
+  'G1-D4 starter ordinary edit preview admits %s offers only when selected', async mode => {
+    const { composeSubscriptionEditors } = await import('../../examples/neutral-store/host/subscription-editors.ts');
+    const declaredOffer = 'example:regular@1';
+    const offerVersion = mode === 'classic' ? 'classic' : mode === 'unknown' ? 'example:unknown@1' : declaredOffer;
+    const selectedOffer = mode === 'foreign registration' ? 'example:other@1' : declaredOffer;
+    const f = await fixture('editor-offer', { sku: {
+      memberships: [{ offerVersion: 'classic', admitted: true }, { offerVersion: declaredOffer, admitted: true }],
+    } });
+    const original = starterCatalogue.select().configuration;
+    const country = ({ registered: 'YA', 'foreign registration': 'YB', classic: 'YC', unknown: 'YD' })[mode];
+    const configuration = { ...original, market: { ...original.market, country, currency: 'XXX' },
+      subscriptionOffers: { ...original.subscriptionOffers,
+        classic: { ...original.subscriptionOffers.classic, days: { kind: 'set' as const, values: [28] } } } };
+    // Model a retained pack binding while preserving the installed editor's separate classic/sized acquisition guard.
+    if (offerVersion !== 'classic') {
+      const seeded = await pool.connect();
+      try {
+        await seeded.query('BEGIN');
+        await seeded.query('ALTER TABLE public.subscriptions DROP CONSTRAINT subscriptions_configured_offer_version_check');
+        await seeded.query('SET LOCAL session_replication_role = replica');
+        await seeded.query('UPDATE public.subscriptions SET configured_offer_version=$2 WHERE id=$1', [f.subscription, offerVersion]);
+        await seeded.query('ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_configured_offer_version_check CHECK (configured_offer_version IN (\'classic\',\'sized.v1\')) NOT VALID');
+        await seeded.query('COMMIT');
+      } catch (error) { await seeded.query('ROLLBACK'); throw error; }
+      finally { seeded.release(); }
+    }
+    const registration = createStarterCatalogueRegistry([{ configuration, offerVersion: selectedOffer, draftType: definition,
+      pack: { id: 'example:admission', namespace: 'example', version: 1, openlupRange: '0.44.x',
+        capabilities: {}, types: [definition], taxClasses: [] },
+    }], configuration.id).select();
+    const priceListId = f.admission.priceContextVersions[0]!.priceListId;
+    await pool.query('UPDATE public.price_lists SET region_code=$2 WHERE id=$1', [priceListId, country]);
+    const price = (await pool.query(`INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from,amount_kind)
+      VALUES ($1,$2,'one_time',617,clock_timestamp()-interval '1 day','gross'),
+        ($1,$2,'subscription',617,clock_timestamp()-interval '1 day','gross') RETURNING *,to_jsonb(price_entries) AS entry`,
+      [priceListId, f.sku])).rows.find(row => row.mode === 'one_time')!;
+    const item = { skuId: f.sku, skuCode: f.code, variantId: f.sku, productId: f.product,
+      productSlug: f.value.product.slug!, isPrimarySku: true, isAddon: false, sellability: { oneTime: true, subscription: true },
+      documentRevision: { id: f.value.product.documentRevision!.id, digest: f.head.documentDigest },
+      netContent: f.reference.netContent, grossMass: null, acceptedReference: f.reference };
+    const actions = composeSubscriptionEditors(pool);
+    const catalogueQuote: import('../../examples/neutral-store/host/catalogue-binding.ts').StarterCatalogueQuoteBinding = {
+      offerVersion: mode === 'classic' ? 'classic' : selectedOffer, admission: createPostgresCatalogAdmission(),
+      serving: { listQuoteCatalogItems: async () => [item], listEditorSkus: async () => [] },
+      async buildAdmission(quote, roster, purpose) {
+        return buildCatalogAdmissionFromServing({ ...purpose, lines: [{ item: roster[0]!, quantity: quote.quote.lines[0]!.quantity }],
+          priceContextVersions: [{ skuId: f.sku, priceListId, entryId: price.id, entry: price.entry }] });
+      },
+    };
+    const result = await actions['subscription.preview']!({ request: {
+      subscriptionId: f.subscription, action: 'update_base_mix', base: [{ variantId: f.sku, qty: 1 }],
+    } }, { config: configuration, catalogueRegistration: registration, catalogueQuote, commandKey: 'starter-g1-edit-preview',
+      actor: { customerRef: f.client, principalRef: f.actor, operatorRef: null } });
+    if (mode === 'unknown' || mode === 'foreign registration') {
+      expect(result).toMatchObject({ ok: false, code: 'subscription_edit_invalid_offer_binding' });
+    } else expect(result, JSON.stringify(result)).toMatchObject({ ok: true, value: { preview: { canApply: true }, quoteHash: expect.stringMatching(/^[a-f0-9]{64}$/u) } });
+  });

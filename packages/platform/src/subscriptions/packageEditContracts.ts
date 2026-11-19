@@ -12,6 +12,7 @@ import type { SubscriptionPortionModes } from "./contracts/exactEdit.js";
 export type ReadSubscriptionEditCatalogAdmission = (db: SubscriptionQueryExecutor, input: {
   subscriptionId: string; lane: "classic" | "exact" | "sized" | "legacy"; cadenceDays: number;
   lines: readonly { variantId: string; qty: number; isAddon: boolean }[];
+  optIn?: boolean;
 }) => Promise<{
   heads: readonly { productId: string; head: CatalogAcceptedReferenceV2["publicationHead"] }[];
   skuRevisions: readonly { reference: CatalogAcceptedReferenceV2; quantity: number }[];

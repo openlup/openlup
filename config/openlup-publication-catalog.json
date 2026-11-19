@@ -2526,6 +2526,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/stock-wait-reads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/subscription-editors.ts",
       "class": "public-output"
     },

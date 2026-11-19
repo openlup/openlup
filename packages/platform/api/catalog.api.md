@@ -5070,6 +5070,9 @@ export interface CatalogPublicationDependencies<Context> {
     } | {
         ok: false;
     }>;
+    /** Seat host request authority on this transaction after the native membership check.
+     * @experimental */
+    bindHumanTransaction?(db: PgQueryExecutor, verifiedActorId: string): Promise<void>;
     attributeReferences?: CatalogAttributeReferencePort;
     prices?: CatalogPublicationPriceBoundary;
     /** Resolves explicitly selected immutable profile versions and their bound policy. @experimental */
@@ -5791,7 +5794,7 @@ export declare const CATALOG_MIGRATIONS: readonly [{
     readonly id: "20261124010000_catalog_adoption";
     readonly catalogPath: "db/platform/migrations/20261124010000_catalog_adoption.sql";
     readonly position: 158;
-    readonly sha256: "f135b0e1e25c16bbc214c65b3a30e2cfc23f85e23ce9c43f32726474dc2db7da";
+    readonly sha256: "d1db534e0a512a612214a716701b19b60f868ecf7833e82de9ca9130d8c82ac8";
     readonly url: URL;
 }];
 ```

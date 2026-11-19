@@ -6,7 +6,7 @@ import { assertConfig, parseHostArguments } from '../shared/config.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
 import { isOperation, operations, publicCatalogueItem } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
-import { bindRegisteredCatalogue, starterCatalogue } from './catalogue-selection.ts';
+import { starterCatalogue } from './catalogue-selection.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { createOriginPolicy, admitRequest } from './origin-policy.ts';
@@ -146,11 +146,11 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const catalogue = options.cataloguePublication && options.databaseUrl
-    ? await bindRegisteredCatalogue(registration, options.databaseUrl) : undefined;
+  if (options.cataloguePublication && !options.configuration) throw new Error('starter_catalogue_configuration_required');
   const bindings = options.databaseUrl
     ? await (await import('./native-composition.ts')).composeNativeBindings(options.databaseUrl, originPolicy, options.quoteAcceptanceKeyFile
-      ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined, catalogue)
+      ? await readQuoteAcceptanceKeyring(options.quoteAcceptanceKeyFile) : undefined, undefined,
+      options.cataloguePublication ? registration : undefined)
     : pendingBindings();
   const server = createApplication(bindings);
   server.requestTimeout = 25000;

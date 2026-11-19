@@ -74,7 +74,7 @@ export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreCon
     },
   };
   const readCatalogAdmission: Parameters<typeof import('@openlup/platform/subscriptions').createPostgresPackageEditor>[0]['readCatalogAdmission'] =
-    governed && roster ? async (connection, { subscriptionId, lane, cadenceDays, lines }) => {
+    governed && roster ? async (connection, { subscriptionId, lane, cadenceDays, lines, optIn }) => {
       const items = await roster();
       const priced = await quotePort.createServerAuthoritativeQuote({ mode: 'subscription', cadenceDays, promoCodes: [],
         lines: lines.map(line => {
@@ -82,8 +82,11 @@ export function editorQuotePorts(db: SubscriptionQueryExecutor, config: StoreCon
           if (!item) throw new Error('catalog_authority_changed');
           return { sku: item.skuCode, quantity: line.qty, modeAtLine: 'subscription', isAddon: line.isAddon };
         }) });
+      const { rows } = await connection.query('SELECT configured_offer_version FROM public.subscriptions WHERE id=$1::uuid', [subscriptionId]);
+      const offerVersion = rows[0]?.configured_offer_version;
+      if (typeof offerVersion !== 'string') throw new Error('subscription_edit_invalid_offer_binding');
       const proof = await governed.buildAdmission(priced, items, { mode: 'subscription', purpose: 'account', cadenceDays,
-        offerEvidence: { subscriptionId, lane, offerVersion: lane === 'sized' ? 'sized.v1' : governed.offerVersion } });
+        offerEvidence: { subscriptionId, lane, offerVersion, ...(optIn === undefined ? {} : { optIn }) } });
       await governed.admission.assertCurrent(connection, proof);
       return proof;
     } : undefined;

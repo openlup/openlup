@@ -178,7 +178,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.catalog_publication_record_admit() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE canonical text; expected text; body jsonb;
+DECLARE canonical text; expected text; body jsonb; pair jsonb; sku_ids jsonb; successor uuid; prior_successor uuid;
 BEGIN
  IF TG_TABLE_NAME = 'catalog_publications' THEN
   canonical := NEW.canonical_state; expected := NEW.digest;
@@ -201,6 +201,27 @@ BEGIN
    OR body->'product'->>'id' IS DISTINCT FROM NEW.product_id::text
    OR jsonb_typeof(body->'skus') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
+  END IF;
+  IF body->'schemaVersion'='4'::jsonb THEN
+   IF jsonb_typeof(body->'successors') IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+   IF jsonb_array_length(body->'successors') NOT BETWEEN 1 AND 10000 THEN
+    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+   SELECT coalesce(jsonb_object_agg(sku->>'skuId',true),'{}'::jsonb) INTO sku_ids
+    FROM jsonb_array_elements(body->'skus') sku WHERE jsonb_typeof(sku->'skuId')='string';
+   FOR pair IN SELECT value FROM jsonb_array_elements(body->'successors') LOOP
+    IF jsonb_typeof(pair) IS DISTINCT FROM 'object' THEN
+     RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+    IF pair-ARRAY['successorSkuId','successorOf']<>'{}'::jsonb
+     OR coalesce(pair->>'successorSkuId','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     OR coalesce(pair->>'successorOf','') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     OR pair->>'successorSkuId'=pair->>'successorOf'
+     OR NOT (sku_ids ? (pair->>'successorSkuId')) THEN
+     RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+    successor:=(pair->>'successorSkuId')::uuid;
+    IF prior_successor>=successor THEN RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514'; END IF;
+    prior_successor:=successor;
+   END LOOP;
   END IF;
  ELSIF TG_TABLE_NAME = 'catalog_sku_revisions' THEN
   IF body->>'id' IS DISTINCT FROM NEW.sku_id::text OR body->>'productId' IS DISTINCT FROM NEW.product_id::text THEN

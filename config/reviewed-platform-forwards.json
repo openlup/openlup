@@ -6088,7 +6088,7 @@
           },
           {
             "signature": "public.catalog_publication_record_admit()",
-            "beforeSha256": "2764aa7897beee773d83bb09d6d1019a8a508d3e33b72413179affa44a7dac2a",
+            "beforeSha256": "33dd2ecb381922a678856becce269df17535e2ef51b1195535c064609da9af53",
             "searchPath": "pg_catalog, public"
           }
         ],
@@ -8810,7 +8810,7 @@
     },
     {
       "path": "db/platform/migrations/20261124010000_catalog_adoption.sql",
-      "sha256": "f135b0e1e25c16bbc214c65b3a30e2cfc23f85e23ce9c43f32726474dc2db7da",
+      "sha256": "d1db534e0a512a612214a716701b19b60f868ecf7833e82de9ca9130d8c82ac8",
       "functions": [
         {
           "signature": "public.catalog_bound_obligations_v2(uuid)",
@@ -8819,8 +8819,8 @@
         },
         {
           "signature": "public.catalog_publication_record_admit()",
-          "beforeSha256": "2764aa7897beee773d83bb09d6d1019a8a508d3e33b72413179affa44a7dac2a",
-          "afterSha256": "bded5a0d356196c3069fdf4f84fbd8c0250c29f6d701944dd820c759c448323c"
+          "beforeSha256": "33dd2ecb381922a678856becce269df17535e2ef51b1195535c064609da9af53",
+          "afterSha256": "0b08880147bc80056bf2e88340aa0d983f09771b09e5066ca27ea99112a428ff"
         },
         {
           "signature": "public.catalog_legacy_obligation_binding_guard()",
