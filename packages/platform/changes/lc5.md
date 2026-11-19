@@ -46,6 +46,8 @@ checks resolve complete immutable rosters at the end of the transaction.
 
 Native transfer retains authoritative lifecycle and acceptance bytes through
 existing row inventories and restores revisions before subscription bindings.
+The connected restore writes captured orders and events once, then validates
+accepted receipts and quote links before confirming the restored rows.
 The generic row utility continues to refuse INSERT-guarded acceptance tables;
 the connected native owner path verifies and restores them.
 Transient lifecycle write capabilities are excluded and nonempty capabilities

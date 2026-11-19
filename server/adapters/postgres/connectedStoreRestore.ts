@@ -373,7 +373,6 @@ export async function restoreConnectedNativeStore(input: {
         await restoreSettings(client, baseline.get(table)!, source.get(table)!);
       }
       let neutralized = 0;
-      const orderAcceptances: string[] = [];
       for (const table of order) {
         const rows = source.get(table)!;
         if (table === "subscription_price_policy_revisions") {
@@ -418,13 +417,6 @@ export async function restoreConnectedNativeStore(input: {
               '{current_document_revision_id}','null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
             await insert(client, rows, staged);
           }
-          else if (table === "commerce_orders" && (JSON.parse(row) as Record<string, unknown>).catalog_acceptance != null) {
-            // Install the retained acceptance through its normal guard after the item ledger.
-            const staged = (await client.query<{ value: string }>(`SELECT pg_catalog.jsonb_set(
-              $1::jsonb,'{catalog_acceptance}','null'::jsonb)::pg_catalog.text AS value`, [row])).rows[0]!.value;
-            await insert(client, rows, staged);
-            orderAcceptances.push(row);
-          }
           else {
             // This owner path must not depend on a trigger's actor exception.
             // Channel evidence has no retained transfer mapping in this profile.
@@ -432,15 +424,6 @@ export async function restoreConnectedNativeStore(input: {
               .includes(String((JSON.parse(row) as Record<string, unknown>).event_type))) fail("unsupported_table", table);
             await insert(client, rows, row);
           }
-        }
-        if (table === "commerce_order_items") for (const row of orderAcceptances) {
-          const updated = await client.query(`UPDATE public.commerce_orders o
-            SET catalog_acceptance=x.catalog_acceptance
-            FROM pg_catalog.jsonb_populate_record(NULL::public.commerce_orders,$1::jsonb) x
-            WHERE o.id=x.id AND o.catalog_acceptance IS NULL
-              AND (pg_catalog.to_jsonb(o)-'catalog_acceptance')=(pg_catalog.to_jsonb(x)-'catalog_acceptance')
-            RETURNING o.id`, [row]);
-          if (updated.rows.length !== 1) fail("target_conflict", "commerce_orders");
         }
         if (table === "subscription_price_policy_revisions") {
           await client.query("DELETE FROM public.subscription_price_policy_restore_capabilities WHERE transaction_id=pg_catalog.pg_current_xact_id()");
@@ -507,7 +490,8 @@ export async function restoreConnectedNativeStore(input: {
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     if (error instanceof PostgresTransferError) throw error;
-    if (typeof (error as { code?: unknown })?.code === "string" && /^23/.test((error as { code: string }).code)) fail("target_conflict");
+    if (error instanceof Error && "code" in error && typeof error.code === "string"
+      && (/^23/u.test(error.code) || error.code === "22023" && error.message === "catalog_acceptance_line_mismatch")) fail("target_conflict");
     throw new PostgresTransferError("database_unavailable");
   } finally {
     try {
@@ -657,13 +641,14 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
     // These guards verify retained canonical bytes and identity without rewriting them.
     catalog_publication_heads: ["catalog_publication_heads_lifecycle_admit"],
-    catalog_publications: ["catalog_publications_record_admit"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
+    catalog_publications: ["catalog_publications_record_admit", "catalog_publications_roster_final"], catalog_sku_revisions: ["catalog_sku_revisions_record_admit"],
     catalog_product_document_revisions: ["catalog_document_publication_record_admit"],
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_00_guard_insert", "subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     commerce_orders: ["trg_commerce_orders_line_sum", "commerce_orders_catalog_acceptance_admit"], commerce_order_items: ["trg_commerce_order_items_line_sum"],
+    commerce_order_draft_receipts: ["commerce_order_draft_receipts_catalog_final"],
     commerce_order_holds: ["trg_fulfillment_emit_shipment_exception", "trg_subscription_delivery_alignment_exception_case"],
     fulfillment_shipments: ["trg_subscription_delivery_alignment_on_delivery"],
     shipment_external_refs: ["trg_fulfillment_emit_shipment_reference_notice"],
@@ -672,7 +657,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // events, whose subscriptions are sized.v1 and refused before any writes.
     subscriptions: ["subscriptions_configured_offer_guard"],
     commerce_offer_policy_rollout_baselines: ["commerce_offer_policy_baseline_insert_guard"],
-    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_acceptance_admit"],
+    subscription_events: ["subscription_events_bind_sized_opt_in", "communication_subscription_subject", "subscription_events_catalog_acceptance_admit", "subscription_events_catalog_final"],
+    subscription_quote_previews: ["subscription_quote_previews_catalog_final"],
     commerce_order_operations: ["communication_refund_subject"],
     subscription_renewal_terms: ["subscription_renewal_terms_catalog_acceptance_admit"],
     subscription_renewal_operations: ["subscription_renewal_operations_catalog_acceptance_admit"],
