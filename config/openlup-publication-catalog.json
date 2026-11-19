@@ -12114,6 +12114,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/benchmarks/outbox-claim.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/bff-route-table-node-typecheck-anchor.ts",
       "class": "public-output"
     },

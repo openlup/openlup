@@ -119,6 +119,72 @@ visibility. Confirm anonymous pulls after applying the settings. See GitHub's
 [package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
 and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
 
+### Benchmark portable Outbox claims
+
+Run the [claim benchmark](../../scripts/benchmarks/outbox-claim.sql) in an
+empty disposable PostgreSQL 17 database with `auto_explain`. The script installs
+the unmodified standalone migration within a transaction. Its bytes match the
+Native platform's communications Outbox migration. Each run rolls back schema,
+fixture and index changes.
+
+From the repository root, start a local container without network access and
+run each variant three times.
+
+```sh
+benchmark_container=$(docker run --rm --detach --network none \
+  --env POSTGRES_HOST_AUTH_METHOD=trust \
+  --mount "type=bind,source=$PWD,target=/repo,readonly" postgres:17)
+trap 'docker stop "$benchmark_container" >/dev/null' EXIT
+benchmark_log_dir=$(mktemp -d)
+until docker exec "$benchmark_container" pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+
+for terminal_rows in 10000 100000; do
+  for replicate in 1 2 3; do
+    for variant in baseline prior pair; do
+      docker exec "$benchmark_container" psql -X -U postgres \
+        -v history_rows="$terminal_rows" -v variant="$variant" \
+        -f /repo/scripts/benchmarks/outbox-claim.sql \
+        >"$benchmark_log_dir/$terminal_rows-$replicate-$variant.log" 2>&1 || exit 1
+    done
+  done
+done
+printf 'Logs in %s\n' "$benchmark_log_dir"
+```
+
+Each fixture has 1,000 ready target events in 1,000 aggregates, 20,000 ready
+events for a separate known handler and either 10,000 or 100,000 compacted
+terminal events. Read the fixture summary for oldest ready age and average row
+bytes. The log contains nested plans with buffer counts for one representative
+batch and elapsed database time for 40 batches of 25 rows with acknowledgement
+through the installed SQL functions. `prior` adds the managed aggregate
+predecessor index. `pair` also adds its ready-claim index.
+
+On PostgreSQL 17.11 (arm64 Docker, source base `9a6270350`), three runs
+per variant produced these medians. Index size is the total for the table
+after the synthetic drain.
+
+| Terminal rows | Variant | Drain in ms | Events per second | Index MiB |
+| ---: | --- | ---: | ---: | ---: |
+| 10,000 | Baseline | 387.52 | 2,580 | 5.27 |
+| 10,000 | Prior | 372.39 | 2,685 | 7.39 |
+| 10,000 | Pair | 292.50 | 3,419 | 9.05 |
+| 100,000 | Baseline | 267.28 | 3,741 | 17.49 |
+| 100,000 | Prior | 234.27 | 4,269 | 19.65 |
+| 100,000 | Pair | 248.25 | 4,028 | 21.34 |
+
+The oldest ready target was 41 days and 16 hours. The compacted terminal
+rows averaged 214 bytes per row. The planner used the extra ready-claim
+index in the 10,000-row exhausted-candidate scan. At 100,000 rows it used the
+base status and availability index for that scan and the added predecessor
+index for the ordering barrier. Compare variants within a fixture, where the
+initial queue is the same. The larger fixture chose a different plan.
+
+The measurements cover one local synthetic fixture and the database part of a
+serial drain. They exclude handler I/O, long-running writer contention,
+concurrent workers and index-build impact on an operating system. Keep the
+claim protocol and compaction behavior unchanged while qualifying any forward
+index on both fresh and upgraded portable installations.
+
 ## Local maintainer layer
 
 Without that private helper, use the public `node scripts/verify-local.mjs`
