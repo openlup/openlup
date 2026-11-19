@@ -1486,7 +1486,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql",
+      "path": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
       "class": "public-output"
     },
     {
@@ -4894,7 +4894,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261123143000_checkout_recovery_reminder_episode_pin.sql",
+      "path": "packages/platform/sql/20261123148000_checkout_recovery_reminder_episode_pin.sql",
       "class": "public-output"
     },
     {

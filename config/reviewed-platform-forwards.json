@@ -5669,7 +5669,7 @@
       },
       {
         "row": "CF-R1-CHECKOUT-RECOVERY-REMINDER-EPISODE-PIN",
-        "path": "db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql",
+        "path": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
         "replacedFunctions": [
           {
             "signature": "public.commerce_checkout_recovery_schedule_change_guard(jsonb,jsonb)",
@@ -8054,7 +8054,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql",
+      "path": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
       "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495",
       "functions": [
         {

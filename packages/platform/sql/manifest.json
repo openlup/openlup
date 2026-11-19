@@ -632,7 +632,7 @@
         "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
       },
       {
-        "file": "db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql",
+        "file": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
         "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
       }
     ],
@@ -1288,7 +1288,7 @@
           "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
         },
         {
-          "file": "db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql",
+          "file": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
           "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
         }
       ],
@@ -1948,7 +1948,7 @@
           "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
         },
         {
-          "file": "db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql",
+          "file": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
           "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
         }
       ],
@@ -2745,8 +2745,8 @@
       "sha256": "341d0505bdfdc9c0bbb83965b2ac1fb45b32361707fff8dd51717a6a2c840481"
     },
     {
-      "file": "20261123143000_checkout_recovery_reminder_episode_pin.sql",
-      "source": "db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql",
+      "file": "20261123148000_checkout_recovery_reminder_episode_pin.sql",
+      "source": "db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql",
       "sha256": "6d75b038094a8c27d556a85cd06e534e1734e3737316efd39ea332df04855495"
     },
     {

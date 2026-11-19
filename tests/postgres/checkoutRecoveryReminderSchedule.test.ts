@@ -17,7 +17,7 @@ import { createOriginPolicy } from '../../examples/neutral-store/host/origin-pol
 
 const path = 'db/platform/migrations/20261123140000_checkout_recovery_reminder_schedule.sql';
 const guardPath = 'db/platform/migrations/20261123141000_checkout_recovery_reminder_guard.sql';
-const episodePath = 'db/platform/migrations/20261123143000_checkout_recovery_reminder_episode_pin.sql';
+const episodePath = 'db/platform/migrations/20261123148000_checkout_recovery_reminder_episode_pin.sql';
 const cartHelper = 'public.commerce_enqueue_abandoned_cart_reminder_episodes';
 const cartHelperSignature = `${cartHelper}(integer)`;
 const signatures = ['public.commerce_enqueue_abandoned_cart_reminders(integer)', 'public.commerce_enqueue_checkout_recovery_reminders(integer,jsonb,timestamptz)'];
