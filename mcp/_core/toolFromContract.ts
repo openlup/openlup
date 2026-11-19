@@ -39,10 +39,10 @@ export interface McpToolCallContext {
 }
 
 /** Derive a tool's JSON Schema from its Zod request contract. Never hand-author this. */
-export function toolInputSchema(schema: ZodType): Record<string, unknown> {
+export function toolInputSchema(schema: ZodType, io: "input" | "output" = "input"): Record<string, unknown> {
   return z.toJSONSchema(schema, {
     target: "draft-07",
-    io: "input",
+    io,
     reused: "inline",
   }) as Record<string, unknown>;
 }

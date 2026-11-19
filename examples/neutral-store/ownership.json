@@ -83,6 +83,7 @@
     "host/operator-composition.ts",
     "host/origin-policy.ts",
     "host/server.ts",
+    "host/settings.ts",
     "host/sessions.ts",
     "index.html",
     "installation/install.ts",

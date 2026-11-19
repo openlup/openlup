@@ -2522,6 +2522,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/host/settings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/host/subscription-editors.ts",
       "class": "public-output"
     },
@@ -4238,6 +4242,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/settings-catalog.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/settings-refusals.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5082,6 +5094,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/settings-data.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/subscriptionCommandCodec.ts",
       "class": "public-output"
     },
@@ -5431,6 +5447,10 @@
     },
     {
       "path": "packages/platform/src/catalog/sellableSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/settings-data.json",
       "class": "public-output"
     },
     {
@@ -6350,6 +6370,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/settings-data.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/accountingDocumentDelivery.ts",
       "class": "public-output"
     },
@@ -6731,6 +6755,10 @@
     },
     {
       "path": "packages/platform/src/communications/resend/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/settings-data.json",
       "class": "public-output"
     },
     {
@@ -7250,6 +7278,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/settings-data.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/shipmentsOverviewHandler.ts",
       "class": "public-output"
     },
@@ -7630,6 +7662,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/identity/settings-data.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/identity/sql.ts",
       "class": "public-output"
     },
@@ -7715,6 +7751,10 @@
     },
     {
       "path": "packages/platform/src/inventory/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/settings-data.json",
       "class": "public-output"
     },
     {
@@ -7879,6 +7919,10 @@
     },
     {
       "path": "packages/platform/src/invoicing/sellerRevision.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/settings-data.json",
       "class": "public-output"
     },
     {
@@ -8210,6 +8254,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/contracts/settings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/errors.ts",
       "class": "public-output"
     },
@@ -8267,6 +8315,14 @@
     },
     {
       "path": "packages/platform/src/operations/server/platformWatchdogService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/settingsCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/settingsRead.ts",
       "class": "public-output"
     },
     {
@@ -8459,6 +8515,10 @@
     },
     {
       "path": "packages/platform/src/payments/schemaCapabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/settings-data.json",
       "class": "public-output"
     },
     {
@@ -8854,6 +8914,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/settings-data.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/subscriptionPricePolicy.ts",
       "class": "public-output"
     },
@@ -8963,6 +9027,10 @@
     },
     {
       "path": "packages/platform/src/promotions/quoteShippingPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/settings-data.json",
       "class": "public-output"
     },
     {
@@ -9186,6 +9254,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/settings-data.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/shippingRatePorts.ts",
       "class": "public-output"
     },
@@ -9387,6 +9459,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/services.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/settings-data.json",
       "class": "public-output"
     },
     {
@@ -11094,6 +11170,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/operations/settingsRead.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/operations/watchdogQueue.test.ts",
       "class": "public-output"
     },
@@ -12626,6 +12706,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/distribution-cli-settings.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/eslint-import-map.test.ts",
       "class": "public-output"
     },
@@ -12975,6 +13059,14 @@
     },
     {
       "path": "scripts/serverless-include-globs.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-catalogue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/settings-catalogue.ts",
       "class": "public-output"
     },
     {
@@ -31227,7 +31319,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-9e02b27ca2e171d50f113a29b41438c593a4c78100c64c6adb384de32311340c"
+      "digest": "sha256-6a781a1a684a4a871654ec01945d61ec16d2781f36979f7dbbac7a456ac1544c"
     },
     {
       "path": "package.json",

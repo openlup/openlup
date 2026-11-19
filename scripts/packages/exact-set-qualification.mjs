@@ -2,13 +2,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
-import { previousPublishedSet, proveDistributionCliConsumer } from './distribution-cli-proof.ts';
+import { previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
@@ -47,7 +47,7 @@ export function starterDependencyMatchesPlatform(manifest, optional, target) {
  * @param {string} checkout
  * @param {{mode: 'released' | 'candidate', application: string, environment: NodeJS.ProcessEnv,
  *   run: (command: string, args: string[], cwd: string) => string, lockfileSha256: string,
- *   packages: string[], verifyInstalled: () => void}} input
+ *   packages: string[], verifyInstalled: () => void, settingsDiscovery?: boolean}} input
  * @returns {void}
  */
 export function proveNeutralStarterConsumer(checkout, input, packInstalled = undefined) {
@@ -116,6 +116,9 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
     }
     assertInstalledPackages(extracted, released?.packages ?? ["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
     released?.verifyInstalled();
+    // Historical releases may predate discovery. For the current checkout or a
+    // release that includes discovery at source, require it in the extraction.
+    if (!released || released.settingsDiscovery) proveSettingsDiscovery(extracted);
     for (const args of [["test"], ["run", "typecheck"], ["run", "build"]]) run("npm", args);
     run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
     if (released) assert.equal(lockHash(), released.lockfileSha256, "starter proof changed committed lock");
@@ -214,7 +217,8 @@ export function auditInstalledRelease(application, run) {
 function proveReleasedStarter(receipt, input, run, environment) {
   const { application, packages } = input;
   proveNeutralStarterConsumer(root, { mode: receipt.mode ?? 'released', application, environment, run,
-    lockfileSha256: receipt.extraction.lockfileSha256, packages: packages.map(({ name }) => name), verifyInstalled() {
+    lockfileSha256: receipt.extraction.lockfileSha256, packages: packages.map(({ name }) => name),
+    settingsDiscovery: existsSync(join(input.source, 'examples/neutral-store/host/settings.ts')), verifyInstalled() {
       if (receipt.mode === 'candidate') { receipt.packages = [...readCurrentPackManifest(input.source, receipt.candidateManifest, receipt.tagCommit).values()]; return; }
       const audit = auditInstalledRelease(application, run);
       receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, receipt.tagCommit);
