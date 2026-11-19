@@ -74,3 +74,12 @@ key by goal. For example, run
 owner, allowed values, effect and frozen records before changing configuration.
 See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
 for the read path and refusal guidance.
+
+Before changing renewal stock protection, run a connected, read-only preview.
+
+```sh
+node --experimental-strip-types host/settings.ts preview inventory_renewal_protection '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
+```
+
+Use the store's configuration and SKU. Read the effect, uncertainty and any
+remediation before using the documented installation change mechanism.

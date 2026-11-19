@@ -3,8 +3,8 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "@openlup/platform/operations/contracts";
-import { describeRenewalStockProtectionSetting } from "@openlup/platform/inventory";
-import { settingDescriptorSchema, toolInputSchema } from "@openlup/platform/operations/server";
+import { describeRenewalStockProtectionSetting, renewalStockProtectionPreviewResult } from "@openlup/platform/inventory";
+import { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "@openlup/platform/operations/server";
 
 type SourceDescriptor = Omit<SettingDescriptor, "schema" | "previewSchema"> & {
   schema?: ZodType | SettingDescriptor["schema"];
@@ -85,6 +85,15 @@ function settingSynonyms(entry: { key: string; domain: string }): string {
   return searchTerms[entry.key] ?? searchTerms[entry.domain] ?? entry.domain.replaceAll("-", " ");
 }
 
+const previewHelp = "node --experimental-strip-types host/settings.ts preview --help";
+const previewCommand = "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json";
+
+function previewRefusal(
+  code: string, path: string[], rule: string, hint: string, action: string, command = previewCommand,
+): SettingRefusal {
+  return { code: `commerce_setting_preview_${code}`, path, rule, hint, remediation: { retry: true, action, command } };
+}
+
 const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly SettingRefusal[] => [
   {
     code: "commerce_setting_unknown",
@@ -125,6 +134,26 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
     hint: "Read the key's runtime reason and existing change mechanism.",
     remediation: { retry: false, action: "Review the catalogue for the key's documented change mechanism.", command: "node --experimental-strip-types host/settings.ts list" },
   },
+  previewRefusal("input_invalid", [], "The preview arguments are invalid.",
+    "Check the preview arguments.", "Correct the named argument and run preview again.", previewHelp),
+  previewRefusal("json_invalid", ["proposed"], "The proposed value is invalid JSON.",
+    "Pass the proposed policy as one JSON value.", "Correct the JSON and run preview again.", previewHelp),
+  previewRefusal("configuration_unknown", ["configuration"], "The requested configuration is unknown.",
+    "Use an ID defined by this starter.", "Choose one of the listed configuration IDs and run preview again.", previewHelp),
+  previewRefusal("unsupported", ["key"], "This setting has no connected preview.",
+    "Use show to read the setting's effect and change mechanism.", "Choose a setting that supports preview.", settingCommand("<key>")),
+  previewRefusal("connection_required", [], "Preview needs a connection to the intended store.",
+    "Use the connected form of preview.", "Supply a read-capable connection and run preview again."),
+  previewRefusal("policy_read_denied", ["current"], "This connection cannot read the installed policy.",
+    "Preview needs to read the setting's current value.", "Ask your store administrator for a connection that can read the installed policy, then retry."),
+  previewRefusal("stock_read_denied", ["skus"], "This connection cannot read stock availability.",
+    "Preview needs to read availability for the named SKUs.", "Ask your store administrator for a connection that can read stock availability, then retry."),
+  previewRefusal("validation_denied", ["proposed"], "This connection cannot check the proposed policy.",
+    "Preview needs permission to validate this setting.", "Ask your store administrator for a connection with permission to preview this setting, then retry."),
+  previewRefusal("validation_missing", ["proposed"], "The store is missing support for checking the proposed policy.",
+    "Preview needs the matching installed OpenLup version.", "Ask your store administrator to update the store's OpenLup installation, then retry."),
+  previewRefusal("unexpected", [], "The preview could not be completed.",
+    "Check that the connection points to the intended store.", "Retry once. If preview still fails, contact your store administrator."),
   ...descriptors.flatMap(entry => entry.rules.map(rule => ({
     code: rule.code,
     path: rule.path,
@@ -149,6 +178,9 @@ const paths = {
 
 export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<string, string>> {
   const descriptors = readSettingDescriptors(root);
+  const refusals = settingRefusals(descriptors);
+  const previewOutputSchema = settingsToolOutputSchema(renewalStockProtectionPreviewResult,
+    settingRefusalSchema(refusals.map(({ code }) => code)), settingsVersion);
   const settingsCatalogue = [...descriptors]
     .sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
     .map(describeSetting);
@@ -167,6 +199,10 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
       `Search terms include ${settingSynonyms(entry)}.`,
       "",
       `- Owner **${entry.domain}** · kind **${entry.kind}** · runtime **${entry.runtime.level}**`,
+      ...(entry.runtime.level === "preview" ? [
+        `- ${entry.runtime.reason}`,
+        `- Frozen on: ${entry.effect.frozenOn.join(" ") || "No records named."}`,
+      ] : []),
       `- Default ${entry.fallback === null ? "uses the documented behavior below." : `is \`${JSON.stringify(entry.fallback)}\`.`}`,
       `- Basis \`${entry.defaultBasis.kind}\`${entry.defaultBasis.kind === "reference-code" ? " (matches the reference deployment's code)" : ""}.`,
       `- ${entry.whyThisDefault}`,
@@ -180,8 +216,8 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
   ].join("\n");
   const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
   return {
-    [paths.catalogue]: json({ schemaVersion: settingsVersion, entries: settingsCatalogue, searchTerms }),
-    [paths.refusals]: json({ schemaVersion: settingsVersion, refusals: settingRefusals(descriptors) }),
+    [paths.catalogue]: json({ schemaVersion: settingsVersion, entries: settingsCatalogue, searchTerms, previewOutputSchema }),
+    [paths.refusals]: json({ schemaVersion: settingsVersion, refusals }),
     [paths.guide]: guide,
   };
 }

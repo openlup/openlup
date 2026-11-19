@@ -25,17 +25,20 @@ const observationSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("offline") }),
 ]);
 function readSettingsCatalogue() {
-  const { entries, searchTerms } = z.strictObject({
+  const { entries, searchTerms, previewOutputSchema } = z.strictObject({
     schemaVersion: z.literal(settingsVersion),
     entries: z.array(descriptor),
     searchTerms: z.record(z.string(), z.string()),
+    previewOutputSchema: z.record(z.string(), z.unknown()),
   }).parse(packageData("settings-catalog.json"));
   const { refusals } = z.strictObject({
     schemaVersion: z.literal(settingsVersion),
     refusals: z.array(z.object({ code: z.string() }).passthrough()),
   }).parse(packageData("settings-refusals.json"));
-  const refusalSchema = settingRefusalSchema(refusals.map(({ code }) => code));
-  const byCode = new Map(z.array(refusalSchema).parse(refusals).map(refusal => [refusal.code, refusal]));
+  const allRefusals = settingRefusalSchema(refusals.map(({ code }) => code));
+  const byCode = new Map(z.array(allRefusals).parse(refusals).map(refusal => [refusal.code, refusal]));
+  const refusalSchema = settingRefusalSchema(refusals.map(({ code }) => code)
+    .filter(code => !code.startsWith("commerce_setting_preview_")));
 
   const key = z.enum(entries.map(entry => entry.key));
   const summary = descriptor.pick({ key: true, goal: true, kind: true, runtime: true, change: true }).extend({ key });
@@ -48,5 +51,5 @@ function readSettingsCatalogue() {
   const showRequest = z.strictObject({ key });
   const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema });
   const listResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), entries: z.array(summary) });
-  return { entries: z.array(setting).parse(entries), searchTerms, byCode, refusalSchema, showRequest, showResult, listResult };
+  return { entries: z.array(setting).parse(entries), searchTerms, previewOutputSchema, byCode, refusalSchema, showRequest, showResult, listResult };
 }

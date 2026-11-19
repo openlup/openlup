@@ -1,24 +1,31 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { previewSetting, settingsReadTools } from "@openlup/platform/operations/server";
 import { installCheckoutRecoveryReminderSchedule } from "@openlup/platform/commerce/server";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { createPostgresStockAvailability, installRenewalStockProtectionPolicy, readRenewalStockProtectionPolicy, type RenewalStockProtectionPolicy } from "@openlup/platform/inventory";
+import { createPostgresStockAvailability, installRenewalStockProtectionPolicy, previewRenewalStockProtection, readRenewalStockProtectionPolicy, renewalStockProtectionPreviewResult, type RenewalStockProtectionPolicy } from "@openlup/platform/inventory";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { assertNativeStoreForward, readReviewedForwardRegistry, sqlStatements } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { configurations, selectConfiguration } from "../../examples/neutral-store/owned/store.config.ts";
+import { composeNativeBindings } from "../../examples/neutral-store/host/native-composition.ts";
 import { sizedHostPorts } from "../../examples/neutral-store/host/editor-ports.ts";
 import { applyDemoSeed } from "../../examples/neutral-store/installation/install.ts";
-import { composeNativeBindings } from "../../examples/neutral-store/host/native-composition.ts";
 import { createOriginPolicy } from "../../examples/neutral-store/host/origin-policy.ts";
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 
 const corpus = JSON.parse(readFileSync(
   new URL("../../packages/platform/test/inventory/inventory_renewal_protection.json", import.meta.url), "utf8",
-)) as Array<{ name: string; input: string; accepted: boolean; normalized?: RenewalStockProtectionPolicy; code?: string }>;
-const source = "policy-fixture", sku = "POLICY-FIXTURE";
+)) as Array<{ name: string; input: string; accepted: boolean; normalized?: RenewalStockProtectionPolicy; decodedNormalized?: RenewalStockProtectionPolicy; code?: string }>;
+const source = `starter-demo:${selectConfiguration().id}`, sku = "POLICY-FIXTURE";
 const installation = { generation: "qualified-v2", roleMode: "installer-managed", migrationLogin: "postgres",
   bootstrapLogin: "postgres", runtimeLogin: "starter_runtime", restoreLogin: "starter_restore" } as const;
 let resource: PostgresContainer | undefined, db: Pool, asOf: string;
@@ -167,7 +174,9 @@ it("malformed installed policy always names the error, including empty demand an
       .rejects.toMatchObject({ code: "22023", message: "inventory_renewal_protection_policy_invalid" });
     await expect(stock.readInstalled(["missing"]))
       .rejects.toMatchObject({ code: "22023", message: "inventory_renewal_protection_policy_invalid" });
-    await expect(readRenewalStockProtectionPolicy(db)).rejects.toThrow("inventory_renewal_protection_policy_invalid");
+    const decoded = corpus.find(row => row.input === value)?.decodedNormalized;
+    if (decoded) await expect(readRenewalStockProtectionPolicy(db)).resolves.toEqual(decoded);
+    else await expect(readRenewalStockProtectionPolicy(db)).rejects.toThrow("inventory_renewal_protection_policy_invalid");
   }
 });
 
@@ -270,13 +279,17 @@ it("restricted native startup refuses drift before serving or writing, with inst
     expect((await createPostgresStockAvailability(runtime, { sourceKey: source, now: () => asOf }).readInstalled([sku])).get(sku))
       .toMatchObject({ availableForNewPurchases: 61 });
     await expectValidatorAccess(runtime);
+    const key = "inventory_renewal_protection";
+    const preview = await previewSetting({ key, proposed: config.inventory.renewalProtection }, {
+      [key]: (proposed, input) => previewRenewalStockProtection(key, proposed, { ...input, db: runtime, sourceKey: source }),
+    });
+    expect(preview).toMatchObject({ validation: { state: "valid", value: config.inventory.renewalProtection } });
     await expect(installRenewalStockProtectionPolicy(runtime, config.inventory.renewalProtection)).rejects.toMatchObject({ code: "42501" });
     await installCheckoutRecoveryReminderSchedule(db, config.checkoutRecoveryReminders);
     const bindings = await composeNativeBindings(url.toString(), createOriginPolicy(config, 4319), config);
     await bindings.close();
   } finally { await runtime.end(); }
 });
-
 
 it("matches current ATP credits for eligible holds, terminal cycles, expired holds and another schedule", async () => {
   const client = await db.connect();
@@ -331,6 +344,122 @@ it("matches current ATP credits for eligible holds, terminal cycles, expired hol
     try { await client.query("ROLLBACK"); }
     finally { client.release(); }
   }
+});
+
+it("matches CLI and MCP for a refusal and a 14 to 21 preview with five queries for 1 or 25 SKUs and no writes", async () => {
+  const key = "inventory_renewal_protection";
+  const current = { revision: "fixture-14", renewalProtectionDays: 14 };
+  const proposed = { revision: "fixture-21", renewalProtectionDays: 21 };
+  await installRenewalStockProtectionPolicy(db, current);
+  const state = async () => (await db.query(`SELECT
+    (SELECT jsonb_agg(s ORDER BY key) FROM public.commerce_settings s) AS settings,
+    (SELECT jsonb_agg(r ORDER BY id) FROM public.fulfillment_inventory_reservations r) AS reservations,
+    (SELECT jsonb_agg(l ORDER BY reservation_id, sku) FROM public.fulfillment_inventory_reservation_lines l) AS reservation_lines,
+    (SELECT jsonb_agg(s ORDER BY source_key, sku) FROM public.fulfillment_stock_current s) AS stock`)).rows;
+  const before = await state();
+  const url = new URL(resource!.connectionString);
+  url.username = installation.runtimeLogin;
+  url.password = "synthetic-runtime";
+  url.searchParams.set("options", "-c default_transaction_read_only=on");
+  const runtime = new Pool({ connectionString: url.toString() });
+  const instant = new Date(asOf).toISOString();
+  const calls: string[] = [];
+  const tool = settingsReadTools.find(candidate => candidate.name === "settings__preview")!;
+  const server = new Server({ name: "settings-preview-fixture", version: "1" }, { capabilities: { tools: {} } });
+  const mcp = new Client({ name: "settings-preview-witness", version: "1" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: [tool] }));
+  server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+    expect(params.name).toBe(tool.name);
+    const result = await previewSetting(params.arguments, {
+      [key]: (candidate, input) => previewRenewalStockProtection(key, candidate, {
+        ...input, sourceKey: source,
+        db: { async connect() {
+          const client = await runtime.connect();
+          return {
+            query(sql, params) { calls.push(sql); return client.query(sql, params); },
+            release: error => client.release(error),
+          };
+        } },
+      }),
+    });
+    return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };
+  });
+  const skus = [sku, ...Array.from({ length: 24 }, (_, index) => `${sku}-${index + 1}`)];
+  const preview = async (selected: string[]) => {
+    const result = await mcp.callTool({ name: tool.name, arguments: { key, proposed, skus: selected, asOf: instant } });
+    return result.structuredContent;
+  };
+  try {
+    expect((await runtime.query("SELECT session_user AS role")).rows).toEqual([{ role: installation.runtimeLogin }]);
+    await server.connect(serverTransport);
+    await mcp.connect(clientTransport);
+    expect((await mcp.listTools()).tools[0]?.annotations?.readOnlyHint).toBe(true);
+    const options = { cwd: fileURLToPath(new URL("../../examples/neutral-store/", import.meta.url)), encoding: "utf8" } as const;
+    const unknownKey = "unknown_setting";
+    const refused = await mcp.callTool({ name: tool.name, arguments: { key: unknownKey, proposed } });
+    expect(refused.structuredContent).toMatchObject({ schemaVersion: 1, refusal: { code: "commerce_setting_unknown" } });
+    const cliRefused = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
+      unknownKey, JSON.stringify(proposed), "--json"], options);
+    expect(cliRefused.status, cliRefused.stderr).toBe(1);
+    expect(JSON.parse(cliRefused.stdout)).toEqual(refused.structuredContent);
+
+    for (const selected of [[sku], skus]) {
+      const result = await preview(selected);
+      expect(result).toMatchObject({
+        key, asOf: instant, current, proposed, difference: { renewalProtectionDays: 7 },
+        validation: { state: "valid", value: proposed },
+        effect: {
+          existingReservations: "unchanged", newPurchaseAvailability: "equal-or-lower",
+          skus: expect.arrayContaining([{ sku, source: "provider", stale: false,
+            currentAvailableForNewPurchases: 61, proposedAvailableForNewPurchases: null }]),
+        },
+        uncertainty: expect.stringContaining("effect.skus[].proposedAvailableForNewPurchases"),
+      });
+      expect(renewalStockProtectionPreviewResult.parse(result).effect.skus).toHaveLength(selected.length);
+      expect(calls.splice(0)).toEqual([
+        "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        expect.stringContaining("SELECT value_text FROM public.commerce_settings"),
+        expect.stringContaining("SELECT public.inventory_new_purchase_stock_read("),
+        expect.stringContaining("SELECT public.inventory_renewal_protection_validate("),
+        "ROLLBACK",
+      ]);
+      if (selected.length === 1) {
+        const args = ["run", "--silent", "settings", "--", "preview", key, JSON.stringify(proposed),
+          "--database-url", url.toString(), "--sku", sku, "--as-of", instant];
+        const json = spawnSync("npm", [...args, "--json"], options);
+        expect(json.status, json.stderr).toBe(0);
+        expect(JSON.parse(json.stdout)).toEqual(result);
+        const readable = spawnSync("npm", args, options);
+        expect(readable.status, readable.stderr).toBe(0);
+        expect(readable.stdout).toContain(`${sku}: 61 currently available`);
+        expect(readable.stdout).toContain("New purchase availability: equal-or-lower");
+      }
+    }
+    for (const entry of corpus) {
+      const decoded = JSON.parse(entry.input);
+      const expected = entry.decodedNormalized ?? entry.normalized;
+      const { structuredContent } = await mcp.callTool({ name: tool.name, arguments: { key, proposed: decoded, asOf: instant } });
+      expect(structuredContent, entry.name).toMatchObject({
+        schemaVersion: 1, validation: expected ? { state: "valid", value: expected } : { state: "invalid", code: entry.code },
+      });
+      expect(JSON.stringify(structuredContent), entry.name).toContain(`"proposed":${JSON.stringify(decoded)}`);
+      if (decoded === null || typeof decoded !== "object" || entry.decodedNormalized || entry.name === "additional field") {
+        const cli = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
+          key, entry.input, "--database-url", url.toString(), "--as-of", instant, "--json"], options);
+        expect(cli.status, cli.stderr).toBe(0);
+        expect(JSON.parse(cli.stdout)).toEqual(structuredContent);
+      }
+    }
+  } finally {
+    try {
+      await mcp.close();
+      await server.close();
+    } finally {
+      await runtime.end();
+    }
+  }
+  expect(await state()).toEqual(before);
 });
 
 it("the running starter editor sees the installer change from 14 to 21 via readInstalled", async () => {
