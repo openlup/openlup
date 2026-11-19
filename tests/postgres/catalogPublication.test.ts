@@ -346,3 +346,46 @@ it("retains one document value and refuses a different value with the same recor
     await insertGraph(db, issue, { existingDocument: true });
   })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_document_invalid" });
 });
+
+it("refuses retargeting and consuming a pointer authorization in its original transaction", async () => {
+  const { issued, legacy } = await transaction(pool, async db => {
+    const issued = await graph(db, fixture()), legacy = await graph(db, fixture());
+    await insertGraph(db, issued);
+    await documentRow(db, legacy);
+    return { issued, legacy };
+  });
+  const alternate = randomUUID();
+  await pool.query(`INSERT INTO public.catalog_product_document_revisions
+    (id,product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest)
+    VALUES($1,$2,2,'example:legacy','example:other','{}','example:other','{}',$3)`, [alternate, issued.productId, hash("alternate")]);
+  const error = await transaction(pool, async db => {
+    await db.query("INSERT INTO public.catalog_publication_pointer_capabilities VALUES(pg_current_xact_id(),$1,$2,$3)",
+      [legacy.productId, legacy.documentId, issued.fingerprint]);
+    await db.query("UPDATE public.catalog_publication_pointer_capabilities SET product_id=$1,revision_id=$2 WHERE product_id=$3",
+      [issued.productId, alternate, legacy.productId]);
+    await db.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [issued.productId, alternate]);
+  }).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_content_not_saved" });
+  expect((await pool.query("SELECT current_document_revision_id AS id FROM public.catalog_products WHERE id=$1", [issued.productId])).rows)
+    .toEqual([{ id: issued.documentId }]);
+});
+
+it("refuses an owner truncation that would reopen an issued SKU slot", async () => {
+  const issue = await transaction(pool, async db => {
+    const value = await graph(db, fixture());
+    await insertGraph(db, value);
+    return value;
+  });
+  await expect(transaction(pool, async db => {
+    await db.query("TRUNCATE public.catalog_sku_revisions");
+    throw Error("Truncation was accepted");
+  })).rejects.toMatchObject({ code: "0A000", detail: expect.stringContaining("catalog_publications") });
+  expect((await publicationReader().readbackV2(issue.head)).outcome).toBe("page");
+});
+
+function publicationReader() {
+  return createPostgresCatalogPublicationReads({
+    transactions: { run: work => transaction(pool, work) },
+    authorizeHuman: async () => ({ ok: false }),
+  });
+}

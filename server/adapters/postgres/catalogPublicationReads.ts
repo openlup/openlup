@@ -55,6 +55,7 @@ function requireCondition(condition: unknown, reason = readInvalid, outcome: Cat
 }
 
 const deferredForeignKeys = new Map([
+  ["catalog_publications_primary_sku_revision_fk", "catalog_publication_sku_revision_invalid"],
   ["catalog_publications_previous_fk", "catalog_publication_lineage_invalid"],
   ["catalog_publication_heads_issue_fk", "catalog_publication_head_invalid"],
   ["catalog_sku_revisions_issue_fk", "catalog_publication_issue_sealed"],
@@ -94,13 +95,12 @@ function legacyReceipt(receipt: CatalogPublicationReceiptV2): CatalogPublication
 const equal = (left: unknown, right: unknown) => publicationJson(left) === publicationJson(right);
 
 async function verifiedIssue(db: PgQueryExecutor, publicationId: string, productId?: string) {
-  // The assertion verifies the history graph using the same immutable rows
-  // as admission. Always bind the document by the recorded composite FK.
+  // Admission seals the graph. Bind the exact document and original result
+  // without replaying every issued SKU to read one retained page.
   const { rows } = await db.query(`SELECT p.id,p.product_id,p.revision,p.canonical_state,p.digest,r.result,
     d.digest AS document_digest,
     jsonb_build_object('id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,
-      'schemaId',d.schema_id,'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest) AS document_reference,
-    public.catalog_publication_assert_issued(p.product_id,p.id) AS admitted
+      'schemaId',d.schema_id,'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest) AS document_reference
     FROM public.catalog_publications p
     LEFT JOIN public.catalog_product_document_revisions d ON (d.product_id,d.id)=(p.product_id,p.document_revision_id)
     LEFT JOIN public.catalog_operator_receipts r ON (r.scope_id,r.command_key)=(p.product_id,p.command_key)

@@ -18,6 +18,7 @@ CREATE TABLE public.catalog_publications (
  candidate_ref text NOT NULL UNIQUE,
  candidate_digest text NOT NULL CHECK (length(candidate_digest) = 64 AND translate(candidate_digest,'abcdef0123456789','') = ''),
  document_revision_id uuid NOT NULL,
+ primary_sku_revision_id uuid NOT NULL,
  canonical_state text NOT NULL CHECK (octet_length(canonical_state) BETWEEN 2 AND 16777216),
  digest text NOT NULL CHECK (length(digest) = 64 AND translate(digest,'abcdef0123456789','') = ''),
  actor_id uuid NOT NULL REFERENCES public.platform_human_principals(principal_id),
@@ -48,6 +49,8 @@ CREATE TABLE public.catalog_sku_revisions (
  FOREIGN KEY(product_id,sku_id) REFERENCES public.catalog_skus(product_id,id),
  CONSTRAINT catalog_sku_revisions_issue_fk FOREIGN KEY(product_id,publication_id) REFERENCES public.catalog_publications(product_id,id) DEFERRABLE INITIALLY DEFERRED
 );
+ALTER TABLE public.catalog_publications ADD CONSTRAINT catalog_publications_primary_sku_revision_fk
+ FOREIGN KEY(primary_sku_revision_id) REFERENCES public.catalog_sku_revisions(id) DEFERRABLE INITIALLY DEFERRED;
 CREATE TABLE public.catalog_operator_receipts (
  kind text NOT NULL CHECK (kind IN ('publish','approve','revoke')),
  scope_id uuid NOT NULL,
@@ -84,6 +87,7 @@ CREATE TABLE public.catalog_publication_pointer_capabilities (
  FOREIGN KEY(product_id,revision_id) REFERENCES public.catalog_product_document_revisions(product_id,id)
 );
 CREATE INDEX catalog_publications_product_revision_idx ON public.catalog_publications(product_id,revision DESC);
+CREATE INDEX catalog_publications_primary_sku_revision_idx ON public.catalog_publications(primary_sku_revision_id);
 CREATE INDEX catalog_sku_revisions_sku_revision_idx ON public.catalog_sku_revisions(sku_id,revision DESC);
 CREATE INDEX catalog_publication_decisions_reference_idx ON public.catalog_publication_decisions(candidate_reference_digest,decided_at,id);
 CREATE FUNCTION public.catalog_publication_pointer_fence() RETURNS trigger
@@ -396,7 +400,8 @@ BEGIN
   AND inherited.revision=(m.reference->>'revision')::integer AND inherited.digest=m.reference->>'digest';
  IF issue_count<>issue.issued_count OR invalid_change OR roster IS DISTINCT FROM manifest->'skus'
    OR distinct_codes<>jsonb_array_length(roster)
-   OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(roster) AS member WHERE member->'skuId'=product->'primarySkuId') THEN
+   OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(roster) AS member
+     WHERE member->'skuId'=product->'primarySkuId' AND member->'revisionId'=to_jsonb(issue.primary_sku_revision_id)) THEN
   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
  END IF;
 
@@ -542,6 +547,10 @@ BEGIN
    PERFORM public.catalog_publication_assert_head(OLD.product_id,true);
   END IF;
  WHEN 'catalog_publication_pointer_capabilities' THEN
+  IF TG_OP='UPDATE' THEN
+   RAISE EXCEPTION 'catalog_publication_pointer_capability_unconsumed' USING ERRCODE='23514',
+     CONSTRAINT='catalog_publication_pointer_capability_unconsumed';
+  END IF;
   PERFORM public.catalog_publication_assert_head(NEW.product_id,true);
   IF EXISTS (SELECT 1 FROM public.catalog_publication_pointer_capabilities c
     WHERE (c.transaction_id,c.product_id,c.revision_id,c.command_fingerprint)=
@@ -565,5 +574,5 @@ CREATE CONSTRAINT TRIGGER catalog_decisions_issued AFTER INSERT OR UPDATE OR DEL
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
 CREATE CONSTRAINT TRIGGER catalog_heads_issued AFTER INSERT OR UPDATE OR DELETE ON public.catalog_publication_heads
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();
-CREATE CONSTRAINT TRIGGER catalog_pointer_capabilities_consumed AFTER INSERT ON public.catalog_publication_pointer_capabilities
+CREATE CONSTRAINT TRIGGER catalog_pointer_capabilities_consumed AFTER INSERT OR UPDATE ON public.catalog_publication_pointer_capabilities
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_admit();

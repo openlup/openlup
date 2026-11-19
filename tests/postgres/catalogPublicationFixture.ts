@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import { canonicalCatalogPublicationJson } from "../../server/adapters/postgres/catalogPublicationWire.js";
+import { canonicalCatalogPublicationJson, type CatalogPublishedSku, type CatalogPublishedProduct } from "../../server/adapters/postgres/catalogPublicationWire.js";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 export const json = canonicalCatalogPublicationJson;
@@ -41,7 +41,7 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   const slug = `article-${productId}`, code = `sku-${skuId}`;
   const canonicalText = json({ label: "retained immutable bytes" });
   const document = { id: documentId, productId, revisionNo: 1, schemaId: "example:document", documentRef: "example:ref", sourceRef: "example:source", digest: hash(canonicalText) };
-  const content = { schemaVersion: 1, catalogAction: before ? "revise" : "create", presentation: {},
+  const content: CatalogPublishedProduct["content"] = { schemaVersion: 1, catalogAction: before ? "revise" : "create", presentation: {},
     requestedModes: [], offerMemberships: [], publicationSkus: [] };
   const quantity = { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 };
   const payload = { schemaVersion: 3, product: { id: productId, slug, type, dimensions: [], primarySkuId: skuId, documentRevision: document, sharedContent: content },
@@ -75,11 +75,13 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   const commandKey = `issue:${revision}`, fingerprint = hash(commandKey);
   const decisionKey = `approve:${revision}`;
   const time = (await db.query<{ now: string }>(`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS now`)).rows[0]!.now;
-  const decision = { schemaVersion: 2, productId, candidateRef, candidateDigest, commandKey: decisionKey, action: "approve", reason: null };
+  const decision: { schemaVersion: number; productId: string; candidateRef: string; candidateDigest: string;
+    commandKey: string; action: "approve" | "revoke"; reason: string | null } =
+    { schemaVersion: 2, productId, candidateRef, candidateDigest, commandKey: decisionKey, action: "approve", reason: null };
   const decisionFingerprint = hash(json([decision, actorId]));
-  const product = { id: productId, slug, name: "Article", status: "draft", type, axes: [], attributes: {},
+  const product: CatalogPublishedProduct = { id: productId, slug, name: "Article", status: "draft", type, axes: [], attributes: {},
     primarySkuId: skuId, document, presentation: {}, source, content };
-  const facts = { id: skuId, productId, code, title: `Article ${revision}`, status: "draft", minQuantity: 1, isAddon: false, sellableStandalone: false,
+  const facts: CatalogPublishedSku = { id: skuId, productId, code, title: `Article ${revision}`, status: "draft", minQuantity: 1, isAddon: false, sellableStandalone: false,
     sellableInSubscription: false, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
     grossMass: null, options: {}, attributes: {}, facts: {} as Record<string, string>, identifiers: [], assetRefs: [], logisticsRef: null, memberships: [], source };
   const head = { publicationId: issueId, revision, documentDigest: document.digest };
@@ -103,22 +105,21 @@ export async function documentRow(db: PoolClient, value: Graph, storedValue = va
 
 export async function decisionRow(db: PoolClient, value: Graph) {
   await db.query(`INSERT INTO public.catalog_publication_decisions
-    (id,product_id,candidate_ref,candidate_digest,candidate_reference_digest,action,actor_id,command_key,fingerprint,decided_at)
-    VALUES($1,$2,$3,$4,$5,'approve',$6,$7,$8,$9)`, [
+    (id,product_id,candidate_ref,candidate_digest,candidate_reference_digest,action,actor_id,command_key,fingerprint,decided_at,reason)
+    VALUES($1,$2,$3,$4,$5,$10,$6,$7,$8,$9,$11)`, [
     value.approvalId, value.productId, value.candidateRef, value.candidateDigest, hash(json([value.candidateRef,value.candidateDigest])),
-    actorId, value.decisionKey, value.decisionFingerprint, value.time,
+    actorId, value.decisionKey, value.decisionFingerprint, value.time, value.decision.action, value.decision.reason,
   ]);
 }
 
 export async function decisionReceipt(db: PoolClient, value: Graph) {
-  await db.query("INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,result) VALUES('approve',$1,$2,$3,$4,$5)", [
+  await db.query("INSERT INTO public.catalog_operator_receipts(kind,scope_id,command_key,fingerprint,actor_id,result) VALUES($6,$1,$2,$3,$4,$5)", [
     value.productId, value.decisionKey, value.decisionFingerprint, actorId,
-    json({ ...value.decision, fingerprint: value.decisionFingerprint, actorId, decidedAt: value.time }),
+    json({ ...value.decision, fingerprint: value.decisionFingerprint, actorId, decidedAt: value.time }), value.decision.action,
   ]);
 }
 
-export async function skuRow(db: PoolClient, value: Graph, issueOrdinal = 1) {
-  const facts = json(value.facts);
+export async function skuRow(db: PoolClient, value: Graph, issueOrdinal = 1, facts = json(value.facts)) {
   await db.query(`INSERT INTO public.catalog_sku_revisions
     (id,sku_id,sku_code,product_id,revision,publication_id,issue_ordinal,full_facts,digest)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [
@@ -127,8 +128,8 @@ export async function skuRow(db: PoolClient, value: Graph, issueOrdinal = 1) {
 }
 
 export async function insertGraph(db: PoolClient, value: Graph, options: {
-  order?: "child-first"; receipt?: "omit" | "timestamp"; roster?: "omit"; head?: "omit"; rawState?: (state: string) => string;
-  existingDocument?: boolean; omitProductProjection?: boolean; extraSkuCount?: number;
+  order?: "child-first"; receipt?: "omit" | "timestamp"; roster?: "omit"; head?: "omit"; rawState?: (state: string) => string; rawFacts?: (facts: string) => string;
+  existingDocument?: boolean; omitProductProjection?: boolean; extraSkuCount?: number; approvalTime?: string;
   inherit?: { skuId: string; revisionId: string; revision: number; digest: string };
 } = {}) {
   if (!value.before && !options.existingDocument) await documentRow(db, value);
@@ -138,8 +139,12 @@ export async function insertGraph(db: PoolClient, value: Graph, options: {
     return { ...value, skuId, skuRevisionId: randomUUID(), facts: { ...value.facts, id: skuId, code: `sku-${skuId}` } };
   });
   const issued = (options.inherit ? [] : [value, ...extras]).sort((left, right) => left.skuId.localeCompare(right.skuId));
-  const references = options.inherit ? [options.inherit] : issued.map(sku => ({
-    skuId: sku.skuId, revisionId: sku.skuRevisionId, revision, digest: hash(json(sku.facts)),
+  const factBytes = issued.map(sku => {
+    const text = json(sku.facts);
+    return options.rawFacts?.(text) ?? text;
+  });
+  const references = options.inherit ? [options.inherit] : issued.map((sku, index) => ({
+    skuId: sku.skuId, revisionId: sku.skuRevisionId, revision, digest: hash(factBytes[index]!),
   }));
   const encoded = json({ schemaVersion: 2, product: value.product, skus: options.roster === "omit" ? [] : references });
   const state = options.rawState?.(encoded) ?? encoded;
@@ -152,29 +157,38 @@ export async function insertGraph(db: PoolClient, value: Graph, options: {
   async function issue() {
     await db.query(`INSERT INTO public.catalog_publications
       (id,product_id,revision,issued_count,approval_id,command_fingerprint,previous_id,draft_id,draft_revision,command_key,
-        candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at)
-      VALUES($1,$2,$3,$17,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        candidate_ref,candidate_digest,document_revision_id,canonical_state,digest,actor_id,committed_at,primary_sku_revision_id)
+      VALUES($1,$2,$3,$17,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$18)`,
     [issueId, productId, revision, value.approvalId, value.fingerprint, before?.publicationId, value.draftId, revision, value.commandKey,
-      value.candidateRef, value.candidateDigest, value.documentId, state, hash(state), actorId, value.time, issued.length]);
+      value.candidateRef, value.candidateDigest, value.documentId, state, hash(state), actorId, value.time, issued.length,
+      options.inherit?.revisionId ?? value.skuRevisionId]);
   }
   if (options.order !== "child-first") await issue();
-  await decisionRow(db, value);
-  await decisionReceipt(db, value);
+  const approval = { ...value, time: options.approvalTime ?? value.time };
+  await decisionRow(db, approval);
+  await decisionReceipt(db, approval);
   if (extras.length) await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,net_weight_g)
     SELECT item.id,$1,item.code,'Article','draft',100 FROM unnest($2::uuid[],$3::text[]) AS item(id,code)`, [
     productId, extras.map(sku => sku.skuId), extras.map(sku => sku.facts.code),
   ]);
-  for (const [index, sku] of issued.entries()) await skuRow(db, sku, index + 1);
+  for (const [index, sku] of issued.entries()) await skuRow(db, sku, index + 1, factBytes[index]);
   if (options.head !== "omit") await db.query(`INSERT INTO public.catalog_publication_heads VALUES($1,$2,$3)
      ON CONFLICT (product_id) DO UPDATE SET publication_id=excluded.publication_id,revision=excluded.revision`, [productId, issueId, revision]);
   if (options.receipt !== "omit") await db.query("INSERT INTO public.catalog_operator_receipts VALUES('publish',$1,$2,$3,$4,$5,$6)", [
     productId, value.commandKey, value.fingerprint, actorId, issueId, json(recorded),
   ]);
   if (options.order === "child-first") await issue();
-  if (!options.omitProductProjection) await db.query("UPDATE public.catalog_products SET publication_facts=$2,variant_axes='{}',attribute_values='{}' WHERE id=$1", [productId, json(value.product)]);
-  if (!options.inherit) await db.query(`UPDATE public.catalog_skus SET title=$2,publication_facts=$3,
-    sellable_standalone=false,sellable_in_subscription=false,option_values='{}',attribute_values='{}',
-    net_content_dimension='mass',net_content_unit='openlup:g',net_content_unscaled=100,net_content_scale=0 WHERE id=$1`,
-  [skuId, value.facts.title, json(value.facts)]);
+  if (!options.omitProductProjection) await db.query("UPDATE public.catalog_products SET publication_facts=$2,variant_axes=$3,attribute_values=$4 WHERE id=$1",
+    [productId, json(value.product), value.product.axes, json(value.product.attributes)]);
+  for (const { skuId, facts } of issued) {
+    await db.query(`UPDATE public.catalog_skus SET title=$2,publication_facts=$3,
+      sellable_standalone=$4,sellable_in_subscription=$5,option_values=$6,attribute_values=$7,
+      net_content_dimension='mass',net_content_unit='openlup:g',net_content_unscaled=100,net_content_scale=0 WHERE id=$1`,
+    [skuId, facts.title, json(facts), facts.sellableStandalone, facts.sellableInSubscription, json(facts.options), json(facts.attributes)]);
+    for (const id of facts.identifiers) await db.query(`INSERT INTO public.catalog_sku_identifiers
+      (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+    [skuId, id.issuer, id.scheme === "gs1:gtin" ? "gtin" : "other", id.scheme === "gs1:gtin" ? id.value.padStart(14, "0") : id.value,
+      id.packagingLevel === "unit" ? "unit" : "collective", id.quantity, id.isPrimary]);
+  }
   return recorded;
 }

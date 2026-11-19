@@ -5734,7 +5734,7 @@
           {
             "name": "catalog_pointer_capabilities_consumed",
             "table": "public.catalog_publication_pointer_capabilities",
-            "sha256": "7207e44856c3b718a23069b3ffa53e221a864f058172b41ae124059071ac2443"
+            "sha256": "3e5df60138aeae5c0289cddedeeeb8ac27da7006ad06e12a512dfa6af865e1d8"
           }
         ]
       }
@@ -8081,7 +8081,7 @@
     },
     {
       "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
-      "sha256": "5118c146523fd4c35f33a894de52b9a1a201c02c955bc87ecef6ef240359147a",
+      "sha256": "7937e5679a66a1d5a34efed794f310a0611959208ffd64dd61daa66628161db6",
       "functions": [
         {
           "signature": "public.catalog_publication_pointer_fence()",
@@ -8116,7 +8116,7 @@
         {
           "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "dca50930110b700e07fc7ff905771b3f04ab5bb1eab5df52a5e7c51c344d621c"
+          "afterSha256": "2e700cefa6427b8f89d8f9a72afea56992b358aec6b982c41e2082601edd920d"
         },
         {
           "signature": "public.catalog_publication_quantity_valid(jsonb)",
@@ -8131,7 +8131,7 @@
         {
           "signature": "public.catalog_publication_admit()",
           "beforeSha256": null,
-          "afterSha256": "a8419cc2238e5f707bca2ef17ffb38e756f9e66b25a3723ab89cb887622911bd"
+          "afterSha256": "99f173d254e7846013f1b885dc9eb261993b3a289291889e14f3bbe4841de332"
         }
       ]
     }
