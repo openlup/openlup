@@ -102,9 +102,10 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
     return { ...result, status: "replayed", originalStatus: prior.status } as SizedEditApplyResult;
   }
   const scope = (db: SubscriptionQueryExecutor, actor: PackageEditActor) => createSizedEditContextScope((id, optIn) => readSizedEditContext(db, actor.clientId, id, optIn));
-  async function quote(db: SubscriptionQueryExecutor, context: SizedEditContext, request: SizedEditRequest, point: "preview" | "apply") {
+  async function quote(db: SubscriptionQueryExecutor, context: SizedEditContext, request: SizedEditRequest, point: "preview" | "apply",
+    scopeCatalog?: Parameters<typeof quoteSizedEdit>[0]["scopeCatalog"]) {
     if (request.expectedTemplateVersion !== undefined && request.expectedTemplateVersion !== context.templateVersion) throw new Error("subscription_edit_stale_template");
-    return quoteSizedEdit({ db, context, request, point, host: options, policy });
+    return quoteSizedEdit({ db, context, request, point, host: options, policy, scopeCatalog });
   }
   async function checkAcceptedPreview(db: SubscriptionQueryExecutor, actor: PackageEditActor, key: string, request: SizedEditRequest, version: number) {
     await db.query("SAVEPOINT sized_catalog_preview");
@@ -149,43 +150,50 @@ export function createPostgresSizedEditor(options: SizedEditorOptions) {
       const parsed = parse(input);
       assertRequestLimits(parsed);
       if (parsed.acceptedQuoteHash !== undefined) throw new Error("subscription_reprice_invalid_request");
-      return options.withTransaction(async db => {
+      const prepare = async (db: SubscriptionQueryExecutor, qualified: boolean) => {
         const row = await owned(db, actor, parsed.subscriptionId);
         const context = await scope(db, actor)(parsed.subscriptionId, isSizedOptIn(parsed));
         const request = normalizeSizedEdit(parsed, context, policy), preview = blocked(row, request);
-        if (!preview.preview.canApply) return preview;
-        const installed = (await db.query(`SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS installed`)).rows[0]?.installed === true;
+        if (!preview.preview.canApply) return { preview };
         const observations = new Map<string, CandidateMembership>();
-        const read = async (snapshot: SubscriptionQueryExecutor) => {
-          const current = await scope(snapshot, actor)(request.subscriptionId, isSizedOptIn(request));
-          if (current.templateVersion !== context.templateVersion) throw new Error("subscription_edit_stale_template");
-          return quoteSizedEdit({ db: snapshot, context: current, request, policy, point: "preview", host: options,
-            scopeCatalog: catalog => scopeCatalogCandidates(snapshot, catalog, observations) });
-        };
-        const priced = installed ? options.withCandidateSnapshot ? await options.withCandidateSnapshot(read)
-          : await options.withTransaction(async snapshot => {
-            await snapshot.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-            return read(snapshot);
-          }) : await quote(db, context, request, "preview");
-        const { subscriptionId: _id, ...raw } = request;
+        const priced = await quote(db, context, request, "preview",
+          qualified ? catalog => scopeCatalogCandidates(db, catalog, observations) : undefined);
         const catalogPublications = Object.fromEntries(priced.lines.flatMap(line => {
           const observation = observations.get(line.variantId.toLowerCase());
           if (!observation) return [];
           const { productId, skuRevisionId, head, document } = observation;
           return [[line.variantId, { productId, skuRevisionId, head, document: { id: document.id, digest: document.digest } }]];
         }));
+        return { preview, request, priced, ...(qualified ? { catalogPublications } : {}) };
+      };
+      const record = async (db: SubscriptionQueryExecutor, result: Awaited<ReturnType<typeof prepare>>): Promise<SizedEditPreview> => {
+        const { preview, request, priced, catalogPublications } = result;
+        if (!priced || !request) return preview;
+        const { subscriptionId: _id, ...raw } = request;
         const expires = new Date(Date.parse(options.now()) + 15 * 60_000).toISOString();
         const recorded = await db.query("SELECT public.subscription_quote_preview_record($1::uuid,$2::uuid,$3::uuid,$4::text,$5::text,$6::integer,$7::timestamptz,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz)",
           [actor.actorId, actor.clientId, request.subscriptionId, request.action, priced.quoteHash, priced.expectedTemplateVersion, expires, raw,
             { lines: priced.lines, cadenceDays: priced.cadenceDays, compositionConstraint: priced.compositionConstraint, subjectFacts: { ...priced.subjectFacts, catalogFacts: priced.catalogFacts }, optInFacts: priced.optInFacts,
-              ...(installed ? { catalogPublications } : {}) },
+              ...(catalogPublications ? { catalogPublications } : {}) },
             { currentRecurringPrice: priced.currentRecurringPrice, newRecurringPrice: priced.newRecurringPrice, delta: priced.delta }, options.now()]);
         const quoteHash = recordedPackageEditQuoteHash(recorded.rows[0], priced.quoteHash);
         return { ...preview, quoteHash, quoteExpiresAt: expires, currentTotal: priced.currentRecurringPrice,
           newTotal: priced.newRecurringPrice, delta: priced.delta, packageEdit: { currentRecurringPrice: priced.currentRecurringPrice,
             newRecurringPrice: priced.newRecurringPrice, delta: priced.delta, quoteHash,
             effectiveCycleAt: preview.preview.nextCycleAt, priceAgreementPolicy: "lock_until_edit" } };
+      };
+      const legacy = await options.withTransaction(async db => {
+        const installed = (await db.query(`SELECT to_regprocedure('public.catalog_offer_memberships_page(text,uuid,integer,text,text)') IS NOT NULL AS installed`)).rows[0]?.installed === true;
+        return installed ? null : record(db, await prepare(db, false));
       });
+      if (legacy) return legacy;
+      const prepared = options.withCandidateSnapshot
+        ? await options.withCandidateSnapshot(db => prepare(db, true))
+        : await options.withTransaction(async db => {
+          await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+          return prepare(db, true);
+        });
+      return prepared.priced ? options.withTransaction(db => record(db, prepared)) : prepared.preview;
     },
     async apply(actor: PackageEditActor, key: string, input: SizedEditRequest): Promise<SizedEditApplyResult> {
       const parsed = parse(input);
