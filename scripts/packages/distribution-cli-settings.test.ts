@@ -53,3 +53,26 @@ it("refuses an extracted starter without the settings script", () => {
   const { directory } = fixture();
   expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
 });
+
+it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const editor = "host/editor-ports.ts";
+  const ownership = { managed: ["package.json", "ownership.json", editor], owned: ["AGENTS.md"], generated: [] };
+  const guide = customized ? "# App guide\n\nLocal workflow.\n" : "# App guide\n";
+  write("ownership.json", ownership); candidate("ownership.json", ownership);
+  write(editor, "const method = 'readPort.read';");
+  candidate(editor, "const method = 'readInstalled';");
+  write("AGENTS.md", guide);
+  const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
+  write("from.json", from); write("to.json", to);
+  const apply = () => spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
+    "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+  const first = apply();
+  expect(first.status, first.stderr).toBe(0);
+  expect(JSON.parse(first.stdout).applied).toEqual([editor]);
+  const replay = apply();
+  expect(replay.status, replay.stderr).toBe(0);
+  expect(JSON.parse(replay.stdout).applied).toEqual([]);
+  expect(() => assertCompleteStarter(app, to)).not.toThrow();
+  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide);
+});

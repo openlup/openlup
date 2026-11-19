@@ -8,7 +8,9 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { assertNativeStoreForward, readReviewedForwardRegistry, sqlStatements } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { configurations } from "../../examples/neutral-store/owned/store.config.ts";
+import { configurations, selectConfiguration } from "../../examples/neutral-store/owned/store.config.ts";
+import { sizedHostPorts } from "../../examples/neutral-store/host/editor-ports.ts";
+import { applyDemoSeed } from "../../examples/neutral-store/installation/install.ts";
 import { composeNativeBindings } from "../../examples/neutral-store/host/native-composition.ts";
 import { createOriginPolicy } from "../../examples/neutral-store/host/origin-policy.ts";
 import { installAccountMutations } from "./customerAccountMutations.fixture.js";
@@ -272,4 +274,58 @@ it("restricted native startup refuses drift before serving or writing, with inst
     const bindings = await composeNativeBindings(url.toString(), createOriginPolicy(config, 4319), config);
     await bindings.close();
   } finally { await runtime.end(); }
+});
+
+it("the running starter editor sees the installer change from 14 to 21 via readInstalled", async () => {
+  const config = structuredClone(selectConfiguration());
+  config.inventory.renewalProtection = { revision: "editor-14", renewalProtectionDays: 14 };
+  config.purchase.stock.collectedAt = new Date(asOf).toISOString();
+  config.purchase.stock.staleAfter = (await db.query("SELECT ($1::timestamptz + interval '1 day') AS instant", [asOf]))
+    .rows[0]?.instant.toISOString();
+  // The existing installer admits only a database explicitly marked as a disposable demonstration.
+  await db.query("COMMENT ON DATABASE postgres IS 'openlup-neutral-store-demo-v1'");
+  const installer = await db.connect();
+  const demonstration = {
+    connection: installer, installRole: "postgres", runtimeRole: "starter_runtime",
+    close: async () => installer.release(),
+  };
+  try {
+    await applyDemoSeed(config, demonstration);
+    const editorSku = Object.entries(config.purchase.stock.quantities).find(([, quantity]) => quantity > 4)![0];
+    const sourceKey = `starter-demo:${config.id}`;
+    const subscription = randomUUID();
+    const { rows: [saved] } = await installer.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at)
+      SELECT $1,id,28,$2::timestamptz + interval '15 days' FROM public.clients WHERE email='policy@example.invalid'
+      RETURNING client_id,next_cycle_at`, [subscription, asOf]);
+    await installer.query(`INSERT INTO public.subscription_renewal_terms
+      (subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
+      VALUES ($1,'XXX',$2,'fixture',$3,'fixture')`, [subscription, sourceKey, asOf]);
+    await installer.query(`INSERT INTO public.subscription_renewal_term_lines
+      (subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES ($1,1,$2,4,100)`, [subscription, editorSku]);
+
+    const url = new URL(resource!.connectionString);
+    url.username = "starter_runtime"; url.password = "synthetic-runtime";
+    const runtime = new Pool({ connectionString: url.toString() });
+    try {
+      const now = () => asOf;
+      const editor = sizedHostPorts(config, now, runtime);
+      const context: Parameters<typeof editor.readCatalog>[1] = {
+        subscriptionId: subscription, clientId: saved!.client_id, binding: "sized.v1", templateVersion: 1,
+        cadenceDays: 28, compositionConstraint: null, nextCycleAt: saved!.next_cycle_at.toISOString(),
+        paidCycleCount: 0, marker: null, lines: [], graduationLines: [],
+      };
+      const availability = async () => (await editor.readCatalog(runtime, context)).find(fact => fact.sku === editorSku)?.sellableNow;
+      const before = config.purchase.stock.quantities[editorSku]!;
+      expect(await availability()).toBe(before);
+      await installRenewalStockProtectionPolicy(installer, { revision: "editor-21", renewalProtectionDays: 21 });
+      expect(await availability()).toBe(before - 4);
+      await expect(createPostgresStockAvailability(runtime, { sourceKey, now }).readPort.read({
+        skus: [editorSku], horizonDays: 14, excludeOrderId: null,
+      })).rejects.toThrow("native_stock_read_options_unsupported");
+    } finally {
+      await runtime.end();
+    }
+  } finally {
+    await demonstration.close();
+  }
 });
