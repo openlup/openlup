@@ -7855,7 +7855,8 @@ export declare function withCheckoutRecoveryPaymentHold<Input extends {
 ## dist/commerce/server/checkoutRecoveryReminderSchedule.d.ts
 
 ```ts
-import type { CheckoutRecoveryReminderSchedule } from "../contracts/checkoutRecoveryReminders.js";
+import type { CheckoutRecoveryWavePolicy } from "./checkoutRecoveryWaves.js";
+import type { CheckoutRecoveryReminderSchedule } from "../contracts/index.js";
 interface Executor {
     query(text: string, values?: unknown[]): Promise<{
         rows: Record<string, unknown>[];
@@ -7863,8 +7864,53 @@ interface Executor {
 }
 /** Explicit installation on a host-owned write-capable connection. Reads never install. */
 export declare function installCheckoutRecoveryReminderSchedule(db: Executor, schedule: CheckoutRecoveryReminderSchedule): Promise<void>;
-/** Absence retains historical waves; malformed installed data refuses. Requires settings SELECT. */
+/** Read the installed schedule or its nominal default. Requires settings SELECT. */
 export declare function readCheckoutRecoveryReminderSchedule(db: Executor): Promise<CheckoutRecoveryReminderSchedule>;
+/** @experimental Observe an installed override or the effective waves for an absent row. */
+export declare function readCheckoutRecoveryReminderObservation(db: Executor, policy?: Partial<CheckoutRecoveryWavePolicy>): Promise<{
+    readonly refusal: "checkout_recovery_policy_invalid";
+    present?: undefined;
+    revision?: undefined;
+    value?: undefined;
+    effective?: undefined;
+} | {
+    present: true;
+    revision: string;
+    value: {
+        abandonedCart: {
+            stage: "first" | "gentle" | "last";
+            afterHours: number;
+        }[];
+        checkoutRecovery: {
+            stage: "first" | "last";
+            afterHours: number;
+        }[];
+        revision: string;
+    };
+    readonly refusal?: undefined;
+    effective?: undefined;
+} | {
+    present: false;
+    effective: {
+        abandonedCart: ({
+            stage: "first";
+            afterHours: 1;
+        } | {
+            stage: "gentle";
+            afterHours: 24;
+        } | {
+            stage: "last";
+            afterHours: 72;
+        })[];
+        checkoutRecovery: {
+            stage: string;
+            afterHours: number;
+        }[] | null;
+    };
+    readonly refusal?: undefined;
+    revision?: undefined;
+    value?: undefined;
+}>;
 export {};
 ```
 ## dist/commerce/server/checkoutRecoveryToken.d.ts
@@ -10223,7 +10269,7 @@ export { withCheckoutRecoveryPaymentHold } from './checkoutRecoveryPaymentHold.j
 export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.js';
 export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
-export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule } from "./checkoutRecoveryReminderSchedule.js";
+export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 

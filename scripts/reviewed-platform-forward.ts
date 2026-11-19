@@ -2458,48 +2458,110 @@ function nativeUniqueValues(tokens: readonly PlatformSqlToken[], start: number):
   }
   return columns.length && nativeSymbol(tokens, index, ")") ? { columns, nullsNotDistinct, next: index + 1 } : null;
 }
-// Constraint triggers share the ordinary trigger pin. Only the deferred AFTER
-// ROW form with plain INSERT, UPDATE and DELETE events is admitted here.
-export function nativeStoreTriggerDefinition(statement: string): { name: string; table: string; signature: string; timing: string; events: { event: string; columns: string[] }[]; deferred?: true } | null {
+function nativeTriggerStart(tokens: readonly PlatformSqlToken[]) {
+  const start = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
+  return nativeWord(tokens, 0, "CREATE") && nativeWord(tokens, start + Number(nativeWord(tokens, start, "CONSTRAINT")), "TRIGGER") ? start : -1;
+}
+
+export function nativeStoreTriggerDefinition(statement: string, refuse?: (message: string) => never): { name: string; table: string; signature: string; timing: string; events: { event: string; columns: string[] }[]; deferred?: true } | null {
   const { tokens, complete } = platformSqlTokens(statement, false, true);
-  const constraint = nativeWord(tokens, 1, "CONSTRAINT"), keyword = constraint ? 2 : 1;
+  const start = nativeTriggerStart(tokens), constraint = nativeWord(tokens, start, "CONSTRAINT"), keyword = start + Number(constraint);
+  const deferral = "DEFERRABLE INITIALLY DEFERRED", level = "FOR EACH ROW", eventsAllowed = ["INSERT", "UPDATE", "DELETE"];
+  const mismatch = (field: string, index: number, fix: string) => refuse?.(`${field}: ${tokens[index]?.kind === "word" ? tokens[index].value.toUpperCase() : "missing or invalid"}; ${fix}`) ?? null;
+  const clause = (index: number, value: string) => value.split(" ").every((word, offset) => nativeWord(tokens, index + offset, word));
+  if (constraint && start === 3) return refuse?.("declaration: OR REPLACE; remove OR REPLACE and write CREATE CONSTRAINT TRIGGER") ?? null;
+  if (constraint && clause(keyword + 1, "IF NOT EXISTS")) return refuse?.("declaration: IF NOT EXISTS; remove IF NOT EXISTS and choose a fresh trigger name") ?? null;
   const name = nativeIdentifier(tokens[keyword + 1]);
   let index = keyword + 2;
-  if (!complete || !nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, keyword, "TRIGGER") || name === null
-    || !(nativeWord(tokens, index, "AFTER") || (!constraint && nativeWord(tokens, index, "BEFORE")))) return null;
+  if (!complete || start !== 1 || name === null || (constraint && !nativeStoreName(name))) return mismatch("declaration", 0, "write CREATE TRIGGER or CREATE CONSTRAINT TRIGGER followed by a plain identifier");
+  if (!(nativeWord(tokens, index, "AFTER") || (!constraint && nativeWord(tokens, index, "BEFORE")))) return mismatch("timing", index, `write ${constraint ? "AFTER" : "BEFORE or AFTER"}`);
   const timing = tokens[index++]!.value.toUpperCase(), events: { event: string; columns: string[] }[] = [];
   for (;;) {
-    const event = ["INSERT", "DELETE", "UPDATE"].find(word => nativeWord(tokens, index, word));
-    if (!event) return null;
+    const event = eventsAllowed.find(word => nativeWord(tokens, index, word));
+    if (!event || events.some(entry => entry.event === event)) return mismatch("events", index, `join distinct ${eventsAllowed.join(", ")} events with OR`);
     index++; const columns: string[] = [];
     if (nativeWord(tokens, index, "OF")) {
-      if (constraint || event !== "UPDATE") return null;
+      if (constraint || event !== "UPDATE") return mismatch("events", index, "use UPDATE without an OF column list");
       index++;
       for (;;) {
         const column = nativeIdentifier(tokens[index++]);
-        if (column === null) return null;
+        if (column === null || columns.includes(column)) return mismatch("events", index - 1, "list distinct column names after UPDATE OF");
         columns.push(column);
         if (!nativeSymbol(tokens, index, ",")) break;
         index++;
       }
     }
-    if (new Set(columns).size !== columns.length) return null;
     events.push({ event, columns });
     if (!nativeWord(tokens, index, "OR")) break;
     index++;
   }
-  if (new Set(events.map(entry => entry.event)).size !== events.length || !nativeWord(tokens, index++, "ON")) return null;
+  if (!nativeWord(tokens, index++, "ON")) return mismatch("relation", index - 1, "write ON public.<table> after the events");
   const table = nativeQualified(tokens, index);
-  if (!table || !table.name.startsWith("public.")) return null;
+  if (!table || !(constraint ? nativeStoreTable(table.name) : table.name.startsWith("public."))) return mismatch("relation", index, "write ON public.<table>");
   index = table.next;
   if (constraint) {
-    if (!["DEFERRABLE", "INITIALLY", "DEFERRED"].every((word, offset) => nativeWord(tokens, index + offset, word))) return null;
+    if (!clause(index, deferral)) {
+      if (nativeWord(tokens, index + 2, "IMMEDIATE")) return refuse?.(`deferral: INITIALLY IMMEDIATE; write ${deferral}`) ?? null;
+      if (clause(index, "NOT DEFERRABLE")) return refuse?.(`deferral: NOT DEFERRABLE; write ${deferral}`) ?? null;
+      return mismatch("deferral", index, `write ${deferral} immediately after ON public.<table>`);
+    }
     index += 3;
   }
-  if (!["FOR", "EACH", "ROW", "EXECUTE", "FUNCTION"].every((word, offset) => nativeWord(tokens, index + offset, word))) return null;
-  const fn = nativeQualified(tokens, index + 5);
-  if (!fn || !fn.name.startsWith("public.") || !nativeSymbol(tokens, fn.next, "(") || !nativeSymbol(tokens, fn.next + 1, ")") || !nativeSymbol(tokens, fn.next + 2, ";") || fn.next + 3 !== tokens.length) return null;
+  if (!clause(index, level)) return mismatch("level", clause(index, "FOR EACH") ? index + 2 : index, `write ${level}`);
+  index += 3;
+  if (!nativeWord(tokens, index, "EXECUTE") || !nativeWord(tokens, index + 1, "FUNCTION")) return mismatch("execute", nativeWord(tokens, index, "EXECUTE") ? index + 1 : index, "write EXECUTE FUNCTION public.<function>() immediately after FOR EACH ROW");
+  const fn = nativeQualified(tokens, index + 2);
+  if (!fn || !(constraint ? nativeStoreTable(fn.name) : fn.name.startsWith("public."))) return mismatch("function", index + 2, "write a qualified public.<function>()");
+  if (!nativeSymbol(tokens, fn.next, "(") || !nativeSymbol(tokens, fn.next + 1, ")") || !nativeSymbol(tokens, fn.next + 2, ";") || fn.next + 3 !== tokens.length) return mismatch("arguments", fn.next + 1, "write public.<function>() with no arguments and end the statement");
+  if (constraint) for (const identifier of [name, table.name.slice(7), fn.name.slice(7)]) {
+    if (Buffer.byteLength(identifier) > 63) return refuse?.(`identifier: ${identifier} exceeds 63 bytes; shorten it to at most 63 bytes`) ?? null;
+  }
   return { name, table: table.name, signature: `${fn.name}()`, timing, events, ...(constraint ? { deferred: true } : {}) };
+}
+
+type NativeTriggerDefinition = NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>;
+/** Prove the pin is the only DDL that can install its trigger in this source. */
+export function assertNativeDeferredTriggerSource(statements: readonly string[], triggers: ReadonlyMap<string, NativeTriggerDefinition>,
+  slot: Pick<NativeStoreSlot, "insertSelectTables" | "absorptionCensusTables" | "droppedIndexes" | "existingTableStatements"> & Partial<Pick<NativeStoreSlot, "dataStatements">>,
+  refuse: (message: string) => never): void {
+  const pins = [...triggers.values()].filter(trigger => trigger.deferred);
+  if (!pins.length) return;
+  const tables = new Set(statements.flatMap(statement => nativeStoreCreatedTable(statement) ?? []));
+  const views = new Set<string>(), functions = new Set([...triggers.values()].map(trigger => trigger.signature));
+  // Native identifiers are ASCII. PostgreSQL clips each component separately.
+  const clipped = (identity: string) => identity.split(".").map(part => part.slice(0, 63)).join(".");
+  for (const [position, statement] of statements.entries()) {
+    const { tokens, complete } = platformSqlTokens(statement, false, true), verb = tokens[0]?.value.toUpperCase();
+    const word = (index: number, value: string) => nativeWord(tokens, index, value);
+    const trigger = triggers.get(statement);
+    const conflict = () => refuse(`trigger source: ${tokens.slice(0, 4).map(token => token.kind === "word" ? token.value : token.kind === "symbol" ? token.value : "identifier").join(" ")}; keep only the pinned trigger declaration for its relation and name, and remove other or opaque DDL`);
+    if (!complete) conflict();
+    if (trigger) {
+      if (pins.some(pin => pin !== trigger && (pin.table === trigger.table || pin.name === trigger.name))) conflict();
+      continue;
+    }
+    if (verb === "ALTER" && word(1, "TABLE")) {
+      const alter = nativeStoreAlter(statement), constraint = nativeConstraintAction(statement);
+      if (alter && (expandOnlyPlatformForward(statement, false, false)
+        || alter.actions.join(" ").toUpperCase() === "ENABLE ROW LEVEL SECURITY"
+        || (constraint?.verb === "DROP" && !constraint.tail.length && !pins.some(pin => pin.table === clipped(constraint.table) && pin.name === constraint.name.slice(0, 63))))) continue;
+      if (slot.existingTableStatements?.includes(statement) && nativeStoreExistingStatement(statement, statements.slice(0, position))) continue;
+    }
+    if (verb === "CREATE") {
+      const at = word(1, "OR") && word(2, "REPLACE") ? 3 : 1, identity = nativeQualified(tokens, at + 1);
+      if (word(at, "FUNCTION") && identity && (at === 1 || !pins.some(pin => pin.signature === `${clipped(identity.name)}()`))) continue;
+      if (at === 1 && word(1, "VIEW") && identity && word(identity.next, "AS")) { views.add(identity.name); continue; }
+      if ((word(1, "TABLE") || word(word(1, "UNIQUE") ? 2 : 1, "INDEX")) && (expandOnlyPlatformForward(statement, false, Boolean(nativeStoreCreatedTable(statement)))
+        || nativeCatalogSuccessorsCreation(statement) || nativeSuccessorStorageCreation(statement))) continue;
+    }
+    if (verb === "DROP" && slot.droppedIndexes?.some(index => statement === `DROP INDEX public.${index.name};`)) continue;
+    if (slot.dataStatements?.includes(statement)) continue;
+    if (verb === "GRANT" || verb === "REVOKE" || (verb === "DO" && nativeStoreRolePrivilege.test(statement))) {
+      try { if (nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, functions, slot.absorptionCensusTables)) continue; }
+      catch { conflict(); }
+    }
+    conflict();
+  }
 }
 
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
@@ -2519,23 +2581,22 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (!source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed native store prior issued file drifted");
   }
   const statements = sqlStatements(bytes.toString("utf8"), false, false, true);
-  const triggersByStatement = new Map<string, NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>>();
-  const triggerFunctions = new Set<string>(), deferredFunctions = new Set<string>(), deferredTables = new Set<string>();
+  const refuseTrigger = (message: string): never => { throw new Error(`reviewed native store created trigger shape refused: ${message}`); };
+  const triggersByStatement = new Map<string, NativeTriggerDefinition>();
+  const triggerFunctions = new Set<string>(), deferredFunctions = new Set<string>(), ordinaryFunctions = new Set<string>();
+  const deferredTables = new Set<string>();
   for (const statement of statements) {
     const { tokens } = platformSqlTokens(statement, false, true);
-    if (!nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, nativeWord(tokens, 1, "CONSTRAINT") ? 2 : 1, "TRIGGER")) continue;
-    const trigger = nativeStoreTriggerDefinition(statement);
-    if (!trigger) throw new Error("reviewed native store created trigger shape refused");
+    const start = nativeTriggerStart(tokens);
+    if (start !== 1 && !nativeWord(tokens, start, "CONSTRAINT")) continue;
+    const trigger = nativeStoreTriggerDefinition(statement, refuseTrigger)!;
     triggersByStatement.set(statement, trigger);
     triggerFunctions.add(trigger.signature);
-    if (trigger.deferred) {
-      deferredFunctions.add(trigger.signature);
-      deferredTables.add(trigger.table);
-    }
+    if (trigger.deferred) { deferredFunctions.add(trigger.signature); deferredTables.add(trigger.table); }
+    else ordinaryFunctions.add(trigger.signature);
   }
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
-  const prefixSignatures = [...new Set([...signatures, ...deferredFunctions])];
-  const names = new Set(prefixSignatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), priorStatements = new Map<string, string>();
+  const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), priorStatements = new Map<string, string>();
   const prefixTables = new Set<string>(), prefixTriggerFunctions = new Set<string>();
   const checks = slot.checkSupersets ?? [], uniques = slot.uniqueSupersets ?? [], droppedIndexes = slot.droppedIndexes ?? [];
   const indexCreates = new Set<string>();
@@ -2548,14 +2609,18 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (table && deferredTables.has(table.name) && nativeSymbol(tokens, table.next, "(")) prefixTables.add(table.name);
     }
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
-    const functionName = nativeQualified(tokens, functionIndex + 1);
-    if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
-      if (!functionName || (names.has(functionName.name) && (!nativeWord(tokens, 0, "CREATE") || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted"))) throw new Error("reviewed native store unsupported preceding function DDL");
+    if (["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
+      const name = nativeQualified(tokens, functionIndex + 1);
+      if (source.path !== PLATFORM_BASELINE_FILE && (!name || (names.has(name.name) && (!nativeWord(tokens, 0, "CREATE") || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted")))) {
+        const conditionalDrop = deferredFunctions.size && nativeWord(tokens, 0, "DROP") && nativeWord(tokens, 2, "IF") && nativeWord(tokens, 3, "EXISTS") && nativeQualified(tokens, 4);
+        if (!conditionalDrop || names.has(conditionalDrop.name)) throw new Error("reviewed native store unsupported preceding function DDL");
+      }
+      if (complete && name && nativeWord(tokens, 0, "CREATE") && nativeSymbol(tokens, name.next, "(") && nativeSymbol(tokens, name.next + 1, ")")
+        && deferredFunctions.has(`${name.name}()`)) prefixTriggerFunctions.add(`${name.name}()`);
     }
-    for (const [signature, digest] of nativeStoreFunctionDefinitions(Buffer.from(statement), prefixSignatures, true)) {
+    for (const [signature, digest] of nativeStoreFunctionDefinitions(Buffer.from(statement), signatures, true)) {
       prior.set(signature, digest); priorStatements.set(signature, statement);
       if (source.path < `db/platform/migrations/${nativeStoreTime(control!.slots[0]!.path)}_`) baseDefinitions.set(signature, digest);
-      if (deferredFunctions.has(signature) && functionName && nativeWord(tokens, functionName.next + 2, "RETURNS") && nativeWord(tokens, functionName.next + 3, "TRIGGER")) prefixTriggerFunctions.add(signature);
     }
     // The pinned hash binds a plain CREATE of the listed index. Reading history lexically cannot
     // follow what PostgreSQL executes, so the catalog proof decides what the dropped index is.
@@ -2600,11 +2665,11 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const trigger = triggersByStatement.get(statement);
     if (trigger) {
       const entry = slot.createdTriggers?.find(entry => entry.name === trigger.name && entry.table === trigger.table);
-      if (!entry || triggers.has(trigger.name) || sqlSha256(statement) !== entry.sha256) throw new Error("reviewed native store unlisted, duplicate or drifted trigger statement");
+      if (!entry || triggers.has(trigger.name) || sqlSha256(statement) !== entry.sha256) throw new Error("reviewed native store unlisted, duplicate or drifted trigger statement; list each trigger name and pin its exact statement once");
       const sameSlotFunction = created.has(trigger.signature) && defined.has(trigger.signature);
       if (trigger.deferred) {
-        if (!tables.has(trigger.table) && !prefixTables.has(trigger.table)) throw new Error("reviewed native store deferred constraint trigger requires an earlier relation");
-        if (!sameSlotFunction && !prefixTriggerFunctions.has(trigger.signature)) throw new Error("reviewed native store deferred constraint trigger requires an earlier function");
+        if (!tables.has(trigger.table) && !prefixTables.has(trigger.table)) refuseTrigger(`relation: ${trigger.table} has no earlier declaration; choose a prefix table or create it before the trigger`);
+        if (!sameSlotFunction && !prefixTriggerFunctions.has(trigger.signature)) refuseTrigger(`function: ${trigger.signature} has no earlier declaration; choose a prefix function or create it before the trigger`);
       } else if (!sameSlotFunction) throw new Error("reviewed native store created trigger requires a same-slot created function");
       triggers.add(trigger.name); continue;
     }
@@ -2655,7 +2720,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(pathHeader)?.[1] ?? null;
       if (rawSearchPath && !nativeStoreAscii(rawSearchPath)) throw new Error("reviewed native store non-ASCII search_path refused");
       const searchPath = rawSearchPath?.toLowerCase() ?? null;
-      if (triggerFunctions.has(signature) && (!/^CREATE FUNCTION public\.[a-z_][a-z0-9_]* *\( *\) RETURNS trigger /iu.test(header) || !/\bSECURITY INVOKER\b/iu.test(header) || /\bSECURITY DEFINER\b/iu.test(header) || !fixed.searchPath)) throw new Error("reviewed native store trigger function requires RETURNS trigger, SECURITY INVOKER and pinned search_path");
+      if (created.has(signature) && deferredFunctions.has(signature) && !fixed.searchPath) refuseTrigger("search_path: missing pin; set search_path and list it in createdFunctions");
+      if (ordinaryFunctions.has(signature) && (!/^CREATE FUNCTION public\.[a-z_][a-z0-9_]* *\( *\) RETURNS trigger /iu.test(header) || !/\bSECURITY INVOKER\b/iu.test(header) || /\bSECURITY DEFINER\b/iu.test(header) || !fixed.searchPath)) throw new Error("reviewed native store trigger function requires RETURNS trigger, SECURITY INVOKER and pinned search_path");
       if (/--|\/\*|["\\]/u.test(header) || searchPath !== fixed.searchPath || (/\bSECURITY DEFINER\b/iu.test(header) && !searchPath) || (header.match(/\bSET search_path\b/giu)?.length ?? 0) > 1) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
       defined.add(signature); continue;
     }

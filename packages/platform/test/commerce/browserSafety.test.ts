@@ -34,6 +34,7 @@ const serverExports = [
   "ORDER_DRAFT_RPC_NAME",
   "installCheckoutRecoveryReminderSchedule",
   "readCheckoutRecoveryReminderSchedule",
+  "readCheckoutRecoveryReminderObservation",
   "ORDER_DRAFT_SUPERSEDE_RPC_NAME",
   "cancelAbandonedCheckout",
   "cancelUnstartedPromotionCheckout",

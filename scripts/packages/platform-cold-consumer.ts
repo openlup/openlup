@@ -2361,6 +2361,7 @@ export function runPlatformColdConsumer(checkout = root, environment = processEn
   const manifest = environment.OPENLUP_PACK_MANIFEST, commit = environment.OPENLUP_PACK_COMMIT;
   if (!manifest || !commit || !/^[a-f0-9]{40}$/u.test(commit)) throw new Error("Missing or malformed OPENLUP_PACK_MANIFEST / OPENLUP_PACK_COMMIT");
   const packs = readCurrentPackManifest(checkout, resolve(manifest), commit); // Refuse before install or service startup.
+  command(process.execPath, ["scripts/settings-catalogue.ts"], checkout, isolatedConsumerEnv());
   const projectionErrors = checkPlatformMigrationProjection(checkout);
   if (projectionErrors.length) throw new Error(projectionErrors.join("\n"));
   const inputs = ["@openlup/core", "@openlup/platform"].map(name => {

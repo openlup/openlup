@@ -1187,6 +1187,7 @@ export * from "./ports.js";
 export * from "./observabilityContracts.js";
 export * from "./observabilityPorts.js";
 export * from "./alertHumanContext.js";
+export type * from "./settings.js";
 ```
 ## dist/operations/contracts/observabilityContracts.d.ts
 
@@ -1277,6 +1278,70 @@ export type OperationsAuthorizationResult = {
     code: "UNAUTHORIZED" | "FORBIDDEN";
     message: string;
 };
+```
+## dist/operations/contracts/settings.d.ts
+
+```ts
+/** @experimental Domain-owned metadata for settings discovery. */
+export interface SettingDescriptor {
+    readonly key: string;
+    readonly domain: string;
+    readonly kind: "installed" | "code" | "callback" | "cap" | "invariant";
+    readonly goal: string;
+    readonly schemaVersion: number;
+    readonly schema?: Record<string, unknown> | null;
+    readonly rules: readonly {
+        code: string;
+        path: readonly string[];
+        description: string;
+    }[];
+    readonly examples: readonly {
+        value: unknown;
+        code?: string;
+    }[];
+    readonly fallback: unknown;
+    readonly absentMeans?: {
+        description: string;
+        source: string;
+        value: unknown;
+    };
+    readonly defaultBasis: {
+        kind: "neutral" | "reference-code" | "reference-live";
+    };
+    readonly whyThisDefault: string;
+    readonly effect: {
+        appliesTo: string;
+        frozenOn: readonly string[];
+        impact: "money" | "customer-promise" | "operations";
+    };
+    readonly runtime: {
+        level: "ready";
+    } | {
+        level: "read-only" | "preview";
+        reason: string;
+    };
+    readonly previewSchema?: Record<string, unknown> | null;
+    readonly change: {
+        operation: string;
+    } | {
+        file: string;
+        symbol: string;
+    } | {
+        reference: string;
+    };
+}
+/** @experimental Machine-readable settings refusal. */
+export interface SettingRefusal {
+    readonly code: string;
+    readonly path: readonly string[];
+    readonly rule: string;
+    readonly hint: string;
+    readonly remediation: {
+        retry: boolean;
+        action: string;
+        command: string;
+    };
+}
 ```
 ## dist/operations/errors.d.ts
 
@@ -1550,6 +1615,7 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
+export { explainSetting, invalidSettingsCommand, listSettings, settingsReadTools, showSetting, type SettingReader } from "./settingsRead.js";
 ```
 ## dist/operations/server/migrations.d.ts
 
@@ -1688,6 +1754,85 @@ export declare function runPlatformWatchdog<Snapshot extends WatchdogSnapshot, C
     mutedDedupePrefixes?: readonly string[];
     normalizeDecision?: (decision: AlertDecision<Channel>) => AlertDecision<Channel>;
 }): Promise<PlatformWatchdogResult<Channel>>;
+```
+## dist/operations/server/settingsRead.d.ts
+
+```ts
+import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
+import { z } from "zod";
+type JsonValue = z.infer<ReturnType<typeof z.json>>;
+type ListResult = {
+    schemaVersion: 1;
+    entries: Pick<SettingDescriptor, "key" | "goal" | "kind" | "runtime" | "change">[];
+};
+type Observation = {
+    state: "offline";
+} | {
+    state: "fallback";
+    value: JsonValue;
+} | {
+    state: "override";
+    value: JsonValue;
+    revision: string | null;
+} | {
+    state: "absent";
+    absentMeans: string;
+    source: string;
+    value: JsonValue;
+};
+type ShowResult = {
+    schemaVersion: 1;
+    setting: SettingDescriptor;
+    observation: Observation;
+};
+/** @experimental The host observes an installed row using its own authorized reader. */
+export type SettingReader = () => Promise<{
+    present: true;
+    value: JsonValue;
+    revision: string | null;
+} | {
+    present: false;
+    effective?: JsonValue;
+} | {
+    refusal: string;
+}>;
+/** @experimental List matching entries from the installed package, offline. */
+export declare function listSettings(input: unknown): ListResult | {
+    refusal: SettingRefusal;
+};
+/** @experimental Describe the key and, when a reader is supplied, its observed installed value. */
+export declare function showSetting(input: unknown, readers?: Readonly<Record<string, SettingReader>>): Promise<ShowResult | {
+    refusal: SettingRefusal;
+}>;
+/** @experimental Explain a refusal code or the offline behavior when a key is absent. */
+export declare function explainSetting(codeOrKey: string): {
+    explanation: SettingRefusal;
+} | ShowResult | {
+    refusal: SettingRefusal;
+};
+/** @experimental Reuse the same refusal envelope for local CLI syntax errors. */
+export declare function invalidSettingsCommand(): {
+    refusal: SettingRefusal;
+};
+/** @experimental MCP definitions for adopters composing a read-only settings head. */
+export declare const settingsReadTools: readonly [{
+    readonly name: "settings__list";
+    readonly description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.";
+    readonly inputSchema: Record<string, unknown>;
+    readonly outputSchema: Record<string, unknown>;
+    readonly annotations: {
+        readonly readOnlyHint: true;
+    };
+}, {
+    readonly name: "settings__show";
+    readonly description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.";
+    readonly inputSchema: Record<string, unknown>;
+    readonly outputSchema: Record<string, unknown>;
+    readonly annotations: {
+        readonly readOnlyHint: true;
+    };
+}];
+export {};
 ```
 ## dist/operations/validation.d.ts
 
