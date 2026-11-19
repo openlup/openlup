@@ -1498,6 +1498,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123149500_inventory_new_purchase_stock_preview.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4911,6 +4915,10 @@
     },
     {
       "path": "packages/platform/sql/20261123149000_native_durable_capture_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123149500_inventory_new_purchase_stock_preview.sql",
       "class": "public-output"
     },
     {

@@ -5778,6 +5778,19 @@
         "existingTableStatements": [
           "ALTER TABLE public.payment_provider_attempt_evidence\n ADD COLUMN captured_amount_basis text CHECK (captured_amount_basis = 'provider_capture_v1');"
         ]
+      },
+      {
+        "row": "F2C-INVENTORY-NEW-PURCHASE-STOCK-PREVIEW",
+        "path": "db/platform/migrations/20261123149500_inventory_new_purchase_stock_preview.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.inventory_new_purchase_stock_preview(text,jsonb,timestamptz,jsonb)",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8236,6 +8249,17 @@
           "signature": "public.payment_provider_capture_review_required(uuid,uuid)",
           "beforeSha256": null,
           "afterSha256": "217aa455fc6d9e1108367f6019ad1632f033ecdaa63ed07d0b6566fc138bbdd2"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123149500_inventory_new_purchase_stock_preview.sql",
+      "sha256": "275ffae4413f157de5d408fecd32dda6cb45c186b95efedcf7605fb8aedc8d55",
+      "functions": [
+        {
+          "signature": "public.inventory_new_purchase_stock_preview(text,jsonb,timestamptz,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "83655f95f2de6be62fd16c14e0043b9e98d4065a93b4111942cb153771d953bb"
         }
       ]
     }

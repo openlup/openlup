@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createPostgresStockAvailability } from "./postgresStockAvailability.js";
+import { parseStockReadResponse } from "./stockReadResponse.js";
 import { installedPolicy } from "./installedPolicy.js";
 import type { RenewalStockProtectionPolicy } from "./contracts/renewalStockProtection.js";
 
@@ -43,7 +44,7 @@ export function describeRenewalStockProtectionSetting() {
       frozenOn: ["Existing reservations keep their quantities and expiry times."],
       impact: "operations",
     },
-    runtime: { level: "preview", reason: "Preview is available. Apply changes with the installer at deployment." },
+    runtime: { level: "preview", reason: "Preview estimates availability for named SKUs. Apply changes with the installer at deployment." },
     change: { operation: "installRenewalStockProtectionPolicy" },
   } as const;
 }
@@ -180,6 +181,12 @@ export async function previewRenewalStockProtection(
       const days = validation.state === "valid"
         ? validation.value.renewalProtectionDays - current.renewalProtectionDays
         : null;
+      operation = "read stock availability";
+      const proposedRows = validation.state === "valid" && context.skus.length > 0
+        ? parseStockReadResponse((await client.query(`SELECT public.inventory_new_purchase_stock_preview(
+          $1::text,$2::jsonb,$3::timestamptz,$4::jsonb) AS response`,
+          [context.sourceKey, JSON.stringify(context.skus), context.asOf, validation.value.renewalProtectionDays])).rows[0]?.response)
+        : undefined;
       const result = renewalStockProtectionPreviewResult.parse({
         schemaVersion: 1, key: settingKey, asOf: context.asOf, current, proposed: snapshot,
         difference: days === null ? null : { renewalProtectionDays: days },
@@ -191,10 +198,11 @@ export async function previewRenewalStockProtection(
           skus: [...rows.values()].map(row => ({
             sku: row.sku, source: row.source, stale: row.stale,
             currentAvailableForNewPurchases: row.source === "missing" ? null : row.availableForNewPurchases,
-            proposedAvailableForNewPurchases: null,
+            proposedAvailableForNewPurchases: row.source === "missing" || row.catalogSkuId === null
+              ? null : proposedRows?.get(row.sku)?.availableForNewPurchases ?? null,
           })),
         },
-        uncertainty: "Availability under the proposed horizon is not computed yet. It will be reported in effect.skus[].proposedAvailableForNewPurchases. Recorded stock and demand can change.",
+        uncertainty: "Proposed availability is an estimate at the same instant and in the same snapshot as current availability. Recorded stock and demand can change.",
       });
       return { ...result, proposed: snapshot };
     } finally {

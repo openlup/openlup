@@ -797,7 +797,7 @@ export declare function describeRenewalStockProtectionSetting(): {
     };
     readonly runtime: {
         readonly level: "preview";
-        readonly reason: "Preview is available. Apply changes with the installer at deployment.";
+        readonly reason: "Preview estimates availability for named SKUs. Apply changes with the installer at deployment.";
     };
     readonly change: {
         readonly operation: "installRenewalStockProtectionPolicy";
