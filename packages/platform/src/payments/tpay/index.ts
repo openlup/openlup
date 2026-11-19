@@ -38,6 +38,8 @@ export interface TpayPaymentAdapterConfig {
 
 type Verification = Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
 const refusal = (reason: Extract<Verification, { kind: "refusal" }>["reason"]): Verification => ({ kind: "refusal", reason });
+const stripUndefined = (record: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
 
 /** Construction explicitly selects this adapter; the host owns account activation and I/O policy. */
 export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter {
@@ -121,7 +123,8 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
           return { outcome: { kind: "decline", refusal: reason },
             dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} };
         }
-        // Only these neutral facts cross the boundary; donor payloads and transient payer/authorization stay local.
+        // Only these neutral facts and redacted persistence summaries cross the boundary;
+        // transient payer details, authorization codes and raw provider prose stay local.
         return {
           outcome: result.providerDecline ? { kind: "decline", refusal: neutralDecline(result.providerDecline) }
             : { kind: "attempt", status: result.attemptStatus },
@@ -130,6 +133,15 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
           ...(result.nextActionKind === "redirect" && result.redirectUrl
             ? { handoff: { kind: "redirect" as const, url: result.redirectUrl } } : {}),
           diagnostics: { webhookExpected: result.webhookExpected === true, recoveryRequired: result.recoveryRequired === true },
+          persistence: {
+            providerSessionId: result.providerSessionId ?? null,
+            nextActionKind: result.nextActionKind ?? null,
+            requestPayload: stripUndefined(result.requestPayload),
+            responsePayload: stripUndefined(result.responsePayload),
+            customerProviderRef: null,
+            paymentMethodRef: result.paymentMethodRef ?? null,
+            ...(result.providerDecline ? { declineReason: result.providerDecline.code } : {}),
+          },
         };
       },
     },

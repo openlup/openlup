@@ -79,14 +79,28 @@ export function createPostgresProviderPaymentRail(input: {
       // retain the prepared row. A restart can only read/reconcile that attempt.
       const execution = await input.adapter.attemptPort.execute(request);
       const facts = execution.persistence;
-      if (!facts) throw new Error("payment_adapter_persistence_unavailable");
+      const providerAttemptId = execution.dispatch.kind === "dispatched" ? execution.dispatch.providerPaymentRef : null;
+      const providerSessionId = facts?.providerSessionId ?? providerAttemptId;
+      const nextActionKind = facts?.nextActionKind
+        ?? (execution.handoff?.kind === "redirect"
+          ? "redirect"
+          : execution.handoff?.kind === "client-confirmed"
+            ? "sca_required"
+            : null);
+      const mergedRequestPayload = facts ? { ...facts.requestPayload, ...requestPayload } : requestPayload;
+      const responsePayload = facts?.responsePayload ?? {
+        diagnostics: execution.diagnostics,
+        dispatchKind: execution.dispatch.kind,
+        outcomeKind: execution.outcome.kind,
+        ...(execution.outcome.kind === "decline" ? { refusalCode: execution.outcome.refusal.code } : {}),
+      };
       const attempt = await control.finalizeProviderAttempt({ idempotencyKey: `${request.attemptRef}:finalize`,
         paymentIntentId: request.intentRef, paymentAttemptId: prepared.paymentAttemptId,
         providerIdempotencyKey: request.providerIdempotencyKey, providerRequestFingerprint: request.fingerprint,
-        providerAttemptId: execution.dispatch.kind === "dispatched" ? execution.dispatch.providerPaymentRef : null,
-        providerSessionId: facts.providerSessionId,
+        providerAttemptId,
+        providerSessionId,
         attemptStatus: execution.outcome.kind === "attempt" ? execution.outcome.status : "processing",
-        nextActionKind: facts.nextActionKind, requestPayload: { ...facts.requestPayload, ...requestPayload }, responsePayload: facts.responsePayload });
+        nextActionKind, requestPayload: mergedRequestPayload, responsePayload });
       return { execution, attempt };
     },
     ingress: createVerifiedPaymentIngress({ provider, verifyPort: input.adapter.verifyPort, paymentControlPort: webhook,
