@@ -7,25 +7,30 @@ import {
   buildBookCourierEnvelope,
   callCarrierSoap,
   CARRIER_DISPLAY_NAME,
+  CARRIER_NAMESPACE,
   extractCarrierPickupOrderId,
   extractFault,
   sanitizeCarrierError,
   type CarrierAdminAuth,
 } from "../../infra/dhl/adminDhlSoap.js";
+import { readSoap11Reply } from "../../infra/soap11Reply.js";
 import {
-  findCourierPickup,
+  classifyCarrierProviderMessage,
   loadCarrierShipperContact,
   CARRIER_PERSISTENCE,
-  createCarrierProviderEvidence,
+  createCarrierSupportCode,
   formatCarrierPickupBooking,
-  makeCourierPickupEvidenceFromRequest,
   makePickupIdempotencyKey,
   normalizeCarrierPickupIds,
   reconcileShippedTesters,
-  recordCourierPickup,
   type CourierPickupTester,
   validateCarrierPickupTesters,
   validateCarrierPickupWindow,
+  pickupStoreUnavailable,
+  findCourierPickup,
+  recordCourierPickup,
+  recordCourierPickupShipments,
+  type StoredCourierPickup,
 } from "./courierPickupStore.js";
 type Client = { auth: { getUser: (token: string) => Promise<any> }; from: (table: string) => any };
 
@@ -55,24 +60,23 @@ export function createCarrierPickupBookingAction(deps: {
   const now = deps.now ?? (() => new Date().toISOString());
   return async (input: BookCourierInput): Promise<BookCourierOutput> => {
     const requestedBy = await authenticatedAdmin(deps.client, input.accessToken);
-    const testerIds = validateInput(input, now());
+    const testerIds = validateInput(input);
     const testers = await loadTesters(deps.client, testerIds);
     const idempotencyKey = makePickupIdempotencyKey(
-      testerIds,
-      input.pickupDate,
-      input.pickupTimeFrom,
-      input.pickupTimeTo,
+      testers.map(tester => tester.id), input.pickupDate, input.pickupTimeFrom, input.pickupTimeTo,
     );
     const existing = await findCourierPickup(deps.client, idempotencyKey);
-    if (existing) {
+    const replay = existing?.status === "succeeded";
+    if (existing && (replay ? !existing.confirmedResponse : !canRetryPickup(existing))) throw unresolvedPickup(existing);
+    if (!replay) assertPickupWindow(input, now());
+    const issue = validateCarrierPickupTesters(testers, testerIds, replay);
+    if (issue) throw new FulfillmentPreflightError(issue);
+    if (existing && replay) {
       return reconcileExisting({
         client: deps.client,
         existing,
         input,
-        testerIds,
         testers,
-        idempotencyKey,
-        requestedBy,
         timestamp: now(),
         sendEmail: deps.sendEmail,
       });
@@ -90,79 +94,49 @@ export function createCarrierPickupBookingAction(deps: {
       shipmentIds: testers.map((tester) => tester[CARRIER_PERSISTENCE.shipmentDispatchId] ?? ""),
     });
 
+    // Keep the pending row if a process stops or a write is ambiguous. Only a
+    // confirmed provider refusal permits taking this key for another attempt.
+    const pickupId = await claimCourierPickup(deps.client, {
+      idempotencyKey, request: input, requestedBy, testers, retryOf: existing,
+    });
+    if (!pickupId) throw unresolvedPickup();
+    try {
+      await recordCourierPickupShipments(deps.client, pickupId, testers);
+    } catch {
+      await recordCourierPickup(deps.client, pickupId, {
+        status: "failed", retryEvidence: "not-dispatched", supportCode: createCarrierSupportCode(now(), pickupId),
+      });
+      throw pickupStoreUnavailable();
+    }
+
     let response: Awaited<ReturnType<typeof callCarrierSoap>>;
     try {
       response = await callCarrierSoap(deps.fetchImpl, "bookCourier", soap);
     } catch (cause) {
-      throw await recordProviderFailure({
-        client: deps.client,
-        input,
-        testers,
-        idempotencyKey,
-        requestedBy,
-        timestamp: now(),
-        message: sanitizeCarrierError(cause),
-        rawResponse: "",
-        status: "failed",
-      });
+      throw await recordProviderFailure(deps.client, pickupId, now(), sanitizeCarrierError(cause), "", "indeterminate");
     }
 
-    const fault = extractFault(response.text);
-    if (fault) {
-      throw await recordProviderFailure({
-        client: deps.client,
-        input,
-        testers,
-        idempotencyKey,
-        requestedBy,
-        timestamp: now(),
-        message: fault,
-        rawResponse: response.text,
-        status: "failed",
-      });
-    }
-
-    const cException = response.text.includes("<h1>CException</h1>")
-      ? response.text.match(/<p>(.*?)<\/p>/)?.[1] ?? "Server error"
-      : null;
-    if (cException) {
-      throw await recordProviderFailure({
-        client: deps.client,
-        input,
-        testers,
-        idempotencyKey,
-        requestedBy,
-        timestamp: now(),
-        message: cException,
-        rawResponse: response.text,
-        status: "failed",
-      });
-    }
-
-    const courierOrderId = extractCarrierPickupOrderId(response.text);
+    const reply = readSoap11Reply(response.text, {
+      namespace: CARRIER_NAMESPACE, response: "bookCourierResponse", result: "bookCourierResult",
+    });
+    const courierOrderId = response.ok && reply?.kind === "accepted" ? reply.ids.join(", ") : null;
     if (!courierOrderId) {
-      throw await recordProviderFailure({
-        client: deps.client,
-        input,
-        testers,
-        idempotencyKey,
-        requestedBy,
-        timestamp: now(),
-        message: `${CARRIER_DISPLAY_NAME} nie zwrócił numeru zamówienia kuriera`,
-        rawResponse: response.text,
-        status: "indeterminate",
-      });
+      const fault = extractFault(response.text);
+      const cException = response.text.includes("<h1>CException</h1>")
+        ? response.text.match(/<p>(.*?)<\/p>/)?.[1] ?? "Server error"
+        : null;
+      const confirmedRefusal = reply?.kind === "client_refusal" && (response.ok || response.status === 500)
+        && !cException && !extractCarrierPickupOrderId(response.text) ? reply.reason : null;
+      const status = confirmedRefusal ? "failed" : "indeterminate";
+      const message = confirmedRefusal ?? fault ?? cException ?? (response.ok
+        ? `${CARRIER_DISPLAY_NAME} nie zwrócił numeru zamówienia kuriera`
+        : `${CARRIER_DISPLAY_NAME} HTTP ${response.status}`);
+      throw await recordProviderFailure(deps.client, pickupId, now(), message, response.text, status);
     }
 
-    await recordCourierPickup(deps.client, makeCourierPickupEvidenceFromRequest({
-      status: "succeeded",
-      request: input,
-      testers,
-      idempotencyKey,
-      requestedBy,
-      courierOrderId,
-      rawResponse: response.text,
-    }));
+    if (!await recordCourierPickup(deps.client, pickupId, {
+      status: "succeeded", courierOrderId, rawResponse: response.text,
+    })) throw unresolvedPickup({ id: pickupId, courierOrderId });
     await throwForFailedReconcile(deps.client, testers, now(), deps.sendEmail, `${CARRIER_DISPLAY_NAME} zwrócił numer zamówienia kuriera`);
     return formatCarrierPickupBooking({ ...input, shipmentsCount: testers.length, courierOrderId });
   };
@@ -182,23 +156,22 @@ async function authenticatedAdmin(client: Client, accessToken: string | null): P
   return user.data.user.id;
 }
 
-function validateInput(input: BookCourierInput, timestamp: string): string[] {
+function validateInput(input: BookCourierInput): string[] {
   const { ids, error } = normalizeCarrierPickupIds(input.pickupDate, input.testerIds);
   if (error) throw new FulfillmentPreflightError(error);
-  const issue = validateCarrierPickupWindow(input.pickupDate, input.pickupTimeFrom, input.pickupTimeTo, timestamp);
-  if (issue) throw new FulfillmentPreflightError(issue);
+  assertPickupWindow(input);
   return ids;
 }
 
-async function loadTesters(client: Client, ids: string[]): Promise<CourierPickupTester[]> {
-  const { data, error } = await client.from("testers")
-    .select(CARRIER_PERSISTENCE.testerSelection)
-    .in("id", ids);
-  if (error || !data) throw new FulfillmentPreflightError("Brak testerów z etykietami do zamówienia kuriera");
-  const testers = data as CourierPickupTester[];
-  const issue = validateCarrierPickupTesters(testers, ids);
+function assertPickupWindow(input: BookCourierInput, timestamp?: string) {
+  const issue = validateCarrierPickupWindow(input.pickupDate, input.pickupTimeFrom, input.pickupTimeTo, timestamp);
   if (issue) throw new FulfillmentPreflightError(issue);
-  return testers;
+}
+
+async function loadTesters(client: Client, ids: string[]): Promise<CourierPickupTester[]> {
+  const { data, error } = await client.from("testers").select(CARRIER_PERSISTENCE.testerSelection).in("id", ids);
+  if (error || data?.length !== ids.length) throw new FulfillmentPreflightError("Brak testerów z etykietami do zamówienia kuriera");
+  return data;
 }
 
 async function loadShipperContact(client: Client): Promise<{ contactPerson: string; contactPhone: string }> {
@@ -211,71 +184,64 @@ async function loadShipperContact(client: Client): Promise<{ contactPerson: stri
   return { contactPerson, contactPhone };
 }
 
+function canRetryPickup(existing: StoredCourierPickup): boolean {
+  return existing.retryable && !existing.courierOrderId;
+}
+
+function unresolvedPickup(existing?: Partial<StoredCourierPickup>): FulfillmentProviderError {
+  const reference = existing?.courierOrderId ?? existing?.id;
+  const message = existing?.operatorMessage ?? `Nie potwierdzono stanu rezerwacji ${CARRIER_DISPLAY_NAME}${reference ? ` (${reference})` : ""}. Sprawdź istniejącą próbę przed ponowieniem.`;
+  return new FulfillmentProviderError(message, {
+    retryable: false,
+    supportCode: existing?.supportCode,
+    details: classifyCarrierProviderMessage(message) ?? {},
+  });
+}
+
 async function reconcileExisting(input: {
   client: Client;
-  existing: Awaited<ReturnType<typeof findCourierPickup>> & {};
+  existing: StoredCourierPickup;
   input: BookCourierInput;
-  testerIds: string[];
   testers: CourierPickupTester[];
-  idempotencyKey: string;
-  requestedBy: string;
   timestamp: string;
   sendEmail?: (id: string, slug: string, source: string) => Promise<unknown>;
 }): Promise<BookCourierOutput> {
-  const existing = input.existing!;
-  let courierOrderId = existing.courierOrderId;
-  if (existing.status === "indeterminate") {
-    courierOrderId = existing.rawResponseExcerpt
-      ? extractCarrierPickupOrderId(existing.rawResponseExcerpt)
-      : null;
-    if (!courierOrderId) {
-      throw new FulfillmentProviderError(existing.operatorMessage ?? `Poprzednia próba ${CARRIER_DISPLAY_NAME} ma niejednoznaczny wynik`, {
-        retryable: false,
-        supportCode: existing.supportCode,
-      });
-    }
-    await recordCourierPickup(input.client, makeCourierPickupEvidenceFromRequest({
-      status: "succeeded",
-      request: input.input,
-      testers: input.testers,
-      idempotencyKey: input.idempotencyKey,
-      requestedBy: input.requestedBy,
-      courierOrderId,
-      rawResponse: existing.rawResponseExcerpt ?? undefined,
-    }));
+  const { existing } = input;
+  const { courierOrderId } = existing;
+  if (!courierOrderId) throw unresolvedPickup(existing);
+  const { data, error } = await input.client.from(CARRIER_PERSISTENCE.pickupShipmentTable)
+    .select(CARRIER_PERSISTENCE.pickupShipmentSelection).eq(CARRIER_PERSISTENCE.pickupId, existing.id);
+  if (error || !Array.isArray(data) || data.length !== input.testers.length
+    || !input.testers.every(tester => data.some(row => row.tester_id === tester.id
+      && row.tracking_number_snapshot === tester.tracking_number
+      && row[CARRIER_PERSISTENCE.shipmentDispatchIdSnapshot] === tester[CARRIER_PERSISTENCE.shipmentDispatchId]
+      && row[CARRIER_PERSISTENCE.shipmentDateSnapshot] === tester[CARRIER_PERSISTENCE.shipmentDate]))) {
+    throw unresolvedPickup(existing);
   }
   await throwForFailedReconcile(input.client, input.testers, input.timestamp, input.sendEmail, `Kurier ${CARRIER_DISPLAY_NAME} jest już zamówiony`);
   return formatCarrierPickupBooking({ ...input.input, shipmentsCount: existing.shipmentsCount || input.testers.length, courierOrderId });
 }
 
-async function recordProviderFailure(input: {
-  client: Client;
-  input: BookCourierInput;
-  testers: CourierPickupTester[];
-  idempotencyKey: string;
-  requestedBy: string;
-  timestamp: string;
-  message: unknown;
-  rawResponse: string;
-  status: "failed" | "indeterminate";
-}): Promise<FulfillmentProviderError> {
-  const provider = createCarrierProviderEvidence(
-    sanitizeCarrierError(input.message),
-    input.timestamp,
-    input.status === "failed",
-  );
-  await recordCourierPickup(input.client, makeCourierPickupEvidenceFromRequest({
-    status: input.status,
-    request: input.input,
-    testers: input.testers,
-    idempotencyKey: input.idempotencyKey,
-    requestedBy: input.requestedBy,
-    rawResponse: input.rawResponse,
+async function recordProviderFailure(
+  client: Client, pickupId: string, timestamp: string, message: unknown, rawResponse: string,
+  status: "failed" | "indeterminate",
+): Promise<FulfillmentProviderError> {
+  const classification = typeof message === "string" ? classifyCarrierProviderMessage(message) : null;
+  const display = sanitizeCarrierError(message);
+  const provider = {
+    operatorMessage: `${CARRIER_DISPLAY_NAME}: ${display}`,
+    retryable: status === "failed" && !classification,
+    supportCode: createCarrierSupportCode(timestamp, display),
+    details: classification ?? {},
+  };
+  const stored = await recordCourierPickup(client, pickupId, {
+    status,
+    rawResponse,
     operatorMessage: provider.operatorMessage,
-    retryable: provider.retryable,
+    retryEvidence: provider.retryable ? "carrier-refused" : undefined,
     supportCode: provider.supportCode,
-  }));
-  return new FulfillmentProviderError(provider.message, provider);
+  });
+  return new FulfillmentProviderError(display, { ...provider, retryable: stored && provider.retryable });
 }
 
 async function throwForFailedReconcile(
@@ -292,4 +258,39 @@ async function throwForFailedReconcile(
       { errorCode: "LOCAL_STATUS_UPDATE_FAILED", failedTesterIds: failed },
     );
   }
+}
+
+async function claimCourierPickup(client: Client, input: {
+  idempotencyKey: string;
+  request: { pickupDate: string; pickupTimeFrom: string; pickupTimeTo: string; additionalInfo: string };
+  requestedBy: string;
+  testers: CourierPickupTester[];
+  retryOf: Pick<StoredCourierPickup, "id" | "updatedAt"> | null;
+}): Promise<string | null> {
+  const table = client.from(CARRIER_PERSISTENCE.pickupTable);
+  const claim = input.retryOf
+    ? table.update({
+      status: "pending",
+      updated_at: new Date(Math.max(Date.now(), Date.parse(input.retryOf.updatedAt) + 1)).toISOString(),
+      requested_by: input.requestedBy,
+      additional_info: input.request.additionalInfo || null,
+      operator_message: null,
+      retryable: null,
+      support_code: null,
+      raw_response_excerpt: null,
+    }).eq("id", input.retryOf.id).eq("status", "failed").eq("retryable", true).eq("updated_at", input.retryOf.updatedAt)
+    : table.upsert({
+      status: "pending",
+      idempotency_key: input.idempotencyKey,
+      pickup_date: input.request.pickupDate,
+      pickup_time_from: input.request.pickupTimeFrom,
+      pickup_time_to: input.request.pickupTimeTo,
+      additional_info: input.request.additionalInfo || null,
+      requested_by: input.requestedBy,
+      shipments_count: input.testers.length,
+    }, { onConflict: CARRIER_PERSISTENCE.idempotencyKey, ignoreDuplicates: true });
+
+  const { data, error } = await claim.select("id").maybeSingle();
+  if (error || (data != null && typeof data.id !== "string")) throw pickupStoreUnavailable();
+  return data?.id ?? null;
 }

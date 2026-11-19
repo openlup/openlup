@@ -21190,6 +21190,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/infra/soap11Reply.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/infra/stripe/buildStripeApiClientIfEnabled.test.ts",
       "class": "public-output"
     },
