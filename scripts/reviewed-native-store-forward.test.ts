@@ -1167,6 +1167,7 @@ const triggerFunction = "CREATE FUNCTION public.fixture_trigger_guard() RETURNS 
 const triggerRevoke = "REVOKE ALL ON FUNCTION public.fixture_trigger_guard() FROM PUBLIC;";
 const triggerBefore = "CREATE TRIGGER fixture_trigger_guard BEFORE INSERT OR DELETE OR UPDATE OF id, extra ON public.fixture_parameters FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger_guard();";
 const triggerAfter = "CREATE TRIGGER fixture_trigger_event AFTER INSERT ON public.fixture_row FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger_guard();";
+const deferredTrigger = "CREATE CONSTRAINT TRIGGER fixture_trigger_guard AFTER INSERT OR UPDATE OR DELETE ON public.fixture_parameters DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.fixture_trigger_guard();";
 function triggerForward(statement = triggerBefore, extra = "", configure?: (slot: NativeStoreSlot) => void, history = "", definition = triggerFunction) {
   parameterForward(`${definition}\n${triggerRevoke}\n${statement}\n${extra}`, slot => {
     slot.createdFunctions.push({ signature: "public.fixture_trigger_guard()", searchPath: "pg_catalog, pg_temp" });
@@ -1174,6 +1175,58 @@ function triggerForward(statement = triggerBefore, extra = "", configure?: (slot
     configure?.(slot);
   }, history);
 }
+
+describe("deferred constraint triggers", () => {
+  it("admits the pinned form with earlier same-slot and prefix targets", () => {
+    const prefixTrigger = deferredTrigger.replaceAll("fixture_trigger_guard", "fixture_prefix_trigger").replace("INSERT OR UPDATE OR DELETE", "UPDATE");
+    const sameSlotTable = "CREATE TABLE public.fixture_local (id uuid);";
+    const sameSlotTrigger = deferredTrigger.replace("public.fixture_parameters", "public.fixture_local");
+    expect(() => parameterForward(`${sameSlotTable}\n${triggerFunction}\n${triggerRevoke}\n${sameSlotTrigger}\n${prefixTrigger}`, slot => {
+      slot.createdFunctions.push({ signature: "public.fixture_trigger_guard()", searchPath: "pg_catalog, pg_temp" });
+      slot.createdTriggers = [
+        { name: "fixture_trigger_guard", table: "public.fixture_local", sha256: sqlSha256(sameSlotTrigger) },
+        { name: "fixture_prefix_trigger", table: "public.fixture_parameters", sha256: sqlSha256(prefixTrigger) },
+      ];
+    }, triggerFunction.replace("fixture_trigger_guard", "fixture_prefix_trigger"), parameterTable.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"))).not.toThrow();
+  });
+  it.each([
+    ["BEFORE", "AFTER", "BEFORE"],
+    ["INSTEAD OF", "AFTER", "INSTEAD OF"],
+    ["FOR EACH STATEMENT", "FOR EACH ROW", "FOR EACH STATEMENT"],
+    ["omitted row level", "FOR EACH ROW ", ""],
+    ["NOT DEFERRABLE", "DEFERRABLE", "NOT DEFERRABLE"],
+    ["omitted deferral", "DEFERRABLE INITIALLY DEFERRED ", ""],
+    ["INITIALLY IMMEDIATE", "INITIALLY DEFERRED", "INITIALLY IMMEDIATE"],
+    ["WHEN", "EXECUTE", "WHEN (true) EXECUTE"],
+    ["FROM", "DEFERRABLE", "FROM public.fixture_row DEFERRABLE"],
+    ["REFERENCING", "FOR EACH ROW", "REFERENCING NEW TABLE AS new_rows FOR EACH ROW"],
+    ["arguments", "fixture_trigger_guard();", "fixture_trigger_guard('argument');"],
+    ["TRUNCATE", "INSERT", "TRUNCATE"],
+    ["UPDATE OF", "UPDATE", "UPDATE OF id"],
+    ["duplicate event", "UPDATE", "INSERT"],
+    ["unqualified relation", "ON public.", "ON "],
+    ["unqualified function", "FUNCTION public.", "FUNCTION "],
+  ])("refuses %s even with a fresh statement hash", (_label, from, to) => {
+    expect(() => triggerForward(deferredTrigger.replace(from, to))).toThrow("reviewed native store created trigger shape refused");
+  });
+  it.each([
+    ["an uncatalogued relation", ""],
+    ["a relation created later", "CREATE TABLE public.fixture_unknown (id uuid);"],
+  ])("refuses %s", (_label, laterTable) => {
+    const statement = deferredTrigger.replace("public.fixture_parameters", "public.fixture_unknown");
+    expect(() => triggerForward(statement, laterTable, slot => { slot.createdTriggers![0]!.table = "public.fixture_unknown"; })).toThrow("reviewed native store deferred constraint trigger requires an earlier relation");
+  });
+  it.each([
+    ["an uncatalogued function", "", ""],
+    ["a function created later", `${triggerFunction}\n${triggerRevoke}`, ""],
+    ["a prefix function with another return type", "", triggerFunction.replace("RETURNS trigger", "RETURNS text")],
+  ])("refuses %s", (_label, laterFunction, history) => {
+    expect(() => parameterForward(`${deferredTrigger}\n${laterFunction}`, slot => {
+      if (laterFunction) slot.createdFunctions.push({ signature: "public.fixture_trigger_guard()", searchPath: "pg_catalog, pg_temp" });
+      slot.createdTriggers = [{ name: "fixture_trigger_guard", table: "public.fixture_parameters", sha256: sqlSha256(deferredTrigger) }];
+    }, history)).toThrow("reviewed native store deferred constraint trigger requires an earlier function");
+  });
+});
 
 describe("closed created row triggers on prefix tables", () => {
   it("admits both guarded existing-table trigger shapes with PUBLIC and conditional revokes", () => {

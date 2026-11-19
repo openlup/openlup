@@ -2540,19 +2540,27 @@ Views gain no RLS or table-grant capability. The real catalog checks the declare
 new view inventory, ownership and owner-only privileges.
 
 `createdTriggers` entries name a fresh trigger, a qualified target table and the
-exact CREATE TRIGGER statement hash. The target must exist in the prefix or be
+exact trigger statement hash. The target must exist in the prefix or be
 created by an earlier plain CREATE TABLE in this same slot, owned by the migrator.
-Only BEFORE/AFTER INSERT, DELETE or UPDATE
+Ordinary triggers use BEFORE/AFTER INSERT, DELETE or UPDATE
 (with an optional OF column list), combined with OR, FOR EACH ROW and a
-zero-argument public function are admitted. That function must be created in the
+zero-argument public function. That function must be created in the
 same slot, explicitly return trigger with SECURITY INVOKER and a pinned search
 path, revoke PUBLIC and receive no EXECUTE grant. Conditional revokes remain
-allowed. WHEN, transition relations, constraint/statement/instead-of triggers,
+allowed. WHEN, transition relations, statement-level and instead-of triggers,
 trigger mutation and unlisted or drifted statements refuse. Creation stays plain:
 OR REPLACE and conditional existence forms refuse. PostgreSQL rejects duplicate
 triggers and missing targets; the catalog witness proves prefix membership or
 earlier same-slot table creation and ownership,
 name freshness, enabled binding, events and owner-only function ACL.
+
+Static admission accepts pinned `CREATE CONSTRAINT TRIGGER` statements only for
+`AFTER` with one or more of `INSERT`, `UPDATE` and `DELETE` joined by `OR`, a qualified
+table and zero-argument trigger function from earlier in the slot or its prefix,
+and `DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION`, and refuses
+`BEFORE`, `INSTEAD OF`, `FOR EACH STATEMENT`, omitted row scope, `NOT DEFERRABLE`,
+`INITIALLY IMMEDIATE`, unknown or later targets, `WHEN`, `FROM`, `REFERENCING`,
+arguments and every other constraint-trigger form.
 
 The destination slot registers four created function signatures and pinned
 search paths. Its two new tables, revokes and RLS use the existing same-file
