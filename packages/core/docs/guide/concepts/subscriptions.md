@@ -320,6 +320,16 @@ The released 0.43.0 starter lacks this hook. See
 [compose post-renewal policy](../how-to/build/customize-the-starter.md#compose-post-renewal-policy)
 for candidate selection and scheduling; the default hook is a no-op.
 
+## Select fresh and recoverable renewals
+
+Native PostgreSQL uses the normal renewal page for new cycles and for existing
+operations whose claims have expired. When both groups have work, a page with
+room for two or more cycles includes each group. Within each group, eligible
+cycles are selected by when they became ready and by their scheduled cycle.
+A group with spare capacity yields its slots to the other group. Settlement
+continues through the recorded operation and its prepared attempt after a lease
+expires.
+
 ## Durable retry timing
 
 The [retry ladder](subscription-engine.md#the-retry-ladder-terminates) uses delays

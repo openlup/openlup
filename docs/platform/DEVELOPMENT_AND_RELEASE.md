@@ -235,6 +235,12 @@ release prepare or release attestation. Installation and changes to this local
 layer remain maintainer-controlled and outside the public tree.
 All required source and merge-group CI commands still run.
 
+## Profiling managed database queries
+
+The [managed query benchmark](history/managed-query-baseline-2026-11-19.md)
+runs the installed ATP and OMS statements on a disposable local database.
+Use it to compare plans, timing samples, date filters, and hot-SKU contention.
+
 ## Measuring delivery improvements
 
 Use the [manual agent regression procedure](plans/agent-dx-regression.md) as a
@@ -279,6 +285,67 @@ establish an average effect for every contribution class. Break-even divides
 implementation and maintenance hours by active-work hours saved per comparable
 set. Unknown savings or frequency means unknown return. Report safety improvements
 separately if speed did not improve; local replay alone does not prove a live gain.
+
+## Measure package coverage
+
+Use a scoped Vitest V8 report to identify test gaps before proposing coverage
+thresholds. An explicit source filter includes files the selected suites never
+load. Start from a repository checkout with the locked dependencies installed.
+
+```sh
+set -e
+npm --workspace @openlup/core run build
+npm --workspace @openlup/outbox run build
+npm --workspace @openlup/platform run build
+
+coverage_dir=$(mktemp -d)
+measure_coverage() {
+  (
+    cd "$1"
+    time -p env CI=1 npx --no -- vitest run --config vitest.config.ts --maxWorkers=2 \
+      --coverage --coverage.include="$3" --coverage.reporter=json-summary \
+      --coverage.reportsDirectory="$coverage_dir/$2" "$4"
+  )
+}
+
+measure_coverage packages/platform payments 'src/payments/**/*.ts' test/payments
+measure_coverage packages/platform subscriptions 'src/subscriptions/**/*.ts' test/subscriptions
+measure_coverage packages/outbox outbox 'src/{worker,postgres}.ts' test
+
+node - "$coverage_dir" <<'NODE'
+const { readFileSync } = require("node:fs");
+const { join, relative } = require("node:path");
+const directory = process.argv[2];
+
+for (const scope of ["payments", "subscriptions", "outbox"]) {
+  const { total, ...files } = JSON.parse(readFileSync(join(directory, scope, "coverage-summary.json"), "utf8"));
+  console.log(scope, total.lines, total.branches);
+  for (const [file, { lines }] of Object.entries(files).sort()) {
+    const label = lines.total && lines.covered === 0 ? "zero" : "included";
+    console.log(label, relative(process.cwd(), file), lines.covered, "/", lines.total);
+  }
+}
+NODE
+```
+
+Local baseline on source `4391c8be3` with Node 24.22.2 and Vitest 4.1.12
+(arm64 macOS). Coverage totals matched in two runs. Wall time includes the
+test command and coverage report and excludes workspace builds.
+
+| Suite | Tests | Source files | Files with zero covered executable lines | Lines | Branches | Wall time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Platform payments | 835 | 90 | 11 | 67.01% | 65.74% | 6.77–12.01 s |
+| Platform subscriptions, including renewal | 416 | 57 | 7 | 58.40% | 52.09% | 2.28–2.29 s |
+| Outbox worker and PostgreSQL adapter | 37 | 2 | 0 | 85.61% | 70.75% | 4.30 s |
+
+Within Outbox, the worker covered 111 of 119 executable lines and the PostgreSQL
+adapter covered 14 of 27.
+
+Treat each zero as a gap in the selected suites. For example, the subscription
+suite leaves `nativeSubscriptionBinding.ts` at zero. The installed-consumer
+and PostgreSQL test suites can exercise behavior outside this measurement.
+Use those suites to verify SQL semantics, race handling and installed
+composition.
 
 ## Reading results and recovering
 

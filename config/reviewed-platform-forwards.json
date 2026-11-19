@@ -5780,8 +5780,22 @@
         ]
       },
       {
+        "row": "NATIVE-RENEWAL-DUE-FAIRNESS",
+        "path": "db/platform/migrations/20261123150000_subscription_renewal_due_fairness.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
+            "beforeSha256": "de6b4cce14f2ca12e6fba0975d5bb50dc2cba6d2482f78accdf2e3ede4245c39",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalogue-core-s",
-        "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
+        "path": "db/platform/migrations/20261123190000_catalog_publication.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -8426,7 +8440,18 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261123150000_catalog_publication.sql",
+      "path": "db/platform/migrations/20261123150000_subscription_renewal_due_fairness.sql",
+      "sha256": "5a01d5c8896e18f1e49aabd864c0da4ed67d1811e0286a3d45b9460e5caf9c69",
+      "functions": [
+        {
+          "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
+          "beforeSha256": "de6b4cce14f2ca12e6fba0975d5bb50dc2cba6d2482f78accdf2e3ede4245c39",
+          "afterSha256": "77e895b36fd2f9e755e7513aa9cb55f038f3330aaf2cc90d6a256f4e6293441a"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123190000_catalog_publication.sql",
       "sha256": "783b33882a1a182966d0d2350e9bd5cc7473cc6173a2c25f415bcaa89af491ab",
       "functions": [
         {

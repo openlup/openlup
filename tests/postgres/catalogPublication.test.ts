@@ -11,7 +11,7 @@ import { captureConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { installOmsHuman } from "./omsHumanAdmission.fixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const migration = "db/platform/migrations/20261123150000_catalog_publication.sql";
+const migration = "db/platform/migrations/20261123190000_catalog_publication.sql";
 let pool: Pool;
 let container: PostgresContainer;
 
