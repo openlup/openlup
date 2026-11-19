@@ -51,7 +51,7 @@ export const CAPABILITY_HINTS: readonly (readonly [RegExp, string])[] = [
     `bind exactly the appended portable forwards in config/platform-migration-manifest.json (${DOCS}#additive-forward-release-path)`],
   [/control characters/u,
     `remove control characters other than tab and line feed (${DOCS}#additive-forward-release-path)`],
-  [/^deferred trigger .* (?:is not registered|does not match its registry entry);/u,
+  [/^deferred trigger .* is not registered; (?:remove it, or register it|rename it to)/u,
     `declare and pin a reviewed row trigger using the documented target and clause rules (${DOCS}#declare-a-reviewed-trigger)`],
   [/slot path, row or order drifted|feature path, order or inventory drifted|closed signature, preimage or search_path drifted|requires a closed slots list|invalid fixed identity or hash/u,
     `the reviewed registry fails its strict reader; correct the class data, and a new class shape needs a capability PR first (${DOCS}#closed-native-store-forwards)`],
@@ -196,7 +196,7 @@ export async function sqlAdmit(cwd: string, argv: readonly string[], log: (line:
     const verdicts = await admitSqlRange(range);
     for (const verdict of verdicts) {
       log(`${verdict.status.padEnd(8)} ${verdict.subject} [${verdict.check}]${verdict.message === undefined ? "" : `: ${verdict.message}`}`);
-      if (verdict.message !== undefined && !verdict.message.includes(" is not allowed here: in a forward that pins ")) log(`         capability needed: ${capabilityHint(verdict.message)}`);
+      if (verdict.message !== undefined && !verdict.message.includes(" is pinned; only these statements may name ")) log(`         capability needed: ${capabilityHint(verdict.message)}`);
     }
     const refused = verdicts.filter((verdict) => verdict.status === "REFUSED").length;
     log(`sql:admit: ${verdicts.length} checks, ${refused} refused. Not run here: npm run oss:published-tree -- --policy and -- --inventory, the neutrality ratchet, the root test suite (including the real-PostgreSQL native catalogue test) and pgTAP. Hosted CI and the merge queue remain authoritative.`);

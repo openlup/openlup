@@ -2473,8 +2473,10 @@ CREATE CONSTRAINT TRIGGER example_guard AFTER INSERT OR UPDATE ON public.example
 ```
 
 Use a public zero-argument invoker returning `trigger`. Reserve the pinned names
-for declarations, new functions and their PUBLIC revokes. A pinned-name refusal
-lists the permitted statements and identifies the statement to remove or rewrite.
+for declarations, new functions and their PUBLIC revokes. Fix parse errors first.
+For a pinned object, remove the refused statement or use one of the listed exact
+statements. Remove an unregistered trigger, or register it and use the rendered
+SQL when its form is supported.
 Pins may share a relation. Reuse prefix invokers without a revoke and keep other trigger DDL off it.
 
 Ordinary triggers use a name fresh across the prefix, `BEFORE` or `AFTER`, and
