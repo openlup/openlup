@@ -18,7 +18,6 @@ import {
   classifyCarrierProviderMessage,
   loadCarrierShipperContact,
   CARRIER_PERSISTENCE,
-  createCarrierProviderEvidence,
   createCarrierSupportCode,
   formatCarrierPickupBooking,
   makePickupIdempotencyKey,
@@ -63,11 +62,10 @@ export function createCarrierPickupBookingAction(deps: {
     const requestedBy = await authenticatedAdmin(deps.client, input.accessToken);
     const testerIds = validateInput(input);
     const testers = await loadTesters(deps.client, testerIds);
-    const keyFor = (ids: string[]) => makePickupIdempotencyKey(ids, input.pickupDate, input.pickupTimeFrom, input.pickupTimeTo);
-    const idempotencyKey = keyFor(testers.map(tester => tester.id));
-    const legacyKey = keyFor(testerIds);
-    const existing = await findCourierPickup(deps.client, idempotencyKey)
-      ?? (legacyKey !== idempotencyKey ? await findCourierPickup(deps.client, legacyKey) : null);
+    const idempotencyKey = makePickupIdempotencyKey(
+      testers.map(tester => tester.id), input.pickupDate, input.pickupTimeFrom, input.pickupTimeTo,
+    );
+    const existing = await findCourierPickup(deps.client, idempotencyKey);
     const replay = existing?.status === "succeeded";
     if (existing && (replay ? !existing.confirmedResponse : !canRetryPickup(existing))) throw unresolvedPickup(existing);
     if (!replay) assertPickupWindow(input, now());
@@ -228,7 +226,14 @@ async function recordProviderFailure(
   client: Client, pickupId: string, timestamp: string, message: unknown, rawResponse: string,
   status: "failed" | "indeterminate",
 ): Promise<FulfillmentProviderError> {
-  const provider = createCarrierProviderEvidence(message, timestamp, status === "failed");
+  const classification = typeof message === "string" ? classifyCarrierProviderMessage(message) : null;
+  const display = sanitizeCarrierError(message);
+  const provider = {
+    operatorMessage: `${CARRIER_DISPLAY_NAME}: ${display}`,
+    retryable: status === "failed" && !classification,
+    supportCode: createCarrierSupportCode(timestamp, display),
+    details: classification ?? {},
+  };
   const stored = await recordCourierPickup(client, pickupId, {
     status,
     rawResponse,
@@ -236,7 +241,7 @@ async function recordProviderFailure(
     retryEvidence: provider.retryable ? "carrier-refused" : undefined,
     supportCode: provider.supportCode,
   });
-  return new FulfillmentProviderError(provider.message, { ...provider, retryable: stored && provider.retryable });
+  return new FulfillmentProviderError(display, { ...provider, retryable: stored && provider.retryable });
 }
 
 async function throwForFailedReconcile(

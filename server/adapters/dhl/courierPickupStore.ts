@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- shared store accepts the structural database client. */
 import { FulfillmentPreflightError } from "../../../src/domains/fulfillment/ports.js";
-import { CARRIER_DISPLAY_NAME, sanitizeCarrierError } from "../../infra/dhl/adminDhlSoap.js";
+import { CARRIER_DISPLAY_NAME } from "../../infra/dhl/adminDhlSoap.js";
 import { WARSAW_TIME_ZONE } from "../../infra/dhl/commerceShipmentSoap.js";
 
 /**
@@ -201,18 +201,6 @@ export function classifyCarrierProviderMessage(message: string) {
   return match ? { reason: "already_booked" as const, blockingShipmentId: match[1] } : null;
 }
 
-export function createCarrierProviderEvidence(rawMessage: unknown, timestamp: string, retryable: boolean) {
-  const classification = typeof rawMessage === "string" ? classifyCarrierProviderMessage(rawMessage) : null;
-  const message = sanitizeCarrierError(rawMessage);
-  return {
-    message,
-    operatorMessage: `${CARRIER_DISPLAY_NAME}: ${message}`,
-    retryable: classification ? false : retryable,
-    supportCode: createCarrierSupportCode(timestamp, message),
-    details: classification ?? {},
-  };
-}
-
 type PickupStatus = "pending" | "succeeded" | "failed" | "indeterminate";
 export type PickupRetryEvidence = "carrier-refused" | "not-dispatched";
 
@@ -231,12 +219,21 @@ export type StoredCourierPickup = {
 };
 
 export async function findCourierPickup(client: Client, idempotencyKey: string): Promise<StoredCourierPickup | null> {
-  const { data: row, error } = await client.from(CARRIER_PERSISTENCE.pickupTable)
-    .select(CARRIER_PERSISTENCE.pickupSelection)
-    .eq(CARRIER_PERSISTENCE.idempotencyKey, idempotencyKey)
-    .maybeSingle();
-  if (error) throw pickupStoreUnavailable();
-  if (row == null) return null;
+  const split = idempotencyKey.lastIndexOf("|") + 1;
+  const prefix = idempotencyKey.slice(0, split);
+  const testerSet = (key: string) => key.slice(split).split(",")
+    .map(id => id.replace(/[-{}]/gu, "").toLowerCase()).sort().join(",");
+  const expected = testerSet(idempotencyKey);
+  // Historical keys kept the submitted UUID spelling. Match the durable keys
+  // for this pickup window by UUID value, and refuse an incomplete page.
+  const { data, error, count } = await client.from(CARRIER_PERSISTENCE.pickupTable)
+    .select(`${CARRIER_PERSISTENCE.pickupSelection},idempotency_key`, { count: "exact" })
+    .like(CARRIER_PERSISTENCE.idempotencyKey, `${prefix}%`);
+  if (error || !Array.isArray(data) || data.length !== count) throw pickupStoreUnavailable();
+  const matches = data.filter(row => testerSet(row.idempotency_key) === expected);
+  if (matches.length > 1) throw pickupStoreUnavailable();
+  const row = matches[0];
+  if (!row) return null;
   const status = row.status;
   if (
     typeof row.id !== "string" || typeof row.updated_at !== "string" || !Number.isFinite(Date.parse(row.updated_at))
@@ -250,7 +247,8 @@ export async function findCourierPickup(client: Client, idempotencyKey: string):
     courierOrderId: typeof row.courier_order_id === "string" ? row.courier_order_id : null,
     shipmentsCount: typeof row.shipments_count === "number" ? row.shipments_count : 0,
     operatorMessage: typeof row.operator_message === "string" ? row.operator_message : null,
-    retryable: status === "failed" && row.retryable === true && Boolean(code && retryEvidenceSuffix.test(code)),
+    retryable: status === "failed" && row.idempotency_key === idempotencyKey
+      && row.retryable === true && Boolean(code && retryEvidenceSuffix.test(code)),
     // Before confirmation checked the HTTP outcome, success writes left this NULL.
     confirmedResponse: status === "succeeded" && row.retryable === false,
     supportCode: code?.replace(retryEvidenceSuffix, "") ?? null,

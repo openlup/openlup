@@ -13,6 +13,7 @@ import {
 import {
   CARRIER_PERSISTENCE,
   CARRIER_SHIPPER_SETTING,
+  makePickupIdempotencyKey,
 } from "./courierPickupStore.js";
 
 const input = {
@@ -113,15 +114,48 @@ describe("carrier pickup booking action", () => {
       action({ ...input, testerIds: [canonical] }),
       action({ ...input, testerIds: [useAlias ? canonical.toUpperCase() : canonical] }),
     ];
-    await started.promise;
-    expect(fake.pickup()).toMatchObject({ status: "pending", idempotency_key: expect.stringContaining(canonical) });
-    await expect(Promise.race(bookings)).rejects.toMatchObject({ retryable: false });
-    response.resolve(xmlResponse(bookingReceipt()));
+    await fake.claimsReady;
+    try {
+      await started.promise;
+      expect(fake.claimKeys).toHaveLength(2);
+      expect(new Set(fake.claimKeys).size).toBe(1);
+      expect(fake.pickup()).toMatchObject({ status: "pending", idempotency_key: expect.stringContaining(canonical) });
+      await expect(Promise.race(bookings)).rejects.toMatchObject({ retryable: false });
+    } finally {
+      response.resolve(xmlResponse(bookingReceipt()));
+    }
     expect(await Promise.allSettled(bookings)).toEqual(expect.arrayContaining([{
       status: "fulfilled",
       value: expect.objectContaining({ courierOrderId: "ORD-1" }),
     }]));
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains a historical pickup after the request uses canonical tester IDs", async () => {
+    const canonical = "3a373c59-f01e-4b99-b42c-1f54c0b1705d";
+    const legacyKey = makePickupIdempotencyKey([canonical.toUpperCase()], input.pickupDate, input.pickupTimeFrom, input.pickupTimeTo);
+    const fake = bookingClient({
+      testerId: canonical, existing: { status: "indeterminate", idempotency_key: legacyKey },
+    });
+    const fetchImpl = vi.fn();
+    const action = createCarrierPickupBookingAction({
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
+    });
+    await expect(action({ ...input, testerIds: [canonical] })).rejects.toMatchObject({ retryable: false });
+    expect(fake.pickup()).toMatchObject({ status: "indeterminate", idempotency_key: legacyKey });
+    expect(fake.claimKeys).toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses to book if the store omits pickup rows from the selected window", async () => {
+    const fake = bookingClient({ omittedPickupRows: 1 });
+    const fetchImpl = vi.fn();
+    const action = createCarrierPickupBookingAction({
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
+    });
+    await expect(action(input)).rejects.toMatchObject({ details: { errorCode: "LOCAL_PICKUP_STORE_UNAVAILABLE" } });
+    expect(fake.claimKeys).toEqual([]);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("fences a stale concurrent retry even when the new attempt has already failed", async () => {
@@ -375,10 +409,15 @@ function bookingClient(options: {
   delaySecondRetryUntilOutcome?: boolean;
   statusBeforeUpdate?: string;
   testerId?: string;
+  omittedPickupRows?: number;
 } = {}) {
   const pendingRow = { id: "pickup-1", updated_at: "2040-08-16T08:00:00Z" };
-  let pickup = options.existing ? { ...pendingRow, ...options.existing } : null;
   let currentTester = { ...tester, id: options.testerId ?? tester.id };
+  const defaultKey = makePickupIdempotencyKey([currentTester.id], input.pickupDate, input.pickupTimeFrom, input.pickupTimeTo);
+  let pickup = options.existing ? { ...pendingRow, idempotency_key: defaultKey, ...options.existing } : null;
+  const pickups = new Map(pickup ? [[String(pickup.idempotency_key), pickup]] : []);
+  const claimKeys: string[] = [];
+  const bothClaims = deferred<void>();
   let snapshots: Record<string, unknown>[] = [];
   let testerUpdateError = options.testerUpdateError;
   let shipmentWriteFails = options.failure === "shipments";
@@ -405,10 +444,18 @@ function bookingClient(options: {
           return query;
         },
         in: () => Promise.resolve({ data: [{ ...currentTester }], error: null }),
-        like: () => Promise.resolve({ data: [
-          { key: CARRIER_SHIPPER_SETTING.contactPerson, value: '"Warehouse"' },
-          { key: CARRIER_SHIPPER_SETTING.phone, value: '"123"' },
-        ] }),
+        async like(_column: string, pattern: string) {
+          if (table !== CARRIER_PERSISTENCE.pickupTable) return { data: [
+            { key: CARRIER_SHIPPER_SETTING.contactPerson, value: '"Warehouse"' },
+            { key: CARRIER_SHIPPER_SETTING.phone, value: '"123"' },
+          ] };
+          const data = [...pickups].filter(([key]) => key.startsWith(pattern.slice(0, -1))).map(([, row]) => row);
+          if (options.concurrentInitialReads && ++reads <= 2) {
+            if (reads === 2) bothRead.resolve();
+            await bothRead.promise;
+          }
+          return { data, count: data.length + (options.omittedPickupRows ?? 0), error: options.failure === "read" ? error : null };
+        },
         async maybeSingle() {
           if (table === "admin_users") return { data: { id: "admin-1" }, error: null };
           if (table === "testers" && updateValues) {
@@ -422,30 +469,29 @@ function bookingClient(options: {
             return { data: { id: currentTester.id }, error: null };
           }
           if (insertValues) {
+            const key = String(insertValues.idempotency_key);
+            claimKeys.push(key);
+            if (claimKeys.length === 2) bothClaims.resolve();
             if (options.failure === "claim") return { data: null, error };
-            if (pickup) return { data: null, error: null };
-            pickup = { ...pendingRow, ...insertValues };
+            if (pickups.has(key)) return { data: null, error: null };
+            pickup = { ...pendingRow, ...insertValues, idempotency_key: key, id: `pickup-${pickups.size + 1}` };
+            pickups.set(key, pickup);
             return { data: pickup, error: null };
           }
           if (updateValues) {
             const claiming = updateValues.status === "pending";
             if (claiming && options.delaySecondRetryUntilOutcome && ++retries === 2) await firstOutcome.promise;
             if (options.failure === "outcome") return { data: null, error };
-            if (!pickup || ![...filters].every(([field, value]) => Object.is((pickup as Record<string, unknown>)[field], value))) {
-              return { data: null, error: null };
-            }
-            pickup = { ...pickup, ...updateValues };
+            const matched = [...pickups].find(([, row]) => [...filters].every(
+              ([field, value]) => Object.is((row as Record<string, unknown>)[field], value),
+            ));
+            if (!matched) return { data: null, error: null };
+            pickup = { ...matched[1], ...updateValues };
+            pickups.set(matched[0], pickup);
             if (!claiming) firstOutcome.resolve();
             return { data: pickup, error: null };
           }
-          const pickupKey = (pickup as Record<string, unknown> | null)?.idempotency_key;
-          const matchesKey = pickupKey === undefined || pickupKey === filters.get(CARRIER_PERSISTENCE.idempotencyKey);
-          const result = { data: matchesKey ? pickup : null, error: options.failure === "read" ? error : null };
-          if (options.concurrentInitialReads && ++reads <= 2) {
-            if (reads === 2) bothRead.resolve();
-            await bothRead.promise;
-          }
-          return result;
+          throw new Error(`Unexpected query for ${table}`);
         },
         update: (values: Record<string, unknown>) => { updateValues = values; return query; },
         upsert: (row: Record<string, unknown>, conflict: { ignoreDuplicates?: boolean }) => {
@@ -466,6 +512,8 @@ function bookingClient(options: {
   return {
     client: client as never,
     pickup: () => pickup as Record<string, unknown> | null,
+    claimKeys,
+    claimsReady: bothClaims.promise,
     testerStatus: () => currentTester.status,
     allowTesterUpdate: () => { testerUpdateError = undefined; },
     allowShipmentWrite: () => { shipmentWriteFails = false; },
