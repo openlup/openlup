@@ -309,6 +309,11 @@ function documentSkuFacts(document: CatalogPublicationDocument, sku: CatalogPubl
 type PublicationSourceInput = Pick<CatalogPublicationCompileInput, "record" | "payload" | "retainedSources" | "rules">;
 type PublicationOperation = CatalogDraftPayloadV3["publication"]["operations"][number];
 
+function assertSkuCreationDocument(operation: Extract<PublicationOperation, { op: "create_sku" }>,
+  authored: CatalogDraftPayloadV3["product"]["documentRevision"], current: CatalogPublishedProduct["document"] | undefined = authored) {
+  need(operation.documentRevisionNo === current?.revisionNo && equal(authored, current), "catalog_publication_v3_compile_document_stale");
+}
+
 function skuCreationFacts(operation: Extract<PublicationOperation, { op: "create_sku" }>,
   source: { sku: CatalogDraftPayloadV3["skus"][number]; source: CatalogDraftPublicationStoredRecord }, productId: string): CatalogPublishedSku {
   const { sku } = source;
@@ -410,8 +415,6 @@ function publicationAuthorship({ record, payload, retainedSources, rules }: Publ
       need(source.sku.id === operation.skuId && authored && equal(authored, {
         skuCode: operation.skuCode, title: operation.title, minQuantity: operation.minQuantity, isAddon: operation.isAddon, facts: operation.facts,
       }), "catalog_publication_operation_source_mismatch");
-      need(operation.documentRevisionNo === source.payload.product.documentRevision?.revisionNo,
-        "catalog_publication_v3_compile_document_stale");
     }
     if (operation.op === "create_identifier")
       need(source.sku.identifiers?.some(identifier => matchesAuthoredIdentifier(identifier, operation)), "catalog_publication_identifier_source_mismatch");
@@ -453,6 +456,7 @@ export function assertCatalogPublicationAuthorship(input: PublicationSourceInput
       const prior = !registrationSkus ? undefined : operation.op === "set_offer_membership"
         ? prefixSku(registrationSkus, operation.skuCode) : registrationSkus.get(operation.skuCode);
       const source = authored.skuOperation(operation);
+      if (operation.op === "create_sku") assertSkuCreationDocument(operation, source.payload.product.documentRevision);
       if (registrationSkus && operation.op === "create_sku")
         registrationSkus.set(operation.skuCode, skuCreationFacts(operation, source, payload.product.id));
       else if (prior) applySkuPrefix(prior, operation, input.rules);
@@ -560,8 +564,7 @@ export function* compileCatalogPublicationEffects(input: CatalogPublicationCompi
       existingCombinations ??= new Set([...skus.values()].map(existing => combination(existing.options)));
       const identity = combination(sku.options);
       need(!existingCombinations.has(identity), "duplicate_combination");
-      need(knownProduct().document?.revisionNo === operation.documentRevisionNo
-        && equal(source.payload.product.documentRevision, knownProduct().document), "catalog_publication_v3_compile_document_stale");
+      assertSkuCreationDocument(operation, source.payload.product.documentRevision, knownProduct().document);
       existingCombinations.add(identity);
       need(equal(documentSkuFacts(currentDocument(), sku, input.rules), sku.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
       skus.set(sku.code, sku); created.add(sku.code);
