@@ -109,18 +109,12 @@ BEGIN
     AND (NEW.publication_facts IS NOT NULL OR s.publication_facts IS NOT NULL)) THEN
    RAISE EXCEPTION 'catalog_publication_identity_conflict' USING ERRCODE='23505',CONSTRAINT='catalog_skus_publication_combination_key';
   END IF;
- ELSIF NEW.identifier_kind = 'gtin' AND EXISTS (
-  SELECT 1 FROM public.catalog_sku_identifiers g WHERE g.id <> NEW.id AND g.identifier_kind = 'gtin'
-   AND ltrim(g.normalized_value,'0') = ltrim(NEW.normalized_value,'0')
-   AND (NEW.scheme = 'gs1:gtin' OR g.scheme = 'gs1:gtin')) THEN
-  RAISE EXCEPTION 'catalog_publication_identity_conflict' USING ERRCODE='23505',CONSTRAINT='catalog_sku_identifiers_global_gtin_key';
  END IF;
  RETURN NEW;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_identity_fence() FROM PUBLIC;
 CREATE TRIGGER catalog_skus_publication_identity_fence BEFORE INSERT OR UPDATE OF product_id,combination_digest,publication_facts ON public.catalog_skus FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_identity_fence();
-CREATE TRIGGER catalog_identifiers_publication_identity_fence BEFORE INSERT OR UPDATE OF identifier_kind,normalized_value,scheme ON public.catalog_sku_identifiers FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_identity_fence();
 
 CREATE FUNCTION public.catalog_publication_immutable() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$

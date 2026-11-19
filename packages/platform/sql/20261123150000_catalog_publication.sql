@@ -109,31 +109,12 @@ BEGIN
     AND (NEW.publication_facts IS NOT NULL OR s.publication_facts IS NOT NULL)) THEN
    RAISE EXCEPTION 'catalog_publication_identity_conflict' USING ERRCODE='23505',CONSTRAINT='catalog_skus_publication_combination_key';
   END IF;
- ELSIF NEW.identifier_kind = 'gtin' AND NEW.normalized_value IS NOT NULL THEN
-  IF current_setting('transaction_isolation') <> 'read committed' THEN
-   RAISE EXCEPTION 'catalog_publication_gtin_requires_read_committed' USING ERRCODE='0A000';
-  END IF;
-  IF TG_OP = 'UPDATE' THEN
-   -- The row may already be locked when this trigger starts.
-   IF NOT pg_try_advisory_xact_lock(hashtextextended('catalog-gtin-writes',0)) THEN
-    RAISE EXCEPTION 'catalog_publication_busy' USING ERRCODE='55P03';
-   END IF;
-  ELSE
-   PERFORM pg_advisory_xact_lock(hashtextextended('catalog-gtin-writes',0));
-  END IF;
-  IF EXISTS (
-   SELECT 1 FROM public.catalog_sku_identifiers g WHERE g.id <> NEW.id AND g.identifier_kind = 'gtin'
-    AND ltrim(g.normalized_value,'0') = ltrim(NEW.normalized_value,'0')
-    AND (NEW.scheme = 'gs1:gtin' OR g.scheme = 'gs1:gtin')) THEN
-   RAISE EXCEPTION 'catalog_publication_identity_conflict' USING ERRCODE='23505',CONSTRAINT='catalog_sku_identifiers_global_gtin_key';
-  END IF;
  END IF;
  RETURN NEW;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_identity_fence() FROM PUBLIC;
 CREATE TRIGGER catalog_skus_publication_identity_fence BEFORE INSERT OR UPDATE OF product_id,combination_digest,publication_facts ON public.catalog_skus FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_identity_fence();
-CREATE TRIGGER catalog_identifiers_publication_identity_fence BEFORE INSERT OR UPDATE OF identifier_kind,normalized_value,scheme ON public.catalog_sku_identifiers FOR EACH ROW EXECUTE FUNCTION public.catalog_publication_identity_fence();
 
 CREATE FUNCTION public.catalog_publication_immutable() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
@@ -228,6 +209,9 @@ BEGIN
   IF body->'schemaVersion' IS DISTINCT FROM '2'::jsonb OR body->'product'->>'id' IS DISTINCT FROM NEW.product_id::text
    OR jsonb_typeof(body->'skus') IS DISTINCT FROM 'array' THEN
    RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
+  END IF;
+  IF body->'product'->'document'->>'id' IS DISTINCT FROM NEW.document_revision_id::text THEN
+   RAISE EXCEPTION 'catalog_publication_manifest_invalid' USING ERRCODE='23514';
   END IF;
  ELSIF TG_TABLE_NAME = 'catalog_sku_revisions' THEN
   IF body->>'id' IS DISTINCT FROM NEW.sku_id::text OR body->>'productId' IS DISTINCT FROM NEW.product_id::text
