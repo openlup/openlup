@@ -157,6 +157,12 @@ release prepare or release attestation. Installation and changes to this local
 layer remain maintainer-controlled and outside the public tree.
 All required source and merge-group CI commands still run.
 
+## Profiling managed database queries
+
+The [managed query benchmark](history/managed-query-baseline-2026-11-19.md)
+runs the installed ATP and OMS statements on a disposable local database.
+Use it to compare plans, timing samples, date filters, and hot-SKU contention.
+
 ## Measuring delivery improvements
 
 Use the [manual agent regression procedure](plans/agent-dx-regression.md) as a
