@@ -403,15 +403,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "The starter account view displays some timestamps directly; format them in the starter using its market time zone.",
+      "whyThisDefault": "The starter account page prints the recorded next-cycle timestamp directly; format it in the starter using the configured market time zone.",
       "effect": {
-        "appliesTo": "The starter account view displays some timestamps directly; format them in the starter using its market time zone.",
+        "appliesTo": "The starter account page prints the recorded next-cycle timestamp directly; format it in the starter using the configured market time zone.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The starter account view displays some timestamps directly; format them in the starter using its market time zone."
+        "reason": "The starter account page prints the recorded next-cycle timestamp directly; format it in the starter using the configured market time zone."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsmessagedateformatting"
@@ -774,13 +774,13 @@
       "effect": {
         "appliesTo": "After deployment, the starter uses the threshold in new estimates and in new quotes once the shipping policy is effective.",
         "frozenOn": [
-          "Accepted quotes and existing orders keep their recorded shipping terms."
+          "Matching checkout replays reuse the saved quote's shipping terms."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Starter composition consumes this value; if you replaced the owned shipping resolver, your application owns the behavior."
+        "reason": "Starter composition passes the threshold to its owned shipping resolver, which the application can replace."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -808,15 +808,15 @@
       },
       "whyThisDefault": "Both sample configurations illustrate a 5% discount.",
       "effect": {
-        "appliesTo": "The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation; use a pricing policy revision for an initialized store.",
+        "appliesTo": "The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation. Editing the config does not update the installed price policy.",
         "frozenOn": [
-          "Accepted quotes and existing orders and subscriptions keep their recorded price terms."
+          "Matching checkout replays reuse the saved quote. Existing subscription renewals price from recorded subscription terms."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Starter composition consumes this value; if you replaced the owned pricing or installation code, your application owns the behavior."
+        "reason": "The starter's estimate calculation and owned installation seed both read this value."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -825,8 +825,7 @@
       "schema": {
         "type": "integer",
         "minimum": 0,
-        "maximum": 10000,
-        "description": "Checked by shared/config.ts (assertConfig)."
+        "description": "assertConfig in shared/config.ts checks basis points against an upper bound of 10000, then checks each resulting unit price. Startup and the owned install seed require every subscription unit price after rounding to be between 1 and 2147483647 minor units, so 10000 basis points fails for any subscription product."
       },
       "previewSchema": null,
       "rules": []
@@ -982,15 +981,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.",
+      "whyThisDefault": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there.",
       "effect": {
-        "appliesTo": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.",
+        "appliesTo": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter."
+        "reason": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"
@@ -1238,13 +1237,13 @@
       "effect": {
         "appliesTo": "After deployment, the starter uses the duration to calculate expiry for new checkout reservations and holds created by checkout recovery.",
         "frozenOn": [
-          "Existing reservations keep their recorded expiry."
+          "Existing reservations keep their recorded expiry; an interrupted checkout that already wrote a hold can refuse on retry if the duration changed."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Starter composition consumes this value; if you replaced the owned checkout composition, your application owns the behavior."
+        "reason": "The starter's checkout and recovery composition read this value from the owned store config."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -1446,16 +1445,16 @@
       },
       "whyThisDefault": "The samples default to 28 days; one allows 28 and 56 days, and the other also allows 14 days.",
       "effect": {
-        "appliesTo": "After deployment, the starter admits fresh subscription checkouts, graduations and terms edits against the configured intervals.",
+        "appliesTo": "After deployment, the starter uses the configured intervals to check fresh subscription checkouts and terms edits, including the graduation terms captured at checkout for a new starter pack.",
         "frozenOn": [
-          "Active subscriptions keep their recorded cadence until a terms edit changes it.",
-          "Completed matching commands replay with their original terms."
+          "A config edit leaves existing subscriptions on their recorded terms. Starter packs can switch cadence at renewal using the graduation terms saved at checkout.",
+          "Matching completed checkout and terms-edit commands replay their recorded results."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Starter composition consumes these choices; if you replaced the owned offer configuration or admission, your application owns the behavior."
+        "reason": "Starter composition reads these choices from the owned store config."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -1463,7 +1462,7 @@
       },
       "schema": {
         "type": "object",
-        "description": "In shared/config.ts, assertConfig calls assertSubscriptionOffer: days is a nonempty set of distinct integers from 1 through 3660, or a range within those bounds with an integer step from 1 through 2147483647; defaultDays must belong to the offer and its checkout choices."
+        "description": "In shared/config.ts, assertConfig calls assertSubscriptionOffer: days is a nonempty set of distinct integers from 1 through 3660, or a range within those bounds with an integer step from 1 through 2147483647; defaultDays must belong to the offer and its checkout choices. assertQuoteConfiguration in shared/quote-config.ts also requires the configured graduation cadence to be among the classic offer's days."
       },
       "previewSchema": null,
       "rules": []
@@ -1621,9 +1620,9 @@
       },
       "whyThisDefault": "The starter uses the native dispatch default of six attempts.",
       "effect": {
-        "appliesTo": "The scheduled renewal host uses this cap when claiming lifecycle notices after deployment, including notices still eligible for retry.",
+        "appliesTo": "After deployment, this cap applies to customer lifecycle notices. Raising it can make a previously capped failed notice eligible for another attempt under the same receipt key. Operator notices use a separate budget.",
         "frozenOn": [
-          "Existing dispatch receipts keep their identities and recorded attempt counts."
+          "Accepted receipts stay accepted and are excluded from retries."
         ],
         "impact": "operations"
       },
@@ -1795,15 +1794,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "A host can pass holdSeconds to createPostgresRenewalReservationPort; the starter leaves it unset and uses the package default of 900 seconds.",
+      "whyThisDefault": "Native stock-wait recovery holds stock for 15 minutes, set in SQL with no host override.",
       "effect": {
-        "appliesTo": "A host can pass holdSeconds to createPostgresRenewalReservationPort; the starter leaves it unset and uses the package default of 900 seconds.",
+        "appliesTo": "Native stock-wait recovery holds stock for 15 minutes, set in SQL with no host override.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "A host can pass holdSeconds to createPostgresRenewalReservationPort; the starter leaves it unset and uses the package default of 900 seconds."
+        "reason": "Native stock-wait recovery holds stock for 15 minutes, set in SQL with no host override."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"

@@ -5,5 +5,5 @@
   reservation duration and lifecycle notice retry budget. The entries identify
   when changes take effect and which records keep their terms.
 - The currency and date entries describe starter display fixes. The stock-wait
-  entry explains how a host can choose the hold lifetime and which default the
-  starter uses.
+  entry identifies the fixed 15-minute native hold lifetime during stock-wait
+  recovery.

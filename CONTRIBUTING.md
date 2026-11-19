@@ -122,9 +122,9 @@ its users or operators can observe.
 Use [the subscription edit window](packages/core/docs/guide/how-to/operate/settings-catalogue.md#subscriptioncreationeditwindowhours)
 for settings changed by editing the owned configuration and validated in TypeScript.
 
-1. Add a JSON entry in the owning domain's `settings-data.json`. Name the owned
-   file and symbol, the existing validation, when the value takes effect and
-   which records keep their original terms.
+1. Add a JSON entry in `packages/platform/src/<domain>/settings-data.json`. Name
+   the owned file and symbol, the existing validation, when the value takes
+   effect and which records keep their original terms.
 2. Build the workspaces and run `node scripts/settings-catalogue.ts --write`.
    Descriptive entries need no generator edit.
 3. Run `node scripts/settings-catalogue.ts` to check that the reader-guide page

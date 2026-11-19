@@ -9,10 +9,10 @@
     "fallback": 500,
     "defaultBasis": {"kind": "neutral"},
     "whyThisDefault": "Both sample configurations illustrate a 5% discount.",
-    "effect": {"appliesTo": "The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation; use a pricing policy revision for an initialized store.", "frozenOn": ["Accepted quotes and existing orders and subscriptions keep their recorded price terms."], "impact": "customer-promise"},
-    "runtime": {"level": "read-only", "reason": "Starter composition consumes this value; if you replaced the owned pricing or installation code, your application owns the behavior."},
+    "effect": {"appliesTo": "The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation. Editing the config does not update the installed price policy.", "frozenOn": ["Matching checkout replays reuse the saved quote. Existing subscription renewals price from recorded subscription terms."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The starter's estimate calculation and owned installation seed both read this value."},
     "change": {"file": "owned/store.config.ts", "symbol": "offer.subscriptionDiscountBps"},
-    "schema": {"type": "integer", "minimum": 0, "maximum": 10000, "description": "Checked by shared/config.ts (assertConfig)."},
+    "schema": {"type": "integer", "minimum": 0, "description": "assertConfig in shared/config.ts checks basis points against an upper bound of 10000, then checks each resulting unit price. Startup and the owned install seed require every subscription unit price after rounding to be between 1 and 2147483647 minor units, so 10000 basis points fails for any subscription product."},
     "rules": []
   },
   {
@@ -24,9 +24,9 @@
     "examples": [],
     "fallback": null,
     "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.",
-    "effect": {"appliesTo": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.", "frozenOn": [], "impact": "operations"},
-    "runtime": {"level": "read-only", "reason": "Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter."},
+    "whyThisDefault": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there.",
+    "effect": {"appliesTo": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there.", "frozenOn": [], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there."},
     "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"},
     "rules": []
   },

@@ -181,7 +181,7 @@ Search terms include messaging, notifications.
 - Owner **communications** · kind **cap** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- The starter account view displays some timestamps directly; format them in the starter using its market time zone.
+- The starter account page prints the recorded next-cycle timestamp directly; format it in the starter using the configured market time zone.
 
 ```sh
 node --experimental-strip-types host/settings.ts show communications.messageDateFormatting --json
@@ -312,7 +312,7 @@ Search terms include delivery destination, address details.
 - Both sample configurations use 1000 minor units as an example threshold.
 - Edit `owned/store.config.ts` (offer.freeShippingFromMinor).
 - After deployment, the starter uses the threshold in new estimates and in new quotes once the shipping policy is effective.
-- Frozen on: Accepted quotes and existing orders keep their recorded shipping terms.
+- Frozen on: Matching checkout replays reuse the saved quote's shipping terms.
 
 ```sh
 node --experimental-strip-types host/settings.ts show offer.freeShippingFromMinor --json
@@ -328,8 +328,8 @@ Search terms include quote amounts, price calculation.
 - Basis `neutral`.
 - Both sample configurations illustrate a 5% discount.
 - Edit `owned/store.config.ts` (offer.subscriptionDiscountBps).
-- The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation; use a pricing policy revision for an initialized store.
-- Frozen on: Accepted quotes and existing orders and subscriptions keep their recorded price terms.
+- The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation. Editing the config does not update the installed price policy.
+- Frozen on: Matching checkout replays reuse the saved quote. Existing subscription renewals price from recorded subscription terms.
 
 ```sh
 node --experimental-strip-types host/settings.ts show offer.subscriptionDiscountBps --json
@@ -413,7 +413,7 @@ Search terms include quote amounts, price calculation.
 - Owner **pricing** · kind **cap** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- Some starter displays assume two decimal places; fix those views in the starter using the platform's currency-aware formatCurrencyMinor formatter.
+- The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there.
 
 ```sh
 node --experimental-strip-types host/settings.ts show pricing.currencyExponent --json
@@ -542,7 +542,7 @@ Search terms include store orders, checkout processing.
 - Both sample configurations use a 30-minute checkout hold.
 - Edit `owned/store.config.ts` (purchase.reservationMinutes).
 - After deployment, the starter uses the duration to calculate expiry for new checkout reservations and holds created by checkout recovery.
-- Frozen on: Existing reservations keep their recorded expiry.
+- Frozen on: Existing reservations keep their recorded expiry; an interrupted checkout that already wrote a hold can refuse on retry if the duration changed.
 
 ```sh
 node --experimental-strip-types host/settings.ts show purchase.reservationMinutes --json
@@ -632,8 +632,8 @@ Search terms include recurring orders, renewals.
 - Basis `neutral`.
 - The samples default to 28 days; one allows 28 and 56 days, and the other also allows 14 days.
 - Edit `owned/store.config.ts` (subscriptionOffers).
-- After deployment, the starter admits fresh subscription checkouts, graduations and terms edits against the configured intervals.
-- Frozen on: Active subscriptions keep their recorded cadence until a terms edit changes it. Completed matching commands replay with their original terms.
+- After deployment, the starter uses the configured intervals to check fresh subscription checkouts and terms edits, including the graduation terms captured at checkout for a new starter pack.
+- Frozen on: A config edit leaves existing subscriptions on their recorded terms. Starter packs can switch cadence at renewal using the graduation terms saved at checkout. Matching completed checkout and terms-edit commands replay their recorded results.
 
 ```sh
 node --experimental-strip-types host/settings.ts show subscriptionOffers.deliveryCycles --json
@@ -719,8 +719,8 @@ Search terms include recurring orders, renewals.
 - Basis `neutral`.
 - The starter uses the native dispatch default of six attempts.
 - Edit `owned/renewal.config.ts` (subscriptionCare.dispatch.maxAttempts).
-- The scheduled renewal host uses this cap when claiming lifecycle notices after deployment, including notices still eligible for retry.
-- Frozen on: Existing dispatch receipts keep their identities and recorded attempt counts.
+- After deployment, this cap applies to customer lifecycle notices. Raising it can make a previously capped failed notice eligible for another attempt under the same receipt key. Operator notices use a separate budget.
+- Frozen on: Accepted receipts stay accepted and are excluded from retries.
 
 ```sh
 node --experimental-strip-types host/settings.ts show subscriptions.lifecycleNoticeRetryBudget --json
@@ -804,7 +804,7 @@ Search terms include recurring orders, renewals.
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- A host can pass holdSeconds to createPostgresRenewalReservationPort; the starter leaves it unset and uses the package default of 900 seconds.
+- Native stock-wait recovery holds stock for 15 minutes, set in SQL with no host override.
 
 ```sh
 node --experimental-strip-types host/settings.ts show subscriptions.stockWaitHoldLifetime --json
