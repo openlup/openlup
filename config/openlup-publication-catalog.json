@@ -1482,6 +1482,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4887,6 +4891,10 @@
     },
     {
       "path": "packages/platform/sql/20261123141000_checkout_recovery_reminder_guard.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123142000_inventory_renewal_protection_validation.sql",
       "class": "public-output"
     },
     {
@@ -10935,6 +10943,10 @@
     },
     {
       "path": "packages/platform/test/inventory/inventoryAvailabilityCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/inventory_renewal_protection.json",
       "class": "public-output"
     },
     {

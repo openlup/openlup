@@ -1,4 +1,5 @@
 import { parseStockReadResponse, stockObject as object, stockQuantity as quantity } from "./stockReadResponse.js";
+import type { NewPurchaseStockRow } from "./contracts/newPurchaseStock.js";
 import type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
 
 interface StockQueryExecutor {
@@ -12,9 +13,19 @@ export interface NativeStockPromise {
  * purchase caller. Only the fenced native SQL allocator uses the renewal exemption. */
 export function createPostgresStockAvailability(executor: StockQueryExecutor, options: { sourceKey: string; now: () => string }): {
   readPort: NewPurchaseStockReadPort;
+  readInstalled(skus: readonly string[]): ReturnType<NewPurchaseStockReadPort["read"]>;
   availableToPromise(sku: string, asOf: string): Promise<NativeStockPromise>;
 } {
+  // The STABLE SQL read resolves the policy and stock against the same statement snapshot.
+  async function readInstalled(skus: readonly string[]) {
+    if (!skus.length) return new Map<string, NewPurchaseStockRow>();
+    const value = (await executor.query(`SELECT public.inventory_new_purchase_stock_read(
+      $1::text,$2::jsonb,$3::timestamptz) AS response`, [options.sourceKey, JSON.stringify(skus), options.now()])).rows[0]?.response;
+    return parseStockReadResponse(value);
+  }
+
   return {
+    readInstalled,
     async availableToPromise(sku, asOf) {
       const row = object((await executor.query(`SELECT public.inventory_available_to_promise(
         $1::text,$2::text,$3::timestamptz,false) AS response`, [options.sourceKey, sku, asOf])).rows[0]?.response);
@@ -28,10 +39,7 @@ export function createPostgresStockAvailability(executor: StockQueryExecutor, op
         // Read through the definer helper so runtime roles need no commerce_settings SELECT.
         const installedDays = (await executor.query("SELECT public.inventory_renewal_protection_days() AS days")).rows[0]?.days;
         if (input.horizonDays !== installedDays) throw new Error("native_stock_read_options_unsupported");
-        if (!input.skus.length) return new Map();
-        const value = (await executor.query(`SELECT public.inventory_new_purchase_stock_read(
-          $1::text,$2::jsonb,$3::timestamptz) AS response`, [options.sourceKey, JSON.stringify(input.skus), options.now()])).rows[0]?.response;
-        return parseStockReadResponse(value);
+        return readInstalled(input.skus);
       },
     },
   };

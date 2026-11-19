@@ -1049,6 +1049,28 @@ these retained reservations, receipts or compensation history yet.
 
 `createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. The native PostgreSQL admin port refuses direct stock adjustment because this stock is externally observed; no native direct stock writer is supplied here. Native preview availability subtracts all live holds and remaining subscription demand through the horizon installed via `inventory_renewal_protection` (default 14 days), clamped at zero; native safety and channel exposure remain zero. Managed preview additionally accounts for channel exposure. The native reader refuses a horizon differing from the installed value or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and their fixed 14-day horizon, refusing other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
 
+For native hosts that want the installed horizon on each read, use
+`createPostgresStockAvailability(executor, { sourceKey, now }).readInstalled(skus)`.
+It sends a single batched query for a nonempty list. The native SQL stock read
+resolves the horizon in the same statement snapshot as stock and renewal demand.
+An empty list returns an empty map. Hosts supplying an explicit horizon can
+continue to use `readPort.read` and its existing option checks.
+
+Apply `20261123142000_inventory_renewal_protection_validation.sql` from the
+complete native catalogue. The existing horizon reader now calls
+`public.inventory_renewal_protection_validate(jsonb)`. The validator returns
+the normalized policy with the original revision string and an integer horizon,
+or raises `inventory_renewal_protection_policy_invalid` (SQLSTATE `22023`).
+The migration owner and `service_role` can call the validator directly.
+The qualified runtime logins inherit execution through `service_role`.
+The existing horizon and stock reads keep their privileges and the absent-row
+14-day fallback.
+
+For custom runtime roles with a direct horizon-reader grant,
+`EXECUTE` on the pure validator is optional for ATP. Grant it for connected
+settings validation or preview. The validator reads no table, and direct calls
+without its grant raise SQLSTATE `42501`.
+
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](https://github.com/openlup/openlup/blob/main/docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 
 ## Promotions
