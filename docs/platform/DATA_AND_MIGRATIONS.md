@@ -951,7 +951,10 @@ for canonical order. SKU, receipt, head and pointer events use their indexed
 keys. Decision events use the candidate and event-order index to check adjacent
 transitions and the approval active at the issue's saved time.
 
-A product can retain up to 10,000 SKUs. Exact reads bind the stored issue,
+A product can retain up to 10,000 SKUs. Native transfer also limits a packet to
+10,000 rows across its retained tables, including both live and retained SKU
+rows. A product that fits the read limit can therefore exceed the transfer
+limit. Exact reads bind the stored issue,
 document and original result by key. Admission and selected reads use the same
 native product and SKU checks. Current and legacy reads select observation
 fields for the bounded roster. A full page checks at most 100 SKU sizes and
