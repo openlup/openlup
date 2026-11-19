@@ -201,6 +201,10 @@ function replaceDocument(data: Fixture, retained = false) {
 }
 const movedHead = { publicationId: "50000000-0000-4000-8000-000000000007", revision: 4, documentDigest: "e".repeat(64) };
 const beforeRoute = { readiness: routeConflict, routeCalls: [0, 0, 0] } as const;
+const incompleteSkuRoster = {
+  ...beforeRoute, expected: reason("catalog_publication_read_invalid"), outcome: "unknown",
+  diagnostic: { phase: "structural", path: "publication", subject: "example:article" },
+} as const;
 function bindCallbackForAnotherType(data: Fixture) {
   const { validateContent: _rule, publicationRules: _installed, ...type } = data.definition;
   const pack = withCatalogPublicationRules({ id: "example:paired-rules", namespace: "example", version: 1, openlupRange: "1.x",
@@ -281,12 +285,11 @@ const cases: Case[] = [
     expected: reason("catalog_publication_rules_binding_mismatch"),
     diagnostic: { phase: "structural", path: "product.type", subject: "example:article" }, evidenceCalls: 0, ...beforeRoute },
   ...(["before", "after"] as const).map((where): Case => ({
-    id: `a malformed SKU row ${where} the known SKU preserves its identifier refusal`, fixture: "revision", arrange(data) {
+    id: `incomplete SKU roster with a malformed row ${where} the identifier mismatch`, fixture: "revision", arrange(data) {
       activate(data, "membership");
       data.payload.skus[0]!.identifiers![0]!.value = "4006381333931";
       data.evidence.skus = where === "before" ? [null!, ...data.evidence.skus] : [...data.evidence.skus, null!];
-    }, expected: reason("catalog_publication_identifier_source_mismatch"),
-    diagnostic: { phase: "structural", path: "skus.0", subject: "ARTICLE" }, ...beforeRoute,
+    }, ...incompleteSkuRoster,
   })),
   { id: "a decoded wrong retained document identity refuses before routes", fixture: "revision",
     rulesAsset: artifact.replace("...this.identifyDocument(document), canonicallyEncoded:", '...this.identifyDocument(document), documentRef: "example:wrong", canonicallyEncoded:'),
@@ -537,6 +540,10 @@ const cases: Case[] = [
       ? [] : [{ path: "", code: "wrong_context" }]`), routeCalls: [1, 1, 1] },
   { id: "D-031 create registers its first exact document" },
   { id: "D-033 presentation-only revise retains the omitted roster and primary", fixture: "revision" },
+  { id: "Z-1 incomplete SKU roster stops before checking presentation effects", fixture: "revision", arrange(data) {
+    data.evidence.skus.unshift(null!);
+    data.payload.publication.operations = [{ op: "set_product_status", productSlug: "article", status: "archived" }];
+  }, ...incompleteSkuRoster },
   { id: "D-030 rejects missing unit GTIN on a dark SKU", arrange: data => { data.payload.skus[0]!.identifiers = []; },
     expected: reason("unit_trade_identifier_missing"),
     diagnostic: { path: "skus.0.identifiers", phase: "structural", subject: "ARTICLE" } },
@@ -546,6 +553,10 @@ const cases: Case[] = [
     governed: data => restoredDraft(data, false), expected: reason("catalog_lifecycle_fresh_sale_refused") },
   { id: "B-5 eligible after both authoritative states are restored", fixture: "revision", arrange: withdrawnDraft,
     governed: data => restoredDraft(data, true) },
+  { id: "Y-1 incomplete SKU roster stops before the ordered restore and eligibility checks", fixture: "revision", arrange(data) {
+    withdrawnDraft(data);
+    data.evidence.skus.unshift(null!);
+  }, governed: data => restoredDraft(data, true), ...incompleteSkuRoster },
   { id: "A-4 a presentation field cannot carry the authored document", arrange: data => {
     data.payload.product.sharedContent.presentation = { copy: data.payload.product.sharedContent.document! };
     operation(data, "set_product_presentation", { presentation: data.payload.product.sharedContent.presentation });
@@ -591,8 +602,8 @@ const cases: Case[] = [
     expected: reason("package_unsupported"), diagnostic: { path: "product", phase: "structural", subject: "example:article" } },
   ...([
     { scope: "variant", complete: "A-12 omitted SKU attributes keep the effective projection byte bound",
-      partial: "M-ATTRIBUTE-BOUND-WITH-MALFORMED-SIBLING", path: "/skus/0/attributes/label", subject: "ARTICLE" },
-    { scope: "product", complete: "Q-PRODUCT-ATTRIBUTE-CONTROL", partial: "Q-PRODUCT-ATTRIBUTE-MALFORMED-SIBLING",
+      partial: "M-ATTRIBUTE-BOUND incomplete SKU roster", path: "/skus/0/attributes/label", subject: "ARTICLE" },
+    { scope: "product", complete: "Q-PRODUCT-ATTRIBUTE-CONTROL", partial: "Q-PRODUCT-ATTRIBUTE incomplete SKU roster",
       path: "/productAttributes/label", subject: "example:article" },
   ] as const).flatMap(({ scope, complete, partial, path, subject }) => [complete, partial].map((id): Case => ({
     id, fixture: "revision", arrange(data) {
@@ -605,10 +616,12 @@ const cases: Case[] = [
       retained.attributes = { label: "é".repeat(1025) };
       if (id === partial) data.evidence.skus.unshift(null as never);
     },
-    expected: reason("attribute_projection_text_too_large"), routeCalls: [1, 1, 1],
-    outcome: "blocked-input", diagnostic: { phase: "structural", path, subject },
+    ...(id === partial ? incompleteSkuRoster : {
+      expected: reason("attribute_projection_text_too_large"), routeCalls: [1, 1, 1],
+      outcome: "blocked-input", diagnostic: { phase: "structural", path, subject },
+    }),
   }))),
-  ...["V-RETAINED-AXIS", "W-RETAINED-AXIS"].map((id): Case => ({ id, fixture: "revision", arrange(data) {
+  ...["V-RETAINED-AXIS", "W-RETAINED-AXIS incomplete SKU roster"].map((id): Case => ({ id, fixture: "revision", arrange(data) {
     data.definition = { ...data.definition, dimensions: [{ key: "style", kind: "choice", values: ["one", "two"] }],
       axes: [{ key: "style", attributeKey: "style" }],
       attributes: [{ key: "style", scope: "variant", valueType: { kind: "enum", values: [{ id: "one" }, { id: "two" }] },
@@ -616,13 +629,14 @@ const cases: Case[] = [
     data.registry = { resolve: () => data.definition };
     data.installedDefinitionDigest = catalogDefinitionDigest(data.definition);
     data.payload.product.dimensions = ["style"];
-    if (id === "W-RETAINED-AXIS") data.evidence.skus.unshift(null as never);
-  }, expected: reason("option_missing"), diagnostic: { phase: "structural", path: "options.style", subject: "ARTICLE" } })),
-  { id: "W-RETAINED-FACTS a malformed sibling leaves the derived-fact mismatch visible", fixture: "revision", arrange(data) {
+    if (id !== "V-RETAINED-AXIS") data.evidence.skus.unshift(null as never);
+  }, ...(id === "V-RETAINED-AXIS"
+    ? { expected: reason("option_missing"), diagnostic: { phase: "structural", path: "options.style", subject: "ARTICLE" } }
+    : incompleteSkuRoster) })),
+  { id: "W-RETAINED-FACTS incomplete SKU roster stops before checking derived facts", fixture: "revision", arrange(data) {
     data.evidence.skus[0]!.facts = { derived: 13 };
     data.evidence.skus.unshift(null as never);
-  }, expected: reason("catalog_publication_v3_compile_derived_facts_mismatch"),
-  diagnostic: { phase: "structural", path: "skus", subject: "ARTICLE" } },
+  }, ...incompleteSkuRoster },
   { id: "D-034 publication fact intent names an incoming SKU", arrange: data => {
     data.payload.product.sharedContent.publicationSkus.push({ ...data.payload.product.sharedContent.publicationSkus[0]!, skuCode: "STRAY" });
   }, expected: reason("intent_sku_absent") },
@@ -823,6 +837,8 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
     expect(await service.compareCandidate({ ...preview, expectedHead: data.expectedHead })).toEqual(preview);
     expect(preview.issues.find(issue => !issue.code.endsWith("_unavailable"))?.code ?? preview.issues[0]?.code ?? null).toBe(expected[0]);
     if (outcome) expect(preview?.preparation?.structural.outcome).toBe(outcome);
+    if (expected[0] === "catalog_publication_read_invalid")
+      expect(preview.preparation?.activation.outcome).toBe("unknown");
     if (diagnostic) {
       if (diagnostic.phase === "activation") expect(preview?.preparation?.activation.outcome).toBe("blocked-input");
       const issues = diagnostic.phase === "activation" ? preview.preparation?.activation.issues : preview.preparation?.structural.issues;
@@ -848,7 +864,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
     const decisionReason = expected[index + 1];
     if (decisionReason) await expect(result).rejects.toMatchObject({ code: decisionReason,
       ...(decisionReason === expected[0] && diagnostic && { diagnostic: { ...diagnostic, ...(message && { message: expect.stringContaining(message) }) } }),
-      ...(decisionReason.endsWith("_unavailable") && { outcome: "dependency_unavailable" }) });
+      ...((decisionReason.endsWith("_unavailable") || decisionReason === "catalog_publication_read_invalid") && { outcome: "dependency_unavailable" }) });
     else {
       const compiled = await result;
       expect(compiled.product.id).toBe(data.record.productId);

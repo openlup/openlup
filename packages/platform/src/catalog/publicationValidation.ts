@@ -620,18 +620,15 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     }) ?? null;
     const head = evidence && publicationHeadSchema.nullable().safeParse(evidence.head);
     const recordedProduct = evidence && catalogPublishedProductSchema.nullable().safeParse(evidence.product);
-    const skuRows = evidence && Array.isArray(evidence.skus) ? evidence.skus : undefined;
-    const retainedSkus = skuRows?.flatMap(row => {
-      const parsed = catalogPublishedSkuSchema.safeParse(row);
-      return parsed.success ? [parsed.data] : [];
-    }) ?? [];
-    const recordedSkus = skuRows?.length === retainedSkus.length;
     const recordedDocuments = evidence && Array.isArray(evidence.documents);
     const highWaterAvailable = evidence && Number.isSafeInteger(evidence.documentRevisionHighWater) && evidence.documentRevisionHighWater >= 0;
     if (head?.success && !matchesPublicationHead(evidenceHead === undefined ? requestedHead : evidenceHead, head.data)) publicationRefuse("head_conflict", "conflict");
     if (head?.success && knownHead === undefined) knownHead = head.data;
     const expectedHead = knownHead ?? null;
-    if (evidence && (!head?.success || !recordedProduct?.success || !recordedSkus || !recordedDocuments || !highWaterAvailable))
+    const retainedSkus = evidence ? z.array(catalogPublishedSkuSchema).safeParse(evidence.skus).data
+      : requestedHead === null ? [] : undefined;
+    if (!retainedSkus) return publicationRefuse("catalog_publication_read_invalid", "dependency_unavailable");
+    if (evidence && (!head?.success || !recordedProduct?.success || !recordedDocuments || !highWaterAvailable))
       structural.push(missing("catalog_publication_read_invalid", "publication"));
     const sourceRead = evidence && Array.isArray(evidence.drafts) ? boundDrafts(record, payload, evidence.drafts) : undefined;
     const markSourceUnavailable = () => {
@@ -641,8 +638,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     };
     if (evidence && (!sourceRead || sourceRead.incomplete)) markSourceUnavailable();
     const missingProduct = requestedHead !== null && !recordedProduct?.data;
-    const missingSkuRoster = requestedHead !== null && !recordedSkus;
-    const missingState = missingProduct || missingSkuRoster;
     const retainedState = {
       product: recordedProduct?.data ?? null,
       skus: retainedSkus,
@@ -680,7 +675,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const unresolved = unresolvedPublicationDraftIssues(draftIssues, retainedState);
     for (const issue of unresolved) {
       if (issue.code === "attribute_reference_unresolved"
-        || missingState && (issue.code === "primary_sku_missing" || issue.code === "sku_missing")) {
+        || missingProduct && (issue.code === "primary_sku_missing" || issue.code === "sku_missing")) {
         structural.push(missing("publication_evidence_unavailable", issue.path));
       } else {
         const diagnostic = contextualIssue(issue);
@@ -692,7 +687,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     position.path = "publication";
     if (head?.success && recordedProduct?.success)
       need((retainedState.product?.document?.digest ?? null) === (head.data?.documentDigest ?? null), "catalog_publication_source_mismatch");
-    need(missingState || retainedState.skus.length === 0 || retainedState.product !== null, "catalog_publication_source_invalid");
+    need(missingProduct || retainedState.skus.length === 0 || retainedState.product !== null, "catalog_publication_source_invalid");
     need(retainedState.skus.every(sku => sku.productId === payload.product.id), "catalog_publication_scope_expansion");
     const retainedIds = new Set<string>(), retainedCodes = new Set<string>();
     for (const sku of retainedState.skus) {
@@ -834,7 +829,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     function bindPhysicalSource(code: string | undefined, source: CatalogDraftPayloadV3["skus"][number]) {
       if (matchedPhysicalSources.has(source)) return;
       const actual = code === undefined ? undefined : skus.get(code);
-      if (!actual && missingSkuRoster && !originalById.has(source.id)) return;
       assertMaterializedSkuSource(actual, source);
       matchedPhysicalSources.add(source);
     }
@@ -853,7 +847,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         if (isLifecycleOperation(operation)) continue;
         if (operation.op === "set_derived_sku_facts") {
           const sku = skus.get(operation.skuCode);
-          if (sku || !missingState) assertDerivedSource(operation, sku, authoredDocument.revisionNo);
+          if (sku || !missingProduct) assertDerivedSource(operation, sku, authoredDocument.revisionNo);
           if (rules && selected && sku)
             need(equal(documentSkuFacts(selected, sku, rules), operation.facts), "catalog_publication_v3_compile_derived_facts_mismatch");
         } else if ("skuCode" in operation) {
@@ -895,8 +889,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       }
       activating = affected.enabling.size > 0 || payload.publication.operations.some(op => op.op === "restore_product" || op.op === "restore_sku");
       for (const [index, operation] of payload.publication.operations.entries()) {
-        if (operation.op !== "set_eligibility" || !enablesSku(operation)
-          || missingSkuRoster && !skus.has(operation.skuCode)) continue;
+        if (operation.op !== "set_eligibility" || !enablesSku(operation)) continue;
         const source = savedSources.get(index);
         if (!source) continue;
         atOperation(index, operation);
@@ -911,7 +904,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       const proposed = [...payload.publication.operations].reverse().find(operation => operation.op === "set_product_presentation");
       const presentation = proposed?.op === "set_product_presentation" ? proposed.presentation : product?.presentation;
       for (const code of activationCodes) {
-        if (missingSkuRoster && !skus.has(code) || missingProduct && !presentation) continue;
+        if (missingProduct && !presentation) continue;
         position.path = "skus";
         position.subject = code;
         const source = authorship.sku(code, true);
@@ -1005,8 +998,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       for (const [index, operation] of payload.publication.operations.entries()) {
         atOperation(index, operation);
         if (isLifecycleOperation(operation)) {
-          if (!missingProduct && (!missingSkuRoster || "skuCode" in operation && skus.has(operation.skuCode)))
-            applyLifecycle(operation);
+          if (!missingProduct) applyLifecycle(operation);
           continue;
         }
         const source = savedSources.get(index);
@@ -1016,7 +1008,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           await readRoute(proposedViews[index]!);
         }
         if (missingProduct) continue;
-        if ("skuCode" in operation && operation.op !== "create_sku" && missingSkuRoster && !skus.has(operation.skuCode)) continue;
         if ("skuCode" in operation && !source && operation.op !== "set_derived_sku_facts") continue;
         if (operation.op === "create_product") {
           need(product === null && operation.productId === payload.product.id, "catalog_publication_v3_compile_product_conflict");
@@ -1130,15 +1121,11 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     let assembled: Awaited<ReturnType<typeof structuralResult>>;
     async function checkStructuralResult() { assembled = await structuralResult(); }
     let documentExclusionUnavailable = false;
-    const productLifecycleDeferred = missingSkuRoster
-      && operations.some(operation => isLifecycleOperation(operation) && "productSlug" in operation);
-    const skuEffectsReadable = !missingProduct && !(productLifecycleDeferred
-      && operations.some(operation => operation.op === "set_product_lifecycle" && operation.state === "withdrawn"));
     async function structuralResult() {
       position.path = "product";
       position.subject = definition.key;
       const result = missingProduct ? null : knownProduct();
-      if (!missingState && lastChildWithdrawn) need(productState === "withdrawn"
+      if (!missingProduct && lastChildWithdrawn) need(productState === "withdrawn"
         && payload.publication.operations.some(op => op.op === "set_product_lifecycle" && op.state === "withdrawn"),
       "catalog_lifecycle_last_active_child");
       if (result && payload.product.documentRevision)
@@ -1160,7 +1147,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         }
         for (const [code, authored] of incoming) {
           const sku = skus.get(code!);
-          if (!sku && missingSkuRoster) continue;
           need(sku, "catalog_publication_sku_effect_missing");
           if (created.has(code!)) need(authored.identifiers?.every(identifier =>
             sku!.identifiers.some(stored => matchesAuthoredIdentifier(identifier, stored))), "catalog_publication_identifier_effect_missing");
@@ -1168,7 +1154,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         }
         for (const intent of payload.product.sharedContent.offerMemberships) {
           const sku = skus.get(intent.skuCode);
-          if (!sku && missingSkuRoster) continue;
           need(sku?.memberships.some(row => row.offerVersion === intent.offerVersion && row.admitted === intent.admitted),
             "catalog_publication_membership_effect_missing");
         }
@@ -1189,7 +1174,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           else Object.assign(sku, overlay);
         }
         const before = originalById.get(sku.id);
-        if (result && !productLifecycleDeferred && !withdrawalOnly && before && rules && afterDocument && (productPhysicalChange || !equal(
+        if (result && !withdrawalOnly && before && rules && afterDocument && (productPhysicalChange || !equal(
           [before.netContent, before.options, before.attributes, before.facts, before.grossMass, before.assetRefs],
           [sku.netContent, sku.options, sku.attributes, sku.facts, sku.grossMass, sku.assetRefs]))) {
           const beforeDocument = selectedDocument(beforeReference);
@@ -1200,9 +1185,9 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         }
         need(sku.netContent.dimension === "mass", "catalog_publication_mass_required_until_mc5");
         catalogPublicationIntegralGrams(sku.netContent, input.definition);
-        if (skuEffectsReadable && !withdrawalOnly && rules && afterDocument) need(equal(documentSkuFacts(afterDocument, sku, rules), sku.facts),
+        if (!withdrawalOnly && rules && afterDocument) need(equal(documentSkuFacts(afterDocument, sku, rules), sku.facts),
           "catalog_publication_v3_compile_derived_facts_mismatch");
-        if (skuEffectsReadable && !productLifecycleDeferred && governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
+        if (result && governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
           const state = skuStates.get(sku.code)?.state;
           if (productState === undefined || state === undefined) structural.push(missing("catalog_lifecycle_evidence_unavailable", position.path));
           else need(productState === "active" && state === "active", "catalog_lifecycle_fresh_sale_refused");
@@ -1215,26 +1200,22 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       position.subject = definition.key;
       await checkRetainedAttributes(skus.values(), result?.attributes ?? payload.product.attributes);
       need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
-      const primary = [...skus.values()].find(sku => sku.id === result?.primarySkuId);
-      if (result && !missingState) {
-        need(result.primarySkuId && result.document && (retainedState.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
-        need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
-        need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
-        const promotions = requiredPromotions(payload.publication.operations.filter(op => !isLifecycleOperation(op)), retainedState);
-        need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
-          "catalog_publication_activation_effect_missing");
-      }
+      if (!result) return;
+      const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
+      need(result.primarySkuId && result.document && (retainedState.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
+      need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
+      need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
+      const promotions = requiredPromotions(payload.publication.operations.filter(op => !isLifecycleOperation(op)), retainedState);
+      need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
+        "catalog_publication_activation_effect_missing");
       const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-      if (skuEffectsReadable) {
-        for (const sku of sorted) {
-          const before = originalById.get(sku.id);
-          // An omitted derived cache effect has this publication's draft/receipt as
-          // its effect provenance. Keep the retained physical/media source available.
-          if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) sku.source = claim;
-          assertPublishedSkuDocumentExclusion(sku, documentDigests);
-        }
+      for (const sku of sorted) {
+        const before = originalById.get(sku.id);
+        // An omitted derived cache effect has this publication's draft/receipt as
+        // its effect provenance. Keep the retained physical/media source available.
+        if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) sku.source = claim;
+        assertPublishedSkuDocumentExclusion(sku, documentDigests);
       }
-      if (!result || missingState) return;
       const lifecycle = governed && productState ? { product: productState, skus: Object.fromEntries([...skuStates].sort()) } : undefined;
       const changed = original !== publicationJson(materialState(result, sorted)) || Boolean(lifecycle && !equal(lifecycle, evidence?.lifecycle ?? null));
       if (!changed && retainedState.product) { result.source = retainedState.product.source; result.content = retainedState.product.content; }
@@ -1266,7 +1247,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         expectedHead, verifiedMedia,
       );
       await checkPrices(priceDraft);
-      const priced = assembled?.priced ?? (skuEffectsReadable ? [...skus.values()].filter(affected.priced) : []);
+      if (!assembled) return;
+      const { compiled: { product: result }, primary, priced } = assembled;
       position.path = "skus";
       for (const sku of priced) {
         position.subject = sku.code;
@@ -1275,8 +1257,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         need(sku.identifiers.some(identifier => identifier.scheme === "gs1:gtin" && identifier.isPrimary && identifier.packagingLevel === "unit")
           && sku.logisticsRef && sku.memberships.some(row => row.admitted), "catalog_publication_v3_activation_readiness_failed");
       }
-      if (!assembled) return;
-      const { compiled: { product: result }, primary } = assembled;
       position.subject = definition.key;
       if (operations.some(operation => operation.op === "set_product_status" && operation.status === "active"
         || operation.op === "set_product_lifecycle" && operation.state === "active" || operation.op === "restore_product")) {
