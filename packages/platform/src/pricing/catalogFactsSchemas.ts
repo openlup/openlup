@@ -1,7 +1,6 @@
 import { z } from "zod";
 
-import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "./contracts/provenance.js";
-import type { CommerceQuoteCatalogPublication } from "./commerceQuoteCatalogReadPort.js";
+import { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION, type CommerceQuoteCatalogPublication } from "./contracts/provenance.js";
 
 const publicationSchema: z.ZodType<CommerceQuoteCatalogPublication, CommerceQuoteCatalogPublication> = z.object({
   productId: z.uuid(), skuRevisionId: z.uuid(),

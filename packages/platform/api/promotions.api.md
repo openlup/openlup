@@ -1043,7 +1043,7 @@ export {};
 
 ```ts
 import { z } from "zod";
-import type { CommerceQuoteCatalogPublication } from "./commerceQuoteCatalogReadPort.js";
+import { type CommerceQuoteCatalogPublication } from "./contracts/provenance.js";
 /**
  * Server-only evidence for a strict quote line. V1 remains readable for
  * historical and explicitly pre-cutover legacy subscription observations; v2
@@ -1518,18 +1518,7 @@ export declare function createCommerceQuoteBatchHandler<Request extends CreateQu
 ## dist/pricing/commerceQuoteCatalogReadPort.d.ts
 
 ```ts
-/** The publication and SKU revision observed by a governed quote reader.
- * @experimental
- */
-export interface CommerceQuoteCatalogPublication {
-    productId: string;
-    skuRevisionId: string;
-    head: {
-        publicationId: string;
-        revision: number;
-        documentDigest: string;
-    };
-}
+import type { CommerceQuoteCatalogPublication } from "./contracts/provenance.js";
 /** Quote-only facts: no copy, route, price, or inventory authority. */
 export interface CommerceQuoteCatalogItem {
     skuId: string;
@@ -1958,9 +1947,20 @@ export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_di
 ## dist/pricing/contracts/provenance.d.ts
 
 ```ts
-import type { CommerceQuoteCatalogPublication } from "../commerceQuoteCatalogReadPort.js";
 export declare const CATALOG_FACTS_PROVENANCE_VERSION: "catalog_facts_v1";
 export declare const CATALOG_FACTS_POLICY_PROVENANCE_VERSION: "catalog_facts_v2";
+/** The publication and SKU revision observed by a governed quote reader.
+ * @experimental
+ */
+export interface CommerceQuoteCatalogPublication {
+    productId: string;
+    skuRevisionId: string;
+    head: {
+        publicationId: string;
+        revision: number;
+        documentDigest: string;
+    };
+}
 interface CatalogFactsFields {
     skuId: string;
     documentRevisionId: string;
@@ -3036,7 +3036,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         }, z.core.$strict>>>;
         catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
             skuId: z.ZodString;
-            publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+            publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
             documentRevisionId: z.ZodString;
             documentDigest: z.ZodString;
             basePriceEntryId: z.ZodString;
@@ -3053,7 +3053,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }>;
         }, z.core.$strict>, z.ZodObject<{
             skuId: z.ZodString;
-            publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+            publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
             documentRevisionId: z.ZodString;
             documentDigest: z.ZodString;
             basePriceEntryId: z.ZodString;
@@ -3133,7 +3133,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>>>;
             catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
                 skuId: z.ZodString;
-                publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                 documentRevisionId: z.ZodString;
                 documentDigest: z.ZodString;
                 basePriceEntryId: z.ZodString;
@@ -3150,7 +3150,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }>;
             }, z.core.$strict>, z.ZodObject<{
                 skuId: z.ZodString;
-                publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                 documentRevisionId: z.ZodString;
                 documentDigest: z.ZodString;
                 basePriceEntryId: z.ZodString;
@@ -3335,7 +3335,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strict>>>;
                 catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
                     skuId: z.ZodString;
-                    publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                    publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                     documentRevisionId: z.ZodString;
                     documentDigest: z.ZodString;
                     basePriceEntryId: z.ZodString;
@@ -3352,7 +3352,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     }>;
                 }, z.core.$strict>, z.ZodObject<{
                     skuId: z.ZodString;
-                    publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                    publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                     documentRevisionId: z.ZodString;
                     documentDigest: z.ZodString;
                     basePriceEntryId: z.ZodString;
@@ -3538,7 +3538,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strict>>>;
                 catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
                     skuId: z.ZodString;
-                    publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                    publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                     documentRevisionId: z.ZodString;
                     documentDigest: z.ZodString;
                     basePriceEntryId: z.ZodString;
@@ -3555,7 +3555,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     }>;
                 }, z.core.$strict>, z.ZodObject<{
                     skuId: z.ZodString;
-                    publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                    publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                     documentRevisionId: z.ZodString;
                     documentDigest: z.ZodString;
                     basePriceEntryId: z.ZodString;
@@ -3742,7 +3742,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strict>>>;
                 catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
                     skuId: z.ZodString;
-                    publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                    publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                     documentRevisionId: z.ZodString;
                     documentDigest: z.ZodString;
                     basePriceEntryId: z.ZodString;
@@ -3759,7 +3759,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     }>;
                 }, z.core.$strict>, z.ZodObject<{
                     skuId: z.ZodString;
-                    publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                    publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                     documentRevisionId: z.ZodString;
                     documentDigest: z.ZodString;
                     basePriceEntryId: z.ZodString;
@@ -3945,7 +3945,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strict>>>;
                 catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
                     skuId: z.ZodString;
-                    publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                    publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                     documentRevisionId: z.ZodString;
                     documentDigest: z.ZodString;
                     basePriceEntryId: z.ZodString;
@@ -3962,7 +3962,7 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                     }>;
                 }, z.core.$strict>, z.ZodObject<{
                     skuId: z.ZodString;
-                    publication: z.ZodOptional<z.ZodType<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication, import("./commerceQuoteCatalogReadPort.js").CommerceQuoteCatalogPublication>>>;
+                    publication: z.ZodOptional<z.ZodType<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication, z.core.$ZodTypeInternals<import("./contracts/provenance.js").CommerceQuoteCatalogPublication, import("./contracts/provenance.js").CommerceQuoteCatalogPublication>>>;
                     documentRevisionId: z.ZodString;
                     documentDigest: z.ZodString;
                     basePriceEntryId: z.ZodString;

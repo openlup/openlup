@@ -79,53 +79,6 @@ export { resolvedAcquisitionTermsSchema } from "../acquisitionTermsSchemas.js";
 /** @consumer src/domains/commerce/quoteContracts.ts */
 export { shippingTermsSchema } from "../../shipping/thresholdPolicy.js";
 ```
-## dist/pricing/commerceQuoteCatalogReadPort.d.ts
-
-```ts
-/** The publication and SKU revision observed by a governed quote reader.
- * @experimental
- */
-export interface CommerceQuoteCatalogPublication {
-    productId: string;
-    skuRevisionId: string;
-    head: {
-        publicationId: string;
-        revision: number;
-        documentDigest: string;
-    };
-}
-/** Quote-only facts: no copy, route, price, or inventory authority. */
-export interface CommerceQuoteCatalogItem {
-    skuId: string;
-    skuCode: string;
-    variantId: string;
-    productSlug: string;
-    netWeightG: number;
-    /** Identifies the product primary SKU for offer selection; secondary SKUs are excluded. */
-    isPrimarySku?: boolean;
-    isAddon: boolean;
-    sellability: {
-        oneTime: boolean;
-        subscription: boolean;
-    };
-    documentRevision: {
-        id: string | null;
-        digest: string | null;
-    };
-    /** Present when the configured offer reader verified the publication.
-     * @experimental
-     */
-    publication?: CommerceQuoteCatalogPublication;
-}
-export interface CommerceQuoteCatalogReadPort {
-    listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
-}
-export type CommerceQuoteCatalogReadRefusalCode = "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
-export declare class CommerceQuoteCatalogReadError extends Error {
-    readonly code: CommerceQuoteCatalogReadRefusalCode;
-    constructor(code: CommerceQuoteCatalogReadRefusalCode);
-}
-```
 ## dist/pricing/contracts/acquisitionTerms.d.ts
 
 ```ts
@@ -233,9 +186,20 @@ export interface CommerceTaxBreakdown extends CommerceTaxProfile {
 ## dist/pricing/contracts/provenance.d.ts
 
 ```ts
-import type { CommerceQuoteCatalogPublication } from "../commerceQuoteCatalogReadPort.js";
 export declare const CATALOG_FACTS_PROVENANCE_VERSION: "catalog_facts_v1";
 export declare const CATALOG_FACTS_POLICY_PROVENANCE_VERSION: "catalog_facts_v2";
+/** The publication and SKU revision observed by a governed quote reader.
+ * @experimental
+ */
+export interface CommerceQuoteCatalogPublication {
+    productId: string;
+    skuRevisionId: string;
+    head: {
+        publicationId: string;
+        revision: number;
+        documentDigest: string;
+    };
+}
 interface CatalogFactsFields {
     skuId: string;
     documentRevisionId: string;

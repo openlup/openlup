@@ -1,11 +1,4 @@
-/** The publication and SKU revision observed by a governed quote reader.
- * @experimental
- */
-export interface CommerceQuoteCatalogPublication {
-  productId: string;
-  skuRevisionId: string;
-  head: { publicationId: string; revision: number; documentDigest: string };
-}
+import type { CommerceQuoteCatalogPublication } from "./contracts/provenance.js";
 
 /** Quote-only facts: no copy, route, price, or inventory authority. */
 export interface CommerceQuoteCatalogItem {
