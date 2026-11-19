@@ -181,13 +181,20 @@ BEGIN
   END IF;
   RETURN NEW;
  END IF;
- IF TG_TABLE_NAME = 'catalog_publications' THEN
+ IF TG_TABLE_NAME = 'catalog_product_document_revisions' THEN
+  IF NEW.canonical_text IS NULL THEN RETURN NEW; END IF;
+  IF encode(sha256(convert_to(NEW.canonical_text,'UTF8')),'hex') <> NEW.digest THEN
+   RAISE EXCEPTION 'catalog_publication_digest_mismatch' USING ERRCODE='23514';
+  END IF;
+  -- The generic storage envelope has an object root.
+  IF jsonb_typeof(NEW.canonical_text::jsonb) IS DISTINCT FROM 'object' THEN
+   RAISE EXCEPTION 'catalog_publication_state_invalid' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+ ELSIF TG_TABLE_NAME = 'catalog_publications' THEN
   canonical := NEW.canonical_state; expected := NEW.digest;
- ELSIF TG_TABLE_NAME = 'catalog_sku_revisions' THEN
-  canonical := NEW.full_facts; expected := NEW.digest;
  ELSE
-  canonical := NEW.canonical_text; expected := NEW.digest;
-  IF canonical IS NULL THEN RETURN NEW; END IF;
+  canonical := NEW.full_facts; expected := NEW.digest;
  END IF;
  IF encode(sha256(convert_to(canonical,'UTF8')),'hex') <> expected THEN
   RAISE EXCEPTION 'catalog_publication_digest_mismatch' USING ERRCODE='23514';

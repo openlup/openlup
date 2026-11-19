@@ -1,7 +1,25 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { compileCatalogPublication, type CatalogPublicationCompileInput } from "../../src/catalog/publicationValidation.js";
 import { input } from "./fixtures/publicationInput.js";
+
+it("CD-CAT-43 delegates opaque document decoding and SKU facts to the installed rules", () => {
+  const source = input();
+  const decodeDocument = vi.fn((canonicalText: string) => ({ ...JSON.parse(canonicalText), installed: true }));
+  const canonicalizeDocument = (value: unknown) => {
+    const { installed: _installed, ...document } = value as Record<string, unknown>;
+    return source.rules.canonicalizeDocument(document);
+  };
+  const deriveSkuFacts = vi.fn((value: unknown) => {
+    expect(value).toMatchObject({ installed: true, derived: 12 });
+    return source.rules.deriveSkuFacts(value);
+  });
+  // The installed decoder adds the same marker carried by the authored object.
+  const prepared = { ...source, rules: { ...source.rules, decodeDocument, canonicalizeDocument, deriveSkuFacts } };
+  source.payload.product.sharedContent.document!.installed = true;
+  expect(compileCatalogPublication(prepared).skus).toHaveLength(1);
+  expect(deriveSkuFacts).toHaveBeenCalled();
+});
 
 const witnesses = [
   "W32_V5-0306_predicate_precedence_boundary",

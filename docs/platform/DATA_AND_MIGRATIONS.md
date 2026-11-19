@@ -409,15 +409,15 @@ The writer revalidates immutable v3 inputs, applies their ordered effects and
 checks full native readback in one transaction. It takes catalogue locks only.
 The installed document binding supplies the document's schema, reference,
 product slug and revision. The writer checks them against the sealed reference
-and canonical bytes. Publication writes the document payload as a whole and
-compares it as a whole for the canonical-text constraint and for immutable
-registration replay. The compiler calls the installed `rules.canonicalizeDocument`
-callback for canonicalization. The portable catalogue boundary checks the exact
-path, trimmed line and occurrence count of those uses. It refuses SQL field
-extraction and containment, private document imports and direct document
-canonicalization, validation, logging or serialization. Queries over document
-revisions name their columns explicitly so new storage fields do not enter
-the publication reader through a whole-row projection.
+and canonical bytes. Canonical text and the JSONB payload carry the same opaque
+document. Publication transports the document, checks its byte digest and compares
+it as a whole for the storage constraint and immutable registration replay. The
+SQL storage envelope checks for an object root. Installed rules decode the bytes,
+read document identity and name, canonicalize the document and derive SKU facts.
+The portable catalogue boundary binds these operations to their exact paths,
+trimmed lines and occurrence counts. It refuses field extraction, path and
+containment operators, schema-shaped validation, private schema imports, platform
+parsing, logging, serialization and whole-row projections.
 Native GTIN inserts and updates use Read Committed. The transaction locks the
 canonical identifier before checking collisions across issuers. A GTIN write
 under another isolation level refuses with `catalog_publication_gtin_requires_read_committed`.

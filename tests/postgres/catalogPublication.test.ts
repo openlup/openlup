@@ -34,9 +34,9 @@ function dependencies(afterQuery?: (sql: string, executor: PgQueryExecutor, rows
     try { await client.query("BEGIN"); await client.query(`SET LOCAL request.jwt.claims = '${JSON.stringify({ sub: admin, role: "authenticated" })}'`); const result = await work({ async query(sql, values) { const result = await client.query(sql, values); await afterQuery?.(sql, client, result.rows, values); return result; } }); await client.query("COMMIT"); return result; }
     catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); } } },
     authorizeHuman: async () => ({ ok: true, userId: admin, role: "admin", isMachineActor: false }),
-    rules: { canonicalizeDocument: canonicalCatalogDraftJson, identifyDocument(document) {
-      const { schemaVersion, id, productSlug, revisionNo } = document as { schemaVersion: number; id: string; productSlug: string; revisionNo: number };
-      return { schemaId: `example:document.v${schemaVersion}`, documentRef: id, productSlug, revisionNo };
+    rules: { canonicalizeDocument: canonicalCatalogDraftJson, decodeDocument: JSON.parse, identifyDocument(document) {
+      const { schemaVersion, id, productSlug, revisionNo, name } = document as { schemaVersion: number; id: string; productSlug: string; revisionNo: number; name: string };
+      return { schemaId: `example:document.v${schemaVersion}`, documentRef: id, productSlug, revisionNo, name };
     }, deriveSkuFacts: (document) => ({ derived: (document as { derived: number }).derived }),
       validateProduct: () => [], classifySkuChange: (before, after, context) => {
         if (!context.beforeDocument) return "inconclusive";

@@ -174,7 +174,7 @@ it.each([
   }
   source.rules = { ...source.rules,
     deriveSkuFacts: () => ({ derived: 12 }),
-    identifyDocument: () => ({ schemaId: document.schemaVersion, documentRef: document.id, productSlug: document.productSlug, revisionNo: document.revisionNo }),
+    identifyDocument: () => ({ schemaId: document.schemaVersion, documentRef: document.id, productSlug: document.productSlug, revisionNo: document.revisionNo, name: document.name }),
     canonicalizeDocument(value) {
       const { name: _name, ...category } = value as typeof document;
       productDocumentV2Schema.parse(category);
