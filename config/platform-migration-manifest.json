@@ -642,11 +642,15 @@
       "sha256": "5fa6c0848f28d44aa795956b96a734fe2aea15674d76e9f42150636425bb8207"
     },
     {
+      "file": "db/platform/migrations/20261123150000_subscription_renewal_due_fairness.sql",
+      "sha256": "5a01d5c8896e18f1e49aabd864c0da4ed67d1811e0286a3d45b9460e5caf9c69"
+    },
+    {
       "file": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
       "sha256": "275ffae4413f157de5d408fecd32dda6cb45c186b95efedcf7605fb8aedc8d55"
     }
   ],
-  "objectInventorySha256": "c245cbb658d4ef7773e77c00817134750da14a01d404410a4e8a8003b1891757",
+  "objectInventorySha256": "9942f4de88611f732eaf14135e6a0353b74eb8f512bea6520ed216b9e7a57a5e",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1310,16 +1314,20 @@
         "sha256": "5fa6c0848f28d44aa795956b96a734fe2aea15674d76e9f42150636425bb8207"
       },
       {
+        "file": "db/platform/migrations/20261123150000_subscription_renewal_due_fairness.sql",
+        "sha256": "5a01d5c8896e18f1e49aabd864c0da4ed67d1811e0286a3d45b9460e5caf9c69"
+      },
+      {
         "file": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
         "sha256": "275ffae4413f157de5d408fecd32dda6cb45c186b95efedcf7605fb8aedc8d55"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "f223cd967ad1d28a091467084d37f4a3d8d432004753ac539e18d52394cdbade"
+        "withRestore": "ef103cb19869f4728884fbcef57d26fdcdab590bc9d5d883ed645be589018385"
       },
       "separateMigrator": {
-        "withRestore": "d99bef4ceada8ca0750a0b9288450aa2862c9f30eee9994ea7a0dc0d58f3dc11"
+        "withRestore": "c401079925b228a6e5bbe3deae7953a532378f46110afd8332d8acd5f145822d"
       }
     }
   },
@@ -1982,13 +1990,17 @@
         "sha256": "5fa6c0848f28d44aa795956b96a734fe2aea15674d76e9f42150636425bb8207"
       },
       {
+        "file": "db/platform/migrations/20261123150000_subscription_renewal_due_fairness.sql",
+        "sha256": "5a01d5c8896e18f1e49aabd864c0da4ed67d1811e0286a3d45b9460e5caf9c69"
+      },
+      {
         "file": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
         "sha256": "275ffae4413f157de5d408fecd32dda6cb45c186b95efedcf7605fb8aedc8d55"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "da4ac99a759aa6f2ed75139b6648b184bf64a9039ab4a84c8754cb3e07f20a10",
-      "operatorProvisioned": "f965824f9368f469c76bb82d2a33fe1da4df16b33525e92325b9779aa6bf360f"
+      "installerManaged": "9852367123483909e783339da9c93e947c570c6830807a4e1694c54ba57b26b1",
+      "operatorProvisioned": "bddcc4923a0435d8ca7666fc1f0a530701e6f72befe775d1dc2b497c1c4bd695"
     }
   }
 }

@@ -1498,6 +1498,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123150000_subscription_renewal_due_fairness.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261123152000_inventory_new_purchase_stock_preview.sql",
       "class": "public-output"
     },
@@ -4915,6 +4919,10 @@
     },
     {
       "path": "packages/platform/sql/20261123149000_native_durable_capture_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123150000_subscription_renewal_due_fairness.sql",
       "class": "public-output"
     },
     {
@@ -30643,6 +30651,10 @@
     },
     {
       "path": "tests/postgres/nativeCheckoutPersistence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nativeRenewalDueFairness.test.ts",
       "class": "public-output"
     },
     {
