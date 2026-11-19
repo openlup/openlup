@@ -8,7 +8,7 @@ import { catalogProductTypeRefSchema, catalogQuantitySchema, catalogOptionValueS
 import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2 } from "./contracts/publication.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./contracts/publication.js";
-import { publicationRefuse } from "./publicationError.js";
+import { CatalogPublicationError, publicationIssue, publicationRefuse } from "./publicationError.js";
 
 export const publicationJson = (input: unknown, maxBytes: number = CATALOG_PUBLICATION_LIMITS.manifestBytes): string => {
   const text = canonicalCatalogPublicationJson(input);
@@ -37,24 +37,31 @@ const presentationSchema = z.object({
   title: z.string().min(1).max(500).optional(),
   routePath: z.record(locale, z.string().min(1).max(500).startsWith("/")).optional(),
   shortName: localized.optional(),
-  advertisedWeightsG: z.array(z.number().int().positive()).max(500).optional(),
+  advertisedWeightsG: z.array(z.number().int().min(1).max(9_999_999)).max(500)
+    .refine(values => values.every((value, index) => index === 0 || values[index - 1]! < value)).optional(),
   mediaRef: ref.optional(),
   accent: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
 }).strict();
-const facts = z.record(code, z.union([z.boolean(), z.number(), z.string().max(2048), z.null()]));
+export const publishedFactsSchema = z.record(code, z.union([z.boolean(), z.number(), z.string().max(2048), z.null()]));
 const contentSchema = catalogPublicationContentSchema.superRefine((content, context) => {
   if (!presentationSchema.safeParse(content.presentation).success)
     context.addIssue({ code: "custom", path: ["presentation"], message: "Use the supported presentation fields" });
   content.publicationSkus.forEach((sku, index) => {
-    if (!facts.safeParse(sku.facts).success)
+    if (!publishedFactsSchema.safeParse(sku.facts).success)
       context.addIssue({ code: "custom", path: ["publicationSkus", index, "facts"], message: "Use scalar facts" });
   });
 });
-export function assertPublishedPresentation(input: unknown): void {
-  if (!presentationSchema.nullable().safeParse(input).success) publicationRefuse("catalog_publication_presentation_invalid");
+export function assertPublishedPresentation(input: unknown, subject?: string): void {
+  const parsed = presentationSchema.nullable().safeParse(input);
+  if (parsed.success) return;
+  const code = "catalog_publication_presentation_invalid";
+  if (subject && parsed.error.issues[0]?.path[0] === "advertisedWeightsG")
+    throw new CatalogPublicationError(code, "validation_issue",
+      publicationIssue(code, "structural", "product.sharedContent.presentation.advertisedWeightsG", subject));
+  publicationRefuse(code);
 }
 export function assertPublishedFacts(input: unknown): void {
-  if (!facts.safeParse(input).success) publicationRefuse("catalog_publication_facts_invalid");
+  if (!publishedFactsSchema.safeParse(input).success) publicationRefuse("catalog_publication_facts_invalid");
 }
 const attributes = catalogDraftSkuV2Schema.shape.attributes.unwrap();
 const claimSchema = z.object({ draftId: id, revision, commandKey: ref, fingerprint: digest }).strict();
@@ -67,7 +74,7 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
   id, productId: id, code, title: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), sellableStandalone: z.boolean(), sellableInSubscription: z.boolean(),
   netContent: catalogQuantitySchema, grossMass: catalogQuantitySchema.nullable(), options: z.record(catalogDimensionKeySchema, catalogOptionValueSchema),
-  attributes, facts, identifiers: z.array(identifierSchema), assetRefs: z.array(ref).max(32),
+  attributes, facts: publishedFactsSchema, identifiers: z.array(identifierSchema), assetRefs: z.array(ref).max(32),
   logisticsRef: z.string().min(1).max(500).refine(value => value.trim() === value).nullable(),
   memberships: z.array(z.object({ offerVersion: ref, admitted: z.boolean() }).strict()), source: claimSchema,
 }).strict().superRefine((sku, context) => {
@@ -75,12 +82,38 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
     || sku.identifiers.filter(row => row.isPrimary).length > 1)
     context.addIssue({ code: "custom", message: "membership roster and primary identifier must be unique" });
 }) as z.ZodType<CatalogPublishedSku>;
+const copiedDocument = "catalog_publication_document_text_copied";
+function copiedTextPath(value: unknown, digest: string): string[] | undefined {
+  if (typeof value === "string") return createHash("sha256").update(value, "utf8").digest("hex") === digest ? [] : undefined;
+  if (value && typeof value === "object") for (const [key, child] of Object.entries(value)) {
+    const found = copiedTextPath(child, digest);
+    if (found) return [key, ...found];
+  }
+}
 export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.object({
   id, slug: z.string().min(1), name: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   type: catalogProductTypeRefSchema, axes: z.array(catalogDimensionKeySchema).max(16).refine(values => new Set(values).size === values.length), attributes, primarySkuId: id.nullable(),
   document: catalogDocumentRevisionRefSchema.nullable(), presentation: presentationSchema.nullable(), source: claimSchema,
   content: contentSchema,
-}).strict() as z.ZodType<CatalogPublishedProduct>;
+}).strict().superRefine((product, context) => {
+  const path = product.document && copiedTextPath(product, product.document.digest);
+  if (path) context.addIssue({ code: "custom", path, message: copiedDocument });
+}) as z.ZodType<CatalogPublishedProduct>;
+
+export function decodePublishedProduct(product: CatalogPublishedProduct): CatalogPublishedProduct {
+  const parsed = catalogPublishedProductSchema.safeParse(product);
+  if (parsed.success) return parsed.data;
+  const leak = parsed.error.issues.find(issue => issue.message === copiedDocument);
+  if (leak) throw new CatalogPublicationError(copiedDocument, "validation_issue",
+    publicationIssue(copiedDocument, "structural", ["product", ...leak.path].join("."), product.type.key));
+  return publicationRefuse("catalog_publication_manifest_invalid");
+}
+
+export function assertPublishedSkuDocumentExclusion(sku: CatalogPublishedSku, document: CatalogPublishedProduct["document"]): void {
+  const path = document && copiedTextPath(sku, document.digest);
+  if (path) throw new CatalogPublicationError(copiedDocument, "validation_issue",
+    publicationIssue(copiedDocument, "structural", ["skus", ...path].join("."), sku.code));
+}
 export const catalogPublicationManifestSchema: z.ZodType<CatalogPublicationManifestV2> = z.object({
   schemaVersion: z.literal(2), product: catalogPublishedProductSchema,
   skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()),
