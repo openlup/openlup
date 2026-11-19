@@ -118,7 +118,7 @@ describe("carrier pickup booking action", () => {
   });
 
   it("fences a stale concurrent retry even when the new attempt has already failed", async () => {
-    const fault = "<faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>";
+    const fault = clientRefusalEnvelope();
     const fake = bookingClient({
       existing: {
         status: "failed", retryable: true, support_code: `${CARRIER_DISPLAY_NAME}-20400816080000-ABC123:pickup-v1:carrier-refused`,
@@ -166,8 +166,8 @@ describe("carrier pickup booking action", () => {
   });
 
   it("reclaims a refusal classified from the full carrier response", async () => {
-    const fault = "<faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>";
-    const fetchImpl = vi.fn().mockResolvedValueOnce(xmlResponse(" ".repeat(2_001) + fault))
+    const fault = clientRefusalEnvelope();
+    const fetchImpl = vi.fn().mockResolvedValueOnce(xmlResponse(" ".repeat(2_001) + fault, 500))
       .mockResolvedValueOnce(xmlResponse("<orderId>ORD-1</orderId>"));
     const fake = bookingClient();
     const action = createCarrierPickupBookingAction({
@@ -180,6 +180,22 @@ describe("carrier pickup booking action", () => {
     });
     await expect(action(input)).resolves.toMatchObject({ courierOrderId: "ORD-1" });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["unwrapped body", "<faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>", 200],
+    ["gateway response", clientRefusalEnvelope(), 502],
+    ["incomplete SOAP", clientRefusalEnvelope().replace("</SOAP-ENV:Body>", ""), 500],
+  ])("keeps a %s outside the retry path", async (_case, body, status) => {
+    const fake = bookingClient();
+    const fetchImpl = vi.fn().mockResolvedValue(xmlResponse(body, status));
+    const action = createCarrierPickupBookingAction({
+      client: fake.client, fetchImpl, auth: { username: "u", password: "p" }, now: () => "2040-08-16T08:00:00.000Z",
+    });
+    await expect(action(input)).rejects.toMatchObject({ retryable: false });
+    expect(fake.pickup()).toMatchObject({ status: "indeterminate", retryable: false });
+    await expect(action(input)).rejects.toMatchObject({ retryable: false });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("refuses a legacy failure without recorded dispatch evidence", async () => {
@@ -407,4 +423,12 @@ function bookingClient(options: {
 
 function xmlResponse(text: string, status = 200) {
   return { ok: status >= 200 && status < 300, status, text: async () => text };
+}
+
+function clientRefusalEnvelope() {
+  return `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/">
+    <SOAP-ENV:Body><SOAP-ENV:Fault>
+      <faultcode>SOAP-ENV:Client</faultcode><faultstring>Invalid pickup window</faultstring>
+    </SOAP-ENV:Fault></SOAP-ENV:Body>
+  </SOAP-ENV:Envelope>`;
 }

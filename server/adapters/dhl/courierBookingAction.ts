@@ -9,7 +9,7 @@ import {
   CARRIER_DISPLAY_NAME,
   extractCarrierPickupOrderId,
   extractFault,
-  extractXmlValue,
+  isCarrierSoapClientRefusal,
   sanitizeCarrierError,
   type CarrierAdminAuth,
 } from "../../infra/dhl/adminDhlSoap.js";
@@ -124,7 +124,8 @@ export function createCarrierPickupBookingAction(deps: {
     const courierOrderId = extractCarrierPickupOrderId(response.text);
     if (!response.ok || fault || cException || !courierOrderId) {
       const confirmedRefusal = fault && !cException && !courierOrderId
-        && (classifyCarrierProviderMessage(fault) || isClientFault(response.text));
+        && (classifyCarrierProviderMessage(fault)
+          || ((response.ok || response.status === 500) && isCarrierSoapClientRefusal(response.text)));
       const status = confirmedRefusal ? "failed" : "indeterminate";
       const message = fault ?? cException ?? (response.ok
         ? `${CARRIER_DISPLAY_NAME} nie zwrócił numeru zamówienia kuriera`
@@ -189,10 +190,6 @@ async function loadShipperContact(client: Client): Promise<{ contactPerson: stri
 
 function canRetryPickup(existing: StoredCourierPickup): boolean {
   return existing.retryable && !existing.courierOrderId;
-}
-
-function isClientFault(xml: string): boolean {
-  return Boolean(extractFault(xml) && /(?:^|:)(?:Client|Sender)$/.test(extractXmlValue(xml, "faultcode")?.trim() ?? ""));
 }
 
 function unresolvedPickup(existing?: Partial<StoredCourierPickup>): FulfillmentProviderError {
