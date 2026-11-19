@@ -4484,6 +4484,11 @@ and producers require a fresh statement snapshot after the lock, so
 [reader contract](../../packages/core/docs/guide/how-to/build/checkout-recovery.md#install-reminder-stages-and-hours)
 to resolve an open-episode refusal before retrying installation.
 
+`20261123143000_checkout_recovery_reminder_episode_pin.sql` stores each order
+and reminder kind's effective offsets with its first wave. The guard continues
+to fence preexisting waves without a pin. Native capture and restore carry
+episode rows with their order. See the [PostgreSQL witness](../../tests/postgres/checkoutRecoveryReminderEpisodes.test.ts).
+
 ### Expired checkout preparation
 
 Evidence: historical record, 2026-11-13. Not reader guidance.

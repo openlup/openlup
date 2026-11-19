@@ -65,7 +65,12 @@ beforeAll(async () => {
     await db.query(sql.replace(signatures[i]!.split('(')[0]!, `public.r0_before_${i ? 'checkout' : 'abandoned'}`));
   }
   expect(await attributes()).toEqual(before);
-  for (const sql of sqlStatements(readFileSync(guardPath, 'utf8'))) if (sql.startsWith('CREATE OR REPLACE FUNCTION')) await db.query(sql);
+  // Exercise CF-R0's original producer and guard contracts on the installed schema.
+  for (const sql of sqlStatements(readFileSync(guardPath, 'utf8'))) {
+    if (sql.startsWith('CREATE OR REPLACE FUNCTION') || sql.startsWith('CREATE FUNCTION public.commerce_checkout_recovery_schedule_change_guard(')) {
+      await db.query(sql.replace(/^CREATE FUNCTION/u, 'CREATE OR REPLACE FUNCTION'));
+    }
+  }
   expect(await attributes()).toEqual(before);
   defaults = await readCheckoutRecoveryReminderSchedule(db);
 }, postgresSetupTimeoutMs);
