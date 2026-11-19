@@ -1,5 +1,7 @@
+import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { admit, candidateFloor, classifyRisk, digest, explainSession, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
+import { admit, candidateFloor, classifyRisk, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, explainSession, integrationReviewContext, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordReport, requiredReviewers, verdict } from './agent-review-decide.mjs';
+import { parseReceipt } from './agent-review-queue.mjs';
 
 const time = 1000;
 const observed = { base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), changedPaths: ['source.txt'], clean: true };
@@ -7,6 +9,73 @@ const intent = { risk: 'routine', criteria: 'Preserve the approved behavior' };
 const prepare = (extra = {}) => prepareCandidate(null, { ...observed, intent, authorSessionId: 'author', ...extra }, time);
 const report = (extra = {}) => ({ reviewer: 'reviewer-1', cold: true, tree: observed.tree, verdict: 'PASS', findings: [], closes: [], documentation: 'Reviewed canonical guidance and secondary examples; no documentation impact.', ...extra });
 const passed = () => recordReport(prepare(), report(), time);
+
+describe('native receipt transport', () => {
+  const rawBody = (marker: string, summary: unknown) => `${marker}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
+  const textBody = (payload: string) => `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${payload}\n\`\`\``;
+  const compress = (summary: unknown) => gzipSync(JSON.stringify(summary)).toString('base64');
+
+  it('keeps raw v3 bytes through 65,536 characters and compresses at 65,537', () => {
+    const summary = { version: 3, session: { history: '' } };
+    const overhead = rawBody(ECONOMY_RECEIPT_MARKER, summary).length;
+    summary.session.history = 'x'.repeat(65_535 - overhead);
+    expect(receiptBody(summary)).toBe(rawBody(ECONOMY_RECEIPT_MARKER, summary));
+    summary.session.history += 'x';
+    expect(receiptBody(summary)).toBe(rawBody(ECONOMY_RECEIPT_MARKER, summary));
+    summary.session.history += 'x';
+    expect(receiptBody(summary)).toBe(textBody(compress(summary)));
+  });
+
+  it('keeps v2 receipts byte-identical at any size', () => {
+    const summary = receiptSummary(passed(), 12, time);
+    expect(receiptBody(summary)).toBe(rawBody(RECEIPT_MARKER, summary));
+    const large = { ...summary, reviewers: Array.from({ length: 20 }, (_, index) => `${index}${'x'.repeat(4_000)}`) };
+    expect(receiptBody(large)).toBe(rawBody(RECEIPT_MARKER, large));
+  });
+
+  it('refuses an oversized compressed body with its measured size and recovery steps', () => {
+    const summary = { version: 3, session: { history: Array.from({ length: 5_000 }, (_, index) => digest(index)).join('') } };
+    const size = textBody(compress(summary)).length;
+    expect(size).toBeGreaterThan(200_000);
+    expect(() => receiptBody(summary)).toThrow(`compressed receipt is ${size} characters (limit 200000). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
+  });
+
+  it('requires one text fence, canonical base64, valid gzip and v3 JSON', () => {
+    const summary = { version: 3, pr: 12 };
+    const payload = compress(summary);
+    expect(payload).toMatch(/=$/u);
+    expect(parseReceipt(textBody(payload))).toEqual(summary);
+    expect(parseReceipt(textBody(payload) + '\n')).toEqual(summary);
+    for (const body of [
+      textBody(payload) + '\n```text\nextra\n```',
+      textBody(payload.replace(/^./u, '$& ')),
+      textBody(payload.slice(0, -1)),
+      textBody(Buffer.from('not gzip').toString('base64')),
+      textBody(gzipSync('not JSON').toString('base64')),
+      textBody(compress(receiptSummary(passed(), 12, time))),
+    ]) expect(parseReceipt(body)).toBeNull();
+  });
+
+  it('refuses a gzip payload that expands beyond 1 MiB', () => {
+    const summary = { version: 3, session: { history: 'x'.repeat(1024 * 1024) } };
+    expect(parseReceipt(textBody(compress(summary)))).toBeNull();
+  });
+
+  it('keeps the v3 admission refusals for a tampered head or history after decoding', () => {
+    const session = recordReport(prepare({ rules: { version: 3 } }), report(), time);
+    const summary = receiptSummary(session, 12, time);
+    const history = structuredClone(summary);
+    history.session.history.find(event => event.type === 'report').report.documentation += ' Modified.';
+    for (const [tampered, reason] of [
+      [{ ...summary, head: 'd'.repeat(40) }, 'invalid: v3 summary differs'],
+      [history, 'invalid: v3 history digest differs'],
+    ] as const) {
+      const receipt = parseReceipt(textBody(compress(tampered)));
+      expect(receipt).toEqual(tampered);
+      expect(admit({ receipt, observed: { ...receipt, baseValid: true }, now: time })).toEqual({ ok: false, code: 'invalid', reason });
+    }
+  });
+});
 
 describe('native review decisions', () => {
   it.each([

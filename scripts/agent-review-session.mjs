@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { ECONOMY_RECEIPT_MARKER, digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
@@ -424,7 +424,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     await validateEconomySession(cwd, session);
     const decision = verdict(session, observed, Date.now()); demand(decision.ok, decision.reason, decision.code);
     if (verb === 'receipt') await assertMergePreflight(cwd, observed, { env });
-    if (verb === 'receipt') console.log(`${session.version === 3 ? ECONOMY_RECEIPT_MARKER : RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receiptSummary(session, Number(args[0]), Date.now()))}\n\`\`\``);
+    if (verb === 'receipt') console.log(receiptBody(receiptSummary(session, Number(args[0]), Date.now())));
     else console.log('reviewed');
     return 0;
   } finally { if (lock) { await lock.close(); await rm(join(directory, '.session.lock')); } }

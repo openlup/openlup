@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { gunzipSync } from 'node:zlib';
+import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
 import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 import { isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
@@ -14,6 +15,7 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
+const RECEIPT_LIMIT = 1024 * 1024;
 /**
  * The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration.
  * @param {readonly string[]} changedPaths
@@ -23,7 +25,17 @@ export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = 
   return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
 export function parseReceipt(body) {
-  if (typeof body !== 'string' || body.length > 1024 * 1024) return null;
+  if (typeof body !== 'string' || body.length > RECEIPT_LIMIT) return null;
+  if (body.startsWith(`${COMPRESSED_RECEIPT_MARKER}\n`)) {
+    const match = /^```text\n([A-Za-z0-9+/]+={0,2})\n```\n?$/u.exec(body.slice(COMPRESSED_RECEIPT_MARKER.length + 1));
+    if (!match) return null;
+    try {
+      const payload = Buffer.from(match[1], 'base64');
+      if (payload.toString('base64') !== match[1]) return null;
+      const receipt = JSON.parse(gunzipSync(payload, { maxOutputLength: RECEIPT_LIMIT }).toString('utf8'));
+      return receipt?.version === 3 ? receipt : null;
+    } catch { return null; }
+  }
   const marker = [RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER].find(value => body.startsWith(`${value}\n`));
   if (!marker) return null;
   const match = /^```json\s*\n([\s\S]*?)\n```\s*$/u.exec(body.slice(marker.length + 1));
