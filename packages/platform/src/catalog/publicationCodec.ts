@@ -89,7 +89,7 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
 const copiedDocument = "catalog_publication_document_text_copied";
 function copiedDocumentPath(value: unknown, digests: ReadonlySet<string>): string[] | undefined {
   if (!digests.size || value === undefined) return undefined;
-  if (typeof value === "string") return digests.has(createHash("sha256").update(value, "utf8").digest("hex")) ? [] : undefined;
+  if (typeof value === "string" && digests.has(createHash("sha256").update(value, "utf8").digest("hex"))) return [];
   try {
     if (digests.has(publicationDigest(value))) return [];
   } catch {

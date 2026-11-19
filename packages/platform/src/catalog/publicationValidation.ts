@@ -1058,12 +1058,28 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         knownProduct();
       }
     }
+    async function checkRetainedAttributes(rows: Iterable<CatalogPublishedSku>, productAttributes: CatalogPublishedProduct["attributes"] = {}) {
+      const retainedAttributes = [...rows].filter(sku => incoming.get(sku.code)?.attributes === undefined);
+      if (retainedAttributes.length || payload.product.attributes === undefined && Object.keys(productAttributes).length) {
+        const validation = await validateCatalogAttributes(definition, { productAttributes,
+          skus: retainedAttributes.map(({ id, attributes }) => ({ id, attributes })) }, input.attributeReferences);
+        if (!validation.valid) {
+          for (const issue of validation.issues) {
+            if (issue.code === "attribute_reference_unresolved") structural.push(missing("publication_evidence_unavailable", issue.path));
+            else throw new CatalogPublicationError(issue.code, "validation_issue", contextualIssue(issue, retainedAttributes));
+          }
+        }
+      }
+    }
     let assembled: Awaited<ReturnType<typeof structuralResult>>;
     async function checkStructuralResult() { assembled = await structuralResult(); }
     async function structuralResult() {
       position.path = "product";
-      if (missingState) return;
       position.subject = definition.key;
+      if (missingState) {
+        await checkRetainedAttributes(retainedState.skus);
+        return;
+      }
       const result = knownProduct();
       if (lastChildWithdrawn) need(productState === "withdrawn"
         && payload.publication.operations.some(op => op.op === "set_product_lifecycle" && op.state === "withdrawn"),
@@ -1132,17 +1148,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       }
       position.path = "product";
       position.subject = definition.key;
-      const retainedAttributes = [...skus.values()].filter(sku => incoming.get(sku.code)?.attributes === undefined);
-      if (retainedAttributes.length || payload.product.attributes === undefined && Object.keys(result.attributes).length) {
-        const validation = await validateCatalogAttributes(definition, { productAttributes: result.attributes,
-          skus: retainedAttributes.map(({ id, attributes }) => ({ id, attributes })) }, input.attributeReferences);
-        if (!validation.valid) {
-          for (const issue of validation.issues) {
-            if (issue.code === "attribute_reference_unresolved") structural.push(missing("publication_evidence_unavailable", issue.path));
-            else throw new CatalogPublicationError(issue.code, "validation_issue", contextualIssue(issue, retainedAttributes));
-          }
-        }
-      }
+      await checkRetainedAttributes(skus.values(), result.attributes);
       need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
       need(result.primarySkuId && result.document && (retainedState.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
       need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");

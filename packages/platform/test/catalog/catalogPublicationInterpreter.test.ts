@@ -501,14 +501,20 @@ const cases: Case[] = [
   }, media: async () => true, expected: reason("catalog_publication_source_mismatch") },
   { id: "A-10 installed rules keep their configured refusal", rulesAsset: artifact.replace("validateProduct: () => []", 'validateProduct: () => ["package_unsupported"]'),
     expected: reason("package_unsupported"), diagnostic: { path: "product", phase: "structural", subject: "example:article" } },
-  { id: "A-12 omitted SKU attributes keep the effective projection byte bound", fixture: "revision", arrange: data => {
-    data.definition = { ...data.definition, attributes: [{ key: "label", scope: "variant", public: true,
-      valueType: { kind: "text", maxLength: 2048 }, required: false, cardinality: { min: 0, max: 1 },
-      filterable: false, facetable: false, displayOrder: 0, labels: {} }] };
-    data.registry = { resolve: () => data.definition };
-    data.installedDefinitionDigest = catalogDefinitionDigest(data.definition);
-    data.evidence.skus[0]!.attributes = { label: "é".repeat(1025) };
-  }, expected: reason("attribute_projection_text_too_large") },
+  ...([false, true] as const).map((partial): Case => ({
+    id: partial ? "M-ATTRIBUTE-BOUND-WITH-MALFORMED-SIBLING" : "A-12 omitted SKU attributes keep the effective projection byte bound",
+    fixture: "revision", arrange(data) {
+      data.definition = { ...data.definition, attributes: [{ key: "label", scope: "variant", public: true,
+        valueType: { kind: "text", maxLength: 2048 }, required: false, cardinality: { min: 0, max: 1 },
+        filterable: false, facetable: false, displayOrder: 0, labels: {} }] };
+      data.registry = { resolve: () => data.definition };
+      data.installedDefinitionDigest = catalogDefinitionDigest(data.definition);
+      data.evidence.skus[0]!.attributes = { label: "é".repeat(1025) };
+      if (partial) data.evidence.skus.unshift(null as never);
+    },
+    expected: reason("attribute_projection_text_too_large"), routeCalls: [1, 1, 1],
+    outcome: "blocked-input", diagnostic: { phase: "structural", path: "/skus/0/attributes/label", subject: "ARTICLE" },
+  })),
   { id: "D-034 publication fact intent names an incoming SKU", arrange: data => {
     data.payload.product.sharedContent.publicationSkus.push({ ...data.payload.product.sharedContent.publicationSkus[0]!, skuCode: "STRAY" });
   }, expected: reason("intent_sku_absent") },
@@ -831,30 +837,34 @@ it("K-3 document-free published content round-trips while the authored draft ret
   expect(catalogPublishedSkuSchema.safeParse({ ...skus[0], facts: { derived: document } }).success).toBe(false);
 });
 
-it("N-EXACT-OBJECT-COPY excludes the canonical display value from compile and the manifest", async () => {
+it.each([
+  { id: "N-EXACT-OBJECT-COPY", field: "shortName", document: { fr: "Article", en: "Item" },
+    exact: { shortName: { en: "Item", fr: "Article" } }, different: { shortName: { en: "Item", fr: "Example" } } },
+  { id: "O-EXACT-CANONICAL-STRING", field: "title", document: 'An "example" title',
+    exact: { title: 'An "example" title' }, different: { title: 'Another "example" title' } },
+])("$id excludes the canonical display value from compile and the manifest", async ({ field, document, exact, different }) => {
   const data = { ...input(), ...setupRules(artifact + `
 module.exports.identifyDocument = () => ({
   schemaId: "example:document.v1", documentRef: "example:document", productSlug: "article",
   revisionNo: 1, name: "Synthetic article",
 });
 module.exports.deriveSkuFacts = () => ({ derived: 12 });`) };
-  const document = { fr: "Article", en: "Item" };
-  data.payload.product.sharedContent.document = document;
+  Object.assign(data.payload.product.sharedContent, { document });
   const canonicalText = canonicalCatalogDraftJson(document);
   const digest = createHash("sha256").update(canonicalText).digest("hex");
   data.payload.product.documentRevision!.digest = digest;
   operation(data, "register_document_revision", { canonicalText, digest });
-  const setShortName = (shortName: typeof document) => {
-    data.payload.product.sharedContent.presentation = { shortName };
-    operation(data, "set_product_presentation", { presentation: { shortName } });
+  const setPresentation = (presentation: typeof exact | typeof different) => {
+    Object.assign(data.payload.product.sharedContent, { presentation });
+    operation(data, "set_product_presentation", { presentation });
   };
 
-  setShortName({ en: "Item", fr: "Article" });
+  setPresentation(exact);
   await expect(compileCatalogPublication(data)).rejects.toMatchObject({
-    code: "catalog_publication_document_text_copied", diagnostic: { path: "product.presentation.shortName" },
+    code: "catalog_publication_document_text_copied", diagnostic: { path: `product.presentation.${field}` },
   });
 
-  setShortName({ en: "Item", fr: "Example" });
+  setPresentation(different);
   const { product, skus } = await compileCatalogPublication(data);
   const manifest = { schemaVersion: 2, product, skus: [{ skuId: skus[0]!.id,
     revisionId: "50000000-0000-4000-8000-000000000002", revision: 1, digest: publicationDigest(skus[0]) }] };
@@ -862,9 +872,10 @@ module.exports.deriveSkuFacts = () => ({ derived: 12 });`) };
   expect(historicalCodec.safeParse(manifest).success).toBe(true);
   const display = (presentation: NonNullable<typeof product.presentation>) =>
     ({ ...manifest, product: { ...product, document: input().payload.product.documentRevision!, presentation } });
-  expect(historicalCodec.safeParse(display({ shortName: { en: "Item", fr: "Article" } })).error?.issues[0])
-    .toMatchObject({ path: ["product", "presentation", "shortName"], message: "catalog_publication_document_text_copied" });
+  expect(historicalCodec.safeParse(display(exact)).error?.issues[0])
+    .toMatchObject({ path: ["product", "presentation", field], message: "catalog_publication_document_text_copied" });
 
+  if (field === "title") return;
   const weights = [125, 250];
   const arrayCodec = catalogPublicationManifestSchema(new Set([publicationDigest(weights)]));
   expect(arrayCodec.safeParse(display({ advertisedWeightsG: weights })).error?.issues[0]?.path)
