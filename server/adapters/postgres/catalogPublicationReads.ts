@@ -29,8 +29,8 @@ const headSchema = z.object({ publicationId: id, revision, documentDigest: diges
 const selectorSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"]), sourceId: id, lineId: id,
   productId: id, skuId: id, skuRevisionId: id, publicationId: id, documentRevisionId: id }).strict();
 const publicationRefusals = {
-  catalog_publication_cursor_invalid: ["catalog_publication_cursor_invalid", "Restart from the first page or reuse the continuation returned for this product."],
-  catalog_publication_query_invalid: ["catalog_publication_query_invalid", "Reload the product and use the publication identifiers returned for it."],
+  catalog_publication_cursor_invalid: ["candidate_invalid", "Restart from the first page or reuse the continuation returned for this product."],
+  catalog_publication_query_invalid: ["candidate_invalid", "Reload the product and use the publication identifiers returned for it."],
   catalog_publication_wire_invalid: ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."],
   catalog_publication_axes_invalid: ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."],
   catalog_publication_attributes_invalid: ["publication_attributes_invalid", "An attribute value is invalid. Check the value type in the product or SKU definition."],
@@ -101,19 +101,22 @@ export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRef
 
 function failure(error: unknown): CatalogPublicationFailure {
   if (error instanceof CatalogPublicationError) {
-    const remedy = Object.hasOwn(publicationRefusals, error.code) ? publicationRefusals[error.code as AdmissionDiagnostic][1] : undefined;
-    return { outcome: error.outcome, reason: error.code, ...(remedy && { message: remedy }) };
+    const details = Object.hasOwn(publicationRefusals, error.code) ? publicationRefusals[error.code as AdmissionDiagnostic] : undefined;
+    // Query and cursor refusals already use a released reason on every read path.
+    const reason = details?.[0] === "candidate_invalid" ? details[0] : error.code;
+    return { outcome: error.outcome, reason, ...(details && { message: details[1] }) };
   }
   const refusal = catalogPublicationAdmissionRefusal(error);
   return refusal ? { ...refusal, outcome: "dependency_unavailable" } : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
 }
 
+/** Released ports narrow the reason by outcome and keep the same remedy. */
 function legacyFailure(result: CatalogPublicationFailure): CatalogPublicationRefusal {
   const reasons = {
     unauthorized: "publisher_not_authorized", conflict: "head_conflict", dependency_unavailable: "publication_authority_unavailable",
     unsupported: "publication_not_supported", validation_issue: "candidate_invalid",
   } as const;
-  return { outcome: result.outcome, reason: reasons[result.outcome] };
+  return { ...result, reason: reasons[result.outcome] };
 }
 function legacyReceipt(receipt: CatalogPublicationReceiptV2): CatalogPublicationReceipt {
   return { commandKey: receipt.commandKey, fingerprint: receipt.fingerprint, actorId: receipt.actorId,
@@ -349,11 +352,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
           publicationJson(result, limits.historyBytes);
           return result;
         });
-      } catch (error) {
-        const { outcome, reason, message } = failure(error);
-        return outcome === "validation_issue" && reason === "catalog_publication_cursor_invalid" && message !== undefined
-          ? { outcome, reason, message } : legacyFailure({ outcome, reason });
-      }
+      } catch (error) { return legacyFailure(failure(error)); }
     },
     async receipt() { return { outcome: "unsupported", reason: "publication_not_supported" }; },
   };

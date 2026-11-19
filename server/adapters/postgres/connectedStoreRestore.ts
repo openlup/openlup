@@ -9,7 +9,7 @@ import { deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
-import { catalogProductCarriersValidSql, catalogProductCarrierViolation, connectedNativeStoreTables,
+import { assertConnectedCatalogPublications, connectedNativeStoreTables,
   connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
 type TableName = typeof connectedNativeStoreTables[number];
@@ -356,11 +356,7 @@ export async function restoreConnectedNativeStore(input: {
     if (source.get("subscriptions")!.rows.some(row =>
       (JSON.parse(row) as Record<string, unknown>).configured_offer_version !== "classic")) fail("unsupported_table", "subscriptions");
     if (await equalCensus(client, source)) {
-      // Exact replay performs no inserts, so validate the locked product rows directly.
-      const invalidProduct = await client.query(`SELECT 1 FROM public.catalog_products t WHERE NOT (${catalogProductCarriersValidSql}) LIMIT 1`);
-      if (invalidProduct.rows.length) {
-        throw Object.assign(new Error("Invalid product publication facts"), catalogProductCarrierViolation);
-      }
+      await assertConnectedCatalogPublications(client);
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
       if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
       if (await catalogPayload(client, installation) !== lockedInventory) fail("schema_conflict");

@@ -2469,6 +2469,7 @@ export interface CatalogPublicationReceipt {
 export interface CatalogPublicationRefusal {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: "publisher_not_authorized" | "candidate_invalid" | "head_conflict" | "publication_authority_unavailable" | "publication_not_supported";
+    message?: string;
 }
 /** Success requires coherent authoritative document and lifecycle facts. */
 export type CatalogPublicationReadResult = {
@@ -2496,10 +2497,6 @@ export type CatalogHistoryResult = {
     receipts: readonly CatalogPublicationReceipt[];
     limit: number;
     nextCursor: string | null;
-} | {
-    outcome: "validation_issue";
-    reason: "catalog_publication_cursor_invalid";
-    message: string;
 } | CatalogPublicationRefusal;
 ```
 ## dist/catalog/contracts/productMediaContracts.d.ts
@@ -4455,8 +4452,8 @@ export declare const CATALOG_MIGRATIONS: readonly [
     {
         readonly id: "20261123190000_catalog_publication";
         readonly catalogPath: "db/platform/migrations/20261123190000_catalog_publication.sql";
-        readonly position: 161;
-        readonly sha256: "783b33882a1a182966d0d2350e9bd5cc7473cc6173a2c25f415bcaa89af491ab";
+        readonly position: 162;
+        readonly sha256: "85fdb43e0da853aa122b4e4f5df213c23bbddb64440b9c94c32a7f7a21dd1ecc";
         readonly url: URL;
     }
 ];

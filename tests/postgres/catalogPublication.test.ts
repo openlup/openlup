@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
-import type { CatalogPublicationJson } from "@openlup/platform/catalog/contracts";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import type { CatalogHistoryResult, CatalogPublicationJson, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
+import { afterAll, beforeAll, expect, expectTypeOf, it } from "vitest";
 import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
 import { CATALOG_PUBLICATION_LIMITS, type CatalogPublicationManifestV2 } from "../../server/adapters/postgres/catalogPublicationWire.js";
 import { actorId, hash, json, installPublicationActors, transaction, fixture, graph, insertGraph, decisionRow,
@@ -103,6 +103,28 @@ it.each([false, true])("binds issuing document provenance even with an older reg
     .toEqual(existing ? [{ revision: 1 }] : []);
   expect((await pool.query("SELECT provenance->>'draftRevision' AS revision FROM public.catalog_product_document_revisions WHERE id=$1", [data.documentId])).rows)
     .toEqual([{ revision: "1" }]);
+});
+
+it.each(["origin registration bytes", "authored document"] as const)("refuses contradictory %s even when the issuing registration matches", async kind => {
+  const data = fixture();
+  const origin = await transaction(pool, async db => {
+    const contradiction = { label: "different authored bytes" };
+    const older = await graph(db, data, null, true, kind === "origin registration bytes"
+      ? { registrationText: json(contradiction) } : { authoredDocument: contradiction });
+    await documentRow(db, older);
+    return older;
+  });
+  let staged = false;
+  const error = await transaction(pool, async db => {
+    const issuing = await graph(db, data, null, false, { draftRevision: 2, retainedSource: origin.source });
+    await insertGraph(db, issuing, { existingDocument: true });
+    staged = true;
+  }).catch(error => error);
+  expect(staged).toBe(true);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_content_changed" });
+  expect((await pool.query("SELECT id FROM public.catalog_publications WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+  expect((await pool.query("SELECT command_key FROM public.catalog_operator_receipts WHERE scope_id=$1", [data.productId])).rows).toEqual([]);
+  expect((await pool.query("SELECT revision FROM public.catalog_draft_heads WHERE draft_id=$1", [data.draftId])).rows).toEqual([{ revision: 1 }]);
 });
 
 it.each([
@@ -254,7 +276,8 @@ it("verifies current, history, recovery and accepted retained A after B with an 
     expect(await readers.resolveRetained(binding, readers.authorizeReadScope("other"))).toEqual({ outcome: "unauthorized", reason: "retained_read_not_authorized" });
   }
   await pool.query("UPDATE public.catalog_products SET name='Later draft name' WHERE id=$1", [data.productId]);
-  expect(await readers.reads.current(data.productId)).toEqual({ outcome: "conflict", reason: "head_conflict" });
+  expect(await readers.reads.current(data.productId)).toEqual({ outcome: "conflict", reason: "head_conflict",
+    message: "The current product or a SKU differs from the prepared publication. Reload the product and prepare it again." });
   expect(await readers.readbackV2(issued.first.head)).toMatchObject({ outcome: "page", head: issued.first.head });
 });
 
@@ -373,7 +396,7 @@ it("budgets a real continuation for a full-fact page and returns the terminal pa
     return issue.head;
   });
   const invalidContinuation = {
-    outcome: "validation_issue", reason: "catalog_publication_cursor_invalid",
+    outcome: "validation_issue", reason: "candidate_invalid",
     message: "Restart from the first page or reuse the continuation returned for this product.",
   };
   expect(await reader.readbackV2(issued.head, "!")).toEqual(invalidContinuation);
@@ -381,20 +404,24 @@ it("budgets a real continuation for a full-fact page and returns the terminal pa
 });
 
 it.each(["malformed", "foreign"] as const)("preserves the typed history remedy for a %s cursor", async kind => {
+  expectTypeOf<Exclude<CatalogHistoryResult, { outcome: "page" }>>().toExtend<CatalogPublicationRefusal>();
   const productId = randomUUID();
   const cursor = kind === "malformed" ? "!" : Buffer.from(json({
     schemaVersion: 1, kind: "history", productId: randomUUID(), highWater: 2, before: 2,
   })).toString("base64url");
   expect(await publicationReader().reads.history(productId, cursor)).toEqual({
-    outcome: "validation_issue", reason: "catalog_publication_cursor_invalid",
+    outcome: "validation_issue", reason: "candidate_invalid",
     message: "Restart from the first page or reuse the continuation returned for this product.",
   });
 });
 
 it("gives the caller a remedy for a publication head with revision zero", async () => {
-  expect(await publicationReader().readbackV2({ publicationId: randomUUID(), documentDigest: hash("document"), revision: 0 }))
-    .toEqual({ outcome: "validation_issue", reason: "catalog_publication_query_invalid",
-      message: "Reload the product and use the publication identifiers returned for it." });
+  const reader = publicationReader();
+  const head = { publicationId: randomUUID(), documentDigest: hash("document"), revision: 0 };
+  const refusal = { outcome: "validation_issue", reason: "candidate_invalid",
+    message: "Reload the product and use the publication identifiers returned for it." };
+  expect(await reader.reads.readback(head)).toEqual(refusal);
+  expect(await reader.readbackV2(head)).toEqual(refusal);
 });
 
 it("uses the exact significant UTF-8 bytes of the recovery command key", async () => {
@@ -414,7 +441,7 @@ it("uses the exact significant UTF-8 bytes of the recovery command key", async (
   expect(await reader.receipt({ productId, commandKey }, actor)).toEqual({ outcome: "found", receipt });
   expect(await reader.receipt({ productId, commandKey: commandKey.trim() }, actor)).toEqual({ outcome: "absent" });
   expect(await reader.receipt({ productId, commandKey: commandKey + " " }, actor))
-    .toMatchObject({ outcome: "validation_issue", reason: "catalog_publication_query_invalid" });
+    .toMatchObject({ outcome: "validation_issue", reason: "candidate_invalid" });
 });
 
 it("admits a decision and its companion before the product exists", async () => {
@@ -427,6 +454,63 @@ it("admits a decision and its companion before the product exists", async () => 
   const result = await pool.query(`SELECT d.action,p.id AS product FROM public.catalog_publication_decisions d
     LEFT JOIN public.catalog_products p ON p.id=d.product_id WHERE d.product_id=$1`, [data.productId]);
   expect(result.rows).toEqual([{ action: "approve", product: null }]);
+});
+
+it("refuses a decision and receipt with a noncanonical spelling of the actual predecessor", async () => {
+  const data = fixture();
+  const previous = await transaction(pool, async db => {
+    const issue = await graph(db, data);
+    await insertGraph(db, issue);
+    return issue.head;
+  });
+  const candidate = await transaction(pool, db => graph(db, data, previous));
+  const alias = previous.publicationId.replace(/^([a-f0-9]{4})([a-f0-9]{4})-([a-f0-9]{4})-/u, "$1-$2$3-");
+  expect(alias).not.toBe(previous.publicationId);
+  expect((await pool.query("SELECT $1::uuid::text AS id", [alias])).rows).toEqual([{ id: previous.publicationId }]);
+  const candidateRef = candidate.candidateRef.replace(previous.publicationId, alias);
+  const decision = { ...candidate, candidateRef, decision: { ...candidate.decision, candidateRef } };
+  let staged = false;
+  const error = await transaction(pool, async db => {
+    await decisionRow(db, decision);
+    await decisionReceipt(db, decision);
+    staged = true;
+  }).catch(error => error);
+  expect(staged).toBe(true);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_approval_invalid" });
+  expect((await pool.query("SELECT id FROM public.catalog_publication_decisions WHERE id=$1", [candidate.approvalId])).rows).toEqual([]);
+  expect((await pool.query("SELECT command_key FROM public.catalog_operator_receipts WHERE scope_id=$1 AND command_key=$2",
+    [data.productId, candidate.decisionKey])).rows).toEqual([]);
+});
+
+it.each([10_000, 10_001])("applies the issuance roster limit to a sealed approval with %i pairs", async count => {
+  const data = fixture();
+  const candidate = await transaction(pool, db => graph(db, data, null, false));
+  const digest = hash(json(candidate.facts));
+  const pairs = Array.from({ length: count - 1 }, (_, n) => ({
+    skuId: `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`, digest,
+  }));
+  pairs.push({ skuId: candidate.skuId, digest });
+  const seal = sealedState(candidate.product, pairs);
+  let staged = false;
+  const error = await transaction(pool, async db => {
+    await decisionRow(db, candidate, seal);
+    await decisionReceipt(db, candidate, seal);
+    staged = true;
+  }).catch(error => error);
+  expect(staged).toBe(true);
+  const decisions = await pool.query("SELECT id FROM public.catalog_publication_decisions WHERE product_id=$1", [data.productId]);
+  const receipts = await pool.query("SELECT command_key FROM public.catalog_operator_receipts WHERE scope_id=$1", [data.productId]);
+  if (count === 10_000) {
+    expect(error).toBeUndefined();
+    expect(decisions.rows).toEqual([{ id: candidate.approvalId }]);
+    expect(receipts.rows).toEqual([{ command_key: candidate.decisionKey }]);
+  } else {
+    expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({
+      reason: "publication_roster_limit", message: expect.stringContaining("Put additional SKUs on another product"),
+    });
+    expect(decisions.rows).toEqual([]);
+    expect(receipts.rows).toEqual([]);
+  }
 });
 
 it.each(["duplicate", "reversed", "empty", "missing primary"] as const)(

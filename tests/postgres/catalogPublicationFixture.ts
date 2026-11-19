@@ -41,7 +41,8 @@ type Fixture = ReturnType<typeof fixture> & { skuCode?: string };
 type Head = { publicationId: string; revision: number; documentDigest: string };
 
 export async function graph(db: PoolClient, data: Fixture, before: Head | null = null, stageProduct = true,
-  options: { draftRevision?: number; registerExisting?: boolean } = {}) {
+  options: { draftRevision?: number; registerExisting?: boolean; registrationText?: string;
+    retainedSource?: CatalogPublishedProduct["source"]; authoredDocument?: Record<string, string> } = {}) {
   const { productId, skuId, draftId, documentId } = data;
   const revision = (before?.revision ?? 0) + 1;
   const draftRevision = options.draftRevision ?? revision;
@@ -52,12 +53,16 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   const content: CatalogPublishedProduct["content"] = { schemaVersion: 1, catalogAction: before ? "revise" : "create", presentation: {},
     requestedModes: [], offerMemberships: [], publicationSkus: [] };
   const quantity = { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 };
+  const retained = options.retainedSource;
+  const provenance = retained ? { source: "retained_draft", draftId: retained.draftId, draftRevision: retained.revision,
+    draftCommandKey: retained.commandKey, draftFingerprint: retained.fingerprint } : { source: "current_draft" };
   const registerDocument = { op: "register_document_revision", productSlug: slug, revisionId: documentId, revisionNo: 1,
-    sourceRef: document.sourceRef, documentRef: document.documentRef, canonicalText, digest: document.digest,
-    provenance: { source: "current_draft" } };
-  const payload = { schemaVersion: 3, product: { id: productId, slug, type, dimensions: [], primarySkuId: skuId, documentRevision: document, sharedContent: content },
+    sourceRef: document.sourceRef, documentRef: document.documentRef, canonicalText: options.registrationText ?? canonicalText,
+    digest: document.digest, provenance };
+  const sharedContent = options.authoredDocument ? { ...content, document: options.authoredDocument } : content;
+  const payload = { schemaVersion: 3, product: { id: productId, slug, type, dimensions: [], primarySkuId: skuId, documentRevision: document, sharedContent },
     skus: [{ id: skuId, productId, code, options: {}, netContent: quantity }],
-    publication: { kind: "release", evidence: {}, operations: before ? (options.registerExisting ? [registerDocument] : []) : [
+    publication: { kind: "release", evidence: retained ? { drafts: [retained] } : {}, operations: before ? (options.registerExisting ? [registerDocument] : []) : [
       { op: "create_product", productId, productSlug: slug, name: "Article" },
       registerDocument,
       { op: "move_document_pointer", productSlug: slug, documentRevisionNo: 1 },

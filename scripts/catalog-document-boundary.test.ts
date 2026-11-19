@@ -22,7 +22,7 @@ const QUOTE_PAYLOAD_USES = [
 ];
 
 const OPAQUE_CARRIERS = new Map([
-  ["db/platform/migrations/20261123190000_catalog_publication.sql", "AND (operation->>'canonicalText')::jsonb=d.document_payload"],
+  ["db/platform/migrations/20261123190000_catalog_publication.sql", "CROSS JOIN LATERAL (SELECT d.document_payload AS payload) stored"],
   ["server/adapters/postgres/connectedStoreCapture.ts", '"id", "product_id", "revision_no", "schema_id", "document_ref", "document_payload",'],
 ]);
 const documentTable = String.raw`(?:"?public"?\s*\.\s*)?"?catalog_product_document_revisions"?`;

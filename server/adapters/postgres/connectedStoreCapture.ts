@@ -5,8 +5,21 @@ import {
   type CompatiblePostgresPacket, type CompatiblePostgresSnapshot, type CompatiblePostgresTable,
 } from "@openlup/platform/portability";
 
-export const catalogProductCarriersValidSql = "t.publication_facts IS NULL OR public.catalog_publication_carriers_valid(t.publication_facts,t.id)";
-export const catalogProductCarrierViolation = { code: "23514", constraint: "catalog_publication_facts_invalid" } as const;
+export async function assertConnectedCatalogPublications(db: { query(sql: string): Promise<unknown> }) {
+  // Evaluate both decoders in PostgreSQL without returning the projections.
+  await db.query(`SELECT count(public.catalog_publication_product_facts(id,publication_facts,true))
+    FROM public.catalog_products WHERE publication_facts IS NOT NULL`);
+  await db.query(`SELECT count(public.catalog_publication_sku_projection(id,product_id,sku,publication_facts,true))
+    FROM public.catalog_skus WHERE publication_facts IS NOT NULL`);
+  await db.query(`SELECT public.catalog_publication_assert_issued(p.product_id,p.id)
+    FROM public.catalog_publications p`);
+  await db.query(`SELECT public.catalog_publication_assert_receipt(r.scope_id,r.command_key)
+    FROM public.catalog_operator_receipts r`);
+  await db.query(`SELECT public.catalog_publication_assert_candidate(d,NULL,NULL)
+    FROM public.catalog_publication_decisions d`);
+  await db.query(`SELECT public.catalog_publication_assert_head(h.product_id,true)
+    FROM public.catalog_publication_heads h`);
+}
 
 // One finite native subscription/order/media profile. This is not an extension
 // registry or a caller-selected SQL/table importer. Unknown nonempty public/app
@@ -198,14 +211,7 @@ export async function captureConnectedNativeStore(input: {
         emptyOutsideProfile.push(`${relation.schema}.${relation.table}`);
         outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows: "0", disposition: "unsupported-empty" });
       }
-      await db.query(`SELECT public.catalog_publication_assert_issued(p.product_id,p.id)
-        FROM public.catalog_publications p`);
-      await db.query(`SELECT public.catalog_publication_assert_receipt(r.scope_id,r.command_key)
-        FROM public.catalog_operator_receipts r`);
-      await db.query(`SELECT public.catalog_publication_assert_candidate(d,NULL,NULL)
-        FROM public.catalog_publication_decisions d`);
-      await db.query(`SELECT public.catalog_publication_assert_head(h.product_id,true)
-        FROM public.catalog_publication_heads h`);
+      await assertConnectedCatalogPublications(db);
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);
       let bytes = packet.tables.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
       const tables: ConnectedStoreOwnedRows[] = [];
@@ -219,14 +225,8 @@ export async function captureConnectedNativeStore(input: {
         }
         // Only PostgreSQL encodes row values. JS never reserializes parsed
         // bigint/numeric/timestamp values for transport.
-        const carrierCheck = table === "catalog_products"
-          ? `, ${catalogProductCarriersValidSql} AS carriers_valid` : "";
-        const captured = (await db.query<{ value: string; carriers_valid?: boolean }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value${carrierCheck}
-          FROM ${connectedStoreRowSource(table, columns)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows;
-        if (captured.some(row => row.carriers_valid === false)) {
-          throw Object.assign(new Error("Invalid product publication facts"), catalogProductCarrierViolation);
-        }
-        const rows = captured.map(row => row.value);
+        const rows = (await db.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value
+          FROM ${connectedStoreRowSource(table, columns)} t ORDER BY pg_catalog.to_jsonb(t)::pg_catalog.text LIMIT $1`, [maximumRows + 1])).rows.map(row => row.value);
         count += rows.length;
         bytes += rows.reduce((sum, row) => sum + Buffer.byteLength(row), 0);
         if (count > maximumRows || bytes > maximumBytes) throw new PostgresTransferError("limit_exceeded", table);

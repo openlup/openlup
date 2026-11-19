@@ -1377,6 +1377,7 @@ export interface CatalogPublicationReceipt {
 export interface CatalogPublicationRefusal {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: "publisher_not_authorized" | "candidate_invalid" | "head_conflict" | "publication_authority_unavailable" | "publication_not_supported";
+    message?: string;
 }
 /** Success requires coherent authoritative document and lifecycle facts. */
 export type CatalogPublicationReadResult = {
@@ -1404,10 +1405,6 @@ export type CatalogHistoryResult = {
     receipts: readonly CatalogPublicationReceipt[];
     limit: number;
     nextCursor: string | null;
-} | {
-    outcome: "validation_issue";
-    reason: "catalog_publication_cursor_invalid";
-    message: string;
 } | CatalogPublicationRefusal;
 ```
 ## dist/catalog/contracts/productMediaContracts.d.ts

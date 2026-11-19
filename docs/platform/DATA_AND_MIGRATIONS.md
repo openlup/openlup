@@ -947,7 +947,8 @@ roster, response size and the original command result. Approval records the
 expected product and SKU facts. An issue must match those facts, and the latest
 issue must also match the live product and SKU projections. Decision transitions
 use the existing draft head to serialize with issuance, including before the
-product exists. Capture applies the same read-only decision assertion.
+product exists. Capture and exact restore replay apply the same read-only
+admission checks. Live product and SKU facts use the retained projection decoders.
 
 Runtime roles, application principals and roles they can assume cannot insert,
 update, delete or truncate any of these six relations. The schema owner,
@@ -959,7 +960,7 @@ publication events use the same checked text before comparing the original
 result. Invalid saved result text refuses the entire transaction. Work on
 an issue scales with the predecessor roster and issued SKU facts, with a sort
 for canonical order. SKU, receipt, head and pointer events use their indexed
-keys. Deferred triggers run per affected row, including in bulk restore. The live SKU event walks each changed facts JSON value recursively.
+keys. Deferred triggers run per affected row, including in bulk restore. The live SKU event decodes each changed facts value.
 Decision events use the candidate and event-order index to check adjacent
 transitions and the approval active at the issue's saved time.
 
