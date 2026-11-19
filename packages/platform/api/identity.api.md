@@ -1443,8 +1443,10 @@ export declare function createCustomerPreferencePrivacyContributor(): PersonalDa
 ## dist/identity/customerSessionBinding.d.ts
 
 ```ts
+import type { Pool } from "pg";
 import type { IdentityJwtLibraryLoader } from "./jwtLibrary.js";
 import type { CustomerChallengeDeliveryPort, CustomerChallengeStore, CustomerSessionIssuerPort } from "./ports.js";
+import type { PostgresDataGatewayOptions } from "../data/index.js";
 type Env = Record<string, string | undefined>;
 export type CapturedCustomerChallenge = {
     readonly email: string;
@@ -1463,8 +1465,38 @@ export interface CustomerSessionBinding {
             email: string;
         };
     } | null>;
+    /** Releases an owned store/pool; guaranteed no-op for borrowed or shared stores. */
+    close?(): Promise<void>;
 }
+export type PostgresCustomerSessionBindingOptions = {
+    issuer: CustomerSessionIssuerPort;
+    delivery?: CustomerChallengeDeliveryPort;
+    challengeTtlSeconds?: number;
+    generateToken?: () => string;
+    now?: () => Date;
+} & ({
+    store: CustomerChallengeStore;
+    pool?: undefined;
+    connectionString?: undefined;
+    poolFactory?: undefined;
+} | {
+    pool: Pool;
+    store?: undefined;
+    connectionString?: undefined;
+    poolFactory?: undefined;
+} | {
+    connectionString: string;
+    poolFactory?: PostgresDataGatewayOptions["poolFactory"];
+    store?: undefined;
+    pool?: undefined;
+});
+/** Env-free direct PostgreSQL customer session binding without per-request pool churn. */
+export declare function createPostgresCustomerSessionBinding(options: PostgresCustomerSessionBindingOptions): CustomerSessionBinding & {
+    close(): Promise<void>;
+};
 export declare function resolveCustomerSessionBinding(env: Env, options?: {
+    store?: CustomerChallengeStore;
+    pool?: Pool;
     createStore?: (connectionString: string) => CustomerChallengeStore & {
         close(): Promise<void>;
     };
