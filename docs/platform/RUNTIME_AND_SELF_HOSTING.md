@@ -839,8 +839,8 @@ exclusions and horizons that differ from the installed value. Managed compositio
 Managed quantities retain ATP provider-tagged accounting and the fixed 14-day priority.
 For a separate native runtime role, keep the
 [documented ATP function and relation grants](DATA_AND_MIGRATIONS.md#native-stock-wait-and-atp-n3).
-After applying the policy migration and before resuming ATP calls, upgrade the
-earlier grant list with exactly one additional grant (substitute the host's role):
+After applying the policy migration and before resuming ATP calls, add exactly
+one grant for ATP (substitute the host's role):
 
 ```sql
 GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_days() TO runtime_role;
@@ -851,6 +851,21 @@ restricted `SECURITY DEFINER` helper reads settings for ATP, so this path needs
 no settings-table `SELECT`; the TypeScript policy reader still needs `SELECT`
 on `public.commerce_settings` to read revision and days. Qualified service-role
 bindings already receive helper execution.
+
+After applying `20261123142000_inventory_renewal_protection_validation.sql`,
+add this separate grant only for connected settings validation or preview.
+It is optional for ATP.
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_validate(jsonb) TO runtime_role;
+```
+
+The pure validator reads no table. Calling it directly without this grant
+raises SQLSTATE `42501` for the custom role. Qualified service-role bindings
+already receive validator execution.
+The operator grants both functions directly to a separate native runtime role as
+needed because the migrations do not know the host's role name.
+
 Native one-time and replacement allocation remain
 unavailable; this read supplies no allocation authority. Importing
 the binding mounts no route, schedule or provider. Admin composition retains its

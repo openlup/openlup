@@ -74,6 +74,33 @@ proves default and legacy compatibility, zero-write refusal, frozen replay and
 the existing command edit fence. A 72-hour cutoff closes earlier than 24 hours,
 as the installed fence subtracts stored hours from the next cycle instant.
 
+## Native renewal stock protection
+
+The [inventory validation forward](../../db/platform/migrations/20261123142000_inventory_renewal_protection_validation.sql)
+creates `public.inventory_renewal_protection_validate(jsonb)` and replaces the
+body of `public.inventory_renewal_protection_days()`. The validator preserves
+the revision text and normalizes the horizon to an integer. Invalid input and
+malformed stored JSON retain SQLSTATE `22023` and
+`inventory_renewal_protection_policy_invalid`. The reader still returns 14
+for an absent row and retains its owner, ACL and pinned search path. Where
+`service_role` exists, it has permission to execute both the validator and the
+horizon reader. Both qualified runtime profiles inherit that grant.
+
+For a custom runtime role with a direct horizon-reader grant, the validator
+grant is optional for ATP. Add it for connected settings validation or preview
+(substitute the host's role):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.inventory_renewal_protection_validate(jsonb) TO runtime_role;
+```
+
+The pure validator reads no table. Direct calls without the validator grant
+raise SQLSTATE `42501`.
+
+`inventory_new_purchase_stock_read` calls native ATP inside a single STABLE
+statement, so ATP reads settings and stock against the same snapshot. Its
+TypeScript `readInstalled` entry takes only the SKU list.
+
 ## Data ownership
 
 Native terminal replay replaces only `subscription_claim_due_renewal` while
