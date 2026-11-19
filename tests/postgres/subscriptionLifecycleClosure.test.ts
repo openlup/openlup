@@ -28,7 +28,8 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     expect(env.after).toEqual(env.before);
     expect(env.bodiesBefore).toHaveLength(3);
     expect(env.bodiesAfter).toHaveLength(7);
-    expect(env.guardAfter).toEqual(env.guardBefore);
+    expect(env.guardAfterClosure).toEqual(env.guardBefore);
+    expect(env.guardAfter.triggers).toEqual(env.guardBefore.triggers);
     expect(await env.runner.apply()).toEqual({ applied: [] });
     const acl = (await env.owner.query(`SELECT p.oid::regprocedure::text AS signature,p.proacl::text AS acl,p.proowner::regrole::text AS owner,p.prosecdef,p.proconfig,
       has_function_privilege('anon',p.oid,'EXECUTE') AS anon,has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated,
@@ -47,7 +48,7 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
       "public.commerce_checkout_recovery_tokens", "public.subscription_dunning_notifications"]])).rows;
     expect(deferred.map(row => row.tgname)).toEqual(["trg_commerce_orders_line_sum"]);
     mkdirSync(".context/scratch/c21", { recursive: true });
-    writeFileSync(`.context/scratch/c21/catalog-${profile}.json`, JSON.stringify({ before: env.before, after: env.after, guardBefore: env.guardBefore, guardAfter: env.guardAfter, bodiesBefore: env.bodiesBefore, bodiesAfter: env.bodiesAfter, deferred, acl, view }, null, 2));
+    writeFileSync(`.context/scratch/c21/catalog-${profile}.json`, JSON.stringify({ before: env.before, after: env.after, guardBefore: env.guardBefore, guardAfterClosure: env.guardAfterClosure, guardAfter: env.guardAfter, bodiesBefore: env.bodiesBefore, bodiesAfter: env.bodiesAfter, deferred, acl, view }, null, 2));
   }, 30_000);
 
   it.each(["UTC", "Etc/GMT-9", "Etc/GMT+5"])("closes pause recovery once and preserves exact replay in %s", async zone => {

@@ -61,9 +61,9 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
       "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
       "public.subscription_apply_lifecycle_action(uuid,text,uuid,text,jsonb,timestamptz)",
       "public.customer_subscription_pause_as_actor(uuid,text,text,text)"]])).rows;
-    const guard = async () => ({
-      function: (await owner.query("SELECT pg_get_functiondef('public.commerce_order_assert_line_sum()'::regprocedure) AS definition")).rows,
-      triggers: (await owner.query(`SELECT tgname,pg_get_triggerdef(oid) AS definition FROM pg_trigger
+    const guard = async (db: Pool | PoolClient = owner) => ({
+      function: (await db.query("SELECT pg_get_functiondef('public.commerce_order_assert_line_sum()'::regprocedure) AS definition")).rows,
+      triggers: (await db.query(`SELECT tgname,pg_get_triggerdef(oid) AS definition FROM pg_trigger
         WHERE tgname IN ('trg_commerce_orders_line_sum','trg_commerce_order_items_line_sum') ORDER BY tgname`)).rows,
     });
     const bodies = async () => (await owner.query(`SELECT oid::regprocedure::text AS signature,prosrc AS body,
@@ -72,10 +72,21 @@ export async function lifecycleInstallation(profile: LifecycleProfile) {
       "subscription_command_apply", "subscription_apply_lifecycle_action", "customer_subscription_pause_as_actor",
       "subscription_pause_close_recovery", "subscription_terminalize_unpaid_artifacts"]])).rows;
     const before = await catalog(), guardBefore = await guard(), bodiesBefore = await bodies();
+    // Observe the historical forward on its own. The full runner below still
+    // verifies and applies all later forwards to the same pristine prefix.
+    const closure = await migration.connect();
+    let guardAfterClosure: Awaited<ReturnType<typeof guard>>;
+    try {
+      await closure.query("BEGIN");
+      await closure.query(readFileSync(lifecycleForward, "utf8"));
+      guardAfterClosure = await guard(closure);
+    } finally {
+      try { await closure.query("ROLLBACK"); } finally { closure.release(); }
+    }
     await runner().apply();
     const after = await catalog(), guardAfter = await guard(), bodiesAfter = await bodies();
     const runtime = profile === "legacy" ? owner : pool(login(r), "-c role=service_role");
-    return { owner, migration, runtime, before, after, guardBefore, guardAfter, bodiesBefore, bodiesAfter, runner: runner(), profile,
+    return { owner, migration, runtime, before, after, guardBefore, guardAfterClosure, guardAfter, bodiesBefore, bodiesAfter, runner: runner(), profile,
       close: async () => { try { await closePostgres(container, pools); } finally { rmSync(root, { recursive: true, force: true }); } },
       async actor<T>(principal: string, work: (client: PoolClient) => Promise<T>) {
         // Owner is fixture setup only until SET ROLE; the operation has exactly actor privileges.
