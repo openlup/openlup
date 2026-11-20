@@ -319,6 +319,8 @@ describe("offline catalogue conformance", () => {
   it.each([
     ["/same", "~1same"],
     ["/~1same", "~1~01same"],
+    ["/a.b~1", "~1a.b~01"],
+    ["/same.part~end", "~1same.part~0end"],
   ])("escapes the finding pointer for duplicate SKU ID %s", async (skuId, escaped) => {
     const p = pack(), type = { key: p.types[0].key, version: 1 };
     const input = { axes: [], typed: false, retained: [], incoming: [
@@ -333,10 +335,8 @@ describe("offline catalogue conformance", () => {
       path: prefix + escaped,
       fix: "Remove the repeated SKU entry while preserving authoritative identity.",
     })]);
-    const saved: typeof subject = JSON.parse(text);
-    const rows = saved.packs[0].combinations[0].input.incoming;
-    const id = report.findings[0].path.slice(prefix.length).replaceAll("~1", "/").replaceAll("~0", "~");
-    expect(rows.filter(row => row.skuId === id)).toEqual([rows[0], rows[1]]);
+    const token = report.findings[0].path.split("/").at(-1);
+    expect(token?.replaceAll("~1", "/").replaceAll("~0", "~")).toBe(skuId);
   });
 
   it("conformance_reuses_row_validators S4 combinations", async () => {

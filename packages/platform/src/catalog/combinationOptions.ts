@@ -16,6 +16,9 @@ const quantityOptionV2Schema = z.object({
 
 type Refuse = (code: CatalogCombinationCode, path: string) => never;
 
+// SKU IDs are opaque even when their text looks like a field path.
+export const skuIdPathErrors = new WeakSet<Error>();
+
 export function combinationFindingPointer(parts: readonly PropertyKey[]): string {
   return parts.map(part => `/${String(part).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
 }

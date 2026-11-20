@@ -1,7 +1,7 @@
 import type { CatalogOptionValue, CatalogProductTypeInput } from "./contracts/productTypes.js";
 import type { CatalogCombinationChangeV2, CatalogCombinationCode, CatalogCombinationIdentityV2,
   CatalogRetainedCombinationV2 } from "./contracts/variantAxes.js";
-import { canonicalizeCombinationOptions, selectCombinationAxes } from "./combinationOptions.js";
+import { canonicalizeCombinationOptions, selectCombinationAxes, skuIdPathErrors } from "./combinationOptions.js";
 
 /** @experimental */
 export class CatalogCombinationError extends Error {
@@ -10,6 +10,12 @@ export class CatalogCombinationError extends Error {
   }
 }
 const refuse = (code: CatalogCombinationCode, path: string): never => { throw new CatalogCombinationError(code, path); };
+
+function refuseSkuId(code: CatalogCombinationCode, skuId: string): never {
+  const error = new CatalogCombinationError(code, skuId);
+  skuIdPathErrors.add(error);
+  throw error;
+}
 
 /** Installed definition metadata and selected axes must be rebound by LC2 inside its transaction.
  * @experimental
@@ -45,12 +51,12 @@ export function validateCatalogCombinationChangesV2(input: {
   if (!Number.isSafeInteger(capacity) || capacity < 1) refuse("product_capacity_invalid", "capacity");
   const effective = new Map<string, CatalogRetainedCombinationV2>();
   for (const fact of input.retained) {
-    if (effective.has(fact.skuId)) refuse("duplicate_sku_id", fact.skuId);
+    if (effective.has(fact.skuId)) refuseSkuId("duplicate_sku_id", fact.skuId);
     effective.set(fact.skuId, fact);
   }
   const changed = new Set<string>();
   for (const change of input.incoming) {
-    if (changed.has(change.skuId)) refuse("duplicate_sku_id", change.skuId);
+    if (changed.has(change.skuId)) refuseSkuId("duplicate_sku_id", change.skuId);
     changed.add(change.skuId);
     const retained = effective.get(change.skuId);
     const options = change.optionValues === undefined ? retained?.optionValues ?? null : change.optionValues;
@@ -58,7 +64,7 @@ export function validateCatalogCombinationChangesV2(input: {
       : options === null ? null : canonicalizeCatalogCombinationV2({ ...input, options });
     if (retained?.identity && (!identity
       || !Buffer.from(retained.identity.canonicalOptionBytes).equals(identity.canonicalOptionBytes)))
-      refuse("sku_identity_change_requires_new_sku", change.skuId);
+      refuseSkuId("sku_identity_change_requires_new_sku", change.skuId);
     effective.set(change.skuId, { skuId: change.skuId, state: change.state, optionValues: options, identity });
   }
   if (effective.size > capacity) refuse("product_capacity_exceeded", "skus");
@@ -66,15 +72,15 @@ export function validateCatalogCombinationChangesV2(input: {
   for (const fact of effective.values()) {
     // Revalidate omitted active typed SKUs too: incremental writes cannot hide unmapped rows.
     if (input.typed && fact.state === "active") {
-      if (!fact.optionValues || !fact.identity) return refuse("option_missing", fact.skuId);
+      if (!fact.optionValues || !fact.identity) return refuseSkuId("option_missing", fact.skuId);
       const identity = canonicalizeCatalogCombinationV2({ ...input, options: fact.optionValues });
       if (classifyCatalogCombinationConflictV2(identity, fact.identity) !== "duplicate")
-        refuse("combination_identity_integrity_failed", fact.skuId);
+        refuseSkuId("combination_identity_integrity_failed", fact.skuId);
     }
     if (fact.state !== "active" || !fact.identity) continue;
     const digest = Buffer.from(fact.identity.combinationDigest).toString("hex");
     const other = occupied.get(digest);
-    if (other) refuse(classifyCatalogCombinationConflictV2(other, fact.identity) === "duplicate"
+    if (other) refuseSkuId(classifyCatalogCombinationConflictV2(other, fact.identity) === "duplicate"
       ? "duplicate_combination" : "combination_identity_integrity_failed", fact.skuId);
     occupied.set(digest, fact.identity);
   }

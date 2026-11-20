@@ -9,7 +9,7 @@ import {
 } from "../index.js";
 import { validateDraftFacts } from "../draftFacts.js";
 import { validateDraftAttributes } from "../attributeValues.js";
-import { combinationFindingPointer as pointer, validateDraftCombinations } from "../combinationOptions.js";
+import { combinationFindingPointer as pointer, skuIdPathErrors, validateDraftCombinations } from "../combinationOptions.js";
 import { verifyCatalogRulesAtInstall } from "../publicationRules.js";
 import { renderPublicationIssue, type Issue } from "../publicationError.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
@@ -110,7 +110,9 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
       if (!OWNER_INPUT_CODES.has(named)) throw error;
       const suffix = error instanceof CatalogCombinationError
-        ? combinationPath === "pointer" ? error.path : pointer(error.path.split(".")) : "";
+        ? combinationPath === "pointer" ? error.path
+          : pointer(skuIdPathErrors.has(error) ? [error.path] : error.path.split("."))
+        : "";
       add(named, path + suffix);
       return undefined;
     }
