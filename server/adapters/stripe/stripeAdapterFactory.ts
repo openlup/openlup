@@ -1,3 +1,4 @@
+import { toCorePaymentProviderCapability } from "@openlup/platform/payments";
 import {
   createStripeSandboxPaymentExecutionAdapter,
   stripePaymentCapabilities,
@@ -11,17 +12,10 @@ import {
 import type { PaymentExecutionPort } from "../../../src/domains/payment/ports.js";
 
 /** Package protocol facts plus this host's existing card repair handoff. */
-export const unattendedChargeCapability: PaymentProviderCapabilityDescriptor = {
-  providerKind: stripePaymentCapabilities.providerKind,
-  requiresStoredMandateEvidence: stripePaymentCapabilities.requiresStoredMandateEvidence,
-  assessMandate: stripePaymentCapabilities.assessMandate,
-  unattendedChargeFlow: stripePaymentCapabilities.unattendedChargeFlow,
-  payerContext: stripePaymentCapabilities.payerContext,
-  methodHealth: stripePaymentCapabilities.methodHealth,
-  terminalOutcomeReporting: stripePaymentCapabilities.terminalOutcomeReporting,
-  mandateUpsertIsSubscriptionScoped: stripePaymentCapabilities.mandateUpsertIsSubscriptionScoped,
-  captureFlows: [{ kind: "card_on_file_setup", handoff: "embedded_client_secret" }],
-};
+export const unattendedChargeCapability: PaymentProviderCapabilityDescriptor = toCorePaymentProviderCapability(
+  stripePaymentCapabilities,
+  { captureFlows: [{ kind: "card_on_file_setup", handoff: "embedded_client_secret" }] },
+);
 
 export interface StripeAdapterFactoryResult {
   adapter: PaymentExecutionPort;

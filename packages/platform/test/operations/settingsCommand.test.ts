@@ -174,7 +174,7 @@ it.each([
   ["text refusal", ["show", "unknown"], "commerce_setting_unknown"],
   ["text explanation", ["explain", "commerce_setting_unknown"], "commerce_setting_unknown"],
   ["text provenance", ["show", key], "Basis: reference-code (matches the reference deployment’s code)"],
-  ["text neutral basis", ["show", "offer.freeShippingFromMinor"], "Basis: neutral\n"],
+  ["text neutral basis", ["show", "savedAddressValidation"], "Basis: neutral\n"],
   ["text absent behavior", ["explain", "checkout_recovery_reminders"], "Unpinned checkout recovery episodes"],
 ] as const)("renders %s through the package command", async (name, argv, expected) => {
   const { exit, output } = await run([...argv]);
@@ -187,7 +187,7 @@ it.each([
   ["unknown", "./app.ts", false, 1, undefined],
   ["subscriber_winback_policy", undefined, false, 1, "Pass --app <module> that supplies a reader for this setting."],
   ["subscriber_winback_policy", "./app.ts", false, 1, "No connected reader exists for this key. Omit --database-url for offline discovery."],
-  ["offer.freeShippingFromMinor", undefined, false, 0, undefined],
+  ["savedAddressValidation", undefined, false, 0, undefined],
 ] as const)("shows %s with database URL and app %s", async (setting, app, hasReader, expectedExit, hint) => {
   const readers = hasReader ? { [setting]: async () => ({ present: false as const }) } : {};
   const bind = vi.fn(async () => ({ readers }));
@@ -198,7 +198,7 @@ it.each([
   });
   else expect(output).toBe(document(await showSetting({ key: setting }, readers)));
   // A connected request only needs a binding for a known installed key.
-  expect(bind).toHaveBeenCalledTimes(setting === "offer.freeShippingFromMinor" || setting === "unknown" ? 0 : 1);
+  expect(bind).toHaveBeenCalledTimes(setting === "savedAddressValidation" || setting === "unknown" ? 0 : 1);
 });
 
 it("shows a recorded policy override and closes the connected reader", async () => {
@@ -455,35 +455,28 @@ it.each([
   expect(output).toContain(`"file":{"state":"present","value":${raw}},"validation":{"state":"invalid","paths":${JSON.stringify([path])}}`);
 });
 
-const discountKey = "offer.subscriptionDiscountBps";
-const catalogueReference = { catalogueReference: { file: "owned/store.config.ts", symbol: discountKey } };
-it.each([
-  [{ file: "policy.ts", symbol: "discount", line: 42 }, { location: { file: "policy.ts", symbol: "discount" } }],
-  [{ file: "policy.ts" }, catalogueReference],
-  [{ file: 42, symbol: "discount" }, catalogueReference],
-] as const)("projects a binding location %j and ignores non-catalogue keys", async (raw, source) => {
-  const host = checks(async () => ({ file: { ...minimumFile, entries: {
-    [discountKey]: { value: 500, location: raw as { file: string; symbol: string } }, typo: { value: 1n },
-  } } }));
-  const { exit, output } = await run(checkArgs, { host });
-  expect(exit).toBe(0);
-  const row = JSON.parse(output).rows.find((item: { key: string }) => item.key === discountKey);
-  expect(row).toMatchObject({
-    file: { state: "present", ...source, value: 500 }, validation: { state: "valid" },
-    effect: "The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.",
-    takesEffect: "owned/store.config.ts offer.subscriptionDiscountBps",
-  });
-  expect(output).not.toContain('"key":"typo"');
-  const text = await run(checkArgs.filter(arg => arg !== "--json"), { host });
-  expect(text.output).toContain("Initial installation seeds the native price policy from this value.");
-  if ("catalogueReference" in source) expect(text.output).toContain("Starter catalogue reference — owned/store.config.ts");
+it.each(["list", "check"])("warns once about unmatched value-only keys in %s without reading them", async command => {
+  const read = vi.fn(() => { throw new Error("unexpected value read"); });
+  const installed = { value: parityValue, location: { file: "policy.ts", symbol: "inventory" } };
+  const entries = { [key]: installed };
+  const args = [command, ...appArgs, "--json"];
+  const baseline = await run(args, { host: checks(async () => ({ file: { ...minimumFile, entries } })) });
+  const result = await run(args, { host: checks(async () => ({ file: { ...minimumFile, entries: {
+    ...entries, "z.legacy": { get value() { return read(); } }, "a.legacy": { get value() { return read(); } },
+  } } })) });
+  expect([result.exit, result.output]).toEqual([baseline.exit, baseline.output]);
+  expect(baseline.warnings).toEqual([]);
+  expect(result.warnings).toEqual([
+    'Settings app: value reported without a descriptor for "a.legacy", "z.legacy". Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n',
+  ]);
+  expect(read).not.toHaveBeenCalled();
 });
 
 it("checks every packaged schema against its default and valid examples", async () => {
   const { loadSettingsCatalogue } = await import("../../src/operations/server/settingsCatalog.js");
   const entries = loadSettingsCatalogue().entries.filter(entry => "fallback" in entry).filter(entry =>
     (entry.kind === "code" || entry.kind === "installed") && entry.schema);
-  expect(entries).toHaveLength(7);
+  expect(entries.map(entry => entry.key)).toEqual([key]);
   for (const entry of entries) {
     for (const value of [entry.fallback, ...entry.examples.filter(example => !example.code).map(example => example.value)]) {
       const host = checks(async () => ({ file: { ...minimumFile, entries: { [entry.key]: { value } } } }));
@@ -602,9 +595,9 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
       expect(app.warnings).toEqual(list && load === loadBroken ? ["Settings app: rejected edit\n"] : []);
     }
   }
-  // Captured by running these same no-app arguments on N3a f7e7c2c5f.
+  // N3a bytes with the six starter keys removed, the callback guide reference and the unknown-key guidance.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("22ee39aed18fb32215ad406145a20da6f2b20e34873a2fed22735370956e24d4");
+    .toBe("cf3cfe41b9aea2a3c2d574ac566701dc9029e587997ccfb84429cbeb4871de32");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {
@@ -699,16 +692,17 @@ it.each([
   }
 });
 
-it("uses the packaged code descriptor member order for declared show JSON", async () => {
+it("uses the packaged value descriptor member order for declared show JSON", async () => {
   const app = await run(["show", feeKey, ...appArgs, "--json"], { host: checks(async () => appFixture()) });
-  const pkg = await run(["show", "offer.freeShippingFromMinor", "--json"]);
+  const pkg = await run(["show", key, "--json"]);
   expect([app.exit, pkg.exit]).toEqual([0, 0]);
   const { setting: declared } = JSON.parse(app.output);
   const { setting: packaged } = JSON.parse(pkg.output);
   expect(Object.keys(declared)).toEqual(Object.keys(packaged));
-  for (const field of ["effect", "runtime", "change"]) {
+  for (const field of ["effect", "runtime"]) {
     expect(Object.keys(declared[field])).toEqual(Object.keys(packaged[field]));
   }
+  expect(Object.keys(declared.change)).toEqual(["file", "symbol"]);
 });
 
 it("reports original JSON with own special keys", async () => {
@@ -736,22 +730,25 @@ it.each(["show", "explain"])("preserves own metadata and projected properties in
 });
 
 it.each([
-  ["a throwing getter", () => { throw new Error("private accessor detail"); }],
-  ["a non-JSON value", () => Number.POSITIVE_INFINITY],
-])("reports %s in show and check", async (_, readFee) => {
+  ["an unset value", () => undefined, 0, 0],
+  ["a throwing getter", () => { throw new Error("private accessor detail"); }, 74, 1],
+  ["a non-JSON value", () => Number.POSITIVE_INFINITY, 74, 1],
+] as const)("reports %s in show and check", async (_, readFee, showExit, checkExit) => {
   const read = vi.fn(readFee);
   const host = checks(async () => appFixture(read));
   const show = await run(["show", feeKey, ...appArgs, "--json"], { host });
-  expect(show.exit).toBe(74);
-  expect(JSON.parse(show.output)).toMatchObject({
+  expect(show.exit).toBe(showExit);
+  expect(JSON.parse(show.output)).toMatchObject(showExit === 0 ? {
+    schemaVersion: 1, setting: { key: feeKey }, observation: { state: "offline" },
+  } : {
     schemaVersion: 1, refusal: { code: "commerce_setting_read_unavailable", path: ["file", "entries", feeKey, "value"] },
   });
   expect(show.output).not.toContain("private accessor detail");
   const check = await run(checkArgs, { host });
-  expect(check.exit).toBe(1);
+  expect(check.exit).toBe(checkExit);
   expect(JSON.parse(check.output)).toMatchObject({
-    state: "invalid", rows: expect.arrayContaining([expect.objectContaining({
-      key: feeKey, file: { state: "unreportable", location: { file: giftPath, symbol: feeKey }, message: "Value cannot be reported as JSON." },
+    state: checkExit ? "invalid" : "checked", rows: expect.arrayContaining([expect.objectContaining({
+      key: feeKey, file: checkExit ? { state: "unreportable", location: { file: giftPath, symbol: feeKey }, message: "Value cannot be reported as JSON." } : { state: "not-reported" },
       validation: { state: "not-validated" },
     })]),
   });

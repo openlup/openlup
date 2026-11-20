@@ -480,77 +480,6 @@
       }
     },
     {
-      "key": "offer.freeShippingFromMinor",
-      "domain": "shipping",
-      "kind": "code",
-      "goal": "Set the free shipping threshold in currency minor units.",
-      "schemaVersion": 1,
-      "examples": [],
-      "fallback": 1000,
-      "defaultBasis": {
-        "kind": "neutral"
-      },
-      "whyThisDefault": "Both samples set the threshold to 1000 minor units.",
-      "effect": {
-        "appliesTo": "The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.",
-        "frozenOn": [
-          "The order draft saves the quote's shipping terms when present."
-        ],
-        "impact": "customer-promise"
-      },
-      "runtime": {
-        "level": "read-only",
-        "reason": "The starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver."
-      },
-      "change": {
-        "file": "owned/store.config.ts",
-        "symbol": "offer.freeShippingFromMinor"
-      },
-      "schema": {
-        "type": "integer",
-        "minimum": 0,
-        "maximum": 2147483647,
-        "description": "assertConfig checks whole minor units from 0 through 2147483647."
-      },
-      "previewSchema": null,
-      "rules": []
-    },
-    {
-      "key": "offer.subscriptionDiscountBps",
-      "domain": "pricing",
-      "kind": "code",
-      "goal": "Set the subscription discount in basis points.",
-      "schemaVersion": 1,
-      "examples": [],
-      "fallback": 500,
-      "defaultBasis": {
-        "kind": "neutral"
-      },
-      "whyThisDefault": "Both samples set a 500-basis-point discount.",
-      "effect": {
-        "appliesTo": "The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.",
-        "frozenOn": [
-          "The saved checkout quote includes the quoted unit price."
-        ],
-        "impact": "customer-promise"
-      },
-      "runtime": {
-        "level": "read-only",
-        "reason": "The starter reads the discount from the owned store config."
-      },
-      "change": {
-        "file": "owned/store.config.ts",
-        "symbol": "offer.subscriptionDiscountBps"
-      },
-      "schema": {
-        "type": "integer",
-        "minimum": 0,
-        "description": "assertConfig first checks whole basis points from 0 through 10000. Startup and the install seed require a rounded subscription unit price of 1 through 2147483647 minor units. A 10000-basis-point discount produces zero."
-      },
-      "previewSchema": null,
-      "rules": []
-    },
-    {
       "key": "payments.declineNoticeTiming",
       "domain": "payments",
       "goal": "Choose the delay and link lifetime for a payment decline notice.",
@@ -733,42 +662,6 @@
       }
     },
     {
-      "key": "purchase.reservationMinutes",
-      "domain": "commerce",
-      "kind": "code",
-      "goal": "Set the checkout reservation lifetime in minutes.",
-      "schemaVersion": 1,
-      "examples": [],
-      "fallback": 30,
-      "defaultBasis": {
-        "kind": "neutral"
-      },
-      "whyThisDefault": "Both samples set a 30-minute duration.",
-      "effect": {
-        "appliesTo": "The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.",
-        "frozenOn": [
-          "The reservation row records the expiry assigned at creation."
-        ],
-        "impact": "customer-promise"
-      },
-      "runtime": {
-        "level": "read-only",
-        "reason": "The starter reads the duration from the owned store config."
-      },
-      "change": {
-        "file": "owned/store.config.ts",
-        "symbol": "purchase.reservationMinutes"
-      },
-      "schema": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 9007199254740991,
-        "description": "assertConfig checks that the duration is a positive safe integer."
-      },
-      "previewSchema": null,
-      "rules": []
-    },
-    {
       "key": "savedAddressValidation",
       "domain": "shipping",
       "kind": "callback",
@@ -797,8 +690,7 @@
         "reason": "The callbacks are executable host code."
       },
       "change": {
-        "file": "owned/acquisition-policy.ts",
-        "symbol": "savedAddressValidation"
+        "reference": "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences"
       },
       "schema": null,
       "previewSchema": null,
@@ -863,88 +755,6 @@
         "operation": "No settings write operation is available for this key."
       },
       "schema": null,
-      "previewSchema": null,
-      "rules": []
-    },
-    {
-      "key": "subscriptionCreation.editWindowHours",
-      "domain": "subscriptions",
-      "kind": "code",
-      "goal": "Set how many hours before a renewal customers can edit a newly created subscription.",
-      "schemaVersion": 1,
-      "examples": [
-        {
-          "value": 48
-        }
-      ],
-      "fallback": 72,
-      "defaultBasis": {
-        "kind": "reference-code"
-      },
-      "whyThisDefault": "The starter sets a 72-hour edit window.",
-      "effect": {
-        "appliesTo": "The starter supplies the deployed edit window at native subscription activation.",
-        "frozenOn": [
-          "The activation writes the window on the new subscription row."
-        ],
-        "impact": "customer-promise"
-      },
-      "runtime": {
-        "level": "read-only",
-        "reason": "The starter reads the window from the owned store config."
-      },
-      "change": {
-        "file": "owned/store.config.ts",
-        "symbol": "subscriptionCreation.editWindowHours"
-      },
-      "schema": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 720
-      },
-      "previewSchema": null,
-      "rules": []
-    },
-    {
-      "key": "subscriptionOffers.deliveryCycles",
-      "domain": "subscriptions",
-      "kind": "code",
-      "goal": "Choose the allowed delivery interval and default cadence for subscriptions.",
-      "schemaVersion": 1,
-      "examples": [],
-      "fallback": {
-        "days": {
-          "kind": "set",
-          "values": [
-            28,
-            56
-          ]
-        },
-        "defaultDays": 28
-      },
-      "defaultBasis": {
-        "kind": "neutral"
-      },
-      "whyThisDefault": "The samples default to 28 days; one also allows 56 days and the other allows 14 and 56 days.",
-      "effect": {
-        "appliesTo": "A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.",
-        "frozenOn": [
-          "A saved starter-pack quote records the graduation cadence captured at checkout."
-        ],
-        "impact": "customer-promise"
-      },
-      "runtime": {
-        "level": "read-only",
-        "reason": "The starter composes its offers from the owned store config."
-      },
-      "change": {
-        "file": "owned/store.config.ts",
-        "symbol": "subscriptionOffers"
-      },
-      "schema": {
-        "type": "object",
-        "description": "assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence."
-      },
       "previewSchema": null,
       "rules": []
     },
@@ -1017,40 +827,6 @@
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsintroductoryphases"
       }
-    },
-    {
-      "key": "subscriptions.lifecycleNoticeRetryBudget",
-      "domain": "subscriptions",
-      "kind": "code",
-      "goal": "Set the retry budget for dunning and event or reminder dispatch.",
-      "schemaVersion": 1,
-      "examples": [],
-      "fallback": 6,
-      "defaultBasis": {
-        "kind": "neutral"
-      },
-      "whyThisDefault": "The starter sets six attempts.",
-      "effect": {
-        "appliesTo": "On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.",
-        "frozenOn": [],
-        "impact": "operations"
-      },
-      "runtime": {
-        "level": "read-only",
-        "reason": "The starter passes its dispatch policy to the lifecycle notice dispatcher."
-      },
-      "change": {
-        "file": "owned/renewal.config.ts",
-        "symbol": "subscriptionCare.dispatch.maxAttempts"
-      },
-      "schema": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 2147483647,
-        "description": "assertSubscriptionCare checks the budget as an integer from 1 through 2147483647."
-      },
-      "previewSchema": null,
-      "rules": []
     },
     {
       "key": "subscriptions.prepaidCycles",
@@ -1183,7 +959,6 @@
     "inventory_renewal_protection": "stock lookahead, inventory buffer, renewal allocation, available to promise",
     "checkout_recovery_reminders": "abandoned basket, reminder cadence, payment follow-up, recovery offsets",
     "subscriber_winback_policy": "cancelled subscriber outreach, retention messaging, reactivation window",
-    "subscriptionCreation.editWindowHours": "edit cutoff, change deadline, activation window",
     "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "account-support": "operator permissions, administrative access",
     "catalog": "product assortment, SKU records",

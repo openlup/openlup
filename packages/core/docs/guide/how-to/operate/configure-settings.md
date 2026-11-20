@@ -2,13 +2,17 @@
 
 Find the renewal stock protection horizon or other business settings before
 choosing how to change them. The [Settings catalogue](settings-catalogue.md)
-lists each key, its owner and the expected effect. This discovery surface is
-experimental.
+covers platform settings, capabilities and invariants. Use your application's
+settings script to discover settings declared by the app. This discovery surface
+is experimental.
 
 ## Find a setting
 
 From an extracted starter with matching packages installed, use the settings
-script shown in its `AGENTS.md`. Try these arguments:
+script shown in its `AGENTS.md`. The script supplies the application binding, so
+list includes both packaged settings and settings declared by the starter.
+Without an application binding, discovery covers the packaged catalogue.
+Try these arguments:
 
 - `list --goal "renewal stock protection horizon"`
 - `show inventory_renewal_protection --json`
@@ -22,8 +26,10 @@ run `./node_modules/.bin/openlup-context search "renewal stock protection horizo
 
 ## Read the effective behavior
 
-Offline results for package keys show catalogue metadata. For inventory and
-reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
+Offline `show` for package keys returns catalogue metadata. For a declared
+app setting with a reported value, `show` also returns a file observation with
+the configuration selected by the binding and the value it reports. For
+inventory and reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
 inventory row uses the platform fallback. For unpinned reminder episodes, an
@@ -38,7 +44,7 @@ with remediation. To explain the absent-row behavior offline, pass
 
 ## Check owned configuration before proposing a change
 
-1. Use `list --goal <words>` to find the key.
+1. Pass `list --goal <words>` to your application’s settings script.
 2. Run `check --configuration <id>` with the starter's settings script to read
    values from the selected owned configuration and find their locations.
 3. Edit the owned configuration and rerun `check`.
@@ -48,8 +54,8 @@ with remediation. To explain the absent-row behavior offline, pass
 
 Check uses the settings app binding offline. It opens no database connection
 and performs no writes. Installed rows say “Store: not checked.” The starter
-checks installed policies for drift at boot. Check prints an app-supplied
-location or labels the available starter catalogue reference separately.
+checks installed policies for drift at boot. Check includes a file location on
+a reported value when the binding supplies one.
 
 Check reports the application's startup validation when supplied. It uses the
 packaged schema for known package values and the supplied Zod schema for an
@@ -60,8 +66,9 @@ The starter checks its reported configuration ID against the registry and runs
 arguments and installer package availability. Seed preparation runs after
 database bootstrap.
 A file value that cannot be represented as JSON is reported as unreportable
-and fails check without a schema verdict. Value-only entries for unknown keys
-are ignored. Declared app rows use the effect and location from the declaration.
+and fails check without a schema verdict. For a value-only entry with no packaged
+key, list and check name the missing declaration on stderr. Add its descriptor
+as shown below. Declared app rows use the effect and location from the declaration.
 
 With `--json`, check emits one version-1 document. Exit 0 means checked and
 exit 1 means invalid. If importing the selected module or calling its binding
@@ -78,7 +85,9 @@ same assertion the app runs at startup. For connected effects, use
 
 ## Declare a setting of your own
 
-Keep the value and its business rule in your application's owned code. For a
+Keep the value and its business rule in your application's owned code.
+When a declared value is undefined, the key stays discoverable, show returns its
+descriptor with an offline observation, and check marks its value not reported. For a
 gift wrapping fee, put this in `owned/gift.config.ts` and call
 `quoteGiftOrderMinor` from your gift quote code.
 
@@ -123,8 +132,8 @@ From the application root, pass the owned binding to the installed command.
 ./node_modules/.bin/openlup settings --app ./owned/settings-host.ts check
 ```
 
-List finds the new key by goal. Show reports the configured value and where to
-edit it. Check reports the app row and runs the existing app validation.
+List finds the new key by goal. Show reports the file observation and where to
+edit the value. Check reports the app row and runs the existing app validation.
 In this example, change 150 to -1 to exercise the assertion. Check exits 1 and
 includes this line. Restore a valid amount and rerun check before opening your
 pull request.
@@ -178,20 +187,22 @@ The starter's settings script calls the experimental package command and passes
 `--app ./owned/settings-host.ts`. Set the script to
 `openlup settings --app ./owned/settings-host.ts` in a composed app with the same
 layout. The module exports one function, `createSettingsBindings({ db, configuration })`.
-It supplies read-only readers, previewers or a stock source key for the selected
-configuration. If the requested ID is unknown, return
+The binding can supply `file` entries for offline discovery and an optional
+startup validator for `check`. Connected commands use readers, previewers or a
+stock source key from the binding. If the requested configuration ID is unknown, return
 `{ configurationIds: [...] }` with the available IDs. The CLI owns the
 database connection and calls the module without a pool when resolving
 `--configuration` offline. The module must avoid starting the application,
 writing data or printing to stdout. Pass an explicit
 `--app` only for application code you trust.
 
-Offline list, show and explain work without an app or database. With a
+List, show and explain work for platform keys without an app or database. With a
 PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
 A stock preview needs the application's stock source. A connected reminder
 show needs the application's checkout wave policy. A connected show of any
-installed setting requires a reader for that key. Supply `--app` when the
-command requests a binding, or omit the URL to read the catalogue offline.
+installed setting requires a reader for that key. Supply `--app` to read app
+declarations or to provide a binding for a connected read. Omit the URL to
+discover settings offline.
 
 Use `--value -` to read one JSON value from stdin. Use `--value=-1` when
 passing a negative number directly. The command exits with 0 on completion,
@@ -203,17 +214,18 @@ Use `--json` to get one settings document with `schemaVersion: 1` on stdout.
 
 A domain keeps an executable descriptor in code and exports it from a
 non-browser entry. The generator reads descriptive entries from the domain's
-data file. Installed consumers discover those entries in the packaged catalogue.
+data file. These platform entries make up the packaged catalogue.
 
 A `code` setting is supplied by the adopter's application. A `callback`
 setting binds host-owned code. An `installed` setting has a store-specific
 policy row when explicitly configured. A capability gap (`cap`) or platform
-invariant (`invariant`) has no editable setting value.
+invariant (`invariant`) has no editable setting value. Find `code` settings with
+the application's settings script or with `openlup settings --app <module> list`.
 
 `read-only` covers discovery. `preview` allows inspection of a proposed
-change, and `ready` requires qualification for runtime changes. The current
-catalogue gives the runtime level, reason and existing change mechanism for
-each key. Renewal stock protection is at `preview`; the host installer still
+change, and `ready` requires qualification for runtime changes. `show` gives the runtime
+level, its reason when present and the existing change mechanism for the selected
+key. Renewal stock protection is at `preview`; the host installer still
 owns changes.
 
 ## Refusals
@@ -225,10 +237,10 @@ and whether retrying can help.
 
 | Code | Next step |
 | --- | --- |
-| `commerce_setting_unknown` | Find the installed key with `list`. |
+| `commerce_setting_unknown` | Run `list` with your application’s settings script for app keys, or use an unbound `list` for platform keys. |
 | `commerce_setting_refusal_unknown` | Check the exact refusal code from this version. |
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
-| `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
+| `commerce_setting_read_unavailable` | For a connected read, verify the store connection, read access and installed value. For a binding failure, check the application binding named in the refusal. |
 | `commerce_setting_preview_connection_required` | Use a read-capable connection to the intended store and supply the app bindings if requested. |
 | `commerce_setting_preview_unsupported` | Use `show` for value details or a reason and reference. |
 | `commerce_setting_preview_json_invalid` | Correct the proposed JSON. |

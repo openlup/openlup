@@ -18,6 +18,7 @@
     "tests",
     "packages/platform/test/catalog/catalogPackTypes.test.ts",
     "packages/platform/test/operations/fixtures/settings-guide/owned/settings-host.ts",
+    "scripts/packages/fixtures/settings-upgrade-host.ts",
     "src/overlays/*/tests/starterDisclosureNavigation.test.tsx",
     "src/test/setup.ts",
     "src/test/vitestProvidedContext.d.ts",

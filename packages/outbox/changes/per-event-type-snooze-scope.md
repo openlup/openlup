@@ -1,0 +1,1 @@
+- Add optional `snoozeScope?: "all" | "event_type"` (`OutboxSnoozeScope`) on `OutboxDispatchConfig` so workers can isolate `{ kind: "snooze" }` circuit-breaking to the snoozed event type and affected aggregates without starving unrelated event types.

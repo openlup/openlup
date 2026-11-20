@@ -7378,6 +7378,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/providerRegistry.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/providerStockAvailability.ts",
       "class": "public-output"
     },
@@ -8643,6 +8647,10 @@
     },
     {
       "path": "packages/platform/src/payments/providerRecoveryReaders.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/providerRegistry.ts",
       "class": "public-output"
     },
     {
@@ -10802,6 +10810,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/providerRegistry.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/readModel.test.ts",
       "class": "public-output"
     },
@@ -11419,6 +11431,10 @@
     },
     {
       "path": "packages/platform/test/payments/preparedAttempt.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/providerRegistry.test.ts",
       "class": "public-output"
     },
     {
@@ -12915,6 +12931,14 @@
     },
     {
       "path": "scripts/packages/exact-set-qualification.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/fixtures/settings-upgrade-host.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/fixtures/starter-settings.main.json",
       "class": "public-output"
     },
     {

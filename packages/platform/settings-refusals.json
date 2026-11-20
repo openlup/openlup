@@ -6,8 +6,8 @@
       "path": [
         "key"
       ],
-      "rule": "Use a key from the installed settings catalogue.",
-      "hint": "Search by the business goal to find the key.",
+      "rule": "Use a setting key in the selected catalogue or application binding.",
+      "hint": "Search by business goal. For CLI discovery of application keys, use the application's settings script or pass --app <module> to openlup settings list.",
       "remediation": {
         "retry": true,
         "action": "Find a key in the list, then run show with that key.",

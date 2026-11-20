@@ -15,8 +15,8 @@ lives in the [reader guide](packages/core/docs/guide/README.md).
 Change rules and contributor process stay in `AGENTS.md` and `CONTRIBUTING.md`;
 do not duplicate reader guide content here.
 
-Business settings have a versioned [catalogue](packages/core/docs/guide/how-to/operate/settings-catalogue.md).
-In an extracted starter, use the settings script documented in the application's `AGENTS.md` to find a key by goal or read a versioned JSON document.
+Platform settings have a versioned [catalogue](packages/core/docs/guide/how-to/operate/settings-catalogue.md).
+In an extracted starter, use the settings script documented in the application's `AGENTS.md` to find platform or app settings by goal and read versioned JSON.
 Follow [Configure settings](packages/core/docs/guide/how-to/operate/configure-settings.md) and [Add a setting](CONTRIBUTING.md#add-a-setting) for the reader and contributor paths.
 
 Read these documents before changing a related boundary:

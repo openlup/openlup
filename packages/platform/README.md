@@ -1428,37 +1428,13 @@ evidence is unavailable, return `null`. The preparation report can still show
 a known issue that needs fixing. Saving or preparing a draft executes no
 publication operation.
 
-For example, `price_list_not_found` in pricing points to the price change and its
-selected list. Open that change, select an installed list and prepare the draft
-again. Follow the issue's phase and path to locate the input.
+See [Correct a price-list refusal](../core/docs/guide/how-to/build/customize-the-starter.md#correct-a-price-list-refusal)
+for how to locate and correct a price operation.
 
 ### Change a product rule
 
-Edit `owned/catalogue-rules.cjs` and add a valid and an invalid example to
-`owned/catalogue-rules.test.cjs`. The starter test loads the edited bytes
-through the same `loadCatalogRules` loader used by installation.
-
-```sh
-node --test owned/catalogue-rules.test.cjs
-```
-
-Each hook starts fresh, takes JSON inputs and returns the value specified in its
-reference. Write pure rules that use only their arguments. When a rule needs the
-time, locale or time zone, use the supplied evaluation context. Pass the locale
-and time zone explicitly when formatting. Local tests can supply a fixed context
-as the second argument to `loadCatalogRules`. Bundle your
-dependencies ahead of time. Hooks cannot use `require`, Node process or
-filesystem APIs, `Date`, `Math.random`, or runtime code generation. A failed
-hook names itself and the cause. Fix the hook, then run the same test again.
-
-When the rules are ready, run `./lifecycle up` in the neutral starter. The local
-installer derives the product type version from the definitions and rules and
-installs it in the demonstration database. Open **Catalogue drafts** as an
-operator. Choose **Load draft example**, save it, then choose **Prepare saved
-draft** with the saved draft ID and revision. The starter selects the installed
-type. Fix a refusal at the shown path and save again. The local preparation
-report can wait for publication evidence. Editing rules and restarting changes
-new examples while earlier saved drafts keep their own rules.
+See [Change a product rule](../core/docs/guide/how-to/build/customize-the-starter.md#change-a-product-rule)
+for the starter's edit, test and reinstall steps.
 
 For an existing deployment, supply the self-contained build asset with
 `withCatalogPublicationRules` when composing the pack. Use that pack for the

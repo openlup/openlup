@@ -1,21 +1,5 @@
 [
   {
-    "key": "offer.subscriptionDiscountBps",
-    "domain": "pricing",
-    "kind": "code",
-    "goal": "Set the subscription discount in basis points.",
-    "schemaVersion": 1,
-    "examples": [],
-    "fallback": 500,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Both samples set a 500-basis-point discount.",
-    "effect": {"appliesTo": "The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.", "frozenOn": ["The saved checkout quote includes the quoted unit price."], "impact": "customer-promise"},
-    "runtime": {"level": "read-only", "reason": "The starter reads the discount from the owned store config."},
-    "change": {"file": "owned/store.config.ts", "symbol": "offer.subscriptionDiscountBps"},
-    "schema": {"type": "integer", "minimum": 0, "description": "assertConfig first checks whole basis points from 0 through 10000. Startup and the install seed require a rounded subscription unit price of 1 through 2147483647 minor units. A 10000-basis-point discount produces zero."},
-    "rules": []
-  },
-  {
     "key": "pricing.indivisibleOfferTotals",
     "domain": "pricing",
     "goal": "Quote an offer total that cannot be divided evenly by quantity.",

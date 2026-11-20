@@ -252,3 +252,72 @@ export function trackingPhaseKeyForStep(step: CustomerFulfillmentStep): string {
 export function stepUsesTruckIcon(step: CustomerFulfillmentStep): boolean {
   return step === "transit" || step === "delivered";
 }
+
+/** Provider-neutral domain effect table for canonical local fulfillment statuses, free of UI prose or locale keys. */
+export interface FulfillmentStatusEffect {
+  stockEffect: "reserved" | "consumed" | "held" | "released";
+  consumesStock: boolean;
+  handsOver: boolean;
+  suppressDispatchedNotification: boolean;
+  trackingStatus: "in_transit" | "delivered" | null;
+  offTrack: boolean;
+}
+
+export const FULFILLMENT_STATUS_EFFECTS: Readonly<Record<CanonicalLocalFulfillmentStatus, FulfillmentStatusEffect>> = Object.freeze({
+  provider_received: Object.freeze({
+    stockEffect: "reserved",
+    consumesStock: false,
+    handsOver: false,
+    suppressDispatchedNotification: false,
+    trackingStatus: null,
+    offTrack: false,
+  }),
+  picking: Object.freeze({
+    stockEffect: "reserved",
+    consumesStock: false,
+    handsOver: false,
+    suppressDispatchedNotification: false,
+    trackingStatus: null,
+    offTrack: false,
+  }),
+  packed: Object.freeze({
+    stockEffect: "consumed",
+    consumesStock: true,
+    handsOver: false,
+    suppressDispatchedNotification: false,
+    trackingStatus: null,
+    offTrack: false,
+  }),
+  in_transit: Object.freeze({
+    stockEffect: "consumed",
+    consumesStock: true,
+    handsOver: true,
+    suppressDispatchedNotification: false,
+    trackingStatus: "in_transit",
+    offTrack: false,
+  }),
+  delivered: Object.freeze({
+    stockEffect: "consumed",
+    consumesStock: true,
+    handsOver: true,
+    suppressDispatchedNotification: true,
+    trackingStatus: "delivered",
+    offTrack: false,
+  }),
+  exception: Object.freeze({
+    stockEffect: "held",
+    consumesStock: false,
+    handsOver: false,
+    suppressDispatchedNotification: false,
+    trackingStatus: null,
+    offTrack: true,
+  }),
+  cancelled: Object.freeze({
+    stockEffect: "released",
+    consumesStock: false,
+    handsOver: false,
+    suppressDispatchedNotification: false,
+    trackingStatus: null,
+    offTrack: true,
+  }),
+});
