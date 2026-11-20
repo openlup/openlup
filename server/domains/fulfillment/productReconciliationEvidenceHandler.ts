@@ -16,9 +16,9 @@ export interface FulfillmentProductReconciliationEvidenceHandlerDeps {
   authorizeAdmin: (req: VercelRequest) => Promise<boolean>;
 }
 
-// Admin catalog-vs-3PL reconciliation read endpoint (W7d) over
-// omnipack_product_reconciliation_evidence. Read-only: lists SKU-level
-// comparison rows between local product catalog and OmniPack product catalog.
+// Admin read endpoint (Wave F) over omnipack_product_reconciliation_evidence — mirrors the W7b
+// low-stock-evidence read. Read-only: it lists the open/resolved reconciliation rows the product
+// pull records for OmniPack-side products/EANs it could not safely ingest. Resolves nothing.
 export function createFulfillmentProductReconciliationEvidenceHandler({
   evidencePort,
   authorizeAdmin,

@@ -12,10 +12,9 @@ import {
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import {
-  adminCommerceFulfillmentMutationResponseSchema,
   adminCommerceFulfillmentOrderDetailResponseSchema,
   adminCommerceFulfillmentOrdersListResponseSchema,
-} from "../../../src/domains/fulfillment/contracts.js";
+} from "../../../src/domains/fulfillment/commerceFulfillmentContracts.js";
 import {
   CommerceFulfillmentConflictError,
   type CommerceFulfillmentMutationPort,
@@ -24,17 +23,20 @@ import {
 
 export { CommerceFulfillmentConflictError };
 
-type PortRef<T> = T | (() => T);
+type AdminAuthResult =
+  | { ok: false; code: "UNAUTHORIZED" | "FORBIDDEN"; message: string }
+  | { ok: true; userId: string };
 
 interface BaseDeps {
-  authorizeAdmin: (req: VercelRequest) => Promise<boolean>;
+  authorizeAdmin: (req: VercelRequest) => Promise<AdminAuthResult>;
 }
+
+type PortRef<T> = T | (() => T);
 
 const respond = { sendBffError, sendBffSuccess, sendMethodNotAllowed };
 const responseSchemas = {
   list: adminCommerceFulfillmentOrdersListResponseSchema,
   detail: adminCommerceFulfillmentOrderDetailResponseSchema,
-  mutation: adminCommerceFulfillmentMutationResponseSchema,
 };
 
 function wrap(handler: (req: { method?: string; query: Record<string, string | string[] | undefined>; body?: unknown }, res: VercelResponse) => Promise<void>) {
@@ -81,7 +83,7 @@ export function createAdminCommerceFulfillmentOrderDetailHandler({
   authorizeAdmin,
   fulfillmentPort,
 }: BaseDeps & {
-  fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "getCommerceFulfillmentOrder">>;
+  fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "getCommerceFulfillmentOrderDetail">>;
 }) {
   return wrap(createPlatformOrderDetailHandler<VercelResponse>({
     authorizeAdmin: (req) => authorizeAdmin(req as VercelRequest),
@@ -101,7 +103,6 @@ export function createAdminCommerceFulfillmentCreateOrderHandler({
     authorizeAdmin: (req) => authorizeAdmin(req as VercelRequest),
     respond,
     fulfillmentPort: adaptConflictPort(fulfillmentPort, "createCommerceFulfillmentOrder"),
-    responseSchemas,
   }));
 }
 
@@ -115,7 +116,6 @@ export function createAdminCommerceFulfillmentRecordProviderAttemptHandler({
     authorizeAdmin: (req) => authorizeAdmin(req as VercelRequest),
     respond,
     fulfillmentPort: adaptConflictPort(fulfillmentPort, "recordCommerceFulfillmentProviderAttempt"),
-    responseSchemas,
   }));
 }
 
@@ -129,7 +129,6 @@ export function createAdminCommerceFulfillmentRecordLabelHandler({
     authorizeAdmin: (req) => authorizeAdmin(req as VercelRequest),
     respond,
     fulfillmentPort: adaptConflictPort(fulfillmentPort, "recordCommerceFulfillmentLabel"),
-    responseSchemas,
   }));
 }
 
@@ -143,7 +142,6 @@ export function createAdminCommerceFulfillmentHandOffHandler({
     authorizeAdmin: (req) => authorizeAdmin(req as VercelRequest),
     respond,
     fulfillmentPort: adaptConflictPort(fulfillmentPort, "handOffCommerceFulfillmentOrder"),
-    responseSchemas,
   }));
 }
 
@@ -157,7 +155,6 @@ export function createAdminCommerceFulfillmentTrackingEventHandler({
     authorizeAdmin: (req) => authorizeAdmin(req as VercelRequest),
     respond,
     fulfillmentPort: adaptConflictPort(fulfillmentPort, "recordCommerceFulfillmentTrackingEvent"),
-    responseSchemas,
   }));
 }
 
@@ -171,6 +168,5 @@ export function createAdminCommerceFulfillmentCancelOrderHandler({
     authorizeAdmin: (req) => authorizeAdmin(req as VercelRequest),
     respond,
     fulfillmentPort: adaptConflictPort(fulfillmentPort, "cancelCommerceFulfillmentOrder"),
-    responseSchemas,
   }));
 }

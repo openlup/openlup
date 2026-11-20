@@ -13,9 +13,6 @@ export interface FulfillmentShipmentsOverviewHandlerDeps {
   authorizeAdmin: (req: VercelRequest) => Promise<boolean>;
 }
 
-// Read-only admin shipments overview (W7c). Surfaces fulfillment pipeline state
-// (queued / dispatched / in_transit / shipped / exception / cancelled) across
-// commerce orders without mutating any shipment or order state.
 export function createFulfillmentShipmentsOverviewHandler({
   overviewPort,
   authorizeAdmin,

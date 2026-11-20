@@ -80,11 +80,13 @@ export function createPostgresFulfillmentStockSyncPort(
           syncRunId: input.syncRunId,
         },
         local: {
+          skuRef: input.sku,
           onHand: input.localOnHand,
           reserved: input.localReserved,
           unavailable: input.localUnavailable,
           safetyStock: input.localSafetyStock,
         },
+        mismatchKind: input.mismatchKind,
         inventoryClass: input.inventoryClass,
       });
     },
@@ -118,6 +120,7 @@ export function createPostgresFulfillmentStockSyncPort(
         severity: input.severity,
         providerForSaleQuantity: input.providerForSaleQuantity,
         localAvailableQuantity: input.localAvailableQuantity,
+        syncRunId: "",
       });
     },
 
