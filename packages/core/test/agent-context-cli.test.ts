@@ -547,4 +547,62 @@ describe("installed agent context", () => {
       join(dist, "z.d.ts"),
     ]);
   });
+
+  it("resolves directly exported symbols to their declared public subpath when exports declare types entrypoints", () => {
+    const root = fixture();
+    const platform = join(root, "node_modules/@openlup/platform");
+    mkdirSync(join(platform, "dist/subscriptions"), { recursive: true });
+    mkdirSync(join(platform, "dist/data"), { recursive: true });
+    writeFileSync(join(root, "package.json"), JSON.stringify({
+      name: "fixture-app",
+      private: true,
+      dependencies: { "@openlup/core": "0.31.0", "@openlup/platform": "0.31.0" },
+    }));
+    writeFileSync(join(platform, "package.json"), JSON.stringify({
+      name: "@openlup/platform",
+      version: "0.31.0",
+      exports: {
+        "./subscriptions": {
+          types: "./dist/subscriptions/index.d.ts",
+          import: "./dist/subscriptions/index.js",
+          default: "./dist/subscriptions/index.js",
+        },
+        "./data": {
+          types: "./dist/data/index.d.ts",
+          import: "./dist/data/index.js",
+          default: "./dist/data/index.js",
+        },
+      },
+    }, null, 2));
+    writeFileSync(
+      join(platform, "dist/subscriptions/index.d.ts"),
+      "export { createPostgresRenewalStore } from './store.js';\nexport { internalHelper as PublicHelper } from './internal.js';\n",
+    );
+    writeFileSync(join(platform, "dist/data/index.d.ts"), "export * from './sql.js';\n");
+    writeFileSync(join(platform, "dist/data/sql.d.ts"), "export interface SqlExecutor { query(sql: string): Promise<unknown>; }\n");
+
+    const renewal = searchContext(root, "createPostgresRenewalStore");
+    expect(renewal.hits[0]).toMatchObject({
+      title: "@openlup/platform/subscriptions (createPostgresRenewalStore)",
+      file: join(platform, "package.json"),
+      packageName: "@openlup/platform",
+      reason: "declared public export",
+    });
+
+    const starExport = searchContext(root, "SqlExecutor");
+    expect(starExport.hits[0]).toMatchObject({
+      title: "@openlup/platform/data (SqlExecutor)",
+      file: join(platform, "package.json"),
+      packageName: "@openlup/platform",
+      reason: "declared public export",
+    });
+
+    const aliasedOut = searchContext(root, "internalHelper");
+    expect(aliasedOut.hits.some((hit) => hit.reason === "declared public export")).toBe(false);
+    const aliasedIn = searchContext(root, "PublicHelper");
+    expect(aliasedIn.hits[0]).toMatchObject({
+      title: "@openlup/platform/subscriptions (PublicHelper)",
+      reason: "declared public export",
+    });
+  });
 });

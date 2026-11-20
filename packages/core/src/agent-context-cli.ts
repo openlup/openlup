@@ -229,10 +229,75 @@ function guideFiles(item: InstalledPackage): string[] {
   return files.sort();
 }
 
+function querySymbol(query: string): string | undefined {
+  const trimmed = query.trim();
+  const exact = /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(trimmed);
+  return query.match(/\b[A-Za-z_$][A-Za-z0-9_$]{2,}\b/gu)?.find((word) =>
+    (exact && word === trimmed) || /[A-Z_]/u.test(word.slice(1)));
+}
+
+function stripDeclarationComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//gu, "")
+    .replace(/\/\/[^\n]*/gu, "");
+}
+
+function resolveDeclarationFile(packageRoot: string, fromFile: string, specifier: string): string | undefined {
+  if (!specifier.startsWith(".")) return undefined;
+  const base = resolve(dirname(fromFile), specifier);
+  const candidates = specifier.endsWith(".js")
+    ? [`${base.slice(0, -3)}.d.ts`]
+    : [base, `${base}.d.ts`, resolve(base, "index.d.ts")];
+  for (const candidate of candidates) {
+    const rel = relative(packageRoot, candidate);
+    if (isAbsolute(rel) || rel.split(sep).includes("..")) continue;
+    if (!existsSync(candidate)) continue;
+    const state = lstatSync(candidate);
+    if (state.isFile() && state.size <= guideFileBytes) return candidate;
+  }
+  return undefined;
+}
+
+function collectExportedSymbols(packageRoot: string, entrypoint: string): Set<string> {
+  const symbols = new Set<string>();
+  const visited = new Set<string>();
+  const pending = [entrypoint];
+  const fileLimit = 64;
+  while (pending.length > 0 && visited.size < fileLimit) {
+    const file = pending.pop()!;
+    if (visited.has(file)) continue;
+    const rel = relative(packageRoot, file);
+    if (isAbsolute(rel) || rel.split(sep).includes("..") || !existsSync(file)) continue;
+    const state = lstatSync(file);
+    if (!state.isFile() || state.size > guideFileBytes) continue;
+    visited.add(file);
+    const cleaned = stripDeclarationComments(readFileSync(file, "utf8"));
+    for (const match of cleaned.matchAll(/^\s*export\s+(?:declare\s+)?(?:abstract\s+)?(?:const\s+enum|enum|function|const|let|var|class|interface|type|namespace)\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/gmu)) {
+      if (match[1]) symbols.add(match[1]);
+    }
+    for (const match of cleaned.matchAll(/^\s*export\s+(?:type\s+)?\{([^}]*)\}/gmu)) {
+      const body = match[1] ?? "";
+      for (const rawItem of body.split(",")) {
+        const cleanedItem = rawItem.replace(/^\s*type\s+/u, "").trim();
+        if (!cleanedItem) continue;
+        const asMatch = cleanedItem.match(/^[A-Za-z_$][A-Za-z0-9_$]*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/u);
+        if (asMatch?.[1]) symbols.add(asMatch[1]);
+        else if (/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(cleanedItem)) symbols.add(cleanedItem);
+      }
+    }
+    for (const match of cleaned.matchAll(/^\s*export\s+\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s+from\s+["']([^"']+)["']/gmu)) {
+      if (match[1]) symbols.add(match[1]);
+    }
+    for (const match of cleaned.matchAll(/^\s*export\s+\*\s+from\s+["']([^"']+)["']/gmu)) {
+      const target = match[1] ? resolveDeclarationFile(packageRoot, file, match[1]) : undefined;
+      if (target && !visited.has(target)) pending.push(target);
+    }
+  }
+  return symbols;
+}
+
 function declarationHits(item: InstalledPackage, query: string, fileLimit: number): ScanResult {
-  const exact = /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(query.trim());
-  const symbol = query.match(/\b[A-Za-z_$][A-Za-z0-9_$]{2,}\b/gu)?.find((word) =>
-    (exact && word === query.trim()) || /[A-Z_]/u.test(word.slice(1)));
+  const symbol = querySymbol(query);
   if (!symbol) return { hits: [] };
   const symbolPattern = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\b`, "u");
   const root = join(item.root, "dist");
@@ -263,17 +328,44 @@ function declarationHits(item: InstalledPackage, query: string, fileLimit: numbe
   return { hits, summary: { scope: "declarations", packageName: item.name, scannedFiles: seen, fileLimit, limitReached: seen >= fileLimit } };
 }
 
-function exportHits(item: InstalledPackage, query: string, terms: string[]): Hit[] {
+function exportHits(item: InstalledPackage, query: string, terms: string[], rawTask: string): Hit[] {
   const parsed = JSON.parse(item.manifest) as { exports?: Record<string, unknown> };
   const hits: Hit[] = [];
-  for (const subpath of Object.keys(parsed.exports ?? {})) {
+  const symbol = querySymbol(rawTask);
+  const exportsOffset = item.manifest.indexOf('"exports"');
+  for (const [subpath, target] of Object.entries(parsed.exports ?? {})) {
     const title = subpath === "." ? item.name : `${item.name}/${subpath.slice(2)}`;
-    if (terms.length > 1 && !terms.every((term) => title.toLocaleLowerCase("en").includes(term))) continue;
-    const score = relevance(title, title, query, terms);
-    const offset = item.manifest.indexOf(JSON.stringify(subpath), item.manifest.indexOf('"exports"'));
-    if (score > 0 && offset >= 0) {
-      const line = lineNumber(item.manifest, offset);
-      hits.push({ title, file: join(item.root, "package.json"), start: line, end: line, packageName: item.name, score: score + 8, reason: "declared public export" });
+    const offset = item.manifest.indexOf(JSON.stringify(subpath), exportsOffset);
+    if (offset < 0) continue;
+    const line = lineNumber(item.manifest, offset);
+    let matchedByName = false;
+    if (terms.length <= 1 || terms.every((term) => title.toLocaleLowerCase("en").includes(term))) {
+      const score = relevance(title, title, query, terms);
+      if (score > 0) {
+        matchedByName = true;
+        hits.push({ title, file: join(item.root, "package.json"), start: line, end: line, packageName: item.name, score: score + 8, reason: "declared public export" });
+      }
+    }
+    if (!matchedByName && symbol && target && typeof target === "object" && !Array.isArray(target)) {
+      const typesTarget = (target as { types?: unknown }).types;
+      if (typeof typesTarget === "string" && typesTarget.endsWith(".d.ts")) {
+        const entrypoint = resolve(item.root, typesTarget);
+        const rel = relative(item.root, entrypoint);
+        if (!isAbsolute(rel) && !rel.split(sep).includes("..") && existsSync(entrypoint)) {
+          const exported = collectExportedSymbols(item.root, entrypoint);
+          if (exported.has(symbol)) {
+            hits.push({
+              title: `${title} (${symbol})`,
+              file: join(item.root, "package.json"),
+              start: line,
+              end: line,
+              packageName: item.name,
+              score: 26,
+              reason: "declared public export",
+            });
+          }
+        }
+      }
     }
   }
   return hits;
@@ -369,7 +461,7 @@ export function searchContext(
     ];
     const declarations = declarationHits(item, task, declarationsLimit);
     if (declarations.summary) scans.push(declarations.summary);
-    packageHits.push(...declarations.hits, ...exportHits(item, query, terms));
+    packageHits.push(...declarations.hits, ...exportHits(item, query, terms, task));
     return packageHits;
   });
   if (includeCode) {
