@@ -1,8 +1,10 @@
 import { createHmac, randomUUID } from "node:crypto";
+import { rootCertificates } from "node:tls";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresProviderPaymentRail, createPostgresPaymentMethodStore, createPostgresPaymentMethodSetup,
   createPostgresPaymentWebhookControlPort, createCheckoutRecoveryPaymentResolver, verifyPaymentAttemptNow } from "@openlup/platform/payments";
 import { createStripePaymentAdapter, type StripePaymentAdapterConfig } from "@openlup/platform/payments/stripe";
+import { createTpayPaymentAdapter } from "@openlup/platform/payments/tpay";
 import { createScriptedPaymentFake } from "@openlup/platform/payments/testing";
 import { activateNativePurchaseWithRenewal, createNativeRenewalCodec, createNativeSubscriptionBinding,
   createPostgresProviderRenewalBinding, createPostgresRenewalSettlementPort,
@@ -526,6 +528,53 @@ describe("exact local-intent search after uncertain dispatch", () => {
     });
     fake.assertDrained();
   });
+});
+
+it("keeps native renewal awaiting provider when the provider reports conflicting paid fields", async () => {
+  const remoteRef = `provider_${randomUUID()}`;
+  const configuredMoney = { amountMinor: 200, currency: "XXX" };
+  const adapter = createTpayPaymentAdapter({
+    mode: "test", modelOActivationEnabled: true,
+    http: { baseUrl: "https://example.test", clientId: "fixture-client", clientSecret: "fixture-secret",
+      async fetchImpl(url) {
+        return { ok: true, status: 200, text: async () => "", json: async () => url.endsWith("/oauth/auth")
+          ? { access_token: "fixture", expires_in: 3600 }
+          : { transactionId: remoteRef, status: "correct", amount: "2.00", paidAmount: "3.00", payments: { amountPaid: "2.00" },
+            currency: "XXX", date: { realization: AT } } };
+      } },
+    notification: { rootCertificatePem: rootCertificates[0],
+      allowedCertificateUrlPrefix: "https://example.test/certs/", resolveCertificate: async () => { throw new Error("Unexpected certificate read"); } },
+    urls: { notificationUrl: "https://example.test/notify", successUrl: "https://example.test/success", errorUrl: "https://example.test/error" },
+  });
+  const f = await renewalFixture(env.owner, 10, 1, randomUUID(), true, adapter.capabilities.providerKind);
+  await call(env.runtime, "fulfillment_reserve_subscription_renewal", [f.operation, f.token, 900, AT]);
+  const prepared = await call(env.runtime, "commerce_prepare_subscription_renewal", [f.operation, f.token, AT]);
+  const { settlementIntentId, orderId } = prepared;
+  const paymentRail = createPostgresProviderPaymentRail({ executor: env.runtime, adapter, mode: "test", truth,
+    resolveMethodOwner: async () => null, resolveSavedMethodOwner: async () => null });
+  await paymentRail.control.createIntent({ idempotencyKey: `provider-intent:${f.operation}`, targetKind: "subscription_cycle",
+    orderId, subscriptionId: f.subscription,
+    subscriptionCycleId: (await env.owner.query("SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [orderId])).rows[0].subscription_cycle_id,
+    ...configuredMoney, metadata: {}, channelKey: paymentRail.provider, at: AT });
+  const providerIdempotencyKey = `provider:${f.operation}`, providerRequestFingerprint = "a".repeat(64);
+  const attempt = await paymentRail.control.prepareProviderAttempt({ idempotencyKey: `prepare:${f.operation}`,
+    paymentIntentId: settlementIntentId, provider: paymentRail.provider, providerIdempotencyKey,
+    providerRequestFingerprint, providerFlow: "recurring_charge", requestPayload: {} });
+  await paymentRail.control.finalizeProviderAttempt({ idempotencyKey: `finalize:${f.operation}`, paymentIntentId: settlementIntentId,
+    paymentAttemptId: attempt.paymentAttemptId, providerIdempotencyKey, providerRequestFingerprint, providerAttemptId: remoteRef,
+    providerSessionId: remoteRef, attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
+  const fixtureCodec = { ...codec, decode: (wire: Record<string, unknown>) => ({
+    ...wire, cycle: f.snapshot.cycle, settlementChannelKey: paymentRail.provider,
+  }) as unknown as ReturnType<typeof codec.decode> };
+  const binding = createPostgresProviderRenewalBinding({ enabled: true, channelKey: paymentRail.provider, executor: env.runtime,
+    withTransaction: transaction, paymentRail, codec: fixtureCodec, truth, now: () => AT,
+    settlement: db => createPostgresRenewalSettlementPort(db, fixtureCodec, transaction), search: async () => [] });
+  expect(await binding.rail.readOutcome({ settlementIntentId, orderId, subscriptionId: f.subscription,
+    ...configuredMoney, externalAttemptRef: remoteRef })).toMatchObject({ status: "unknown", disposition: "ambiguous" });
+  expect(await paymentRail.readAttempt(settlementIntentId)).toMatchObject({ settlementStatus: "created",
+    paymentAttempt: { status: "processing" } });
+  expect((await env.owner.query("SELECT count(*)::int AS captures FROM public.payment_truth_events WHERE settlement_intent_id=$1 AND outcome='captured'",
+    [settlementIntentId])).rows).toEqual([{ captures: 0 }]);
 });
 
 describe("reviewed native execution boundaries", () => {

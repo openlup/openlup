@@ -836,6 +836,23 @@ export declare function paidMajorToMinor(value: unknown): number | null;
 export declare function readPaidAmountMinor(transaction: Record<string, unknown>, payments: Record<string, unknown>): number | null;
 /** Keep paid aliases in authority order, including a malformed leading field. */
 export declare function readPaidAmountsMinor(transaction: Record<string, unknown>, payments: Record<string, unknown>): (number | null)[];
+export declare const rawConfiguredTransactionAmount: unique symbol;
+export declare function readTransactionAmountEvidence(transaction: Record<string, unknown> & {
+    [rawConfiguredTransactionAmount]?: Record<string, unknown>;
+}, payments: Record<string, unknown>): {
+    configured: {
+        fields: {
+            [x: string]: unknown;
+        };
+        amounts: (number | null)[];
+    };
+    paid: {
+        fields: {
+            payments?: Record<string, unknown> | undefined;
+        };
+        amounts: (number | null)[];
+    };
+};
 ```
 ## dist/payments/tpay/webhookJwsVerifier.d.ts
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createTpayHttpClient } from "../../../src/payments/tpay/tpayHttpClient.js";
 import {
   createTpayPaymentReconciliationProvider,
   normalizeTpayTransaction,
@@ -42,6 +43,43 @@ describe("normalizeTpayTransaction", () => {
     const result = await provider.readPayment({ providerPaymentId: "tr_1" });
     expect(result).toMatchObject({ status: "succeeded", failureReason: "provider_amount_mismatch", amountMinor: 1299,
       rawPayload: { configuredAmountMinor, paidAmountMinor: 1299, conflictingPaidAmountsMinor } });
+    expect(result).not.toHaveProperty("capturedAmountBasis");
+  });
+
+  it.each([
+    { amount: 13.99, amountMinor: 1299, payments: { amountPaid: "12.99" } },
+    { amount: 12.99, paidAmount: "13.99", payments: { amountPaid: "", paidAmount: "12.99" } },
+    { amount: 12.99, paidAmount: "13.99", payments: { amountPaid: null, paidAmount: "12.99" } },
+    { amount: 12.99, tr_amount: "13,99", tr_amount_minor: "1299", payments: { amountPaid: "12.99" } },
+    { amount: 12.99, amountPaid: "12.99", paidAmountMinor: "1299", tr_paid_minor: {}, tr_paid: "12.99",
+      payments: { amountPaid: "12.99" } },
+    { amount: 12.99, tr_paid: "12.99", payments: { amountPaid: "12.99" }, paidAmount: "" },
+    { amount: "bad", amountMinor: 1299, payments: { amountPaid: "12.99" } },
+    { amount: null, amountMinor: 1299, payments: { amountPaid: "12.99" } },
+  ])("reviews every configured and paid alias and retains the raw fields for %j", async fields => {
+    const { payments, amount, amountMinor, tr_amount, tr_amount_minor, ...paidFields } = fields;
+    const configuredAmountFields = Object.fromEntries(
+      Object.entries({ amount, amountMinor, tr_amount, tr_amount_minor }).filter(([, value]) => value !== undefined),
+    );
+    const client = createTpayHttpClient({ baseUrl: "https://example.test", clientId: "fixture", clientSecret: "fixture",
+      fetchImpl: async url => ({ ok: true, status: 200, text: async () => "",
+        json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 3600 }
+          : { transactionId: "tr_1", status: "correct", currency: "PLN", ...fields },
+      }),
+    });
+    const provider = createTpayPaymentReconciliationProvider(client);
+    const result = await provider.readPayment({ providerPaymentId: "tr_1" });
+    expect(result).toMatchObject({ status: "succeeded", failureReason: "provider_amount_mismatch", amountMinor: 1299,
+      rawPayload: {
+        configuredAmountFields,
+        paidAmountFields: { ...paidFields, payments },
+      } });
+    expect(result).not.toHaveProperty("capturedAmountBasis");
+  });
+
+  it("requires a configured amount to attest a paid readback", () => {
+    const result = normalize({ status: "correct", payments: { amountPaid: "12.99" }, currency: "PLN" });
+    expect(result).toMatchObject({ status: "succeeded", failureReason: "provider_amount_mismatch", amountMinor: 1299 });
     expect(result).not.toHaveProperty("capturedAmountBasis");
   });
 

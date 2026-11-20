@@ -1,4 +1,4 @@
-import { readPaidAmountsMinor } from "./tpayTransactionPayload.js";
+import { readTransactionAmountEvidence } from "./tpayTransactionPayload.js";
 import type {
   ProviderReconciliationStatus,
 } from "./donorContracts.js";
@@ -98,12 +98,14 @@ export function normalizeTpayTransaction(
     ? lastRefusal(payments.attempts, "paymentErrorCode") ?? lastRefusal(payments.errors, "errorCode")
     : null;
   const status = refusal ? "failed" as const : statusFromField;
-  const [paidAmountMinor = null, ...paidAliases] = status === "succeeded" ? readPaidAmountsMinor(transaction, payments) : [];
-  const amountMinor = status === "succeeded" ? paidAmountMinor : readAmountMinor(transaction);
+  const evidence = status === "succeeded" ? readTransactionAmountEvidence(transaction, payments) : null;
+  const paidAmountMinor = evidence?.paid.amounts.find(amount => amount !== null) ?? null;
   const configuredAmountMinor = status === "succeeded" ? readConfiguredAmountMinor(transaction) : null;
-  const conflictingPaidAmountsMinor = [...new Set(paidAliases.filter(amount => amount !== null && amount !== paidAmountMinor))];
-  const amountMismatch = paidAmountMinor !== null &&
-    ((configuredAmountMinor !== null && configuredAmountMinor !== paidAmountMinor) || conflictingPaidAmountsMinor.length > 0);
+  const amountMismatch = evidence && paidAmountMinor !== null
+    && (evidence.configured.amounts.length === 0
+      || evidence.configured.amounts.some(amount => amount !== paidAmountMinor)
+      || evidence.paid.amounts.some(amount => amount !== paidAmountMinor));
+  const amountMinor = status === "succeeded" ? paidAmountMinor : readAmountMinor(transaction);
   return {
     status,
     ...(configuredAmountMinor !== null && paidAmountMinor === null ? { configuredAmountMinor } : {}),
@@ -117,7 +119,13 @@ export function normalizeTpayTransaction(
     currency: readCurrency(transaction),
     rawPayload: {
       ...sanitizedTpayTransaction(transaction, providerStatus, amountMinor, refusal),
-      ...(amountMismatch ? { configuredAmountMinor, paidAmountMinor, conflictingPaidAmountsMinor } : {}),
+      ...(amountMismatch ? {
+        configuredAmountMinor,
+        paidAmountMinor,
+        conflictingPaidAmountsMinor: [...new Set(evidence.paid.amounts.filter(amount => amount !== null && amount !== paidAmountMinor))],
+        configuredAmountFields: evidence.configured.fields,
+        paidAmountFields: evidence.paid.fields,
+      } : {}),
     },
   };
 }

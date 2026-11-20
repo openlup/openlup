@@ -59,12 +59,13 @@ export function normalizeStripeWebhookEvent(
   const canonicalEventType = mapStripeEventType(eventType);
   const providerPaymentId = resolveLinkagePaymentId(eventType, object);
   const configuredAmountMinor = readOptionalNumber(object, "amount");
-  const paidAmountMinor = capturedAmountMinor(object.amount_received);
-  const amountConflict = canonicalEventType === "payment.succeeded" && paidAmountMinor !== null
+  const paidAmountMinor = readOptionalNumber(object, "amount_received");
+  const amountConflict = canonicalEventType === "payment.succeeded"
+    && paidAmountMinor !== undefined && Number.isSafeInteger(paidAmountMinor) && paidAmountMinor >= 0
     && configuredAmountMinor !== undefined && Number.isSafeInteger(configuredAmountMinor)
     && configuredAmountMinor !== paidAmountMinor;
   const amountMinor = canonicalEventType === "payment.succeeded"
-    ? (amountConflict ? null : paidAmountMinor)
+    ? (amountConflict ? null : capturedAmountMinor(paidAmountMinor))
     : configuredAmountMinor ?? readOptionalNumber(object, "amount_received") ?? null;
   const currency = readOptionalString(object, "currency")?.toUpperCase() ?? null;
   const occurredAt = readOccurredAt(rawPayload);

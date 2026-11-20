@@ -168,9 +168,17 @@ export function createVerifiedPaymentIngress({
         if (typeof configuredAmountMinor === "number" && Number.isSafeInteger(configuredAmountMinor)
           && typeof paidAmountMinor === "number" && Number.isSafeInteger(paidAmountMinor)
           && configuredAmountMinor !== paidAmountMinor) {
+          const amounts = { reason: "provider_amount_mismatch", configuredAmountMinor, paidAmountMinor,
+            currency: typeof currency === "string" ? currency : null };
+          operationalEvents({
+            name: "provider_payment_amount_mismatch",
+            domain: "payment",
+            surface: "webhook",
+            details: { provider, providerEventId: verifiedEvidence.providerEventId,
+              providerPaymentId: verifiedEvidence.providerPaymentRef, ...amounts, outcome: "review_required" },
+          });
           sendBffError(res, "CONFLICT", "Provider payment amounts disagree. Review the payment before settling.");
-          Object.assign(res.data, { reason: "provider_amount_mismatch", configuredAmountMinor, paidAmountMinor,
-            currency: typeof currency === "string" ? currency : null });
+          Object.assign(res.data, amounts);
           return;
         }
       }

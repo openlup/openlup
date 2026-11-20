@@ -1,5 +1,6 @@
 import {
   buildTpayTransactionPayload,
+  rawConfiguredTransactionAmount,
   type TpayPaymentError,
   type TpayTransactionCreateInput,
   type TpayTransactionCreated,
@@ -210,7 +211,7 @@ export function createTpayHttpClient({
         {},
         requestDeadline(),
       );
-      return {
+      const transaction = {
         // Keep provider fields that recovery normalizes later (notably nested
         // dates and paidAmount). Explicit canonical fields below remain the
         // typed client contract.
@@ -224,6 +225,9 @@ export function createTpayHttpClient({
         requestId: readNullableString(json, "requestId"),
         payments: asRecord(json.payments),
       };
+      return Object.defineProperty(transaction, rawConfiguredTransactionAmount, {
+        value: Object.hasOwn(json, "amount") ? { amount: json.amount } : {},
+      });
     },
 
     async listPaymentChannels() {

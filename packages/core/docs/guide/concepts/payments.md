@@ -85,13 +85,22 @@ authenticated success readback to report the provider-collected amount and
 currency with `capturedAmountBasis: "provider_capture_v1"`. Set this field
 on verified success webhooks only when they report the provider-collected
 amount. Keep this attestation outside the webhook fingerprint and deploy the
-updated adapter with the migration. Completed receipts retain their replay
-response. A verified delivery whose normalized money changed can acknowledge
+updated adapter with the migration. Receipts completed under released versions
+acknowledge as before. A verified delivery whose normalized money changed can acknowledge
 the original completed webhook receipt when its
 historical fingerprint matches. This lookup leaves payment and fulfillment state
 untouched. Hosts with an operational event recorder receive a diagnostic for
 review. Reconcile pending historical events through an authenticated readback
 before applying a new settlement.
+
+For a verified success webhook with conflicting requested and collected amounts,
+the 409 response carries both amounts, the currency and
+`provider_amount_mismatch`. The host's operational-event recorder receives
+these fields with the provider, event and payment identifiers. The native
+binding defaults to a no-op. The managed binding uses the configured recorder.
+The provider retains and redelivers its original event. OpenLup keeps no
+durable review record for a refused webhook. Version 1.2.0 likewise kept no
+durable record when it refused a webhook for an amount mismatch.
 
 When the order is cancelled or expired, the same owner retains a verified late
 capture for manual review. Authorized verification and recovery report

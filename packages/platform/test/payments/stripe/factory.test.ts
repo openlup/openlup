@@ -237,23 +237,32 @@ describe("opt-in payment factory", () => {
     };
     expect(await adapter.verifyPort.verifyAndNormalize(staleRotated)).toEqual({ kind: "refusal", reason: "stale" });
   });
-  it("refuses a fresh signed success whose collected money matches the local amount but conflicts with the requested amount", async () => {
+  it.each([request.money.amountMinor, 0])("records and refuses a signed success with conflicting collected amount %s on each delivery", async paidAmountMinor => {
     const { adapter } = subject();
-    const delivery = signed(event("payment_intent.succeeded", { amount: 2699, amount_received: request.money.amountMinor }));
-    const ingestPaymentEvent = vi.fn(async () => ({ paymentEventId: "local-event", paymentIntentId: "intent-a", replayed: false }));
-    const applyPaymentResult = vi.fn(async () => ({ replayed: false }));
+    const configuredAmountMinor = 2699;
+    const delivery = signed(event("payment_intent.succeeded", { amount: configuredAmountMinor, amount_received: paidAmountMinor }));
+    const ingestPaymentEvent = vi.fn();
+    const applyPaymentResult = vi.fn();
     const findCompletedHistoricalCapture = vi.fn(async () => null);
-    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort,
+    const operationalEvents = vi.fn();
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort, operationalEvents,
       paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult } });
-    expect(await ingress.receive(delivery)).toMatchObject({ status: 409, data: {
-      error: "Provider payment amounts disagree. Review the payment before settling.",
-      reason: "provider_amount_mismatch", configuredAmountMinor: 2699, paidAmountMinor: 2599, currency: "EUR",
-    } });
+    const details = { reason: "provider_amount_mismatch", configuredAmountMinor, paidAmountMinor, currency: "EUR" };
+    const recorded = { name: "provider_payment_amount_mismatch", domain: "payment", surface: "webhook", details: {
+      ...details, provider: "stripe", providerEventId: "evt_fixture", providerPaymentId: "pi_fixture", outcome: "review_required",
+    } };
+    for (const deliveryNumber of [1, 2]) {
+      expect(await ingress.receive(delivery)).toEqual({ status: 409, data: {
+        error: "Provider payment amounts disagree. Review the payment before settling.", ...details,
+      } });
+      expect(operationalEvents).toHaveBeenCalledTimes(deliveryNumber);
+      expect(operationalEvents).toHaveBeenLastCalledWith(recorded);
+    }
     expect(ingestPaymentEvent).not.toHaveBeenCalled();
     expect(applyPaymentResult).not.toHaveBeenCalled();
     const evidence = await adapter.verifyPort.verifyAndNormalize(delivery);
     expect(evidence).toMatchObject({ kind: "money", outcome: "succeeded", money: null, providerAuditPayload: {
-      configuredAmountMinor: 2699, paidAmountMinor: 2599, currency: "EUR",
+      configuredAmountMinor, paidAmountMinor, currency: "EUR",
     } });
     expect(evidence).not.toHaveProperty("capturedAmountBasis");
   });

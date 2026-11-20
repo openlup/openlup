@@ -238,10 +238,46 @@ export function readPaidAmountsMinor(
   transaction: Record<string, unknown>,
   payments: Record<string, unknown>,
 ): (number | null)[] {
+  return readPaidAmounts(transaction, payments).amounts;
+}
+
+function amountFields(source: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(keys.filter(key => Object.hasOwn(source, key)).map(key => [key, source[key]]));
+}
+
+function readPaidAmounts(transaction: Record<string, unknown>, payments: Record<string, unknown>) {
   // The authenticated DTO reports paid money in payments.amountPaid.
-  return [
-    ...["amountPaid", "paidAmount"].filter(key => Object.hasOwn(payments, key)).map(key => readPaidMajor(payments[key])),
-    ...["paidAmountMinor", "tr_paid_minor"].filter(key => Object.hasOwn(transaction, key)).map(key => readPaidMinor(transaction[key])),
-    ...["paidAmount", "amountPaid", "tr_paid"].filter(key => Object.hasOwn(transaction, key)).map(key => readPaidMajor(transaction[key])),
-  ];
+  const nested = amountFields(payments, ["amountPaid", "paidAmount"]);
+  const minor = amountFields(transaction, ["paidAmountMinor", "tr_paid_minor"]);
+  const major = amountFields(transaction, ["paidAmount", "amountPaid", "tr_paid"]);
+  return {
+    fields: { ...minor, ...major, ...(Object.keys(nested).length ? { payments: nested } : {}) },
+    amounts: [
+      ...Object.values(nested).map(readPaidMajor),
+      ...Object.values(minor).map(readPaidMinor),
+      ...Object.values(major).map(readPaidMajor),
+    ],
+  };
+}
+
+// The typed HTTP DTO normalizes the amount for existing callers. Preserve the
+// wire field, including absence, for readback evidence.
+export const rawConfiguredTransactionAmount = Symbol("rawConfiguredTransactionAmount");
+
+export function readTransactionAmountEvidence(
+  transaction: Record<string, unknown> & { [rawConfiguredTransactionAmount]?: Record<string, unknown> },
+  payments: Record<string, unknown>,
+) {
+  const minor = amountFields(transaction, ["amountMinor", "tr_amount_minor"]);
+  const major = {
+    ...amountFields(transaction[rawConfiguredTransactionAmount] ?? transaction, ["amount"]),
+    ...amountFields(transaction, ["tr_amount"]),
+  };
+  return {
+    configured: {
+      fields: { ...minor, ...major },
+      amounts: [...Object.values(minor).map(readPaidMinor), ...Object.values(major).map(readPaidMajor)],
+    },
+    paid: readPaidAmounts(transaction, payments),
+  };
 }
