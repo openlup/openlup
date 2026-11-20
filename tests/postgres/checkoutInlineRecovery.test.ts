@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, createCheckoutPaymentContinuationCodec,
  createPostgresPaymentRecoveryGuidancePort, createPostgresCheckoutRecoveryOrderPort, hashCheckoutRecoveryToken,
@@ -43,7 +44,7 @@ describe.each(lifecycleProfiles)('exact inline retry on %s',profile=>{
  }
  type Fixture=Awaited<ReturnType<typeof fixture>>;
  const reader=()=>createPostgresCheckoutRecoveryOrderPort(env.runtime);
- function setup(f:Fixture,config:{actions?:CheckoutPaymentRecoveryGuidance['actions'];restriction?:'method'|null;known?:boolean;allow?:boolean;action?:{kind:string;provider?:string;url?:string};hold?:boolean;beforeBegin?:()=>Promise<void>}={}){
+ function setup(f:Fixture,config:{actions?:CheckoutPaymentRecoveryGuidance['actions'];restriction?:'method'|null;known?:boolean;allow?:boolean;action?:{kind:string;provider?:string;url?:string};hold?:boolean}={}){
   const secret=randomUUID()+randomUUID(),codec=createCheckoutPaymentContinuationCodec(secret,{cookieName:'__Host-exact-inline',executionRails:['sandbox','external']})!;
   const journeyId=`checkout:${randomUUID()}`,authority={journeyId,orderId:f.orderId,clientId:f.clientId,paymentIntentId:f.paymentIntentId,paymentAttemptId:f.attemptId,executionRail:'sandbox' as const};
   const cookie=codec.issue(authority).setCookie.split(';')[0];
@@ -51,7 +52,7 @@ describe.each(lifecycleProfiles)('exact inline retry on %s',profile=>{
   const raw=createPostgresPaymentRecoveryGuidancePort(env.runtime,normalizeSandboxPaymentRecoveryEvidence);
   const getGuidanceSnapshot=vi.fn(raw.getGuidanceSnapshot),getRecoveryOrder=vi.fn(reader().getRecoveryOrder);
   const native=createPostgresSandboxInlineRecoveryAttemptPort(env.runtime,{...options,methodKeyFor:config.known===false?()=>null:methodKeyFor});
-  const begin=vi.fn(async(input:Parameters<typeof native.begin>[0])=>{await config.beforeBegin?.();return native.begin(input);});
+  const begin=vi.fn(native.begin);
   const readPreviousMethod=vi.fn(native.readPreviousMethod),readActiveAction=vi.fn(async()=>config.action??null);
   const make=()=>createCheckoutInlineRecovery({codec,guidance:{port:{getGuidanceSnapshot},
    ...(config.actions?{projectGuidance:(snapshot,status,projected)=>projected&&snapshot.purchaseContext?{version:1 as const,paymentAttemptId:projected.paymentAttemptId,purchaseContext:snapshot.purchaseContext,cause:projected.cause,methodKind:null,methodKey:null,operation:projected.operation,restriction:config.restriction??null,actions:config.actions!,consecutiveRefusals:projected.consecutiveRefusals,emphasis:projected.emphasis}:null}:{}),
@@ -122,21 +123,99 @@ process.stdout.write(JSON.stringify(await service.retry(input.request)));}finall
  });
  it.each(['cancel','capture','predecessor'] as const)('refuses a %s winner between the snapshot and locked dispatch',async race=>{
   const f=await fixture(),blocker=await env.owner.connect(),starter=await env.runtime.connect();
-  try{
-   await blocker.query('BEGIN');await blocker.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE',[f.orderId]);
-   const pid=Number((await starter.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
-   const port=createPostgresSandboxInlineRecoveryAttemptPort(starter,options);
-   const guarded=setup(f,{beforeBegin:async()=>{}});
-   // Keep real snapshot/authority checks, then dispatch on the dedicated blocked lane.
-   const service=createCheckoutInlineRecovery({codec:guarded.codec,guidance:{port:createPostgresPaymentRecoveryGuidancePort(env.runtime,normalizeSandboxPaymentRecoveryEvidence)},orderPort:reader(),attemptPort:port,executionAllowed:()=>true});
-   const pending=service.retry(guarded.request),rejected=expect(pending).rejects.toMatchObject({kind:'conflict'});
-   let blocked=false;for(let n=0;n<300&&!blocked;n++)blocked=(await blocker.query('SELECT cardinality(pg_blocking_pids($1))>0 AS blocked',[pid])).rows[0].blocked;
-   expect(blocked).toBe(true);
-   if(race==='cancel')await blocker.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1",[f.orderId]);
-   if(race==='capture')await createPostgresSandboxPaymentSimulator(blocker,options).recordObservation({attemptId:f.attemptId,idempotencyKey:`late:${f.attemptId}`,outcome:'captured',occurredAt:at()});
-   if(race==='predecessor')await createPostgresSandboxPaymentSimulator(blocker,options).beginAttempt({settlementIntentId:f.paymentIntentId,idempotencyKey:`competing:${randomUUID()}`,requestFingerprint:'b'.repeat(64),methodFacts:facts('primary'),at:at()});
-   await blocker.query('COMMIT');await rejected;expect(await attempts(f)).toHaveLength(race==='predecessor'?2:1);
-  }finally{await blocker.query('ROLLBACK');blocker.release();starter.release();}
+  let retrySettled: Promise<void> | undefined;
+  try {
+   await blocker.query('BEGIN');
+   await blocker.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE',[f.orderId]);
+   const { rows: [{ pid }] } = await starter.query('SELECT pg_backend_pid() AS pid');
+   const port = createPostgresSandboxInlineRecoveryAttemptPort(starter,options);
+   let dispatchRequested = false;
+   let dispatchError: unknown;
+   const { codec, request } = setup(f);
+   const service = createCheckoutInlineRecovery({
+    codec,
+    guidance: { port: createPostgresPaymentRecoveryGuidancePort(env.runtime,normalizeSandboxPaymentRecoveryEvidence) },
+    orderPort: reader(),
+    attemptPort: {
+     ...port,
+     async begin(input: Parameters<typeof port.begin>[0]) {
+      dispatchRequested = true;
+      try {
+       return await port.begin(input);
+      } catch (error) {
+       // The service maps PostgreSQL failures to a shared admission error.
+       dispatchError = error;
+       throw error;
+      }
+     },
+    },
+    executionAllowed: () => true,
+   });
+   const isBlocked = async () => {
+    const result = await blocker.query('SELECT pg_backend_pid()=ANY(pg_blocking_pids($1)) AS blocked',[pid]);
+    return result.rows[0].blocked;
+   };
+   const deadline = performance.now() + 15_000;
+   const pending = service.retry(request);
+   let retryFinished = false;
+   const markRetryFinished = () => { retryFinished = true; };
+   retrySettled = pending.then(markRetryFinished, markRetryFinished);
+   let blocked = false;
+   while (performance.now() < deadline) {
+    if (dispatchRequested && await isBlocked()) {
+     blocked = performance.now() <= deadline;
+     break;
+    }
+    const remaining = deadline - performance.now();
+    if (remaining > 0) await delay(Math.min(50, remaining));
+   }
+   expect(blocked, `Retry did not wait on the ${race} transaction's order lock within 15 s`).toBe(true);
+
+   let activeAttempt = { id: f.attemptId, state: 'refused' };
+   switch (race) {
+    case 'cancel':
+     await blocker.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1",[f.orderId]);
+     break;
+    case 'capture':
+     await createPostgresSandboxPaymentSimulator(blocker,options).recordObservation({
+      attemptId:f.attemptId,idempotencyKey:`late:${f.attemptId}`,outcome:'captured',occurredAt:at(),
+     });
+     activeAttempt.state = 'captured';
+     break;
+    case 'predecessor': {
+     const winner = await createPostgresSandboxPaymentSimulator(blocker,options).beginAttempt({
+      settlementIntentId:f.paymentIntentId,idempotencyKey:`competing:${randomUUID()}`,
+      requestFingerprint:'b'.repeat(64),methodFacts:facts('primary'),at:at(),
+     });
+     activeAttempt = { id: winner.id, state: 'dispatched' };
+     break;
+    }
+   }
+   expect(await isBlocked(), `Retry stopped waiting before the ${race} transaction committed`).toBe(true);
+   expect(retryFinished, `Retry settled before the ${race} transaction committed`).toBe(false);
+   await blocker.query('COMMIT');
+
+   await expect(pending).rejects.toMatchObject({kind:'conflict',code:'payment_admission_refused'});
+   expect(dispatchError).toMatchObject({code:'22023',message:'checkout_inline_retry_refused'});
+   const rows = await attempts(f);
+   expect(rows).toHaveLength(race==='predecessor'?2:1);
+   expect(rows.filter(row => row.is_active)).toEqual([expect.objectContaining(activeAttempt)]);
+   if (race === 'cancel') {
+    const { rows: [order] } = await env.owner.query('SELECT status FROM public.commerce_orders WHERE id=$1',[f.orderId]);
+    expect(order.status).toBe('cancelled');
+   }
+  } finally {
+   try {
+    try {
+     await blocker.query('ROLLBACK');
+    } finally {
+     await retrySettled;
+    }
+   } finally {
+    blocker.release();
+    starter.release();
+   }
+  }
  });
  it('replays a failed replacement without another dispatch and preserves its action or safe polling',async()=>{
   const f=await fixture(),d=setup(f,{action:{kind:'redirect',url:'/synthetic-handoff'}}),first=await d.make().retry(d.request);
