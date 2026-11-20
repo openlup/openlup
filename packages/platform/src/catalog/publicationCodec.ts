@@ -279,7 +279,11 @@ function decodeStored<T>(text: unknown, maxBytes: number, depth: number, code: s
   if (canonical !== text) return publicationRefuse(code, "dependency_unavailable");
   try {
     return decode(input);
-  } catch {
+  } catch (error) {
+    if (code === "catalog_publication_manifest_invalid" && error instanceof z.ZodError) {
+      const path = error.issues[0]?.path;
+      if (path?.[0] === "skus") return invalidAt(code, path.join("."));
+    }
     return publicationRefuse(code, "dependency_unavailable");
   }
 }

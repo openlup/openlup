@@ -4494,6 +4494,19 @@ export interface CatalogPublicationFailure {
 ```ts
 import type { CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
+import { z } from "./validation.js";
+export declare const publicationPriceRefusalReason: z.ZodEnum<{
+    base_price_ambiguous: "base_price_ambiguous";
+    command_fingerprint_invalid: "command_fingerprint_invalid";
+    command_invalid: "command_invalid";
+    command_key_reused: "command_key_reused";
+    operator_mismatch: "operator_mismatch";
+    command_in_progress: "command_in_progress";
+    sku_not_found: "sku_not_found";
+    sku_archived: "sku_archived";
+    price_list_not_found: "price_list_not_found";
+    price_list_not_active: "price_list_not_active";
+}>;
 export declare function publicationIssue(code: string, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject?: string): CatalogCandidateIssue;
 /** @internal */
 export declare class CatalogPublicationError extends Error {
@@ -4573,15 +4586,28 @@ export declare const publicationRefusals: {
     readonly catalog_publication_sku_price_shape_invalid: readonly ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list."];
     readonly price_list_not_active: readonly ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency."];
     readonly price_list_not_found: readonly ["price_list_not_found", "Select an installed, effective price list for the settlement region and currency, then prepare the draft again."];
+    readonly command_key_reused: readonly ["command_key_reused", "Give the changed price operation a fresh command key and prepare the draft again."];
+    readonly command_fingerprint_invalid: readonly ["command_fingerprint_invalid", "Review the selected draft and prepare it again."];
+    readonly command_invalid: readonly ["command_invalid", "Review the selected draft and prepare it again."];
+    readonly operator_mismatch: readonly ["operator_mismatch", "Review the selected draft and prepare it again."];
+    readonly command_in_progress: readonly ["command_in_progress", "Retry the publication with the same command keys after the price change finishes."];
+    readonly sku_not_found: readonly ["sku_not_found", "Select an existing SKU for the price change or create it in this publication."];
+    readonly sku_archived: readonly ["sku_archived", "Restore the SKU before changing its price or remove the price change."];
+    readonly base_price_ambiguous: readonly ["base_price_ambiguous", "Resolve overlapping base price entries for this SKU and price list, then prepare the draft again."];
+    readonly catalog_definition_drift: readonly ["catalog_definition_drift", "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying."];
+    readonly publication_preparation_unavailable: readonly ["publication_preparation_unavailable", "Review the selected draft and prepare it again."];
+    readonly publication_evaluation_refused: readonly ["publication_evaluation_refused", "Review the selected draft and prepare it again."];
     readonly catalog_publication_identity_conflict: readonly ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."];
     readonly duplicate_combination: readonly ["duplicate_combination", "A SKU already has this combination of options. Use distinct options for the new SKU."];
 };
 export type AdmissionDiagnostic = keyof typeof publicationRefusals;
+export declare const refusePublicationCommand: (code: AdmissionDiagnostic, outcome?: CatalogPublicationError["outcome"]) => never;
 export declare function publicationRemedy(code: AdmissionDiagnostic): string;
 type AdmissionRefusal = {
     outcome: "validation_issue";
     reason: (typeof publicationRefusals)[AdmissionDiagnostic][0];
     message: string;
+    path?: string;
 };
 /** Maps publication admission diagnostics after the transaction has rolled back.
  * @experimental

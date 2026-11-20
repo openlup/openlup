@@ -13,8 +13,9 @@ import { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 import { readPublicationDraftRecord } from "./publicationIntent.js";
 import { catalogPublicationClaim, evaluateCatalogPublication } from "./publicationValidation.js";
 import { decodeStoredPublicationReceipt, publicationApprovalState, publicationDigest, publicationJson } from "./publicationCodec.js";
-import { CatalogPublicationError, catalogPublicationAdmissionRefusal, publicationReadFailure, publicationRefuse } from "./publicationError.js";
-import { readNativeDraftEvidence, readPreviousPublication, stagePublication, publicationRelationFence } from "./catalogPublicationProjection.js";
+import { CatalogPublicationError, catalogPublicationAdmissionRefusal, publicationReadFailure, refusePublicationCommand, publicationRemedy,
+  type AdmissionDiagnostic } from "./publicationError.js";
+import { assertCurrentPublicationRoster, readNativeDraftEvidence, readPreviousPublication, stagePublication, publicationRelationFence } from "./catalogPublicationProjection.js";
 import { z } from "./validation.js";
 
 const id = z.string().regex(/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
@@ -64,9 +65,9 @@ export interface PostgresCatalogPublicationCommandsDeps<Context> {
   verifyMedia?: (db: PgQueryExecutor, ...input: Parameters<NonNullable<CatalogCandidatePublicationDeps["verifyMedia"]>>) => Promise<boolean | null>;
 }
 
-function requireCommand(condition: unknown, code: string,
+function requireCommand(condition: unknown, code: AdmissionDiagnostic,
   outcome: CatalogPublicationFailure["outcome"] = "conflict"): asserts condition {
-  if (!condition) publicationRefuse(code, outcome);
+  if (!condition) refusePublicationCommand(code, outcome);
 }
 const same = (a: unknown, b: unknown) => publicationJson(a) === publicationJson(b);
 function decisionBody(command: Exclude<z.output<typeof commandSchema>, { action: "publish" }>) {
@@ -86,20 +87,22 @@ async function claimHuman(db: PgQueryExecutor, actor: string) {
 function commandFailure(error: unknown): Extract<CatalogPublicationCommandResult, { reason: string }> {
   if (error instanceof CatalogPublicationError) {
     const mapped = catalogPublicationAdmissionRefusal(error);
-    return { outcome: error.outcome, reason: mapped?.reason ?? error.code,
-      message: error.diagnostic?.message ?? mapped?.message ?? "Review the selected draft and prepare it again.",
+    return { outcome: error.outcome, reason: mapped?.reason ?? "publication_evaluation_refused",
+      message: error.diagnostic?.message ?? mapped?.message ?? publicationRemedy("publication_evaluation_refused"),
       ...(error.diagnostic?.path ? { path: error.diagnostic.path } : {}) };
   }
   const sql = error as { code?: string; message?: string; constraint?: string } | null;
-  if (sql?.code === "55P03") return commandFailure(new CatalogPublicationError("catalog_publication_busy", "conflict"));
+  const refuse = (code: AdmissionDiagnostic, outcome: CatalogPublicationError["outcome"]) =>
+    commandFailure(new CatalogPublicationError(code, outcome));
+  if (sql?.code === "55P03") return refuse("catalog_publication_busy", "conflict");
   if (sql?.code === "42501" && sql.message === "catalog_price_setup_operator_required")
-    return commandFailure(new CatalogPublicationError("publisher_not_authorized", "unauthorized"));
+    return refuse("publisher_not_authorized", "unauthorized");
   if (sql?.code === "23505" && sql.constraint === "catalog_publication_gtin_key")
-    return commandFailure(new CatalogPublicationError("catalog_publication_gtin_conflict", "conflict"));
+    return refuse("catalog_publication_gtin_conflict", "conflict");
   if (sql?.code === "23505" && sql.constraint === "catalog_publication_sku_combination_key")
-    return commandFailure(new CatalogPublicationError("duplicate_combination", "conflict"));
+    return refuse("duplicate_combination", "conflict");
   if (sql?.code === "23505" && (sql.constraint === "idx_catalog_skus_sku" || sql.constraint === "idx_catalog_products_slug"))
-    return commandFailure(new CatalogPublicationError("catalog_publication_identity_conflict", "conflict"));
+    return refuse("catalog_publication_identity_conflict", "conflict");
   const mapped = catalogPublicationAdmissionRefusal(error);
   return mapped ?? publicationReadFailure(error);
 }
@@ -195,6 +198,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
           return { outcome: "committed" as const, receipt: decode(rows[0]?.result) };
         }
         if (action === "revoke") {
+          await assertCurrentPublicationRoster(db, productId);
           await verifyIdentity();
           return commit(command);
         }
@@ -215,7 +219,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
             if (action === "publish") {
               try { await publicationRelationFence(db, productId); }
               catch (error) {
-                if ((error as { code?: string } | null)?.code === "55P03") publicationRefuse("catalog_publication_busy", "conflict");
+                if ((error as { code?: string } | null)?.code === "55P03") refusePublicationCommand("catalog_publication_busy", "conflict");
                 throw error;
               }
             }
@@ -223,7 +227,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
               action === "publish" && !compensation);
             try { await verifyIdentity(); }
             catch (error) {
-              if (catalogPublicationAdmissionRefusal(error)) publicationRefuse("catalog_publication_candidate_invalid", "validation_issue");
+              if (catalogPublicationAdmissionRefusal(error)) refusePublicationCommand("catalog_publication_candidate_invalid", "validation_issue");
               throw error;
             }
             if (definition.taxClass) {
