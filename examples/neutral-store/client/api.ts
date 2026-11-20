@@ -19,7 +19,10 @@ export async function act(operation: Operation, input: ActionInput, commandKey: 
     });
     const result: unknown = await response.json();
     if (isRecord(result) && result.ok === false && typeof result.code === 'string') {
-      return { ok: false, code: result.code };
+      const issues = Array.isArray(result.issues) ? result.issues.flatMap(issue =>
+        isRecord(issue) && typeof issue.path === 'string' && typeof issue.code === 'string'
+          ? [{ path: issue.path, code: issue.code, ...(typeof issue.message === 'string' ? { message: issue.message } : {}) }] : []) : [];
+      return { ok: false, code: result.code, ...(issues.length ? { issues } : {}) };
     }
     if (response.ok && isRecord(result) && result.ok === true && 'value' in result) {
       return { ok: true, value: result.value, ...(result.replayed === true ? { replayed: true } : {}) };

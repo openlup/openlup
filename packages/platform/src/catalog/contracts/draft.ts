@@ -35,6 +35,13 @@ export interface CatalogDraftListQuery { afterDraftId?: string; limit: number }
 
 /** Reject lossy JSON inputs, prototype keys and excessive recursion before validation or hashing. */
 export function canonicalCatalogDraftJson(input: unknown): string {
+  return canonicalCatalogJson(input, CATALOG_DRAFT_MAX_BYTES);
+}
+/** @internal Shared scalar and JSON rules for publication envelopes. */
+export function canonicalCatalogPublicationJson(input: unknown): string {
+  return canonicalCatalogJson(input, 16_777_216);
+}
+function canonicalCatalogJson(input: unknown, maxBytes: number): string {
   const ancestors = new Set<object>();
   function visit(value: unknown, depth: number): unknown {
     if (depth > 48) throw new Error("draft_json_depth");
@@ -64,6 +71,6 @@ export function canonicalCatalogDraftJson(input: unknown): string {
     return result;
   }
   const text = JSON.stringify(visit(input, 0));
-  if (new TextEncoder().encode(text).byteLength > CATALOG_DRAFT_MAX_BYTES) throw new Error("draft_payload_too_large");
+  if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error("draft_payload_too_large");
   return text;
 }

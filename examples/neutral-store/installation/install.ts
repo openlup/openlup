@@ -5,8 +5,9 @@ import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import type { FulfillmentStockSyncPort } from '@openlup/platform/fulfillment/contracts';
-import { editorProducts } from '../host/editor-catalogue.ts';
+import { editorProducts, readStarterCatalogueRules, stageStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
 import { randomBytes } from 'node:crypto';
+import { installCatalogDefinitions } from '@openlup/platform/catalog';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -47,6 +48,8 @@ export async function prepareDemonstrationQuoteKey(connection: InstallConnection
 export interface DemonstrationInstallation {
   connection: InstallConnection;
   stock?: Pick<FulfillmentStockSyncPort,'recordProviderStockCurrent'>;
+  catalogueRules?: Uint8Array;
+  catalogueBuildDirectory?: string;
   installRole: string;
   runtimeRole: string;
   close(): Promise<void>;
@@ -55,18 +58,19 @@ export interface DemonstrationInstallation {
 export type InstallationBootstrap = (config: StoreConfig) => Promise<DemonstrationInstallation>;
 
 /** Called only by lifecycle up, once per installation invocation, before the HTTP host starts. */
-export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap): Promise<void> {
+export async function installDemonstration(config: StoreConfig, bootstrap: InstallationBootstrap) {
   const installation = await bootstrap(config);
   try { await applyDemoSeed(config, installation); }
   finally { await installation.close(); }
 }
 
 /** Idempotent demo composition; stock uses its native writer. No schema, clients or subscription truth. */
-export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation): Promise<void> {
+export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation) {
   const { connection, installRole, runtimeRole } = installation;
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw new Error('starter_seed_install_role_required');
   const seed = buildDemoSeed(config);
   await connection.query('BEGIN');
+  let stagedBuild: ReturnType<typeof stageStarterCatalogueBuild>;
   try {
     const { rows } = await connection.query(`SELECT session_user AS login, current_user AS role,
       pg_catalog.shobj_description(oid, 'pg_database') AS marker
@@ -80,6 +84,8 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       throw new Error('starter_seed_install_role_required');
     }
     if (target.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
+    const catalogueReceipt = installation.catalogueRules
+      ? await installCatalogDefinitions(connection, starterCataloguePack(installation.catalogueRules)) : undefined;
     for (const row of seed.products) await connection.query(`INSERT INTO public.catalog_products
       (id, slug, status, name, description) VALUES ($1,$2,$3,$4,$5)
       ON CONFLICT (id) DO UPDATE SET slug=EXCLUDED.slug, status=EXCLUDED.status,
@@ -134,10 +140,20 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       if (existing.rows.length !== 1 || existing.rows[0]?.provenance !== row.provenance
         || existing.rows[0]?.active !== true) throw new Error('starter_acquisition_seed_conflict');
     }
+    if (catalogueReceipt && installation.catalogueRules)
+      stagedBuild = stageStarterCatalogueBuild(Buffer.from(installation.catalogueRules), catalogueReceipt, installation.catalogueBuildDirectory);
     await connection.query('COMMIT');
   } catch (error) {
-    await connection.query('ROLLBACK');
+    try { stagedBuild?.discard(); }
+    finally { await connection.query('ROLLBACK'); }
     throw error;
+  }
+  try {
+    try { stagedBuild?.publish(); }
+    finally { stagedBuild?.discard(); }
+  } catch {
+    // The definition is committed. Replaying this install can finish publishing its build.
+    process.stderr.write('Catalogue rules committed. Run ./lifecycle up again to make the build available.\n');
   }
 }
 
@@ -190,9 +206,10 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
     if (status.pending.length) throw new Error('starter_installation_incomplete');
     process.stdout.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');
   } finally { await bootstrap.end(); }
+  const catalogueRules = readStarterCatalogueRules();
   const connection = new pg.Client({ host: socket, database, user: installRole });
   await connection.connect();
   const { createPostgresFulfillmentStockSyncPort } = await import('@openlup/platform/fulfillment');
   const stock = createPostgresFulfillmentStockSyncPort(connection,{ sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
-  return { connection,stock, installRole, runtimeRole, close: () => connection.end() };
+  return { connection,stock, installRole, runtimeRole, ...(catalogueRules ? { catalogueRules } : {}), close: () => connection.end() };
 }

@@ -327,6 +327,8 @@ export async function runStarterBrowser(options) {
       const installed = createRequire(join(app, 'package.json'));
       const migrations = await import(pathToFileURL(installed.resolve('@openlup/platform/migrations')).href);
       const { applyDemoSeed, demonstrationMarker } = await import(pathToFileURL(join(app, 'installation/install.ts')).href);
+      const { readStarterCatalogueRules } = await import(pathToFileURL(join(app, 'host/editor-catalogue.ts')).href);
+      const catalogueRules = readStarterCatalogueRules();
       const { selectConfiguration } = await import(pathToFileURL(join(app, 'owned/store.config.ts')).href);
       await mkdir(join(app, '.context'), { mode: 0o700 });
       await runBrowserGroups((groupIndex, selection) =>
@@ -362,7 +364,7 @@ export async function runStarterBrowser(options) {
               const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
               await installer.connect();
               try {
-                const seed = { connection: installer, installRole, runtimeRole };
+                const seed = { connection: installer, installRole, runtimeRole, catalogueRules };
                 phase = `seed_${configuration}`;
                 await applyDemoSeed(selectConfiguration(configuration), seed);
                 await applyDemoSeed(selectConfiguration(configuration), seed);

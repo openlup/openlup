@@ -1,9 +1,108 @@
 import { createHash } from 'node:crypto';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
-import type { NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { canonicalCatalogDraftJson, catalogDefinitionDigest, createCatalogProductTypeRegistry, withCatalogPublicationRules,
+  type CatalogDefinitionInstallReceipt, type CatalogProductTypeInput, type CatalogProductTypeRef, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { catalogDraftRegistry } from '../owned/catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
+
+export const starterCatalogueType = { key: 'starter:item', version: 1 } as const;
+const buildDirectory = fileURLToPath(new URL('../.context/catalogue-builds', import.meta.url));
+
+function readOptional(path: URL | string): Buffer | undefined {
+  try { return readFileSync(path); }
+  catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
+
+export function readStarterCatalogueRules(): Buffer | undefined {
+  return readOptional(new URL('../owned/catalogue-rules.cjs', import.meta.url));
+}
+
+/** The installer and operator host run from the same image built by lifecycle up. */
+export function starterCataloguePack(artifact: Uint8Array) {
+  const definition = catalogDraftRegistry.resolve(starterCatalogueType);
+  if (!definition) throw new Error('Define starter:item at version 1 in owned/catalogue.ts to install catalogue rules.');
+  const { validateContent: _legacyRule, validatorRef: _legacyRef, ...legacyType } = definition;
+  const unit = 'openlup:g';
+  const catalogueType = { ...legacyType,
+    units: legacyType.units.some(row => row.code === unit) ? legacyType.units
+      : [...legacyType.units, { code: unit, dimension: 'mass' as const, integral: true }],
+    netContentUnits: [...new Set([...legacyType.netContentUnits, unit])],
+  };
+  // Keep version 1 for the shipped draft example. The immutable installer refuses a collision.
+  const version = 2 + createHash('sha256').update(canonicalCatalogDraftJson(catalogueType)).update(artifact).digest().readUInt32BE() % 2_147_483_646;
+  return starterBuild({ ...catalogueType, version }, artifact);
+}
+
+function starterBuild(type: Omit<CatalogProductTypeInput, 'validateContent'>, artifact: Uint8Array) {
+  return withCatalogPublicationRules({ id: 'starter:local-rules', namespace: 'starter', version: type.version, openlupRange: '1.x',
+    types: [type], capabilities: {}, taxClasses: [] }, () => artifact);
+}
+
+/** Stage the receipt and exact rules. Only a committed install may publish their link. */
+export function stageStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory) {
+  const definition = starterCataloguePack(artifact).types[0]!;
+  const { validateContent: _callback, ...type } = definition;
+  const installed = receipt.types.find(row => row.key === type.key && row.version === type.version);
+  if (!installed || installed.definitionDigest !== catalogDefinitionDigest(definition)) throw new Error('starter_catalogue_install_receipt_invalid');
+  const bytes = Buffer.from(canonicalCatalogDraftJson({ type, asset: artifact.toString('base64'), installed }));
+  mkdirSync(directory, { recursive: true });
+  const target = join(directory, `${type.version}.json`);
+  const previous = readOptional(target);
+  if (previous) {
+    if (!previous.equals(bytes)) throw Object.assign(new Error('starter_catalogue_build_conflict'), { code: 'EEXIST' });
+    return;
+  }
+  const temp = mkdtempSync(join(directory, '.pending-'));
+  const source = join(temp, 'build.json');
+  const discard = () => rmSync(temp, { recursive: true, force: true });
+  try { writeFileSync(source, bytes); }
+  catch (error) { discard(); throw error; }
+  return {
+    publish() {
+      try { linkSync(source, target); }
+      catch (error) { if (!readOptional(target)?.equals(bytes)) throw error; }
+    },
+    discard,
+  };
+}
+
+export function starterCatalogue(directory = buildDirectory) {
+  const artifact = readStarterCatalogueRules();
+  const pack = artifact && starterCataloguePack(artifact);
+  const current = pack && createCatalogProductTypeRegistry(pack.types).resolve(pack.types[0]!);
+  const history = new Map<number, { type: NonNullable<typeof current>; digest: string }>();
+  function readInstalled(ref: CatalogProductTypeRef) {
+    if (ref.key !== starterCatalogueType.key || !Number.isSafeInteger(ref.version) || ref.version <= 1) return;
+    const cached = history.get(ref.version);
+    if (cached) return cached;
+    // A visible receipt link was published only after its definition committed.
+    const raw = readOptional(join(directory, `${ref.version}.json`));
+    if (!raw) return;
+    const { type, asset, installed } = JSON.parse(raw.toString()) as {
+      type: Omit<CatalogProductTypeInput, 'validateContent'>; asset: string;
+      installed: CatalogDefinitionInstallReceipt['types'][number];
+    };
+    if (type.key !== ref.key || type.version !== ref.version || installed.key !== ref.key || installed.version !== ref.version)
+      throw new Error('starter_catalogue_build_invalid');
+    const restored = starterBuild(type, Buffer.from(asset, 'base64'));
+    const definition = createCatalogProductTypeRegistry(restored.types).resolve(ref)!;
+    const digest = catalogDefinitionDigest(definition);
+    if (digest !== installed.definitionDigest) throw new Error('starter_catalogue_build_invalid');
+    const build = { type: definition, digest };
+    history.set(ref.version, build);
+    return build;
+  }
+  return { current, readInstalled, registry: { resolve: (ref: CatalogProductTypeRef) =>
+    readInstalled(ref)?.type ?? catalogDraftRegistry.resolve(ref) } };
+}
 
 export function demoIdentifier(config: StoreConfig, kind: string, key: string): string {
   const hex = createHash('sha256').update(`neutral-store-demo-v1:${config.id}:${kind}:${key}`).digest('hex');

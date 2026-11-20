@@ -38,6 +38,31 @@ remain generic, and a failed refresh withholds the previous price.
 After a successful candidate import prints `next: npm ci`, run `npm ci` before
 starting the application.
 
+## Change a product rule
+
+If you upgraded an existing store, its draft validator still runs from
+`owned/catalogue.ts`. To try installed rules, copy `owned/catalogue-rules.cjs`
+and its test from a fresh extraction of your target starter version. Port your
+existing content checks into the bundle's `validateContent` so your store keeps
+its draft rules after switching.
+
+Edit `owned/catalogue-rules.cjs` and update the examples in
+`owned/catalogue-rules.test.cjs`. Run the test after each edit:
+
+```sh
+node --test owned/catalogue-rules.test.cjs
+```
+
+The test runs the same hooks as installation. Keep the rules pure and use the
+supplied arguments for time, locale and time zone. Include dependencies in the
+build so the rules need neither `require` nor Node APIs.
+
+`./lifecycle up` is the one install command for the updated rules.
+`npm run dev` stays database-free. In **Catalogue drafts**, choose **Load draft example**, save it, then use **Prepare saved draft**
+with the saved draft ID and revision. Fix a refusal at the field named in its
+path and save again. The preparation report can wait for publication evidence.
+The starter keeps earlier builds available for drafts already saved.
+
 The owned market registry in `owned/market.config.ts` selects `locales` and
 `defaultLocale`; supply copy for every configured locale.
 

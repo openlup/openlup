@@ -23,6 +23,10 @@ export interface CatalogProductTypeDefinition extends CatalogProductTypeRef {
   axes?: readonly CatalogAxisDefinition[];
   /** @experimental */
   validatorRef?: string;
+  /** Set by the rules build helper when this definition has installed publication rules.
+   * @experimental
+   */
+  publicationRules?: true;
   /** @experimental */
   subscriptionProfileRef?: CatalogProductTypeRef;
   /** @experimental */
