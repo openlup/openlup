@@ -141,9 +141,9 @@ export { FULFILLMENT_FACT_SOURCE_AUTHORITIES, FULFILLMENT_FACT_SOURCES, PROVIDER
 /** @beta */
 export type { CompatibleNormalizedFulfillmentFact, FulfillmentFactSourceAuthority, FulfillmentFactSource, FulfillmentFactProvenance, FulfillmentRawEventReference, FulfillmentProviderSequence, FulfillmentFactParserOptions, ProviderFulfillmentFactSource, NormalizedFulfillmentFact, NormalizedFulfillmentFactV0, NormalizedFulfillmentFactV1, TransitionConflict, TransitionConflictDecision, FulfillmentTransitionSnapshot, TransitionConflictReason, } from "./facts.js";
 /** @beta */
-export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export { FULFILLMENT_STATUS_MAP, FULFILLMENT_STATUS_EFFECTS, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
 /** @beta */
-export type { FulfillmentStatusStage, FulfillmentStatusMap } from "./statusMap.js";
+export type { FulfillmentStatusStage, FulfillmentStatusMap, FulfillmentStatusEffect } from "./statusMap.js";
 /** @beta */
 export { fulfillmentProgressPresentation } from "./trackingProgress.js";
 /** @beta */
@@ -397,6 +397,16 @@ export declare function timelineLabelForStep(step: CustomerFulfillmentStep): str
 /** `panels.orders.trackingPhase.*` key for a step (start-page tile). */
 export declare function trackingPhaseKeyForStep(step: CustomerFulfillmentStep): string;
 export declare function stepUsesTruckIcon(step: CustomerFulfillmentStep): boolean;
+/** Provider-neutral domain effect table for canonical local fulfillment statuses, free of UI prose or locale keys. */
+export interface FulfillmentStatusEffect {
+    stockEffect: "reserved" | "consumed" | "held" | "released";
+    consumesStock: boolean;
+    handsOver: boolean;
+    suppressDispatchedNotification: boolean;
+    trackingStatus: "in_transit" | "delivered" | null;
+    offTrack: boolean;
+}
+export declare const FULFILLMENT_STATUS_EFFECTS: Readonly<Record<CanonicalLocalFulfillmentStatus, FulfillmentStatusEffect>>;
 export {};
 ```
 ## dist/fulfillment/trackingProgress.d.ts

@@ -436,6 +436,7 @@ export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscr
 export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
 export { createPostgresProviderPaymentRail } from "./postgresProviderRail.js";
 export type { PostgresProviderPaymentRail, PostgresProviderAttemptSnapshot } from "./postgresProviderRail.js";
+export { createPaymentProviderRegistry, toCoreCaptureHandoff, fromCoreCaptureHandoff, toCorePaymentProviderCapability, } from "./providerRegistry.js";
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -1071,6 +1072,19 @@ export declare function createPostgresProviderPaymentRecoveryGuidancePort(db: Pa
 export declare function createPostgresProviderExpiredCheckoutSafety(db: PaymentProviderExecutor): {
     verifyPriorPayment(order: ExpiredPaymentSafetyOrder): Promise<"safe" | "paid" | "unavailable">;
 };
+```
+## dist/payments/providerRegistry.d.ts
+
+```ts
+import type { PaymentMethodCaptureHandoff, PaymentProviderCapabilityDescriptor } from "@openlup/core/payment";
+import type { AdapterCaptureHandoff, CoreCapabilityOverrides, PaymentAdapter, PaymentAdapterCapabilities, PaymentProviderRegistry } from "./contracts/index.js";
+/** Translate a platform adapter capture handoff into the core repair-capture vocabulary. */
+export declare function toCoreCaptureHandoff(handoff: AdapterCaptureHandoff): PaymentMethodCaptureHandoff | null;
+/** Translate a core repair-capture handoff back into the platform adapter vocabulary. */
+export declare function fromCoreCaptureHandoff(handoff: PaymentMethodCaptureHandoff): Exclude<AdapterCaptureHandoff, "redirect">;
+/** Project platform adapter capabilities onto the core capability descriptor with optional host policy overrides. */
+export declare function toCorePaymentProviderCapability(capabilities: PaymentAdapterCapabilities, overrides?: CoreCapabilityOverrides): PaymentProviderCapabilityDescriptor;
+export declare function createPaymentProviderRegistry(adapters: readonly PaymentAdapter[]): PaymentProviderRegistry;
 ```
 ## dist/payments/sandboxCheckoutRecoveryPay.d.ts
 

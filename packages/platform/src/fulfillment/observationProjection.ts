@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { CanonicalLocalFulfillmentStatus, FulfillmentObservation, FulfillmentObservationCodecs } from "./contracts/index.js";
 import { parseFulfillmentFact } from "./normalizedFulfillmentFacts.js";
 import { admittedReference, durableStrings, reference } from "./dispatchProjection.js";
-import { FULFILLMENT_STATUS_MAP } from "./statusMap.js";
+import { FULFILLMENT_STATUS_EFFECTS } from "./statusMap.js";
 
 type Privacy = ReturnType<typeof durableStrings>;
 const timestamp = z.iso.datetime({ offset: true });
@@ -90,13 +90,10 @@ export function projectObservation(value: FulfillmentObservation, approveTrackin
   return { ...safe, ...(Object.keys(diagnostics).length ? { diagnostics } : {}) };
 }
 
-const HANDOVER_STATUSES: ReadonlySet<string> = new Set(
-  FULFILLMENT_STATUS_MAP.stages.filter(stage => stage.effects.handover).flatMap(stage => stage.localStatus),
-);
-/** Donor finished-picking boundary is narrower than the coarse packing stage. */
+/** Derived directly from the provider-neutral FULFILLMENT_STATUS_EFFECTS table. */
 export const observationStatusPolicy = {
-  consumesStock: (status: CanonicalLocalFulfillmentStatus) => ["packed", "in_transit", "delivered"].includes(status),
-  handsOver: (status: CanonicalLocalFulfillmentStatus) => HANDOVER_STATUSES.has(status),
-  suppressDispatched: (status: CanonicalLocalFulfillmentStatus) => status === "delivered",
-  trackingStatus: (status: CanonicalLocalFulfillmentStatus) => status as "in_transit" | "delivered",
+  consumesStock: (status: CanonicalLocalFulfillmentStatus) => FULFILLMENT_STATUS_EFFECTS[status].consumesStock,
+  handsOver: (status: CanonicalLocalFulfillmentStatus) => FULFILLMENT_STATUS_EFFECTS[status].handsOver,
+  suppressDispatched: (status: CanonicalLocalFulfillmentStatus) => FULFILLMENT_STATUS_EFFECTS[status].suppressDispatchedNotification,
+  trackingStatus: (status: CanonicalLocalFulfillmentStatus) => FULFILLMENT_STATUS_EFFECTS[status].trackingStatus ?? (status as "in_transit" | "delivered"),
 };

@@ -43,3 +43,9 @@ export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscr
 export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
 export { createPostgresProviderPaymentRail } from "./postgresProviderRail.js";
 export type { PostgresProviderPaymentRail, PostgresProviderAttemptSnapshot } from "./postgresProviderRail.js";
+export {
+  createPaymentProviderRegistry,
+  toCoreCaptureHandoff,
+  fromCoreCaptureHandoff,
+  toCorePaymentProviderCapability,
+} from "./providerRegistry.js";

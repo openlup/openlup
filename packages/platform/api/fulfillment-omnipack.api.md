@@ -46,7 +46,7 @@ export declare const omnipackFulfillmentCapabilities: Readonly<FulfillmentCapabi
 ## dist/fulfillment/omnipack/index.d.ts
 
 ```ts
-import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
+import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentProviderAdapter, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { type OmnipackObservationCodecs } from "./observation.js";
 import { omnipackIntakeOrderIdentity } from "./intake.js";
@@ -94,10 +94,8 @@ export interface OmnipackFulfillmentAdapterConfig {
     };
 }
 /** No route, schedule, environment reader or default binding is installed. */
-export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
-    capabilities: FulfillmentCapabilityDescriptor;
+export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): FulfillmentProviderAdapter & {
     orderIdentity: typeof omnipackIntakeOrderIdentity;
-    dispatch: FulfillmentDispatchPort;
     label: FulfillmentLabelPort;
     observation: FulfillmentObservationPort;
     readback: FulfillmentReadbackPort;
