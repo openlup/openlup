@@ -38,7 +38,8 @@ with remediation. To explain the absent-row behavior offline, pass
 
 ## Check owned configuration after an edit
 
-From the starter root, run `npm --silent run settings -- check --configuration <id>`.
+From the starter root, pass `check --configuration <id>` to the settings script
+documented in the application’s `AGENTS.md`.
 The command reads the selected configuration through the existing settings app
 binding. It opens no database connection, performs no writes and leaves drift
 checking to startup. For an installed key that supports preview, run `preview`

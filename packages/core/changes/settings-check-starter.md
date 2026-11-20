@@ -38,7 +38,8 @@ index 00b9518e0..70966d23b 100644
      readers: db ? {
 ```
 
-Run `npm --silent run settings -- check` after updating the installed packages.
+After updating the installed packages, pass `check` to the settings script
+documented in the extracted application’s `AGENTS.md`.
 A binding without the new member still loads; check exits 2 and names the
 addition above. A failure from `assertConfig` exits 1 and gives the startup
 validation message. Existing startup refusals and policy installation steps
