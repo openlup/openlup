@@ -72,6 +72,8 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
     // Prepared attempts and interrupted failure propagation are reconciliation work.
     const rows = (await options.executor.query(`SELECT o.*,op.cycle_snapshot,
       latest.receipt_key AS failure_key,latest.input AS failure_input,
+      (latest.receipt_key IS NOT NULL
+        AND (c.id IS NULL OR COALESCE(c.retry_attempt<(latest.result->>'retry_attempt')::integer,true))) AS failure_propagation_pending,
       prep.receipt_key AS prepare_key,prep.result AS preparation
       FROM public.subscription_retry_obligations o
       JOIN public.subscriptions s ON s.id=o.subscription_id AND s.status='active'
@@ -91,7 +93,9 @@ export function createNativeRetryDriver(options: NativeRetryDriverOptions) {
     for (const raw of rows) {
       const operationId = String(raw.renewal_operation_id);
       try {
-        if (raw.failure_key && raw.failure_input) await propagateFailure(operationId, String(raw.failure_key), raw.failure_input as NativeRetryFailure);
+        if (raw.failure_propagation_pending !== false && raw.failure_key && raw.failure_input) {
+          await propagateFailure(operationId, String(raw.failure_key), raw.failure_input as NativeRetryFailure);
+        }
         const row = await store.read(operationId);
         if (!row || row.state === "recovered") continue;
         const snapshot = options.decode(raw.cycle_snapshot as Record<string, unknown>);

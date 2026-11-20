@@ -83,9 +83,9 @@ it('preserves the default scheduled renewal transcript and query count', async (
         environment: 'disposable', database: 'fixture', schema: 'complete' }, loadedPackages: [], issues: [] }) },
   });
   expect(await job.services.run()).toEqual({ retries: [], renewals: [] });
-  // Frozen on the unchanged host before adding the owned hook (base 167c03d0d).
+  // Frozen on the unchanged host; updated after nativeRetryDriver added failure_propagation_pending (count unchanged at 9).
   expect({ count: queries.length, sha256: createHash('sha256').update(JSON.stringify(queries)).digest('hex') })
-    .toEqual({ count: 9, sha256: 'd184fa9cf0bdc44a81ac167a36a516aacef0835553e6bb845d5270010e59eb06' });
+    .toEqual({ count: 9, sha256: '3a69e0d22f1514a4b7769c31c063127aa4f789de0dfe2636e4fcb3a629f9f97b' });
 });
 
 it('projects uppercase owned account identity from actual frozen and retained facts without a rich account assembler', async () => {

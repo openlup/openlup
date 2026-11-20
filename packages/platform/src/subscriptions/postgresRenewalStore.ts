@@ -48,6 +48,16 @@ const SNAPSHOT_SQL = `SELECT s.id AS subscription_id,s.client_id,s.cadence_days,
  LEFT JOIN public.subscription_method_states m ON m.subscription_id=s.id
  ${subscriptionCorrelationJoin}
  WHERE s.id=$1::uuid AND s.next_cycle_at=$2::timestamptz`;
+const MANDATE_EVIDENCE_SQL = `SELECT t.authorization_ref,
+ to_char(t.unattended_charge_authorized_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS unattended_charge_authorized_at,
+ CASE WHEN public.subscription_method_has_recorded_ref(s.id) THEN public.subscription_method_chargeable_unattended(s.id,now())
+  ELSE m.health_state IS NULL OR m.health_state='healthy' END AS method_authorized
+ FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id
+ LEFT JOIN public.subscription_method_states m ON m.subscription_id=s.id
+ WHERE s.id=$1::uuid AND s.next_cycle_at=$2::timestamptz`;
+const DELIVERY_ADMISSION_SQL = `SELECT t.delivery_admission,t.delivery_block_reason
+ FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id
+ WHERE s.id=$1::uuid AND s.next_cycle_at=$2::timestamptz`;
 export function subscriptionRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("subscription_renewal_response_invalid");
   return value as Record<string, unknown>;
@@ -67,7 +77,7 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
     const value = (await executor.query("SELECT public.subscription_read_renewal($1::text) AS response", [identityKey])).rows[0]?.response;
     return value == null ? null : codec.readback(subscriptionRecord(value));
   }
-  return {
+  const store: RenewalStorePort = {
     transactions: { graph: "native", prepare: "cycle_order_items_settlement_reservation_attempt",
       outcome: "settlement_outcome_schedule_counter_reservation", recovery: "settlement_cycle_receipt_case_counter" },
     async listDue(limit, asOf) {
@@ -81,28 +91,36 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
       const stored = await executor.query(`SELECT cycle_snapshot FROM public.subscription_renewal_operations
         WHERE subscription_id=$1::uuid AND scheduled_at=$2::timestamptz`, [input.subscriptionId, input.scheduledAt]);
       if (stored.rows[0]) return codec.decode(subscriptionRecord(stored.rows[0].cycle_snapshot));
-      const row = await header(input);
-      // Imported terms may use an injected dialect without a purchase attachment.
-      // The native purchase codec still validates its own required facts.
-      if (row.purchase_facts == null || !nativeRetainedTerms(row)) return codec.freeze(row, input);
-      if (!withTransaction) throw new Error("subscription_renewal_transaction_required");
+      if (!withTransaction) {
+        const row = await header(input);
+        // Imported terms may use an injected dialect without a purchase attachment.
+        // The native purchase codec still validates its own required facts.
+        if (row.purchase_facts == null || !nativeRetainedTerms(row)) return codec.freeze(row, input);
+        throw new Error("subscription_renewal_transaction_required");
+      }
       return withTransaction(async db => {
         await db.query("SELECT id FROM public.subscriptions WHERE id=$1::uuid FOR UPDATE", [input.subscriptionId]);
         const frozen = await db.query(`SELECT cycle_snapshot FROM public.subscription_renewal_operations
           WHERE subscription_id=$1::uuid AND scheduled_at=$2::timestamptz`, [input.subscriptionId, input.scheduledAt]);
         if (frozen.rows[0]) return codec.decode(subscriptionRecord(frozen.rows[0].cycle_snapshot));
         let current = await header(input, db);
-        if (await graduateNativeRenewal(db, current)) current = await header(input, db);
+        if (current.purchase_facts != null && nativeRetainedTerms(current) && await graduateNativeRenewal(db, current)) {
+          current = await header(input, db);
+        }
         return codec.freeze(current, input);
       });
     },
     async readMandateEvidence(input) {
-      const row = await header(input);
+      const result = await executor.query(MANDATE_EVIDENCE_SQL, [input.subscriptionId, input.scheduledAt]);
+      const row = result.rows[0];
+      if (!row) throw new Error("subscription_renewal_snapshot_not_found");
       return { authorized: row.method_authorized === true, authorizationRef: String(row.authorization_ref),
         authorizedAt: String(row.unattended_charge_authorized_at) };
     },
     async admitDeliveryAlignment(input) {
-      const row = await header(input);
+      const result = await executor.query(DELIVERY_ADMISSION_SQL, [input.subscriptionId, input.scheduledAt]);
+      const row = result.rows[0];
+      if (!row) throw new Error("subscription_renewal_snapshot_not_found");
       if (row.delivery_admission !== "allowed" && row.delivery_admission !== "blocked") throw new Error("subscription_renewal_delivery_admission_invalid");
       return row.delivery_admission === "allowed"
         ? { allowed: true, state: "static", reason: "allowed" }
@@ -145,4 +163,5 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
         [input.operationId, input.claimToken, input.reason, input.occurredAt]);
     },
   };
+  return store;
 }

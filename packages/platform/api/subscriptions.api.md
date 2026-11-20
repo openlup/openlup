@@ -65,6 +65,7 @@ export interface AutomaticRenewalRunDeps {
             operationId: string;
             claimToken: string;
             now: string;
+            snapshot?: RenewalFrozenSnapshot;
         }): Promise<RenewalReservationResult>;
     };
     settlement: RenewalSettlementPort;
