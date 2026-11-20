@@ -112,7 +112,7 @@ async function main(args) {
       return text;
     };
     process.exitCode = await runSettingsCommand(args.slice(1), {
-      write: text => process.stdout.write(text), readStdin,
+      write: text => process.stdout.write(text), warn: text => process.stderr.write(text), readStdin,
     }, { bind: bindSettings, loadCheck: loadSettingsCheck, formatPreview: formatSettingsPreview });
     return;
   }

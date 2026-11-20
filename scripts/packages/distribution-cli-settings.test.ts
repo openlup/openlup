@@ -228,3 +228,55 @@ it.each([false, true])("replaces the managed editor through apply and replay, cu
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
   if (local) expect(readFileSync(join(app, local.path))).toEqual(local.bytes);
 });
+
+it.each([
+  ["missing", undefined, "Check the --app path and the createSettingsBindings export."],
+  ["missing factory", "export const other = 1;", "Check the --app path and the createSettingsBindings export."],
+  ["throwing", "throw new Error('rejected\\nedit');", "rejected edit"],
+] as const)("keeps package discovery stdout when the %s module cannot load", (_, source, cause) => {
+  const { directory, write } = fixture();
+  const app = "./settings-fixture.mjs";
+  if (source) write(app, source);
+  const invoke = (...args: string[]) => {
+    const { status, stdout, stderr } = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
+      "settings", ...args, "--json"], { cwd: directory, encoding: "utf8" });
+    return { status, stdout, stderr };
+  };
+  for (const args of [["list"], ["show", "inventory_renewal_protection"], ["explain", "inventory_renewal_protection"]]) {
+    const base = invoke(...args);
+    const withApp = invoke(...args, "--app", app);
+    expect(base.status).toBe(0);
+    expect(withApp).toEqual({ ...base, stderr: args[0] === "list" ? `Settings app: ${cause}\n` : "" });
+  }
+});
+
+it("discovers and checks app declarations through the binary without a database", () => {
+  const { directory, write } = fixture();
+  write("settings-fixture.mjs", `
+    import { z } from ${JSON.stringify(import.meta.resolve("zod"))};
+    const fee = { domain: "gift", goal: "Set the gift wrapping fee.",
+      effect: { appliesTo: "New gift quotes use this fee.", impact: "money", frozenOn: [] } };
+    export function createSettingsBindings({ db }) {
+      if (db) throw Error("unexpected database");
+      return { file: { configuration: "sample", entries: {
+        "gift.wrapFeeMinor": { value: "150", location: { file: "owned/gift.ts", symbol: "wrapFeeMinor" },
+          descriptor: { ...fee, schema: z.coerce.number().int() } },
+        "gift.enabled": { value: true, location: { file: "owned/gift.ts", symbol: "enabled" },
+          descriptor: { ...fee, goal: "Offer gift wrapping." } },
+        inventory_renewal_protection: { value: { revision: "local", renewalProtectionDays: 14 } },
+      } } };
+    }`);
+  const invoke = (args: string[]) => {
+    const { status, stdout, stderr } = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
+      "settings", ...args, "--app", "./settings-fixture.mjs", "--json"], { cwd: directory, encoding: "utf8" });
+    expect(status, stderr).toBe(0);
+    expect(stderr).toBe("");
+    return JSON.parse(stdout);
+  };
+  expect(invoke(["list", "--goal", "gift wrapping fee"]).entries.map(({ key }: { key: string }) => key)).toEqual(["gift.wrapFeeMinor"]);
+  expect(invoke(["show", "gift.wrapFeeMinor"]).observation).toEqual({ state: "file", configuration: "sample", value: "150" });
+  expect(invoke(["check"]).rows).toEqual(expect.arrayContaining([
+    expect.objectContaining({ key: "gift.wrapFeeMinor", validation: { state: "valid" }, file: expect.objectContaining({ value: "150" }) }),
+    expect.objectContaining({ key: "inventory_renewal_protection", store: { state: "not-checked" } }),
+  ]));
+});

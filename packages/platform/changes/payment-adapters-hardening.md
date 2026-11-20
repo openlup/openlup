@@ -1,0 +1,6 @@
+- Harden payment adapter webhook normalization, OAuth token handling, detached JWS verification, readback status translation, and verified ingress projection without changing 1.x public exports:
+  - Restrict dispute webhook normalization to active dispute events (`charge.dispute.created`, `charge.dispute.funds_withdrawn`) so closed or reinstated dispute events are acknowledged as unsupported rather than recorded as new disputes, and remove the over-broad `status === "requires_action"` fallback on unrecognized event types.
+  - Eliminate per-call reconciliation provider allocation in payment adapter `readbackPort.readPayment`.
+  - Thread the injected `now()` clock into HTTP client deadline checks, deduplicate concurrent OAuth token requests (single-flight), and invalidate stale bearer tokens on HTTP `401` (retrying idempotent `GET` requests once without silently double-dispatching `POST /transactions`).
+  - Enforce strict 3-part detached JWS format (`parts.length === 3 && parts[1] === ""`), canonical `new URL(...)` `x5u` certificate URL validation, and bounded `X509Certificate` parse caching during webhook signature verification.
+  - Avoid projecting verified webhook evidence twice in `createVerifiedPaymentIngress` when attaching a host-resolved reusable method owner.

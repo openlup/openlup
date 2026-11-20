@@ -12,4 +12,4 @@ export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
 export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
-export { runSettingsCommand, type SettingsAppBindings } from "./settingsCommand.js";
+export { runSettingsCommand, type SettingsAppBindings, type SettingsFileEntry } from "./settingsCommand.js";

@@ -313,6 +313,7 @@ export interface StripePaymentIntentSearcher {
     }>;
 }
 export declare function createStripePaymentReconciliationProvider(client: StripePaymentIntentReader & Partial<StripePaymentIntentSearcher>): PaymentProviderRecoveryProvider;
+export declare function readStripeIntentStatus(intent: StripeIntentLike, providerPaymentId: string, purpose?: string): ProviderReconciliationStatus;
 export declare function normalizeStripeIntent(intent: StripeIntentLike): ProviderReconciliationStatus;
 /**
  * The disposition of a failed intent nobody actually refused.

@@ -40,6 +40,10 @@ function readSettingsCatalogue() {
   const refusalSchema = settingRefusalSchema(refusals.map(({ code }) => code)
     .filter(code => !code.startsWith("commerce_setting_preview_")));
 
+  return { entries, searchTerms, previewOutputSchema, byCode, refusalSchema, ...settingsDocuments(entries) };
+}
+
+function settingsDocuments(entries: readonly z.infer<typeof descriptor>[]) {
   const key = z.enum(entries.map(entry => entry.key));
   const [value, ...facts] = descriptor.options;
   const summaryFields = Object.fromEntries(
@@ -55,5 +59,37 @@ function readSettingsCatalogue() {
   const showRequest = z.strictObject({ key });
   const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema });
   const listResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), entries: z.array(summary) });
-  return { entries, searchTerms, previewOutputSchema, byCode, refusalSchema, showRequest, showResult, listResult };
+  return { showRequest, showResult, listResult };
+}
+
+const fileObservationSchema = z.discriminatedUnion("state", [
+  ...observationSchema.options,
+  z.strictObject({ state: z.literal("file"), configuration: z.string(), value: z.json() }),
+]);
+
+export function settingsEntriesWithAppSettings(additions: readonly z.infer<typeof descriptor>[] = []) {
+  const { entries } = loadSettingsCatalogue();
+  return additions.length ? [...entries, ...additions].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0) : entries;
+}
+
+export function catalogueWithAppSettings(additions: readonly z.infer<typeof descriptor>[]) {
+  const catalogue = loadSettingsCatalogue();
+  const entries = settingsEntriesWithAppSettings(additions);
+  const documents = additions.length ? settingsDocuments(entries) : catalogue;
+  return { ...catalogue, ...documents, entries, appShowResult: documents.showResult.extend({ observation: fileObservationSchema }) };
+}
+
+export function listCatalogueSettings(input: unknown, catalogue?: ReturnType<typeof loadSettingsCatalogue>) {
+  const parsed = settingsListRequest.safeParse(input);
+  if (!parsed.success) return { refusal: loadSettingsCatalogue().byCode.get("commerce_setting_read_input_invalid")! };
+  const words = parsed.data.goal?.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
+  const { entries, listResult, searchTerms } = catalogue ?? loadSettingsCatalogue();
+  const matches = entries.filter(entry => {
+    const text = `${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`.toLowerCase();
+    return words.every(word => text.includes(word));
+  });
+  return listResult.parse({
+    schemaVersion: settingsVersion,
+    entries: matches.map(({ key, goal, kind, runtime, change }) => ({ key, goal, kind, runtime, change })),
+  });
 }
