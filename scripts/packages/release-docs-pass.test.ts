@@ -179,7 +179,7 @@ describe("upgrade page assembly", () => {
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
     expect(text).toContain(`### \`${peer}\`\n\nChanged declarations:`);
     expect(text).toContain("export declare const oldName: number;");
-    expect(text).toContain(`### \`${api}\`\n\nRemoved declarations:`);
+    expect(text).not.toContain("Removed declarations:");
   });
 
   it.each([false, true])("names a new subpath with existing declarations (rename: %s)", (rename) => {
@@ -193,16 +193,17 @@ describe("upgrade page assembly", () => {
     expect(text).not.toContain("shared: string");
   });
 
-  it("lists identical headingless declarations independently in different reports", () => {
+  it.each([false, true])("preserves headingless declaration identity (same-subpath rename: %s)", (rename) => {
     const declaration = report("export declare const shared: string;\n");
-    const f = fixture({ [api]: declaration, [peer]: report("") });
-    f.write(peer, declaration); f.commit();
+    const f = rename ? fixture({ [peer]: "# ./peer API declaration snapshot\n" + declaration }) : fixture({ [api]: declaration, [peer]: report("") });
+    if (rename) f.git("mv", peer, "packages/core/api/renamed.api.md"); else f.write(peer, declaration);
+    f.commit();
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
-    expect(text).toContain(`### \`${peer}\`\n\nAdded declarations:`);
-    expect(text).toContain("export declare const shared: string;");
+    expect(text).toContain(rename ? "No API declarations changed since the previous release." : `### \`${peer}\`\n\nAdded declarations:`);
+    expect(text.includes("export declare const shared: string;")).toBe(!rename);
   });
 
-  it("compares added, removed, changed and unchanged declaration blocks across fences", () => {
+  it("lists an interface gaining an optional member as changed and pairs old and new overload signatures", () => {
     const before = report([
       "export interface Updated {", "    old: string;", "}",
       "export type Removed = string;",
@@ -221,7 +222,7 @@ describe("upgrade page assembly", () => {
     ].join("\r\n"));
     expect(summarizeApiDiff(before, after)).toEqual({
       added: ["export type Added = string;", "export { next };"],
-      removed: ["export interface Updated {", "export type Removed = string;", "export declare function overload(value: number): void;", "export { previous };"],
+      removed: ["export type Removed = string;", "export declare function overload(value: number): void;", "export { previous };"],
       changed: ["export interface Updated {", "export declare function overload(value: boolean): void;"],
     });
     expect(summarizeApiDiff(before, before)).toEqual({ added: [], removed: [], changed: [] });
@@ -233,8 +234,8 @@ describe("upgrade page assembly", () => {
     expect(summarizeApiDiff(source, "")).toEqual({ added: [], removed: ["export interface Repeated {"], changed: [] });
     expect(summarizeApiDiff(source, source + source)).toEqual({ added: [], removed: [], changed: [] });
     const changed = source.replaceAll("field: string", "field: number");
-    expect(summarizeApiDiff(source, changed)).toEqual({ added: [], removed: ["export interface Repeated {"], changed: ["export interface Repeated {"] });
-    expect(summarizeApiDiff(report("declare const internal: string;\n"), report("declare const internal: number;\n"))).toEqual({ added: [], removed: ["declare const internal: string;"], changed: ["declare const internal: number;"] });
+    expect(summarizeApiDiff(source, changed)).toEqual({ added: [], removed: [], changed: ["export interface Repeated {"] });
+    expect(summarizeApiDiff(report("declare const internal: string;\n"), report("declare const internal: number;\n"))).toEqual({ added: [], removed: [], changed: ["declare const internal: number;"] });
   });
 
   it.each([
@@ -253,13 +254,13 @@ describe("upgrade page assembly", () => {
     ["export default class Value { field: string; }", "export default class Value { field: number; }"],
     ["async function value(): Promise<string>;", "async function value(): Promise<number>;"],
   ])("starts a block at a top-level declaration: %s", (before, after) => {
-    expect(summarizeApiDiff(report(`${before}\n`), report(`${after}\n`))).toEqual({ added: [], removed: [before], changed: [after] });
+    expect(summarizeApiDiff(report(`${before}\n`), report(`${after}\n`))).toEqual({ added: [], removed: [], changed: [after] });
   });
 
   it("keeps comments with the following declaration and reports declaration first lines", () => {
     const before = report("// Standalone comment\n\nexport type Kept = string;\n/** Previous description.\n * More detail.\n */\n// Detail\ntype Updated = string;\n");
     const after = before.replace("Previous description", "Updated description").replace("More detail", "New detail").replace("// Detail", "// New detail");
-    expect(summarizeApiDiff(before, after)).toEqual({ added: [], removed: ["type Updated = string;"], changed: ["type Updated = string;"] });
+    expect(summarizeApiDiff(before, after)).toEqual({ added: [], removed: [], changed: ["type Updated = string;"] });
     expect(summarizeApiDiff("", report("// Comment\n/** Description */\n"))).toEqual({ added: [], removed: [], changed: [] });
   });
 
@@ -278,7 +279,7 @@ describe("upgrade page assembly", () => {
     expect(source).toContain(before);
     const result = summarizeApiDiff(source, source.replace(before, after));
     const first = name === "Configuration" ? "type Configuration = {" : "type Fact<K extends string, D> = Readonly<{";
-    expect(result).toEqual({ added: [], removed: [first], changed: [first] });
+    expect(result).toEqual({ added: [], removed: [], changed: [first] });
   });
 
   it("ignores import-line changes in the real report and between declarations", () => {

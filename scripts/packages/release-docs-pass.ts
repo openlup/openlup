@@ -135,9 +135,9 @@ export function listReleaseDocumentation({ root, since = previousCoreTag(root), 
 type Declarations = Map<string, Map<string, string>>;
 
 /** Declarations share an identity across reports only under a declaration-file heading. */
-function apiDeclarations(source: string, reportPath = ""): Declarations {
+function apiDeclarations(source: string, reportIdentity = ""): Declarations {
   const blocks: Declarations = new Map();
-  let fence = false, typescript = false, block: string[] = [], leading: string[] = [], first = "", key = "", declarationFile = reportPath;
+  let fence = false, typescript = false, block: string[] = [], leading: string[] = [], first = "", key = "", declarationFile = reportIdentity;
   const finish = () => {
     if (!block.length) return;
     const text = block.map((line) => line.trimEnd()).join("\n").trimEnd();
@@ -173,21 +173,22 @@ function apiDeclarations(source: string, reportPath = ""): Declarations {
 }
 
 function compareDeclarations(before: Declarations, after: Declarations, oldSurface = before, newSurface = after) {
-  const added: string[] = [], removed: string[] = [], changed: string[] = [];
+  const added = new Map<string, string>(), removed = new Map<string, string>(), changed = new Map<string, string>();
   for (const [key, blocks] of after) {
     const old = oldSurface.get(key);
-    for (const [text, first] of blocks) if (!old?.has(text)) (old ? changed : added).push(first);
+    for (const [text, first] of blocks) if (!old?.has(text)) (old ? changed : added).set(text, first);
   }
   for (const [key, blocks] of before) {
     const current = newSurface.get(key);
-    for (const [text, first] of blocks) if (!current?.has(text)) removed.push(first);
+    if (current?.size === 1 && oldSurface.get(key)?.size === 1) continue;
+    for (const [text, first] of blocks) if (!current?.has(text)) removed.set(text, first);
   }
-  return { added: [...new Set(added)], removed: [...new Set(removed)], changed: [...new Set(changed)] };
+  const excerpts = (blocks: Map<string, string>, otherFirstLines = new Set<string>()) =>
+    [...new Set([...blocks].map(([text, first]) => otherFirstLines.has(first) ? text.replace(/\n[ \t]*/gu, " ") : first))];
+  return { added: excerpts(added), removed: excerpts(removed, new Set(changed.values())), changed: excerpts(changed, new Set(removed.values())) };
 }
 
-export function summarizeApiDiff(before: string, after: string) {
-  return compareDeclarations(apiDeclarations(before), apiDeclarations(after));
-}
+export const summarizeApiDiff = (before: string, after: string) => compareDeclarations(apiDeclarations(before), apiDeclarations(after));
 
 function readApiReports(root: string, ref: string, directory: string) {
   const paths = documentationGit(root, ["ls-tree", "-r", "-z", "--name-only", ref, "--", directory]).toString("utf8").split("\0");
@@ -196,7 +197,7 @@ function readApiReports(root: string, ref: string, directory: string) {
   for (const path of paths.filter((path) => API_REPORT.test(path))) {
     const source = documentationGit(root, ["show", `${ref}:${path}`]).toString("utf8");
     const subpath = /^# (.+) API declaration snapshot\r?$/mu.exec(source)?.[1] ?? path;
-    const declarations = apiDeclarations(source, path);
+    const declarations = apiDeclarations(source, subpath);
     reports.set(subpath, { path, declarations });
     for (const [key, blocks] of declarations) {
       const existing = surface.get(key) ?? new Map<string, string>();
