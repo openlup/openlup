@@ -208,6 +208,16 @@ function reconcileManagedCustomization(
   return { path, bytes };
 }
 
+export const starterDisplayFiles = ["host/paid-mail.ts", "client/pages/account.ts", "browser/acquisition.spec.ts"] as const;
+
+export function reconcileDisplayCustomization(
+  app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],
+  path: typeof starterDisplayFiles[number],
+) {
+  return reconcileManagedCustomization(app, predecessor, applyRefused, path,
+    `owned/upgrade-notes/${path.split("/").at(-1)}`, "\n// Adopter display customization.\n");
+}
+
 export const starterLifecycle = "lifecycle.mjs";
 
 export function reconcileLifecycleCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
@@ -268,6 +278,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     file.path === starterEditorPorts && file.action === "replace");
   const lifecycleReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === starterLifecycle && file.action === "replace");
+  const displayReplacements = starterDisplayFiles.filter(path =>
+    changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
   const { path: conflict, action } = editorReplacement ?? changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
   const paths = new Set<string>([...Object.keys(from.files), ...Object.keys(to.files), ...ownership.owned]);
   const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
@@ -294,6 +306,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   });
   if (lifecycleReplaced) phase("lifecycle-reconciliation", () => {
     const local = reconcileLifecycleCustomization(app, from.files[starterLifecycle]!, applyRefused);
+    owned[local.path] = local.bytes;
+    pair.evidence.customizations![local.path] = hash(local.bytes);
+    assert.deepEqual(run("plan"), plan);
+  });
+  for (const path of displayReplacements) phase(`display-reconciliation:${path}`, () => {
+    const local = reconcileDisplayCustomization(app, from.files[path]!, applyRefused, path);
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
@@ -337,6 +355,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert.equal(readFileSync(join(app, starterEditorPorts), "utf8"), to.files[starterEditorPorts]);
     if (lifecycleReplaced)
       assert.equal(readFileSync(join(app, starterLifecycle), "utf8"), to.files[starterLifecycle]);
+    for (const path of displayReplacements)
+      assert.equal(readFileSync(join(app, path), "utf8"), to.files[path]);
   };
   phase("resume", () => {
     const resumed = run("apply");

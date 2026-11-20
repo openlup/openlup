@@ -12,6 +12,7 @@ import { downloadInvoice } from '../invoice-download.ts';
 import { el, link, append, button, renderValue } from '../dom.ts';
 import { actionForm, nativeActions, readPanel, refusal, type FieldSpec } from '../forms.ts';
 import { subscriptionEditorEntries } from '../editors/entries.ts';
+import { date } from '../editors/view.ts';
 
 export function accountPage(context: PageContext): HTMLElement {
   return el('div', {}, el('h1', {}, context.t('account')),
@@ -180,7 +181,7 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
       const card = el('article', { class: 'panel', id: `subscription-${row.subscriptionId}`, tabindex: -1,
         'data-subscription': row.subscriptionId }, el('h3', {}, row.subscriptionId),
       el('p', { 'data-care-state': row.status }, `${context.t('careStatus')}: ${row.status}`),
-      el('p', {}, `${context.t('careNext')}: ${row.nextCycleAt ?? '—'}`));
+      el('p', {}, `${context.t('careNext')}: ${date(context, row.nextCycleAt)}`));
       if (row.pause) append(card, renderValue(row.pause));
       if (row.action || context.query.get('sekcja') === 'payments' && target === row.subscriptionId) {
         append(card, el('section', { 'aria-label': context.t('carePayment') }, el('h4', {}, context.t('carePayment')), renderValue(row.action), renderValue(row.payment)));

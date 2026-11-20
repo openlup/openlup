@@ -295,7 +295,14 @@ test('pause remains available during an open payment case and closes that case',
   expect((await runtime.query('SELECT status FROM public.subscription_dunning_cases WHERE id=$1', [obligation.caseId])).rows[0].status).toBe('paused');
 });
 test('clock-driven finite auto-resume captures the resumed confirmation once', async ({ page }) => {
-  const f = await purchase(page); await signIn(page, f.email, market.defaultLocale); await pause(page, f, market.defaultLocale);
+  const f = await purchase(page);
+  const timeZone = 'America/Los_Angeles';
+  await page.route('**/api/config', async route => {
+    const response = await route.fetch(), body = await response.json();
+    body.config.market.timezone = timeZone;
+    await route.fulfill({ response, json: body });
+  });
+  await signIn(page, f.email, market.defaultLocale); await pause(page, f, market.defaultLocale);
   // This care fixture supplies its own external carrier facts.
   await owner.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('care-parcels','simulator',true) ON CONFLICT DO NOTHING");
   const parcels = createPostgresFulfillmentShipmentSpinePort(runtime, { portKey: 'care-parcels' });
@@ -316,7 +323,9 @@ test('clock-driven finite auto-resume captures the resumed confirmation once', a
   expect(window.ends_at.getTime() - window.starts_at.getTime()).toBe(14 * 86400000);
   const cadenceMs = f.cadenceDays * 86400000;
   const previousNext = Date.parse(f.nextCycleAt);
-  const clock = Math.max(window.ends_at.getTime(), previousNext + cadenceMs) + 1000;
+  // UTC midnight is still the previous calendar day for this market.
+  const dayMs = 86400000;
+  const clock = (Math.floor(Math.max(window.ends_at.getTime(), previousNext + cadenceMs) / dayMs) + 1) * dayMs;
   const at = new Date(clock).toISOString();
   const expectedNext = new Date(Math.max(previousNext + (window.ends_at.getTime() - window.starts_at.getTime()), clock));
   expect(expectedNext.getTime()).toBeGreaterThanOrEqual(clock);
@@ -327,7 +336,10 @@ test('clock-driven finite auto-resume captures the resumed confirmation once', a
   await page.getByRole('button', { name: copy[market.defaultLocale].careRead, exact: true }).click();
   await expect(cardFor(page, f).locator('[data-care-state]')).toHaveAttribute('data-care-state', 'active');
   const nextDate = await cardFor(page, f).locator('p').filter({ hasText: `${copy[market.defaultLocale].careNext}:` }).innerText();
-  expect(Date.parse(nextDate.slice(copy[market.defaultLocale].careNext.length + 2))).toBe(expectedNext.getTime());
+  const options = { dateStyle: 'long' } as const;
+  const expectedLabel = new Intl.DateTimeFormat(market.defaultLocale, { ...options, timeZone }).format(expectedNext);
+  expect(expectedLabel).not.toBe(new Intl.DateTimeFormat(market.defaultLocale, { ...options, timeZone: 'UTC' }).format(expectedNext));
+  expect(nextDate).toBe(`${copy[market.defaultLocale].careNext}: ${expectedLabel}`);
   await runCare(market.defaultLocale, at);
   expect(await state(f)).toEqual({ status: 'active', next_cycle_at: expectedNext });
   expect(await history()).toEqual(delivered);
