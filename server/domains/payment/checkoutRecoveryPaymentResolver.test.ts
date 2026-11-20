@@ -32,12 +32,14 @@ function snapshot(overrides: Partial<VerifiableAttemptSnapshot> = {}): Verifiabl
 }
 
 function status(overrides: Partial<ProviderReconciliationStatus> = {}): ProviderReconciliationStatus {
+  const kind = overrides.status ?? "pending";
   return {
-    status: "pending",
+    status: kind,
     providerStatus: "processing",
     occurredAt: null,
     failureReason: null,
     amountMinor: 14900,
+    ...(kind === "succeeded" ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     currency: "PLN",
     rawPayload: {},
     ...overrides,

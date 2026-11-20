@@ -52,4 +52,31 @@ describe("verifyPaymentAttemptNow", () => {
     expect(readPayment).not.toHaveBeenCalled();
     expect(applyTerminalResult).not.toHaveBeenCalled();
   });
+
+  it("sends succeeded read without confirmed capture amount basis to manual_review", async () => {
+    const applyTerminalResult = vi.fn();
+    const providerStatus: ProviderReconciliationStatus = {
+      status: "succeeded",
+      providerStatus: "succeeded",
+      occurredAt: null,
+      failureReason: null,
+      amountMinor: snapshot.amountMinor,
+      currency: snapshot.currency,
+      rawPayload: {},
+    };
+
+    await expect(verifyPaymentAttemptNow({
+      snapshot,
+      applyPort: { applyTerminalResult } as never,
+      providers: { [snapshot.provider]: { readPayment: vi.fn() } } as never,
+      providerPaymentId: "pi_existing",
+      providerStatus,
+      now: () => new Date("1999-01-01T10:01:00.000Z"),
+    })).resolves.toMatchObject({
+      status: "manual_review",
+      verified: true,
+      applied: false,
+    });
+    expect(applyTerminalResult).not.toHaveBeenCalled();
+  });
 });

@@ -10,6 +10,10 @@
       "class": "policy"
     },
     {
+      "path": ".github/dependabot.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/GOVERNANCE.md",
       "class": "policy"
     },
@@ -38,8 +42,16 @@
       "class": "policy"
     },
     {
+      "path": ".github/public-reference-pull-request-template.md",
+      "class": "public-output"
+    },
+    {
       "path": ".github/PUBLICATION_COMPLETENESS.md",
       "class": "policy"
+    },
+    {
+      "path": ".github/pull_request_template.md",
+      "class": "public-output"
     },
     {
       "path": ".github/SECURITY_RESPONSE_POSTURE.md",
@@ -56,18 +68,6 @@
     {
       "path": ".github/VERSIONING_AND_EOL.md",
       "class": "policy"
-    },
-    {
-      "path": ".github/dependabot.yml",
-      "class": "public-output"
-    },
-    {
-      "path": ".github/public-reference-pull-request-template.md",
-      "class": "public-output"
-    },
-    {
-      "path": ".github/pull_request_template.md",
-      "class": "public-output"
     },
     {
       "path": ".github/workflows/mirror-ci-images.yml",
@@ -128,38 +128,6 @@
     {
       "path": "AGENTS.md",
       "class": "agent-guidance"
-    },
-    {
-      "path": "Brewfile",
-      "class": "public-output"
-    },
-    {
-      "path": "CODE_OF_CONDUCT.md",
-      "class": "policy"
-    },
-    {
-      "path": "CONTRIBUTING.md",
-      "class": "policy"
-    },
-    {
-      "path": "Dockerfile",
-      "class": "public-output"
-    },
-    {
-      "path": "LICENSE",
-      "class": "policy"
-    },
-    {
-      "path": "README.md",
-      "class": "entrypoint"
-    },
-    {
-      "path": "ROADMAP.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "SECURITY.md",
-      "class": "policy"
     },
     {
       "path": "api/_cron/abandonedCartReminderJob.ts",
@@ -626,6 +594,14 @@
       "class": "public-output"
     },
     {
+      "path": "Brewfile",
+      "class": "public-output"
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "class": "policy"
+    },
+    {
       "path": "components.json",
       "class": "public-output"
     },
@@ -828,6 +804,10 @@
     {
       "path": "config/supabase-rpc-catalog.json",
       "class": "public-output"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "class": "policy"
     },
     {
       "path": "db/bootstrap/node-supabase/30_rate_limit_buckets.sql",
@@ -1566,15 +1546,15 @@
       "class": "public-output"
     },
     {
-      "path": "deploy/neutral-store/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "deploy/neutral-store/prove.mjs",
       "class": "public-output"
     },
     {
       "path": "deploy/neutral-store/prove.test.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "deploy/neutral-store/README.md",
       "class": "public-output"
     },
     {
@@ -1594,6 +1574,30 @@
       "class": "public-output"
     },
     {
+      "path": "Dockerfile",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/adopter-kit/AGENTS.template.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/adopter-kit/claude-settings.template.json",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/adopter-kit/CLAUDE.template.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/adopter-kit/dependabot.template.yml",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/adopter-kit/README.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "docs/platform/AGENT_GUIDE.md",
       "class": "platform-documentation"
     },
@@ -1602,7 +1606,15 @@
       "class": "platform-documentation"
     },
     {
+      "path": "docs/platform/assets/velipet-storefront-en.png",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/CANONICAL_CONTRACTS.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/communications-conformance.mjs",
       "class": "platform-documentation"
     },
     {
@@ -1619,70 +1631,6 @@
     },
     {
       "path": "docs/platform/DOCUMENTATION.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/IDENTITY.md",
-      "class": "public-output"
-    },
-    {
-      "path": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
-      "class": "public-output"
-    },
-    {
-      "path": "docs/platform/OUTCOME_PROJECTION.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
-      "class": "public-output"
-    },
-    {
-      "path": "docs/platform/README.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/SOURCE_MAP.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/SUBSCRIPTION_REFERENCE.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/SUBSCRIPTION_WORKFLOWS.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/adopter-kit/AGENTS.template.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/adopter-kit/CLAUDE.template.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/adopter-kit/README.md",
-      "class": "platform-documentation"
-    },
-    {
-      "path": "docs/platform/adopter-kit/claude-settings.template.json",
-      "class": "public-output"
-    },
-    {
-      "path": "docs/platform/adopter-kit/dependabot.template.yml",
-      "class": "public-output"
-    },
-    {
-      "path": "docs/platform/assets/velipet-storefront-en.png",
-      "class": "public-output"
-    },
-    {
-      "path": "docs/platform/communications-conformance.mjs",
       "class": "platform-documentation"
     },
     {
@@ -1704,6 +1652,18 @@
     {
       "path": "docs/platform/history/platform-readme-release-notes-0.43.0.md",
       "class": "public-output"
+    },
+    {
+      "path": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/IDENTITY.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/OUTCOME_PROJECTION.md",
+      "class": "platform-documentation"
     },
     {
       "path": "docs/platform/plans/agent-context-adaptive-routing.md",
@@ -2198,6 +2158,30 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/README.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/RUNTIME_AND_SELF_HOSTING.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/SOURCE_MAP.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/SUBSCRIPTION_REFERENCE.md",
+      "class": "platform-documentation"
+    },
+    {
+      "path": "docs/platform/SUBSCRIPTION_WORKFLOWS.md",
+      "class": "platform-documentation"
+    },
+    {
       "path": "eslint.config.js",
       "class": "public-output"
     },
@@ -2215,18 +2199,6 @@
     },
     {
       "path": "examples/neutral-store/AGENTS.template.md",
-      "class": "public-output"
-    },
-    {
-      "path": "examples/neutral-store/Dockerfile",
-      "class": "public-output"
-    },
-    {
-      "path": "examples/neutral-store/README.md",
-      "class": "public-output"
-    },
-    {
-      "path": "examples/neutral-store/README.template.md",
       "class": "public-output"
     },
     {
@@ -2407,6 +2379,10 @@
     },
     {
       "path": "examples/neutral-store/dev.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/Dockerfile",
       "class": "public-output"
     },
     {
@@ -2718,6 +2694,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/README.template.md",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/release-inputs/openlup-core-v0.43.0/manifest.json",
       "class": "public-output"
     },
@@ -2938,15 +2922,15 @@
       "class": "public-output"
     },
     {
-      "path": "examples/own-stack/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "examples/own-stack/app.mjs",
       "class": "public-output"
     },
     {
       "path": "examples/own-stack/package.template.json",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/own-stack/README.md",
       "class": "public-output"
     },
     {
@@ -2960,6 +2944,10 @@
     {
       "path": "index.html",
       "class": "public-output"
+    },
+    {
+      "path": "LICENSE",
+      "class": "policy"
     },
     {
       "path": "mcp/_core/bffClient.ts",
@@ -3042,6 +3030,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/.github/dependabot.yml",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/.github/ISSUE_TEMPLATE/bug_report.yml",
       "class": "public-output"
     },
@@ -3055,10 +3047,6 @@
     },
     {
       "path": "packages/core/.github/ISSUE_TEMPLATE/feature_request.yml",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/.github/dependabot.yml",
       "class": "public-output"
     },
     {
@@ -3079,38 +3067,6 @@
     },
     {
       "path": "packages/core/AGENTS.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/CHANGELOG-HISTORY.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/CHANGELOG.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/CODE_OF_CONDUCT.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/CONTRIBUTING.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/LICENSE",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/MAINTAINERS.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/README.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/core/SECURITY.md",
       "class": "public-output"
     },
     {
@@ -3186,6 +3142,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/CHANGELOG-HISTORY.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/CHANGELOG.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/CODE_OF_CONDUCT.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/CONTRIBUTING.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/docs/REPOSITORY_BOOTSTRAP.md",
       "class": "public-output"
     },
@@ -3198,11 +3170,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/LICENSE",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/MAINTAINERS.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/package-lock.json",
       "class": "public-output"
     },
     {
       "path": "packages/core/package.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/README.md",
       "class": "public-output"
     },
     {
@@ -3279,6 +3263,10 @@
     },
     {
       "path": "packages/core/scripts/repository-policy-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/SECURITY.md",
       "class": "public-output"
     },
     {
@@ -3838,22 +3826,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/outbox/CHANGELOG-HISTORY.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/outbox/CHANGELOG.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/outbox/LICENSE",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/outbox/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/outbox/api/index.api.md",
       "class": "public-output"
     },
@@ -3866,7 +3838,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/outbox/CHANGELOG-HISTORY.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/CHANGELOG.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/LICENSE",
+      "class": "public-output"
+    },
+    {
       "path": "packages/outbox/package.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/README.md",
       "class": "public-output"
     },
     {
@@ -3971,22 +3959,6 @@
     },
     {
       "path": "packages/platform/AGENTS.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/CHANGELOG-HISTORY.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/CHANGELOG.md",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/LICENSE",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/README.md",
       "class": "public-output"
     },
     {
@@ -4274,7 +4246,27 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/CHANGELOG-HISTORY.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/CHANGELOG.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/changes/payment-reconciliation-and-failure-evidence-exports.md",
+      "class": "public-doc"
+    },
+    {
+      "path": "packages/platform/LICENSE",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/package.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/README.md",
       "class": "public-output"
     },
     {
@@ -5718,11 +5710,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/channels/server/channelPurchaseResolver.ts",
+      "path": "packages/platform/src/channels/server/channelPurchasedIngestStep.ts",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/channels/server/channelPurchasedIngestStep.ts",
+      "path": "packages/platform/src/channels/server/channelPurchaseResolver.ts",
       "class": "public-output"
     },
     {
@@ -6706,11 +6698,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/contracts/subscriptionPauseReminder.ts",
+      "path": "packages/platform/src/communications/contracts/subscriptionPaused.ts",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/communications/contracts/subscriptionPaused.ts",
+      "path": "packages/platform/src/communications/contracts/subscriptionPauseReminder.ts",
       "class": "public-output"
     },
     {
@@ -8034,11 +8026,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/invoicing/readModel.ts",
+      "path": "packages/platform/src/invoicing/readback.ts",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/invoicing/readback.ts",
+      "path": "packages/platform/src/invoicing/readModel.ts",
       "class": "public-output"
     },
     {
@@ -8548,6 +8540,10 @@
     {
       "path": "packages/platform/src/payments/paymentAttemptSilenceWindow.ts",
       "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentFailureEvidence.ts",
+      "class": "public-code"
     },
     {
       "path": "packages/platform/src/payments/paymentMethodLifecycle.ts",
@@ -9126,11 +9122,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/promotions/promotionClaimSweepPort.ts",
+      "path": "packages/platform/src/promotions/promotionClaims.ts",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/promotions/promotionClaims.ts",
+      "path": "packages/platform/src/promotions/promotionClaimSweepPort.ts",
       "class": "public-output"
     },
     {
@@ -9290,11 +9286,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/shipping/addressCanonLookupHandler.ts",
+      "path": "packages/platform/src/shipping/addressCanonical.ts",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/shipping/addressCanonical.ts",
+      "path": "packages/platform/src/shipping/addressCanonLookupHandler.ts",
       "class": "public-output"
     },
     {
@@ -9526,11 +9522,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/subscriptions/packageEditRead.ts",
+      "path": "packages/platform/src/subscriptions/packageEditor.ts",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/subscriptions/packageEditor.ts",
+      "path": "packages/platform/src/subscriptions/packageEditRead.ts",
       "class": "public-output"
     },
     {
@@ -9618,15 +9614,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/sizedEditor.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/sizedEditPorts.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/subscriptions/sizedEditQuote.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/subscriptions/sizedEditor.ts",
       "class": "public-output"
     },
     {
@@ -11030,11 +11026,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/inventory/inventoryAvailabilityCharacterization.test.ts",
+      "path": "packages/platform/test/inventory/inventory_renewal_protection.json",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/inventory/inventory_renewal_protection.json",
+      "path": "packages/platform/test/inventory/inventoryAvailabilityCharacterization.test.ts",
       "class": "public-output"
     },
     {
@@ -11126,11 +11122,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/invoicing/readModel.test.ts",
+      "path": "packages/platform/test/invoicing/readback.test.ts",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/invoicing/readback.test.ts",
+      "path": "packages/platform/test/invoicing/readModel.test.ts",
       "class": "public-output"
     },
     {
@@ -11806,11 +11802,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/promotions/promotionClaimSweepPort.test.ts",
+      "path": "packages/platform/test/promotions/promotionClaims.test.ts",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/promotions/promotionClaims.test.ts",
+      "path": "packages/platform/test/promotions/promotionClaimSweepPort.test.ts",
       "class": "public-output"
     },
     {
@@ -12116,6 +12112,14 @@
     {
       "path": "public/platform/og/social-preview.png",
       "class": "public-output"
+    },
+    {
+      "path": "README.md",
+      "class": "entrypoint"
+    },
+    {
+      "path": "ROADMAP.md",
+      "class": "platform-documentation"
     },
     {
       "path": "scripts/acquisition-case-schema.test.ts",
@@ -12598,10 +12602,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -12667,6 +12667,10 @@
     },
     {
       "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/qb_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md",
       "class": "public-output"
     },
     {
@@ -13386,6 +13390,10 @@
       "class": "public-output"
     },
     {
+      "path": "SECURITY.md",
+      "class": "policy"
+    },
+    {
       "path": "server/_lib/admin-domain/agentCustomerReadGuard.test.ts",
       "class": "public-output"
     },
@@ -13679,10 +13687,6 @@
     },
     {
       "path": "server/_types/runtime-mjs.d.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/README.md",
       "class": "public-output"
     },
     {
@@ -14250,14 +14254,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/noop_payment/noopPaymentAdapter.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/noop_payment/noopPaymentAdapter.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/noop_payment/noopPaymentExecutionAdapter.test.ts",
       "class": "public-output"
     },
@@ -14762,6 +14758,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/referenceJourneyOrderReadbackAdapter.test.ts",
       "class": "public-output"
     },
@@ -15014,19 +15014,19 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/adminPromotionSubscriptionBand.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/adminPromotionSubscriptionBand.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/adminPromotions.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/adapters/supabase/adminPromotions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/adminPromotionSubscriptionBand.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/adminPromotionSubscriptionBand.ts",
       "class": "public-output"
     },
     {
@@ -16550,14 +16550,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/tpay/tpaySimulatorPaymentReadbackProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpaySimulatorPaymentReadbackProvider.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/vercel/blobStorage.ts",
       "class": "public-output"
     },
@@ -17954,10 +17946,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/accounting/accountingCanonicalProviderLines.test.ts",
       "class": "public-output"
     },
@@ -18102,10 +18090,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/bundle/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/bundle/adminBundleHandler.ts",
       "class": "public-output"
     },
@@ -18123,6 +18107,10 @@
     },
     {
       "path": "server/domains/bundle/bundleCatalogReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/bundle/README.md",
       "class": "public-output"
     },
     {
@@ -18266,10 +18254,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/commerce/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/commerce/acquisitionConsent.test.ts",
       "class": "public-output"
     },
@@ -18342,15 +18326,15 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/adminPromotionsDataPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/adminPromotionSemantic.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/domains/commerce/adminPromotionSemantic.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/adminPromotionsDataPort.ts",
       "class": "public-output"
     },
     {
@@ -19530,6 +19514,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/referenceCheckoutHandler.test.ts",
       "class": "public-output"
     },
@@ -19731,10 +19719,6 @@
     },
     {
       "path": "server/domains/company-identity/vendorCompanyIdentityProvider.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/customers/README.md",
       "class": "public-output"
     },
     {
@@ -19959,6 +19943,10 @@
     },
     {
       "path": "server/domains/customers/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/customers/README.md",
       "class": "public-output"
     },
     {
@@ -20306,10 +20294,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/observability/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/observability/customerDiagnosticHistory.test.ts",
       "class": "public-output"
     },
@@ -20323,6 +20307,10 @@
     },
     {
       "path": "server/domains/observability/customerDiagnosticPruneJob.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/observability/README.md",
       "class": "public-output"
     },
     {
@@ -20778,6 +20766,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/risk/orderPaidRiskPort.test.ts",
       "class": "public-output"
     },
@@ -20839,10 +20831,6 @@
     },
     {
       "path": "server/domains/shipping/staticDeliverySelectionPort.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/subscription/README.md",
       "class": "public-output"
     },
     {
@@ -20931,6 +20919,10 @@
     },
     {
       "path": "server/domains/subscription/propagateSubscriptionCycleChargeFailure.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/subscription/README.md",
       "class": "public-output"
     },
     {
@@ -21138,15 +21130,15 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/communications/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/communications/integrationEventSignature.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/infra/communications/integrationEventSignature.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/infra/communications/README.md",
       "class": "public-output"
     },
     {
@@ -21166,10 +21158,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/email/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/email/emailEgressReference.test.ts",
       "class": "public-output"
     },
@@ -21183,6 +21171,10 @@
     },
     {
       "path": "server/infra/email/emailTransport.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/infra/email/README.md",
       "class": "public-output"
     },
     {
@@ -22294,6 +22286,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/adapters/checkoutInlineRecoveryPay.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/adapters/CheckoutRecoveryNotice.test.tsx",
       "class": "public-output"
     },
@@ -22302,11 +22298,23 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/adapters/configuratorWalletSettlementRouting.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/adapters/FinishInBrowserHatch.test.tsx",
       "class": "public-output"
     },
     {
       "path": "src/checkout/adapters/FinishInBrowserHatch.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/paymentMethodOptions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/paymentMethodOptions.ts",
       "class": "public-output"
     },
     {
@@ -22319,46 +22327,6 @@
     },
     {
       "path": "src/checkout/adapters/SkomponujPakietStripePayPanel.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/WalletExpressElement.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/WalletExpressFeedback.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/WalletExpressRow.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/WalletExpressRow.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/WalletExpressSkeleton.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/WalletInlineError.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/checkoutInlineRecoveryPay.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/configuratorWalletSettlementRouting.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/paymentMethodOptions.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/adapters/paymentMethodOptions.ts",
       "class": "public-output"
     },
     {
@@ -22438,6 +22406,22 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/adapters/WalletExpressElement.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/WalletExpressFeedback.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/WalletExpressRow.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/WalletExpressRow.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/adapters/walletExpressSettlement.test.ts",
       "class": "public-output"
     },
@@ -22446,15 +22430,19 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/adapters/WalletExpressSkeleton.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/adapters/WalletInlineError.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/adapters/walletSettlementNavigation.test.ts",
       "class": "public-output"
     },
     {
       "path": "src/checkout/adapters/walletSettlementNavigation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/composer/PackageCardHeader.tsx",
       "class": "public-output"
     },
     {
@@ -22538,6 +22526,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/composer/PackageCardHeader.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/composer/referenceBuilderConformance.test.ts",
       "class": "public-output"
     },
@@ -22562,18 +22554,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/checkout/entry/SubscribeEntryPage.journey.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/entry/SubscribeEntryPage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/checkout/entry/SubscribeThankYouPage.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/checkout/entry/checkoutTerminalRoute.ts",
       "class": "public-output"
     },
@@ -22586,7 +22566,15 @@
       "class": "public-output"
     },
     {
-      "path": "src/checkout/machine/InvalidCheckoutSession.tsx",
+      "path": "src/checkout/entry/SubscribeEntryPage.journey.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/entry/SubscribeEntryPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/entry/SubscribeThankYouPage.tsx",
       "class": "public-output"
     },
     {
@@ -22702,6 +22690,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/machine/InvalidCheckoutSession.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/machine/paymentVerifyEscalation.test.ts",
       "class": "public-output"
     },
@@ -22814,158 +22806,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/components/Analytics.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/CleanLabelSection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/CookieBanner.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/CookieBanner.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/CookiePreferencesModal.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/CredibilityBar.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/FinalCTASection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/FlavorMegaMenu.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/FulfillmentDeliveryStatus.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/FulfillmentDeliveryStatus.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/HomepageAppTransparencySection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/ImmunitySection.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/ImmunitySection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/LanguageGate.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/LanguageGate.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/LazyAutoplayVideo.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/LazyAutoplayVideo.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/LazyViewportImage.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/LazyViewportImage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/LifestyleBreakSection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/Navigation.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/Navigation.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/NutritionSection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/PageLoader.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/PaymentRepairStatus.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/PaymentRepairStatus.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/PrivateLabelForm.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/ProblemSection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/RouteErrorBoundary.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/RouteErrorBoundary.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/ScrollToTop.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/ScrollToTop.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/SocialLinks.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/SocialLinks.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/SocialProofSection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/SustainabilitySection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/SystemSection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/ThreePillarsSection.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/components/account/CustomerPaymentRecoveryRoute.test.tsx",
       "class": "public-output"
     },
@@ -23010,6 +22850,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/admin/bundleAdminUi.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/bundleAdminUi.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/admin/BundleCompositionEditor.tsx",
       "class": "public-output"
     },
@@ -23050,11 +22898,23 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/admin/communications/AdminCommunicationPermissionsCard.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/admin/ConsumerSurveyCharts.tsx",
       "class": "public-output"
     },
     {
       "path": "src/components/admin/LegacyPromotionsSection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/notificationRecipientFormModel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/notificationRecipientFormModel.ts",
       "class": "public-output"
     },
     {
@@ -23067,6 +22927,34 @@
     },
     {
       "path": "src/components/admin/ProducerSurveyCharts.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/promotion-codes/PromotionCodeBenefitFields.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/promotion-codes/PromotionCodeCenter.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/promotion-codes/PromotionCodeCreateDialog.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/promotion-codes/PromotionCodeEditDialog.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/promotion-codes/PromotionCodePreviewDialog.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/promotion-codes/PromotionCodePreviewResults.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/promotion-codes/promotionCodeUi.ts",
       "class": "public-output"
     },
     {
@@ -23106,55 +22994,15 @@
       "class": "public-output"
     },
     {
-      "path": "src/components/admin/bundleAdminUi.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/bundleAdminUi.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/communications/AdminCommunicationPermissionsCard.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/notificationRecipientFormModel.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/notificationRecipientFormModel.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/promotion-codes/PromotionCodeBenefitFields.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/promotion-codes/PromotionCodeCenter.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/promotion-codes/PromotionCodeCreateDialog.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/promotion-codes/PromotionCodeEditDialog.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/promotion-codes/PromotionCodePreviewDialog.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/promotion-codes/PromotionCodePreviewResults.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/components/admin/promotion-codes/promotionCodeUi.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/components/admin/useAdminShellData.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/Analytics.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/brand/brandComponents.test.tsx",
       "class": "public-output"
     },
     {
@@ -23170,10 +23018,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/components/brand/brandComponents.test.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/components/breed/BreedClosingCta.tsx",
       "class": "public-output"
     },
@@ -23186,11 +23030,39 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/breed/breedTints.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/breed/NeedIconGlyph.tsx",
       "class": "public-output"
     },
     {
-      "path": "src/components/breed/breedTints.ts",
+      "path": "src/components/CleanLabelSection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/CookieBanner.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/CookieBanner.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/CookiePreferencesModal.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/CredibilityBar.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/FinalCTASection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/FlavorMegaMenu.tsx",
       "class": "public-output"
     },
     {
@@ -23238,6 +23110,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/forms/fields/fields.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/forms/fields/NameField.tsx",
       "class": "public-output"
     },
@@ -23270,7 +23146,23 @@
       "class": "public-output"
     },
     {
-      "path": "src/components/forms/fields/fields.test.tsx",
+      "path": "src/components/FulfillmentDeliveryStatus.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/FulfillmentDeliveryStatus.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/HomepageAppTransparencySection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/ImmunitySection.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/ImmunitySection.tsx",
       "class": "public-output"
     },
     {
@@ -23314,6 +23206,42 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/LanguageGate.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/LanguageGate.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/LazyAutoplayVideo.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/LazyAutoplayVideo.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/LazyViewportImage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/LazyViewportImage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/LifestyleBreakSection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/Navigation.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/Navigation.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/navigation/LanguageFallbackLinks.tsx",
       "class": "public-output"
     },
@@ -23334,7 +23262,31 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/NutritionSection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/PageLoader.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/PaymentRepairStatus.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/PaymentRepairStatus.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/private-label/privateLabelFormModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/PrivateLabelForm.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/ProblemSection.tsx",
       "class": "public-output"
     },
     {
@@ -23406,7 +23358,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/components/product/TransitionSection.tsx",
+      "path": "src/components/product/tabs/ingredientIcons.ts",
       "class": "public-output"
     },
     {
@@ -23422,7 +23374,15 @@
       "class": "public-output"
     },
     {
-      "path": "src/components/product/tabs/ingredientIcons.ts",
+      "path": "src/components/product/TransitionSection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/RouteErrorBoundary.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/RouteErrorBoundary.tsx",
       "class": "public-output"
     },
     {
@@ -23466,6 +23426,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/ScrollToTop.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/ScrollToTop.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/seoUtils.ts",
       "class": "public-output"
     },
@@ -23478,6 +23446,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/shipping/deliverySelectionCheckoutCharacterization.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/shipping/PickupPointPicker.test.tsx",
       "class": "public-output"
     },
@@ -23486,15 +23458,35 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/shipping/shippingConsumer.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/shipping/ShippingFieldsCard.tsx",
       "class": "public-output"
     },
     {
-      "path": "src/components/shipping/deliverySelectionCheckoutCharacterization.test.tsx",
+      "path": "src/components/SocialLinks.test.tsx",
       "class": "public-output"
     },
     {
-      "path": "src/components/shipping/shippingConsumer.test.tsx",
+      "path": "src/components/SocialLinks.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/SocialProofSection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/SustainabilitySection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/SystemSection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/ThreePillarsSection.tsx",
       "class": "public-output"
     },
     {
@@ -23718,10 +23710,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/accounting/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/accounting/accountingClient.test.ts",
       "class": "public-output"
     },
@@ -23782,15 +23770,15 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/accounting/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/accounting/referenceInvoicingClient.ts",
       "class": "public-output"
     },
     {
       "path": "src/domains/accounting/stripeAccountingE2EProof.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/address-canon/README.md",
       "class": "public-output"
     },
     {
@@ -23814,7 +23802,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/auth/README.md",
+      "path": "src/domains/address-canon/README.md",
       "class": "public-output"
     },
     {
@@ -23838,11 +23826,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/auth/types.ts",
+      "path": "src/domains/auth/README.md",
       "class": "public-output"
     },
     {
-      "path": "src/domains/bundle/README.md",
+      "path": "src/domains/auth/types.ts",
       "class": "public-output"
     },
     {
@@ -23890,6 +23878,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/bundle/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/bundle/sellableBundleClient.test.ts",
       "class": "public-output"
     },
@@ -23899,10 +23891,6 @@
     },
     {
       "path": "src/domains/bundle/sellableBundleContracts.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/catalog/README.md",
       "class": "public-output"
     },
     {
@@ -23998,6 +23986,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/catalog/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/catalog/referenceCatalogUi.ts",
       "class": "public-output"
     },
@@ -24031,10 +24023,6 @@
     },
     {
       "path": "src/domains/catalog/types.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/channels/README.md",
       "class": "public-output"
     },
     {
@@ -24106,7 +24094,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/checkout/README.md",
+      "path": "src/domains/channels/README.md",
       "class": "public-output"
     },
     {
@@ -24118,7 +24106,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/clients/README.md",
+      "path": "src/domains/checkout/README.md",
       "class": "public-output"
     },
     {
@@ -24162,11 +24150,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/clients/searchContracts.ts",
+      "path": "src/domains/clients/README.md",
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/README.md",
+      "path": "src/domains/clients/searchContracts.ts",
       "class": "public-output"
     },
     {
@@ -24918,6 +24906,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/commerce/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/commerce/recommendationConstants.ts",
       "class": "public-output"
     },
@@ -25055,10 +25047,6 @@
     },
     {
       "path": "src/domains/commerce/visitorId.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/communications/README.md",
       "class": "public-output"
     },
     {
@@ -25270,6 +25258,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/communications/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/communications/shipmentNotifications.test.ts",
       "class": "public-output"
     },
@@ -25306,10 +25298,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/company-identity/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/company-identity/companyIdentityClient.ts",
       "class": "public-output"
     },
@@ -25322,7 +25310,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/customers/README.md",
+      "path": "src/domains/company-identity/README.md",
       "class": "public-output"
     },
     {
@@ -25358,15 +25346,15 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/customers/customerAddressSelfServiceContracts.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/customers/customerAddressesClient.test.ts",
       "class": "public-output"
     },
     {
       "path": "src/domains/customers/customerAddressesClient.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/customers/customerAddressSelfServiceContracts.ts",
       "class": "public-output"
     },
     {
@@ -25438,6 +25426,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/customers/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/customers/selfServiceContracts.test.ts",
       "class": "public-output"
     },
@@ -25467,10 +25459,6 @@
     },
     {
       "path": "src/domains/customers/useAuthenticatedAccountLifecycle.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/fulfillment/README.md",
       "class": "public-output"
     },
     {
@@ -25518,19 +25506,19 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/fulfillment/commerceFulfillmentReadModel.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/fulfillment/commerceFulfillmentReadModel.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/fulfillment/commerceFulfillmentReadiness.test.ts",
       "class": "public-output"
     },
     {
       "path": "src/domains/fulfillment/commerceFulfillmentReadiness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/fulfillment/commerceFulfillmentReadModel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/fulfillment/commerceFulfillmentReadModel.ts",
       "class": "public-output"
     },
     {
@@ -25590,6 +25578,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/fulfillment/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/fulfillment/referenceFulfillmentClient.ts",
       "class": "public-output"
     },
@@ -25611,10 +25603,6 @@
     },
     {
       "path": "src/domains/fulfillment/visibleQueryFreshness.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/inventory/README.md",
       "class": "public-output"
     },
     {
@@ -25650,7 +25638,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/marketing/README.md",
+      "path": "src/domains/inventory/README.md",
       "class": "public-output"
     },
     {
@@ -25659,10 +25647,6 @@
     },
     {
       "path": "src/domains/marketing/marketingSchemaEquivalence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/marketing/prelaunch/README.md",
       "class": "public-output"
     },
     {
@@ -25686,7 +25670,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/marketing/research/README.md",
+      "path": "src/domains/marketing/prelaunch/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/marketing/README.md",
       "class": "public-output"
     },
     {
@@ -25718,7 +25706,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/observability/README.md",
+      "path": "src/domains/marketing/research/README.md",
       "class": "public-output"
     },
     {
@@ -25730,7 +25718,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/partners/README.md",
+      "path": "src/domains/observability/README.md",
       "class": "public-output"
     },
     {
@@ -25762,15 +25750,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/payment/README.md",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/PaymentStatusPoller.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/payment/components/PaymentStatusPoller.tsx",
+      "path": "src/domains/partners/README.md",
       "class": "public-output"
     },
     {
@@ -25779,6 +25759,14 @@
     },
     {
       "path": "src/domains/payment/components/paymentFormErrorPresentation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/payment/components/PaymentStatusPoller.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/payment/components/PaymentStatusPoller.tsx",
       "class": "public-output"
     },
     {
@@ -25846,6 +25834,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/payment/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/payment/recoveryCaptureFlows.test.ts",
       "class": "public-output"
     },
@@ -25882,10 +25874,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/platform-runtime/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/platform-runtime/contracts.ts",
       "class": "public-output"
     },
@@ -25894,7 +25882,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/platform/README.md",
+      "path": "src/domains/platform-runtime/README.md",
       "class": "public-output"
     },
     {
@@ -26106,6 +26094,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/platform/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/platform/reliabilitySignals.ts",
       "class": "public-output"
     },
@@ -26118,10 +26110,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/pricing/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/pricing/commercePriceAuthority.ts",
       "class": "public-output"
     },
@@ -26131,6 +26119,10 @@
     },
     {
       "path": "src/domains/pricing/pricing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/pricing/README.md",
       "class": "public-output"
     },
     {
@@ -26150,10 +26142,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/promo/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/promo/ports.ts",
       "class": "public-output"
     },
@@ -26170,11 +26158,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/promo/types.ts",
+      "path": "src/domains/promo/README.md",
       "class": "public-output"
     },
     {
-      "path": "src/domains/risk/README.md",
+      "path": "src/domains/promo/types.ts",
       "class": "public-output"
     },
     {
@@ -26202,6 +26190,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/risk/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/risk/riskClient.test.ts",
       "class": "public-output"
     },
@@ -26211,10 +26203,6 @@
     },
     {
       "path": "src/domains/risk/types.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/shipping/README.md",
       "class": "public-output"
     },
     {
@@ -26286,6 +26274,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/shipping/README.md",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/shipping/shipping.test.ts",
       "class": "public-output"
     },
@@ -26307,10 +26299,6 @@
     },
     {
       "path": "src/domains/shipping/usePickupPointSearch.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/subscription/README.md",
       "class": "public-output"
     },
     {
@@ -26410,11 +26398,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/subscription/emails/subscriptionPauseReminder.ts",
+      "path": "src/domains/subscription/emails/subscriptionPaused.ts",
       "class": "public-output"
     },
     {
-      "path": "src/domains/subscription/emails/subscriptionPaused.ts",
+      "path": "src/domains/subscription/emails/subscriptionPauseReminder.ts",
       "class": "public-output"
     },
     {
@@ -26495,6 +26483,10 @@
     },
     {
       "path": "src/domains/subscription/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/subscription/README.md",
       "class": "public-output"
     },
     {
@@ -26590,10 +26582,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/support/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/support/contactHealth.test.ts",
       "class": "public-output"
     },
@@ -26635,6 +26623,10 @@
     },
     {
       "path": "src/domains/support/customerSupportCommandContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/support/README.md",
       "class": "public-output"
     },
     {
@@ -27762,46 +27754,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/ReferenceBuilderPage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferenceCatalogPage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferenceCatalogUi.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferenceFulfillmentPage.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferenceFulfillmentPage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferencePaymentRepairPage.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferencePaymentRepairPage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferenceProductPage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferenceStorePage.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/ReferenceStorePage.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/pages/account/AccountWorkspaceTypes.ts",
       "class": "public-output"
     },
@@ -27810,31 +27762,15 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/account/CheckoutRecoveryMethodPicker.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/DashboardPanelUtils.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/DashboardPanelUtils.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/LoginPage.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/RecoveryCaseFacts.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/pages/account/cardSetupSupport.ts",
       "class": "public-output"
     },
     {
       "path": "src/pages/account/checkoutRecoveryEntry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/CheckoutRecoveryMethodPicker.tsx",
       "class": "public-output"
     },
     {
@@ -27851,6 +27787,14 @@
     },
     {
       "path": "src/pages/account/checkoutRecoveryUiState.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/DashboardPanelUtils.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/DashboardPanelUtils.ts",
       "class": "public-output"
     },
     {
@@ -27878,7 +27822,15 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/account/LoginPage.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/account/recoveryBffError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/RecoveryCaseFacts.tsx",
       "class": "public-output"
     },
     {
@@ -27915,10 +27867,6 @@
     },
     {
       "path": "src/pages/account/v2/DeliveryHolidayNote.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/WorkspaceParts.tsx",
       "class": "public-output"
     },
     {
@@ -28022,7 +27970,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/account/v2/orders/OrderTrackingStepper.tsx",
+      "path": "src/pages/account/v2/orders/deliveryMethodLabel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/orders/deliveryMethodLabel.ts",
       "class": "public-output"
     },
     {
@@ -28034,15 +27986,23 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/account/v2/orders/deliveryMethodLabel.test.ts",
+      "path": "src/pages/account/v2/orders/OrderTrackingStepper.tsx",
       "class": "public-output"
     },
     {
-      "path": "src/pages/account/v2/orders/deliveryMethodLabel.ts",
+      "path": "src/pages/account/v2/sections/accountAddressBillingFormSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/sections/accountFormSchemaUtils.ts",
       "class": "public-output"
     },
     {
       "path": "src/pages/account/v2/sections/CommunicationCard.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/sections/formFields.tsx",
       "class": "public-output"
     },
     {
@@ -28055,18 +28015,6 @@
     },
     {
       "path": "src/pages/account/v2/sections/PaymentsSection.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/sections/accountAddressBillingFormSchemas.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/sections/accountFormSchemaUtils.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/sections/formFields.tsx",
       "class": "public-output"
     },
     {
@@ -28114,26 +28062,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/account/v2/subscriptions/PackageCard.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/subscriptions/PlanFacts.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/subscriptions/SkipCycleDialog.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/subscriptions/SubscriptionHeaderSchedule.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/account/v2/subscriptions/SubscriptionScreen.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/pages/account/v2/subscriptions/modals/CancelModal.tsx",
       "class": "public-output"
     },
@@ -28166,11 +28094,35 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/account/v2/subscriptions/PackageCard.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/subscriptions/PlanFacts.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/subscriptions/SkipCycleDialog.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/subscriptions/SubscriptionHeaderSchedule.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/subscriptions/SubscriptionScreen.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/account/v2/ui/AccountStates.tsx",
       "class": "public-output"
     },
     {
       "path": "src/pages/account/v2/ui/atoms.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/WorkspaceParts.tsx",
       "class": "public-output"
     },
     {
@@ -28183,6 +28135,14 @@
     },
     {
       "path": "src/pages/admin/AuthCallbackPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/b2b/b2bInquiryStatus.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/b2b/b2bInquiryStatus.ts",
       "class": "public-output"
     },
     {
@@ -28230,7 +28190,87 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/admin/email-canon-preview/commerceRenderers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-canon-preview/defaultContentRenderers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-canon-preview/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-canon-preview/shared.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-canon-preview/subscriptionRenderers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/emailLabels.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/EmailSendDetailPanel.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/EmailSendDetailPanel.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/EmailSendsStats.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/EmailSendsTable.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/NativeEvidencePanel.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/NativeEvidencePanel.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/email-sends/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/emailCanonPreview.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/admin/EmailSendsPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/emailTemplateCanonView.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/emailTemplateCanonView.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/emailTemplatePreview.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/emailTemplatePreview.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/fulfillmentActionPresentation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/fulfillmentActionPresentation.ts",
       "class": "public-output"
     },
     {
@@ -28259,6 +28299,14 @@
     },
     {
       "path": "src/pages/admin/OrderDetailActionsSection.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/orderDetailActionUtils.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/orderDetailActionUtils.ts",
       "class": "public-output"
     },
     {
@@ -28354,6 +28402,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/admin/ordersPageFilterOptions.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/admin/OrdersPageFilters.tsx",
       "class": "public-output"
     },
@@ -28363,6 +28415,14 @@
     },
     {
       "path": "src/pages/admin/OrdersPageTable.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/ordersPageUtils.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/ordersPageUtils.ts",
       "class": "public-output"
     },
     {
@@ -28394,6 +28454,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/admin/settingsInviteValidation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/settingsInviteValidation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/admin/SettingsPage.test.tsx",
       "class": "public-output"
     },
@@ -28422,122 +28490,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/pages/admin/b2b/b2bInquiryStatus.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/b2b/b2bInquiryStatus.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-canon-preview/commerceRenderers.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-canon-preview/defaultContentRenderers.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-canon-preview/index.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-canon-preview/shared.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-canon-preview/subscriptionRenderers.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-sends/EmailSendDetailPanel.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-sends/EmailSendDetailPanel.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-sends/EmailSendsStats.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-sends/EmailSendsTable.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-sends/NativeEvidencePanel.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-sends/NativeEvidencePanel.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-sends/emailLabels.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/email-sends/types.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/emailCanonPreview.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/emailTemplateCanonView.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/emailTemplateCanonView.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/emailTemplatePreview.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/emailTemplatePreview.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/fulfillmentActionPresentation.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/fulfillmentActionPresentation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/orderDetailActionUtils.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/orderDetailActionUtils.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/ordersPageFilterOptions.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/ordersPageUtils.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/ordersPageUtils.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/settingsInviteValidation.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/pages/admin/settingsInviteValidation.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/pages/admin/useOrderActionDrafts.test.tsx",
       "class": "public-output"
     },
@@ -28551,6 +28503,46 @@
     },
     {
       "path": "src/pages/kiosk/producerContactValidation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceBuilderPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceCatalogPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceCatalogUi.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceFulfillmentPage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceFulfillmentPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferencePaymentRepairPage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferencePaymentRepairPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceProductPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceStorePage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceStorePage.tsx",
       "class": "public-output"
     },
     {
@@ -28582,30 +28574,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/public-reference/App.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/public-reference/App.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/public-reference/IdentityAccount.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/public-reference/IdentityAdmin.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/public-reference/SubscriptionAccount.test.tsx",
-      "class": "public-output"
-    },
-    {
-      "path": "src/public-reference/SubscriptionAccount.tsx",
-      "class": "public-output"
-    },
-    {
       "path": "src/public-reference/accountSupportAccount.tsx",
       "class": "public-output"
     },
@@ -28631,6 +28599,14 @@
     },
     {
       "path": "src/public-reference/accountSupportRoutes.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/App.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/App.tsx",
       "class": "public-output"
     },
     {
@@ -28675,6 +28651,14 @@
     },
     {
       "path": "src/public-reference/identity-main.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/IdentityAccount.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/IdentityAdmin.tsx",
       "class": "public-output"
     },
     {
@@ -28723,6 +28707,14 @@
     },
     {
       "path": "src/public-reference/subscription.css",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/SubscriptionAccount.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/SubscriptionAccount.tsx",
       "class": "public-output"
     },
     {
@@ -30334,6 +30326,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/customer_browser_identity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/customerAccountConsents.test.ts",
       "class": "public-output"
     },
@@ -30375,10 +30371,6 @@
     },
     {
       "path": "tests/postgres/customerSavedAddresses.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/postgres/customer_browser_identity.test.ts",
       "class": "public-output"
     },
     {

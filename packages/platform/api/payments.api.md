@@ -404,10 +404,16 @@ export {};
 export { executePreparedAttemptMechanism } from "./preparedAttempt.js";
 export { paymentSourceFingerprint, paymentPayloadFingerprint, paymentTruthFingerprint, paymentReconciliationFingerprint, assertPaymentTruthEvent } from "./paymentTruth.js";
 export { createVerifiedPaymentIngress } from "./verifiedIngress.js";
-export { readMethodLifecycleEvent } from "./paymentMethodLifecycle.js";
+export { METHOD_SCHEME_SNAPSHOT_KEY, METHOD_LAST_DIGITS_SNAPSHOT_KEY, METHOD_EXPIRES_AT_SNAPSHOT_KEY, methodFactSnapshotKeys, expiryForMethodRefWrite, readMethodLifecycleEvent, } from "./paymentMethodLifecycle.js";
+export type { ProviderWebhookWithMethodLifecycle } from "./paymentMethodLifecycle.js";
+export { evidenceToken, evidenceRecord, serializeFailureEvidence, failureEvidencePayload, } from "./paymentFailureEvidence.js";
+export type { FailureObservationSource, FailureObservationDisposition, PaymentFailureEvidence, } from "./paymentFailureEvidence.js";
+export { silenceIsOverdue } from "./paymentAttemptSilenceWindow.js";
+export { tryReopenPreparedAbsence } from "./paymentProviderReconciliationAbsenceReopen.js";
+export { CAPTURE_REVIEW_RESULT_KIND, PROTECTED_FAILURE_RESULT_KIND, evidencePayload, terminalAmountMismatch, applyResultKey, observedEvidenceKey, preparedAttemptEvidenceKey, absenceReopenKey, absenceProbeEvidenceKey, bucket, clamp, safeMessage, classificationOf, } from "./paymentProviderReconciliationEvidence.js";
 export { handoffExplicitPaymentRefusal } from "./paymentWebhookPostProcessing.js";
-export { runPaymentProviderReconciliationWorker } from "./paymentProviderReconciliationWorker.js";
-export { verifyPaymentAttemptNow } from "./paymentVerifyNowService.js";
+export { DEFAULT_STALE_AFTER_SECONDS, runPaymentProviderReconciliationWorker, } from "./paymentProviderReconciliationWorker.js";
+export { verifyPaymentAttemptNow, hasCommittedCaptureReview, sameCanonicalAttempt, toClaimedAttemptShape, } from "./paymentVerifyNowService.js";
 export { runExecutionConformance, runDurableEventConformance } from "./eventConformanceRunner.js";
 export { runPaymentAdapterConformance } from "./adapterConformance.js";
 export { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
@@ -422,7 +428,8 @@ export { PAYMENT_MIGRATIONS } from "./sql.js";
 export { paymentSchemaDescriptor } from "./schemaCapabilities.js";
 export { createCheckoutActivePaymentActionResolver } from "./checkoutActivePaymentActionResolver.js";
 export { createCheckoutRecoveryPaymentResolver } from "./checkoutRecoveryPaymentResolver.js";
-export { createCommercePaymentVerifyHandler } from "./paymentVerifyNowHandler.js";
+export { paymentVerifyRequestSchema, createCommercePaymentVerifyHandler, } from "./paymentVerifyNowHandler.js";
+export type { PaymentVerifyRequest } from "./paymentVerifyNowHandler.js";
 export { createPaymentServices } from "./bindings.js";
 export { createPostgresSandboxPaymentSimulator } from "./postgresSandboxPaymentSimulator.js";
 export { createPostgresSandboxExpiredCheckoutSafety } from './expiredCheckoutSafety.js';
@@ -436,6 +443,50 @@ export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscr
 export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
 export { createPostgresProviderPaymentRail } from "./postgresProviderRail.js";
 export type { PostgresProviderPaymentRail, PostgresProviderAttemptSnapshot } from "./postgresProviderRail.js";
+```
+## dist/payments/paymentAttemptSilenceWindow.d.ts
+
+```ts
+import type { ClaimedPaymentAttempt, SilenceWindowLookup } from "./contracts/reconciliation.js";
+/**
+ * Whether this rail has answered non-terminally for longer than it declares
+ * normal. The window comes from the rail's published capability - never a
+ * provider identity, never a global constant, because a pushed-event rail and a
+ * polled rail have genuinely different normal silences and a self-hoster
+ * declares their own. Absent or unusable means never overdue: stay quiet rather
+ * than accuse a healthy rail.
+ */
+export declare function silenceIsOverdue(capabilities: SilenceWindowLookup | undefined, attempt: ClaimedPaymentAttempt, now: string): boolean;
+```
+## dist/payments/paymentFailureEvidence.d.ts
+
+```ts
+import type { PaymentRecoveryMethod, PaymentRecoveryOperation } from "@openlup/core/payment";
+export type FailureObservationSource = "execution" | "webhook" | "readback";
+export type FailureObservationDisposition = "present" | "absent" | "unreadable" | "read_failed" | "read_timeout";
+/** Protected provider facts, not a customer message or a retry-policy input. */
+export interface PaymentFailureEvidence {
+    version: 1;
+    source: FailureObservationSource;
+    disposition: FailureObservationDisposition;
+    refusalVerified: boolean;
+    providerPaymentId: string | null;
+    providerChargeId: string | null;
+    code: string | null;
+    declineCode: string | null;
+    adviceCode: string | null;
+    adviceOrigin: "provider" | "inferred" | "unknown";
+    operation: PaymentRecoveryOperation | null;
+    method: PaymentRecoveryMethod | null;
+    methodSource: "provider" | "execution_contract" | "unknown";
+}
+/** Bounded machine tokens only. Free-form response fields never cross this seam. */
+export declare function evidenceToken(value: unknown): string | null;
+export declare function evidenceRecord(value: unknown): Record<string, unknown>;
+/** Explicit construction prevents accidental payload expansion by object spreading. */
+export declare function serializeFailureEvidence(input: PaymentFailureEvidence): PaymentFailureEvidence;
+/** Persist beside legacy fields; never merge the diagnostic codes into them. */
+export declare function failureEvidencePayload(evidence: PaymentFailureEvidence | null | undefined): Record<string, unknown>;
 ```
 ## dist/payments/paymentMethodLifecycle.d.ts
 
@@ -451,6 +502,59 @@ export declare const METHOD_EXPIRES_AT_SNAPSHOT_KEY = "methodExpiresAt";
 export declare function methodFactSnapshotKeys(facts: PaymentMethodReplacementFacts | null | undefined): Record<string, unknown>;
 export declare function expiryForMethodRefWrite(consentSnapshot: Record<string, unknown> | undefined, occurredAt: string, active: boolean): string | null;
 export declare function readMethodLifecycleEvent(event: NormalizedProviderPaymentWebhook): PaymentMethodLifecycleEvent | null;
+```
+## dist/payments/paymentProviderReconciliationAbsenceReopen.d.ts
+
+```ts
+import type { ClaimedPaymentAttempt, PaymentProviderReconciliationWorkerInput } from "./contracts/reconciliation.js";
+/** Reopen only after genuine provider-side absence proof. A missing local
+ * acknowledgement cannot exclude a charge before reference persistence failed;
+ * minting a fresh idempotency key in that crash window could double-charge.
+ * Providers without an exact absence probe require operator review.
+ */
+export declare function tryReopenPreparedAbsence(input: PaymentProviderReconciliationWorkerInput, attempt: ClaimedPaymentAttempt, now: string): Promise<boolean>;
+```
+## dist/payments/paymentProviderReconciliationEvidence.d.ts
+
+```ts
+import type { ClaimedPaymentAttempt, ProviderReconciliationStatus, ProviderReconciliationStatusKind } from "./contracts/reconciliation.js";
+export declare const CAPTURE_REVIEW_RESULT_KIND = "ignored_success_requiring_review";
+export declare const PROTECTED_FAILURE_RESULT_KIND = "ignored_failure_protected_state";
+export declare function evidencePayload(attempt: ClaimedPaymentAttempt, providerStatus: ProviderReconciliationStatus, extra: Record<string, unknown>): Record<string, unknown>;
+export declare function terminalAmountMismatch(attempt: ClaimedPaymentAttempt, status: ProviderReconciliationStatus): string | null;
+export declare function applyResultKey(attempt: ClaimedPaymentAttempt, status: "succeeded" | "failed"): string;
+export declare function observedEvidenceKey(attempt: ClaimedPaymentAttempt, status: ProviderReconciliationStatusKind, correction: "observed" | "failed", checkedAt: string): string;
+export declare function preparedAttemptEvidenceKey(attempt: ClaimedPaymentAttempt, checkedAt: string): string;
+export declare function absenceReopenKey(attempt: ClaimedPaymentAttempt): string;
+export declare function absenceProbeEvidenceKey(attempt: ClaimedPaymentAttempt, checkedAt: string): string;
+export declare function bucket(value: string): string;
+export declare function clamp(value: number, min: number, max: number): number;
+export declare function safeMessage(error: unknown): string;
+/**
+ * The class the reading adapter already decided, read back off the normalized
+ * status so the terminal write can carry it.
+ *
+ * READ, never re-derived. Both shipped adapters classify what they read through
+ * the shared `classifyDecline` seam and put the verdict in `rawPayload`; deriving
+ * a second one here would be a second classifier, free to disagree with the one
+ * whose reasoning the evidence payload records. It is also why this function is
+ * provider-agnostic: it never learns which rail refused, only what that rail
+ * concluded.
+ *
+ * Returns a spreadable fragment rather than a nullable value, so an unclassified
+ * refusal leaves the key genuinely ABSENT from the composed call instead of
+ * present-and-null. Absence is what the port's contract defines as "behave
+ * exactly as before the field existed", and it is what the two non-classifying
+ * consumers of that contract are pinned to.
+ *
+ * A success carries no class by construction: there is no refusal to classify.
+ */
+export declare function classificationOf(resultStatus: "succeeded" | "failed", providerStatus: ProviderReconciliationStatus): {
+    failureClassification?: {
+        failureClass: string;
+        decidedBy: string;
+    };
+};
 ```
 ## dist/payments/paymentProviderReconciliationWorker.d.ts
 

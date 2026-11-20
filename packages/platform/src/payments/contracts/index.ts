@@ -32,7 +32,23 @@ export type {
   PaymentReadbackPort,
   PaymentAbsencePort,
 } from "./evidence.js";
-export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidence } from "./conformance.js";
+export type {
+  PaymentAdapterConformanceSubject,
+  PaymentAdapterConformanceEvidence,
+  ExecutionCapability,
+  ExecutionSubject,
+  ExecutionProviderIdentity,
+  ExecutionEvidence,
+  DurableEventCounts,
+  DurableEventAggregate,
+  DurableEventFixtureCardinality,
+  DurableEventWriteCardinality,
+  DurableEventCardinalityExpectations,
+  DurableEventSnapshot,
+  EventReceipt,
+  DurableEventCapability,
+  DurableEventEvidence,
+} from "./conformance.js";
 
 export type {
   PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent,
