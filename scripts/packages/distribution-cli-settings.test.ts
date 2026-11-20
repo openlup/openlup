@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
-  reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 import { proveNeutralStarterConsumer } from "./exact-set-qualification.mjs";
 
@@ -75,6 +75,62 @@ function applyDocumentedHostEdit(legacy: string, target: string) {
 it.each([false, true])("upgrades the command and creates or preserves its owned host, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const guide = "# App guide\n\nLocal workflow.\n";
+  const section = "\n## Change a business setting\n\nRun `npm --silent run settings -- list`.\n";
+  write("AGENTS.md", guide);
+  candidate("AGENTS.md", guide + section);
+  candidate("ownership.json", { managed: ["package.json", "ownership.json"], owned: ["AGENTS.md", starterSettingsHost], generated: [] });
+  const pkg = { dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
+  candidate("package.json", pkg);
+  const file = "file: { configuration: 'sample', entries: { 'offer.freeShippingFromMinor': { value: 12000, location: { file: 'owned/store.config.ts', symbol: 'offer.freeShippingFromMinor' }, descriptor: { domain: 'shipping', goal: 'Free shipping', effect: { appliesTo: 'Estimates', impact: 'money', frozenOn: [] } } } } }";
+  candidate(starterSettingsHost, "export function createSettingsBindings() { return { " + file + " }; }");
+  const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
+  migrateStarterOwned(app, target, from, to);
+  migrateStarterOwned(app, target, from, to);
+  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide + section);
+  expect(Object.hasOwn(to.files, "AGENTS.md")).toBe(false);
+  write("from.json", from); write("to.json", to);
+  const apply = (status = 0) => {
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
+      "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  const local = "export function createSettingsBindings() { return { stockSourceKey: 'local' }; }";
+  const hostFile = join(app, starterSettingsHost);
+  if (customized) {
+    write(starterSettingsHost, local);
+    expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: starterSettingsHost }] });
+    expect(starterUpgradeSnapshot(app, from.version)).toEqual(from);
+    expect(readFileSync(hostFile, "utf8")).toBe(local);
+    includeSettingsHost(app, target, to);
+    write("to.json", to);
+  }
+  expect(apply().applied.sort()).toEqual(customized ? ["ownership.json", "package.json"] : [starterSettingsHost, "ownership.json", "package.json"].sort());
+  expect(apply().applied).toEqual([]);
+  expect(readFileSync(hostFile, "utf8")).toBe(customized ? local : to.files[starterSettingsHost]);
+  expect(() => assertCompleteStarter(app, to)).not.toThrow();
+
+  const check = (status: number) => {
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
+      "settings", "check", "--app", "./" + starterSettingsHost, "--json"], { cwd: app, encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  if (customized) {
+    expect(check(2)).toMatchObject({ state: "unknown", appValidation: { hint: expect.stringContaining("Add file: { configuration, entries }") } });
+    const reconciled = local.replace("stockSourceKey: 'local'", "stockSourceKey: 'local', " + file);
+    write(starterSettingsHost, reconciled);
+    expect(apply().applied).toEqual([]);
+    expect(readFileSync(hostFile, "utf8")).toBe(reconciled);
+  }
+  expect(check(0)).toMatchObject({ state: "checked", configuration: "sample", rows: expect.arrayContaining([
+    expect.objectContaining({ key: "offer.freeShippingFromMinor", file: expect.objectContaining({ value: 12000 }) }),
+  ]) });
+});
+
+it("preserves and reconciles an existing value-only host after a manifest refusal", () => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const guide = "# App guide\n\nLocal workflow.\n";
   const section = "\n## Change a business setting\n\nRun the settings script.\n";
   const pkg = { type: "module", dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
   const owned = ["AGENTS.md", starterSettingsHost];
@@ -84,21 +140,20 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   const hostFile = join(app, starterSettingsHost);
   write("AGENTS.md", guide);
   candidate("AGENTS.md", guide + section);
-  candidate("ownership.json", ownership);
+  candidate("ownership.json", { ...ownership, generated: ["package-lock.json"] });
   candidate("package.json", { ...pkg, dependencies: { ...pkg.dependencies, zod: "4.6.6" } });
   candidate(starterSettingsHost, targetHost);
-  if (customized) {
-    write("ownership.json", ownership);
-    write("package.json", pkg);
-    write(starterSettingsHost, legacy);
-  }
+  write("ownership.json", ownership);
+  write("package.json", pkg);
+  write(starterSettingsHost, legacy);
 
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
   migrateStarterOwned(app, target, from, to);
   migrateStarterOwned(app, target, from, to);
   expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide + section);
   expect(Object.hasOwn(to.files, "AGENTS.md")).toBe(false);
-  expect(Object.hasOwn(to.files, starterSettingsHost)).toBe(!customized);
+  expect(Object.hasOwn(to.files, starterSettingsHost)).toBe(false);
+  expect(to.files["ownership.json"]).not.toBe(from.files["ownership.json"]);
   write("from.json", from); write("to.json", to);
   const apply = (status = 0) => {
     const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
@@ -108,19 +163,18 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   };
 
   const localCommand = 'console.log("local starter command");';
-  if (customized) {
-    write("package.json", { ...pkg, scripts: { ...pkg.scripts, local: `node -e '${localCommand}'` } });
-    const before = starterUpgradeSnapshot(app, from.version);
-    expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: "package.json" }] });
-    expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
-    expect(readFileSync(hostFile, "utf8")).toBe(legacy);
-    expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide + section);
-    write("owned/local.mjs", localCommand);
-    write("package.json", from.files["package.json"]!);
-  }
+  write("package.json", { ...pkg, scripts: { ...pkg.scripts, local: `node -e '${localCommand}'` } });
+  const before = starterUpgradeSnapshot(app, from.version);
+  expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: "package.json" }] });
+  expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
+  expect(readFileSync(join(app, "ownership.json"), "utf8")).toBe(from.files["ownership.json"]);
+  expect(readFileSync(hostFile, "utf8")).toBe(legacy);
+  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide + section);
+  write("owned/local.mjs", localCommand);
+  write("package.json", from.files["package.json"]!);
 
-  expect(apply().applied.sort()).toEqual(customized ? ["package.json"] : [starterSettingsHost, "ownership.json", "package.json"].sort());
-  expect(readFileSync(hostFile, "utf8")).toBe(customized ? legacy : targetHost);
+  expect(apply().applied.sort()).toEqual(["ownership.json", "package.json"]);
+  expect(readFileSync(hostFile, "utf8")).toBe(legacy);
   expect(JSON.parse(readFileSync(join(app, "package.json"), "utf8")).dependencies.zod).toBe("4.6.6");
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
 
@@ -131,38 +185,34 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   for (const path of ["@openlup/platform", ".bin/openlup", "zod"]) {
     symlinkSync(resolve("node_modules", path), join(app, "node_modules", path));
   }
-  if (customized) {
-    const search = discoveryCase("list", "--goal", "free shipping", "--json");
-    const { entries, ...listDocument } = JSON.parse(search.stdout);
-    const { rows, ...checkDocument } = JSON.parse(defaultCheck.stdout);
-    const remaining = (row: { key: string }) => !starterKeys.includes(row.key);
-    const warning = `Settings app: value reported without a descriptor for ${starterKeys.toSorted().map(key => JSON.stringify(key)).join(", ")}. Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n`;
-    const verifyLegacy = () => {
-      expect(readFileSync(hostFile, "utf8")).toBe(legacy);
-      expect(runStarterSettings(app, search.args)).toEqual({
-        exit: search.exit, stdout: JSON.stringify({ ...listDocument, entries: entries.filter(remaining) }) + "\n", stderr: warning,
-      });
-      expect(runStarterSettings(app, defaultCheck.args)).toEqual({
-        exit: defaultCheck.exit, stdout: JSON.stringify({ ...checkDocument, rows: rows.filter(remaining) }) + "\n", stderr: warning,
-      });
-    };
-    verifyLegacy();
-    expect(apply().applied).toEqual([]);
-    verifyLegacy();
-    expect(readFileSync(join(app, "owned/local.mjs"), "utf8")).toBe(localCommand);
+  const search = discoveryCase("list", "--goal", "free shipping", "--json");
+  const { entries, ...listDocument } = JSON.parse(search.stdout);
+  const { rows, ...checkDocument } = JSON.parse(defaultCheck.stdout);
+  const remaining = (row: { key: string }) => !starterKeys.includes(row.key);
+  const warning = `Settings app: value reported without a descriptor for ${starterKeys.toSorted().map(key => JSON.stringify(key)).join(", ")}. Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n`;
+  const verifyLegacy = () => {
+    expect(readFileSync(hostFile, "utf8")).toBe(legacy);
+    expect(runStarterSettings(app, search.args)).toEqual({
+      exit: search.exit, stdout: JSON.stringify({ ...listDocument, entries: entries.filter(remaining) }) + "\n", stderr: warning,
+    });
+    expect(runStarterSettings(app, defaultCheck.args)).toEqual({
+      exit: defaultCheck.exit, stdout: JSON.stringify({ ...checkDocument, rows: rows.filter(remaining) }) + "\n", stderr: warning,
+    });
+  };
+  verifyLegacy();
+  expect(apply().applied).toEqual([]);
+  verifyLegacy();
+  expect(readFileSync(join(app, "owned/local.mjs"), "utf8")).toBe(localCommand);
 
-    const reconciled = applyDocumentedHostEdit(legacy, targetHost);
-    const typedFixture = readFileSync(new URL("./fixtures/settings-upgrade-host.ts", import.meta.url), "utf8");
-    // The fixture rebases its starter imports so the repository typecheck can compile it in place.
-    expect(typedFixture).toBe(reconciled
-      .replaceAll("from './", "from '../../../examples/neutral-store/owned/")
-      .replace("from '../shared/", "from '../../../examples/neutral-store/shared/"));
-    write(starterSettingsHost, reconciled);
-    expect(apply().applied).toEqual([]);
-    expect(readFileSync(hostFile, "utf8")).toBe(reconciled);
-  } else {
-    expect(apply().applied).toEqual([]);
-  }
+  const reconciled = applyDocumentedHostEdit(legacy, targetHost);
+  const typedFixture = readFileSync(new URL("./fixtures/settings-upgrade-host.ts", import.meta.url), "utf8");
+  // The fixture rebases its starter imports so the repository typecheck can compile it in place.
+  expect(typedFixture).toBe(reconciled
+    .replaceAll("from './", "from '../../../examples/neutral-store/owned/")
+    .replace("from '../shared/", "from '../../../examples/neutral-store/shared/"));
+  write(starterSettingsHost, reconciled);
+  expect(apply().applied).toEqual([]);
+  expect(readFileSync(hostFile, "utf8")).toBe(reconciled);
 
   const listed = runStarterSettings(app, ["list", "--json"]);
   expect(listed.exit).toBe(0);
@@ -226,13 +276,19 @@ it.each([
 });
 
 it.each([
-  ["candidate", true, 1, false], ["candidate", false, 1, true], ["released", false, 0, false],
+  ["candidate", true, 2, false], ["candidate", false, 1, true], ["released", false, 0, false],
 ] as const)("requires the check smoke in %s mode with reported file values=%s", (mode, reportsFile, calls, rejects) => {
   const { directory: app, write } = fixture();
   write("package-lock.json", {});
   write("package.json", { scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } });
-  write(starterSettingsHost, `export function createSettingsBindings() { return ${reportsFile ? `{ file: {
+  write(starterSettingsHost, `${reportsFile ? `import { z } from ${JSON.stringify(import.meta.resolve("zod"))};\n` : ""}
+  export function createSettingsBindings() { return ${reportsFile ? `{ file: {
     configuration: "sample", validate() {}, entries: {
+      ...Object.fromEntries(${JSON.stringify(starterKeys)}.map(key => [key, {
+        value: 1, location: { file: "owned/store.config.ts", symbol: key },
+        descriptor: { domain: "shipping", goal: "Free shipping", schema: z.number(),
+          effect: { appliesTo: "Estimates", impact: "money", frozenOn: [] } },
+      }])),
       inventory_renewal_protection: { value: { revision: "sample", renewalProtectionDays: 14 },
         location: { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" } },
     },
@@ -253,7 +309,11 @@ it.each([
   });
   if (rejects) expect(proof).toThrow("settings smoke exited 2");
   else expect(proof).not.toThrow();
-  expect(settingsCalls).toEqual(calls ? [["settings", "--app", "./owned/settings-host.ts", "check", "--json"]] : []);
+  const script = ["settings", "--app", "./owned/settings-host.ts"];
+  expect(settingsCalls).toEqual([
+    ...(calls >= 1 ? [[...script, "check", "--json"]] : []),
+    ...(calls === 2 ? [[...script, "list", "--goal", "free shipping"]] : []),
+  ]);
 });
 
 it.each([

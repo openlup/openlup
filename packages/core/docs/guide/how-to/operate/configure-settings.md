@@ -26,8 +26,10 @@ run `./node_modules/.bin/openlup-context search "renewal stock protection horizo
 
 ## Read the effective behavior
 
-Offline results for package keys show catalogue metadata. For inventory and
-reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
+Offline `show` for package keys returns catalogue metadata. For a declared
+app setting with a reported value, `show` also returns a file observation with
+the configuration selected by the binding and the value it reports. For
+inventory and reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
 inventory row uses the platform fallback. For unpinned reminder episodes, an
@@ -52,8 +54,8 @@ with remediation. To explain the absent-row behavior offline, pass
 
 Check uses the settings app binding offline. It opens no database connection
 and performs no writes. Installed rows say “Store: not checked.” The starter
-checks installed policies for drift at boot. Check prints an app-supplied
-location or labels the available starter catalogue reference separately.
+checks installed policies for drift at boot. Check includes a file location on
+a reported value when the binding supplies one.
 
 Check reports the application's startup validation when supplied. It uses the
 packaged schema for known package values and the supplied Zod schema for an
@@ -130,8 +132,8 @@ From the application root, pass the owned binding to the installed command.
 ./node_modules/.bin/openlup settings --app ./owned/settings-host.ts check
 ```
 
-List finds the new key by goal. Show reports the configured value and where to
-edit it. Check reports the app row and runs the existing app validation.
+List finds the new key by goal. Show reports the file observation and where to
+edit the value. Check reports the app row and runs the existing app validation.
 In this example, change 150 to -1 to exercise the assertion. Check exits 1 and
 includes this line. Restore a valid amount and rerun check before opening your
 pull request.
@@ -185,20 +187,22 @@ The starter's settings script calls the experimental package command and passes
 `--app ./owned/settings-host.ts`. Set the script to
 `openlup settings --app ./owned/settings-host.ts` in a composed app with the same
 layout. The module exports one function, `createSettingsBindings({ db, configuration })`.
-It supplies read-only readers, previewers or a stock source key for the selected
-configuration. If the requested ID is unknown, return
+The binding can supply `file` entries for offline discovery and an optional
+startup validator for `check`. Connected commands use readers, previewers or a
+stock source key from the binding. If the requested configuration ID is unknown, return
 `{ configurationIds: [...] }` with the available IDs. The CLI owns the
 database connection and calls the module without a pool when resolving
 `--configuration` offline. The module must avoid starting the application,
 writing data or printing to stdout. Pass an explicit
 `--app` only for application code you trust.
 
-Offline list, show and explain work without an app or database. With a
+List, show and explain work for platform keys without an app or database. With a
 PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
 A stock preview needs the application's stock source. A connected reminder
 show needs the application's checkout wave policy. A connected show of any
-installed setting requires a reader for that key. Supply `--app` when the
-command requests a binding, or omit the URL to read the catalogue offline.
+installed setting requires a reader for that key. Supply `--app` to read app
+declarations or to provide a binding for a connected read. Omit the URL to
+discover settings offline.
 
 Use `--value -` to read one JSON value from stdin. Use `--value=-1` when
 passing a negative number directly. The command exits with 0 on completion,
@@ -219,8 +223,9 @@ invariant (`invariant`) has no editable setting value. Find `code` settings with
 the application's settings script or with `openlup settings --app <module> list`.
 
 `read-only` covers discovery. `preview` allows inspection of a proposed
-change, and `ready` requires qualification for runtime changes. `show` gives the runtime level, reason and existing change mechanism for the
-selected key. Renewal stock protection is at `preview`; the host installer still
+change, and `ready` requires qualification for runtime changes. `show` gives the runtime
+level, its reason when present and the existing change mechanism for the selected
+key. Renewal stock protection is at `preview`; the host installer still
 owns changes.
 
 ## Refusals
@@ -235,7 +240,7 @@ and whether retrying can help.
 | `commerce_setting_unknown` | Run `list` with your application’s settings script for app keys, or use an unbound `list` for platform keys. |
 | `commerce_setting_refusal_unknown` | Check the exact refusal code from this version. |
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
-| `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
+| `commerce_setting_read_unavailable` | For a connected read, verify the store connection, read access and installed value. For a binding failure, check the application binding named in the refusal. |
 | `commerce_setting_preview_connection_required` | Use a read-capable connection to the intended store and supply the app bindings if requested. |
 | `commerce_setting_preview_unsupported` | Use `show` for value details or a reason and reference. |
 | `commerce_setting_preview_json_invalid` | Correct the proposed JSON. |

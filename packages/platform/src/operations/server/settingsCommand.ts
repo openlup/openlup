@@ -88,9 +88,8 @@ Exit codes: 0 checked, 1 invalid, 2 no file member, 64 invalid syntax or configu
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
 type FileBinding = NonNullable<Extract<SettingsAppBindings, { file?: unknown }>["file"]>;
-type FileSource = { location?: Location; catalogueReference?: Location };
 type FileValue = { state: "not-reported" }
-  | (FileSource & ({ state: "present"; value: JsonValue } | { state: "unreportable"; message: string }));
+  | ({ location?: Location } & ({ state: "present"; value: JsonValue } | { state: "unreportable"; message: string }));
 type Validation = { state: "valid" | "not-validated" } | { state: "invalid"; paths: string[][] };
 type AppValidation = { state: "passed" } | { state: "not-provided"; hint?: string }
   | { state: "failed"; message: string; phase?: "load" };
@@ -206,12 +205,12 @@ async function checkApp(file?: FileBinding): Promise<AppValidation> {
   }
 }
 
-function reportedFileValue(entry: FileBinding["entries"][string] | undefined, reference?: Location): FileValue {
+function reportedFileValue(entry: FileBinding["entries"][string] | undefined): FileValue {
   if (!entry) return { state: "not-reported" };
   const { location, value } = entry;
   if (value === undefined && entry.descriptor !== undefined) return { state: "not-reported" };
   const source = typeof location?.file === "string" && typeof location.symbol === "string"
-    ? { location: { file: location.file, symbol: location.symbol } } : reference ? { catalogueReference: reference } : {};
+    ? { location: { file: location.file, symbol: location.symbol } } : {};
   try {
     if (isJsonValue(value)) return { state: "present", ...source, value };
   } catch { /* The value cannot be inspected as JSON. */ }
@@ -241,7 +240,7 @@ async function checkDocument(file: FileBinding | undefined, appValidation: AppVa
     if (entry.kind !== "code" && entry.kind !== "installed") return [];
     const reported = file && Object.hasOwn(file.entries, entry.key) ? file.entries[entry.key] : undefined;
     const declaration = declarations?.get(entry.key);
-    const value = declaration ? appFileValue(declaration.entry) : reportedFileValue(reported, "file" in entry.change ? entry.change : undefined);
+    const value = declaration ? appFileValue(declaration.entry) : reportedFileValue(reported);
     const location = declaration?.entry.location;
     const takesEffect = location ? `${location.file} ${location.symbol}` : Object.values(entry.change).join(" ");
     return [validateFileValue(value, entry.schema ?? null, declaration?.schema).then(validation => ({
@@ -269,12 +268,10 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
     ...rows.flatMap(row => {
       const file = row.file;
       const source = file.state === "not-reported" ? undefined : file.location;
-      const reference = file.state === "not-reported" ? undefined : file.catalogueReference;
       return [
         `${row.key}: file ${file.state}, schema ${row.validation.state}${row.validation.state === "invalid"
           ? ` at ${row.validation.paths.map(path => path.join(".") || "<value>").join(", ")}` : ""}`,
-        ...(source ? [`  ${source.file} · ${source.symbol}`] : reference
-          ? [`  Starter catalogue reference — ${reference.file} · ${reference.symbol}`] : []),
+        ...(source ? [`  ${source.file} · ${source.symbol}`] : []),
         ...(file.state === "present" ? [`  Value: ${JSON.stringify(file.value)}`] : file.state === "unreportable" ? [`  ${file.message}`] : []),
         `  Effect: ${row.effect} Change: ${row.takesEffect}`,
         ...(row.store ? [`  Store: not checked. ${row.note}`] : []),
