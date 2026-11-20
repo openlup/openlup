@@ -412,6 +412,7 @@ export { silenceIsOverdue } from "./paymentAttemptSilenceWindow.js";
 export { tryReopenPreparedAbsence } from "./paymentProviderReconciliationAbsenceReopen.js";
 export { CAPTURE_REVIEW_RESULT_KIND, PROTECTED_FAILURE_RESULT_KIND, evidencePayload, terminalAmountMismatch, applyResultKey, observedEvidenceKey, preparedAttemptEvidenceKey, absenceReopenKey, absenceProbeEvidenceKey, bucket, clamp, safeMessage, classificationOf, } from "./paymentProviderReconciliationEvidence.js";
 export { handoffExplicitPaymentRefusal } from "./paymentWebhookPostProcessing.js";
+export type { PaymentRefusalHandoff, PaymentFailureDunningPort } from "./paymentWebhookPostProcessing.js";
 export { DEFAULT_STALE_AFTER_SECONDS, runPaymentProviderReconciliationWorker, } from "./paymentProviderReconciliationWorker.js";
 export { verifyPaymentAttemptNow, hasCommittedCaptureReview, sameCanonicalAttempt, toClaimedAttemptShape, } from "./paymentVerifyNowService.js";
 export { runExecutionConformance, runDurableEventConformance } from "./eventConformanceRunner.js";

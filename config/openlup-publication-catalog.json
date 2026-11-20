@@ -8551,7 +8551,7 @@
     },
     {
       "path": "packages/platform/src/payments/paymentFailureEvidence.ts",
-      "class": "public-code"
+      "class": "public-output"
     },
     {
       "path": "packages/platform/src/payments/paymentMethodLifecycle.ts",

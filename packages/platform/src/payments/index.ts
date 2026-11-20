@@ -41,6 +41,7 @@ export {
   classificationOf,
 } from "./paymentProviderReconciliationEvidence.js";
 export { handoffExplicitPaymentRefusal } from "./paymentWebhookPostProcessing.js";
+export type { PaymentRefusalHandoff, PaymentFailureDunningPort } from "./paymentWebhookPostProcessing.js";
 export {
   DEFAULT_STALE_AFTER_SECONDS,
   runPaymentProviderReconciliationWorker,

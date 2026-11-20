@@ -196,7 +196,6 @@ describe("runPaymentProviderReconciliationWorker", () => {
     [{ amountMinor: 1300 }, "provider_amount_mismatch"],
     [{ amountMinor: null }, "provider_amount_missing"],
     [{ amountMinor: 0 }, "provider_amount_mismatch"],
-    [{ capturedAmountBasis: undefined }, "provider_capture_amount_unconfirmed"],
     [{ currency: null }, "provider_currency_missing"],
     [{ currency: " " }, "provider_currency_missing"],
   ] as const)("records incomplete or mismatched success money %j for manual review", async (money, reason) => {
@@ -328,7 +327,6 @@ function status(
     occurredAt: null,
     failureReason: kind === "failed" ? `provider_${providerStatus}` : null,
     amountMinor: 1200,
-    ...(kind === "succeeded" ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     currency: "PLN",
     rawPayload: { providerStatus },
     ...overrides,

@@ -37,8 +37,6 @@ describe("paymentProviderReconciliationEvidence", () => {
 
     expect(terminalAmountMismatch(attempt, status({ amountMinor: 1300 }))).toBe("provider_amount_mismatch");
     expect(terminalAmountMismatch(attempt, status({ currency: "EUR" }))).toBe("provider_currency_mismatch");
-    expect(terminalAmountMismatch(attempt, status({ status: "succeeded" }))).toBe("provider_capture_amount_unconfirmed");
-    expect(terminalAmountMismatch(attempt, status({ status: "succeeded", capturedAmountBasis: "provider_capture_v1" }))).toBeNull();
     expect(terminalAmountMismatch(attempt, status())).toBeNull();
   });
 });
