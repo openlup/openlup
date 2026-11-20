@@ -931,6 +931,10 @@ it.each([
     [key, "--value", JSON.stringify(nativeProposal), "--as-of", asOf], connectedApp, 0],
   ["P11 invalid-policy preview", "preview", { key, value: null, asOf }, [key, "--value", "null", "--as-of", asOf], connectedApp, 0],
   ["P13 selected list", "list", {}, [], { ...fixedApp, configuration: "west" }, 0],
+  ["P13 selected package show", "show", { key }, [key], { ...fixedApp, configuration: "west" }, 0],
+  ["P13 selected package explain", "explain", { keyOrCode: key }, [key], { ...fixedApp, configuration: "west" }, 0],
+  ["P13 unknown package show configuration", "show", { key }, [key], { ...fixedApp, configuration: "missing" }, 64],
+  ["P13 unknown package explain configuration", "explain", { keyOrCode: key }, [key], { ...fixedApp, configuration: "missing" }, 64],
   ["P13 selected connected show", "show", { key }, [key], { ...connectedApp, configuration: "west" }, 0],
   ["P13 selected check", "check", {}, [], { ...connectedApp, configuration: "west" }, 0],
   ["P13 unknown list configuration", "list", {}, [], { ...fixedApp, configuration: "missing" }, 64],
@@ -974,6 +978,9 @@ it.each([
   }
   if ("configuration" in context && (command === "list" || command === "explain" || command === "check" || !("database-url" in context))) {
     expect(loadCheck).toHaveBeenLastCalledWith({ app: context.app, configuration: context.configuration });
+    if (context.configuration === "missing") expect(JSON.parse(cli.output).refusal).toMatchObject({
+      code: "commerce_setting_read_input_invalid", path: ["configuration"], hint: 'Unknown configuration "missing". Use one of these IDs: west.',
+    });
   }
   if (command === "check" || command === "preview" && !("database-url" in context)) expect(bind).not.toHaveBeenCalled();
   if (command === "preview" && exit !== 0) expect(preview).not.toHaveBeenCalled();

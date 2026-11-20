@@ -380,7 +380,8 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   if (offline && (command !== "show" || !databaseUrl || "refusal" in offline
     || !("setting" in offline) || offline.setting.kind !== "installed")) {
     const exit = command === "list" && "refusal" in offline ? 64 : undefined;
-    if (!values.app || !host?.loadCheck || (command === "list" ? "refusal" in offline : !("refusal" in offline))) {
+    const packaged = command !== "list" && !("refusal" in offline);
+    if (!values.app || exit !== undefined || (values.configuration === undefined && (!host?.loadCheck || packaged))) {
       return emit(offline, exit);
     }
     const missing = "Check the --app path and the createSettingsBindings export.";
@@ -398,6 +399,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     if (values.configuration !== undefined && "configurationIds" in bindings) {
       return emit(invalidConfiguration(bindings.configurationIds), 64);
     }
+    if (packaged) return emit(offline, exit);
     const file = "configurationIds" in bindings ? undefined : bindings.file;
     const admitted = declaredSettings(file, command === "list" ? io.warn : undefined);
     if ("refusal" in admitted) return emit(admitted, 64);

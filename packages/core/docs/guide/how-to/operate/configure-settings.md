@@ -214,9 +214,10 @@ startup validator for `check`. Connected commands use readers, previewers or a
 stock source key from the binding. If the requested configuration ID is unknown, return
 `{ configurationIds: [...] }` with the available IDs. The CLI owns the
 database connection and calls the module without a pool when resolving
-`--configuration` offline. The module must avoid starting the application,
-writing data or printing to stdout. Pass an explicit
-`--app` only for application code you trust.
+`--configuration` offline. With an explicit `--configuration`, show and explain
+resolve it before answering even for package keys, and list the valid IDs if it is unknown.
+The module must avoid starting the application, writing data or printing to
+stdout. Pass an explicit `--app` only for application code you trust.
 
 List, show and explain work for platform keys without an app or database. With a
 PostgreSQL URL, the built-in stock policy reader can show the installed horizon.

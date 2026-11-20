@@ -134,7 +134,7 @@ key by goal. For example, run
 `npm --silent run settings -- show inventory_renewal_protection --json`. Check the
 owner, allowed values, effect and frozen records before changing configuration.
 See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
-for the read path, refusal guidance and MCP client setup.
+for the read path and refusal guidance.
 
 Before changing renewal stock protection, run a connected, read-only preview.
 

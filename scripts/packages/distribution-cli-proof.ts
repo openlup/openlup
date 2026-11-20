@@ -584,24 +584,30 @@ export function createSettingsBindings(input) {
     const request = (id: number, method: string, params?: unknown) => JSON.stringify({ jsonrpc: "2.0", id, method, params });
     const toolCall = (id: number, name: string, args = {}) => request(id, "tools/call", { name: `settings_${name}`, arguments: args });
     const key = "offer.freeShippingFromMinor";
+    const nestedValue = "[".repeat(16000) + "null" + "]".repeat(16000);
+    const malformedUtf8 = Buffer.concat([Buffer.from('{"jsonrpc":"2.0","method":"ping","id":"'),
+      Buffer.from([0xc3, 0x28]), Buffer.from('"}')]);
+    const init = request(2, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "packed-test", version: "1" } });
     const frames = [
-      request(1, "initialize", { protocolVersion: "2025-06-18" }),
-      request(2, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "packed-test", version: "1" } }),
+      request(1, "initialize", { protocolVersion: "2025-06-18" }), init,
       '{"jsonrpc":"2.0","method":"notifications/initialized"}',
       request(3, "tools/list"),
       toolCall(4, "list", { goal: "free shipping" }), toolCall(5, "show", { key }), toolCall(6, "explain", { keyOrCode: key }),
       toolCall(7, "check"), toolCall(8, "preview", { key: "inventory_renewal_protection", value: null }),
       "{", request(9, "unknown", []), toolCall(10, "show", { key, app: "ignored" }), toolCall(11, "show", { key: 1 }),
       toolCall(12, "unknown"), "x".repeat(1024 * 1024 + 1), request(13, "ping"),
+      `{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"settings_preview","arguments":{"value":${nestedValue}}}}`,
+      request(15, "ping"), malformedUtf8, request(16, "ping"),
     ];
     const executable = join(app, "node_modules/.bin/openlup");
     const args = ["settings", "mcp", "--app", appPath];
-    const session = spawnSync(executable, args, { cwd: app, env: environment, encoding: "utf8", input: frames.join("\n") + "\n" });
+    const input = Buffer.concat(frames.flatMap(frame => [typeof frame === "string" ? Buffer.from(frame) : frame, Buffer.from("\n")]));
+    const session = spawnSync(executable, args, { cwd: app, env: environment, encoding: "utf8", input });
     assert.ifError(session.error);
     assert.equal(session.status, 0);
     assert.match(session.stderr, /app console log\napp stdout log/u);
     const replies = session.stdout.trimEnd().split("\n").map(line => JSON.parse(line));
-    assert.deepEqual(replies.map(row => row.id), [1, 2, 3, 4, 5, 6, 7, 8, null, 9, 10, 11, 12, null, 13]);
+    assert.deepEqual(replies.map(row => row.id), [1, 2, 3, 4, 5, 6, 7, 8, null, 9, 10, 11, 12, null, 13, 14, 15, null, 16]);
     const byId = new Map(replies.filter(row => row.id !== null).map(row => [row.id, row]));
     assert.equal(byId.get(2).result.protocolVersion, "2025-06-18");
     const listing = byId.get(3).result;
@@ -617,10 +623,13 @@ export function createSettingsBindings(input) {
     assert.equal(preview?.isError, true);
     assert.equal((preview.structuredContent?.refusal as { code: string }).code, "commerce_setting_preview_connection_required");
     assert.deepEqual([1, 9, 10, 11, 12].map(id => byId.get(id).error.code), [-32602, -32601, -32602, -32602, -32602]);
-    assert.deepEqual(replies.filter(row => row.id === null).map(row => row.error.code), [-32700, -32600]);
-    assert.deepEqual(byId.get(13).result, {});
+    assert.deepEqual(byId.get(14).error, { code: -32602, message: "Invalid tool or arguments. See tools/list." });
+    assert.deepEqual(replies.filter(row => row.id === null).map(row => row.error), [
+      { code: -32700, message: "Parse error" }, { code: -32600, message: "Message exceeds 1 MiB" }, { code: -32700, message: "Parse error" },
+    ]);
+    for (const id of [13, 15, 16]) assert.deepEqual(byId.get(id).result, {});
     const refused = spawnSync(executable, [...args, "--database-url=postgresql://probe@db.invalid/"],
-      { cwd: app, env: environment, encoding: "utf8", input: frames[1] });
+      { cwd: app, env: environment, encoding: "utf8", input: init });
     assert.ifError(refused.error);
     assert.equal(refused.status, 64);
     assert.equal(refused.stdout, "");
