@@ -94,7 +94,7 @@ it.each([
   ["empty serialized password", url.replace("@", ":@"), "write an empty password without the colon"],
   ["IPv6 field with leading zeros", url.replace("read.invalid", "[2001:0db8::1]"), "lowercase hexadecimal without leading zeros for IPv6"],
   ["compressed single IPv6 zero field", url.replace("read.invalid", "[2001:db8::1:2:3:4:5]"), "write a single zero field as 0"],
-  ["unclosed IPv6 bracket", url.replace("read.invalid", "[2001:db8::1"), "Use matching brackets for IPv6"],
+  ["unclosed IPv6 bracket", url.replace("read.invalid", "[2001:db8::1"), "Use brackets and lowercase hexadecimal"],
   ...["", "not-a-port", "65536"].map(port => [`noncanonical or unparseable port ${port}`, url.replace("/shop", `:${port}/shop`), "port from 1 to 65535"] as const),
   ["zero-padded port", url.replace("/shop", ":05433/shop"), "1 to 65535 without leading zeros"],
   ["postgres scheme", url.replace("postgresql:", "postgres:"), {}],
