@@ -152,7 +152,7 @@ it.each([
   ...["host", "hostaddr", "port", "dbname", "user", "password", "options", "service", "socket", "sslrootcert", "other"]
     .map(name => [`disallowed ${name} option`, `${url}?${name}=fake`, "works with verified TLS under Node's trust store"] as const),
   ["bare query", `${url}?`, "a single sslmode"],
-  ["empty query field", `${url}?sslmode=disable&`, "a single sslmode"],
+  ["empty query field", `${url}?sslmode=disable&`, "?sslmode=disable, ?sslmode=require or ?sslmode=verify-full"],
 ] as const)("admits settings database URLs: %s", async (_, databaseUrl, expected) => {
   for (const command of [["show", key], ["preview", key, "--value", "{}"]]) {
     const isPreview = command[0] === "preview";

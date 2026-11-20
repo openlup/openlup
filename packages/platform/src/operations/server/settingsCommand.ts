@@ -315,7 +315,7 @@ function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; h
   }
   if (url.href.includes("#")) return { path, hint: "Remove the fragment from the PostgreSQL URL." };
   if (url.href.includes("?") && !["?sslmode=disable", "?sslmode=require", "?sslmode=verify-full"].includes(url.search)) {
-    return { path, hint: "Use no query or a single sslmode set to disable, require or verify-full. If your provider needs another option, use a provider URL that works with verified TLS under Node's trust store." };
+    return { path, hint: "Omit the query or use a single sslmode option written exactly as ?sslmode=disable, ?sslmode=require or ?sslmode=verify-full. If your provider needs another option, use a provider URL that works with verified TLS under Node's trust store." };
   }
   const host = url.hostname.replace(/^\[|\]$/gu, "");
   return {
