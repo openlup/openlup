@@ -676,6 +676,41 @@ it.each([["150", "valid"], ["151", "invalid"]] as const)("checks the original fe
   expect(readFee).toHaveBeenCalledOnce();
 });
 
+it.each([
+  ["list"], ["show", feeKey], ["explain", feeKey], ["check"],
+])("canonicalizes shuffled declaration members for %s", async (...args) => {
+  const shuffled = appFixture();
+  const fee = shuffled.file.entries[feeKey];
+  const effect = Object.fromEntries(Object.entries(fee.descriptor.effect).reverse());
+  Object.defineProperties(fee, {
+    descriptor: { value: Object.fromEntries(Object.entries({ ...fee.descriptor, effect }).reverse()) },
+    location: { value: { symbol: feeKey, file: giftPath } },
+  });
+  for (const json of [false, true]) {
+    const argv = [...args, ...appArgs, ...(json ? ["--json"] : [])];
+    const expected = await run(argv, { host: checks(async () => appFixture()) });
+    const actual = await run(argv, { host: checks(async () => shuffled) });
+    expect(expected.exit).toBe(0);
+    expect([actual.exit, actual.output]).toEqual([expected.exit, expected.output]);
+    if (args[0] === "check" && json) {
+      const { rows } = JSON.parse(actual.output);
+      expect(rows.find((row: { key: string }) => row.key === feeKey).takesEffect).toBe(`${giftPath} ${feeKey}`);
+    }
+  }
+});
+
+it("uses the packaged code descriptor member order for declared show JSON", async () => {
+  const app = await run(["show", feeKey, ...appArgs, "--json"], { host: checks(async () => appFixture()) });
+  const pkg = await run(["show", "offer.freeShippingFromMinor", "--json"]);
+  expect([app.exit, pkg.exit]).toEqual([0, 0]);
+  const { setting: declared } = JSON.parse(app.output);
+  const { setting: packaged } = JSON.parse(pkg.output);
+  expect(Object.keys(declared)).toEqual(Object.keys(packaged));
+  for (const field of ["effect", "runtime", "change"]) {
+    expect(Object.keys(declared[field])).toEqual(Object.keys(packaged[field]));
+  }
+});
+
 it("reports original JSON with own special keys", async () => {
   const original = '{"__proto__":{"flag":true}}';
   const raw = JSON.parse(original);

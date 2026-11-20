@@ -107,6 +107,10 @@ function appUnavailable(path: string[], hint: string, command: string) {
     hint, "Correct the application binding and retry.", command);
 }
 
+function inMemberOrder<T extends object>(ordered: T, original: Readonly<Record<string, unknown>>): T {
+  return Object.fromEntries(Object.keys(ordered).map(key => [key, original[key]])) as T;
+}
+
 function declaredSettings(file?: FileBinding) {
   const declarations = new Map<string, AppSetting>();
   for (const [key, entry] of Object.entries(file?.entries ?? {})) {
@@ -134,11 +138,18 @@ function declaredSettings(file?: FileBinding) {
       key, kind: "code", schemaVersion: 1, schema: displaySchema, previewSchema: null,
       runtime: { level: "read-only", reason: "Edit the application configuration and deploy." }, change: entry.location,
     };
-    if (!isJsonValue(setting) || !settingDescriptorSchema.safeParse(setting).success) {
-      return refuse(`Check the descriptor and file location for ${key}.`);
-    }
-    // The parser admits the descriptor. The original JSON retains own keys in metadata and schema properties.
-    declarations.set(key, { setting: setting as AppSetting["setting"], entry, schema });
+    const [valueDescriptor] = settingDescriptorSchema.options;
+    const admitted = isJsonValue(setting) ? valueDescriptor.safeParse(setting) : undefined;
+    if (!admitted?.success) return refuse(`Check the descriptor and file location for ${key}.`);
+    // Use the parser's member order and retain the original authored JSON values.
+    const { file, symbol } = entry.location;
+    const ordered = inMemberOrder(admitted.data, {
+      ...setting,
+      runtime: admitted.data.runtime,
+      change: { file, symbol },
+      effect: inMemberOrder(admitted.data.effect, setting.effect),
+    });
+    declarations.set(key, { setting: ordered, entry, schema });
   }
   return { declarations };
 }
@@ -198,7 +209,10 @@ function reportedFileValue(entry: FileBinding["entries"][string] | undefined, re
 
 function appFileValue(entry: DeclaredFileEntry): FileValue {
   try { return reportedFileValue(entry); }
-  catch { return { state: "unreportable", location: entry.location, message: "Value cannot be reported as JSON." }; }
+  catch {
+    const { file, symbol } = entry.location;
+    return { state: "unreportable", location: { file, symbol }, message: "Value cannot be reported as JSON." };
+  }
 }
 
 async function validateFileValue(file: FileValue, schema: Record<string, JsonValue> | null, appSchema?: ZodType): Promise<Validation> {
@@ -217,9 +231,11 @@ async function checkDocument(file: FileBinding | undefined, appValidation: AppVa
     const reported = file && Object.hasOwn(file.entries, entry.key) ? file.entries[entry.key] : undefined;
     const declaration = declarations?.get(entry.key);
     const value = declaration ? appFileValue(declaration.entry) : reportedFileValue(reported, "file" in entry.change ? entry.change : undefined);
+    const location = declaration?.entry.location;
+    const takesEffect = location ? `${location.file} ${location.symbol}` : Object.values(entry.change).join(" ");
     return [validateFileValue(value, entry.schema ?? null, declaration?.schema).then(validation => ({
       key: entry.key, file: value, validation,
-      effect: entry.effect.appliesTo, takesEffect: Object.values(entry.change).join(" "), kind: entry.kind,
+      effect: entry.effect.appliesTo, takesEffect, kind: entry.kind,
       ...(entry.kind === "installed" ? {
         store: { state: "not-checked" },
         note: "The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.",
