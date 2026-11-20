@@ -1,18 +1,24 @@
-### Starter settings discovery
+### Discover and preview settings with the package command
 
-- From the extracted app, run
-  `node --experimental-strip-types host/settings.ts list` to discover settings. The script also provides `show` and `explain`.
-  Read `docs/guide/how-to/operate/configure-settings.md` in the installed Core
-  package.
-- For a pristine starter, take the target extraction's `AGENTS.md`. If you
-  customized that file, add the target's **Change a business setting** section
-  alongside your local instructions.
-- Plan and apply the managed-file upgrade with `package.json`,
-  `ownership.json` and the new `host/settings.ts` in the target snapshot.
-  Reconcile any local script edits before applying. An upgrade plan refuses
-  divergent managed files. Keep the app stopped until the managed snapshot and
-  the installed OpenLup package versions match.
-- Verify discovery with
-  `node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json`.
-  The extracted app’s `AGENTS.md` gives the npm form for pure JSON on stdout.
-  This step needs no database or installed-policy operation.
+- Use the settings script from the extracted application root as shown in its `AGENTS.md`.
+  The settings script calls the installed experimental `openlup settings`
+  command. `show` and `explain` work offline. To preview, pass the proposal with
+  `--value <json>` or `--value -` for stdin.
+- Upgrade the managed `package.json` and `ownership.json` to the target
+  extraction. Include `owned/settings-host.ts` as a creation in the target
+  snapshot only if that file is absent in the application. Keep an existing
+  owned file and its local bindings. Append the **Change a business setting**
+  section from the target's `AGENTS.md` to the application's guide when absent.
+- If the upgrade refuses because the planned host path became occupied, keep the
+  local file and remove its creation from the target snapshot. Replan and apply
+  the reconciled snapshots, then replay. The installed application upgrades with
+  its local host bindings intact.
+- After applying the snapshot, update the installed dependencies to match the
+  target extraction. Use the settings script with
+  `show checkout_recovery_reminders --database-url <read-capable-url> --json`
+  against the intended store to verify the command and the owned binding: this
+  key is read through the reader that `owned/settings-host.ts` supplies. A
+  missing or unloadable binding module returns `commerce_setting_read_unavailable`
+  with exit 74. A module that loads without that reader returns the same code
+  with exit 1 and the hint that no connected reader exists for this key. Stock or
+  reminder policy installation remains a separate deployment step.

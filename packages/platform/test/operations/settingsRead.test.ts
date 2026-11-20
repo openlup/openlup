@@ -184,7 +184,7 @@ it("projects read-only MCP inputs and results from the settings read contracts",
   });
   expect(await showSetting({ key: "unknown" })).toEqual({ refusal: expect.objectContaining({
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
-    remediation: expect.objectContaining({ command: "node --experimental-strip-types host/settings.ts list", retry: true }),
+    remediation: expect.objectContaining({ command: "npm --silent run settings -- list", retry: true }),
   }) });
 });
 

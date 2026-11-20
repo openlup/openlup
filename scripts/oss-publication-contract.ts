@@ -7,7 +7,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "examples/neutral-store/dev.mjs",
   "examples/neutral-store/extract.mjs",
   "examples/neutral-store/host/server.ts",
-  "examples/neutral-store/host/settings.ts",
+  "examples/neutral-store/owned/settings-host.ts",
   "examples/neutral-store/owned/catalogue.ts",
   "examples/neutral-store/lifecycle",
   "examples/neutral-store/lifecycle.mjs",

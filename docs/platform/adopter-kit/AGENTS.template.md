@@ -67,19 +67,9 @@ Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogu
 
 ## Change a business setting
 
-From the starter application root, run `node --experimental-strip-types host/settings.ts list` to find the
-key by goal. For example, run
-`node --experimental-strip-types host/settings.ts list --goal "renewal stock protection horizon"`, then
-`node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json`. The extracted starter’s guide gives the npm form for JSON output. Check the
-owner, allowed values, effect and frozen records before changing configuration.
-See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
-for the read path and refusal guidance.
-
-Before changing renewal stock protection, run a connected, read-only preview.
-
-```sh
-node --experimental-strip-types host/settings.ts preview inventory_renewal_protection '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
-```
-
-Use the store's configuration and SKU. Read the effect, uncertainty and any
-remediation before using the documented installation change mechanism.
+From the extracted application root, use its `settings` script as shown in the
+starter's `AGENTS.md`. Start with `list --goal "renewal stock protection horizon"`
+and inspect `show inventory_renewal_protection --json` before changing a value.
+For a proposed horizon, use `preview` with `--value`, a read-capable
+`--database-url` and each `--sku` you want to inspect.
+Review the effect, uncertainty and any remediation before changing the policy.

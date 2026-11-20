@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
-  reconcileEditorCustomization, reconcileSettingsCustomization, starterEditorPorts, starterSettingsCli, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -24,29 +24,41 @@ function fixture() {
   return { directory, write };
 }
 
-it.each([false, true])("reconciles settings guidance and the managed CLI upgrade, customized=%s", customized => {
+it.each([false, true])("upgrades the command and creates or preserves its owned host, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
-  const script = "host/settings.ts";
-  const base = "# App guide\n";
-  const section = "\n## Change a business setting\n\nRun `npm run --silent settings -- list`.\n";
-  write("AGENTS.md", customized ? base + "\nLocal workflow.\n" : base);
-  candidate("AGENTS.md", base + section);
-  const targetOwnership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
-  targetOwnership.managed.push(script);
-  candidate("ownership.json", targetOwnership);
-  candidate("package.json", { dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "node host/settings.ts" } });
-  candidate(script, "export {};");
+  const guide = "# App guide\n\nLocal workflow.\n";
+  const section = "\n## Change a business setting\n\nRun `npm --silent run settings -- list`.\n";
+  write("AGENTS.md", guide);
+  candidate("AGENTS.md", guide + section);
+  candidate("ownership.json", { managed: ["package.json", "ownership.json"], owned: ["AGENTS.md", starterSettingsHost], generated: [] });
+  const pkg = { dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
+  candidate("package.json", pkg);
+  candidate(starterSettingsHost, "export function createSettingsBindings() { return {}; }");
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
   migrateStarterOwned(app, target, from, to);
   migrateStarterOwned(app, target, from, to);
-  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe((customized ? base + "\nLocal workflow.\n" : base) + section);
+  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide + section);
   expect(Object.hasOwn(to.files, "AGENTS.md")).toBe(false);
-  expect(() => assertCompleteStarter(app, to)).toThrow("incomplete_application_upgrade");
   write("from.json", from); write("to.json", to);
-  const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
-    "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
-  expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).applied.sort()).toEqual([script, "ownership.json", "package.json"]);
+  const apply = (status = 0) => {
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
+      "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  const local = "export function createSettingsBindings() { return { stockSourceKey: 'local' }; }";
+  const hostFile = join(app, starterSettingsHost);
+  if (customized) {
+    write(starterSettingsHost, local);
+    expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: starterSettingsHost }] });
+    expect(starterUpgradeSnapshot(app, from.version)).toEqual(from);
+    expect(readFileSync(hostFile, "utf8")).toBe(local);
+    includeSettingsHost(app, target, to);
+    write("to.json", to);
+  }
+  expect(apply().applied.sort()).toEqual(customized ? ["ownership.json", "package.json"] : [starterSettingsHost, "ownership.json", "package.json"].sort());
+  expect(apply().applied).toEqual([]);
+  expect(readFileSync(hostFile, "utf8")).toBe(customized ? local : to.files[starterSettingsHost]);
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
 });
 
@@ -55,47 +67,48 @@ it("refuses an extracted starter without the settings script", () => {
   expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
 });
 
-it.each([false, true])("upgrades the preview CLI through refusal, reconciliation, apply and replay when customized=%s", customized => {
-  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
-  const settings = starterSettingsCli;
-  const earlier = "host/policy.ts"; // A replacement ordered before the settings conflict.
-  const base = "# App guide\n\n## Change a business setting\n\nRun the settings CLI.\n";
-  const preview = "\nBefore changing renewal stock protection, run a connected, read-only preview.\n\nRun `npm run --silent settings -- preview`.\n";
-  const local = "\n## Local operations\n\nUse our adoption checklist.\n";
-  const ownership = { managed: ["package.json", "ownership.json", earlier, settings], owned: ["AGENTS.md"], generated: [] };
-  write("ownership.json", ownership); candidate("ownership.json", ownership);
-  write(earlier, "export const revision = 1;");
-  candidate(earlier, "export const revision = 2;");
-  write(settings, "console.log('show');");
-  candidate(settings, "console.log('Preview before any change.');");
-  write("AGENTS.md", base + (customized ? local : ""));
-  candidate("AGENTS.md", base + preview);
-  const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
-  migrateStarterOwned(app, target, from, to);
-  migrateStarterOwned(app, target, from, to);
-  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(base + preview + (customized ? local : ""));
-  expect(Object.hasOwn(to.files, "AGENTS.md")).toBe(false);
-  expect(() => assertCompleteStarter(app, to)).toThrow("incomplete_application_upgrade");
-  write("from.json", from); write("to.json", to);
-  const run = (command: "plan" | "apply", status = 0) => {
-    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", command, "--root", app,
-      "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
-    expect(result.status, result.stderr || result.stdout).toBe(status);
-    return JSON.parse(result.stdout);
+it("loads the settings binding on connected show and reports a missing module", () => {
+  const { directory } = fixture();
+  const show = (...args: string[]) => spawnSync(process.execPath, [
+    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "--app", starterSettingsHost,
+    "show", "inventory_renewal_protection", "--json", ...args,
+  ], { cwd: directory, encoding: "utf8" });
+  const offline = show();
+  expect(offline.status, offline.stderr).toBe(0);
+  expect(JSON.parse(offline.stdout)).toMatchObject({ observation: { state: "offline" } });
+  const connected = show("--database-url", "postgresql://unused.invalid/shop");
+  expect(connected.status, connected.stderr).toBe(74);
+  expect(JSON.parse(connected.stdout)).toMatchObject({ refusal: {
+    code: "commerce_setting_read_unavailable", path: ["key"], hint: expect.stringContaining("createSettingsBindings"),
+  } });
+});
+
+it.each([
+  ["valid with fresh availability", { state: "valid", value: { renewalProtectionDays: 21 } },
+    { renewalProtectionDays: 7 }, 5, false, "Normalized:", "5 currently available, 3 estimated under the proposal (provider)"],
+  ["invalid with stale and unavailable values", { state: "invalid", code: "invalid_policy", rule: "rule", hint: "hint",
+    remediation: { action: "action", command: "command" } },
+    null, null, true, "invalid_policy", "unavailable currently available, unavailable estimated under the proposal (provider, stale)"],
+] as const)("renders connected preview text for %s", (_, validation, difference, current, stale, detail, quantities) => {
+  const { directory, write } = fixture();
+  const key = "inventory_renewal_protection";
+  const result = {
+    schemaVersion: 1, key, asOf: new Date(0).toISOString(), current: { renewalProtectionDays: 14 },
+    proposed: {}, validation, difference, uncertainty: "Observed at the supplied instant.",
+    effect: { newPurchaseAvailability: "nonincreasing", skus: [{ sku: "SKU-1", source: "provider", stale,
+      currentAvailableForNewPurchases: current, proposedAvailableForNewPurchases: current === null ? null : 3 }] },
   };
-  const customization = customized ? reconcileSettingsCustomization(app, from.files[settings]!, () => {
-    const before = starterUpgradeSnapshot(app, from.version);
-    const report = run("apply", 1);
-    expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
-    return report;
-  }) : undefined;
-  if (customization) expect(run("plan").plan.conflicts).toEqual([]);
-  expect(run("apply").applied).toEqual([earlier, settings]);
-  expect(readFileSync(join(app, settings), "utf8")).toBe(to.files[settings]);
-  expect(run("apply").applied).toEqual([]);
-  expect(() => assertCompleteStarter(app, to)).not.toThrow();
-  if (customization) expect(readFileSync(join(app, customization.path))).toEqual(customization.bytes);
-  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(base + preview + (customized ? local : ""));
+  write(starterSettingsHost, `export function createSettingsBindings() { return { previewers: { ${key}: async () => (${JSON.stringify(result)}) } }; }`);
+  const text = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "--app", starterSettingsHost,
+    "preview", key, "--value", "{}", "--database-url", "postgresql://unused.invalid/shop"], { cwd: directory, encoding: "utf8" });
+  expect(text.status, text.stderr).toBe(0);
+  expect(text.stdout).toContain(`Validation: ${validation.state}`);
+  expect(text.stdout).toContain(`Horizon difference in days: ${difference?.renewalProtectionDays ?? "unavailable"}`);
+  expect(text.stdout).toContain(detail);
+  // The package formatter includes the new estimate beside the original current quantity.
+  expect(text.stdout).toContain(`SKU-1: ${quantities}`);
+  expect(text.stdout).toContain("Existing reservations keep their quantities and expiry times.");
+  expect(text.stdout).toContain(result.uncertainty);
 });
 
 it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {

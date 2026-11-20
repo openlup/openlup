@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
-import { previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery } from './distribution-cli-proof.ts';
+import { previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery, starterSettingsHost } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
@@ -218,7 +218,7 @@ function proveReleasedStarter(receipt, input, run, environment) {
   const { application, packages } = input;
   proveNeutralStarterConsumer(root, { mode: receipt.mode ?? 'released', application, environment, run,
     lockfileSha256: receipt.extraction.lockfileSha256, packages: packages.map(({ name }) => name),
-    settingsDiscovery: existsSync(join(input.source, 'examples/neutral-store/host/settings.ts')), verifyInstalled() {
+    settingsDiscovery: existsSync(join(input.source, 'examples/neutral-store', starterSettingsHost)), verifyInstalled() {
       if (receipt.mode === 'candidate') { receipt.packages = [...readCurrentPackManifest(input.source, receipt.candidateManifest, receipt.tagCommit).values()]; return; }
       const audit = auditInstalledRelease(application, run);
       receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, receipt.tagCommit);

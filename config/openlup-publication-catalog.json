@@ -2558,10 +2558,6 @@
       "class": "public-output"
     },
     {
-      "path": "examples/neutral-store/host/settings.ts",
-      "class": "public-output"
-    },
-    {
       "path": "examples/neutral-store/host/subscription-editors.ts",
       "class": "public-output"
     },
@@ -2651,6 +2647,10 @@
     },
     {
       "path": "examples/neutral-store/owned/renewal.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/settings-host.ts",
       "class": "public-output"
     },
     {
@@ -8450,6 +8450,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/server/settingsCommand.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/server/settingsRead.ts",
       "class": "public-output"
     },
@@ -11339,6 +11343,10 @@
     },
     {
       "path": "packages/platform/test/operations/platformWatchdogService.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/settingsCommand.test.ts",
       "class": "public-output"
     },
     {
@@ -31523,7 +31531,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-6a781a1a684a4a871654ec01945d61ec16d2781f36979f7dbbac7a456ac1544c"
+      "digest": "sha256-2f05e63cbad54452e990dad06a9cf6978160f30d192d5349d50cd408dd7873d4"
     },
     {
       "path": "package.json",
