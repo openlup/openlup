@@ -1,36 +1,13 @@
 import type {
   CanonicalPaymentEvent,
-  InitiatePaymentInput,
   PaymentExecutionInput,
   PaymentExecutionResult,
-  PaymentRefundResult,
-  PaymentSession,
 } from "./types.js";
-
-/**
- * Canonical PaymentPort interface every concrete PSP adapter implements (Mollie / PayU /
- * Adyen / Stripe / noop). Schema-agnostic: the BFF never knows which provider it is
- * calling — routing is data-driven from the `providers` registry + per-customer
- * `customer_external_refs.active` flag.
- *
- * Per plan §6 Gemini fix #5 — PaymentSession state machine carries client_secret /
- * redirect_url / next_action_kind so asymmetric provider flows (Stripe PaymentIntents
- * 3DS, Mollie redirect, PayU BLIK code prompt) collapse onto one shape the FE renders.
- */
-export interface PaymentPort {
-  initiatePayment(input: InitiatePaymentInput): Promise<PaymentSession>;
-  capturePayment(sessionRef: string): Promise<PaymentSession>;
-  refundPayment(paymentRef: string, amountMinor?: number): Promise<PaymentRefundResult>;
-  attachMethodToCustomer(customerRef: string, methodToken: string): Promise<void>;
-  getPaymentSessionState(sessionRef: string): Promise<PaymentSession>;
-  parseWebhook(rawPayload: Record<string, unknown>): CanonicalPaymentEvent;
-}
 
 /**
  * Payment execution seam (W11.0). A real PSP adapter (W11.7) implements
  * `execute` to make its external call and return the attempt facts; the no-op returns
- * `providerCall:false`. Distinct from the dead canonical `PaymentPort` above — this is
- * the surface the hidden checkout saga actually invokes.
+ * `providerCall:false`.
  */
 export interface PaymentExecutionPort {
   /** Pure local validation used before a durable provider attempt is prepared. */

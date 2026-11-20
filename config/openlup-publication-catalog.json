@@ -8558,6 +8558,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/paymentFailureEvidence.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/paymentMethodLifecycle.ts",
       "class": "public-output"
     },
@@ -14278,14 +14282,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/noop_payment/noopPaymentAdapter.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/noop_payment/noopPaymentAdapter.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/noop_payment/noopPaymentExecutionAdapter.test.ts",
       "class": "public-output"
     },
@@ -16575,14 +16571,6 @@
     },
     {
       "path": "server/adapters/tpay/tpayAdapterFactory.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpaySimulatorPaymentReadbackProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpaySimulatorPaymentReadbackProvider.ts",
       "class": "public-output"
     },
     {
