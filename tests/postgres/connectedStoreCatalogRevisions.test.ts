@@ -474,7 +474,7 @@ it("restores marked GTINs, and removes the marker only when the target explicitl
     .toEqual([{ normalized_value: "05901234123457", scheme: null }]);
 }, 105_000);
 
-it("accepts the pinned Core-S packet shape and refuses a packet with an unknown inventory", async () => {
+it("accepts the pinned predecessor packet shape and refuses a packet with an unknown inventory", async () => {
   const { capture, identifier } = await captureTradeIdentifier("historic", null);
   const table = capture.owned.find(entry => entry.table === "catalog_sku_identifiers")!;
   const historic = "c19175002e39e2b4100841e7138759a4dd07fe3158ebd3ce5f7283a5e8d538a9";

@@ -972,7 +972,9 @@ A product can retain up to 10,000 SKUs. Native transfer also limits a packet to
 rows. A product that fits the read limit can therefore exceed the transfer
 limit. Exact reads bind the stored issue,
 document and original result by key. Admission and selected reads use the same
-native product and SKU checks. Current and legacy reads select observation
+native product and SKU checks. Stored reads do not re-run preparation rules,
+such as the refusal of a copied authored document. Data sealed outside the
+writer path is the importer's responsibility. Current and legacy reads select observation
 fields for the bounded roster. A full page checks at most 100 SKU sizes and
 loads only the selected SKU revisions, up to the 8 MiB response limit.
 

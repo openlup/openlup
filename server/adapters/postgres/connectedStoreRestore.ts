@@ -18,7 +18,7 @@ const { catalogPublicationAdmissionRefusal } = nativeCatalogPublication;
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
-// Complete Core-S installation inventories, immediately before the nullable GTIN scheme column.
+// Complete sealed-history installation inventories before the nullable GTIN scheme column.
 const beforePublicationCommands = {
   bootstrap: "1c9190ad0520e6ce8229a81ed9ba756da528986d19cad09fc1716d72dadd70c0",
   separate: "c19175002e39e2b4100841e7138759a4dd07fe3158ebd3ce5f7283a5e8d538a9",

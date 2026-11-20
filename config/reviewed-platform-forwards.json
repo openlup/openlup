@@ -6005,7 +6005,7 @@
         ]
       },
       {
-        "row": "catalogue-core-w",
+        "row": "catalogue-publication-commands",
         "path": "db/platform/migrations/20261123191000_catalog_publication_commands.sql",
         "replacedFunctions": [
           {

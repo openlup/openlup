@@ -168,7 +168,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
         }
 
         const store = await readNativeDraftEvidence(db, reference);
-        // These locks conflict with LC1 edits and with the existing Core-S no-op updates.
+        // These locks conflict with draft edits and no-op updates to sealed history.
         await db.query(`SELECT draft_id FROM public.catalog_draft_heads WHERE draft_id=ANY($1::uuid[])
           ORDER BY draft_id FOR NO KEY UPDATE`, [store.draftIds]);
         const issued = (await db.query("SELECT id FROM public.catalog_publications WHERE candidate_ref=$1 AND product_id=$2 AND candidate_digest=$3",
@@ -236,10 +236,10 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
             async readEvidence() { return previous ? { ...previous.evidence, drafts } : null; },
             presentationReadiness: (productId, presentation) => routeReadiness(db, productId, presentation),
             ...(deps.verifyMedia ? { verifyMedia: (claim, head) => deps.verifyMedia!(db, claim, head) } : {}),
-            // LC3 and the actual live readiness check own the tentative transaction rows.
+            // The price writer and the live readiness check own the tentative transaction rows.
             async assessActivation() { return { ready: true, reasons: [] }; },
           },
-          // LC3 uses the same canonical command and evaluates the actual prior entry under lock.
+          // The price writer uses the same canonical command and evaluates the actual prior entry under lock.
           async validatePrices() { return []; },
         }, action === "approve" ? "first-decision" : "compile");
         if (result.failure) throw result.failure;
