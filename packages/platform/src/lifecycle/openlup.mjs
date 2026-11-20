@@ -39,14 +39,9 @@ function refuse(exitCode, code, observed, fix, cause = exitCode === 64 ? "Invali
 async function bindSettings({ database, app, configuration }) {
   let db;
   if (database) {
-    if (process.env.NODE_PG_FORCE_NATIVE) throw new Error("NODE_PG_FORCE_NATIVE");
     const { Pool, Client } = await import("pg");
-    db = new Pool({ ...database, Client: class extends Client {
-      constructor(options) {
-        for (const name of Object.keys(process.env)) if (/^PG/iu.test(name)) delete process.env[name];
-        super(options);
-      }
-    } });
+    if (typeof Client.prototype.getStartupConf !== "function") throw new Error("NODE_PG_FORCE_NATIVE");
+    db = new Pool(database);
   }
   db?.on("error", () => {});
   const close = async () => { await db?.end(); };

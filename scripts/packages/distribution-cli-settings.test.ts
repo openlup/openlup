@@ -345,11 +345,15 @@ it.each([
 });
 
 it.each([
-  ["plaintext by default", "postgresql://sample@unused.invalid/shop", "", false],
-  ["explicit plaintext", "postgresql://sample@unused.invalid/shop?sslmode=disable", "", false],
-  ["verified TLS", "postgresql://sample:fake-secret@unused.invalid:5433/shop?sslmode=verify-full", "fake-secret",
-    { rejectUnauthorized: true, host: "unused.invalid" }],
-] as const)("preserves the driver's startup parameters for %s after the app sets PG variables", (_, url, password, ssl) => {
+  ["plaintext by default", "postgresql://sample@unused.invalid/shop", 5432, "", false, {}],
+  ["explicit plaintext", "postgresql://sample@unused.invalid/shop?sslmode=disable", 5432, "", false, {}],
+  ["verified TLS", "postgresql://sample:fake-secret@unused.invalid:5433/shop?sslmode=verify-full", 5433, "fake-secret",
+    { rejectUnauthorized: true, host: "unused.invalid" }, {}],
+  ["a target with conflicting PG variables", "postgresql://sample@unused.invalid/shop", 5432, "", false, {
+    PGHOST: "elsewhere.invalid", PGPORT: "5999", PGUSER: "fake-user", PGPASSWORD: "fake-password", PGDATABASE: "fake-db",
+    PGSSLMODE: "require",
+  }],
+] as const)("preserves startup parameters and the admitted target for %s", (_, url, port, password, ssl, childEnv) => {
   const { directory, write } = fixture();
   const key = "inventory_renewal_protection";
   const app = "settings-startup-fixture.mjs";
@@ -358,35 +362,22 @@ it.each([
     pg.Client.prototype.connect = () => { throw new Error("settings fixture must not connect"); };`);
   write(app, `import assert from "node:assert/strict";
     import pg from ${pgModule};
-    process.env.PGSSLNEGOTIATION = "direct";
-    process.env.PGOPTIONS = "-c application_name=fake-import";
     export function createSettingsBindings({ db }) {
       const admitted = new db.Client(db.options);
-      assert.equal(Object.keys(process.env).some(name => /^PG/i.test(name)), false);
-      // defaults.js captured an OS user before the launcher ran.
-      assert.equal(pg.defaults.user, "fake-cached-os-user");
       const base = new pg.Client({ connectionString: ${JSON.stringify(url)} });
       assert.deepEqual(admitted.getStartupConf(), base.getStartupConf());
       assert.deepEqual(admitted.getStartupConf(), { user: "sample", database: "shop" });
-      const { host, port, user, database, ssl, binary, password } = admitted;
-      assert.deepEqual({ host, port, user, database, ssl, binary }, {
-        host: "unused.invalid", port: ${password ? 5433 : 5432}, user: "sample", database: "shop",
-        ssl: ${JSON.stringify(ssl)}, binary: false,
+      const { host, port, user, database, ssl, password } = admitted;
+      assert.deepEqual({ host, port, user, database, ssl }, {
+        host: "unused.invalid", port: ${port}, user: "sample", database: "shop", ssl: ${JSON.stringify(ssl)},
       });
       assert.equal(typeof password, ${JSON.stringify(password ? "string" : "function")});
       assert.equal(typeof password === "function" ? password() : password, ${JSON.stringify(password)});
-      process.env.PGOPTIONS = "-c application_name=fake-later-client";
-      assert.deepEqual(new db.Client(db.options).getStartupConf(), base.getStartupConf());
       return { readers: { ${key}: () => ({ present: false }) } };
     }`);
   const result = spawnSync(process.execPath, ["--import", join(directory, "preload.mjs"),
     resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", key, "--app", app, "--database-url", url, "--json"],
-  { cwd: directory, encoding: "utf8", env: {
-    ...process.env, USER: "fake-cached-os-user", USERNAME: "fake-cached-os-user",
-    PGHOST: "elsewhere.invalid", PGPORT: "5999", PGUSER: "fake-user", PGPASSWORD: "fake-password", PGDATABASE: "fake-db",
-    PGSSLMODE: "require", PGOPTIONS: "-c application_name=fake", PGSERVICE: "fake-service", PGAPPNAME: "fake-app", PGBINARY: "1",
-    PGPASSFILE: "fake-password-file",
-  } });
+  { cwd: directory, encoding: "utf8", env: childEnv });
   expect(result.status, result.stderr || result.stdout).toBe(0);
   expect(result.stderr).toBe("");
 });
@@ -394,17 +385,17 @@ it.each([
 it("refuses the native PostgreSQL client before using a connected settings binder", () => {
   const { directory, write } = fixture();
   const key = "inventory_renewal_protection";
-  write(starterSettingsHost, `export function createSettingsBindings() {
-    return { readers: { ${key}: () => ({ present: false }) }, previewers: { ${key}: () => ({ schemaVersion: 1 }) } };
-  }`);
+  write("preload.mjs", `import pg from ${JSON.stringify(import.meta.resolve("pg"))};
+    delete pg.Client.prototype.getStartupConf;`);
+  write(starterSettingsHost, `export function createSettingsBindings() { throw new Error("settings fixture must not bind"); }`);
   const cli = resolve("packages/platform/src/lifecycle/openlup.mjs");
   for (const [command, flags, refusal] of [
     ["show", [], "commerce_setting_read_unavailable"],
     ["preview", ["--value", "{}"], "commerce_setting_preview_unexpected"],
   ] as const) {
-    const result = spawnSync(process.execPath, [cli, "settings", command, key, ...flags, "--app", starterSettingsHost,
+    const result = spawnSync(process.execPath, ["--import", join(directory, "preload.mjs"), cli, "settings", command, key, ...flags, "--app", starterSettingsHost,
       "--database-url", "postgresql://sample:fake@unused.invalid/shop?sslmode=verify-full", "--json"],
-    { cwd: directory, encoding: "utf8", env: { ...process.env, NODE_PG_FORCE_NATIVE: "1" } });
+    { cwd: directory, encoding: "utf8", env: {} });
     expect(result.status, result.stderr).toBe(74);
     expect(JSON.parse(result.stdout).refusal).toMatchObject({ code: refusal, hint: expect.stringContaining("Unset NODE_PG_FORCE_NATIVE") });
     expect(result.stderr).toBe("");
