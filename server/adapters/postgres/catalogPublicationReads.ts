@@ -2,12 +2,14 @@ import type { PgQueryExecutor } from "@openlup/platform/data";
 import { z } from "zod";
 import { nativeCatalogPublication, type VerifiedCatalogPublisher, type CatalogPublicationReadPort,
   type CatalogFullPublicationV2, type CatalogPublicationReceiptV2, type CatalogSkuRevisionRef,
-  type CatalogRetainedSourceBinding, type CatalogPublicationFailure, type AdmissionDiagnostic } from "@openlup/platform/catalog";
+  type CatalogRetainedSourceBinding, type CatalogPublicationFailure } from "@openlup/platform/catalog";
 import type { CatalogHeadRef, CatalogPublicationReceipt, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
 
 const { limits, decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
   publicationJson, publicationDigest, SKU_PAGE_DEPTH, publicationReadFailure, publicationRefuse, publicationRemedy,
   assertPublishedSkuIdentity } = nativeCatalogPublication;
+
+type AdmissionDiagnostic = Parameters<typeof publicationRefuse>[0];
 
 declare const verifiedReadScope: unique symbol;
 /** @experimental */

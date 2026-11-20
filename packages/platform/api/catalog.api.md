@@ -2928,8 +2928,6 @@ export interface CatalogTypeDefinitionV2 extends Omit<CatalogProductTypeInput, "
     attributes: readonly AttributeDefinition[];
 }
 export interface CatalogProductTypeRegistry {
-    /** Immutable definitions in registration order, when the registry supports enumeration. */
-    readonly definitions?: readonly Readonly<CatalogProductTypeInput>[];
     resolve(ref: CatalogProductTypeRef): CatalogProductTypeDefinition | undefined;
 }
 export declare function validateCatalogQuantity(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): boolean;
@@ -4050,7 +4048,6 @@ export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, Catalo
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 export { nativeCatalogPublication } from "./publicationCodec.js";
 export type { CatalogFullPublicationV2, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
-export type { AdmissionDiagnostic } from "./publicationError.js";
 export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCommands.js";
 export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt, PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
 ```
