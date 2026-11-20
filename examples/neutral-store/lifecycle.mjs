@@ -9,7 +9,7 @@ import { browserJourneyGroups } from './browser-groups.mjs';
 const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
 const packageNames = ['core', 'outbox', 'platform'];
-const installationHintLimit = 400;
+const installationHintLimit = 240;
 const knownStarterRefusal = /^(?:starter_[a-z_]+|inventory_renewal_protection_policy_invalid|checkout_recovery_reminder_schedule_invalid|saved_address_policy_invalid|starter_locale_unsupported: [A-Za-z0-9_-]{1,32}|starter_locale_copy_missing: [A-Za-z0-9_.\[\]-]{1,120} \([a-z]{2}\))$/;
 
 function run(executable, argv, input) {
@@ -28,6 +28,15 @@ function printInstallationRefusal(code, error) {
   process.stderr.write(`${code}\n`);
   const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
   if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
+}
+
+function rulesRefusalMessage(error) {
+  if (!(error instanceof Error) || error.name !== 'CatalogPublicationError' || !/^catalog_publication_rules?_[a-z_]+$/u.test(error.code))
+    return;
+  const { message } = error;
+  const hook = /^Product rule (\w+) must be a function\. Export it as a function( or omit it)?\.$/u.exec(message);
+  if (hook) return `Export ${hook[1]} as a function${hook[2] ?? ''}. Product rule ${hook[1]} must be a function.`;
+  return message.replace(/^(Product rule [^.]+ failed\.) (.+)$/u, '$2 $1');
 }
 
 function configurationArgument(argv) {
@@ -89,10 +98,8 @@ if (command === 'candidate') {
     if (healthcheck) override.services.application.healthcheck = healthcheck;
     run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
   } catch (error) {
-    const rulesRefusal = error instanceof Error && error.name === 'CatalogPublicationError'
-      && /^catalog_publication_rules?_[a-z_]+$/u.test(error.code);
-    const code = error instanceof Error && (knownStarterRefusal.test(error.message) || rulesRefusal)
-      ? error.message : 'starter_installation_failed';
+    const code = rulesRefusalMessage(error)
+      ?? (error instanceof Error && knownStarterRefusal.test(error.message) ? error.message : 'starter_installation_failed');
     printInstallationRefusal(code, error);
     process.exitCode = 2;
   }

@@ -29,6 +29,16 @@ function derivationRefusal(code: string, hint: string): never {
   throw Object.assign(new Error(code), { hint });
 }
 
+function hintPart(value: string, limit: number): string {
+  const text = value.trim().replace(/\s+/gu, ' ');
+  if (text.length <= limit) return text;
+  const prefix = Math.floor((limit - 1) / 2);
+  return `${text.slice(0, prefix)}…${text.slice(-(limit - prefix - 1))}`;
+}
+
+// Leave room for both references and their versions in one installation hint.
+const hintType = (ref: CatalogProductTypeRef) => `${hintPart(ref.key, 75)}@${ref.version}`;
+
 function rulesVersion(type: Omit<CatalogProductTypeInput, 'validateContent'>, artifact: Uint8Array): number {
   return 2 + createHash('sha256').update(canonicalCatalogDraftJson(type)).update(artifact).digest().readUInt32BE() % 2_147_483_646;
 }
@@ -37,14 +47,14 @@ function rulesVersion(type: Omit<CatalogProductTypeInput, 'validateContent'>, ar
 function starterCatalogueBuilds(artifact: Uint8Array) {
   const definitions = authoringRegistry.definitions;
   if (!definitions) derivationRefusal('starter_catalogue_rules_registry_required',
-    'In owned/catalogue.ts, export the registry returned by createCatalogProductTypeRegistry, or provide its definitions list.');
+    'Export a registry from owned/catalogue.ts using createCatalogProductTypeRegistry, or provide its definitions list.');
   const identities = new Set<string>();
   return definitions.map(authoring => {
     const { validateContent: _legacyRule, validatorRef: _legacyRef, ...legacyType } = authoring;
-    const reference = authoring.taxClass !== undefined ? ['taxClass', authoring.taxClass]
-      : authoring.subscriptionProfileRef !== undefined ? ['subscriptionProfileRef', typeIdentity(authoring.subscriptionProfileRef)] : undefined;
+    const reference = authoring.taxClass !== undefined ? ['taxClass', hintPart(authoring.taxClass, 75)]
+      : authoring.subscriptionProfileRef !== undefined ? ['subscriptionProfileRef', hintType(authoring.subscriptionProfileRef)] : undefined;
     if (reference) derivationRefusal('starter_catalogue_rules_reference_unsupported',
-      `Remove ${reference[0]} from ${typeIdentity(authoring)} in owned/catalogue.ts for starter preview. The starter cannot supply ${reference[0]} ${reference[1]}.`);
+      `Remove ${reference[0]} from ${hintType(authoring)} in owned/catalogue.ts (${reference[1]}).`);
     const unit = 'openlup:g';
     const catalogueType = { ...legacyType,
       units: legacyType.units.some(row => row.code === unit) ? legacyType.units
@@ -60,7 +70,7 @@ function starterCatalogueBuilds(artifact: Uint8Array) {
         `Change the colliding authoring version for ${typeIdentity(authoring)} in owned/catalogue.ts, then run ./lifecycle up.`);
     const issue = catalogPackIssues(pack)[0];
     if (issue) derivationRefusal('starter_catalogue_rules_definition_invalid',
-      `Correct ${typeIdentity(authoring)} in owned/catalogue.ts. ${issue.code} at ${issue.path}.`);
+      `Correct ${hintType(authoring)} in owned/catalogue.ts. ${issue.code} at ${hintPart(issue.path, 70)}.`);
     identities.add(identity);
     return { authoring: { key: authoring.key, version: authoring.version }, pack };
   });

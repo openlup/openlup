@@ -105,35 +105,49 @@ exit 1
     const original = await readFile(file, 'utf8');
     assert.ok(original.includes(registration));
     const effects = resolve(app, 'durable-effects');
-    async function refuseWithoutEffects(command: string, name: string, message: RegExp, hint?: RegExp) {
+    async function refuseWithoutEffects(command: string, name: string, ...lines: string[]) {
       await writeFile(effects, '');
       const result = spawnSync(process.execPath, ['--import', './bootstrap-probe.mjs', 'lifecycle.mjs', command, '--configuration', 'supplements'], {
         cwd: app, env: { PATH: app }, encoding: 'utf8', timeout: 15_000,
       });
       assert.equal(await readFile(effects, 'utf8'), '', `${name}: ${command} must have zero durable effects`);
       assert.equal(result.status, 2, result.stderr);
-      assert.match(result.stderr, message, name);
-      if (hint) assert.match(result.stderr, hint, name);
+      const printed = result.stderr.trimEnd().split('\n');
+      assert.ok(printed.every(line => line.length <= 240), `${name}: every diagnostic line fits the installation hint bound`);
+      assert.deepEqual(printed, lines, name);
     }
-    for (const [name, entry, code, hint] of [
-      ['resolve-only', resolveOnlyRegistry, 'starter_catalogue_rules_registry_required', /owned\/catalogue\.ts.*createCatalogProductTypeRegistry/u],
-      ['tax class', "taxClass: 'example:standard'", 'starter_catalogue_rules_reference_unsupported',
-        /Remove taxClass from example:accessory@7 in owned\/catalogue\.ts.*taxClass example:standard/u],
-      ['subscription profile', "subscriptionProfileRef: { key: 'example:plan', version: 2 }", 'starter_catalogue_rules_reference_unsupported',
-        /Remove subscriptionProfileRef from example:accessory@7 in owned\/catalogue\.ts.*subscriptionProfileRef example:plan@2/u],
+    const addType = (fields: string, key = 'example:accessory', version = 7) =>
+      `types.push({ ...types[0]!, key: ${JSON.stringify(key)}, version: ${version}, ${fields} });\n${registration}`;
+    const version = 2_147_483_647;
+    const type = 'example:' + 'a'.repeat(108) + 'item';
+    const profile = 'example:' + 'b'.repeat(108) + 'plan';
+    const shortType = `example:${'a'.repeat(29)}…${'a'.repeat(33)}item@${version}`;
+    const shortProfile = `example:${'b'.repeat(29)}…${'b'.repeat(33)}plan@${version}`;
+    for (const [name, replacement, code, hint] of [
+      ['resolve-only', resolveOnlyRegistry, 'starter_catalogue_rules_registry_required',
+        'Export a registry from owned/catalogue.ts using createCatalogProductTypeRegistry, or provide its definitions list.'],
+      ['tax class', addType("taxClass: 'example:standard'"), 'starter_catalogue_rules_reference_unsupported',
+        'Remove taxClass from example:accessory@7 in owned/catalogue.ts (example:standard).'],
+      ['subscription profile', addType("subscriptionProfileRef: { key: 'example:plan', version: 2 }"),
+        'starter_catalogue_rules_reference_unsupported',
+        'Remove subscriptionProfileRef from example:accessory@7 in owned/catalogue.ts (example:plan@2).'],
+      ['long tax class', addType(`taxClass: '${'c'.repeat(120)}'`, type, version), 'starter_catalogue_rules_reference_unsupported',
+        `Remove taxClass from ${shortType} in owned/catalogue.ts (${'c'.repeat(37)}…${'c'.repeat(37)}).`],
+      ['long subscription profile', addType(`subscriptionProfileRef: { key: '${profile}', version: ${version} }`, type, version),
+        'starter_catalogue_rules_reference_unsupported',
+        `Remove subscriptionProfileRef from ${shortType} in owned/catalogue.ts (${shortProfile}).`],
     ] as const) await t.test(name, async () => {
-      const replacement = name === 'resolve-only' ? entry
-        : `types.push({ ...types[0]!, key: 'example:accessory', version: 7, ${entry} });
-${registration}`;
       await writeFile(file, original.replace(registration, replacement));
       for (const command of ['up', 'install'])
-        await refuseWithoutEffects(command, name, new RegExp(`^${code}$`, 'mu'), hint);
+        await refuseWithoutEffects(command, name, code, hint);
     });
     await t.test('missing rules hook', async () => {
       await writeFile(file, original);
       await writeFile(resolve(app, 'owned/catalogue-rules.cjs'), 'module.exports = {};');
       await refuseWithoutEffects('up', 'missing rules hook',
-        /Product rule validateContent must be a function\. Export it as a function\./u);
+        'Export validateContent as a function. Product rule validateContent must be a function.');
+      await refuseWithoutEffects('install', 'missing rules hook',
+        'Product rule validateContent must be a function. Export it as a function.');
     });
   } finally { await rm(app, { recursive: true, force: true }); }
 });
