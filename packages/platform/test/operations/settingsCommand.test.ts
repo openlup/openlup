@@ -960,14 +960,15 @@ it.each([
       return { present: true as const, revision: "local", value: parityValue };
     } }, previewers: { [key]: preview } };
   });
-  const flags = Object.entries(context)
-    .filter(([flag]) => flag !== "database-url" || command === "show" || command === "preview")
-    .map(([flag, value]) => `--${flag}=${value}`);
+  const launchFlags = Object.entries(context).map(([flag, value]) => `--${flag}=${value}`);
+  const launch = settingsMcpContext(launchFlags);
+  expect(launch.context).toEqual(context);
+  const flags = launchFlags.filter(flag => !flag.startsWith("--database-url=") || command === "show" || command === "preview");
   const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === command)!;
   const host = { bind, loadCheck };
   const cli = await run([...flags, "--json", command, ...argv], { host });
   expect(cli.exit).toBe(exit);
-  const result = await callSettingsTool(tool, input, context, host);
+  const result = await callSettingsTool(tool, input, launch.context!, host);
   expect(result).toEqual({ isError: exit !== 0, structuredContent: JSON.parse(cli.output),
     content: [{ type: "text", text: cli.output.trimEnd() }] });
   if (command === "show" && "database-url" in context) {
@@ -986,11 +987,16 @@ it.each([
   if (command === "preview" && exit !== 0) expect(preview).not.toHaveBeenCalled();
 });
 
-it.each([{ schemaVersion: 1 as const }, { ...validPreview, extra: true }])("P11 rejects preview output outside the advertised schema", async (output) => {
-  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "preview")!;
+it.each([
+  ["incomplete output", renewalStockProtectionPreviewResult, { schemaVersion: 1 as const }],
+  ["extra field with a strict schema", renewalStockProtectionPreviewResult, { ...validPreview, extra: true }],
+  ["extra field stripped by a host schema", z.object(renewalStockProtectionPreviewResult.shape), { ...validPreview, extra: true }],
+] as const)("P11 rejects %s", async (_, schema, output) => {
+  const tool = settingsMcpTools(schema).find(row => row.command === "preview")!;
   const result = await callSettingsTool(tool, { key, value: nativeProposal, asOf }, connectedApp,
     { bind: async () => ({ previewers: { [key]: async () => output } }) });
-  expect(result).toEqual({ isError: true, content: [{ type: "text", text: expect.stringContaining("invalid document") }] });
+  expect(result).toEqual({ isError: true, content: [{ type: "text",
+    text: "The settings command returned an invalid document. Check the installed package version and app binding." }] });
 });
 
 it.each([url, url + " ", url + "?host=other.invalid", url.replace("/shop", "/%ZZ"), url.replace("/shop", "/")])("P12 uses shared named-store launch admission", async (candidate) => {

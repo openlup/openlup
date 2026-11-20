@@ -524,11 +524,15 @@ it("keeps the settings tool registry private and serves MCP through the command 
     readStdin: async () => { throw new Error("unexpected proposal input"); },
   };
   expect(await operations.runSettingsCommand(["mcp", "--json"], io, host)).toBe(64);
-  expect(JSON.parse(output.join(""))).toMatchObject({ refusal: { code: "commerce_setting_read_input_invalid" } });
+  const invalidUsage = output.join("");
+  expect(JSON.parse(invalidUsage)).toMatchObject({ refusal: { code: "commerce_setting_read_input_invalid" } });
   output.length = 0;
   const input = (async function* () { yield Buffer.from('{"jsonrpc":"2.0","id":1,"method":"ping"}\n'); })();
   expect(await operations.runSettingsCommand(["mcp", "--json"], { ...io, input })).toBe(64);
-  expect(JSON.parse(output.join(""))).toMatchObject({ refusal: { code: "commerce_setting_read_input_invalid" } });
+  expect(output.join("")).toBe(invalidUsage);
+  output.length = 0;
+  expect(await operations.runSettingsCommand(["mcp", "--json"], { ...io, input }, { bind: host.bind })).toBe(64);
+  expect(output.join("")).toBe(invalidUsage);
   output.length = 0;
   expect(await operations.runSettingsCommand(["mcp"], { ...io, input }, host)).toBe(0);
   expect(output.map(line => JSON.parse(line))).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }]);

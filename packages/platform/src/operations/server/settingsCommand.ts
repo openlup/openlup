@@ -295,12 +295,13 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     return emit(field && hint ? { ...result, refusal: { ...result.refusal, path: [field], hint } } : result, 64);
   };
   if (argv[0] === "mcp") {
-    if (!io.input || !host) return invalid();
+    // Hosts must route process output away from the protocol stream they pass as io.write.
+    if (!io.input || !host?.previewResultSchema) return invalid();
     // Load the loop after CLI initialization. Tools call this command for the ordinary settings operations.
     const { runSettingsMcp, settingsMcpContext } = await import("./settingsMcp.js");
     const { context, hint } = settingsMcpContext(argv.slice(1));
-    if (!context || !host.previewResultSchema) {
-      io.warn?.((hint ?? "Supply host.previewResultSchema to start settings mcp.") + "\n");
+    if (!context) {
+      io.warn?.(hint + "\n");
       return 64;
     }
     await runSettingsMcp(io.input, line => io.write(line), context, host, host.previewResultSchema);

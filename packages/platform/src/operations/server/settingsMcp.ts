@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { parseArgs } from "node:util";
+import { isDeepStrictEqual, parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand } from "./settingsCommand.js";
 import { admitDatabaseUrl, checkResultSchema } from "./settingsCommandSupport.js";
@@ -16,7 +15,6 @@ export function settingsMcpContext(args: string[]) {
     const url = values["database-url"];
     const admitted = url === undefined ? undefined : admitDatabaseUrl(url);
     if (admitted && "hint" in admitted) return { hint: admitted.hint };
-    if (values.app) values.app = resolve(values.app);
     return { context: values };
   } catch {
     return { hint: usage };
@@ -62,7 +60,8 @@ export async function callSettingsTool(tool: Tool, args: ToolArguments, context:
     readStdin: async () => JSON.stringify(args.value) }, host);
   try {
     const document: unknown = JSON.parse(line);
-    if (output.safeParse(document).success) return {
+    const parsed = output.safeParse(document);
+    if (parsed.success && isDeepStrictEqual(parsed.data, document)) return {
       isError: exit !== 0, structuredContent: document, content: [{ type: "text", text: line.trimEnd() }],
     };
   } catch { /* An unreadable command document is an invalid tool result. */ }
