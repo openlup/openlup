@@ -1,8 +1,9 @@
 // Shared dead-owner contract. Uncertainty always retains the container.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { readlinkSync } from "node:fs";
-import { hostname } from "node:os";
+import { existsSync, mkdirSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { hostname, tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { env as processEnvironment } from "node:process";
 
@@ -10,8 +11,55 @@ const exec = promisify(execFile);
 const standaloneRun = randomUUID();
 const shortHost = () => hostname().split(".")[0];
 const pidNamespace = () => process.platform === "linux" ? readlinkSync("/proc/self/ns/pid") : undefined;
+const activityMarkerDir = join(tmpdir(), "openlup-disposable-runs");
+const activityMarkerPath = run => join(
+  activityMarkerDir,
+  `${createHash("sha256").update(String(run)).digest("hex").slice(0, 32)}.used`,
+);
+function markDisposableRunActivity(run) {
+  if (!run) return;
+  try {
+    mkdirSync(activityMarkerDir, { recursive: true });
+    writeFileSync(activityMarkerPath(run), "", { flag: "a" });
+  } catch { /* Marker write is a fast-path optimization; never block container labeling. */ }
+}
+export function hasDisposableRunActivity(run) {
+  return Boolean(run) && existsSync(activityMarkerPath(run));
+}
+export function clearDisposableRunActivity(run) {
+  if (!run) return;
+  try { rmSync(activityMarkerPath(run), { force: true }); } catch { /* Best-effort cleanup. */ }
+}
+
+const VITEST_SUBCOMMANDS = new Set(["run", "watch", "dev", "bench", "typecheck", "list", "related", "init"]);
+const VITEST_VALUE_FLAGS = new Set([
+  "-c", "--config", "-t", "--testNamePattern", "--project", "--reporter", "--outputFile",
+  "-r", "--root", "--dir", "--mode", "--environment", "--pool", "--maxWorkers", "--minWorkers",
+  "--shard", "--bail", "--retry", "--testTimeout", "--hookTimeout", "--exclude", "--merge-reports",
+]);
+export function hasTargetedTestArgs(argv = []) {
+  const targets = [];
+  let skipNext = false;
+  let sawSubcommand = false;
+  for (const arg of argv) {
+    if (skipNext) { skipNext = false; continue; }
+    if (arg === "--") continue;
+    if (arg.startsWith("-")) {
+      if (!arg.includes("=") && VITEST_VALUE_FLAGS.has(arg)) skipNext = true;
+      continue;
+    }
+    if (!sawSubcommand && targets.length === 0 && VITEST_SUBCOMMANDS.has(arg)) {
+      sawSubcommand = true;
+      continue;
+    }
+    targets.push(arg);
+  }
+  return targets.length > 0 && targets.every(arg => /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(arg) || arg.includes("/"));
+}
+
 export const currentRunId = () => processEnvironment.OPENLUP_DISPOSABLE_RUN;
 export function disposableLabelArgs({ run = currentRunId() ?? standaloneRun } = {}) {
+  markDisposableRunActivity(run);
   const labels = {
     "dev.disposable": "1",
     "dev.disposable.owner_pid": String(process.pid),

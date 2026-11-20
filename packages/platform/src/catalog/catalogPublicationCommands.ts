@@ -13,7 +13,7 @@ import { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 import { readPublicationDraftRecord } from "./publicationIntent.js";
 import { catalogPublicationClaim, evaluateCatalogPublication } from "./publicationValidation.js";
 import { decodeStoredPublicationReceipt, publicationApprovalState, publicationDigest, publicationJson } from "./publicationCodec.js";
-import { CatalogPublicationError, catalogPublicationAdmissionRefusal, publicationReadFailure, refusePublicationCommand, publicationRemedy,
+import { CatalogPublicationError, catalogPublicationAdmissionRefusal, publicationReadFailure, refusePublicationCommand, publicationIssue,
   type AdmissionDiagnostic } from "./publicationError.js";
 import { assertCurrentPublicationRoster, readNativeDraftEvidence, readPreviousPublication, stagePublication, publicationRelationFence } from "./catalogPublicationProjection.js";
 import { z } from "./validation.js";
@@ -78,19 +78,15 @@ async function routeReadiness(db: PgQueryExecutor, productId: string, presentati
     CROSS JOIN LATERAL jsonb_each_text(COALESCE(p.publication_facts #> '{presentation,routePath}','{}'::jsonb)) r
     WHERE p.id<>$1 AND r.value=($2::jsonb)->>r.key LIMIT 1`,
   [productId, JSON.stringify(presentation.routePath ?? {})])).rows[0];
-  return collision ? { ready: false, reasons: ["catalog_publication_route_conflict"] } : { ready: true, reasons: [] };
+  if (collision) throw new CatalogPublicationError(publicationIssue("catalog_publication_route_conflict", "structural", "product.presentation.routePath"));
+  return { ready: true, reasons: [] };
 }
 async function claimHuman(db: PgQueryExecutor, actor: string) {
   await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);
   await db.query("SELECT public.catalog_price_setup_require_human_admin()");
 }
 function commandFailure(error: unknown): Extract<CatalogPublicationCommandResult, { reason: string }> {
-  if (error instanceof CatalogPublicationError) {
-    const mapped = catalogPublicationAdmissionRefusal(error);
-    return { outcome: error.outcome, reason: mapped?.reason ?? "publication_evaluation_refused",
-      message: error.diagnostic?.message ?? mapped?.message ?? publicationRemedy("publication_evaluation_refused"),
-      ...(error.diagnostic?.path ? { path: error.diagnostic.path } : {}) };
-  }
+  if (error instanceof CatalogPublicationError) return publicationReadFailure(error);
   const sql = error as { code?: string; message?: string; constraint?: string } | null;
   const refuse = (code: AdmissionDiagnostic, outcome: CatalogPublicationError["outcome"]) =>
     commandFailure(new CatalogPublicationError(code, outcome));
@@ -248,7 +244,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
         }, action === "approve" ? "first-decision" : "compile");
         if (result.failure) throw result.failure;
         const issue = [...result.structural, ...result.activationIssues][0];
-        if (issue) throw new CatalogPublicationError(issue.diagnostic.code, issue.outcome, issue.diagnostic);
+        if (issue) throw new CatalogPublicationError(issue.diagnostic, issue.outcome);
         const plan = result.compiled;
         requireCommand(plan && previous, "publication_preparation_unavailable", "dependency_unavailable");
         const seal = publicationApprovalState(plan.product, plan.skus);
@@ -331,7 +327,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
         validation_issue: "candidate_invalid", unsupported: "publication_not_supported",
         dependency_unavailable: "publication_authority_unavailable" } as const;
       if ("reason" in result) return { outcome: result.outcome, reason: reasons[result.outcome],
-        ...(result.message ? { message: result.message } : {}) };
+        ...(result.message ? { message: result.message } : {}), ...(result.path ? { path: result.path } : {}) };
       return { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
     },
   };

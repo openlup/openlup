@@ -4,22 +4,19 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogDraftStoreV3,
   createPostgresCatalogPublicationCommands, createCatalogProductTypeRegistry, withCatalogPublicationRules,
-  catalogDefinitionDigest, type AdmissionDiagnostic, type CatalogPublicationCommand } from "@openlup/platform/catalog";
+  catalogDefinitionDigest, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { publicationWireVectors } from "@openlup/platform/catalog/testing";
 import type { CatalogPublishedSku } from "@openlup/platform/catalog";
 import { canonicalCatalogPriceSetupCommand } from "@openlup/platform/pricing";
-import { hash, transaction } from "./catalogPublicationFixture.js";
+import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { hash, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let pool: Pool, container: PostgresContainer;
 const actor = randomUUID(), otherActor = randomUUID();
-type CommandReason<T extends AdmissionDiagnostic> = T;
-// @ts-expect-error A new command diagnostic must have a remedy before it can be raised.
-export type UnmappedCommandReason = CommandReason<"unmapped_publication_command_reason">;
-
 function latch() {
   let resolve!: () => void;
   const promise = new Promise<void>(ready => { resolve = ready; });
@@ -243,25 +240,44 @@ it("refuses a malformed stored roster before a decision or publication uses it",
   await save(data, 2, payload);
   const next = await prepare(data, 2, head);
   const { rows: [row] } = await pool.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [head.publicationId]);
-  const manifest = JSON.parse(row!.canonical_state);
-  manifest.skus[0].revisionId = "not-a-uuid";
-  const text = canonicalCatalogDraftJson(manifest);
-  const store = (value: string) => transaction(pool, async db => {
+  const manifest = JSON.parse(row!.canonical_state) as CatalogPublicationManifestV2;
+  const store = (value: string, digest = hash(value)) => transaction(pool, async db => {
     await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_issued");
     await db.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
-      [head.publicationId, value, hash(value)]);
+      [head.publicationId, value, digest]);
     await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_issued");
   });
-  const refusal = { outcome: "validation_issue", reason: "publication_details_invalid", path: "skus.0.revisionId",
-    message: expect.stringContaining("Review the product") };
-  await store(text);
-  try { expect(await api.execute(next.approve, who)).toMatchObject(refusal); }
-  finally { await store(row!.canonical_state); }
-  expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
-  await store(text);
+  const readers = createPostgresCatalogPublicationReads({
+    transactions: { run: work => transaction(pool, work) },
+    authorizeHuman: async () => ({ ok: false }),
+    acceptedSource: async (_db, _context, binding) => binding,
+  });
+  const binding = { kind: "order" as const, sourceId: randomUUID(), lineId: randomUUID(), productId: data.productId,
+    skuId: data.skuId, skuRevisionId: manifest.skus[0]!.revisionId, publicationId: head.publicationId,
+    documentRevisionId: manifest.product.document!.id };
+  const cases = malformedPublicationPackets(row!.canonical_state);
+  const refusal = (path: string) => ({ outcome: "validation_issue", reason: "publication_details_invalid", path, message: sealedPublicationRemedy });
   try {
-    expect(await api.execute(next.revoke, who)).toMatchObject(refusal);
-    expect(await api.execute(next.publish, who)).toMatchObject(refusal);
+    for (const { text, path, digest } of cases) {
+      await store(text, digest);
+      expect(await api.execute(next.approve, who)).toMatchObject(refusal(path));
+      const preview = await api.prepareCandidate({ draftId: data.draftId, draftRevision: 2, expectedHead: head }, who);
+      expect(preview).toMatchObject({ preparation: { structural: { outcome: "blocked-input",
+        issues: [{ code: "catalog_publication_manifest_invalid", path, message: sealedPublicationRemedy }] } } });
+      expect(preview).not.toHaveProperty("preparation.postStateDigest");
+      expect(await readers.readbackV2(head)).toMatchObject(refusal(path));
+      expect(await readers.reads.readback(head)).toEqual({
+        ...refusal(path), outcome: "dependency_unavailable", reason: "publication_authority_unavailable",
+      });
+      expect(await readers.resolveRetained(binding, readers.authorizeReadScope("owner"))).toMatchObject(refusal(path));
+    }
+    await store(row!.canonical_state);
+    expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
+    for (const { text, path, digest } of cases) {
+      await store(text, digest);
+      expect(await api.execute(next.revoke, who)).toMatchObject(refusal(path));
+      expect(await api.execute(next.publish, who)).toMatchObject(refusal(path));
+    }
   } finally { await store(row!.canonical_state); }
 });
 
@@ -416,6 +432,39 @@ it.each([[6, "inactive"], [15, "missing"], [16, "expired"], [17, "wrong settleme
   }
 });
 
+it("asks the original administrator to replay a completed child price command", async () => {
+  const data = authored(23), api = native(), who = (await api.authorize(actor))!;
+  await save(data, 1);
+  const first = await prepare(data, 1, null);
+  expect(await api.execute(first.approve, who)).toMatchObject({ outcome: "committed" });
+  const issued = await api.execute(first.publish, who);
+  if (!("receipt" in issued) || !("head" in issued.receipt)) throw new Error(JSON.stringify(issued));
+
+  const priceListId = randomUUID();
+  await pool.query(`INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from)
+    VALUES($1,'Replay list','ZZ','XXX','active',statement_timestamp()-interval '1 hour')`, [priceListId]);
+  const child = { schemaVersion: 1, commandKey: randomUUID(), priceListId, variantId: data.skuId,
+    mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1200, expected: { entryId: null, unitPriceMinor: null } } as const;
+  const text = canonicalCatalogPriceSetupCommand(child);
+  const completed = await transaction(pool, async db => {
+    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: otherActor, role: "authenticated" })]);
+    return (await db.query("SELECT public.catalog_price_setup_apply($1,$2) AS result", [text, hash(text)])).rows[0]?.result;
+  });
+  expect(completed).toMatchObject({ outcome: "committed" });
+
+  const payload = structuredClone(data.payload);
+  const presentation = { title: "Revised article" };
+  Object.assign(payload.product.sharedContent, { catalogAction: "revise", presentation });
+  payload.skus[0]!.priceOperations = [child];
+  payload.publication.operations = [{ op: "set_product_presentation", productSlug: data.slug, presentation }];
+  await save(data, 2, payload);
+  const next = await prepare(data, 2, issued.receipt.head);
+  expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
+  expect(await api.execute(next.publish, who)).toMatchObject({ outcome: "unauthorized", reason: "operator_mismatch",
+    message: "Have the administrator who completed the child price command replay it." });
+  expect(await api.execute(next.publish, (await api.authorize(otherActor))!)).toMatchObject({ outcome: "committed" });
+});
+
 it.each(["publish", "revoke"] as const)("serializes %s before the competing command", async first => {
   const data = authored(first === "publish" ? 7 : 8);
   await save(data, 1);
@@ -548,15 +597,15 @@ describe("publication activation prices", () => {
     return id;
   }
 
-  async function approvedActivation(sequence: number, isAddon: boolean) {
+  async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode") {
     const data = authored(sequence), api = native(), who = (await api.authorize(actor))!;
     const sku = data.payload.skus[0]!;
     sku.grossMass = { ...sku.netContent!, unscaled: "110" };
-    sku.logisticsRef = "example:logistics";
+    if (missing !== "logistics") sku.logisticsRef = "example:logistics";
     data.payload.product.sharedContent.publicationSkus[0]!.isAddon = isAddon;
     const create = data.payload.publication.operations.find(operation => operation.op === "create_sku")!;
     create.isAddon = isAddon;
-    data.payload.publication.operations.push({ op: "set_sku_metadata", skuCode: data.code, logisticsRef: sku.logisticsRef });
+    if (sku.logisticsRef) data.payload.publication.operations.push({ op: "set_sku_metadata", skuCode: data.code, logisticsRef: sku.logisticsRef });
     await save(data, 1);
     const first = await prepare(data, 1, null);
     expect(await api.execute(first.approve, who)).toMatchObject({ outcome: "committed" });
@@ -575,11 +624,30 @@ describe("publication activation prices", () => {
       { op: "set_eligibility", skuCode: data.code, sellableStandalone: true, sellableInSubscription: false },
       { op: "set_offer_membership", ...membership },
     ];
+    if (missing === "purchase mode") {
+      content.requestedModes = [{ skuCode: data.code, modes: [] }];
+      content.offerMemberships = [];
+      payload.publication.operations = payload.publication.operations.slice(0, 1);
+    }
     await save(data, 2, payload);
     const next = await prepare(data, 2, issue.receipt.head);
     expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
     return { ...data, api, who, command: next.publish, head: issue.receipt.head };
   }
+
+  it("asks for the logistics reference on the SKU being activated", async () => {
+    const { api, who, command, code } = await approvedActivation(24, false, "logistics");
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "validation_issue",
+      reason: "catalog_publication_v3_activation_readiness_failed", path: "skus.0.logisticsRef",
+      message: `SKU ${code}. Supply the logistics reference for this SKU.` });
+  });
+
+  it("asks for a purchase mode on the primary SKU before product activation", async () => {
+    const { api, who, command } = await approvedActivation(25, false, "purchase mode");
+    expect(await api.execute(command, who)).toMatchObject({ outcome: "validation_issue",
+      reason: "catalog_publication_v3_active_primary_required", path: "product.primarySkuId",
+      message: "Activate the primary SKU with a purchase mode, or leave the product in draft." });
+  });
 
   it("refuses an unpriced add-on even when the store passes readiness and rolls back activation", async () => {
     const { api, who, command, code, skuId, productId, head } = await approvedActivation(18, true);

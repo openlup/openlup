@@ -1,5 +1,8 @@
 import type { CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
+import type { CatalogCandidateError } from "./candidate.js";
+import type { CatalogConformanceCode, CatalogConformanceRule } from "./contracts/catalogConformance.js";
+import { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 import { z } from "./validation.js";
 
 // Refusal reasons returned by the LC3 claim and apply routines.
@@ -11,52 +14,150 @@ export const publicationPriceRefusalReason = z.enum([
 const reviewDraft = "Review the selected draft and prepare it again.";
 
 const rulesMismatch = "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying.";
-const fixes = new Map([
-  ["catalog_publication_rules_digest_mismatch", rulesMismatch],
-  ["catalog_publication_rules_binding_mismatch", rulesMismatch],
-  ["catalog_definition_drift", rulesMismatch],
-  ["catalog_publication_rules_module_invalid", "Export all required hooks from the self-contained rules module and rebuild it."],
-  ["unit_trade_identifier_missing", "Add a valid unit trade identifier to the SKU, then prepare the draft again."],
-  ["catalog_lifecycle_fresh_sale_refused", "Restore the withdrawn product and SKU before making them sellable."],
-  ["catalog_publication_gross_mass_required", "supply the gross mass for this SKU"],
-  ["catalog_publication_presentation_invalid", "Use the supported presentation fields and keep the authored document in the draft."],
-  ["catalog_publication_v3_compile_product_incomplete", "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status."],
-  ["catalog_publication_v3_document_invalid", "Use a complete JSON object for the product document revision."],
-  ["sku_identity_change_requires_new_sku", "Keep the existing SKU identity or prepare a new SKU."],
-  ["catalog_publication_document_text_copied", "Replace the copied document text with the display value for this field."],
-]);
+const publicationCodes = [
+  "activation_not_assessed", "activation_unknown", "catalog_action_conflict",
+  "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable",
+  "catalog_lifecycle_fresh_sale_refused", "catalog_lifecycle_last_active_child", "catalog_lifecycle_raw_status_fenced",
+  "catalog_lifecycle_state_conflict", "catalog_lifecycle_transition_refused",
+  "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent",
+  "catalog_publication_activation_effect_missing", "catalog_publication_approval_missing",
+  "catalog_publication_approval_state_valid", "catalog_publication_approval_wrong",
+  "catalog_publication_attributes_invalid", "catalog_publication_authored_amounts_invalid",
+  "catalog_publication_axes_invalid", "catalog_publication_busy", "catalog_publication_candidate_already_issued",
+  "catalog_publication_candidate_invalid", "catalog_publication_command_key_reused",
+  "catalog_publication_committed_at_valid", "catalog_publication_content_invalid",
+  "catalog_publication_cursor_invalid", "catalog_publication_decided_at_valid",
+  "catalog_publication_derived_source_mismatch", "catalog_publication_document_bytes_unavailable",
+  "catalog_publication_document_invalid", "catalog_publication_document_required",
+  "catalog_publication_document_revision_sequence", "catalog_publication_document_source_mismatch",
+  "catalog_publication_document_source_missing", "catalog_publication_document_text_copied",
+  "catalog_publication_draft_advanced", "catalog_publication_eligibility_source_mismatch",
+  "catalog_publication_envelope_too_large", "catalog_publication_facts_invalid", "catalog_publication_gross_below_net",
+  "catalog_publication_gross_mass_invalid", "catalog_publication_gross_mass_required",
+  "catalog_publication_gtin_conflict", "catalog_publication_gtin_invalid", "catalog_publication_head_invalid",
+  "catalog_publication_history_item_too_large", "catalog_publication_identifier_blank",
+  "catalog_publication_identifier_conflict", "catalog_publication_identifier_effect_missing",
+  "catalog_publication_identifier_key_reused", "catalog_publication_identifier_primary_invalid",
+  "catalog_publication_identifier_requires_created_sku", "catalog_publication_identifier_source_mismatch",
+  "catalog_publication_identity_conflict", "catalog_publication_integral_grams_required",
+  "catalog_publication_issue_sealed", "catalog_publication_lifecycle_assertion_changed",
+  "catalog_publication_lineage_invalid", "catalog_publication_lineage_unknown", "catalog_publication_live_drift",
+  "catalog_publication_activation_membership_required", "catalog_publication_logistics_source_mismatch",
+  "catalog_publication_manifest_invalid", "catalog_publication_mass_required_until_mc5",
+  "catalog_publication_media_evidence_mismatch", "catalog_publication_media_readiness_unproven",
+  "catalog_publication_media_validation_unavailable", "catalog_publication_membership_change_not_allowed",
+  "catalog_publication_membership_effect_missing", "catalog_publication_membership_source_mismatch",
+  "catalog_publication_metadata_effect_missing", "catalog_publication_net_weight_unsupported",
+  "catalog_publication_operation_invalid", "catalog_publication_operation_source_ambiguous",
+  "catalog_publication_operation_source_mismatch", "catalog_publication_operation_source_missing",
+  "catalog_publication_page_invalid", "catalog_publication_pointer_capability_unconsumed",
+  "catalog_publication_post_state_changed", "catalog_publication_presentation_effect_missing",
+  "catalog_publication_presentation_invalid", "catalog_publication_presentation_source_mismatch",
+  "catalog_publication_presentation_unavailable", "catalog_publication_price_changed",
+  "catalog_publication_price_key_reused", "catalog_publication_price_readiness",
+  "catalog_publication_price_unavailable", "catalog_publication_primary_sku_required",
+  "catalog_publication_product_identity_conflict", "catalog_publication_product_name_source_mismatch",
+  "catalog_publication_query_invalid", "catalog_publication_read_invalid",
+  "catalog_publication_readback_item_too_large", "catalog_publication_receipt_input_invalid",
+  "catalog_publication_receipt_invalid", "catalog_publication_receipt_unsupported",
+  "catalog_publication_record_immutable", "catalog_publication_reserved_carrier", "catalog_publication_roster_limit",
+  "catalog_publication_route_conflict", "catalog_publication_rule_failed",
+  "catalog_publication_rules_binding_mismatch", "catalog_publication_rules_digest_mismatch",
+  "catalog_publication_rules_module_invalid", "catalog_publication_scope_expansion",
+  "catalog_publication_sku_effect_missing", "catalog_publication_sku_identity_changed",
+  "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid",
+  "catalog_publication_sku_revision_invalid", "catalog_publication_sku_title_invalid",
+  "catalog_publication_sku_too_large", "catalog_publication_source_invalid", "catalog_publication_source_mismatch",
+  "catalog_publication_tax_class_unavailable", "catalog_publication_v3_activation_readiness_failed",
+  "catalog_publication_v3_active_primary_required", "catalog_publication_v3_compile_archive_refused",
+  "catalog_publication_v3_compile_change_noop", "catalog_publication_v3_compile_derived_facts_mismatch",
+  "catalog_publication_v3_compile_document_absent", "catalog_publication_v3_compile_document_conflict",
+  "catalog_publication_v3_compile_document_stale", "catalog_publication_v3_compile_identifier_conflict",
+  "catalog_publication_v3_compile_primary_foreign", "catalog_publication_v3_compile_primary_immutable",
+  "catalog_publication_v3_compile_product_absent", "catalog_publication_v3_compile_product_conflict",
+  "catalog_publication_v3_compile_product_incomplete", "catalog_publication_v3_compile_sku_absent",
+  "catalog_publication_v3_compile_sku_archived", "catalog_publication_v3_compile_sku_conflict",
+  "catalog_publication_v3_document_digest_mismatch", "catalog_publication_v3_document_invalid",
+  "catalog_publication_v3_document_not_canonical", "catalog_publication_v3_document_reference_stale",
+  "catalog_publication_v3_presentation_required", "catalog_publication_v3_structural_readiness_failed",
+  "catalog_publication_wire_invalid", "catalog_publications_canonical_state_check",
+  "catalog_sku_revisions_full_facts_check", "channel_identity_not_assessed", "commerce_product_slug_unsupported",
+  "commercial_activation_not_assessed", "content_missing", "dimension_not_declared", "dimension_not_installed",
+  "current_primary_mismatch", "document_reference_missing", "duplicate_dimension", "duplicate_option_combination", "duplicate_sku_code",
+  "duplicate_sku_id", "duplicate_trade_identifier", "foreign_product_reference", "gross_mass_invalid",
+  "gross_mass_missing", "intent_sku_absent", "logistics_reference_missing", "media_readiness_mismatch",
+  "media_readiness_unknown", "media_reference_missing", "net_content_invalid", "net_content_missing",
+  "net_content_option_mismatch", "option_quantity_invalid", "option_type_invalid", "option_value_invalid",
+  "price_reference_missing", "price_validation_unavailable", "primary_sku_missing", "primary_sku_not_in_product",
+  "publication_evidence_unavailable", "publication_head_unavailable", "publication_preparation_unavailable",
+  "publisher_not_authorized", "retained_read_not_authorized", "retained_revision_unavailable",
+  "retained_source_mismatch", "sku_code_missing", "sku_missing", "slug_missing", "trade_identifier_invalid",
+  "trade_identifier_quantity_invalid", "trade_identifier_scheme_unsupported", "type_not_installed",
+  "unit_trade_identifier_missing",
+] as const;
+
+/** @internal The platform-owned refusal vocabulary. */
+type PlatformCode = typeof publicationCodes[number] | CatalogConformanceCode
+  | CatalogCandidateError["code"] | z.infer<typeof publicationPriceRefusalReason>;
+export type { PlatformCode };
+
+type Rule = "validateContent" | "validateProduct" | "validatePrices" | "presentationReadiness" | "assessActivation";
+export type PlatformIssue = { kind: "platform"; code: PlatformCode; stored?: true };
+export type Issue = Omit<CatalogCandidateIssue, "code" | "message"> & { detail?: string } & (
+  PlatformIssue | { kind: "adopterRule"; rule: Rule; code: string }
+);
+export type EvaluationIssue = { outcome: CatalogPublicationFailure["outcome"]; diagnostic: Issue };
+type Remedy = readonly [reason: string, fix: string] | Pick<CatalogConformanceRule, "fix">;
 
 function skuSizeRemedy(subject?: string): string {
   return `Reduce the facts or details for ${subject ? `SKU ${subject}` : "this SKU"} and prepare the publication again.`;
 }
 
-export function publicationIssue(code: string, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject?: string): CatalogCandidateIssue {
-  let message = code === "catalog_publication_sku_too_large" ? skuSizeRemedy(subject) : fixes.get(code) ?? (Object.hasOwn(publicationRefusals, code) ? publicationRefusals[code as AdmissionDiagnostic][1] : undefined);
-  if (subject && message && ["catalog_publication_identifier_blank", "catalog_publication_identifier_key_reused",
-    "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid"].includes(code)) {
-    message = `SKU ${subject}. ${message}`;
+export function publicationIssue(code: PlatformCode, phase: CatalogCandidateIssue["phase"], path: string, subject?: string): Issue & PlatformIssue {
+  return { kind: "platform", code, path, ...(phase === undefined ? {} : { phase }), ...(subject === undefined ? {} : { subject }) };
+}
+
+export function adopterIssue(rule: Rule, code: string, path: string): Issue {
+  return { kind: "adopterRule", rule, code, path: path || "product" };
+}
+
+export function renderPublicationIssue(issue: Issue): CatalogCandidateIssue & { message: string } {
+  if (issue.kind === "adopterRule") {
+    const { kind: _kind, rule, detail: _detail, ...fields } = issue;
+    return { ...fields, message: `Fix the rule violation ${issue.code} reported by ${rule} at ${issue.path}.` };
   }
-  return { code, phase, path, ...(subject === undefined ? {} : { subject }), ...(message === undefined ? {} : { message }) };
+  const { kind: _kind, stored, detail, ...fields } = issue;
+  const { code, subject } = fields;
+  const fix = stored ? "Recover the sealed publication or re-export it from a verified copy."
+    : detail ?? (code === "catalog_publication_sku_too_large" ? skuSizeRemedy(subject) : publicationRemedy(code));
+  const sku = subject && (["catalog_publication_identifier_blank", "catalog_publication_identifier_key_reused",
+    "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid",
+    "catalog_publication_v3_activation_readiness_failed"].includes(code));
+  return { ...fields, message: sku ? `SKU ${subject}. ${fix}` : fix };
 }
 
 /** @internal */
 export class CatalogPublicationError extends Error {
-  constructor(readonly code: string, readonly outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported" = "validation_issue",
-    readonly diagnostic?: CatalogCandidateIssue) {
-    super((diagnostic ?? publicationIssue(code, "structural", "publication")).message ?? code);
+  readonly diagnostic: Issue;
+  constructor(issue: PlatformCode | Issue, readonly outcome: CatalogPublicationFailure["outcome"] = "validation_issue") {
+    const diagnostic = typeof issue === "string" ? publicationIssue(issue, undefined, "") : issue;
+    super(renderPublicationIssue(diagnostic).message);
+    this.diagnostic = diagnostic;
     this.name = "CatalogPublicationError";
   }
+  get code() { return this.diagnostic.code; }
+  get stored() { return this.diagnostic.kind === "platform" && this.diagnostic.stored === true; }
 }
 
 export function publicationDiagnostic(error: CatalogPublicationError, phase: NonNullable<CatalogCandidateIssue["phase"]>,
-  path: string, subject: string): CatalogCandidateIssue {
-  return error.diagnostic?.phase ? error.diagnostic : {
-    ...error.diagnostic, ...publicationIssue(error.code, phase, path, subject),
-  };
+  path: string, subject: string): Issue {
+  const issue = error.diagnostic;
+  return issue.phase ? issue : { ...issue, phase, path: issue.kind === "adopterRule" ? issue.path : path, subject };
 }
-export const publicationRefuse = (code: string, outcome?: CatalogPublicationError["outcome"]): never => { throw new CatalogPublicationError(code, outcome); };
+export const publicationRefuse = (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]): never => { throw new CatalogPublicationError(code, outcome); };
 
-export const publicationRefusals = {
+const publicationRefusals = {
+  ...CATALOG_CONFORMANCE_RULES,
   catalog_publication_cursor_invalid: ["candidate_invalid", "Restart from the first page or reuse the continuation returned for this product."],
   catalog_publication_query_invalid: ["candidate_invalid", "Reload the product and use the publication identifiers returned for it."],
   catalog_publication_absent: ["catalog_publication_absent", "The selected publication does not exist. Reload the product and select one of its publications."],
@@ -128,27 +229,148 @@ export const publicationRefusals = {
   command_key_reused: ["command_key_reused", "Give the changed price operation a fresh command key and prepare the draft again."],
   command_fingerprint_invalid: ["command_fingerprint_invalid", reviewDraft],
   command_invalid: ["command_invalid", reviewDraft],
-  operator_mismatch: ["operator_mismatch", reviewDraft],
+  operator_mismatch: ["operator_mismatch", "Have the administrator who completed the child price command replay it."],
   command_in_progress: ["command_in_progress", "Retry the publication with the same command keys after the price change finishes."],
   sku_not_found: ["sku_not_found", "Select an existing SKU for the price change or create it in this publication."],
   sku_archived: ["sku_archived", "Restore the SKU before changing its price or remove the price change."],
   base_price_ambiguous: ["base_price_ambiguous", "Resolve overlapping base price entries for this SKU and price list, then prepare the draft again."],
   catalog_definition_drift: ["catalog_definition_drift", rulesMismatch],
   publication_preparation_unavailable: ["publication_preparation_unavailable", reviewDraft],
-  publication_evaluation_refused: ["publication_evaluation_refused", reviewDraft],
   catalog_publication_identity_conflict: ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."],
-  duplicate_combination: ["duplicate_combination", "A SKU already has this combination of options. Use distinct options for the new SKU."],
-} as const satisfies Record<string, readonly [string, string]>
-  & Record<z.infer<typeof publicationPriceRefusalReason>, readonly [string, string]>;
+  activation_not_assessed: { fix: "Verify purchase readiness for the proposed product and SKUs." },
+  activation_unknown: { fix: "Verify purchase readiness for the proposed product and SKUs." },
+  candidate_dependency_unavailable: { fix: "Load the installed definition, draft and current publication before retrying." },
+  candidate_digest_mismatch: { fix: "Prepare the selected draft and use its returned digest." },
+  candidate_invalid: { fix: "Correct the candidate input and prepare the draft again." },
+  catalog_action_conflict: { fix: "Choose create for a new product or revise for an existing publication." },
+  catalog_lifecycle_child_effects_mismatch: { fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs." },
+  catalog_lifecycle_evidence_unavailable: { fix: "Load the current publication and its retained revisions before retrying." },
+  catalog_lifecycle_fresh_sale_refused: { fix: "Restore the withdrawn product and SKU before making them sellable." },
+  catalog_lifecycle_last_active_child: { fix: "Keep an active child SKU or withdraw the whole product." },
+  catalog_lifecycle_raw_status_fenced: { fix: "Use a governed lifecycle operation to change status." },
+  catalog_lifecycle_state_conflict: { fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs." },
+  catalog_lifecycle_transition_refused: { fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs." },
+  catalog_lifecycle_withdrawal_overlay_refused: { fix: "Keep a withdrawal limited to status and purchase eligibility." },
+  catalog_publication_activation_effect_missing: { fix: "Match purchase eligibility to the modes in the saved draft." },
+  catalog_publication_authored_amounts_invalid: { fix: "Use a SKU code and net content accepted by the installed product rules." },
+  catalog_publication_derived_source_mismatch: { fix: "Match the proposed SKU facts and options to the selected draft and installed derivation rules." },
+  catalog_publication_document_bytes_unavailable: { fix: "Recover the selected document bytes from the receipted draft or a verified copy." },
+  catalog_publication_document_revision_sequence: { fix: "Reload the document revisions and select the current revision or register the next one." },
+  catalog_publication_document_source_mismatch: { fix: "Select a document revision backed by a saved draft for this product." },
+  catalog_publication_document_source_missing: { fix: "Select a document revision backed by a saved draft for this product." },
+  catalog_publication_document_text_copied: { fix: "Replace the copied document text with the display value for this field." },
+  catalog_publication_eligibility_source_mismatch: { fix: "Match purchase eligibility to the modes in the saved draft." },
+  catalog_publication_gross_below_net: { fix: "Supply a gross mass at least as large as the net content." },
+  catalog_publication_gross_mass_invalid: { fix: "Supply a positive gross mass in an installed mass unit." },
+  catalog_publication_gross_mass_required: { fix: "supply the gross mass for this SKU" },
+  catalog_publication_identifier_effect_missing: { fix: "Match the identifier operation to the identifier saved for this SKU." },
+  catalog_publication_identifier_primary_invalid: { fix: "Use a valid unit GTIN as the primary trade identifier." },
+  catalog_publication_identifier_requires_created_sku: { fix: "Create the SKU before adding its identifier." },
+  catalog_publication_identifier_source_mismatch: { fix: "Match the identifier operation to the identifier saved for this SKU." },
+  catalog_publication_integral_grams_required: { fix: "Supply net content that converts to a supported positive whole number of grams." },
+  catalog_publication_activation_membership_required: { fix: "Admit this SKU to an offer before enabling purchases." },
+  catalog_publication_logistics_source_mismatch: { fix: "Use the SKU metadata saved in the selected draft." },
+  catalog_publication_mass_required_until_mc5: { fix: "Supply net content in a unit admitted for this product type." },
+  catalog_publication_media_evidence_mismatch: { fix: "Bind the selected media reference and asset list to verified evidence for this SKU." },
+  catalog_publication_media_readiness_unproven: { fix: "Bind the selected media reference and asset list to verified evidence for this SKU." },
+  catalog_publication_media_validation_unavailable: { fix: "Verify the SKU media and retry once that evidence is available." },
+  catalog_publication_membership_change_not_allowed: { fix: "Use the offer and admission status accepted by the saved draft and product rules." },
+  catalog_publication_membership_effect_missing: { fix: "Use the offer and admission status accepted by the saved draft and product rules." },
+  catalog_publication_membership_source_mismatch: { fix: "Use the offer and admission status accepted by the saved draft and product rules." },
+  catalog_publication_metadata_effect_missing: { fix: "Use the SKU metadata saved in the selected draft." },
+  catalog_publication_operation_invalid: { fix: "Use a supported publication operation." },
+  catalog_publication_operation_source_ambiguous: { fix: "Select one receipted draft that authorizes this operation for the SKU." },
+  catalog_publication_operation_source_mismatch: { fix: "Select one receipted draft that authorizes this operation for the SKU." },
+  catalog_publication_operation_source_missing: { fix: "Select one receipted draft that authorizes this operation for the SKU." },
+  catalog_publication_presentation_effect_missing: { fix: "Match the presentation operation to the saved product presentation." },
+  catalog_publication_presentation_invalid: { fix: "Use the supported presentation fields and keep the authored document in the draft." },
+  catalog_publication_presentation_source_mismatch: { fix: "Match the presentation operation to the saved product presentation." },
+  catalog_publication_presentation_unavailable: { fix: "Verify the storefront presentation and route before retrying." },
+  catalog_publication_product_identity_conflict: { fix: "Choose an unused product slug or revise the existing product." },
+  catalog_publication_product_name_source_mismatch: { fix: "Use the product name saved in the selected draft." },
+  catalog_publication_rule_failed: { fix: "Correct the reported rule hook and rebuild the product rules." },
+  catalog_publication_rules_binding_mismatch: { fix: rulesMismatch },
+  catalog_publication_rules_digest_mismatch: { fix: rulesMismatch },
+  catalog_publication_rules_module_invalid: { fix: "Export all required hooks from the self-contained rules module and rebuild it." },
+  catalog_publication_scope_expansion: { fix: "Keep changes within the product and SKUs named by the selected draft." },
+  catalog_publication_sku_effect_missing: { fix: "Match the proposed SKU facts and options to the selected draft and installed derivation rules." },
+  catalog_publication_source_invalid: { fix: "Select an open, receipted draft revision for this product." },
+  catalog_publication_source_mismatch: { fix: "Select an open, receipted draft revision for this product." },
+  catalog_publication_v3_activation_readiness_failed: { fix: "Supply the logistics reference for this SKU." },
+  catalog_publication_v3_active_primary_required: { fix: "Activate the primary SKU with a purchase mode, or leave the product in draft." },
+  catalog_publication_v3_compile_archive_refused: { fix: "Withdraw the SKU through a supported lifecycle transition." },
+  catalog_publication_v3_compile_change_noop: { fix: "Include a change to the product or one of its SKUs." },
+  catalog_publication_v3_compile_derived_facts_mismatch: { fix: "Match the proposed SKU facts and options to the selected draft and installed derivation rules." },
+  catalog_publication_v3_compile_document_absent: { fix: "Select a document revision backed by a saved draft for this product." },
+  catalog_publication_v3_compile_document_conflict: { fix: "Reload the document revisions and select the current revision or register the next one." },
+  catalog_publication_v3_compile_document_stale: { fix: "Reload the document revisions and select the current revision or register the next one." },
+  catalog_publication_v3_compile_identifier_conflict: { fix: "Use a trade identifier that is unique to this SKU." },
+  catalog_publication_v3_compile_primary_foreign: { fix: "Select a primary SKU belonging to this product." },
+  catalog_publication_v3_compile_primary_immutable: { fix: "Keep the published primary SKU." },
+  catalog_publication_v3_compile_product_absent: { fix: "Create the product before applying this operation." },
+  catalog_publication_v3_compile_product_conflict: { fix: "Choose an unused product slug or revise the existing product." },
+  catalog_publication_v3_compile_product_incomplete: { fix: "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status." },
+  catalog_publication_v3_compile_sku_absent: { fix: "Select a SKU in the draft or create it before applying this operation." },
+  catalog_publication_v3_compile_sku_archived: { fix: "Restore this SKU before making it sellable." },
+  catalog_publication_v3_compile_sku_conflict: { fix: "Choose an unused SKU code." },
+  catalog_publication_v3_document_digest_mismatch: { fix: "Use the canonical document bytes and their matching digest." },
+  catalog_publication_v3_document_invalid: { fix: "Use a complete JSON object for the product document revision." },
+  catalog_publication_v3_document_not_canonical: { fix: "Use the canonical document bytes and their matching digest." },
+  catalog_publication_v3_document_reference_stale: { fix: "Reload the document revisions and select the current revision or register the next one." },
+  catalog_publication_v3_presentation_required: { fix: "Supply the product presentation or its document revision." },
+  catalog_publication_v3_structural_readiness_failed: { fix: "A new product needs its presentation. Add a set_product_presentation operation that matches the draft presentation." },
+  channel_identity_not_assessed: { fix: "Verify trade identifiers and commercial readiness before selling this SKU." },
+  commerce_product_slug_unsupported: { fix: "Use a lowercase product slug with letters, digits, hyphens or underscores." },
+  commercial_activation_not_assessed: { fix: "Verify trade identifiers and commercial readiness before selling this SKU." },
+  content_missing: { fix: "Supply the product presentation or its document revision." },
+  current_primary_mismatch: { fix: "Reload the publication and select the current primary SKU." },
+  dimension_not_declared: { fix: "Use a dimension installed for the product type and declared by this product." },
+  dimension_not_installed: { fix: "Use a dimension installed for the product type and declared by this product." },
+  document_reference_missing: { fix: "Select a document revision backed by a saved draft for this product." },
+  duplicate_dimension: { fix: "Declare each selected dimension once." },
+  duplicate_option_combination: { fix: "Use a distinct option combination for each SKU." },
+  duplicate_sku_code: { fix: "Choose an unused SKU code." },
+  duplicate_sku_id: { fix: "Use a distinct identifier for each SKU." },
+  duplicate_trade_identifier: { fix: "Use a trade identifier that is unique to this SKU." },
+  foreign_product_reference: { fix: "Reference the product that owns this draft." },
+  gross_mass_invalid: { fix: "Supply a positive gross mass in an installed mass unit." },
+  gross_mass_missing: { fix: "Supply the gross mass for this SKU." },
+  intent_sku_absent: { fix: "Select a SKU in the draft or create it before applying this operation." },
+  logistics_reference_missing: { fix: "Supply the logistics reference for this SKU." },
+  media_readiness_mismatch: { fix: "Bind the selected media reference and asset list to verified evidence for this SKU." },
+  media_readiness_unknown: { fix: "Verify the SKU media and retry once that evidence is available." },
+  media_reference_missing: { fix: "Select the media reference for these assets." },
+  net_content_invalid: { fix: "Supply net content in a unit admitted for this product type." },
+  net_content_missing: { fix: "Supply the net content for this SKU." },
+  net_content_option_mismatch: { fix: "Use the same net content in the SKU and its net-content option." },
+  option_quantity_invalid: { fix: "Supply an option value that matches the installed dimension and its allowed values or units." },
+  option_type_invalid: { fix: "Supply an option value that matches the installed dimension and its allowed values or units." },
+  option_value_invalid: { fix: "Supply an option value that matches the installed dimension and its allowed values or units." },
+  price_reference_missing: { fix: "Verify the selected price operations in the effective price list." },
+  price_validation_unavailable: { fix: "Verify the selected price operations in the effective price list." },
+  primary_sku_missing: { fix: "Select the primary SKU." },
+  primary_sku_not_in_product: { fix: "Select a primary SKU belonging to this product." },
+  publication_evidence_unavailable: { fix: "Load the current publication and its retained revisions before retrying." },
+  publication_head_unavailable: { fix: "Load the current publication and its retained revisions before retrying." },
+  sku_code_missing: { fix: "Supply the SKU code." },
+  sku_missing: { fix: "Add a SKU for this product." },
+  slug_missing: { fix: "Use a lowercase product slug with letters, digits, hyphens or underscores." },
+  trade_identifier_invalid: { fix: "Supply a valid GTIN." },
+  trade_identifier_quantity_invalid: { fix: "Use quantity one for a unit or at least two for a case." },
+  trade_identifier_scheme_unsupported: { fix: "Use a supported trade identifier scheme." },
+  type_not_installed: { fix: "Install the product type and version selected by the draft." },
+  unit_trade_identifier_missing: { fix: "Add a valid unit trade identifier to the SKU, then prepare the draft again." },
+} as const satisfies Record<PlatformCode, Remedy>;
 
-export type AdmissionDiagnostic = keyof typeof publicationRefusals;
-export const refusePublicationCommand: (code: AdmissionDiagnostic, outcome?: CatalogPublicationError["outcome"]) => never = publicationRefuse;
-export function publicationRemedy(code: AdmissionDiagnostic): string {
-  return publicationRefusals[code][1];
+export type AdmissionDiagnostic = PlatformCode;
+export const refusePublicationCommand = publicationRefuse;
+export function publicationRemedy(code: PlatformCode): string {
+  const remedy = publicationRefusals[code];
+  return "fix" in remedy ? remedy.fix : remedy[1];
 }
-type AdmissionRefusal = { outcome: "validation_issue"; reason: (typeof publicationRefusals)[AdmissionDiagnostic][0]; message: string; path?: string };
+type AdmissionRefusal = { outcome: "validation_issue"; reason: string; message: string; path?: string };
 
-const deferredForeignKeys = new Map([
+const deferredForeignKeys = new Map<string, PlatformCode>([
   ["catalog_publications_previous_fk", "catalog_publication_lineage_invalid"],
   ["catalog_publication_heads_issue_fk", "catalog_publication_head_invalid"],
   ["catalog_sku_revisions_issue_fk", "catalog_publication_issue_sealed"],
@@ -156,22 +378,23 @@ const deferredForeignKeys = new Map([
   ["catalog_publication_decisions_receipt_fk", "catalog_publication_receipt_invalid"],
 ]);
 
-function sqlAdmissionDiagnostic(error: unknown): string | undefined {
+function sqlAdmissionDiagnostic(error: unknown): PlatformCode | undefined {
   if (!error || typeof error !== "object" || !("code" in error)) return;
   if (error.code === "22023" && "message" in error && error.message === "catalog_publication_wire_invalid")
     return error.message;
   if (!("constraint" in error) || typeof error.constraint !== "string") return;
   if (error.code === "23503") return deferredForeignKeys.get(error.constraint);
-  if (error.code === "23514") return error.constraint;
+  if (error.code === "23514" && Object.hasOwn(publicationRefusals, error.constraint)
+    && !("fix" in publicationRefusals[error.constraint as PlatformCode])) return error.constraint as PlatformCode;
 }
 
 /** Maps publication admission diagnostics after the transaction has rolled back.
  * @experimental
  */
 export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRefusal | null {
-  const diagnostic = error instanceof CatalogPublicationError ? error.code : sqlAdmissionDiagnostic(error);
-  if (!diagnostic || !Object.hasOwn(publicationRefusals, diagnostic)) return null;
-  const name = diagnostic as AdmissionDiagnostic;
+  if (error instanceof CatalogPublicationError) return { ...publicationFailure(error), outcome: "validation_issue" };
+  const name = sqlAdmissionDiagnostic(error);
+  if (!name) return null;
   const refusal = publicationRefusals[name];
 
   const contentFixes = {
@@ -182,18 +405,20 @@ export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRef
   };
   const field = error && typeof error === "object" && "column" in error && typeof error.column === "string" ? error.column : "";
   const message = name === "catalog_publication_content_invalid" && Object.hasOwn(contentFixes, field)
-    ? contentFixes[field as keyof typeof contentFixes] : refusal[1];
-  const path = error instanceof CatalogPublicationError ? error.diagnostic?.path : undefined;
-  return { outcome: "validation_issue", reason: refusal[0], message, ...(path ? { path } : {}) };
+    ? contentFixes[field as keyof typeof contentFixes] : publicationRemedy(name);
+  return { outcome: "validation_issue", reason: "fix" in refusal ? name : refusal[0], message };
+}
+
+function publicationFailure(error: CatalogPublicationError): CatalogPublicationFailure & { message: string } {
+  const issue = error.diagnostic;
+  const remedy = issue.kind === "platform" ? publicationRefusals[issue.code] : undefined;
+  return { outcome: error.outcome, reason: remedy && !("fix" in remedy) ? remedy[0] : issue.code,
+    message: error.message, ...(issue.path ? { path: issue.path } : {}) };
 }
 
 export function publicationReadFailure(error: unknown): CatalogPublicationFailure & { message: string } {
-  const unreadable = publicationRefusals.catalog_publication_read_invalid[1];
-  if (error instanceof CatalogPublicationError) {
-    const details = Object.hasOwn(publicationRefusals, error.code) ? publicationRefusals[error.code as AdmissionDiagnostic] : undefined;
-    return { outcome: error.outcome, reason: details?.[0] ?? "publication_authority_unavailable", message: details?.[1] ?? unreadable };
-  }
+  if (error instanceof CatalogPublicationError) return publicationFailure(error);
   const refusal = catalogPublicationAdmissionRefusal(error);
   return refusal ? { ...refusal, outcome: "dependency_unavailable" }
-    : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable", message: unreadable };
+    : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable", message: publicationRemedy("catalog_publication_read_invalid") };
 }

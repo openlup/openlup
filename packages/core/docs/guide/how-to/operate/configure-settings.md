@@ -18,6 +18,13 @@ Try these arguments:
 - `show inventory_renewal_protection --json`
 - `explain commerce_setting_unknown`
 
+Each goal word matches the start of a word in the setting’s description, key,
+domain or search terms, including words inside camelCase keys. A nonblank goal
+with no letters or decimal digits returns no results (a blank goal is refused
+with exit code 64). The list shows settings that match every goal word in
+catalogue order, or, if there are none, up to ten partial matches ranked by the
+number of matching words, with ties in catalogue order.
+
 The commands work offline. For settings with a value, `show` includes the value
 schema where available, the default and its source, the effect on future
 decisions and the records that keep their current values. For a capability or
@@ -41,6 +48,32 @@ supplies a valid policy. If the effective host policy fails native
 validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, pass
 `explain checkout_recovery_reminders` to the settings script.
+
+For connected `show` and `preview`, supply a `postgres://` or `postgresql://`
+URL that exactly matches the URL parser's serialization. Omit whitespace and dot
+segments that would change its serialization. Supply one TCP host, a username,
+an optional password and one non-empty database path segment. Omit the colon for an empty password.
+For a DNS host, use lowercase letters, digits, dots and hyphens. Each label
+must begin and end with a letter or digit and can have up to 63 characters.
+The whole name can have up to 253 characters, including any trailing dot.
+The final label cannot be all digits, `0x` alone, or `0x` followed only by
+hexadecimal digits. For IPv4, use four decimal octets from 0 to 255 separated
+by dots, without leading zeros. Use brackets and lowercase hexadecimal without
+leading zeros for IPv6, compress the first longest run of two or more zero
+fields to `::`, and write a single zero field as `0`. An omitted port uses
+5432. Write an explicit port from 1 to 65535 without leading zeros. The command
+decodes the username, password and database name once. Use valid UTF-8 escapes
+and omit control characters, including escaped controls. The decoded username
+and database name each have a limit of 63 UTF-8 bytes. Omit fragments and omit
+the query entirely unless it is exactly `?sslmode=disable`, `?sslmode=require`
+or `?sslmode=verify-full`. `require` and `verify-full` verify the server
+certificate against the named host using Node's trust store. `disable` or an
+omitted mode uses plaintext. The URL alone sets the host, port, username,
+password, database and TLS mode. `PG`-prefixed environment variables and
+password files cannot change those settings. Other driver variables still
+apply. Both commands refuse when the driver loads the native client. Unset
+`NODE_PG_FORCE_NATIVE` to use the JavaScript client. Applications that replace
+the driver or pool manage their own connections.
 
 ## Check owned configuration before proposing a change
 
@@ -153,11 +186,7 @@ Use `preview inventory_renewal_protection` with
 
 Use `--configuration <id>` to select a stock source when the app has multiple
 configurations. Use `--as-of <UTC-ISO-instant>` to repeat an observation at the
-same instant. The host can also compose the read-only MCP definition
-`settings__preview` with `previewSetting` from `@openlup/platform/operations/server`.
-Bind the inventory key to `previewRenewalStockProtection` from
-`@openlup/platform/inventory` using the intended store's pool and stock source.
-Pass through the options supplied by `previewSetting`.
+same instant.
 The CLI decodes JSON once. Preview and the installer work from decoded values,
 including finite JavaScript numbers and own JSON fields. For example,
 `14.0000000000000001` decodes to `14` and previews as `14`. A raw PostgreSQL
@@ -192,9 +221,10 @@ startup validator for `check`. Connected commands use readers, previewers or a
 stock source key from the binding. If the requested configuration ID is unknown, return
 `{ configurationIds: [...] }` with the available IDs. The CLI owns the
 database connection and calls the module without a pool when resolving
-`--configuration` offline. The module must avoid starting the application,
-writing data or printing to stdout. Pass an explicit
-`--app` only for application code you trust.
+`--configuration` offline. With an explicit `--configuration`, show and explain
+resolve it before answering even for package keys, and list the valid IDs if it is unknown.
+The module must avoid starting the application, writing data or printing to
+stdout. Pass an explicit `--app` only for application code you trust.
 
 List, show and explain work for platform keys without an app or database. With a
 PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
@@ -254,3 +284,53 @@ and whether retrying can help.
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |
+
+## Use the settings server from an MCP client
+
+The settings server is read-only. After installing the extracted starter's
+dependencies, configure your MCP client to run the starter's settings script
+from the application root. In clients that support a working directory,
+replace `/absolute/path/to/store` with that root.
+
+```json
+{
+  "mcpServers": {
+    "openlup-settings": {
+      "command": "npm",
+      "args": ["--silent", "run", "settings", "--", "mcp"],
+      "cwd": "/absolute/path/to/store"
+    }
+  }
+}
+```
+
+You can also use absolute paths to the installed binary and settings host.
+
+```json
+{
+  "mcpServers": {
+    "openlup-settings": {
+      "command": "/absolute/path/to/store/node_modules/.bin/openlup",
+      "args": ["settings", "mcp", "--app", "/absolute/path/to/store/owned/settings-host.ts"]
+    }
+  }
+}
+```
+
+If the `--app` module fails to load, the server stops at launch and reports the
+reason on stderr. For your first call, use `settings_list` with a known
+application key as `goal`. Confirm that the key appears in the result to verify
+the application binding.
+
+| Tool | Use it to |
+| --- | --- |
+| `settings_list` | Find platform and app settings by goal. |
+| `settings_show` | Pass `key` for the setting's details and any available value observation. |
+| `settings_explain` | Pass a setting key or refusal code as `keyOrCode` to get an explanation and the next step. |
+| `settings_check` | Run the application's offline check and see which reported values were validated. |
+| `settings_preview` | Pass `key` and the proposed JSON `value` to estimate a change for a supported setting. |
+
+For connected show and preview, add `--database-url` and a read-capable
+PostgreSQL URL to the client's private launch configuration. Supply one TCP host,
+a username and the database name. Use `--configuration <id>` to select an app
+configuration. Tool calls cannot override the application, configuration or URL.

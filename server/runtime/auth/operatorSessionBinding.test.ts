@@ -1,5 +1,5 @@
 import * as jose from 'jose';
-import { expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { HttpRequest, HttpResponse } from '@openlup/platform/http';
 const { store } = vi.hoisted(() => ({ store: {
   issue: vi.fn(async () => ({ deliverable: true, email: 'admin@example.invalid', expiresAt: new Date(Date.now()+600000).toISOString() })),
@@ -9,6 +9,11 @@ const { store } = vi.hoisted(() => ({ store: {
 } }));
 vi.mock('@openlup/platform/identity', async importOriginal => ({ ...await importOriginal<object>(), createPostgresOperatorIdentityStore: () => store }));
 import { createOperatorSessionBinding, createOperatorHumanAuth } from './operatorSessionBinding.js';
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
+afterEach(() => { vi.useRealTimers(); });
 it('reference composition issues and authorizes an operator audience with no machine configuration', async () => {
   const pair = await jose.generateKeyPair('ES256', { extractable: true });
   const env = { PLATFORM_BUNDLE: 'node-postgres', DATABASE_URL: 'postgresql://unused.invalid/test', APP_BASE_URL: 'https://app.example.invalid', CUSTOMER_IDENTITY_ISSUER: 'https://identity.example.invalid', CUSTOMER_IDENTITY_AUDIENCE: 'customer', OPERATOR_IDENTITY_AUDIENCE: 'operator', CUSTOMER_IDENTITY_KEY_ID: 'test.key', CUSTOMER_IDENTITY_PRIVATE_JWK: JSON.stringify({ ...await jose.exportJWK(pair.privateKey), alg: 'ES256' }), CUSTOMER_IDENTITY_JWKS: JSON.stringify({ keys: [{ ...await jose.exportJWK(pair.publicKey), alg: 'ES256', kid: 'test.key', use: 'sig' }] }) };

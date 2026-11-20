@@ -12,6 +12,7 @@ openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --
 openlup verify [--app ./application-observations.mjs] [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
 openlup settings list|show|preview|explain [--help] [--json] (experimental)
+openlup settings mcp [--app <module>] [--configuration <id>] [--database-url <url>] (experimental, read-only stdio)
 openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.

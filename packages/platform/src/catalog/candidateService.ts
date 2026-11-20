@@ -6,7 +6,7 @@ import type { CatalogValidationPort } from "./publicationPorts.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { z } from "./validation.js";
-import { CatalogPublicationError, publicationIssue } from "./publicationError.js";
+import { CatalogPublicationError, publicationIssue, renderPublicationIssue } from "./publicationError.js";
 import { readPublicationDraftEnvelope, type PublicationDraftRecord } from "./publicationIntent.js";
 import { matchesPublicationHead, publicationHeadSchema as headSchema, type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 import { evaluateCatalogPublication } from "./publicationValidation.js";
@@ -99,8 +99,7 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
         const latestRead = await readLineage(() => deps.readDraft(record.draftId));
         const latest = readPublicationDraftEnvelope(latestRead) ?? undefined;
         if (latest && (latest.draftId !== record.draftId || latest.revision !== record.revision || latest.status !== record.status)) {
-          throw new CatalogPublicationError("catalog_publication_draft_advanced", "conflict",
-            publicationIssue("catalog_publication_draft_advanced", "structural", "draft", payload.product.type.key));
+          throw new CatalogPublicationError(publicationIssue("catalog_publication_draft_advanced", "structural", "draft", payload.product.type.key), "conflict");
         }
         const head = await readLineage(async () => {
           const current: CatalogPublicationReadResult = await deps.currentHead(record.productId);
@@ -116,7 +115,7 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
         return { head, unavailable, expectedHead: fullHead };
       };
       const definitionDrift = () => refuse("catalog_definition_drift",
-        publicationIssue("catalog_definition_drift", "structural", "product.type", payload.product.type.key).message);
+        renderPublicationIssue(publicationIssue("catalog_definition_drift", "structural", "product.type", payload.product.type.key)).message);
       const definition = deps.registry.resolve({ ...payload.product.type });
       if (!definition?.validatorRef) return definitionDrift();
       const registryDigest = catalogDefinitionDigest(definition);
@@ -129,23 +128,20 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
         expectedHead: referenceHead,
         evaluation, observations: publication, readCurrentHead: () => readHeadLineage(),
         attributeReferences: deps.attributeReferences, validatePrices: deps.validatePrices }, "preview");
-      if (result.failure?.code === "head_conflict"
-        || (result.failure?.code === "candidate_invalid" && !result.failure.diagnostic?.message)) return refuse(result.failure.code);
+      const first = result.failure?.diagnostic;
+      if (first?.kind === "platform" && !first.stored
+        && (first.code === "head_conflict" || first.code === "candidate_invalid" && !first.detail)) return refuse(first.code);
       if (unresolvedImmutableHead) {
         // An independent hard refusal still wins, but the unresolved reference cannot issue a digest.
         if (result.failure) return Promise.reject(result.failure);
         return refuse("candidate_dependency_unavailable");
       }
       if (result.head !== undefined) identityHead = result.head;
-      const structural = result.structural.map(issue => issue.diagnostic);
+      const structural = result.structural.map(issue => renderPublicationIssue(issue.diagnostic));
       const blocked = result.structural.some(issue => issue.outcome !== "dependency_unavailable");
       const activationBlocked = result.activationIssues.some(issue => issue.outcome !== "dependency_unavailable");
-      const activation = [...structural, ...result.activationIssues.map(issue => issue.diagnostic)];
-      const first = result.failure?.diagnostic;
-      if (first?.phase === "activation") {
-        activation.splice(activation.indexOf(first), 1);
-        activation.unshift(first);
-      }
+      const activation = [...structural, ...result.activationIssues.map(issue => renderPublicationIssue(issue.diagnostic))];
+      if (first?.phase === "activation") activation.unshift(...activation.splice(structural.length, 1));
       const outcome = <T extends string>(complete: boolean, blocked: boolean, issues: readonly unknown[], passed: T) =>
         blocked ? "blocked-input" as const : !complete || issues.length ? "unknown" as const : passed;
       const preparation: CatalogCandidatePreview["preparation"] = { structural: { outcome: outcome(result.completed.structural, blocked, structural, "staged"), issues: structural },

@@ -1,12 +1,14 @@
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
+import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
+import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery, proveSettingsMcp,
   includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 import { proveNeutralStarterConsumer } from "./exact-set-qualification.mjs";
@@ -333,7 +335,7 @@ it.each([
   };
   write(starterSettingsHost, `export function createSettingsBindings() { return { previewers: { ${key}: async () => (${JSON.stringify(result)}) } }; }`);
   const text = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "--app", starterSettingsHost,
-    "preview", key, "--value", "{}", "--database-url", "postgresql://unused.invalid/shop"], { cwd: directory, encoding: "utf8" });
+    "preview", key, "--value", "{}", "--database-url", "postgresql://sample@unused.invalid/shop"], { cwd: directory, encoding: "utf8" });
   expect(text.status, text.stderr).toBe(0);
   expect(text.stdout).toContain(`Validation: ${validation.state}`);
   expect(text.stdout).toContain(`Horizon difference in days: ${difference?.renewalProtectionDays ?? "unavailable"}`);
@@ -342,6 +344,81 @@ it.each([
   expect(text.stdout).toContain(`SKU-1: ${quantities}`);
   expect(text.stdout).toContain("Existing reservations keep their quantities and expiry times.");
   expect(text.stdout).toContain(result.uncertainty);
+});
+
+it.each([
+  ["plaintext by default", "postgresql://sample@unused.invalid/shop", 5432, "", false, {}],
+  ["explicit plaintext", "postgresql://sample@unused.invalid/shop?sslmode=disable", 5432, "", false, {}],
+  ["verified TLS", "postgresql://sample:fake-secret@unused.invalid:5433/shop?sslmode=verify-full", 5433, "fake-secret",
+    { rejectUnauthorized: true, host: "unused.invalid" }, {}],
+  ["a target with conflicting PG variables", "postgresql://sample@unused.invalid/shop", 5432, "", false, {
+    PGHOST: "elsewhere.invalid", PGPORT: "5999", PGUSER: "fake-user", PGPASSWORD: "fake-password", PGDATABASE: "fake-db",
+    PGSSLMODE: "require",
+  }],
+] as const)("preserves startup parameters and the admitted target for %s", (_, url, port, password, ssl, childEnv) => {
+  const { directory, write } = fixture();
+  const key = "inventory_renewal_protection";
+  const app = "settings-startup-fixture.mjs";
+  const pgModule = JSON.stringify(import.meta.resolve("pg"));
+  write("preload.mjs", `import pg from ${pgModule};
+    pg.Client.prototype.connect = () => { throw new Error("settings fixture must not connect"); };`);
+  write(app, `import assert from "node:assert/strict";
+    import pg from ${pgModule};
+    export function createSettingsBindings({ db }) {
+      const admitted = new db.Client(db.options);
+      const base = new pg.Client({ connectionString: ${JSON.stringify(url)} });
+      assert.deepEqual(admitted.getStartupConf(), base.getStartupConf());
+      assert.deepEqual(admitted.getStartupConf(), { user: "sample", database: "shop" });
+      const { host, port, user, database, ssl, password } = admitted;
+      assert.deepEqual({ host, port, user, database, ssl }, {
+        host: "unused.invalid", port: ${port}, user: "sample", database: "shop", ssl: ${JSON.stringify(ssl)},
+      });
+      assert.equal(typeof password, ${JSON.stringify(password ? "string" : "function")});
+      assert.equal(typeof password === "function" ? password() : password, ${JSON.stringify(password)});
+      return { readers: { ${key}: () => ({ present: false }) } };
+    }`);
+  const result = spawnSync(process.execPath, ["--import", join(directory, "preload.mjs"),
+    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", key, "--app", app, "--database-url", url, "--json"],
+  { cwd: directory, encoding: "utf8", env: childEnv });
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+  expect(result.stderr).toBe("");
+});
+
+it("refuses the native PostgreSQL client before using a connected settings binder", () => {
+  const { directory, write } = fixture();
+  const key = "inventory_renewal_protection";
+  write("preload.mjs", `import pg from ${JSON.stringify(import.meta.resolve("pg"))};
+    delete pg.Client.prototype.getStartupConf;`);
+  write(starterSettingsHost, `export function createSettingsBindings() { throw new Error("settings fixture must not bind"); }`);
+  const cli = resolve("packages/platform/src/lifecycle/openlup.mjs");
+  for (const [command, flags, refusal] of [
+    ["show", [], "commerce_setting_read_unavailable"],
+    ["preview", ["--value", "{}"], "commerce_setting_preview_unexpected"],
+  ] as const) {
+    const result = spawnSync(process.execPath, ["--import", join(directory, "preload.mjs"), cli, "settings", command, key, ...flags, "--app", starterSettingsHost,
+      "--database-url", "postgresql://sample:fake@unused.invalid/shop?sslmode=verify-full", "--json"],
+    { cwd: directory, encoding: "utf8", env: {} });
+    expect(result.status, result.stderr).toBe(74);
+    expect(JSON.parse(result.stdout).refusal).toMatchObject({ code: refusal, hint: expect.stringContaining("Unset NODE_PG_FORCE_NATIVE") });
+    expect(result.stderr).toBe("");
+    expect(result.stdout).not.toMatch(/sample|fake|unused\.invalid/u);
+  }
+});
+
+it("consumes an idle Pool error without printing its message", () => {
+  const { directory, write } = fixture();
+  const key = "inventory_renewal_protection";
+  const app = "settings-idle-fixture.mjs";
+  write(app, `export function createSettingsBindings({ db }) {
+    db.emit("error", new Error("private role fake_idle_role"));
+    return { readers: { ${key}: () => ({ present: false }) } };
+  }`);
+  const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", key,
+    "--app", app, "--database-url", "postgresql://sample@unused.invalid/shop", "--json"],
+  { cwd: directory, encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(result.stdout).not.toContain("fake_idle_role");
 });
 
 it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {
@@ -440,4 +517,41 @@ it.each(baseline.settings)("preserves starter discovery bytes for $key with only
 
 it.each(baseline.checks)("preserves the full starter check report for $args", captured => {
   expect(runStarterSettings(starter, captured.args)).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
+});
+
+it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {
+  const { directory, write } = fixture();
+  const platform = join(directory, "node_modules/@openlup/platform");
+  mkdirSync(platform, { recursive: true });
+  mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
+  const packed = JSON.parse(execFileSync("npm", ["pack", resolve("packages/platform"), "--ignore-scripts",
+    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8" }));
+  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"]);
+  for (const dependency of ["zod", "@openlup/core", "@openlup/outbox"]) {
+    const target = join(directory, "node_modules", dependency);
+    rmSync(target, { recursive: true, force: true });
+    symlinkSync(resolve("node_modules", dependency), target, "dir");
+  }
+  symlinkSync(join(platform, "src/lifecycle/openlup.mjs"), join(directory, "node_modules/.bin/openlup"));
+  write(starterSettingsHost, `export function createSettingsBindings() {
+    return { file: { configuration: "supplements", validate() {}, entries: {
+      "offer.freeShippingFromMinor": { value: 1000, location: { file: "owned/store.config.ts", symbol: "threshold" },
+        descriptor: { domain: "shipping", goal: "Free shipping threshold",
+          effect: { appliesTo: "New orders.", impact: "customer-promise", frozenOn: [] } } },
+    } } };
+  }`);
+  const { listing, results } = proveSettingsMcp(directory);
+  const { tools } = ListToolsResultSchema.parse(listing);
+  expect(tools).toHaveLength(5);
+  const clientValidator = new AjvJsonSchemaValidator();
+  for (const [index, tool] of tools.entries()) {
+    const validateInput = clientValidator.getValidator(tool.inputSchema);
+    const validateOutput = clientValidator.getValidator(tool.outputSchema!);
+    const document = CallToolResultSchema.parse(results[index]).structuredContent!;
+    expect(validateInput({}).valid, tool.name).toBe(["settings_list", "settings_check"].includes(tool.name));
+    expect(validateInput({ databaseUrl: "ignored" }).valid, tool.name).toBe(false);
+    expect(validateOutput(document).valid, tool.name).toBe(true);
+    expect(validateOutput({ ...document, extra: true }).valid, tool.name).toBe(false);
+    expect(validateOutput({ ...document, schemaVersion: undefined }).valid, tool.name).toBe(false);
+  }
 });

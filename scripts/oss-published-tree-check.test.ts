@@ -4,11 +4,13 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { availableParallelism, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+
+import { runPublicTypecheckProjects } from "./oss-public-typecheck.ts";
 
 import { isExpandOnlyPlatformForward } from "./oss-source-release-contract.ts";
 import { REQUIRED_CONTEXTS, contextPassed } from "./packages/release-gate.ts";
@@ -458,8 +460,8 @@ describe("maintainer-controlled source preview workflow", () => {
 describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
-    expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/8"]);
+    expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/8"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -533,6 +535,7 @@ describe("complete public CI", () => {
     const aggregate = workflowJob("test");
     expect(aggregate).toContain("    name: test\n");
     expect(aggregate).toContain("    needs: [test-full-shard, pgtap]\n");
+    expect(aggregate).toContain("\n    timeout-minutes: 2\n");
     expect(aggregate).toContain("SHARD_RESULT: ${{ needs.test-full-shard.result }}");
     expect(workflowJob("pgtap").split("\n").find(line => line.startsWith("    if:"))).toBe(shard.split("\n").find(line => line.startsWith("    if:")));
     expect(aggregate).toContain("PGTAP_RESULT: ${{ needs.pgtap.result }}");
@@ -1052,33 +1055,102 @@ describe("the public-only typecheck contract", () => {
       policyRegistryDigest: value, publicationCatalogDigest: value, ...(compatibility === null ? {} : { compatibility }) }).contents;
   };
 
-  it("compiles solely from the release contract when the private measurement baseline is absent", () => {
+  it("compiles solely from the release contract when the private measurement baseline is absent", async () => {
     const root = mkdtempSync(join(tmpdir(), "published-typecheck-"));
     try {
       symlinkSync(join(ROOT, "node_modules"), join(root, "node_modules"), "dir");
       writeFileSync(join(root, "index.ts"), "export const publicValue: string = 'ok';\n");
       writeFileSync(join(root, "tsconfig.public.json"), JSON.stringify({ compilerOptions: { strict: true }, files: ["index.ts"] }));
       const lines: string[] = [];
-      expect(typecheckVerdict(root, releaseContract(), (line) => lines.push(line))).toBe(true);
+      expect(await typecheckVerdict(root, releaseContract(), (line) => lines.push(line))).toBe(true);
       expect(lines.join("\n")).toContain("projects: tsconfig.public.json");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("refuses a missing or malformed public compatibility contract before compiling", () => {
-    expect(() => typecheckVerdict(ROOT, releaseContract(null), () => undefined)).toThrow(/missing public typecheck/);
+  it("refuses a missing or malformed public compatibility contract before compiling", async () => {
+    await expect(typecheckVerdict(ROOT, releaseContract(null), () => undefined)).rejects.toThrow(/missing public typecheck/);
     const malformed = JSON.parse(releaseContract()) as { compatibility: typeof zeroDebt };
     malformed.compatibility.typecheck.signedPreviewDebt.unresolvedEdges.digest = "sha256-not-signed";
-    expect(() => typecheckVerdict(ROOT, JSON.stringify(malformed), () => undefined)).toThrow(/malformed signed preview/);
+    await expect(typecheckVerdict(ROOT, JSON.stringify(malformed), () => undefined)).rejects.toThrow(/malformed signed preview/);
   });
 
-  it("refuses a zero-debt verdict when the compiler is absent", () => {
+  it("refuses a zero-debt verdict when the compiler is absent", async () => {
     const root = mkdtempSync(join(tmpdir(), "published-typecheck-no-compiler-"));
     try {
       writeFileSync(join(root, "tsconfig.public.json"), "{}\n");
-      expect(() => typecheckVerdict(root, releaseContract(), () => undefined)).toThrow(/compiler did not run/);
+      await expect(typecheckVerdict(root, releaseContract(), () => undefined)).rejects.toThrow(/compiler did not run/);
     } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("runs projects concurrently up to the cap and assembles diagnostics in input order", async () => {
+    const root = mkdtempSync(join(tmpdir(), "published-typecheck-parallel-"));
+    try {
+      const cap = Math.min(4, Math.max(1, availableParallelism()));
+      const tscDir = join(root, "node_modules", "typescript", "bin");
+      mkdirSync(tscDir, { recursive: true });
+      const stateDir = join(root, ".fake-tsc-state");
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(tscDir, "tsc"), `
+const { existsSync, readdirSync, rmSync, writeFileSync } = require("node:fs");
+const { join } = require("node:path");
+const project = process.argv[process.argv.indexOf("-p") + 1];
+const stateDir = ${JSON.stringify(stateDir)};
+const activePath = join(stateDir, project + ".active");
+writeFileSync(activePath, "1");
+writeFileSync(join(stateDir, project + ".started"), "1");
+const activeCount = readdirSync(stateDir).filter((name) => name.endsWith(".active")).length;
+writeFileSync(join(stateDir, project + ".observed"), String(activeCount));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+(async () => {
+  if (project === "p0.json" && ${cap > 1 ? "true" : "false"}) {
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && !existsSync(join(stateDir, "p1.json.started"))) {
+      await sleep(15);
+    }
+    if (existsSync(join(stateDir, "p1.json.started"))) {
+      writeFileSync(join(stateDir, "saw-parallel"), "1");
+    }
+    await sleep(60);
+  } else {
+    await sleep(40);
+  }
+  const index = project.slice(1, -5);
+  console.log("a" + index + ".ts(1,1): error TS2307: Cannot find module './missing" + index + "'");
+  console.error("error TS5023: Unknown compiler option '--bogus" + index + "'.");
+  rmSync(activePath, { force: true });
+  process.exit(2);
+})();
+`);
+      const projects = ["p0.json", "p1.json", "p2.json", "p3.json", "p4.json"];
+      const result = await runPublicTypecheckProjects(root, projects);
+      expect(result.positioned.map((d) => d.file)).toEqual(["a0.ts", "a1.ts", "a2.ts", "a3.ts", "a4.ts"]);
+      expect(result.unpositioned).toEqual(projects.map((p, index) => `${p}: error TS5023: Unknown compiler option '--bogus${index}'.`));
+      const observed = projects.map((p) => Number(readFileSync(join(stateDir, `${p}.observed`), "utf8")));
+      expect(Math.max(...observed)).toBeLessThanOrEqual(cap);
+      if (cap > 1) {
+        expect(existsSync(join(stateDir, "saw-parallel"))).toBe(true);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("propagates non-zero compiler exit errors when no diagnostics are emitted", async () => {
+    const root = mkdtempSync(join(tmpdir(), "published-typecheck-error-"));
+    try {
+      const tscDir = join(root, "node_modules", "typescript", "bin");
+      mkdirSync(tscDir, { recursive: true });
+      writeFileSync(join(tscDir, "tsc"), `
+const project = process.argv[process.argv.indexOf("-p") + 1];
+if (project === "bad.json") process.exit(2);
+process.exit(0);
+`);
+      await expect(runPublicTypecheckProjects(root, ["good.json", "bad.json"])).rejects.toThrow("bad.json: the compiler did not run successfully (exit 2)");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

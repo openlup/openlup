@@ -12,7 +12,7 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
 import { assertConnectedCatalogPublications, connectedNativeStoreTables,
   connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
-const { catalogPublicationAdmissionRefusal } = nativeCatalogPublication;
+const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
 
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
@@ -311,6 +311,15 @@ export async function restoreConnectedNativeStore(input: {
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
+  try {
+    requireDecodedPublication(decodePublicationPacket({
+      publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,
+    }));
+  } catch (error) {
+    const refusal = catalogPublicationAdmissionRefusal(error);
+    if (!refusal) throw error;
+    throw Object.assign(new PostgresTransferError("target_conflict"), { cause: refusal });
+  }
   const client = await input.owner.connect().catch(() => { throw new PostgresTransferError("database_unavailable"); });
   let locked = false, unlockFailed = false;
   let result: { captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number } | undefined;
@@ -391,8 +400,6 @@ export async function restoreConnectedNativeStore(input: {
       for (const table of connectedNativeStoreTables) {
         if (!settings.includes(table as SettingsTable) && baseline.get(table)!.rows.length) fail("target_conflict", table);
       }
-      for (const row of source.get("catalog_publications")!.rows)
-        nativeCatalogPublication.decodeStoredPublicationManifest(JSON.parse(row).canonical_state);
       if (!await equalCensus(client, baseline)) fail("target_conflict");
       const control = await client.query("SELECT mode FROM public.subscription_delivery_alignment_control WHERE singleton=true");
       if (control.rows.length !== 1 || control.rows[0].mode !== "off") fail("target_conflict", "subscription_delivery_alignment_control");

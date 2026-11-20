@@ -662,8 +662,10 @@ next step and remains missing execution proof. Every applicable check still runs
 For optional local feedback after committing and recording the required native
 reviews, run the full local command set with `node scripts/verify-local.mjs` from
 the task worktree root.
-Add `--pgtap` when the change reaches database inputs (including runtime, fixture,
-configuration or harness changes), or when requesting that raw diagnostic.
+pgTAP is auto-selected when SQL changes under `db/` or `packages/*/sql/`; add
+`--pgtap` to force explicit selection when the change reaches other database
+inputs (including runtime, fixture, configuration or harness changes), or when
+requesting that raw diagnostic.
 The runner uses the commands below once: a single locked install, lint's package
 prerequisites, both reference builds, shared package/API/coverage gates and one
 `test:scoped`. Hosted shards, event-bound dependency comparison and receipt
@@ -678,7 +680,8 @@ the first root-worker observation; later synthetic fixture output cannot stand
 in for it. Machine resource policy and explicit worker settings remain effective.
 Tree-wide and UI neutrality run before installation and heavy phases: their
 Node/Git checks need no dependencies. All thirteen mandatory phases remain;
-pgTAP is still explicitly selected. The runner consumes the explained plan;
+pgTAP is auto-selected when SQL changes under `db/` or `packages/*/sql/` and
+`--pgtap` still forces explicit selection. The runner consumes the explained plan;
 execution still checks the current candidate and review before/after commands.
 Build/package/root phases stay serial because they share generated outputs.
 SSR output stays in a unique ignored worktree scratch directory so external npm
@@ -957,13 +960,24 @@ the hosted runner's CPU speed; size bounds for hosted runners as described below
 Locale overrides (`LC_*`), a system gitconfig and `OPENLUP_STACK_BASE` are also
 removed; other local environment variables pass through unchanged.
 
-`preflight` is advisory: no CI job or review step runs it, and it exits non-zero
+Run `npm run preflight -- --fast` before reporting a change ready and before starting reviewers.
+It checks worktree cleanliness, mergeability against `origin/main`, both neutrality gates,
+ast-grep, publication policy and inventory, and DCO. If fetch fails, it uses the local `origin/main`.
+The fast tier does not replace full preflight or hosted CI.
+
+Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
 `git merge-base HEAD origin/main`, plus uncommitted and untracked files, and prints
 one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
 
 - the published-tree typecheck of the required `typecheck` job, after the package build;
 - the ast-grep scan from [lint rules](#commands-and-lint-rules);
+- `ast-grep hygiene`: the first-line file-wide `ast-grep-ignore` check and
+  `ast-grep` rule tests (`ast-grep test --skip-snapshot-tests`);
+- `eslint changed`: ESLint on changed non-deleted JS/TS files before package builds;
+- `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
+  changed; reports `WARN` when the working tree has uncommitted or untracked
+  changes;
 - `npm run inventory:refresh` when SQL under `db/` or `packages/*/sql/` changed;
   it has no check mode, so a rewritten inventory stays in the working tree and
   is reported for commit. It needs Docker and reports `WARN` without it; because
@@ -1165,7 +1179,7 @@ The Outbox companion reads `config/ci-images.json` through its image helper;
 image-pin-only changes therefore retain its real interruption and refusal
 witnesses even when unrelated bounded tooling fixtures are excluded.
 
-All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file and every dot-prefixed segment anywhere also runs everything. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
+All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file outside the allowlisted root documentation files (`README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `GOVERNANCE.md`, `CHANGELOG.md`) and every dot-prefixed segment anywhere also runs everything; root documentation edits still run `scripts/documentation-cli.test.ts` and all unlisted doc/policy checks. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
 
 Review input completeness against the actual test/import closure. Extend [scope falsifiers](scripts/ci-test-scope.test.ts) for the new dependency behavior; row-derived tests alone cannot discover an omitted input. Preserve shared triggers, rename/deletion coverage, identical shard selection and errors selecting everything.
 
@@ -1623,12 +1637,21 @@ authority. Review evidence grants no merge, release, settings or credential righ
      `.github` policies and agent instruction files. Admission or review machinery
      retains its higher floor.
 
-   A blocker is a correctness or security bug, or a direct contradiction of the
-   rules or acceptance criteria. Treat unjustified adopter-visible concepts or
-   steps, leaked internals and unactionable errors as material findings that block.
-   State the concrete cost. A fail-closed edge case, style or wording alone is
-   advice. Argument-parsing edge cases in a read-only command are advice unless
-   they change which store is read or report success for a refused input.
+   A blocker is a correctness or security bug, or a material contradiction of the
+   rules or acceptance criteria. Behaviour unchanged from the base is not a
+   finding of this change; record it as advice and a follow-up. A refusal stricter
+   than the criteria is advice unless it refuses a released or documented valid
+   input or has another material effect, such as a wrong-fix error. A finding
+   against a document outside the tree (brief, specification, PR body, criteria
+   wording) is advice to the lead; the reviewed tree keeps its reviews. Material
+   findings include wrong published effects or persisted data,
+   a released-API change, a security defect, and an unactionable or wrong-fix
+   error; these stay blockers in every round.
+
+   Treat unjustified adopter-visible concepts or steps, leaked internals and
+   unactionable errors as material findings that block. State the concrete cost.
+   Style or wording alone is advice. Reading the wrong store or reporting success
+   for a refused input in a read-only command is a wrong published effect.
    By default, counted reviews use a fresh local CLI
    reviewer (for example Codex) through the qualified route below; the lead
    coordinates, checks results and decides. The lead chooses reasoning effort by
@@ -1637,11 +1660,12 @@ authority. Review evidence grants no merge, release, settings or credential righ
    receipt as a PR comment, then request auto-merge once within merge authority.
    Pending checks may finish afterwards; required source and group checks must
    pass before the queue merges. Confirm the merge on `main`.
-7. **FAIL: one fix commit.** Commit the fix, then review only that fix as a delta,
-   with the open finding cards, at the same floors above. This needs the failed
-   candidate to have had its full floor of complete reviews; after a FAIL from
-   delta reviews only, the next candidate takes a full review. Close every
-   blocking finding explicitly and return to PASS when review succeeds.
+7. **FAIL: one fix commit.** Commit the fix, then review the cumulative delta
+   since the last candidate with its full floor of complete reviews, with the
+   open finding cards, at the delta floor, or take a full review if no such
+   candidate exists, the base, intent, or author changed, or the repair history
+   is no longer linear and merge-free. Close every blocking finding explicitly
+   and return to PASS when review succeeds.
 
    Count every review round. A repair cycle fails to converge if a finding of an
    already-seen class reappears on another path, the number of material findings
@@ -1739,6 +1763,18 @@ Write ignored `.context/scratch/agent-review/intent.json`:
 
 Keep the intent for the life of the change (later candidates may touch more paths);
 changing `risk` or `criteria` requires `prepare --new` and a full review.
+A ruling that only reclassifies findings as advice or states an exclusion travels
+in the brief; it does not change the intent.
+
+Use this template for the approved criteria:
+
+```text
+This change covers <one sentence describing the scope>.
+In-scope behaviours: <complete list>. In-scope paths: <complete list>.
+Out of scope: <one sentence>.
+Proofs: <complete list of behaviour proofs, each failing when its behaviour is
+reverted>; required checks: <the repository checks that must pass>.
+```
 
 Codex may omit `authorSessionId` to use `CODEX_THREAD_ID`. Refresh the local main
 reference before preparation so the cheap merge preflight catches known conflicts.

@@ -13,7 +13,7 @@ import { catalogDraftPublicationStoredApplyResultSchema, catalogDraftPublication
 import type { z } from "./validation.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
-import { CatalogPublicationError, publicationDiagnostic } from "./publicationError.js";
+import { CatalogPublicationError, publicationDiagnostic, renderPublicationIssue } from "./publicationError.js";
 import {
   CatalogDraftStoreError, type CatalogDraftOperator, type CatalogDraftStorePort,
 } from "./draftPorts.js";
@@ -93,9 +93,9 @@ function draftHandler<Context, Record extends CatalogDraftPublicationStoredRecor
         }
         return result;
       } catch (error) {
-        if (command.payload && error instanceof CatalogPublicationError && error.code === "catalog_publication_rule_failed") {
+        if (command.payload && error instanceof CatalogPublicationError && error.diagnostic.kind === "platform" && error.diagnostic.code === "catalog_publication_rule_failed") {
           const issue = publicationDiagnostic(error, "structural", "product.sharedContent", command.payload.product.type.key);
-          return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: [issue] };
+          return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: [renderPublicationIssue(issue)] };
         }
         return failure(error);
       }

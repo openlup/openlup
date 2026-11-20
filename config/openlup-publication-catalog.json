@@ -8494,6 +8494,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/server/settingsCommandSupport.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/settingsMcp.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/server/settingsRead.ts",
       "class": "public-output"
     },
@@ -9594,6 +9602,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresNativeCheckoutSubscriptionPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/postgresNoticeExtensions.ts",
       "class": "public-output"
     },
@@ -10322,7 +10334,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/commerce/managedTypes.test.ts",
+      "path": "packages/platform/test/commerce/nativeCheckoutHostPort.test.ts",
       "class": "public-output"
     },
     {
@@ -10414,10 +10426,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/commerce/omsSchemaTypes.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/test/commerce/operatorCheckoutPaymentLink.test.ts",
       "class": "public-output"
     },
@@ -10463,10 +10471,6 @@
     },
     {
       "path": "packages/platform/test/commerce/orderReviewMedia.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/commerce/orderReviewPorts.test.ts",
       "class": "public-output"
     },
     {
@@ -12058,6 +12062,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/postgresNativeCheckoutSubscriptionPort.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
       "class": "public-output"
     },
@@ -12307,6 +12315,14 @@
     },
     {
       "path": "scripts/bff-route-table-node-typecheck-anchor.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/build-packages-incremental.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/build-packages-incremental.test.ts",
       "class": "public-output"
     },
     {
@@ -14415,6 +14431,10 @@
     },
     {
       "path": "server/adapters/postgres/catalogDraftStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/postgres/catalogPublicationReads.test.ts",
       "class": "public-output"
     },
     {
@@ -20858,10 +20878,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/subscription/automaticRenewalExecution.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/subscription/automaticRenewalPorts.ts",
       "class": "public-output"
     },
@@ -20963,14 +20979,6 @@
     },
     {
       "path": "server/domains/subscription/renewalPreflightLadderFreeze.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/subscription/runAutomaticSubscriptionRenewal.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/subscription/runAutomaticSubscriptionRenewal.ts",
       "class": "public-output"
     },
     {
@@ -28702,10 +28710,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/test/example.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/test/framerMotionMock.tsx",
       "class": "public-output"
     },
@@ -31413,7 +31417,7 @@
     },
     {
       "name": "prelint",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
+      "command": "node scripts/build-packages-incremental.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31473,7 +31477,7 @@
     },
     {
       "name": "pretest",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
+      "command": "node scripts/build-packages-incremental.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31519,7 +31523,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-2031519770f977de75b1836c28d953fc6cea9544ffa4dd1f4d994c463d14d6a2"
+      "digest": "sha256-7f2f88eb43581e036a35b93b9933d4f702e4fbee336bba7931e86eadbb4ee736"
     },
     {
       "path": "packages/core/package.json",
@@ -31527,7 +31531,7 @@
     },
     {
       "path": "packages/outbox/package.json",
-      "digest": "sha256-c1989ac91260eb152a27b461f4eee0db11f04d9f17cccedc9bf41958ca0d3ef6"
+      "digest": "sha256-53aa375f4bc21965d8fd3735b2aa60980c2fec0d43411611c1574b5f30d7b16d"
     },
     {
       "path": "packages/platform/package.json",

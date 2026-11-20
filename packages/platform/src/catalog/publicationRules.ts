@@ -6,7 +6,7 @@ import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
 import type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
-import { CatalogPublicationError, publicationRefuse } from "./publicationError.js";
+import { publicationIssue, CatalogPublicationError, publicationRefuse } from "./publicationError.js";
 
 import { z } from "./validation.js";
 import { publishedFactsSchema, publicationReadinessReasons } from "./publicationCodec.js";
@@ -77,8 +77,8 @@ function runRule<T>(hook: Hook | "module", invoke: () => T): T {
     cause = "invalid_result";
   }
   const code = "catalog_publication_rule_failed";
-  throw new CatalogPublicationError(code, "validation_issue", { code, path: hook, hook, cause,
-    message: `Product rule ${hook} failed. ${fix}` });
+  throw new CatalogPublicationError({ ...publicationIssue(code, undefined, hook), hook, cause,
+    detail: `Product rule ${hook} failed. ${fix}` });
 }
 
 export function ruleProduct({ source: _source, document: _document, content: _content, ...product }: CatalogPublishedProduct): RulesProduct {
@@ -163,8 +163,8 @@ ${source}
     if (hook) {
       const code = "catalog_publication_rules_module_invalid";
       const remedy = invalidRequired ? "Export it as a function." : "Export it as a function or omit it.";
-      throw new CatalogPublicationError(code, "validation_issue", { code, path: hook, hook,
-        message: `Product rule ${hook} must be a function. ${remedy}` });
+      throw new CatalogPublicationError({ ...publicationIssue(code, undefined, hook), hook,
+        detail: `Product rule ${hook} must be a function. ${remedy}` });
     }
     const available = [...requiredHooks, ...optionalHooks].filter(key => probe.status(key) === "callable");
     return { validatorRef, bytes, rules: evaluation => {

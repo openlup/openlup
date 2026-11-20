@@ -4,6 +4,7 @@ import {
   canonicalCatalogOption, validateCatalogQuantity,
   type CatalogDraftIssue, type CatalogProductTypeRegistry,
 } from "./productTypeSchemas.js";
+import { adopterIssue, publicationIssue, type Issue, type PlatformCode } from "./publicationError.js";
 
 export interface CatalogDraftReadiness {
   publication: { status: "incomplete" | "not_assessed"; issues: CatalogDraftIssue[] };
@@ -13,22 +14,38 @@ export type CatalogDraftValidation =
   | { valid: false; issues: CatalogDraftIssue[] }
   | { valid: true; readiness: CatalogDraftReadiness };
 
+type OwnedReadiness = { [K in keyof CatalogDraftReadiness]: Omit<CatalogDraftReadiness[K], "issues"> & { issues: Issue[] } };
+export type DraftValidationIssues = { valid: false; issues: Issue[] } | { valid: true; readiness: OwnedReadiness };
+
 /** Supplied facts must be true; absent publish-time facts remain draft readiness issues. */
 export function validateCatalogDraft(payload: CatalogDraftPayload, registry: CatalogProductTypeRegistry): CatalogDraftValidation {
-  const issues: CatalogDraftIssue[] = [];
-  const publication: CatalogDraftIssue[] = [];
-  const commercial: CatalogDraftIssue[] = [];
-  const add = (path: string, code: string) => issues.push({ path, code });
-  const missing = (path: string, code: string) => publication.push({ path, code });
+  return draftValidationResult(validateDraftIssues(payload, registry));
+}
+
+export function draftValidationResult(result: DraftValidationIssues): CatalogDraftValidation {
+  const field = ({ path, code }: Issue) => ({ path, code });
+  if (!result.valid) return { valid: false, issues: result.issues.map(field) };
+  const { publication, commercial } = result.readiness;
+  return { valid: true, readiness: {
+    publication: { ...publication, issues: publication.issues.map(field) },
+    commercial: { ...commercial, issues: commercial.issues.map(field) },
+  } };
+}
+
+export function validateDraftIssues(payload: CatalogDraftPayload, registry: CatalogProductTypeRegistry): DraftValidationIssues {
+  const issues: Issue[] = [], publication: Issue[] = [], commercial: Issue[] = [];
+  const add = (path: string, code: PlatformCode) => issues.push(publicationIssue(code, undefined, path));
+  const missing = (path: string, code: PlatformCode) => publication.push(publicationIssue(code, undefined, path));
+  const assess = (path: string, code: PlatformCode) => commercial.push(publicationIssue(code, undefined, path));
   const { product, skus } = payload;
   const definition = registry.resolve(product.type);
-  if (!definition) return { valid: false, issues: [{ path: "product.type", code: "type_not_installed" }] };
+  if (!definition) return { valid: false, issues: [publicationIssue("type_not_installed", undefined, "product.type")] };
   const dimensions = new Map(definition.dimensions.map((dimension) => [dimension.key, dimension]));
   const netContentKey = definition.dimensions.find((dimension) => dimension.kind === "quantity" && dimension.role === "net_content")?.key;
   if (new Set(product.dimensions).size !== product.dimensions.length) add("product.dimensions", "duplicate_dimension");
   product.dimensions.forEach((key) => { if (!dimensions.has(key)) add(`product.dimensions.${key}`, "dimension_not_installed"); });
   if (product.sharedContent !== undefined) {
-    issues.push(...definition.validateContent(product.sharedContent).map((issue) => ({ ...issue, path: `product.sharedContent${issue.path ? `.${issue.path}` : ""}` })));
+    issues.push(...definition.validateContent(product.sharedContent).map((issue) => adopterIssue("validateContent", issue.code, `product.sharedContent${issue.path ? `.${issue.path}` : ""}`)));
   } else if (!product.documentRevision) missing("product.sharedContent", "content_missing");
   if (product.documentRevision && product.documentRevision.productId !== product.id) add("product.documentRevision.productId", "foreign_product_reference");
   if (product.primarySkuId && !skus.some((sku) => sku.id === product.primarySkuId)) add("product.primarySkuId", "primary_sku_not_in_product");
@@ -85,14 +102,14 @@ export function validateCatalogDraft(payload: CatalogDraftPayload, registry: Cat
       // Checked here, not in the wire schema, so a stored revision without a quantity stays readable.
       if (identifier.packagingLevel === "case" ? (identifier.quantity ?? 0) < 2 : (identifier.quantity ?? 1) !== 1) add(`${at}.quantity`, "trade_identifier_quantity_invalid");
     });
-    if (!sku.identifiers?.length) commercial.push({ path: `${path}.identifiers`, code: "channel_identity_not_assessed" });
-    if (!sku.identifiers?.some((identifier) => identifier.scheme === "gs1:gtin" && identifier.packagingLevel === "unit")) commercial.push({ path: `${path}.identifiers`, code: "unit_trade_identifier_missing" });
-    if (!sku.priceRef) commercial.push({ path: `${path}.priceRef`, code: "price_reference_missing" });
-    if (!sku.logisticsRef) commercial.push({ path: `${path}.logisticsRef`, code: "logistics_reference_missing" });
+    if (!sku.identifiers?.length) assess(`${path}.identifiers`, "channel_identity_not_assessed");
+    if (!sku.identifiers?.some((identifier) => identifier.scheme === "gs1:gtin" && identifier.packagingLevel === "unit")) assess(`${path}.identifiers`, "unit_trade_identifier_missing");
+    if (!sku.priceRef) assess(`${path}.priceRef`, "price_reference_missing");
+    if (!sku.logisticsRef) assess(`${path}.logisticsRef`, "logistics_reference_missing");
   });
   if (issues.length) return { valid: false, issues };
   // Opaque references are not current pricing, stock, logistics or publication proof.
-  commercial.push({ path: "skus", code: "commercial_activation_not_assessed" });
+  assess("skus", "commercial_activation_not_assessed");
   return { valid: true, readiness: {
     publication: { status: publication.length ? "incomplete" : "not_assessed", issues: publication },
     commercial: { status: "inactive", issues: commercial },
