@@ -830,6 +830,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/vitest-shard-weights.json",
+      "class": "public-output"
+    },
+    {
       "path": "db/bootstrap/node-supabase/30_rate_limit_buckets.sql",
       "class": "public-output"
     },
@@ -12374,7 +12378,19 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-vitest-duration-keys.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-vitest-duration-keys.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-shard.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-shard.test.ts",
       "class": "public-output"
     },
     {
