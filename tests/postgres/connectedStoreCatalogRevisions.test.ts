@@ -296,6 +296,34 @@ it("restores reordered sealed history and recovers the original publication afte
   });
   await source.owner.query("UPDATE public.catalog_skus SET net_weight_g=100 WHERE id=$1", [data.skuId]);
   const captured = await captureStoreJourney(source.owner, "catalog-publication-source");
+  const pristine = await journeyCensus(target.owner);
+  const savedHead = captured.owned.find(table => table.table === "catalog_publications")!.rows
+    .map(text => JSON.parse(text) as { id: string; canonical_state: string }).find(row => row.id === second.issueId)!;
+  const manifestRefusal = { code: "target_conflict", cause: {
+    reason: "publication_details_invalid",
+    message: "The publication contains invalid product details. Review the product and prepare it again.",
+  } };
+  const storeHeadText = (value: string) => transaction(source.owner, async db => {
+    await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_issued");
+    await db.query("UPDATE public.catalog_publications SET canonical_state=$2 WHERE id=$1", [second.issueId, value]);
+    await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_issued");
+  });
+  for (const value of ["invalid JSON text", json({ ...JSON.parse(savedHead.canonical_state), skus: {} })]) {
+    await storeHeadText(value);
+    try {
+      await expect(captureStoreJourney(source.owner, "catalog-malformed-manifest")).rejects.toMatchObject(manifestRefusal);
+    } finally {
+      await storeHeadText(savedHead.canonical_state);
+    }
+    const edited = structuredClone(captured);
+    const issues = edited.owned.find(table => table.table === "catalog_publications")!;
+    issues.rows = issues.rows.map(text => JSON.parse(text).id === second.issueId
+      ? JSON.stringify({ ...JSON.parse(text), canonical_state: value }) : text);
+    rehash(edited);
+    await expect(restore(target.owner, edited)).rejects.toMatchObject(manifestRefusal);
+    expect(await journeyCensus(target.owner)).toEqual(pristine);
+  }
+
   const tampered = structuredClone(captured);
   const revisions = tampered.owned.find(table => table.table === "catalog_publications")!;
   const originalRow = revisions.rows[0]!;
@@ -309,7 +337,6 @@ it("restores reordered sealed history and recovers the original publication afte
     (SELECT set_config('TimeZone','UTC',true)) zone,
     jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb) x`, [JSON.stringify(row)])).rows[0]!.value;
   rehash(tampered);
-  const pristine = await journeyCensus(target.owner);
   await expect(restore(target.owner, tampered)).rejects.toMatchObject({
     code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_content_changed" },
   });

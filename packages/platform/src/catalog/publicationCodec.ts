@@ -9,6 +9,7 @@ import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublished
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
 import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationIssue, publicationReadFailure, publicationRefuse, publicationRemedy } from "./publicationError.js";
+import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 
 const PUBLICATION_MAX_DEPTH = 48;
 export const SKU_PAGE_DEPTH = 3;
@@ -313,6 +314,7 @@ export function assertPublicationRegistration(text: string, path: string): void 
 
 /** @internal Shared by native PostgreSQL adapters and catalogue preparation. */
 export const nativeCatalogPublication = {
+  assertPublishedSkuIdentity,
   decodeStoredPublicationManifest, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
   publicationJson, publicationDigest, SKU_PAGE_DEPTH, limits: CATALOG_PUBLICATION_LIMITS,
   catalogPublicationAdmissionRefusal, publicationReadFailure, publicationRefuse, publicationRemedy,

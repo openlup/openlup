@@ -4347,6 +4347,7 @@ import { z } from "./validation.js";
 import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2 } from "./publicationContracts.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
 import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationReadFailure, publicationRemedy } from "./publicationError.js";
+import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 export declare const SKU_PAGE_DEPTH = 3;
 export declare function canonicalCatalogPublicationJson(input: unknown, depth?: number): string;
 export declare const publicationJson: (input: unknown, maxBytes?: number, depth?: number) => string;
@@ -4387,6 +4388,7 @@ export declare function decodeStoredPublicationReceipt(text: unknown): CatalogPu
 export declare function assertPublicationRegistration(text: string, path: string): void;
 /** @internal Shared by native PostgreSQL adapters and catalogue preparation. */
 export declare const nativeCatalogPublication: {
+    assertPublishedSkuIdentity: typeof assertPublishedSkuIdentity;
     decodeStoredPublicationManifest: typeof decodeStoredPublicationManifest;
     decodeStoredPublicationReceipt: typeof decodeStoredPublicationReceipt;
     decodeStoredPublicationSku: typeof decodeStoredPublicationSku;
@@ -4557,6 +4559,8 @@ export declare const publicationRefusals: {
     readonly catalog_publication_command_key_reused: readonly ["publication_command_key_reused", "This command key belongs to a different request. Retry the original request or use a fresh key."];
     readonly catalog_publication_gtin_conflict: readonly ["publication_gtin_conflict", "This GTIN is already assigned. Verify the barcode and prepare the draft again."];
     readonly catalog_publication_identifier_conflict: readonly ["publication_identifier_conflict", "This identifier is already assigned. Check its issuer and value."];
+    readonly catalog_publication_identifier_blank: readonly ["publication_identifier_blank", "Enter a nonblank value for this identifier."];
+    readonly catalog_publication_identifier_key_reused: readonly ["publication_identifier_key_reused", "Use a distinct issuer and value pair for this identifier."];
     readonly catalog_publication_draft_advanced: readonly ["publication_draft_advanced", "The saved draft changed. Prepare its current revision."];
     readonly catalog_publication_route_conflict: readonly ["publication_route_conflict", "Another product uses this route. Choose a different route and prepare the draft again."];
     readonly catalog_publication_lifecycle_assertion_changed: readonly ["publication_lifecycle_assertion_changed", "Reload the SKU revisions and prepare the lifecycle changes again."];
@@ -4565,6 +4569,10 @@ export declare const publicationRefusals: {
     readonly catalog_publication_price_changed: readonly ["publication_price_changed", "The current base price differs from the draft. Reload it and prepare the draft again."];
     readonly catalog_publication_price_unavailable: readonly ["publication_price_unavailable", "The base price could not be verified. Check the price list or retry the command."];
     readonly catalog_publication_price_readiness: readonly ["publication_price_readiness", "The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again."];
+    readonly catalog_publication_sku_price_not_ready: readonly ["publication_sku_price_not_ready", "Set a positive gross base price and check the subscription price for this SKU in the effective price list."];
+    readonly catalog_publication_sku_price_shape_invalid: readonly ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list."];
+    readonly price_list_not_active: readonly ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency."];
+    readonly price_list_not_found: readonly ["price_list_not_found", "Select an installed, effective price list for the settlement region and currency, then prepare the draft again."];
     readonly catalog_publication_identity_conflict: readonly ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."];
     readonly duplicate_combination: readonly ["duplicate_combination", "A SKU already has this combination of options. Use distinct options for the new SKU."];
 };
@@ -4817,6 +4825,13 @@ export interface CatalogCapabilityDescriptor {
     lifecycleWrite: boolean;
 }
 export {};
+```
+## dist/catalog/publicationSkuIdentity.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+/** Check the live code against the revision referenced by the checked manifest. */
+export declare function assertPublishedSkuIdentity(db: PgQueryExecutor, productId?: string): Promise<void>;
 ```
 ## dist/catalog/readPorts.d.ts
 

@@ -1065,12 +1065,17 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         } else if (operation.op === "create_identifier") {
           const sku = knownSku(operation.skuCode);
           need(created.has(sku.code), "catalog_publication_identifier_requires_created_sku");
-          const { op: _op, skuCode: _code, ...identifier } = operation;
-          if (identifier.scheme === "gs1:gtin") {
-            need(!gtins.has(identifier.value.padStart(14, "0")), "catalog_publication_v3_compile_identifier_conflict");
-            gtins.add(identifier.value.padStart(14, "0"));
+          const gtin = operation.scheme === "gs1:gtin";
+          const normalized = gtin ? operation.value.padStart(14, "0") : operation.value;
+          if (gtin) {
+            need(!gtins.has(normalized), "catalog_publication_v3_compile_identifier_conflict");
+            gtins.add(normalized);
           }
-          need(!identifier.isPrimary || !sku.identifiers.some(value => value.isPrimary), "catalog_publication_identifier_primary_invalid");
+          need(operation.value.trim().length, "catalog_publication_identifier_blank");
+          need(!sku.identifiers.some(value => value.issuer === operation.issuer
+            && (value.scheme === "gs1:gtin" ? value.value.padStart(14, "0") : value.value) === normalized),
+          "catalog_publication_identifier_key_reused");
+          need(!operation.isPrimary || !sku.identifiers.some(value => value.isPrimary), "catalog_publication_identifier_primary_invalid");
           applySkuPrefix(sku, operation, rules);
         } else if (operation.op === "set_primary_sku") {
           const sku = knownSku(operation.skuCode);

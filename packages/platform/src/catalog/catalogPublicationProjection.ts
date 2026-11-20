@@ -13,7 +13,8 @@ import { isValidGtin } from "./foundationSchemas.js";
 import { readPublicationDraftRecord } from "./publicationIntent.js";
 import type { parseCatalogCandidateReference } from "./candidateService.js";
 import type { compileCatalogPublication } from "./publicationValidation.js";
-import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationRefuse } from "./publicationError.js";
+import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationIssue, publicationRefuse } from "./publicationError.js";
+import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 import { canonicalCatalogPriceSetupCommand, catalogPriceSetupApplyResultSchema } from "../pricing/index.js";
 
 type Plan = Awaited<ReturnType<typeof compileCatalogPublication>>;
@@ -95,10 +96,7 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
     requireProjection(publicationDigest(manifest) === row?.digest && manifest.product.id === productId
       && manifest.product.document?.digest === head?.documentDigest, "catalog_publication_manifest_invalid", "validation_issue");
     if (checkLive) {
-      const renamed = (await db.query(`SELECT 1 FROM public.catalog_skus
-        WHERE product_id=$1 AND sku IS DISTINCT FROM publication_facts->>'code' AND publication_facts IS NOT NULL LIMIT 1`,
-        [productId])).rows[0];
-      requireProjection(!renamed, "catalog_publication_sku_identity_changed");
+      await assertPublishedSkuIdentity(db, productId);
       const live = (await db.query("SELECT public.catalog_publication_live_matches($1,$2::jsonb,$3::jsonb) AS matches",
         [productId, JSON.stringify(manifest.product), JSON.stringify(manifest.skus)])).rows[0]?.matches;
       requireProjection(live === true, "catalog_publication_live_drift");
@@ -143,9 +141,14 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
   return { head, manifest, evidence };
 }
 
-async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperations"]) {
+const effectivePriceList = `SELECT id,region_code,currency FROM public.price_lists
+  WHERE region_code=public.catalog_price_setup_region_code() AND currency=public.catalog_price_setup_settlement_currency()
+    AND status='active' AND valid_from<=statement_timestamp() AND (valid_to IS NULL OR valid_to>statement_timestamp())
+  ORDER BY created_at DESC,id DESC LIMIT 1`;
+
+async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperations"], priced: CatalogPublishedSku[]) {
   const claims = new Map<string, unknown>();
-  const contexts = new Map<string, (typeof operations)[number]>();
+  const contexts = new Map<string, { priceListId: string; variantId: string }>();
   for (const operation of [...operations].sort((a, b) => Buffer.compare(Buffer.from(a.commandKey), Buffer.from(b.commandKey)))) {
     requireProjection(!claims.has(operation.commandKey), "catalog_publication_price_key_reused", "validation_issue");
     const text = canonicalCatalogPriceSetupCommand(operation);
@@ -159,11 +162,64 @@ async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperation
     claims.set(operation.commandKey, result);
     contexts.set(`${operation.priceListId}:${operation.variantId}`, operation);
   }
+  const selectedId = priced.length ? (await db.query(effectivePriceList)).rows[0]?.id : undefined;
+  const listId = typeof selectedId === "string" ? selectedId : undefined;
+  if (listId) for (const sku of priced) {
+    contexts.set(`${listId}:${sku.id}`, { priceListId: listId, variantId: sku.id });
+  }
   for (const key of [...contexts.keys()].sort()) {
     const operation = contexts.get(key)!;
     await db.query("SELECT public.catalog_price_setup_lock_context($1,$2)", [operation.priceListId, operation.variantId]);
   }
-  return claims;
+  return { claims, listId };
+}
+
+async function assertSkuPrices(db: PgQueryExecutor, priced: CatalogPublishedSku[], reservedList: string | undefined) {
+  if (!priced.length) return;
+  // The effective list, individual entries and policy are read together after the LC3 context waits.
+  // Port the donor's SKU eligibility price check and its separate overriding-entry check.
+  const { rows } = await db.query(`
+    WITH list AS (${effectivePriceList}), policy AS (
+      SELECT count(*) AS history, count(*) FILTER (WHERE effective) AS effective_count,
+        bool_and(p.rounding_rule='FLOOR_TO_QUANTUM' AND p.rounding_quantum_minor>0 AND p.discount_bps BETWEEN 0 AND 10000
+          AND p.digest=public.catalog_price_setup_policy_digest(
+            p.id,p.revision_no,p.price_list_id,p.region_code,p.currency,p.channel,p.effective_from,
+            CASE WHEN p.closed_from_open THEN NULL ELSE p.effective_to END,p.discount_bps,p.rounding_quantum_minor,p.rounding_rule))
+          FILTER (WHERE effective) AS valid,
+        min(p.discount_bps) FILTER (WHERE effective) AS discount,
+        min(p.rounding_quantum_minor) FILTER (WHERE effective) AS quantum
+      FROM public.subscription_price_policy_revisions p JOIN list l
+        ON (p.price_list_id,p.region_code,p.currency)=(l.id,l.region_code,l.currency)
+      CROSS JOIN LATERAL (SELECT p.effective_from<=statement_timestamp()
+        AND (p.effective_to IS NULL OR p.effective_to>statement_timestamp()) AS effective) timing
+      WHERE p.channel='D2C'
+    )
+    SELECT sku.id,list.id AS list_id, price.invalid_shape,
+      COALESCE(price.base_count=1 AND price.base_minor>0 AND (
+        (policy.history=0 AND price.subscription_count=1 AND price.subscription_valid=1)
+        OR (policy.history>0 AND policy.effective_count=1 AND policy.valid AND price.subscription_count=0
+          AND (price.base_minor::bigint*(10000-policy.discount)/10000/NULLIF(policy.quantum,0))*policy.quantum>0)
+      ), false) AS ready
+    FROM unnest($1::uuid[]) sku(id) LEFT JOIN list ON true CROSS JOIN policy
+    CROSS JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE e.mode='one_time' AND e.min_qty=1) AS base_count,
+        min(e.unit_price_minor) FILTER (WHERE e.mode='one_time' AND e.min_qty=1 AND e.amount_kind='gross') AS base_minor,
+        count(*) FILTER (WHERE e.mode='subscription') AS subscription_count,
+        count(*) FILTER (WHERE e.mode='subscription' AND e.min_qty=1 AND e.amount_kind='gross'
+          AND e.unit_price_minor>0) AS subscription_valid,
+        bool_or(e.mode='any' OR e.amount_kind<>'gross' OR e.min_qty<>1) AS invalid_shape
+      FROM public.price_entries e WHERE e.price_list_id=list.id AND e.variant_id=sku.id AND e.active
+        AND e.valid_from<=statement_timestamp() AND (e.valid_to IS NULL OR e.valid_to>statement_timestamp())
+        AND e.mode IN ('one_time','subscription','any')
+    ) price ORDER BY sku.id`, [priced.map(sku => sku.id)]);
+  const codes = new Map<unknown, string>(priced.map(sku => [sku.id, sku.code]));
+  for (const row of rows) {
+    requireProjection(row.list_id, "price_list_not_active", "validation_issue");
+    requireProjection(row.list_id === reservedList, "catalog_publication_price_readiness", "validation_issue");
+    if (row.ready && !row.invalid_shape) continue;
+    const code = row.ready ? "catalog_publication_sku_price_shape_invalid" : "catalog_publication_sku_price_not_ready";
+    throw new CatalogPublicationError(code, "validation_issue", publicationIssue(code, "activation", "skus", codes.get(row.id)));
+  }
 }
 
 async function applyPrices(db: PgQueryExecutor, operations: Plan["priceOperations"], claims: Map<string, unknown>, actor: string) {
@@ -242,9 +298,14 @@ async function storeIdentifiers(db: PgQueryExecutor, sku: CatalogPublishedSku, c
     kind: identifier.scheme === "gs1:gtin" ? "gtin" : "other", pack: identifier.packagingLevel === "unit" ? "unit" : "collective",
   }));
   const values = [sku.id, JSON.stringify(identifiers)];
-  if (compensate) await db.query(`DELETE FROM public.catalog_sku_identifiers i WHERE i.catalog_sku_id=$1
-    AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS keep(issuer text,normalized text)
-      WHERE (i.issuer,i.normalized_value)=(keep.issuer,keep.normalized))`, values);
+  if (compensate) {
+    await db.query(`DELETE FROM public.catalog_sku_identifiers i WHERE i.catalog_sku_id=$1
+      AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS keep(issuer text,normalized text)
+        WHERE (i.issuer,i.normalized_value)=(keep.issuer,keep.normalized))`, values);
+    await db.query(`UPDATE public.catalog_sku_identifiers i SET is_primary=false WHERE i.catalog_sku_id=$1 AND i.is_primary
+      AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS keep(issuer text,normalized text,"isPrimary" boolean)
+        WHERE keep."isPrimary" AND (i.issuer,i.normalized_value)=(keep.issuer,keep.normalized))`, values);
+  }
   const { rows } = await db.query(`INSERT INTO public.catalog_sku_identifiers AS i
     (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,scheme)
     SELECT $1,issuer,kind,normalized,pack,quantity,"isPrimary",CASE WHEN kind='gtin' THEN 'gs1:gtin' END
@@ -279,7 +340,10 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     const issue = attributeRows.issues[0];
     throw new CatalogPublicationError(issue?.code ?? "catalog_publication_attributes_invalid", "validation_issue", issue);
   }
-  const claims = await claimPrices(db, plan.priceOperations);
+  const pricedCodes = new Set(plan.pricedSkuCodes);
+  const sellable = (sku?: CatalogPublishedSku) => sku?.status === "active" && (sku.sellableStandalone || sku.sellableInSubscription);
+  const priced = skus.filter(sku => pricedCodes.has(sku.code) || sellable(sku) && !sellable(prior.get(sku.id)));
+  const { claims, listId } = await claimPrices(db, plan.priceOperations, priced);
   const currentDocuments = new Map(plan.documents.map(doc => [doc.reference.id, doc]));
   const allDocuments = new Map([...previous.evidence.documents, ...plan.documents].map(doc => [doc.reference.revisionNo, doc.reference.id]));
   async function movePointer(id: string) {
@@ -335,7 +399,8 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     if (sql?.message === "catalog_price_setup_readiness_would_fail") publicationRefuse("catalog_publication_price_readiness", "validation_issue");
     throw error;
   }
-  if (plan.activating || plan.pricedSkuCodes.length) {
+  await assertSkuPrices(db, priced, listId);
+  if (plan.activating || priced.length) {
     const { rows } = await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS result");
     const result = rows[0]?.result as { ready?: boolean } | undefined;
     requireProjection(result?.ready === true, "catalog_publication_price_readiness", "validation_issue");

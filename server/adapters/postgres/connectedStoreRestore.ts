@@ -1,5 +1,4 @@
 import { nativeCatalogPublication } from "@openlup/platform/catalog";
-import { assertPublishedSkuIdentity } from "./catalogPublicationReads.js";
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import {
@@ -496,7 +495,7 @@ export async function restoreConnectedNativeStore(input: {
       // No alignment case or source policy is activated while shipment/hold INSERT
       // triggers replay. Preserve the captured policy only after all retained data.
       await restoreSettings(client, baseline.get("subscription_delivery_alignment_control")!, source.get("subscription_delivery_alignment_control")!);
-      await assertPublishedSkuIdentity(client);
+      await nativeCatalogPublication.assertPublishedSkuIdentity(client);
       await client.query("SET CONSTRAINTS ALL IMMEDIATE");
       await assertOutsideEmpty(client, relations);
       if (!await equalCensus(client, source)) fail("target_conflict");

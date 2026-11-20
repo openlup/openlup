@@ -7,7 +7,6 @@ const fixes = new Map([
   ["catalog_publication_rules_binding_mismatch", rulesMismatch],
   ["catalog_definition_drift", rulesMismatch],
   ["catalog_publication_rules_module_invalid", "Export all required hooks from the self-contained rules module and rebuild it."],
-  ["price_list_not_found", "Select an installed price list for this price change, then prepare the draft again."],
   ["unit_trade_identifier_missing", "Add a valid unit trade identifier to the SKU, then prepare the draft again."],
   ["catalog_lifecycle_fresh_sale_refused", "Restore the withdrawn product and SKU before making them sellable."],
   ["catalog_publication_gross_mass_required", "supply the gross mass for this SKU"],
@@ -23,7 +22,11 @@ function skuSizeRemedy(subject?: string): string {
 }
 
 export function publicationIssue(code: string, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject?: string): CatalogCandidateIssue {
-  const message = code === "catalog_publication_sku_too_large" ? skuSizeRemedy(subject) : fixes.get(code) ?? (Object.hasOwn(publicationRefusals, code) ? publicationRefusals[code as AdmissionDiagnostic][1] : undefined);
+  let message = code === "catalog_publication_sku_too_large" ? skuSizeRemedy(subject) : fixes.get(code) ?? (Object.hasOwn(publicationRefusals, code) ? publicationRefusals[code as AdmissionDiagnostic][1] : undefined);
+  if (subject && message && ["catalog_publication_identifier_blank", "catalog_publication_identifier_key_reused",
+    "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid"].includes(code)) {
+    message = `SKU ${subject}. ${message}`;
+  }
   return { code, phase, path, ...(subject === undefined ? {} : { subject }), ...(message === undefined ? {} : { message }) };
 }
 
@@ -99,6 +102,8 @@ export const publicationRefusals = {
   catalog_publication_command_key_reused: ["publication_command_key_reused", "This command key belongs to a different request. Retry the original request or use a fresh key."],
   catalog_publication_gtin_conflict: ["publication_gtin_conflict", "This GTIN is already assigned. Verify the barcode and prepare the draft again."],
   catalog_publication_identifier_conflict: ["publication_identifier_conflict", "This identifier is already assigned. Check its issuer and value."],
+  catalog_publication_identifier_blank: ["publication_identifier_blank", "Enter a nonblank value for this identifier."],
+  catalog_publication_identifier_key_reused: ["publication_identifier_key_reused", "Use a distinct issuer and value pair for this identifier."],
   catalog_publication_draft_advanced: ["publication_draft_advanced", "The saved draft changed. Prepare its current revision."],
   catalog_publication_route_conflict: ["publication_route_conflict", "Another product uses this route. Choose a different route and prepare the draft again."],
   catalog_publication_lifecycle_assertion_changed: ["publication_lifecycle_assertion_changed", "Reload the SKU revisions and prepare the lifecycle changes again."],
@@ -107,6 +112,10 @@ export const publicationRefusals = {
   catalog_publication_price_changed: ["publication_price_changed", "The current base price differs from the draft. Reload it and prepare the draft again."],
   catalog_publication_price_unavailable: ["publication_price_unavailable", "The base price could not be verified. Check the price list or retry the command."],
   catalog_publication_price_readiness: ["publication_price_readiness", "The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again."],
+  catalog_publication_sku_price_not_ready: ["publication_sku_price_not_ready", "Set a positive gross base price and check the subscription price for this SKU in the effective price list."],
+  catalog_publication_sku_price_shape_invalid: ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list."],
+  price_list_not_active: ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency."],
+  price_list_not_found: ["price_list_not_found", "Select an installed, effective price list for the settlement region and currency, then prepare the draft again."],
   catalog_publication_identity_conflict: ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."],
   duplicate_combination: ["duplicate_combination", "A SKU already has this combination of options. Use distinct options for the new SKU."],
 } as const;

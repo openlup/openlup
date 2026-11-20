@@ -5562,6 +5562,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationSkuIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationValidation.ts",
       "class": "public-output"
     },
