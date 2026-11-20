@@ -23,9 +23,14 @@ function check(value: CatalogPackInput) { return checkSubject({ packs: [{ pack: 
 const draft = () => ({ schemaVersion: 1 as const, product: { id: "00000000-0000-4000-8000-000000000001", type: { key: "stationery:item", version: 1 }, dimensions: [] }, skus: [] });
 
 describe("offline catalogue conformance", () => {
-  it("explains how to fix a camelCase attribute key", async () => {
+  it.each([
+    { name: "camelCase", key: "recycledCover",
+      remedy: /start with a lowercase letter, then use only lowercase letters, digits, underscores or hyphens.*recycled_cover/u },
+    { name: "overlong", key: "a".repeat(65), remedy: /1–64 characters/u },
+    { name: "reserved", key: "constructor", remedy: /reserved names __proto__, constructor and prototype/u },
+  ])("explains how to fix a $name attribute key", async ({ key, remedy }) => {
     const p = pack();
-    const attribute: AttributeDefinition = { key: "recycledCover", scope: "product", valueType: { kind: "boolean" },
+    const attribute: AttributeDefinition = { key, scope: "product", valueType: { kind: "boolean" },
       required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} };
     p.types[0].attributes = [attribute];
 
@@ -34,7 +39,7 @@ describe("offline catalogue conformance", () => {
     expect(report.findings).toContainEqual(expect.objectContaining({
       code: "definition_attribute_invalid",
       path: "/packs/0/pack/types/0/attributes/0/key",
-      fix: expect.stringMatching(/start with a lowercase letter, then use only lowercase letters, digits, underscores or hyphens, such as recycled_cover/u),
+      fix: expect.stringMatching(remedy),
     }));
 
     p.types[0].attributes = [{ ...attribute, key: "recycled_cover" }];

@@ -589,7 +589,7 @@ support access through the [operator roster](#provision-operator-rosters).
 
 ### Change a product rule
 
-In a freshly extracted starter with installed catalogue rules, edit
+In a fresh starter candidate extracted from OpenLup main, edit
 `owned/catalogue-rules.cjs` and add an accepted and a refused example to
 `owned/catalogue-rules.test.cjs`. If your upgraded application still uses
 `owned/catalogue.ts` to validate drafts, copy both rule files from a fresh
