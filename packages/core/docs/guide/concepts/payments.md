@@ -79,13 +79,15 @@ Keep only explicitly redacted diagnostics. See the
 and [idempotency](idempotency.md#idempotency-contract) before retrying an attempt.
 
 For a new settlement, the native PostgreSQL payment owner requires durable
-evidence of the captured amount and currency for the active attempt. Custom provider
-adapters set `capturedAmountBasis: "provider_capture_v1"` on verified success
-webhooks and authenticated readbacks only when the amount comes from the
-provider's collected-money field. Keep this attestation outside the webhook
-fingerprint and deploy the updated adapter with the migration. Completed
-receipts retain their replay response. A verified delivery whose normalized
-money changed can acknowledge the original completed webhook receipt when its
+evidence of the captured amount and currency for the active attempt. If
+reconciliation records `provider_capture_amount_unconfirmed`, update the
+authenticated success readback to report the provider-collected amount and
+currency with `capturedAmountBasis: "provider_capture_v1"`. Set this field
+on verified success webhooks only when they report the provider-collected
+amount. Keep this attestation outside the webhook fingerprint and deploy the
+updated adapter with the migration. Completed receipts retain their replay
+response. A verified delivery whose normalized money changed can acknowledge
+the original completed webhook receipt when its
 historical fingerprint matches. This lookup leaves payment and fulfillment state
 untouched. Hosts with an operational event recorder receive a diagnostic for
 review. Reconcile pending historical events through an authenticated readback
