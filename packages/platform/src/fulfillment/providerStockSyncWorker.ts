@@ -204,27 +204,48 @@ export async function runFulfillmentStockSyncWorker(input: {
       }
     };
 
+    const isStockWriteResult = (value: unknown): value is { replayed: boolean; readBack: boolean } =>
+      Boolean(value && typeof value === "object"
+        && typeof (value as { replayed?: unknown }).replayed === "boolean"
+        && typeof (value as { readBack?: unknown }).readBack === "boolean");
+    const isValidBatch = <T>(
+      value: unknown,
+      expectedLength: number,
+      guard: (item: unknown) => item is T,
+    ): value is T[] => {
+      if (!Array.isArray(value) || value.length !== expectedLength) return false;
+      for (let i = 0; i < expectedLength; i += 1) {
+        if (!Object.hasOwn(value, i) || !guard(value[i])) return false;
+      }
+      return true;
+    };
+
     let currentBatchResults: { replayed: boolean; readBack: boolean }[] | null = null;
-    let stockBatchCompleted = false;
+    let snapshotBatchResults: { replayed: boolean; readBack: boolean }[] | null = null;
     if (preparedStockItems.length > 0 && input.port.recordProviderStockCurrentBatch && input.port.recordStockSnapshotBatch) {
       try {
         stage = "stock_current_write_failed";
         const currentResults = await input.port.recordProviderStockCurrentBatch(preparedStockItems.map((item) => item.currentInput));
-        if (currentResults.length !== preparedStockItems.length) throw new Error("fulfillment_native_response_missing");
+        if (!isValidBatch(currentResults, preparedStockItems.length, isStockWriteResult)) {
+          throw new Error("fulfillment_native_response_missing");
+        }
         currentBatchResults = currentResults;
         stage = "snapshot_write_failed";
         const snapshotResults = await input.port.recordStockSnapshotBatch(preparedStockItems.map((item) => item.snapshotInput));
-        if (snapshotResults.length !== preparedStockItems.length) throw new Error("fulfillment_native_response_missing");
-        for (let i = 0; i < preparedStockItems.length; i += 1) {
-          recordStockOutcome(preparedStockItems[i]!, currentResults[i]!, snapshotResults[i]!);
+        if (!isValidBatch(snapshotResults, preparedStockItems.length, isStockWriteResult)) {
+          throw new Error("fulfillment_native_response_missing");
         }
-        stockBatchCompleted = true;
+        snapshotBatchResults = snapshotResults;
       } catch {
         // Fall back to per-item writes to isolate individual SKU failures while preserving partial progress.
       }
     }
 
-    if (!stockBatchCompleted) {
+    if (currentBatchResults && snapshotBatchResults) {
+      for (let i = 0; i < preparedStockItems.length; i += 1) {
+        recordStockOutcome(preparedStockItems[i]!, currentBatchResults[i]!, snapshotBatchResults[i]!);
+      }
+    } else {
       for (let i = 0; i < preparedStockItems.length; i += 1) {
         const prepared = preparedStockItems[i]!;
         try {
@@ -249,7 +270,9 @@ export async function runFulfillmentStockSyncWorker(input: {
     }
 
     if (result.ok) {
-      if (input.port.recordLowStockEvidenceBatch || input.port.resolveLowStockEvidenceBatch) {
+      const hasDuplicateCandidateSku = new Set(coverageCandidates.map((c) => c.stock.skuRef)).size !== coverageCandidates.length;
+      if (!hasDuplicateCandidateSku && (input.port.recordLowStockEvidenceBatch || input.port.resolveLowStockEvidenceBatch)) {
+        const pendingAlerts: NonNullable<SyncCursor["alerts"]>[number][] = [];
         const evidenceInputs: Parameters<FulfillmentStockSyncPort["recordLowStockEvidence"]>[0][] = [];
         const resolveInputs: Parameters<FulfillmentStockSyncPort["resolveLowStockEvidence"]>[0][] = [];
         for (const { stock, local, activeReserved } of coverageCandidates) {
@@ -261,7 +284,7 @@ export async function runFulfillmentStockSyncWorker(input: {
             activeThresholdKinds.push("reservation_coverage");
           }
           for (const signal of lowStockSignals) {
-            alerts.push({ skuRef: stock.skuRef, thresholdKind: signal.thresholdKind, severity: signal.severity,
+            pendingAlerts.push({ skuRef: stock.skuRef, thresholdKind: signal.thresholdKind, severity: signal.severity,
               providerForSaleQuantity: stock.forSaleQuantity, localAvailableQuantity: localAvailable, detectedAt: nowIso,
               activeReserved, coverageGapQuantity: Math.max(0, activeReserved - stock.forSaleQuantity) });
             evidenceInputs.push({
@@ -278,29 +301,40 @@ export async function runFulfillmentStockSyncWorker(input: {
 
         if (evidenceInputs.length > 0) {
           stage = "stock_evidence_write_failed";
-          let evidenceResults: { replayed: boolean }[];
+          const isEvidenceResult = (value: unknown): value is { replayed: boolean } =>
+            Boolean(value && typeof value === "object" && typeof (value as { replayed?: unknown }).replayed === "boolean");
           if (input.port.recordLowStockEvidenceBatch) {
-            evidenceResults = await input.port.recordLowStockEvidenceBatch(evidenceInputs);
-          } else {
-            evidenceResults = [];
-            for (const entry of evidenceInputs) {
-              evidenceResults.push(await input.port.recordLowStockEvidence(entry));
+            const evidenceResults = await input.port.recordLowStockEvidenceBatch(evidenceInputs);
+            if (!isValidBatch(evidenceResults, evidenceInputs.length, isEvidenceResult)) {
+              throw new Error("fulfillment_native_response_missing");
             }
-          }
-          if (evidenceResults.length !== evidenceInputs.length) throw new Error("fulfillment_native_response_missing");
-          for (let i = 0; i < evidenceInputs.length; i += 1) {
-            const evidence = evidenceResults[i]!;
-            if (evidence.replayed) result.replayed += 1;
-            result.lowStock += evidence.replayed ? 0 : 1;
-            if (evidenceInputs[i]!.thresholdKind === "reservation_coverage") result.reservationCoverage += 1;
+            alerts.push(...pendingAlerts);
+            for (let i = 0; i < evidenceInputs.length; i += 1) {
+              const evidence = evidenceResults[i]!;
+              if (evidence.replayed) result.replayed += 1;
+              result.lowStock += evidence.replayed ? 0 : 1;
+              if (evidenceInputs[i]!.thresholdKind === "reservation_coverage") result.reservationCoverage += 1;
+            }
+          } else {
+            for (let i = 0; i < evidenceInputs.length; i += 1) {
+              alerts.push(pendingAlerts[i]!);
+              const evidence = await input.port.recordLowStockEvidence(evidenceInputs[i]!);
+              if (evidence.replayed) result.replayed += 1;
+              result.lowStock += evidence.replayed ? 0 : 1;
+              if (evidenceInputs[i]!.thresholdKind === "reservation_coverage") result.reservationCoverage += 1;
+            }
           }
         }
 
         if (resolveInputs.length > 0) {
           stage = "stock_evidence_resolve_failed";
+          const isResolveResult = (value: unknown): value is { resolved: number } =>
+            Boolean(value && typeof value === "object" && typeof (value as { resolved?: unknown }).resolved === "number");
           if (input.port.resolveLowStockEvidenceBatch) {
             const resolveResults = await input.port.resolveLowStockEvidenceBatch(resolveInputs);
-            if (resolveResults.length !== resolveInputs.length) throw new Error("fulfillment_native_response_missing");
+            if (!isValidBatch(resolveResults, resolveInputs.length, isResolveResult)) {
+              throw new Error("fulfillment_native_response_missing");
+            }
           } else {
             for (const entry of resolveInputs) {
               await input.port.resolveLowStockEvidence(entry);

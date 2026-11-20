@@ -363,7 +363,7 @@ it("falls back to per-item stock writes to isolate individual failures without d
   ]);
 });
 
-it("maps batch evidence and resolve failures to their safe stage reasons", async () => {
+it("maps batch evidence and resolve failures to their safe stage reasons without leaking unwritten alerts", async () => {
   for (const [method, reason] of [
     ["recordLowStockEvidenceBatch", "stock_evidence_write_failed"],
     ["resolveLowStockEvidenceBatch", "stock_evidence_resolve_failed"],
@@ -373,5 +373,41 @@ it("maps batch evidence and resolve failures to their safe stage reasons", async
     f.input.port[method] = async () => { throw new Error("private-batch-error"); };
     expect(await run(f.input), method).toMatchObject({ ok: false, failures: 1, reason });
     expect(f.cursor(), method).toMatchObject({ status: "failed", error: { reason }, refusal: { reason: "io_failure", retryable: true } });
+    if (method === "recordLowStockEvidenceBatch") {
+      expect(f.cursor()?.alerts).toEqual([]);
+    }
   }
+});
+
+it("falls back cleanly without double-counting on malformed batch stock responses and duplicate candidate SKUs", async () => {
+  const f = fixture();
+  const baseStock = (await f.input.provider.getStock())[0];
+  if ("kind" in baseStock) throw new Error("expected_stock_fixture");
+  f.input.provider.getStock = async () => [
+    { ...baseStock, skuRef: "sku-a" },
+    { ...baseStock, skuRef: "sku-b" },
+  ];
+  f.input.port.readSkuInventoryClasses = async () => new Map([["sku-a", "sellable"], ["sku-b", "sellable"]]);
+  // Malformed sparse response from recordStockSnapshotBatch must not partially mutate before fallback
+  f.input.port.recordProviderStockCurrentBatch = async inputs => inputs.map(() => ({ replayed: false, readBack: true }));
+  f.input.port.recordStockSnapshotBatch = async () => [{ replayed: false, readBack: true }, undefined as never];
+  const out = await run(f.input);
+  expect(out).toMatchObject({ ok: true, checked: 2, updated: 4, failures: 0 });
+  expect(out.items).toHaveLength(2);
+
+  // Duplicate SKU in coverageCandidates falls back to exact per-item evidence/resolve interleaving
+  const dup = fixture();
+  dup.lines[0].quantity.safetyStock = 4;
+  dup.input.port.readActiveReservations = async () => new Map();
+  dup.input.provider.getStock = async () => [
+    { ...baseStock, skuRef: "sku-a", forSaleQuantity: 20 },
+    { ...baseStock, skuRef: "sku-a", forSaleQuantity: 2 },
+  ];
+  const ops: string[] = [];
+  dup.input.port.recordLowStockEvidenceBatch = async () => { throw new Error("batch-must-not-run-on-duplicate-sku"); };
+  dup.input.port.resolveLowStockEvidenceBatch = async () => { throw new Error("batch-must-not-run-on-duplicate-sku"); };
+  dup.input.port.recordLowStockEvidence = async value => { ops.push(`record:${value.skuRef}:${value.thresholdKind}`); return { replayed: false }; };
+  dup.input.port.resolveLowStockEvidence = async value => { if (value.skuRef !== "legacy-sentinel") ops.push(`resolve:${value.skuRef}:${value.activeThresholdKinds.join(",")}`); return { resolved: 0 }; };
+  expect(await run(dup.input)).toMatchObject({ ok: true, lowStock: 1 });
+  expect(ops).toEqual(["resolve:sku-a:", "record:sku-a:safety_stock", "resolve:sku-a:safety_stock"]);
 });

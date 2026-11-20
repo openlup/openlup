@@ -153,4 +153,14 @@ describe("direct apply SAVEPOINT preview guard", () => {
     })).resolves.toMatchObject({ outcome: "noop" });
     expect(slideFixture.executedSql.some(sql => sql.startsWith("SAVEPOINT"))).toBe(true);
   });
+
+  it("skips SAVEPOINT on direct apply for unknown actions and delegates directly to subscription_command_apply", async () => {
+    const f = applyFixture();
+    await expect(f.store.apply({
+      actorId: id, clientId: id, subscriptionId: id, idempotencyKey: "unknown-action-key",
+      now: "1999-01-01T00:00:00Z", action: "unknown_action", payload: {},
+    })).resolves.toMatchObject({ status: "applied" });
+    expect(f.executedSql.some(sql => sql.includes("SAVEPOINT"))).toBe(false);
+    expect(f.executedSql.some(sql => sql.includes("subscription_command_apply("))).toBe(true);
+  });
 });
