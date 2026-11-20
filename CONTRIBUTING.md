@@ -683,20 +683,24 @@ Node/Git checks need no dependencies. All thirteen mandatory phases remain;
 pgTAP is auto-selected when SQL changes under `db/` or `packages/*/sql/` and
 `--pgtap` still forces explicit selection. The runner consumes the explained plan;
 execution still checks the current candidate and review before/after commands.
-Build/package/root phases stay serial because they share generated outputs.
-SSR output stays in a unique ignored worktree scratch directory so external npm
-imports still resolve; cold package artifacts stay outside the checkout.
-The first failure stops the run without an automatic retry or reuse of earlier
-passes. The manual equivalents remain available:
+Independent read-only phases (`resource: null`) run concurrently (default
+concurrency 4) before installation; build/package/root phases stay serial
+because they share generated outputs. SSR output stays in a unique ignored
+worktree scratch directory so external npm imports still resolve; cold package
+artifacts stay outside the checkout. The first failure stops further launches
+(draining any already-started read-only phases in the current wave) without an
+automatic retry or reuse of earlier passes. The manual equivalents remain available:
 
 ```bash
 # Cheap checks need no dependency install.
 npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
+# Or run both in one pass with shared tree/snapshot scanning:
+npm run oss:published-tree -- --self-check
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
-# gitleaks: complete history, as on main pushes; CI scans only a PR or merge-group range
-gitleaks git . --config config/gitleaks.toml --redact --no-banner
+# gitleaks: verify-local.mjs scans base..head unless config/gitleaks.toml or .gitleaksignore changed (matching CI); omit --log-opts for full history
+gitleaks git . --config config/gitleaks.toml --redact --no-banner --log-opts="$(git merge-base HEAD origin/main)..HEAD"
 node scripts/public-ci-neutrality.mjs --base-commit "$(git merge-base HEAD origin/main)"
 node --experimental-strip-types packages/ui/smoke/neutrality.ts
 # The runner uses the validated OPENLUP_STACK_BASE instead of the fork point
@@ -736,12 +740,14 @@ See the [invoicing forward owner](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoi
 For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).
 
-The three `oss:published-tree` modes are distinct checks. `--policy` verifies
+The four `oss:published-tree` modes are distinct checks. `--policy` verifies
 the public policy, catalogue, documentation ownership, generated navigation and
-source-map freshness; `--inventory` verifies the selected
-tree, and `--typecheck` compares the preview's diagnostics with its tracked
-compatibility debt. The source repository's aggregate typechecker is not part of
-the projected command inventory and is not a substitute for `--typecheck`.
+source-map freshness; `--inventory` verifies the selected tree; `--self-check`
+runs both `--policy` and `--inventory` in a single pass over the tracked tree
+and source-release snapshot; and `--typecheck` compares the preview's
+diagnostics with its tracked compatibility debt. The source repository's
+aggregate typechecker is not part of the projected command inventory and is not
+a substitute for `--typecheck`.
 `check:dco-signoff` takes both range ends as full 40-character commit SHAs,
 hence `git rev-parse`: it refuses a short SHA or a ref name with exit code 2,
 and exits 1 on a range that contains no commit. In a fork, use the remote that
