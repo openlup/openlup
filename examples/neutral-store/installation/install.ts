@@ -5,7 +5,7 @@ import type { StoreConfig } from '../shared/config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import type { FulfillmentStockSyncPort } from '@openlup/platform/fulfillment/contracts';
-import { editorProducts, readStarterCatalogueRules, stageStarterCatalogueBuild, starterCatalogueBuilds } from '../host/editor-catalogue.ts';
+import { editorProducts, prepareStarterCatalogueRules, readStarterCatalogueRules, stageStarterCatalogueBuild } from '../host/editor-catalogue.ts';
 import { randomBytes } from 'node:crypto';
 import { installCatalogDefinitions } from '@openlup/platform/catalog';
 import { constants } from 'node:fs';
@@ -49,6 +49,7 @@ export interface DemonstrationInstallation {
   connection: InstallConnection;
   stock?: Pick<FulfillmentStockSyncPort,'recordProviderStockCurrent'>;
   catalogueRules?: Uint8Array;
+  cataloguePlan?: NonNullable<ReturnType<typeof prepareStarterCatalogueRules>>;
   catalogueBuildDirectory?: string;
   installRole: string;
   runtimeRole: string;
@@ -68,6 +69,7 @@ export async function installDemonstration(config: StoreConfig, bootstrap: Insta
 export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation) {
   const { connection, installRole, runtimeRole } = installation;
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw new Error('starter_seed_install_role_required');
+  const plan = installation.cataloguePlan ?? prepareStarterCatalogueRules(installation.catalogueRules);
   const seed = buildDemoSeed(config);
   await connection.query('BEGIN');
   const stagedBuilds: NonNullable<ReturnType<typeof stageStarterCatalogueBuild>>[] = [];
@@ -84,12 +86,11 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       throw new Error('starter_seed_install_role_required');
     }
     if (target.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
-    if (installation.catalogueRules) {
-      const artifact = Buffer.from(installation.catalogueRules);
-      const builds = starterCatalogueBuilds(artifact);
-      for (const { pack } of builds) {
+    if (plan) {
+      const { artifact, builds } = plan;
+      for (const { authoring, pack } of builds) {
         const receipt = await installCatalogDefinitions(connection, pack);
-        const staged = stageStarterCatalogueBuild(artifact, pack, receipt, builds.length === 1, installation.catalogueBuildDirectory);
+        const staged = stageStarterCatalogueBuild(artifact, pack, authoring, receipt, builds.length === 1, installation.catalogueBuildDirectory);
         if (staged) stagedBuilds.push(staged);
       }
     }
@@ -164,6 +165,7 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
 
 /** Local demo only. Socket access is the install capability; the application never mounts it. */
 export async function bootstrapDemonstration(config: StoreConfig): Promise<DemonstrationInstallation> {
+  const cataloguePlan = prepareStarterCatalogueRules(readStarterCatalogueRules());
   const migrations = await import('@openlup/platform/migrations').catch((error: unknown) => {
     if (error instanceof Error && 'code' in error
       && (error.code === 'ERR_PACKAGE_PATH_NOT_EXPORTED' || error.code === 'ERR_MODULE_NOT_FOUND')
@@ -211,10 +213,9 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
     if (status.pending.length) throw new Error('starter_installation_incomplete');
     process.stdout.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');
   } finally { await bootstrap.end(); }
-  const catalogueRules = readStarterCatalogueRules();
   const connection = new pg.Client({ host: socket, database, user: installRole });
   await connection.connect();
   const { createPostgresFulfillmentStockSyncPort } = await import('@openlup/platform/fulfillment');
   const stock = createPostgresFulfillmentStockSyncPort(connection,{ sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
-  return { connection,stock, installRole, runtimeRole, ...(catalogueRules ? { catalogueRules } : {}), close: () => connection.end() };
+  return { connection,stock, installRole, runtimeRole, ...(cataloguePlan ? { cataloguePlan } : {}), close: () => connection.end() };
 }

@@ -47,9 +47,17 @@ export function composeOperatorCapabilities(input: { executor: PgQueryExecutor; 
 Pick<ApplicationBindings, 'actions' | 'close'> {
   const catalogue = starterCatalogue();
   const current = catalogue.current;
-  const installed = current && catalogue.readInstalled(current)?.type;
-  const rulesVersionIssue = (version: number) => ({ path: 'product.type', code: 'type_not_installed',
-    message: `rules version ${version} is not installed; run ./lifecycle up` });
+  function rulesVersionIssue(ref: CatalogProductTypeRef, saved = false) {
+    const identity = `${ref.key}@${ref.version}`;
+    const message = catalogue.derivesPin(ref)
+      ? `rules version ${ref.version} is not installed; run ./lifecycle up`
+      : saved
+        ? `Saved type ${identity} cannot be prepared with the current files. Restore its retained catalogue build or save a new revision with a registered authoring version.`
+        : catalogue.hasRegisteredKey(ref)
+          ? `The current files do not derive rules for ${identity}. Use a registered authoring version or restore the retained catalogue build for this pin.`
+          : `Type ${identity} is not registered. Use a registered type, or register it in owned/catalogue.ts and update the shared rules.`;
+    return { path: 'product.type', code: 'type_not_installed', message };
+  }
   const catalog = createPostgresBundleCatalogStore(input.executor);
   const writer = createPostgresBundleAdminWriteStore({ connectionString: input.connectionString });
   const drafts = createCatalogDraftHandlerV3<ActionContext>({
@@ -148,20 +156,19 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       : ['action', 'draftId', 'expectedRevision', 'payload'];
     if (!only(payload, fields)) return refused('starter_input_invalid');
     if (payload.action === 'example') {
+      const installed = catalogue.firstInstalled();
       if (installed) return success(publicationExample(installed));
-      return { ...refused('starter_catalogue_rules_required'), ...(current ? { issues: [rulesVersionIssue(current.version)] } : {}) };
+      return { ...refused('starter_catalogue_rules_required'), ...(current ? { issues: [rulesVersionIssue(current)] } : {}) };
     }
     if (payload.action === 'prepare') {
       if (!uuid(payload.draftId) || !Number.isSafeInteger(payload.expectedRevision) || Number(payload.expectedRevision) < 1 || 'payload' in payload)
         return refused('starter_input_invalid');
-      let rulesVersion: number | undefined;
+      let savedType: CatalogProductTypeRef | undefined;
       const service = createCatalogCandidateServiceWithPublication({ registry: catalogue.registry,
         async readDraft(draftId, revision) {
           const result = await drafts.get({ draftId, ...(revision === undefined ? {} : { revision }) }, context);
           const record = 'record' in result ? result.record : null;
-          const type = record?.payload.product.type;
-          if (revision !== undefined && type && catalogue.hasRulesFor(type) && !catalogue.currentFor(type))
-            rulesVersion = type.version;
+          if (revision !== undefined) savedType = record?.payload.product.type;
           return record;
         },
         installedDefinitionDigest: async ref => catalogue.readInstalled(ref)?.digest ?? null,
@@ -173,8 +180,8 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         return success(preview.preparation ?? { structural: { outcome: 'unknown', issues: preview.issues } });
       } catch (error) {
         if (error instanceof CatalogCandidateError)
-          return { ...refused(error.code), ...(error.code === 'catalog_definition_drift' && rulesVersion !== undefined && rulesVersion > 1
-            ? { issues: [rulesVersionIssue(rulesVersion)] } : {}) };
+          return { ...refused(error.code), ...(error.code === 'catalog_definition_drift' && savedType
+            ? { issues: [rulesVersionIssue(savedType, true)] } : {}) };
         throw error;
       }
     }
@@ -190,7 +197,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         const original = 'record' in receipt && receipt.record?.actorId === context.actor.operatorRef ? receipt.record : null;
         const saved = !original && payload.action === 'revise' ? await drafts.get({ draftId: payload.draftId, revision: payload.expectedRevision }, context) : null;
         const pin = original?.payload.product.type ?? (saved && 'record' in saved ? saved.record?.payload.product.type : undefined);
-        const version = pin?.key === type.key ? pin.version : currentType.version;
+        const version = pin && catalogue.matchesAuthoring(pin, type) ? pin.version : currentType.version;
         authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version } } };
       }
     }
@@ -203,8 +210,8 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     if ('reason' in result) {
       const issues = 'issues' in result && Array.isArray(result.issues) ? result.issues : [];
       const type = isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type) ? authored.product.type : undefined;
-      const detail = issues.map(issue => issue.code === 'type_not_installed' && type && Number.isSafeInteger(type.version)
-        ? { ...issue, ...rulesVersionIssue(Number(type.version)) } : issue);
+      const detail = issues.map(issue => issue.code === 'type_not_installed' && type && typeof type.key === 'string' && typeof type.version === 'number' && Number.isSafeInteger(type.version)
+        ? { ...issue, ...rulesVersionIssue({ key: type.key, version: type.version }) } : issue);
       return { ...refused(`catalog_${result.reason}`), ...(detail.length ? { issues: detail } : {}) };
     }
     return { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };

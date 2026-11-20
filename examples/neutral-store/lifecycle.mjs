@@ -9,7 +9,7 @@ import { browserJourneyGroups } from './browser-groups.mjs';
 const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
 const packageNames = ['core', 'outbox', 'platform'];
-const installationHintLimit = 240;
+const installationHintLimit = 400;
 const knownStarterRefusal = /^(?:starter_[a-z_]+|inventory_renewal_protection_policy_invalid|checkout_recovery_reminder_schedule_invalid|saved_address_policy_invalid|starter_locale_unsupported: [A-Za-z0-9_-]{1,32}|starter_locale_copy_missing: [A-Za-z0-9_.\[\]-]{1,120} \([a-z]{2}\))$/;
 
 function run(executable, argv, input) {
@@ -22,6 +22,12 @@ function delegate(executable, argv) {
   const result = spawnSync(executable, argv, { cwd: root, stdio: 'inherit' });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
+}
+
+function printInstallationRefusal(code, error) {
+  process.stderr.write(`${code}\n`);
+  const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
+  if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
 }
 
 function configurationArgument(argv) {
@@ -67,6 +73,8 @@ if (command === 'candidate') {
   try {
     const config = selectConfiguration(configurationArgument(args));
     assertConfig(config);
+    const { prepareStarterCatalogueRules, readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
+    prepareStarterCatalogueRules(readStarterCatalogueRules());
     run('docker', ['compose', 'build']);
     run('docker', ['compose', 'up', '--wait', 'database']);
     run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
@@ -83,7 +91,7 @@ if (command === 'candidate') {
   } catch (error) {
     const code = error instanceof Error && knownStarterRefusal.test(error.message)
       ? error.message : 'starter_installation_failed';
-    process.stderr.write(`${code}\n`);
+    printInstallationRefusal(code, error);
     process.exitCode = 2;
   }
 } else if (command === 'serve-demo') {
@@ -117,9 +125,7 @@ if (command === 'candidate') {
     await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
   } catch (error) {
     const code = error instanceof Error ? error.message : 'starter_installation_failed';
-    process.stderr.write(`${code}\n`);
-    const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
-    if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
+    printInstallationRefusal(code, error);
     if (code === 'starter_seed_demonstration_database_required') {
       process.stderr.write('See node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
     }

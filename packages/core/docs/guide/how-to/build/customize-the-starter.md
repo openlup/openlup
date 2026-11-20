@@ -585,6 +585,8 @@ Add your product types and draft validators to the registry in
 `owned/catalogue.ts`. To preview publication, update the shared hooks in
 `owned/catalogue-rules.cjs` to handle your types and run `./lifecycle up`.
 The installer uses every registered type when the rules file is present.
+For starter preview, omit `taxClass` and `subscriptionProfileRef` from the
+registered types. The starter installer supplies neither reference.
 Use `createCatalogProductTypeRegistry` to expose those definitions to the
 installer. With the rules file absent, drafts use their inline validators.
 The operator can create, revise, abandon, list and read drafts. The host

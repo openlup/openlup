@@ -247,7 +247,7 @@ test('native support roster, catalogue administration, replay and operator admis
   await draftForm.locator('[name=payload]').fill(JSON.stringify(staleDraft));
   const staleReply = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
   await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
-  const fix = `rules version ${uninstalledVersion} is not installed; run ./lifecycle up`;
+  const fix = `The current files do not derive rules for starter:item@${uninstalledVersion}. Use a registered authoring version or restore the retained catalogue build for this pin.`;
   expect(await (await staleReply).json()).toMatchObject({ ok: false,
     issues: [{ path: 'product.type', code: 'type_not_installed', message: fix }] });
   await expect(draftForm.locator('.action-result')).toContainText(fix);

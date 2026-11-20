@@ -123,12 +123,14 @@ marker and preserved only across restarts of the same container.
 Add product types in `owned/catalogue.ts` and update the shared rules in
 `owned/catalogue-rules.cjs`. When present, the rules file applies to every type
 in the registry returned by `createCatalogProductTypeRegistry`. Run
-`./lifecycle up` to install a rules version for each type. Use **Load draft
-example** for the first registered type, or edit the draft JSON to use another
-registered type's key and authoring version. Save it and select **Prepare saved
-draft**.
+`./lifecycle up` to install a rules version for each type. **Load draft
+example** picks the first registered type with an installed rules build. To use
+another type, enter its key and authoring version in the draft JSON. Save it
+and select **Prepare saved draft**.
 Older drafts keep the rules they were saved with. Keep the local catalogue
-build volume with the demonstration database when restarting the store.
+build volume with the demonstration database. If a saved draft needs a
+retained build that the current files cannot install, restore that build from
+the volume backup or save a new revision with a registered authoring version.
 Without a rules bundle, drafts use the existing validator in `owned/catalogue.ts`.
 The native draft writer owns the command. The host supplies the command key
 and session actor outside the JSON payload.
