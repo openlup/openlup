@@ -71,9 +71,9 @@ reports current availability and a proposed estimate computed at the same instan
 in the same snapshot. Recorded stock and demand can change. The proposed quantity
 is null for an invalid proposal or missing SKU or stock source.
 
-Use `--json` to see both quantities in the starter CLI. Default text output shows
-the current quantity and the direction of change. MCP and the platform library
-also return both fields in the preview document.
+Default text shows each SKU's current quantity and proposed estimate, along with
+the direction of change. Use `--json` for the same quantities in a preview
+document, as returned by MCP and the platform library.
 
 ## Connect the command to your application
 
@@ -92,8 +92,9 @@ writing data or printing to stdout. Pass an explicit
 Offline list, show and explain work without an app or database. With a
 PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
 A stock preview needs the application's stock source. A connected reminder
-show needs the application's checkout wave policy. The command names
-`--app` when either input is missing. Omit the URL to read the catalogue offline.
+show needs the application's checkout wave policy. A connected show of any
+installed setting requires a reader for that key. Supply `--app` when the
+command requests a binding, or omit the URL to read the catalogue offline.
 
 Use `--value -` to read one JSON value from stdin. Use `--value=-1` when
 passing a negative number directly. The command exits with 0 on completion,

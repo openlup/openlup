@@ -19,6 +19,7 @@ Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid
 let json = process.argv.slice(2).includes("--json");
 let validatingInput = true;
 let appStage = 0;
+let inventorySettingKey;
 
 function emit(value, text) {
   process.stdout.write(json ? `${JSON.stringify({ formatVersion: 1, ...value })}\n` : `${text}\n`);
@@ -45,8 +46,9 @@ async function bindSettings({ databaseUrl, app, configuration }) {
     }
     if (!db || "configurationIds" in overrides) return { ...overrides, close };
     // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
-    const { readRenewalStockProtectionOverride, previewRenewalStockProtection } = await import("@openlup/platform/inventory");
-    const inventory = "inventory_renewal_protection";
+    const { describeRenewalStockProtectionSetting, readRenewalStockProtectionOverride, previewRenewalStockProtection } = await import("@openlup/platform/inventory");
+    const inventory = describeRenewalStockProtectionSetting().key;
+    inventorySettingKey = inventory;
     return {
       readers: {
         [inventory]: async () => {
@@ -67,7 +69,7 @@ async function bindSettings({ databaseUrl, app, configuration }) {
 }
 
 function formatSettingsPreview(result) {
-  if (result.key !== "inventory_renewal_protection") return JSON.stringify(result, null, 2);
+  if (!inventorySettingKey || result.key !== inventorySettingKey) return JSON.stringify(result, null, 2);
   const { key, asOf, current, proposed, difference, validation, effect, uncertainty } = result;
   return [
     `${key} at ${asOf}`,
