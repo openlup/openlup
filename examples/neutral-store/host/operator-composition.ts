@@ -4,7 +4,7 @@ import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
   canonicalCatalogDraftJson, evaluateBundleComposition, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
-import { starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
+import { starterCatalogue } from './editor-catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 
@@ -159,8 +159,9 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         async readDraft(draftId, revision) {
           const result = await drafts.get({ draftId, ...(revision === undefined ? {} : { revision }) }, context);
           const record = 'record' in result ? result.record : null;
-          if (revision !== undefined && record?.payload.product.type.key === starterCatalogueType.key)
-            rulesVersion = record.payload.product.type.version;
+          const type = record?.payload.product.type;
+          if (revision !== undefined && type && catalogue.hasRulesFor(type) && !catalogue.currentFor(type))
+            rulesVersion = type.version;
           return record;
         },
         installedDefinitionDigest: async ref => catalogue.readInstalled(ref)?.digest ?? null,
@@ -178,15 +179,20 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       }
     }
     let authored = payload.payload;
-    if (current && isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type)
-      && authored.product.type.key === current.key && authored.product.type.version === starterCatalogueType.version && uuid(payload.draftId)) {
-      // Old forms used a placeholder. Reconstruct the submitted command using
-      // its authorized receipt pin before the handler checks its fingerprint.
-      const receipt = await drafts.get({ draftId: payload.draftId, commandKey: context.commandKey }, context);
-      const original = 'record' in receipt && receipt.record?.actorId === context.actor.operatorRef ? receipt.record : null;
-      const saved = !original && payload.action === 'revise' ? await drafts.get({ draftId: payload.draftId, revision: payload.expectedRevision }, context) : null;
-      const pin = original?.payload.product.type ?? (saved && 'record' in saved ? saved.record?.payload.product.type : undefined);
-      authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version: pin?.version ?? current.version } } };
+    if (isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type)
+      && typeof authored.product.type.key === 'string' && typeof authored.product.type.version === 'number' && uuid(payload.draftId)) {
+      const type = { key: authored.product.type.key, version: authored.product.type.version };
+      const currentType = catalogue.currentFor(type);
+      if (currentType) {
+        // Reconstruct a command submitted with its authoring version using
+        // its authorized receipt pin before the handler checks its fingerprint.
+        const receipt = await drafts.get({ draftId: payload.draftId, commandKey: context.commandKey }, context);
+        const original = 'record' in receipt && receipt.record?.actorId === context.actor.operatorRef ? receipt.record : null;
+        const saved = !original && payload.action === 'revise' ? await drafts.get({ draftId: payload.draftId, revision: payload.expectedRevision }, context) : null;
+        const pin = original?.payload.product.type ?? (saved && 'record' in saved ? saved.record?.payload.product.type : undefined);
+        const version = pin?.key === type.key ? pin.version : currentType.version;
+        authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version } } };
+      }
     }
     const result = payload.action === undefined ? await drafts.list({ limit: 30 }, context)
       : payload.action === 'get' ? await drafts.get({ draftId: payload.draftId }, context)

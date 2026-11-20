@@ -165,13 +165,10 @@ const shippingScript = String.raw`
   } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();await runtime.end();await owner.end();}
 `;
 
-// About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
-// The child measured at most 2.703 s; retain its separate 20 s deadline.
-for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
-  const caseStarted = performance.now();
-  const container = await runPostgresContainer({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
+async function startStarterDatabase(name: string) {
+  const container = await runPostgresContainer({ name: `starter-${name}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
   containers.push(container);
-  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
+  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter PostgreSQL unavailable');
   const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
   for (const role of ['starter_runtime','starter_restore']) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
   const selection = { generation: 'qualified-v2',roleMode: 'installer-managed',migrationLogin: 'postgres',bootstrapLogin: 'postgres',runtimeLogin: 'starter_runtime',restoreLogin: 'starter_restore' } as const;
@@ -180,6 +177,14 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
   await runner.apply();expect((await runner.status()).pending).toEqual([]);
   await owner.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
   const runtime = new URL(container.connectionString);runtime.username = 'starter_runtime';runtime.password = 'synthetic-conformance';
+  return { ownerUrl: container.connectionString, runtimeUrl: runtime.toString() };
+}
+
+// About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
+// The child measured at most 2.703 s; retain its separate 20 s deadline.
+for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
+  const caseStarted = performance.now();
+  const { ownerUrl, runtimeUrl } = await startStarterDatabase(`quote-${configuration}-${multiSize ? 'multi' : 'single'}`);
   const probe = createServer();
   await new Promise<void>(resolve => probe.listen(0,'127.0.0.1',resolve));
   const address = probe.address();
@@ -352,13 +357,13 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
     } finally {await runtime.end();await owner.end();}
   `;
-  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${script}`);
+  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,port,ownerUrl,runtimeUrl })};\n${script}`);
   const childStarted = performance.now();
   let output: string;
   try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }
   catch (error) { throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Starter quote child failed',{ cause: error }); }
   expect(JSON.parse(output.trim())).toMatchObject({ configuration,unit: 1420,subtotal: 4260,second: 3958,capabilityRefused: true,secondPromiseRefresh: true,retainedCapture: true });
-  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${shippingScript.replaceAll('\\`','`')}`);
+  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,port,ownerUrl,runtimeUrl })};\n${shippingScript.replaceAll('\\`','`')}`);
   const shippingRun = () => execFileSync(process.execPath,['--experimental-strip-types','shipping-scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000,stdio: 'pipe' });
   let shippingOutput: string;
   try { shippingOutput = shippingRun(); }
@@ -380,3 +385,96 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
   }
   console.info(JSON.stringify({ configuration, caseMs: performance.now() - caseStarted, childMs: performance.now() - childStarted }));
 }, 95_000);
+
+it('installs rules and previews the second product type from a copy with only the owned catalogue changed', async () => {
+  const app = join(consumer, 'catalogue-application');
+  cpSync(join(consumer, 'application'), app, { recursive: true });
+  const path = join(app, 'owned/catalogue.ts');
+  const original = readFileSync(path, 'utf8');
+  const registration = 'export const catalogDraftRegistry = createCatalogProductTypeRegistry(types);';
+  expect(original).toContain(registration);
+  const key = 'example:accessory', version = 7;
+  const customized = original.replace(registration,
+    `types.push({ ...types[0]!, key: ${JSON.stringify(key)}, version: ${version} });
+${registration}`);
+  writeFileSync(path, customized);
+  const fixture = { ...await startStarterDatabase('catalogue-types'), key, version };
+  const run = (check: string) => execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module'], {
+    cwd: app, input: `const fixture = ${JSON.stringify(fixture)};
+${installCatalogueScript}
+${check}`,
+    encoding: 'utf8', timeout: 20_000, stdio: 'pipe',
+  });
+  run(String.raw`
+    await install();
+    await install();
+    const types = await installedTypes();
+    assert.deepEqual(types.map(row => row.type_key), [fixture.key, 'starter:item'], 'both catalogue rule definitions installed');
+    assert.ok(types.every(row => row.version > 1 && row.validator_ref === rulesRef), 'both definitions pin the rules artifact');
+    const installed = types.find(row => row.type_key === fixture.key);
+    const runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const bindings = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+    try {
+      const action = bindings.actions['operator.catalogDrafts'];
+      const context = {config, actor: {customerRef: null, operatorRef: randomUUID()}, commandKey: randomUUID()};
+      const example = await action({action: 'example'}, context);
+      assert.equal(example.ok, true, example.code);
+      assert.equal(example.value.product.type.key, 'starter:item');
+      const payload = example.value;
+      payload.product.type = {key: fixture.key, version: fixture.version};
+      const draftId = randomUUID();
+      const command = {action: 'create', draftId, expectedRevision: 0, payload};
+      const saved = await action(command, context);
+      assert.equal(saved.ok, true, 'save second type: ' + saved.code);
+      assert.deepEqual(saved.value.record.payload.product.type, {key: fixture.key, version: installed.version}, 'second type pinned to its installed rules');
+      assert.equal((await action(command, context)).replayed, true);
+      const preview = await action({action: 'prepare', draftId, expectedRevision: 1}, context);
+      assert.equal(preview.ok, true, 'preview second type: ' + preview.code);
+      assert.equal(preview.value.structural.outcome, 'unknown');
+    } finally {
+      await bindings.close();
+      await runtime.end();
+    }
+  `);
+  writeFileSync(path, customized.replace(registration, `const registry = createCatalogProductTypeRegistry(types);
+export const catalogDraftRegistry = { resolve: registry.resolve };`));
+  run(String.raw`
+    const types = await installedTypes();
+    await assert.rejects(install(), {
+      message: 'starter_catalogue_rules_registry_required',
+      hint: /owned\/catalogue\.ts.*createCatalogProductTypeRegistry/u,
+    });
+    assert.deepEqual(await installedTypes(), types);
+  `);
+}, 95_000);
+
+const installCatalogueScript = String.raw`
+  import assert from 'node:assert/strict';
+  import {createHash, randomUUID} from 'node:crypto';
+  import pg from 'pg';
+  import {installDemonstration} from './installation/install.ts';
+  import {readStarterCatalogueRules} from './host/editor-catalogue.ts';
+  import {composeOperatorCapabilities} from './host/operator-composition.ts';
+  import {configurations} from './owned/store.config.ts';
+  import {createPostgresFulfillmentStockSyncPort} from '@openlup/platform/fulfillment';
+  const config = configurations.supplements;
+  const catalogueRules = readStarterCatalogueRules();
+  const rulesRef = 'sha256:' + createHash('sha256').update(catalogueRules).digest('hex');
+  const install = () => installDemonstration(config, async () => {
+    const connection = new pg.Client({connectionString: fixture.ownerUrl});
+    await connection.connect();
+    const stock = createPostgresFulfillmentStockSyncPort(connection,
+      {sourceKey: 'starter-demo:' + config.id, readLocalInventoryStock: async () => []});
+    return {connection, stock, catalogueRules, installRole: 'postgres', runtimeRole: 'starter_runtime',
+      close: () => connection.end()};
+  });
+  async function installedTypes() {
+    const owner = new pg.Client({connectionString: fixture.ownerUrl});
+    await owner.connect();
+    try {
+      return (await owner.query("SELECT type_key, version, validator_ref FROM public.catalog_type_versions ORDER BY type_key")).rows;
+    } finally {
+      await owner.end();
+    }
+  }
+`;
