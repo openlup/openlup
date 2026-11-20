@@ -28,6 +28,7 @@ import {
 
 const raw = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
 const current = raw;
+const publicationAuthorityFile = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
 // Structural generation-introduction fixtures stop at their named issued tails;
 // the live shared suffix is exercised separately below.
 const historical = structuredClone(raw);
@@ -258,6 +259,7 @@ describe("canonical qualified migration selection", () => {
     // Pin the completion's introduction before the current shared suffix, just
     // as the earlier generation fixtures pin their issued tails above.
     const next = structuredClone(current);
+    next.qualified.forward = next.qualified.forward.filter(({ file }) => file !== publicationAuthorityFile);
     const lockIndex = next.qualified.forward.findIndex(({ file }) => file === lock.file);
     expect(lockIndex).toBeGreaterThan(0);
     const suffix = next.qualified.forward.slice(lockIndex + 1);
@@ -266,7 +268,7 @@ describe("canonical qualified migration selection", () => {
       expect(plan.forward.filter(({ file }) => suffixFiles.has(file))).toEqual(suffix);
       plan.forward = plan.forward.filter(({ file }) => !suffixFiles.has(file));
     }
-    const migrations = currentMigrations.filter(({ file }) => !suffixFiles.has(file));
+    const migrations = currentMigrations.filter(({ file }) => !suffixFiles.has(file) && file !== publicationAuthorityFile);
     expect([next.qualified.forward.at(-1), next.qualifiedAdmin.forward.at(-1)]).toEqual([lock, lock]);
     const previous = structuredClone(next);
     for (const plan of [previous.qualified, previous.qualifiedAdmin]) plan.forward = plan.forward.filter(({ file }) => file !== lock.file);
@@ -319,6 +321,45 @@ describe("canonical qualified migration selection", () => {
     const issuedQualified = issuedMigrations.filter(({ file }) => !file.startsWith("db/platform/migrations/qa_") && !file.startsWith("db/platform/migrations/qb_"));
     expect(evaluatePlatformMigrationManifest({ manifest: withoutAdmin, migrations: [...issuedQualified, { file: lock.file, content }] }))
       .toContain("the lock and conflict completion tail requires both qualified plans");
+  });
+
+  it("admits publication authority in the qualified-v2 plan while preserving its issued prefix", () => {
+    if (current.schemaVersion !== 3) throw new Error("current qualified source must be schema 3");
+    const file = publicationAuthorityFile;
+    const content = "SELECT 1;\n";
+    const publication = { file, sha256: sha256(content) };
+    const migrations = [...readPlatformMigrations(process.cwd()).migrations.filter(row => row.file !== file), { file, content }];
+    const previous = structuredClone(current);
+    previous.qualified.forward = previous.qualified.forward.filter(row => row.file !== file);
+    const next = structuredClone(previous);
+    next.qualified.forward.push(publication);
+
+    expect(evaluatePlatformMigrationManifest({ manifest: next, migrations })).toEqual([]);
+    expect(evaluatePlatformMigrationManifestMetadata(next)).toEqual([]);
+    expect(isQualifiedPlatformMigrationPath(file)).toBe(true);
+    expect(isQualifiedPlatformMigrationPath(file.replace("authority", "other"))).toBe(false);
+    expect(evaluatePlatformMigrationManifestHistory(previous, next, [file])).toEqual([]);
+    expect(selectPlatformMigrationManifest(next, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true }).forward.at(-1)).toEqual(publication);
+
+    const later = structuredClone(next);
+    const shared = { file: "db/platform/migrations/20991231000000_later_shared.sql", content: "SELECT 2;\n" };
+    for (const plan of [later, later.qualified, later.qualifiedAdmin]) plan.forward.push({ file: shared.file, sha256: sha256(shared.content) });
+    expect(evaluatePlatformMigrationManifest({ manifest: later, migrations: [...migrations, shared] })).toEqual([]);
+    expect(evaluatePlatformMigrationManifestHistory(next, later, [shared.file])).toEqual([]);
+
+    const inserted = structuredClone(next);
+    inserted.qualified.forward.splice(inserted.qualified.forward.findIndex(row => row.file === QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE), 0, inserted.qualified.forward.pop()!);
+    expect(evaluatePlatformMigrationManifestMetadata(inserted)).toContain("qualified catalogue publication authority must follow lock and conflict completion");
+    expect(evaluatePlatformMigrationManifestHistory(previous, inserted, [file])).toContain("qualified migration manifest must preserve the previous prefix");
+
+    for (const select of [(value: typeof next) => value, (value: typeof next) => value.qualifiedAdmin]) {
+      const wrongPlan = structuredClone(next);
+      wrongPlan.qualified.forward.pop();
+      select(wrongPlan).forward.push(publication);
+      expect(evaluatePlatformMigrationManifestMetadata(wrongPlan)).toContain("catalogue publication authority requires the qualified-v2 plan");
+    }
+    const wrongBytes = migrations.map(row => row.file === file ? { file, content: "SELECT 2;\n" } : row);
+    expect(evaluatePlatformMigrationManifest({ manifest: next, migrations: wrongBytes })).toContain(`platform migration manifest: SHA-256 mismatch for ${file}`);
   });
 
   it("rejects omitted/reordered shared units, unqualified bootstrap reuse and early sealing", () => {
@@ -392,9 +433,10 @@ describe("shared forwards after issued generation tails", () => {
     expect(evaluatePlatformMigrationManifest({ manifest: { ...v2, schemaVersion: 2 }, migrations: v2Migrations }))
       .toEqual(["the lock and conflict completion tail requires both qualified plans"]);
     const withoutTail = { ...structuredClone(v2), schemaVersion: 2 as const };
-    withoutTail.qualified.forward = withoutTail.qualified.forward.filter(({ file }) => file !== QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE);
+    const removed = new Set([QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, publicationAuthorityFile]);
+    withoutTail.qualified.forward = withoutTail.qualified.forward.filter(({ file }) => !removed.has(file));
     expect(evaluatePlatformMigrationManifest({ manifest: withoutTail,
-      migrations: v2Migrations.filter(({ file }) => file !== QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE) })).toEqual([]);
+      migrations: v2Migrations.filter(({ file }) => !removed.has(file)) })).toEqual([]);
   });
 
   it.each(["legacy", "qualified", "qualifiedAdmin"] as const)("refuses missing, permuted or different-hash suffix rows in %s", generation => {

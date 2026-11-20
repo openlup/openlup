@@ -107,7 +107,7 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
   expect(() => readReviewedForwardRegistry(Buffer.from(encode(approved)))).not.toThrow();
   expect(() => assertQualifiedOwnerPathForward(binding, bytes, sources)).not.toThrow();
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
-  expect(registry.qualifiedInstallations).toHaveLength(17);
+  expect(registry.qualifiedInstallations?.slice(0, paths.length).map(({ path }) => path)).toEqual(paths);
   expect(registry.qualifiedInstallations![6]).toEqual(binding);
   const reviewedBytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${QUALIFIED_OWNER_PATH_FILE}`);
   expect(reviewedBytes).toEqual(bytes);
@@ -239,6 +239,56 @@ it("approves the exact shared lock and conflict completion as the seventeenth id
   colocated.put(QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, bodies[16]!);
   const same = colocated.commit("attempt pin and SQL together");
   expect(() => assertCoLocatedForwardApproval(colocated.root, issuedOnly, same)).not.toThrow();
+});
+
+it("admits only the eighteenth qualified publication identity after the full issued prefix", () => {
+  const f = fixture();
+  const path = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+  const pin = { path, sha256: sqlSha256("SELECT 1;\n") };
+  const candidate = { ...f.approved, qualifiedInstallations: [...f.approved.qualifiedInstallations, pin] };
+  const read = (value: typeof candidate) => readReviewedForwardRegistry(Buffer.from(encode(value)));
+  expect(read(candidate).qualifiedInstallations).toEqual(candidate.qualifiedInstallations);
+  for (const change of [
+    (entries: typeof candidate.qualifiedInstallations) => { entries[17]!.path = path.replace("authority", "other"); },
+    (entries: typeof candidate.qualifiedInstallations) => { entries[17]!.sha256 = "invalid"; },
+    (entries: typeof candidate.qualifiedInstallations) => { Object.assign(entries[17]!, { functions: [] }); },
+    (entries: typeof candidate.qualifiedInstallations) => { [entries[15], entries[16]] = [entries[16]!, entries[15]!]; },
+    (entries: typeof candidate.qualifiedInstallations) => { entries.splice(16, 1); },
+  ]) {
+    const changed = structuredClone(candidate);
+    change(changed.qualifiedInstallations);
+    expect(() => read(changed)).toThrow(/invalid fixed identity or hash/);
+  }
+});
+
+it("requires exact co-located publication bytes and preserves every issued qualified pin", () => {
+  const f = fixture();
+  const path = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+  const bytes = Buffer.from("CREATE TABLE public.qualified_publication_fixture(id integer);\n");
+  const pin = { path, sha256: sqlSha256(bytes) };
+  const candidate = { ...f.approved, qualifiedInstallations: [...f.approved.qualifiedInstallations, pin] };
+  f.put(REVIEWED_FORWARD_PATH, encode(f.approved));
+  const prior = f.commit("issue the existing qualified prefix");
+  f.put(path, bytes);
+  const unpinned = f.commit("introduce unpinned publication fixture");
+  expect(() => assertAdmittedPlatformForward(f.root, prior, unpinned, path, bytes)).toThrow(/differs from reviewed replacement path or bytes/);
+
+  f.git("reset", "--hard", prior);
+  f.put(path, bytes);
+  f.put(REVIEWED_FORWARD_PATH, encode(candidate));
+  const feature = f.commit("bind exact publication fixture bytes");
+  expect(() => assertCoLocatedForwardApproval(f.root, prior, feature)).not.toThrow();
+  expect(() => assertAdmittedPlatformForward(f.root, prior, feature, path, bytes)).not.toThrow();
+  expect(() => assertAdmittedPlatformForward(f.root, prior, feature, path, bytes, true)).not.toThrow();
+  expect(() => assertAdmittedPlatformForward(f.root, prior, feature, path, Buffer.concat([bytes, Buffer.from(" ")]))).toThrow(/exact approved bytes/);
+
+  for (const [index, entry] of candidate.qualifiedInstallations.entries()) {
+    const repinned = structuredClone(candidate);
+    repinned.qualifiedInstallations[index]!.sha256 = sqlSha256(`${entry.sha256}\n`);
+    f.put(REVIEWED_FORWARD_PATH, encode(repinned));
+    const head = f.commit(`attempt to repin qualified approval ${index + 1}`);
+    expect(() => assertCoLocatedForwardApproval(f.root, feature, head)).toThrow("issued qualified installation approvals are immutable");
+  }
 });
 
 it("keeps every restricted owner body aligned with the issued name-resolution forward", () => {

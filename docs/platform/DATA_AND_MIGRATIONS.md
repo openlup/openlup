@@ -1612,6 +1612,13 @@ and definitions. The active forward pins name resolution on those definitions;
 the issued qualified prefix has 92 units. Earlier qualified units and their approvals
 remain immutable.
 
+Position 18 is reserved for `q2_20261123192500_catalog_publication_authority.sql`.
+Its `qualifiedInstallations` entry is exactly `{ path, sha256 }`, with the full
+catalogue path and a SHA-256 digest of the exact SQL bytes. The forward appends
+to the `qualified-v2` plan after lock and conflict completion and preserves
+the order of shared forwards. The SQL introduction can add the approval and
+manifest entry together. The reservation by itself grants no database privileges.
+
 Historically, delivery used three separately landed checkpoints: reader support,
 then an exact pin-only approval, then the identical active SQL and its selected
 manifest row. The current rule below permits class data, pins and SQL together
