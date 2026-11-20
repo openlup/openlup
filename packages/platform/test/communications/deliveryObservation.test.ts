@@ -109,7 +109,7 @@ it.each(["rejection", "abort", "throw", "lookup", "apply", "telemetry", "replay"
     if (fault === "throw") throw Error("transport");
     return { ok: fault !== "rejection" };
   };
-  try {
+  const run = async () => {
     if ((await transport()).ok) {
       await processEmailObservation({ port, messageId: "message-1", observation: () => evidence });
       if (fault === "replay") await processEmailObservation({ port, messageId: "message-1", observation: () => evidence });
@@ -120,9 +120,11 @@ it.each(["rejection", "abort", "throw", "lookup", "apply", "telemetry", "replay"
         await h.run();
       }
     }
-  } catch {
-    // Inspect the entire effect log even when a communication failure propagates.
-  }
+  };
+  if (fault === "abort") await expect(run()).rejects.toThrow("timeout");
+  else if (fault === "throw") await expect(run()).rejects.toThrow("transport");
+  else if (fault === "lookup" || fault === "apply") await expect(run()).rejects.toThrow(fault);
+  else await run();
   expect(effects.every(target => ["communication_update_email_delivery_from_provider", "email_webhook_attempts", "email_sends"].includes(target))).toBe(true);
   if (["rejection", "abort", "throw", "lookup"].includes(fault)) expect(effects).toEqual([]);
   else expect(effects).toContain("communication_update_email_delivery_from_provider");
