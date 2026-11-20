@@ -1,0 +1,1 @@
+- Add the opt-in PostgreSQL catalogue commands binding for approving, revoking, publishing and replaying a receipted v3 draft. Enable the approval seal on candidate preparation and apply the complete native migration chain before binding the owner transaction.

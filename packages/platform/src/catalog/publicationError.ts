@@ -95,6 +95,20 @@ export const publicationRefusals = {
   catalog_sku_revisions_full_facts_check: ["publication_revision_invalid", "A SKU's saved details are too large or empty. Review the SKU and prepare the product again."],
   catalog_publication_candidate_invalid: ["publication_approval_invalid", "Approval does not match the selected product revision. Review and approve that revision again."],
   catalog_publication_pointer_capability_unconsumed: ["publication_content_not_saved", "The selected product content was not saved. Select the content again and retry."],
+  catalog_publication_busy: ["publication_busy", "Another catalogue change is in progress. Retry with the same command key."],
+  catalog_publication_command_key_reused: ["publication_command_key_reused", "This command key belongs to a different request. Retry the original request or use a fresh key."],
+  catalog_publication_gtin_conflict: ["publication_gtin_conflict", "This GTIN is already assigned. Verify the barcode and prepare the draft again."],
+  catalog_publication_identifier_conflict: ["publication_identifier_conflict", "This identifier is already assigned. Check its issuer and value."],
+  catalog_publication_draft_advanced: ["publication_draft_advanced", "The saved draft changed. Prepare its current revision."],
+  catalog_publication_route_conflict: ["publication_route_conflict", "Another product uses this route. Choose a different route and prepare the draft again."],
+  catalog_publication_lifecycle_assertion_changed: ["publication_lifecycle_assertion_changed", "Reload the SKU revisions and prepare the lifecycle changes again."],
+  catalog_publication_tax_class_unavailable: ["publication_tax_class_unavailable", "Install or activate the tax class declared by this product type."],
+  catalog_publication_price_key_reused: ["publication_price_key_reused", "Use a distinct command key for each price change in the draft."],
+  catalog_publication_price_changed: ["publication_price_changed", "The current base price differs from the draft. Reload it and prepare the draft again."],
+  catalog_publication_price_unavailable: ["publication_price_unavailable", "The base price could not be verified. Check the price list or retry the command."],
+  catalog_publication_price_readiness: ["publication_price_readiness", "The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again."],
+  catalog_publication_identity_conflict: ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."],
+  duplicate_combination: ["duplicate_combination", "A SKU already has this combination of options. Use distinct options for the new SKU."],
 } as const;
 
 export type AdmissionDiagnostic = keyof typeof publicationRefusals;

@@ -7443,7 +7443,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     skipped: boolean;
     checked: number;
     updated: number;
-    mode: "stage" | "shadow" | "live";
+    mode: "stage" | "live" | "shadow";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -7461,7 +7461,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     skipped: boolean;
     checked: number;
     updated: number;
-    mode: "stage" | "shadow" | "live";
+    mode: "stage" | "live" | "shadow";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -7472,7 +7472,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     checked: number;
     updated: number;
     failures: number;
-    mode: "stage" | "shadow" | "live";
+    mode: "stage" | "live" | "shadow";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -7484,7 +7484,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     checked: number;
     updated: number;
     failures: number;
-    mode: "stage" | "shadow" | "live";
+    mode: "stage" | "live" | "shadow";
     replayed: number;
     providerCalls: number;
     readBacks: number;

@@ -561,6 +561,8 @@ export interface CatalogCandidatePreview {
     issues: readonly CatalogDraftIssue[];
     /** @experimental Reports what needs attention before the draft is ready. */
     preparation?: {
+        /** Present on opted-in native v3 preparation with complete structural evidence. */
+        postStateDigest?: string;
         structural: {
             outcome: "staged" | "blocked-input" | "unknown";
             issues: readonly CatalogCandidateIssue[];
@@ -1602,6 +1604,8 @@ export interface CatalogTypeDefinitionV2 extends Omit<CatalogProductTypeInput, "
     attributes: readonly AttributeDefinition[];
 }
 export interface CatalogProductTypeRegistry {
+    /** Immutable definitions in registration order, when the registry supports enumeration. */
+    readonly definitions?: readonly Readonly<CatalogProductTypeInput>[];
     resolve(ref: CatalogProductTypeRef): CatalogProductTypeDefinition | undefined;
 }
 export declare function validateCatalogQuantity(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): boolean;

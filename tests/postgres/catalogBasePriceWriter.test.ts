@@ -14,6 +14,7 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 
 const inputsPath = "db/platform/migrations/20261122170000_offer_policy_readiness_inputs.sql";
 const writerPath = "db/platform/migrations/20261122180000_catalog_base_price_writer.sql";
+const commandsPath = "db/platform/migrations/20261123191000_catalog_publication_commands.sql";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 let owner: Pool;
@@ -132,6 +133,8 @@ beforeAll(async () => {
   genuine = await genuinePurchase(owner);
   await owner.query(readFileSync(inputsPath, "utf8"));
   await owner.query(readFileSync(writerPath, "utf8"));
+  await owner.query(readFileSync("db/platform/migrations/20261123190000_catalog_publication.sql", "utf8"));
+  await owner.query(readFileSync(commandsPath, "utf8"));
   await owner.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text");
   await owner.query("UPDATE public.price_entries SET mode='one_time',unit_price_minor=1000 WHERE variant_id=$1", [genuine.sku]);
   await owner.query(`INSERT INTO public.subscription_price_policy_revisions(id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
@@ -1105,7 +1108,9 @@ it.each(["subtotalGross", "discountTotalGross", "shippingGross", "shippingDiscou
   }));
 
 function nativePriceSelection(routine: "preview" | "apply") {
-  const source = readFileSync(writerPath, "utf8").split(`CREATE FUNCTION public.catalog_price_setup_${routine}(`)[1];
+  const source = routine === "preview"
+    ? readFileSync(writerPath, "utf8").split("CREATE FUNCTION public.catalog_price_setup_preview(")[1]
+    : readFileSync(commandsPath, "utf8").split("CREATE FUNCTION public.catalog_price_setup_apply_claimed(")[1];
   if (routine === "preview") return source.slice(source.indexOf("  SELECT count(*) FILTER"), source.indexOf("  -- The subscription price"));
   const count = source.indexOf("    SELECT count(*) FILTER"), selected = source.indexOf("  SELECT * INTO v_current", count);
   return source.slice(count, source.indexOf("\n    IF ", count)) + source.slice(selected, source.indexOf("\n  IF ", selected));
@@ -1150,7 +1155,7 @@ it("writer_native_lock_predicates_select_exact_open_rows", async () => {
       statement_timestamp()${r.kind === "future" ? "+interval '1 hour'" : "-interval '2 hours'"},
       ${r.kind === "finite" ? "statement_timestamp()+interval '1 hour'" : r.kind === "expired" ? "statement_timestamp()-interval '1 microsecond'" : r.kind === "end_exact" ? "statement_timestamp()" : "NULL"})`).join(",")}`);
     await db.query("BEGIN"); await probe.query("BEGIN");
-    const source = readFileSync(writerPath, "utf8").split("CREATE FUNCTION public.catalog_price_setup_apply(")[1];
+    const source = readFileSync(commandsPath, "utf8").split("CREATE FUNCTION public.catalog_price_setup_apply_claimed(")[1];
     const start = source.indexOf("    PERFORM 1 FROM public.price_entries"), end = source.indexOf("    -- 7.", start);
     await db.query(`DO $proof$ DECLARE v_list_id uuid:='${genuine.list}'; v_variant_id uuid:='${genuine.sku}';
       v_now timestamptz:=(SELECT valid_to FROM public.price_entries WHERE id='${rows.find(r => r.kind === "end_exact")!.id}');
@@ -1279,3 +1284,32 @@ it("writer_refuses_two_finite_effective_bases", async () => transaction(async db
   await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from,valid_to) VALUES($1,$2,'one_time',1001,statement_timestamp()-interval '2 hours',statement_timestamp()+interval '1 hour')", [genuine.list, genuine.sku]);
   expect(await apply(db, c)).toEqual({ outcome: "validation_issue", reason: "base_price_ambiguous" });
 }));
+
+it.each(["claimed", "wrapper"] as const)("serializes distinct keys when %s owns the price context first", async first => {
+  const leader = await owner.connect(), follower = await owner.connect();
+  try {
+    await leader.query("BEGIN"); await session(leader);
+    await follower.query("BEGIN"); await session(follower);
+    const a = await command(leader);
+    const b = { ...a, commandKey: randomUUID() };
+    async function claimed(db: PoolClient, value: typeof a) {
+      const bytes = canonicalCatalogPriceSetupCommand(value);
+      const claim = await rpc(db, "catalog_price_setup_claim", [bytes, createHash("sha256").update(bytes).digest("hex")]);
+      expect(claim).toMatchObject({ outcome: "claimed" });
+      await rpc(db, "catalog_price_setup_lock_context", [value.priceListId, value.variantId]);
+      return (await db.query("SELECT public.catalog_price_setup_apply_claimed($1,statement_timestamp()) AS value", [claim])).rows[0].value;
+    }
+    const firstApply = first === "claimed" ? claimed : apply;
+    const nextApply = first === "claimed" ? apply : claimed;
+    expect(await firstApply(leader, a)).toMatchObject({ outcome: "committed" });
+    const next = nextApply(follower, b);
+    // The winner still owns its row and context locks. A distinct key must wait.
+    expect(await Promise.race([next.then(() => "finished"), new Promise(resolve => setTimeout(() => resolve("waiting"), 100))]))
+      .toBe("waiting");
+    await leader.query("ROLLBACK");
+    expect(await next).toMatchObject({ outcome: "committed", receipt: { commandKey: b.commandKey } });
+  } finally {
+    await Promise.all([leader.query("ROLLBACK"), follower.query("ROLLBACK")]);
+    leader.release(); follower.release();
+  }
+});

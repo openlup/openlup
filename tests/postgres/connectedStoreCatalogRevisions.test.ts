@@ -449,3 +449,48 @@ function rehash(value: ConnectedNativeStoreCapture) {
   const { sha256: _previous, ...body } = value;
   value.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
 }
+
+async function captureTradeIdentifier(issuer: string, marker: string | null) {
+  const sku = randomUUID();
+  await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Legacy trade item')",
+    [sku, products[2], sku]);
+  const identifier = randomUUID();
+  await source.owner.query(`INSERT INTO public.catalog_sku_identifiers
+    (id,catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,scheme)
+    VALUES($1,$2,$3,'gtin','05901234123457','unit',1,$4)`, [identifier, sku, issuer, marker]);
+  const capture = await captureStoreJourney(source.owner, "catalog-identifier-source");
+  await source.owner.query("DELETE FROM public.catalog_sku_identifiers WHERE id=$1", [identifier]);
+  await source.owner.query("DELETE FROM public.catalog_skus WHERE id=$1", [sku]);
+  return { capture, identifier };
+}
+
+it("restores marked GTINs, and removes the marker only when the target explicitly changes it", async () => {
+  const { capture, identifier } = await captureTradeIdentifier("modern", "gs1:gtin");
+  expect(await restore(target.owner, capture)).toMatchObject({ replayed: false });
+  expect((await target.owner.query("SELECT scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
+    .toEqual([{ scheme: "gs1:gtin" }]);
+  await target.owner.query("UPDATE public.catalog_sku_identifiers SET scheme=NULL WHERE id=$1", [identifier]);
+  expect((await target.owner.query("SELECT normalized_value,scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
+    .toEqual([{ normalized_value: "05901234123457", scheme: null }]);
+}, 105_000);
+
+it("accepts the pinned Core-S packet shape and refuses a packet with an unknown inventory", async () => {
+  const { capture, identifier } = await captureTradeIdentifier("historic", null);
+  const table = capture.owned.find(entry => entry.table === "catalog_sku_identifiers")!;
+  const historic = "c19175002e39e2b4100841e7138759a4dd07fe3158ebd3ce5f7283a5e8d538a9";
+  table.columns = table.columns.filter(column => column.name !== "scheme");
+  table.rows = (await source.owner.query(`SELECT (value::jsonb-'scheme')::text AS row
+    FROM unnest($1::text[]) AS rows(value)`, [table.rows])).rows.map(row => row.row);
+  function repin(catalogueId: string) {
+    const { sha256: _captureDigest, compatible, ...body } = capture;
+    const { sha256: _compatDigest, ...fields } = compatible;
+    const encoded = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    const projected = { ...fields, catalogueId };
+    const result = { ...body, compatible: { ...projected, sha256: encoded(projected) } };
+    return { ...result, sha256: encoded(result) };
+  }
+  await expect(restore(target.owner, repin("a".repeat(64)))).rejects.toMatchObject({ code: "schema_conflict" });
+  expect(await restore(target.owner, repin(historic))).toMatchObject({ replayed: false });
+  expect((await target.owner.query("SELECT scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
+    .toEqual([{ scheme: null }]);
+}, 105_000);

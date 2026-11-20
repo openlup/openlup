@@ -89,3 +89,6 @@ export { nativeCatalogPublication } from "./publicationCodec.js";
 export type { CatalogFullPublicationV2, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2,
   CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
 export type { AdmissionDiagnostic } from "./publicationError.js";
+export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCommands.js";
+export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt,
+  PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";

@@ -51,6 +51,16 @@ export const publicationJson = (input: unknown, maxBytes: number = CATALOG_PUBLI
   return text;
 };
 export const publicationDigest = (input: unknown, maxBytes: number = CATALOG_PUBLICATION_LIMITS.manifestBytes, depth = 0): string => createHash("sha256").update(publicationJson(input, maxBytes, depth)).digest("hex");
+
+export function publicationApprovalState(product: CatalogPublishedProduct, skus: readonly CatalogPublishedSku[]) {
+  assertNativeProductReferences(product);
+  if (skus.length > 10_000) publicationRefuse("catalog_publication_roster_limit");
+  if (!skus.some(sku => sku.id === product.primarySkuId)) publicationRefuse("catalog_publication_primary_sku_required");
+  const state = { schemaVersion: 2, product, skus: skus.map(sku => ({
+    skuId: sku.id, digest: publicationDigest(sku, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH),
+  })).sort((a, b) => a.skuId < b.skuId ? -1 : a.skuId > b.skuId ? 1 : 0) };
+  return { canonicalText: publicationJson(state), digest: publicationDigest(state) };
+}
 /** PostgreSQL C collation orders UTF-8 bytes, including supplementary code points.
  * @experimental
  */

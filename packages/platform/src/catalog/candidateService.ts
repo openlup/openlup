@@ -10,6 +10,7 @@ import { CatalogPublicationError, publicationIssue } from "./publicationError.js
 import { readPublicationDraftEnvelope, type PublicationDraftRecord } from "./publicationIntent.js";
 import { matchesPublicationHead, publicationHeadSchema as headSchema, type CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 import { evaluateCatalogPublication } from "./publicationValidation.js";
+import { publicationApprovalState } from "./publicationCodec.js";
 
 import { CatalogCandidateError, createCatalogCandidateService, type CatalogCandidateDeps } from "./candidate.js";
 
@@ -150,6 +151,10 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       const preparation: CatalogCandidatePreview["preparation"] = { structural: { outcome: outcome(result.completed.structural, blocked, structural, "staged"), issues: structural },
         activation: { outcome: outcome(result.completed.activation, blocked || activationBlocked, activation, result.activating ? "ready" : "pending"),
           issues: [...activation, ...result.pending] } };
+      if (publication.includeApprovalSeal && payload.schemaVersion === 3 && result.structuralPlan) {
+        const { product, skus } = result.structuralPlan;
+        preparation.postStateDigest = publicationApprovalState(product, skus).digest;
+      }
       issues.push(...activation.map(({ path, code }) => ({ path, code })));
       const candidateDigest = createHash("sha256").update('["catalog-candidate",1,').update(canonicalCatalogDraftJson(payload)).update(",")
         .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: installed }])).update(",")
