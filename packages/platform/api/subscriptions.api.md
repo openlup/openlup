@@ -528,11 +528,11 @@ export declare function createExactSubscriptionRepricer(deps: PackageEditQuotePo
 ```ts
 export { renewalIdentity } from "./renewalIdentity.js";
 export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
-export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission } from "./renewalCycleMechanism.js";
+export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
-export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome } from "./renewalCycleRefusalMechanism.js";
+export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome, createDefaultRenewalPreflightPolicy } from "./renewalCycleRefusalMechanism.js";
 export type { RenewalPreflightPolicy, RenewalReplayPolicy, RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
-export { propagateRenewalFailure } from "./renewalCycleFailureMechanism.js";
+export { propagateRenewalFailure, createDefaultRenewalFailurePolicy } from "./renewalCycleFailureMechanism.js";
 export type { RenewalFailurePolicy } from "./renewalCycleFailureMechanism.js";
 export { runAutomaticSubscriptionRenewals, runOneAutomaticSubscriptionRenewal, correlatedLogicalCycle } from "./automaticRenewal.js";
 export type { AutomaticRenewalRunStatus, AutomaticRenewalRunResult, AutomaticRenewalRunDeps, AutomaticRenewalPolicy } from "./automaticRenewal.js";
@@ -1636,6 +1636,8 @@ export interface RenewalFailurePolicy {
         reason: string;
     }): void;
 }
+/** Build a RenewalFailurePolicy with canonical key suffixes and overridable hooks. */
+export declare function createDefaultRenewalFailurePolicy(overrides: Pick<RenewalFailurePolicy, "resolveClassification"> & Partial<RenewalFailurePolicy>): RenewalFailurePolicy;
 /** Complete durable refusal ladder; unexpected port throws remain raw. */
 export declare function propagateRenewalFailure(port: CycleChargeFailurePropagationPort, ctx: FailurePropagationContext, policy: RenewalFailurePolicy): Promise<FailurePropagationResult>;
 ```
@@ -1676,6 +1678,10 @@ export interface RenewalCyclePolicy<D extends HostedRenewalDue, CI, IR extends R
     replay: RenewalReplayPolicy;
     outcome: RenewalOutcomePolicy;
 }
+/** Build a RenewalCyclePolicy with canonical key dialect, defaults, and overridable hooks. */
+export declare function createDefaultRenewalCyclePolicy<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult, P extends string, I extends PaymentExecutionBaseInput, M extends string | null | undefined, F extends string>(overrides: Pick<RenewalCyclePolicy<D, CI, IR, P, I, M, F>, "validateProvider" | "intentInput" | "identity" | "providerFlow" | "prepareInput" | "executionInput" | "isNotChargeable" | "mandateBlockReason" | "preflight" | "outcome"> & Partial<Omit<RenewalCyclePolicy<D, CI, IR, P, I, M, F>, "replay">> & {
+    replay?: Partial<RenewalReplayPolicy>;
+}): RenewalCyclePolicy<D, CI, IR, P, I, M, F>;
 /** One hosted cycle: admission and stock precede one prepare/execute/finalize. */
 export declare function executeRenewalCycle<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult, P extends string, N extends string, I extends PaymentExecutionBaseInput, R extends PaymentExecutionBaseResult & {
     nextActionKind: N | null;
@@ -1726,6 +1732,12 @@ export interface RenewalOutcomePolicy {
 export interface RenewalReplayPolicy extends Pick<RenewalOutcomePolicy, "scaReason" | "defaultNow" | "failure"> {
     unacknowledgedReason(status: PaymentAttemptStatus): string;
 }
+export declare function defaultReadRenewalTotalGrossMinor(orderSnapshot: Record<string, unknown>): number | null;
+export declare function defaultRenewalCycleKey<D extends HostedRenewalDue>(due: D): string;
+export declare function defaultRenewalExecutionKey(cycleOrderIdempotencyKey: string, retryAttempt: number, providerAttemptSequence: number): string;
+export declare function defaultFailedRenewalResult<D extends HostedRenewalDue>(due: D, cycleId: string | null, cycleNumber: number | null, orderId: string | null, paymentIntentId: string | null, reason: string, propagation?: FailurePropagationResult): SubscriptionRenewalChargeResult;
+/** Build a RenewalPreflightPolicy with canonical keys, total reader, and overridable hooks. */
+export declare function createDefaultRenewalPreflightPolicy<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult>(overrides: Pick<RenewalPreflightPolicy<D, CI, IR>, "intentInput" | "identity" | "failure"> & Partial<RenewalPreflightPolicy<D, CI, IR>>): RenewalPreflightPolicy<D, CI, IR>;
 /** Alternate preflight owns its full order/intent/failure chain, without reservation or dispatch. */
 export declare function recordRenewalPreflightBlock<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult, M extends string | null | undefined>(deps: RenewalPreflightDeps<CI, IR, M>, due: D, reason: string, policy: RenewalPreflightPolicy<D, CI, IR>): Promise<SubscriptionRenewalChargeResult>;
 export declare function declinedRenewalOutcome<D extends HostedRenewalDue>(deps: RenewalFailureDeps, due: D, context: RenewalOutcomeContext & {

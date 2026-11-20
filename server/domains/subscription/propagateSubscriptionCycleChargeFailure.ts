@@ -1,4 +1,8 @@
-import { propagateRenewalFailure, type RenewalFailurePolicy } from "@openlup/platform/subscriptions";
+import {
+  createDefaultRenewalFailurePolicy,
+  propagateRenewalFailure,
+  type RenewalFailurePolicy,
+} from "@openlup/platform/subscriptions";
 import { resolvedFailureClassification } from "../../shared/applyPaymentResultRpc.js";
 export type FailurePropagationKind =
   | "off_session_requires_action"
@@ -118,16 +122,13 @@ export interface FailurePropagationResult {
   dunningPropagationFailed: boolean;
 }
 
-export const renewalFailurePolicy: RenewalFailurePolicy = {
+export const renewalFailurePolicy: RenewalFailurePolicy = createDefaultRenewalFailurePolicy({
   resolveClassification: resolvedFailureClassification,
-  recordKey: key => `${key}:record-attempt`, applyKey: key => `${key}:apply-result`,
-  dunningKey: (key, attempt) => `${key}:dunning:${attempt}`,
-  preparedSuffix: ":prepare-attempt", blockedSuffix: ":record-attempt",
   dunningFailureKey: RENEWAL_DUNNING_PROPAGATION_FAILED_KEY,
   logBelowRetry: fields => console.warn("[subscription-renewal] skipping dunning — retry_attempt below 1", fields),
   logRejected: fields => console.error("[subscription-renewal] dunning RPC error", fields),
   logUnavailable: fields => console.error("[subscription-renewal] dunning RPC threw", fields),
-};
+});
 export async function propagateSubscriptionCycleChargeFailure(
   port: CycleChargeFailurePropagationPort, ctx: FailurePropagationContext,
 ): Promise<FailurePropagationResult> {
