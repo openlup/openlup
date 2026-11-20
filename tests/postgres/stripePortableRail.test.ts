@@ -3,6 +3,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresProviderPaymentRail, createPostgresPaymentMethodStore, createPostgresPaymentMethodSetup,
   createPostgresPaymentWebhookControlPort, createCheckoutRecoveryPaymentResolver, verifyPaymentAttemptNow } from "@openlup/platform/payments";
 import { createStripePaymentAdapter, type StripePaymentAdapterConfig } from "@openlup/platform/payments/stripe";
+import { createTpayPaymentAdapter } from "@openlup/platform/payments/tpay";
+import { createTpayJwsFixture } from "../../packages/platform/test/payments/tpay/webhookJws.testFixtures.js";
 import { createScriptedPaymentFake } from "@openlup/platform/payments/testing";
 import { activateNativePurchaseWithRenewal, createNativeRenewalCodec, createNativeSubscriptionBinding,
   createPostgresProviderRenewalBinding, createPostgresRenewalSettlementPort,
@@ -397,6 +399,18 @@ describe("durable dispatch boundaries", () => {
     expect(JSON.stringify(await rail.readAttempt(intent))).not.toContain("transient_only");
     const calls = requests.length; await expect(rail.execute(request())).rejects.toThrow("provider_attempt_in_flight"); expect(requests).toHaveLength(calls);
   });
+  it("refuses a newly signed success with conflicting amounts before recording capture or paying the order", async () => {
+    fake.enqueue("create", { kind: "success", value: payment(`pi_${intent}`, "requires_action") });
+    await rail.execute(request());
+    const delivery = signed("payment_intent.succeeded", { id: `pi_${intent}`, amount: 300,
+      amount_received: 200, currency: "xxx", metadata: { paymentIntentId: intent } });
+    expect(await rail.ingress.receive(delivery)).toMatchObject({ status: 409 });
+    expect((await env.owner.query(`SELECT
+      (SELECT status FROM public.commerce_orders WHERE id=$1) AS order_status,
+      (SELECT status FROM public.commerce_settlement_intents WHERE id=$2) AS settlement_status,
+      (SELECT count(*)::int FROM public.payment_truth_events WHERE settlement_intent_id=$2 AND outcome='captured') AS captures`,
+    [order, intent])).rows).toEqual([{ order_status: "pending_payment", settlement_status: "created", captures: 0 }]);
+  });
   it("retains missing provider time without applying capture or inventing a financial timestamp", async () => {
     fake.enqueue("create", { kind: "success", value: payment(`pi_${intent}`, "requires_action") }); await rail.execute(request());
     const result = await rail.ingress.receive(signed("payment_intent.succeeded", { id: `pi_${intent}`, amount: 200,
@@ -514,6 +528,53 @@ describe("exact local-intent search after uncertain dispatch", () => {
     });
     fake.assertDrained();
   });
+});
+
+it("keeps native renewal awaiting provider when Tpay reports conflicting paid fields", async () => {
+  const f = await renewalFixture(env.owner, 10, 1, randomUUID(), true, "tpay");
+  await call(env.runtime, "fulfillment_reserve_subscription_renewal", [f.operation, f.token, 900, AT]);
+  const prepared = await call(env.runtime, "commerce_prepare_subscription_renewal", [f.operation, f.token, AT]);
+  const { settlementIntentId, orderId } = prepared;
+  const remoteRef = `tpay_${f.operation}`;
+  const configuredMoney = { amountMinor: 200, currency: "XXX" };
+  const tpay = createTpayPaymentAdapter({
+    mode: "test", modelOActivationEnabled: true,
+    http: { baseUrl: "https://example.test", clientId: "fixture-client", clientSecret: "fixture-secret",
+      async fetchImpl(url) {
+        return { ok: true, status: 200, text: async () => "", json: async () => url.endsWith("/oauth/auth")
+          ? { access_token: "fixture", expires_in: 3600 }
+          : { transactionId: remoteRef, status: "correct", amount: "2.00", paidAmount: "3.00", payments: { amountPaid: "2.00" },
+            currency: "XXX", date: { realization: AT } } };
+      } },
+    notification: { rootCertificatePem: createTpayJwsFixture(7).rootCertificatePem,
+      allowedCertificateUrlPrefix: "https://example.test/certs/", resolveCertificate: async () => { throw new Error("Unexpected certificate read"); } },
+    urls: { notificationUrl: "https://example.test/notify", successUrl: "https://example.test/success", errorUrl: "https://example.test/error" },
+  });
+  const paymentRail = createPostgresProviderPaymentRail({ executor: env.runtime, adapter: tpay, mode: "test", truth,
+    resolveMethodOwner: async () => null, resolveSavedMethodOwner: async () => null });
+  await paymentRail.control.createIntent({ idempotencyKey: `provider-intent:${f.operation}`, targetKind: "subscription_cycle",
+    orderId, subscriptionId: f.subscription,
+    subscriptionCycleId: (await env.owner.query("SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [orderId])).rows[0].subscription_cycle_id,
+    ...configuredMoney, metadata: {}, channelKey: paymentRail.provider, at: AT });
+  const providerIdempotencyKey = `provider:${f.operation}`, providerRequestFingerprint = "a".repeat(64);
+  const attempt = await paymentRail.control.prepareProviderAttempt({ idempotencyKey: `prepare:${f.operation}`,
+    paymentIntentId: settlementIntentId, provider: paymentRail.provider, providerIdempotencyKey,
+    providerRequestFingerprint, providerFlow: "recurring_charge", requestPayload: {} });
+  await paymentRail.control.finalizeProviderAttempt({ idempotencyKey: `finalize:${f.operation}`, paymentIntentId: settlementIntentId,
+    paymentAttemptId: attempt.paymentAttemptId, providerIdempotencyKey, providerRequestFingerprint, providerAttemptId: remoteRef,
+    providerSessionId: remoteRef, attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
+  const fixtureCodec = { ...codec, decode: (wire: Record<string, unknown>) => ({
+    ...wire, cycle: f.snapshot.cycle, settlementChannelKey: paymentRail.provider,
+  }) as unknown as ReturnType<typeof codec.decode> };
+  const binding = createPostgresProviderRenewalBinding({ enabled: true, channelKey: paymentRail.provider, executor: env.runtime,
+    withTransaction: transaction, paymentRail, codec: fixtureCodec, truth, now: () => AT,
+    settlement: db => createPostgresRenewalSettlementPort(db, fixtureCodec, transaction), search: async () => [] });
+  expect(await binding.rail.readOutcome({ settlementIntentId, orderId, subscriptionId: f.subscription,
+    ...configuredMoney, externalAttemptRef: remoteRef })).toMatchObject({ status: "unknown", disposition: "ambiguous" });
+  expect(await paymentRail.readAttempt(settlementIntentId)).toMatchObject({ settlementStatus: "created",
+    paymentAttempt: { status: "processing" } });
+  expect((await env.owner.query("SELECT count(*)::int AS captures FROM public.payment_truth_events WHERE settlement_intent_id=$1 AND outcome='captured'",
+    [settlementIntentId])).rows).toEqual([{ captures: 0 }]);
 });
 
 describe("reviewed native execution boundaries", () => {

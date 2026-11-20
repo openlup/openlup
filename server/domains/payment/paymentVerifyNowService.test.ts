@@ -1,3 +1,4 @@
+import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payments/tpay";
 import { describe, expect, it, vi } from "vitest";
 import type { ProviderReconciliationStatus } from "./paymentProviderReconciliationContracts.js";
 import {
@@ -24,6 +25,24 @@ const snapshot: VerifiableAttemptSnapshot = {
 };
 
 describe("verifyPaymentAttemptNow", () => {
+  it.each([
+    ["configured amount", { amount: "13.99" }],
+    ["paid fields", { amount: "12.99", paidAmount: "13.99" }],
+  ] as const)("routes a Tpay success with conflicting %s to manual review", async (_, fields) => {
+    const providerPaymentId = "transaction-1";
+    const tpay = createTpayPaymentReconciliationProvider({ getTransaction: async () => ({
+      transactionId: providerPaymentId, status: "correct", currency: "PLN", payments: { amountPaid: "12.99" }, ...fields,
+    }) });
+    const applyTerminalResult = vi.fn();
+    await expect(verifyPaymentAttemptNow({
+      snapshot: { ...snapshot, provider: "tpay", providerAttemptId: providerPaymentId },
+      applyPort: { applyTerminalResult },
+      providers: { tpay },
+      now: () => new Date(snapshot.localUpdatedAt),
+    })).resolves.toMatchObject({ status: "manual_review", verified: true, applied: false });
+    expect(applyTerminalResult).not.toHaveBeenCalled();
+  });
+
   it("reuses a supplied recovery read without calling the provider again", async () => {
     const readPayment = vi.fn();
     const applyTerminalResult = vi.fn();

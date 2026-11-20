@@ -599,6 +599,8 @@ it.each((["active_checkout", "recovery"] as const).flatMap(purpose => [
   { purpose, label: "dated refusal", status: "pending", paidAmount: "0.00", amount: "25.99",
     payments: { attempts: [{ date: "12.08.2026 12:00", paymentErrorCode: "51" }] }, kind: "failed", occurredAt: "2026-08-12T10:00:00.000Z" },
   { purpose, label: "paid", status: "correct", paidAmount: "25.99", amount: "25.99", payments: {}, kind: "succeeded", occurredAt: null },
+  { purpose, label: "conflicting paid fields", status: "correct", paidAmount: "26.99", amount: "25.99",
+    payments: { amountPaid: "25.99" }, kind: "unknown", occurredAt: null },
   { purpose, label: "configured money mismatch", status: "pending", paidAmount: "0.00", amount: "25.98", payments: {}, kind: "unknown", occurredAt: null },
 ]))("reads $label using configured money for $purpose", async ({ purpose, status, paidAmount, amount, payments, kind, occurredAt }) => {
   const good = config();

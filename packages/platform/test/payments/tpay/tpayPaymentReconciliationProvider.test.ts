@@ -12,13 +12,13 @@ const normalize = normalizeTpayTransaction;
 
 describe("normalizeTpayTransaction", () => {
   const attempt = { amountMinor: 14_900, currency: "PLN" } as never;
-  it("maps Tpay correct/paid states to succeeded", () => {
-    expect(normalizeTpayTransaction({
+  it("attests capture when the configured and collected amounts agree", () => {
+    expect(normalize({
       transactionId: "tr_1",
       title: "TR-1",
       status: "correct",
-      amount: "13.99",
-      amountMinor: 1399,
+      amount: "12.99",
+      amountMinor: 1299,
       payments: { amountPaid: "12.99" },
       currency: "pln",
     })).toMatchObject({
@@ -29,6 +29,19 @@ describe("normalizeTpayTransaction", () => {
       capturedAmountBasis: "provider_capture_v1",
       failureReason: null,
     });
+  });
+
+  it.each([
+    ["configured amount", { amount: "13.99" }, 1399, []],
+    ["paid fields", { amount: "12.99", paidAmount: "13.99" }, 1299, [1399]],
+  ] as const)("keeps conflicting %s as review evidence without attesting capture", async (_, fields, configuredAmountMinor, conflictingPaidAmountsMinor) => {
+    const provider = createTpayPaymentReconciliationProvider({ getTransaction: async () => ({
+      transactionId: "tr_1", status: "correct", currency: "PLN", payments: { amountPaid: "12.99" }, ...fields,
+    }) });
+    const result = await provider.readPayment({ providerPaymentId: "tr_1" });
+    expect(result).toMatchObject({ status: "succeeded", failureReason: "provider_amount_mismatch", amountMinor: 1299,
+      rawPayload: { configuredAmountMinor, paidAmountMinor: 1299, conflictingPaidAmountsMinor } });
+    expect(result).not.toHaveProperty("capturedAmountBasis");
   });
 
   it("uses official nested realization date and raw paidAmount from transaction readback", () => {

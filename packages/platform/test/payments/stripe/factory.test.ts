@@ -237,6 +237,26 @@ describe("opt-in payment factory", () => {
     };
     expect(await adapter.verifyPort.verifyAndNormalize(staleRotated)).toEqual({ kind: "refusal", reason: "stale" });
   });
+  it("refuses a fresh signed success whose collected money matches the local amount but conflicts with the requested amount", async () => {
+    const { adapter } = subject();
+    const delivery = signed(event("payment_intent.succeeded", { amount: 2699, amount_received: request.money.amountMinor }));
+    const ingestPaymentEvent = vi.fn(async () => ({ paymentEventId: "local-event", paymentIntentId: "intent-a", replayed: false }));
+    const applyPaymentResult = vi.fn(async () => ({ replayed: false }));
+    const findCompletedHistoricalCapture = vi.fn(async () => null);
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort,
+      paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult } });
+    expect(await ingress.receive(delivery)).toMatchObject({ status: 409, data: {
+      error: "Provider payment amounts disagree. Review the payment before settling.",
+    } });
+    expect(ingestPaymentEvent).not.toHaveBeenCalled();
+    expect(applyPaymentResult).not.toHaveBeenCalled();
+    const evidence = await adapter.verifyPort.verifyAndNormalize(delivery);
+    expect(evidence).toMatchObject({ kind: "money", outcome: "succeeded", money: null, providerAuditPayload: {
+      configuredAmountMinor: 2699, paidAmountMinor: 2599, currency: "EUR",
+    } });
+    expect(evidence).not.toHaveProperty("capturedAmountBasis");
+  });
+
   it.each([500, undefined])("acknowledges a completed legacy receipt after collected money changes to %s", async amount_received => {
     const { adapter } = subject();
     const prior = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded")));
