@@ -149,7 +149,7 @@ export class CatalogPublicationError extends Error {
 export function publicationDiagnostic(error: CatalogPublicationError, phase: NonNullable<CatalogCandidateIssue["phase"]>,
   path: string, subject: string): Issue {
   const issue = error.diagnostic;
-  return issue.phase ? issue : { ...issue, phase, path: issue.path || path, subject };
+  return issue.phase ? issue : { ...issue, phase, path: issue.kind === "adopterRule" ? issue.path : path, subject };
 }
 export const publicationRefuse = (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]): never => { throw new CatalogPublicationError(code, outcome); };
 

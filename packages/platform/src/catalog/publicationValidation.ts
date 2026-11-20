@@ -833,7 +833,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const readRoute = async (presentation: CatalogPublicationFacts) => {
       const verdict = publicationReadinessVerdict.safeParse(await observe(() => observations?.presentationReadiness?.(record.productId, presentation) ?? Promise.resolve(undefined)));
       if (!verdict.success) structural.push(missing("catalog_publication_presentation_unavailable", "product.sharedContent.presentation"));
-      else if (!verdict.data.ready) throw new CatalogPublicationError(adopterIssue("presentationReadiness", verdict.data.reasons[0]!, "product"));
+      else if (!verdict.data.ready) throw new CatalogPublicationError(adopterIssue("presentationReadiness", verdict.data.reasons[0]!, position.path));
     };
 
     const savedSources = new Map<number, NonNullable<ReturnType<typeof authorship.skuOperation>>>();

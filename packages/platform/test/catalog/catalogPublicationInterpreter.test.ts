@@ -1,5 +1,8 @@
 import { expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { createCatalogCandidateService, type CatalogCandidateDeps } from "../../src/catalog/candidate.js";
 import { createCatalogCandidateServiceWithPublication } from "../../src/catalog/candidateService.js";
 import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
@@ -17,6 +20,7 @@ import { compileCatalogPublicationDraft } from "../../src/catalog/publicationDra
 import type { CatalogCandidatePublicationDeps } from "../../src/catalog/publicationEvidence.js";
 import { artifact, input, revision, setupRules, type PublicationFixture } from "./fixtures/publicationInput.js";
 
+import { publicationPriceRefusalReason } from "../../src/catalog/publicationError.js";
 import { publicationWireVectors } from "../../src/catalog/testing/publicationWireVectors.js";
 
 type Fixture = PublicationFixture;
@@ -87,7 +91,7 @@ it.each([
   ["validateContent", "product.sharedContent.title"],
   ["validateProduct", "product"],
   ["validatePrices", "skus.0.priceOperations.0"],
-  ["presentationReadiness", "product"],
+  ["presentationReadiness", "publication.operations.6"],
   ["assessActivation", "product"],
 ] as const)("keeps a platform-spelled code owned by %s", async (rule, path) => {
   const code = "head_conflict";
@@ -1243,7 +1247,7 @@ it("W33 complete generated promotions must be present in the sealed draft", asyn
   data.evidence.product!.status = "draft";
   data.evidence.skus[0]!.status = "draft";
   data.observations = { presentationReadiness: ready };
-  await expect(compileCatalogPublication(data, "first-decision")).rejects.toThrow("catalog_publication_activation_effect_missing");
+  await expect(compileCatalogPublication(data, "first-decision")).rejects.toThrow(expect.objectContaining({ code: "catalog_publication_activation_effect_missing" }));
   data.record.payload = compileCatalogPublicationDraft(data.payload, data.payload.product.sharedContent.presentation, data.evidence);
   expect((await compileCatalogPublication(data, "first-decision")).operations.filter(operation =>
     operation.op === "set_product_status" || operation.op === "set_sku_status").map(operation => operation.op))
@@ -1275,7 +1279,7 @@ it.each(["W50_V6-N001_predicate_precedence_boundary", "W50_V6-N002_predicate_pre
   }
   for (const slug of [undefined, null, 4, {}, "", "a".repeat(65), "A", "_a", "-a", " a", "a ", "a\na", "ą", "a.b", "a/b"]) {
     Object.assign(data.payload.product, { slug });
-    expect(() => assertCatalogPublicationPreparation(data.payload)).toThrow("commerce_product_slug_unsupported");
+    expect(() => assertCatalogPublicationPreparation(data.payload)).toThrow(expect.objectContaining({ code: "commerce_product_slug_unsupported" }));
   }
 });
 
@@ -1285,7 +1289,7 @@ it("W17_V5-1856_predicate_precedence_boundary", () => {
   for (const [unscaled, accepts] of [["9007199254740992", false], ["9007199254740993", true], ["9007199254740994", true]] as const) {
     const compare = () => assertCatalogPublicationGrossMass(net, { ...net, unscaled }, definition);
     if (accepts) expect(compare).not.toThrow();
-    else expect(compare).toThrow("catalog_publication_gross_below_net");
+    else expect(compare).toThrow(expect.objectContaining({ code: "catalog_publication_gross_below_net" }));
   }
   expect(() => assertCatalogPublicationGrossMass({ ...net, unscaled: "100", scale: 0 },
     { ...net, unit: "openlup:kg", unscaled: "1", scale: 1 }, definition)).not.toThrow();
@@ -1342,8 +1346,8 @@ it("explains how to order primary SKU selection before activation", async () => 
   data.payload.publication.operations.push({ op: "set_product_status", productSlug: "article", status: "active" });
   await expect(compileCatalogPublication(data, "first-decision")).rejects.toMatchObject({
     code: "catalog_publication_v3_compile_product_incomplete",
-    diagnostic: { path: `publication.operations.${activation}`,
-      message: "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status." },
+    diagnostic: { path: `publication.operations.${activation}` },
+    message: "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status.",
   });
 });
 
@@ -1356,8 +1360,9 @@ it("refuses a whole-gram amount whose authored scale cannot be issued natively",
     message: expect.stringContaining("whole grams at scale 0") };
   const preview = await facade(data).prepareCandidate(query);
   expect(preview.preparation?.structural.issues).toContainEqual(expect.objectContaining(diagnostic));
+  const { message, ...field } = diagnostic;
   for (const mode of ["first-decision", "compile"] as const)
-    await expect(compileCatalogPublication(data, mode)).rejects.toMatchObject({ code: diagnostic.code, diagnostic });
+    await expect(compileCatalogPublication(data, mode)).rejects.toMatchObject({ code: field.code, diagnostic: field, message });
   expect(data.payload.skus[0]!.netContent).toEqual(netContent);
 });
 
@@ -1388,4 +1393,44 @@ it.each(['"scalar"', '{"label":"article"} true'])("refuses registration text %s 
   data.payload.product.documentRevision!.digest = digest;
   await expect(compileCatalogPublication(data)).rejects.toMatchObject({ code: "catalog_publication_v3_document_invalid",
     diagnostic: { path: expect.stringMatching(/^publication\.operations\.\d+\.canonicalText$/u) } });
+});
+
+it("requires a remedy at the production table for every platform code", () => {
+  const file = fileURLToPath(new URL("../../src/catalog/publicationError.ts", import.meta.url));
+  const config = fileURLToPath(new URL("../../tsconfig.build.json", import.meta.url));
+  const options = { ...ts.getParsedCommandLineOfConfigFile(config, {}, {
+    ...ts.sys, onUnRecoverableConfigFileDiagnostic: diagnostic => { throw new Error(String(diagnostic.messageText)); },
+  })!.options, noEmit: true, types: ["node"] };
+  const host = ts.createCompilerHost(options);
+  const readFile = host.readFile.bind(host);
+  const source = readFileSync(file, "utf8");
+  const sentinel = "unmapped_refusal_sentinel";
+  const extended = source.replace(/(export type PlatformCode\s*=)/u, `$1 "${sentinel}" |`);
+  const table = "const publicationRefusals = {";
+  const check = (replacement: string) => {
+    host.readFile = name => name === file ? replacement : readFile(name);
+    return ts.getPreEmitDiagnostics(ts.createProgram([file], options, host));
+  };
+
+  const diagnostics = check(extended);
+  const missing = diagnostics.find(item => item.file?.fileName === file && item.code === 1360
+    && ts.flattenDiagnosticMessageText(item.messageText, "\n").includes(sentinel));
+  expect(missing).toBeDefined();
+  const line = missing!.file!.getLineAndCharacterOfPosition(missing!.start!).line;
+  expect(extended.split("\n")[line]).toContain("satisfies Record<PlatformCode, Remedy>");
+  const fixed = extended.replace(table, `${table}\n  ${sentinel}: { fix: "Supply the missing value." },`);
+  expect(check(fixed).map(item => ts.flattenDiagnosticMessageText(item.messageText, "\n"))).toEqual([]);
+}, 30_000);
+
+it("recognizes every price refusal literal emitted by the SQL claim and apply routines", () => {
+  const sql = readFileSync(new URL("../../../../db/platform/migrations/20261123191000_catalog_publication_commands.sql", import.meta.url), "utf8");
+  const claim = sql.split("CREATE FUNCTION public.catalog_price_setup_claim(")[1]!.split("\n$$;")[0]!;
+  const apply = sql.split("CREATE FUNCTION public.catalog_price_setup_apply_claimed(")[1]!.split("\n$$;")[0]!;
+  const caseRefusals = apply.match(/v_refusal\s*:=\s*CASE([\s\S]+?)\bEND;/u)?.[1] ?? "";
+  const literals = [
+    ...claim.matchAll(/'reason',\s*'([a-z_]+)'/gu),
+    ...caseRefusals.matchAll(/\bTHEN\s*'([a-z_]+)'/gu),
+    ...apply.matchAll(/\bv_refusal\s*:=\s*'([a-z_]+)'/gu),
+  ].map(match => match[1]!);
+  expect([...new Set(literals)].sort()).toEqual([...publicationPriceRefusalReason.options].sort());
 });
