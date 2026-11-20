@@ -800,13 +800,14 @@ it("uses the packaged value descriptor member order for declared show JSON", asy
   expect(Object.keys(declared.change)).toEqual(["file", "symbol"]);
 });
 
+const ownProtoJson = '{"__proto__":{"flag":true}}';
+
 it("reports original JSON with own special keys", async () => {
-  const original = '{"__proto__":{"flag":true}}';
-  const raw = JSON.parse(original);
+  const raw = JSON.parse(ownProtoJson);
   const host = checks(async () => appFixture(() => raw, z.unknown()));
   const { output, exit } = await run(["show", feeKey, ...appArgs, "--json"], { host });
   expect(exit).toBe(0);
-  expect(output).toContain(`"value":${original}`);
+  expect(output).toContain(`"value":${ownProtoJson}`);
 });
 
 it.each(["show", "explain"])("preserves own metadata and projected properties in %s", async command => {
@@ -910,6 +911,7 @@ const validPreview = renewalStockProtectionPreviewResult.parse({
 it.each([
   ["P01 app goal list", "list", { goal: "gift wrapping fee" }, ["--goal", "gift wrapping fee"], fixedApp, 0],
   ["P02 declared file value with selected configuration", "show", { key: feeKey }, [feeKey], { ...fixedApp, configuration: "west" }, 0],
+  ["P02 declared file value with own __proto__", "show", { key: feeKey }, [feeKey], fixedApp, 0, ownProtoJson],
   ["P03 explain refusal code", "explain", { keyOrCode: "commerce_setting_unknown" }, ["commerce_setting_unknown"], fixedApp, 0],
   ["P03 explain selected declaration", "explain", { keyOrCode: feeKey }, [feeKey], { ...fixedApp, configuration: "west" }, 0],
   ["P04 show missing key", "show", {}, [], fixedApp, 64],
@@ -940,13 +942,15 @@ it.each([
   ["P13 unknown list configuration", "list", {}, [], { ...fixedApp, configuration: "missing" }, 64],
   ["P13 unknown show configuration", "show", { key }, [key], { ...connectedApp, configuration: "missing" }, 64],
   ["P13 unknown explain configuration", "explain", { keyOrCode: feeKey }, [feeKey], { ...fixedApp, configuration: "missing" }, 64],
-] as const)("%s returns identical CLI and MCP documents", async (_, command, input, argv, context, exit) => {
+] as const)("%s returns identical CLI and MCP documents", async (_, command, input, argv, context, exit, fileJson?) => {
   const loadCheck = vi.fn(async ({ app, configuration }: { app: string; configuration?: string }) => {
     if (app === "missing") return undefined;
     if (app === "unknown") return {};
     if (app === "invalid") throw new Error("rejected edit");
     if (configuration === "missing") return { configurationIds: ["west"] };
-    const configured = appFixture(() => configuration === "west" ? 151 : 150, z.number());
+    const configured = fileJson === undefined
+      ? appFixture(() => configuration === "west" ? 151 : 150, z.number())
+      : appFixture(() => JSON.parse(fileJson), z.unknown());
     return { file: { ...configured.file!, configuration: configuration ?? "sample" } };
   });
   const close = vi.fn(async () => {});
@@ -971,6 +975,10 @@ it.each([
   const result = await callSettingsTool(tool, input, launch.context!, host);
   expect(result).toEqual({ isError: exit !== 0, structuredContent: JSON.parse(cli.output),
     content: [{ type: "text", text: cli.output.trimEnd() }] });
+  if (fileJson !== undefined) {
+    expect(JSON.stringify(result.structuredContent)).toContain(`"value":${fileJson}`);
+    expect(result.content[0]?.text).toContain(`"value":${fileJson}`);
+  }
   if (command === "show" && "database-url" in context) {
     expect(bind).toHaveBeenCalledTimes(2);
     expect(bind).toHaveBeenLastCalledWith({ database: databaseOptions, app: context.app,
@@ -988,11 +996,10 @@ it.each([
 });
 
 it.each([
-  ["incomplete output", renewalStockProtectionPreviewResult, { schemaVersion: 1 as const }],
-  ["extra field with a strict schema", renewalStockProtectionPreviewResult, { ...validPreview, extra: true }],
-  ["extra field stripped by a host schema", z.object(renewalStockProtectionPreviewResult.shape), { ...validPreview, extra: true }],
-] as const)("P11 rejects %s", async (_, schema, output) => {
-  const tool = settingsMcpTools(schema).find(row => row.command === "preview")!;
+  ["incomplete output", { schemaVersion: 1 as const }],
+  ["extra field with the platform's strict schema", { ...validPreview, extra: true }],
+] as const)("P11 rejects %s", async (_, output) => {
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "preview")!;
   const result = await callSettingsTool(tool, { key, value: nativeProposal, asOf }, connectedApp,
     { bind: async () => ({ previewers: { [key]: async () => output } }) });
   expect(result).toEqual({ isError: true, content: [{ type: "text",

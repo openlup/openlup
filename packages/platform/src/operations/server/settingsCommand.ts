@@ -296,6 +296,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   };
   if (argv[0] === "mcp") {
     // Hosts must route process output away from the protocol stream they pass as io.write.
+    // Hosts must supply a strict preview result schema, since the output gate accepts what that schema admits.
     if (!io.input || !host?.previewResultSchema) return invalid();
     // Load the loop after CLI initialization. Tools call this command for the ordinary settings operations.
     const { runSettingsMcp, settingsMcpContext } = await import("./settingsMcp.js");

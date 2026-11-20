@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { isDeepStrictEqual, parseArgs } from "node:util";
+import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand } from "./settingsCommand.js";
 import { admitDatabaseUrl, checkResultSchema } from "./settingsCommandSupport.js";
@@ -60,8 +60,7 @@ export async function callSettingsTool(tool: Tool, args: ToolArguments, context:
     readStdin: async () => JSON.stringify(args.value) }, host);
   try {
     const document: unknown = JSON.parse(line);
-    const parsed = output.safeParse(document);
-    if (parsed.success && isDeepStrictEqual(parsed.data, document)) return {
+    if (output.safeParse(document).success) return {
       isError: exit !== 0, structuredContent: document, content: [{ type: "text", text: line.trimEnd() }],
     };
   } catch { /* An unreadable command document is an invalid tool result. */ }
