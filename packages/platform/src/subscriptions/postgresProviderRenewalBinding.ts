@@ -6,7 +6,6 @@ import { subscriptionRecord, type NativeRenewalCodec, type SubscriptionQueryExec
 import type { RenewalExecutionRequest, RenewalPaymentEvidence, RenewalPaymentRail, RenewalSettlementPort } from "./contracts/renewal.js";
 import type { RenewalFailureHandoffPort } from "./contracts/dunning.js";
 import type { NativeRetryDriverOptions } from "./nativeRetryDriver.js";
-import { replayRenewalAttempt } from "./renewalCycleRefusalMechanism.js";
 
 /** The subscription owner consumes only these injected payment facts. */
 export interface ProviderRenewalResultInput {
@@ -186,8 +185,35 @@ export function createPostgresProviderRenewalBinding(input: {
       return observe(request.settlementIntentId, request.externalAttemptRef, false);
     },
   };
+  async function applyRequiresActionAttempt(
+    orderId: string,
+    intentId: string,
+    operationId: string,
+    attemptId: string,
+    executionKey: string,
+  ) {
+    const history = subscriptionRecord((await db.query(
+      "SELECT public.commerce_checkout_payment_guidance_snapshot($1::uuid,$2::uuid,NULL::uuid) AS response",
+      [orderId, intentId],
+    )).rows[0]?.response);
+    const attempts = history.attempts as { id: string; createdAt: string }[] | undefined;
+    const createdAt = attempts?.find(value => value.id === attemptId)?.createdAt;
+    const occurredAt = createdAt ? nativeInstant(createdAt) : input.now();
+    await payments.control.applyPaymentResult({
+      idempotencyKey: `${executionKey}:result`,
+      paymentIntentId: intentId,
+      paymentEventId: null,
+      resultStatus: "failed",
+      occurredAt,
+      failureReason: "off_session_sca_required",
+      failureClass: "sca_required",
+      failureClassDecidedBy: "execution",
+    });
+    const obligation = await createPostgresRetryStore(db).read(operationId);
+    if ((obligation?.retryAttempt ?? 1) >= 1) await handoff(intentId, attemptId);
+  }
   async function observe(intent: string, remote: string | null, retry: boolean): ReturnType<NativeRetryDriverOptions["payments"]["readOutcome"]> {
-    const { row, frozen, cycle } = await operation(intent), attempt = await payments.readAttempt(intent);
+    const { row } = await operation(intent), attempt = await payments.readAttempt(intent);
     if (!attempt || attempt.paymentAttempt.provider !== payments.provider) throw new Error("payment_control_result_active_attempt_not_found");
     const a = attempt.paymentAttempt, checkedAt = nativeInstant(input.now());
     const empty: RenewalPaymentEvidence = { operationId: String(row.id), requestFingerprint: String(row.operation_fingerprint),
@@ -200,40 +226,8 @@ export function createPostgresProviderRenewalBinding(input: {
       const fingerprint = attempt.requestPayload.providerRequestFingerprint;
       if (!executionKey || typeof providerKey !== "string" || typeof fingerprint !== "string") throw new Error("payment_provider_attempt_readback_invalid");
       const method = attempt.requestPayload.storedMethod;
-      const methodRef = method && typeof method === "object" ? subscriptionRecord(method).reference : null;
-      await replayRenewalAttempt({ now: input.now, chargeFailurePropagation: {
-        async recordBlockedPreflightAttempt() { throw new Error("subscription_renewal_provider_result_required"); },
-        async readDurableAttemptInstant(request) {
-          if (request.attemptIdempotencyKey !== executionKey) throw new Error("payment_provider_attempt_readback_invalid");
-          const history = subscriptionRecord((await db.query("SELECT public.commerce_checkout_payment_guidance_snapshot($1::uuid,$2::uuid,NULL::uuid) AS response",
-            [row.order_id, intent])).rows[0]?.response);
-          const attempts = history.attempts as { id: string; createdAt: string }[];
-          const at = attempts?.find(value => value.id === a.id)?.createdAt;
-          return at ? nativeInstant(at) : null;
-        },
-        async applyFailedResult(failure) {
-          const result = await payments.control.applyPaymentResult({ idempotencyKey: failure.idempotencyKey,
-            paymentIntentId: intent, paymentEventId: null, resultStatus: "failed", occurredAt: failure.occurredAt,
-            failureReason: failure.failureReason, failureClass: "sca_required", failureClassDecidedBy: failure.failureClassification.decidedBy });
-          return { replayed: result.replayed, paymentAttemptId: a.id };
-        },
-        async readCycleRetryState() {
-          const obligation = await createPostgresRetryStore(db).read(String(row.id));
-          return { rowPresent: obligation !== null, retryAttempt: obligation?.retryAttempt ?? null, nextRetryAt: obligation?.nextRetryAt ?? null };
-        },
-        async openDunningCase() { return { status: "opened", caseId: (await handoff(intent, a.id)).caseId }; },
-      } }, { subscriptionId: String(row.subscription_id), nextCycleAt: frozen.scheduledAt,
-        providerKind: payments.provider, providerMethodRef: typeof methodRef === "string" ? methodRef : null }, {
-        cycleId: String(row.subscription_cycle_id), cycleNumber: cycle.logicalCycleNumber,
-        orderId: String(row.order_id), paymentIntentId: intent, executionIdempotencyKey: executionKey,
-        providerIdempotencyKey: providerKey, providerRequestFingerprint: fingerprint, providerKind: payments.provider,
-      }, "requires_action", { scaReason: "off_session_sca_required", defaultNow: input.now, unacknowledgedReason: status => `provider_attempt_${status}`,
-        failure: { resolveClassification: () => ({ failureClass: "sca_required", decidedBy: "execution" }),
-          recordKey: key => `${key}:blocked`, applyKey: key => `${key}:result`, dunningKey: key => `${key}:dunning`,
-          preparedSuffix: "", blockedSuffix: "", dunningFailureKey: "subscription_dunning_failed_attempt_unattributed",
-          // Native ports require a recorded rung and throw named refusals;
-          // they do not produce the hosted logger-only outcomes.
-          logBelowRetry: () => undefined, logRejected: () => undefined, logUnavailable: () => undefined } });
+      if (method && typeof method === "object") subscriptionRecord(method);
+      await applyRequiresActionAttempt(String(row.order_id), intent, String(row.id), a.id, executionKey);
       return observe(intent, remote, retry);
     }
     if (a.status === "failed") {

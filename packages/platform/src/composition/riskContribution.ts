@@ -1,4 +1,5 @@
 import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+import { buildCapabilityContribution } from "./buildCapabilityContribution.js";
 
 /** Risk supplies the incumbent commerce risk slot, never another event handler. */
 export function createRiskContribution(input: {
@@ -7,19 +8,20 @@ export function createRiskContribution(input: {
   assessPaidOrder: ((...args: never[]) => unknown) | null;
   routes: Contribution["routes"];
 }) {
-  const contribution: Contribution = {
-    manifest: {
-      name: "@openlup/platform", version: input.version, kind: "rail",
-      module: { id: "risk", kind: "capability", provides: ["./risk", "./risk/contracts", "./risk/server"], dependsOn: [{ module: "commerce", entries: ["./commerce"] }] },
-      emits: [], handles: [], schedules: [], env: [], requiredPorts: ["assessPaidOrder"],
-      routes: input.routes.map(route => route.id), requiredSchema: input.requiredSchema,
-    },
-    handlers: [], schedules: [], routes: input.routes,
-  };
+  const built = buildCapabilityContribution({
+    id: "risk",
+    version: input.version,
+    provides: ["./risk", "./risk/contracts", "./risk/server"],
+    dependsOn: [{ module: "commerce", entries: ["./commerce"] }],
+    requiredSchema: input.requiredSchema,
+    ports: { assessPaidOrder: input.assessPaidOrder },
+    includePort: Boolean,
+    routes: input.routes,
+  });
   return {
-    contributions: [contribution],
+    contributions: [built.contribution],
     ports: input.assessPaidOrder ? { "@openlup/platform/risk:assessPaidOrder": input.assessPaidOrder } : {},
-    routes: Object.fromEntries(input.routes.map(route => [`@openlup/platform/risk:${route.id}`, route.handle])),
+    routes: built.routes,
     triggers: {},
   };
 }

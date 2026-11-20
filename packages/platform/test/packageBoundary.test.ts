@@ -251,7 +251,8 @@ describe("package source boundary", () => {
       expect(source).toContain('import type { PgQueryExecutor } from "../data/index.js"');
       expect(specifiers(source)).not.toContain("pg");
     }
-    expect(specifiers(files.find(file => file.path === "composition/catalogContribution.ts")!.source)).toEqual(["@openlup/core/readiness"]);
+    expect(specifiers(files.find(file => file.path === "composition/catalogContribution.ts")!.source)).toEqual(["@openlup/core/readiness", "./buildCapabilityContribution.js"]);
+    expect(specifiers(files.find(file => file.path === "composition/buildCapabilityContribution.ts")!.source)).toEqual(["@openlup/core/readiness"]);
     expect(specifiers(files.find(file => file.path === "payments/bindings.ts")!.source)).toEqual(["./contracts/repair.js"]);
     expect(specifiers(files.find(file => file.path === "composition/composeBundle.ts")!.source)
       .filter((specifier) => /(?:^|\/)payments(?:\/|$)/u.test(specifier))).toEqual([]);

@@ -1,0 +1,2 @@
+- Add additive default policy factories (`createDefaultRenewalFailurePolicy`, `createDefaultRenewalPreflightPolicy`, `createDefaultRenewalCyclePolicy`) to `@openlup/platform/subscriptions` with overridable canonical renewal key dialects and refusal defaults.
+- Unify internal capability contribution construction across `@openlup/platform/composition` factories without changing any exported contract or runtime behavior.

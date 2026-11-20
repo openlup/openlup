@@ -77,8 +77,14 @@ const ceilBps = (amount: number, bps: number) => Number((BigInt(amount) * BigInt
 const roundBps = (amount: number, bps: number) => Number((BigInt(amount) * BigInt(bps) * 2n + 10_000n) / 20_000n);
 
 /** Same threshold boundary as the shipping owner, without a cross-module runtime dependency. */
-export function nativeRenewalPrice(row: Record<string, unknown>, lines: readonly RenewalLine[], logicalCycle: number): RenewalPricingSnapshot {
-  const facts = subscriptionRecord(row.purchase_facts), terms = nativeRetainedTerms(row);
+export function nativeRenewalPrice(
+  row: Record<string, unknown>,
+  lines: readonly RenewalLine[],
+  logicalCycle: number,
+  retainedTerms?: RenewalRetainedTerms | null,
+): RenewalPricingSnapshot {
+  const facts = subscriptionRecord(row.purchase_facts);
+  const terms = retainedTerms === undefined ? nativeRetainedTerms(row) : (retainedTerms ?? undefined);
   const subtotal = lines.reduce((sum, line) => sum + line.quantity * line.unitAmountMinor, 0);
   const prices = terms ? currentPricing(row, lines, terms) : [];
   const marker = terms?.starterPack;
