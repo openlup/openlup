@@ -11,6 +11,31 @@ import type { ProviderPaymentWebhookKind } from "./verifiedIngress.js";
  * Neither audit shape nor receipt time changes adapter identity/fingerprint.
  * Incomplete refunds are ingested and acknowledged, but require-evidence prevents apply.
  */
+export function attachReusableMethodOwner(
+  event: ProviderWebhookWithMethodLifecycle,
+  evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence,
+  methodOwner?: { clientId: string; subscriptionId?: string | null },
+): ProviderWebhookWithMethodLifecycle {
+  if (!evidence.reusableMethod || !methodOwner) return event;
+  if (evidence.kind === "money") {
+    return { ...event, reusableMethod: { ...evidence.reusableMethod, ...methodOwner } };
+  }
+  return {
+    ...event,
+    reusableMethod: {
+      clientId: methodOwner.clientId,
+      subscriptionId: methodOwner.subscriptionId,
+      providerCustomerRef: evidence.reusableMethod.providerCustomerRef,
+      providerMethodRef: evidence.reusableMethod.providerMethodRef,
+      providerMandateRef: evidence.reusableMethod.providerMandateRef,
+      methodKind: evidence.reusableMethod.methodKind,
+      status: evidence.reusableMethod.status,
+      consentSnapshot: evidence.reusableMethod.consentSnapshot,
+      expiresAt: evidence.reusableMethod.expiresAt,
+    },
+  };
+}
+
 export function projectVerifiedEvidence(
   evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence,
   input: Parameters<PaymentVerifyNormalizePort["verifyAndNormalize"]>[0],
@@ -36,32 +61,23 @@ export function projectVerifiedEvidence(
       const refundKind = evidence.outcome === "refunded"
         ? (reversal ? projectRefund(reversal, evidence) : null) ?? (policy === "legacy-assume-full" ? "full" : null)
         : undefined;
-      return {
+      return attachReusableMethodOwner({
         ...base, eventType: moneyEvent(evidence.outcome, refundKind ? reversal : undefined),
         providerPaymentId: evidence.providerPaymentRef, paymentAttemptId: evidence.attemptRef,
         amountMinor: evidence.money?.amountMinor ?? null, currency: evidence.money?.currency ?? null,
         refundKind,
         ...(evidence.outcome === "succeeded" && evidence.capturedAmountBasis === "provider_capture_v1"
           ? { capturedAmountBasis: evidence.capturedAmountBasis } : {}),
-        ...(evidence.reusableMethod && methodOwner ? { reusableMethod: { ...evidence.reusableMethod, ...methodOwner } } : {}),
-      };
+      }, evidence, methodOwner);
     }
     case "method":
-      return {
+      return attachReusableMethodOwner({
         ...base, eventType: methodEvent(evidence.outcome),
         // Pinned donor normalizer :59 calls resolveLinkagePaymentId :146–154:
         // setup/method objects use their own object id as the carrier reference.
         providerPaymentId: evidence.setupRef ?? evidence.methodRef,
         methodLifecycle: lifecycle(evidence.methodLifecycle),
-        ...(evidence.reusableMethod && methodOwner ? { reusableMethod: {
-          clientId: methodOwner.clientId, subscriptionId: methodOwner.subscriptionId,
-          providerCustomerRef: evidence.reusableMethod.providerCustomerRef,
-          providerMethodRef: evidence.reusableMethod.providerMethodRef,
-          providerMandateRef: evidence.reusableMethod.providerMandateRef,
-          methodKind: evidence.reusableMethod.methodKind, status: evidence.reusableMethod.status,
-          consentSnapshot: evidence.reusableMethod.consentSnapshot, expiresAt: evidence.reusableMethod.expiresAt,
-        } } : {}),
-      };
+      }, evidence, methodOwner);
   }
   return assertNever(evidence);
 }

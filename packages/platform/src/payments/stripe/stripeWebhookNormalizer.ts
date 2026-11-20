@@ -56,7 +56,7 @@ export function normalizeStripeWebhookEvent(
   const data = readObject(rawPayload, "data");
   const object = readObject(data, "object");
 
-  const canonicalEventType = mapStripeEventType(eventType, object);
+  const canonicalEventType = mapStripeEventType(eventType);
   const providerPaymentId = resolveLinkagePaymentId(eventType, object);
   // A success can follow partial capture. The requested amount still describes
   // refusals and other events that keep their existing evidence semantics.
@@ -150,7 +150,6 @@ function resolveLinkagePaymentId(
 
 function mapStripeEventType(
   stripeEventType: string,
-  object: Record<string, unknown>,
 ): NormalizedProviderPaymentWebhook["eventType"] {
   if (stripeEventType === "payment_intent.succeeded") return "payment.succeeded";
   if (stripeEventType === "payment_intent.payment_failed") return "payment.failed";
@@ -160,11 +159,11 @@ function mapStripeEventType(
   if (stripeEventType === "setup_intent.setup_failed") return "setup.failed";
   if (stripeEventType === "setup_intent.requires_action") return "setup.requires_action";
   if (stripeEventType === "charge.refunded") return "payment.refunded";
-  if (stripeEventType.startsWith("charge.dispute.")) return "payment.disputed";
+  if (stripeEventType === "charge.dispute.created" || stripeEventType === "charge.dispute.funds_withdrawn") {
+    return "payment.disputed";
+  }
   const methodLifecycle = METHOD_LIFECYCLE_EVENTS[stripeEventType];
   if (methodLifecycle) return methodLifecycle.canonical;
-  const status = readOptionalString(object, "status");
-  if (status === "requires_action") return "payment.requires_action";
   const guess = `payment.${stripeEventType}` as NormalizedProviderPaymentWebhook["eventType"];
   if (SUPPORTED_EVENT_TYPES.has(guess)) return guess;
   throw new Error(`Unsupported Stripe webhook event: ${stripeEventType}`);
