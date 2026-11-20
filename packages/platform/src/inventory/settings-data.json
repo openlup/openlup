@@ -5,14 +5,8 @@
     "goal": "Preserve the original reservation expiry on replay.",
     "schemaVersion": 1,
     "kind": "invariant",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "A replay returns the existing hold without changing stock allocation or expiry.",
-    "effect": {"appliesTo": "A replay returns the existing hold without changing stock allocation or expiry.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "A replay returns the existing hold without changing stock allocation or expiry."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#inventoryreservationreplayexpiry"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#inventoryreservationreplayexpiry"}
   },
   {
     "key": "inventory.safetyStock",
@@ -20,13 +14,7 @@
     "goal": "Set safety stock and channel exposure in available-to-promise calculations.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Native available-to-promise currently uses zero safety stock and no channel allocation.",
-    "effect": {"appliesTo": "Native available-to-promise currently uses zero safety stock and no channel allocation.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Native available-to-promise currently uses zero safety stock and no channel allocation."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#inventorysafetystock"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#inventorysafetystock"}
   }
 ]

@@ -21,14 +21,8 @@
     "goal": "Format money using the currency exponent.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.",
-    "effect": {"appliesTo": "The starter paid-order email divides minor units by 100.", "frozenOn": [], "impact": "operations"},
-    "runtime": {"level": "read-only", "reason": "Use formatCurrencyMinor in the starter formatter."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"},
-    "rules": []
+    "runtime": {"level": "read-only", "reason": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"}
   },
   {
     "key": "pricing.indivisibleOfferTotals",
@@ -36,14 +30,8 @@
     "goal": "Quote an offer total that cannot be divided evenly by quantity.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The offer pricing contract needs an allocation that reconciles each line.",
-    "effect": {"appliesTo": "The offer pricing contract needs an allocation that reconciles each line.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The offer pricing contract needs an allocation that reconciles each line."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingindivisibleoffertotals"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingindivisibleoffertotals"}
   },
   {
     "key": "pricing.mixedTaxRates",
@@ -51,14 +39,8 @@
     "goal": "Quote a basket with mixed tax rates.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The strict quote contract rejects mixed tax rates in one quote.",
-    "effect": {"appliesTo": "The strict quote contract rejects mixed tax rates in one quote.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The strict quote contract rejects mixed tax rates in one quote."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingmixedtaxrates"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingmixedtaxrates"}
   },
   {
     "key": "pricing.quantityPriceBreaks",
@@ -66,14 +48,8 @@
     "goal": "Apply quantity price breaks in a strict quote.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The native strict quote selects base prices only.",
-    "effect": {"appliesTo": "The native strict quote selects base prices only.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The native strict quote selects base prices only."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingquantitypricebreaks"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingquantitypricebreaks"}
   },
   {
     "key": "pricing.reconciledQuoteLines",
@@ -81,14 +57,8 @@
     "goal": "Keep line totals equal to unit price times quantity in the same currency.",
     "schemaVersion": 1,
     "kind": "invariant",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Financial evidence must reconcile.",
-    "effect": {"appliesTo": "Financial evidence must reconcile.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Financial evidence must reconcile."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingreconciledquotelines"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingreconciledquotelines"}
   },
   {
     "key": "pricing.salesChannels",
@@ -96,14 +66,8 @@
     "goal": "Choose a sales channel for strict quotes and price lists.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The native strict quote and base-price writer currently use one fixed channel.",
-    "effect": {"appliesTo": "The native strict quote and base-price writer currently use one fixed channel.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The native strict quote and base-price writer currently use one fixed channel."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsaleschannels"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsaleschannels"}
   },
   {
     "key": "pricing.subscriptionPriceRounding",
@@ -111,13 +75,7 @@
     "goal": "Select the subscription price rounding rule.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The current subscription price policy rounds down to the configured quantum.",
-    "effect": {"appliesTo": "The current subscription price policy rounds down to the configured quantum.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The current subscription price policy rounds down to the configured quantum."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsubscriptionpricerounding"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsubscriptionpricerounding"}
   }
 ]

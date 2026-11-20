@@ -131,6 +131,16 @@ it("uses an app-owned checkout reader without falling back to catalogue timing",
   expect(host.bind).toHaveBeenCalledExactlyOnceWith({ databaseUrl: url, app, configuration: undefined });
 });
 
+it("prints the reason and reference for a fact without value fields", async () => {
+  const key = "shipping.addressRegions";
+  const { exit, output } = await run(["show", key]);
+  expect(exit).toBe(0);
+  const reason = "The native address contract requires a postal code and has no region field.";
+  expect(output.split(reason)).toHaveLength(2);
+  expect(output).toContain("Change: docs/guide/");
+  expect(output).not.toContain("Default:");
+});
+
 it("returns configuration choices from the app", async () => {
   const host = { bind: vi.fn(async () => ({ configurationIds: ["coffee", "supplements"] })) };
   const { exit, output } = await run(["preview", key, "--value", "{}", "--app", "./app.ts", "--configuration", "unknown-store", "--json"], { host });

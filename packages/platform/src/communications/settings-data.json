@@ -5,14 +5,8 @@
     "goal": "Define account consent purposes and copy revisions.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The native account consent path uses fixed purposes and a fixed copy revision.",
-    "effect": {"appliesTo": "The native account consent path uses fixed purposes and a fixed copy revision.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The native account consent path uses fixed purposes and a fixed copy revision."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsaccountconsentpurposes"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsaccountconsentpurposes"}
   },
   {
     "key": "communications.additionalLocales",
@@ -20,14 +14,8 @@
     "goal": "Use additional languages for OpenLup communications and identity.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Package contracts restrict the supported locale vocabulary.",
-    "effect": {"appliesTo": "Package contracts restrict the supported locale vocabulary.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Package contracts restrict the supported locale vocabulary."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsadditionallocales"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsadditionallocales"}
   },
   {
     "key": "communications.messageDateFormatting",
@@ -35,13 +23,7 @@
     "goal": "Format the next-cycle date on the starter account page.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone.",
-    "effect": {"appliesTo": "The starter account page displays the next-cycle timestamp directly.", "frozenOn": [], "impact": "operations"},
-    "runtime": {"level": "read-only", "reason": "Format it in the starter using the market time zone."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsmessagedateformatting"},
-    "rules": []
+    "runtime": {"level": "read-only", "reason": "The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone."},
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsmessagedateformatting"}
   }
 ]

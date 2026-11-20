@@ -44,7 +44,9 @@ export function listSettings(input: unknown): ListResult | { refusal: SettingRef
   });
 }
 
-function absentObservation(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], effective?: JsonValue): Observation {
+type ValueEntry = Extract<ReturnType<typeof loadSettingsCatalogue>["entries"][number], { rules: unknown }>;
+
+function absentObservation(setting: ValueEntry, effective?: JsonValue): Observation {
   const absent = setting.absentMeans;
   return absent
     ? { state: "absent", absentMeans: absent.description, source: absent.source,
@@ -148,7 +150,7 @@ export async function previewSetting<Result extends { schemaVersion: 1 } = never
   const { key, skus = [], asOf = new Date().toISOString() } = parsed.data;
   const setting = loadSettingsCatalogue().entries.find(entry => entry.key === key);
   if (!setting) return refuseSettingsPreview("commerce_setting_unknown");
-  if (!setting.previewSchema) return refuseSettingsPreview("commerce_setting_preview_unsupported");
+  if (!("previewSchema" in setting) || !setting.previewSchema) return refuseSettingsPreview("commerce_setting_preview_unsupported");
   const preview = Object.hasOwn(previewers, key) ? previewers[key] : undefined;
   if (!preview) return refuseSettingsPreview("commerce_setting_preview_connection_required");
   try {

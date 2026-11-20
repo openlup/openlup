@@ -49,10 +49,12 @@ function text(result: Result, host?: SettingsHost): string {
   return [setting.key + " — " + setting.goal, `Owner: ${setting.domain}`,
     `Kind: ${setting.kind} (${setting.runtime.level})`,
     ...("reason" in setting.runtime ? [setting.runtime.reason] : []),
-    `Default: ${JSON.stringify(setting.fallback)}`, `Basis: ${setting.defaultBasis.kind}`,
-    setting.whyThisDefault, ...(setting.absentMeans ? [setting.absentMeans.description] : []),
-    `Schema: ${JSON.stringify(setting.schema)}`, `Effect: ${setting.effect.appliesTo}`,
-    `Frozen on: ${setting.effect.frozenOn.join(" ") || "No records named"}`,
+    ...("effect" in setting ? [
+      `Default: ${JSON.stringify(setting.fallback)}`, `Basis: ${setting.defaultBasis.kind}`,
+      setting.whyThisDefault, ...(setting.absentMeans ? [setting.absentMeans.description] : []),
+      `Schema: ${JSON.stringify(setting.schema)}`, `Effect: ${setting.effect.appliesTo}`,
+      `Frozen on: ${setting.effect.frozenOn.join(" ") || "No records named"}`,
+    ] : []),
     `Change: ${Object.values(setting.change).join(" ")}`, `Observation: ${JSON.stringify(observation)}`].join("\n");
 }
 

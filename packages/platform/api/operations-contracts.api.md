@@ -262,13 +262,38 @@ export type OperationsAuthorizationResult = {
 ## dist/operations/contracts/settings.d.ts
 
 ```ts
-/** @experimental Domain-owned metadata for settings discovery. */
-export interface SettingDescriptor {
+interface SettingMetadata {
     readonly key: string;
     readonly domain: string;
-    readonly kind: "installed" | "code" | "callback" | "cap" | "invariant";
     readonly goal: string;
     readonly schemaVersion: number;
+}
+/** @experimental Domain-owned metadata for settings discovery. */
+export type SettingDescriptor = SettingMetadata & {
+    readonly kind: "cap" | "invariant";
+    readonly runtime: {
+        level: "read-only";
+        reason: string;
+    };
+    readonly change: {
+        reference: string;
+    };
+} | SettingMetadata & {
+    readonly kind: "installed" | "code" | "callback";
+    readonly runtime: {
+        level: "ready";
+    } | {
+        level: "read-only" | "preview";
+        reason: string;
+    };
+    readonly change: {
+        operation: string;
+    } | {
+        file: string;
+        symbol: string;
+    } | {
+        reference: string;
+    };
     readonly schema?: Record<string, unknown> | null;
     readonly rules: readonly {
         code: string;
@@ -294,22 +319,8 @@ export interface SettingDescriptor {
         frozenOn: readonly string[];
         impact: "money" | "customer-promise" | "operations";
     };
-    readonly runtime: {
-        level: "ready";
-    } | {
-        level: "read-only" | "preview";
-        reason: string;
-    };
     readonly previewSchema?: Record<string, unknown> | null;
-    readonly change: {
-        operation: string;
-    } | {
-        file: string;
-        symbol: string;
-    } | {
-        reference: string;
-    };
-}
+};
 /** @experimental Machine-readable settings refusal. */
 export interface SettingRefusal {
     readonly code: string;
@@ -322,4 +333,5 @@ export interface SettingRefusal {
         command: string;
     };
 }
+export {};
 ```

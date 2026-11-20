@@ -5,14 +5,8 @@
     "goal": "Choose the delay and link lifetime for a payment decline notice.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Native decline notices wait three minutes and issue links for 24 hours.",
-    "effect": {"appliesTo": "Native decline notices wait three minutes and issue links for 24 hours.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Native decline notices wait three minutes and issue links for 24 hours."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeclinenoticetiming"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeclinenoticetiming"}
   },
   {
     "key": "payments.deferredCapture",
@@ -20,14 +14,8 @@
     "goal": "Authorize a payment now and capture it later.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The current payment adapter contract has no separate capture operation.",
-    "effect": {"appliesTo": "The current payment adapter contract has no separate capture operation.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The current payment adapter contract has no separate capture operation."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeferredcapture"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeferredcapture"}
   },
   {
     "key": "payments.paymentRefunds",
@@ -35,14 +23,8 @@
     "goal": "Request a refund through the payment rail.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The current payment adapter contract has no funds-refund operation.",
-    "effect": {"appliesTo": "The current payment adapter contract has no funds-refund operation.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The current payment adapter contract has no funds-refund operation."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentspaymentrefunds"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentspaymentrefunds"}
   },
   {
     "key": "payments.providerProfiles",
@@ -50,14 +32,8 @@
     "goal": "Register a payment provider capability profile for reconciliation.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Native recovery uses a fixed set of qualified provider profiles.",
-    "effect": {"appliesTo": "Native recovery uses a fixed set of qualified provider profiles.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Native recovery uses a fixed set of qualified provider profiles."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsproviderprofiles"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsproviderprofiles"}
   },
   {
     "key": "payments.verifiedPaymentEvidence",
@@ -65,13 +41,7 @@
     "goal": "Require verified signature, attempt, amount and currency for payment evidence.",
     "schemaVersion": 1,
     "kind": "invariant",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Settlement relies on verified provider evidence tied to the charged attempt.",
-    "effect": {"appliesTo": "Settlement relies on verified provider evidence tied to the charged attempt.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Settlement relies on verified provider evidence tied to the charged attempt."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsverifiedpaymentevidence"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsverifiedpaymentevidence"}
   }
 ]

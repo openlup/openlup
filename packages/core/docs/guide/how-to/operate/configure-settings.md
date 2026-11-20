@@ -14,9 +14,10 @@ script shown in its `AGENTS.md`. Try these arguments:
 - `show inventory_renewal_protection --json`
 - `explain commerce_setting_unknown`
 
-The commands work offline. `show` includes the value schema where available,
-the default and its source, the effect on future decisions and the records that
-keep their current values. To discover these pages from the installed guide,
+The commands work offline. For settings with a value, `show` includes the value
+schema where available, the default and its source, the effect on future
+decisions and the records that keep their current values. For a capability or
+invariant, it gives the reason and where to read about the limit. To discover these pages from the installed guide,
 run `./node_modules/.bin/openlup-context search "renewal stock protection horizon"`.
 
 ## Read the effective behavior

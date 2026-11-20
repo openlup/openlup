@@ -7,13 +7,23 @@ export function toolInputSchema(schema: ZodType, io: "input" | "output" = "input
 }
 
 const schemaObject = () => z.record(z.string(), z.json()).nullable().optional();
-/** @experimental Describe the data written to and loaded from the settings catalogue. */
-export const settingDescriptorSchema = z.strictObject({
+export const settingDescriptorSummary = z.strictObject({
   key: z.string().min(1),
-  domain: z.string(),
-  kind: z.enum(["installed", "code", "callback", "cap", "invariant"]),
   goal: z.string(),
-  schemaVersion: z.literal(1),
+  kind: z.enum(["installed", "code", "callback", "cap", "invariant"]),
+  runtime: z.union([
+    z.strictObject({ level: z.literal("ready") }),
+    z.strictObject({ level: z.enum(["read-only", "preview"]), reason: z.string() }),
+  ]),
+  change: z.union([
+    z.strictObject({ operation: z.string() }),
+    z.strictObject({ file: z.string(), symbol: z.string() }),
+    z.strictObject({ reference: z.string() }),
+  ]),
+});
+const descriptorBase = settingDescriptorSummary.extend({ domain: z.string(), schemaVersion: z.literal(1) });
+export const settingValueDescriptor = descriptorBase.extend({
+  kind: z.enum(["installed", "code", "callback"]),
   schema: schemaObject(),
   previewSchema: schemaObject(),
   rules: z.array(z.strictObject({ code: z.string(), path: z.array(z.string()), description: z.string() })),
@@ -27,16 +37,17 @@ export const settingDescriptorSchema = z.strictObject({
     frozenOn: z.array(z.string()),
     impact: z.enum(["money", "customer-promise", "operations"]),
   }),
-  runtime: z.union([
-    z.strictObject({ level: z.literal("ready") }),
-    z.strictObject({ level: z.enum(["read-only", "preview"]), reason: z.string() }),
-  ]),
-  change: z.union([
-    z.strictObject({ operation: z.string() }),
-    z.strictObject({ file: z.string(), symbol: z.string() }),
-    z.strictObject({ reference: z.string() }),
-  ]),
-}) satisfies z.ZodType<SettingDescriptor>;
+});
+export const settingFactDescriptor = descriptorBase.extend({
+  kind: z.enum(["cap", "invariant"]),
+  runtime: z.strictObject({ level: z.literal("read-only"), reason: z.string() }),
+  change: z.strictObject({ reference: z.string() }),
+});
+
+/** @experimental Describe the data written to and loaded from the settings catalogue. */
+export const settingDescriptorSchema = z.discriminatedUnion("kind", [
+  settingValueDescriptor, settingFactDescriptor,
+]) satisfies z.ZodType<SettingDescriptor>;
 
 /** @experimental Schema shared by packaged settings projections and their data reader. */
 export function settingRefusalSchema(codes: readonly string[]) {
