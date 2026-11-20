@@ -1,9 +1,9 @@
 import { nativeCatalogPublication } from "@openlup/platform/catalog";
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
-import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction } from "./catalogPublicationFixture.js";
+import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -301,7 +301,7 @@ it("restores reordered sealed history and recovers the original publication afte
     .map(text => JSON.parse(text) as { id: string; canonical_state: string }).find(row => row.id === second.issueId)!;
   const manifestRefusal = { code: "target_conflict", cause: {
     reason: "publication_details_invalid",
-    message: "The publication contains invalid product details. Review the product and prepare it again.",
+    message: sealedPublicationRemedy,
   } };
   const storeHeadText = (value: string) => transaction(source.owner, async db => {
     await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_issued");
@@ -309,12 +309,10 @@ it("restores reordered sealed history and recovers the original publication afte
       [second.issueId, value, createHash("sha256").update(value).digest("hex")]);
     await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_issued");
   });
-  const invalidRoster = JSON.parse(savedHead.canonical_state);
-  invalidRoster.skus[0].revisionId = "not-a-uuid";
-  const invalidRevision = json(invalidRoster);
-  for (const value of ["invalid JSON text", json({ ...JSON.parse(savedHead.canonical_state), skus: {} }), invalidRevision]) {
-    const refusal = value === invalidRevision
-      ? { ...manifestRefusal, cause: { ...manifestRefusal.cause, path: "skus.0.revisionId" } } : manifestRefusal;
+  const connect = vi.fn(async () => { throw new Error("An invalid packet must never connect"); });
+  const disconnectedOwner = { connect } as unknown as Pool;
+  for (const { text: value, path, digest } of malformedPublicationPackets(savedHead.canonical_state)) {
+    const refusal = { ...manifestRefusal, cause: { ...manifestRefusal.cause, path } };
     await storeHeadText(value);
     try {
       await expect(captureStoreJourney(source.owner, "catalog-malformed-manifest")).rejects.toMatchObject(refusal);
@@ -324,11 +322,21 @@ it("restores reordered sealed history and recovers the original publication afte
     const edited = structuredClone(captured);
     const issues = edited.owned.find(table => table.table === "catalog_publications")!;
     issues.rows = issues.rows.map(text => JSON.parse(text).id === second.issueId
-      ? JSON.stringify({ ...JSON.parse(text), canonical_state: value, digest: createHash("sha256").update(value).digest("hex") }) : text);
+      ? JSON.stringify({ ...JSON.parse(text), canonical_state: value, digest }) : text);
     rehash(edited);
-    await expect(restore(target.owner, edited)).rejects.toMatchObject(refusal);
+    await expect(restore(disconnectedOwner, edited)).rejects.toMatchObject(refusal);
     expect(await journeyCensus(target.owner)).toEqual(pristine);
   }
+
+  const malformedId = structuredClone(captured);
+  const revisionsWithMalformedId = malformedId.owned.find(table => table.table === "catalog_sku_revisions")!;
+  revisionsWithMalformedId.rows[0] = JSON.stringify({ ...JSON.parse(revisionsWithMalformedId.rows[0]!), id: "not-a-uuid" });
+  rehash(malformedId);
+  await expect(restore(disconnectedOwner, malformedId)).rejects.toMatchObject({
+    code: "target_conflict", cause: { reason: "publication_revision_invalid",
+      path: "catalog_sku_revisions.0.id", message: sealedPublicationRemedy },
+  });
+  expect(connect).not.toHaveBeenCalled();
 
   const tampered = structuredClone(captured);
   const revisions = tampered.owned.find(table => table.table === "catalog_publications")!;

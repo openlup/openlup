@@ -8,42 +8,46 @@ import { catalogProductTypeRefSchema, catalogQuantitySchema, catalogOptionValueS
 import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2 } from "./publicationContracts.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
-import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationIssue, publicationReadFailure, publicationRefuse, publicationRemedy } from "./publicationError.js";
+import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationIssue, publicationReadFailure, publicationRefuse, publicationRemedy, type Issue, type PlatformCode, type PlatformIssue } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 
 const PUBLICATION_MAX_DEPTH = 48;
 export const SKU_PAGE_DEPTH = 3;
 
+class CanonicalFieldError extends Error {
+  constructor(readonly path: string, message: string) { super(message); }
+}
+
 export function canonicalCatalogPublicationJson(input: unknown, depth = 0): string {
   const ancestors = new Set<object>();
-  function visit(value: unknown, level: number): unknown {
-    if (level > PUBLICATION_MAX_DEPTH) throw new Error("draft_json_depth");
+  function visit(value: unknown, level: number, path: string): unknown {
+    if (level > PUBLICATION_MAX_DEPTH) throw new CanonicalFieldError(path, "draft_json_depth");
     if (typeof value === "string") {
-      if (value.includes("\u0000") || /[\uD800-\uDFFF]/u.test(value)) throw new Error("draft_json_invalid");
+      if (value.includes("\u0000") || /[\uD800-\uDFFF]/u.test(value)) throw new CanonicalFieldError(path, "draft_json_invalid");
       return value;
     }
     if (value === null || typeof value === "boolean") return value;
     if (typeof value === "number" && Number.isFinite(value) && !Object.is(value, -0)) return value;
-    if (typeof value !== "object" || ancestors.has(value)) throw new Error("draft_json_invalid");
-    if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new Error("draft_json_invalid");
+    if (typeof value !== "object" || ancestors.has(value)) throw new CanonicalFieldError(path, "draft_json_invalid");
+    if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) throw new CanonicalFieldError(path, "draft_json_invalid");
     ancestors.add(value);
     const keys = Reflect.ownKeys(value);
-    if (keys.some((key) => typeof key !== "string" || ["__proto__", "constructor", "prototype"].includes(key))) throw new Error("draft_json_invalid");
+    if (keys.some((key) => typeof key !== "string" || ["__proto__", "constructor", "prototype"].includes(key))) throw new CanonicalFieldError(path, "draft_json_invalid");
     for (const key of keys) {
-      visit(key, level);
-      if (Object.getOwnPropertyDescriptor(value, key)?.get || Object.getOwnPropertyDescriptor(value, key)?.set) throw new Error("draft_json_invalid");
+      visit(key, level, path);
+      if (Object.getOwnPropertyDescriptor(value, key)?.get || Object.getOwnPropertyDescriptor(value, key)?.set) throw new CanonicalFieldError(path, "draft_json_invalid");
     }
     let result: unknown;
     if (Array.isArray(value)) {
-      if (keys.length !== value.length + 1 || !Object.keys(value).every((key, index) => key === String(index))) throw new Error("draft_json_invalid");
-      result = Array.from(value, (item) => visit(item, level + 1));
+      if (keys.length !== value.length + 1 || !Object.keys(value).every((key, index) => key === String(index))) throw new CanonicalFieldError(path, "draft_json_invalid");
+      result = Array.from(value, (item, index) => visit(item, level + 1, path ? `${path}.${index}` : String(index)));
     } else {
-      result = Object.fromEntries((keys as string[]).sort().map((key) => [key, visit((value as Record<string, unknown>)[key], level + 1)]));
+      result = Object.fromEntries((keys as string[]).sort().map((key) => [key, visit((value as Record<string, unknown>)[key], level + 1, path ? `${path}.${key}` : key)]));
     }
     ancestors.delete(value);
     return result;
   }
-  return JSON.stringify(visit(input, depth));
+  return JSON.stringify(visit(input, depth, ""));
 }
 
 export const publicationJson = (input: unknown, maxBytes: number = CATALOG_PUBLICATION_LIMITS.manifestBytes, depth = 0): string => {
@@ -94,8 +98,8 @@ function fieldPath(parts: FieldPath): string {
   return parts.map(String).join(".");
 }
 
-function invalidAt(code: string, path: string, subject?: string): never {
-  throw new CatalogPublicationError(code, "validation_issue", publicationIssue(code, "structural", path, subject));
+function invalidAt(code: PlatformCode, path: string, subject?: string): never {
+  throw new CatalogPublicationError(publicationIssue(code, "structural", path, subject));
 }
 
 function assertPublicationCarriers(value: unknown, path: string, subject?: string, allowDocumentReference = false, depth = 0): void {
@@ -121,16 +125,14 @@ export function assertPublishedPresentation(input: unknown, path: string, subjec
   const code = "catalog_publication_presentation_invalid";
   const issue = parsed.error.issues[0]!;
   const keys = issue.code === "unrecognized_keys" ? issue.keys.slice(0, 1) : [];
-  throw new CatalogPublicationError(code, "validation_issue",
-    publicationIssue(code, "structural", [path, ...issue.path, ...keys].join("."), subject));
+  throw new CatalogPublicationError(publicationIssue(code, "structural", [path, ...issue.path, ...keys].join("."), subject));
 }
 export function assertPublishedFacts(input: unknown, path: string, subject?: string): void {
   assertPublicationCarriers(input, path, subject);
   const parsed = publishedFactsSchema.safeParse(input);
   if (parsed.success) return;
   const code = "catalog_publication_facts_invalid";
-  throw new CatalogPublicationError(code, "validation_issue",
-    publicationIssue(code, "structural", [path, ...parsed.error.issues[0]!.path].join("."), subject));
+  throw new CatalogPublicationError(publicationIssue(code, "structural", [path, ...parsed.error.issues[0]!.path].join("."), subject));
 }
 const attributes = catalogDraftSkuV2Schema.shape.attributes.unwrap();
 const claimSchema = z.object({ draftId: id, revision, commandKey: ref, fingerprint: digest }).strict();
@@ -217,16 +219,16 @@ export function assertPublishedSkuDocumentExclusion(sku: CatalogPublishedSku, do
 
 function assertDocumentExclusion(value: unknown, digests: ReadonlySet<string>, field: string, subject?: string): void {
   const path = copiedDocumentPath(value, digests);
-  if (path) throw new CatalogPublicationError(copiedDocument, "validation_issue",
-    publicationIssue(copiedDocument, "structural", [field, ...path].join("."), subject));
+  if (path) throw new CatalogPublicationError(publicationIssue(copiedDocument, "structural", [field, ...path].join("."), subject));
 }
 const manifestShape = z.object({
   schemaVersion: z.literal(2), product: catalogPublishedProductSchema,
   skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()).max(10_000),
 }).strict().superRefine((manifest, context) => {
-  if (!manifest.skus.every((sku, index) => index === 0 || manifest.skus[index - 1]!.skuId < sku.skuId)
-    || !manifest.skus.some(sku => sku.skuId === manifest.product.primarySkuId))
-    context.addIssue({ code: "custom", message: "manifest roster must be sorted, unique and contain its primary" });
+  const misplaced = manifest.skus.findIndex((sku, index) => index > 0 && manifest.skus[index - 1]!.skuId >= sku.skuId);
+  if (misplaced >= 0) context.addIssue({ code: "custom", path: ["skus", misplaced, "skuId"], message: "SKU roster must be sorted and unique" });
+  if (!manifest.skus.some(sku => sku.skuId === manifest.product.primarySkuId))
+    context.addIssue({ code: "custom", path: ["product", "primarySkuId"], message: "Primary SKU must appear in the roster" });
 });
 
 /** Refuses exact copies of canonical values or raw text using the selected and caller-supplied revision digests. */
@@ -266,34 +268,87 @@ function boundedJson(text: unknown, bytes: number): unknown {
   return JSON.parse(text);
 }
 
-function decodeStored<T>(text: unknown, maxBytes: number, depth: number, code: string, decode: (value: unknown) => T,
+function decodeStored<T>(text: unknown, maxBytes: number, depth: number, code: PlatformCode, decode: (value: unknown) => T,
   inputCode = code): T {
   let input: unknown, canonical: string;
   try {
     input = boundedJson(text, maxBytes);
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("publication_object_required");
     canonical = publicationJson(input, maxBytes, depth);
-  } catch {
+  } catch (error) {
+    if (error instanceof CanonicalFieldError && code === "catalog_publication_manifest_invalid")
+      return invalidAt(code, error.path || "publication");
     return publicationRefuse(inputCode, "dependency_unavailable");
   }
   if (canonical !== text) return publicationRefuse(code, "dependency_unavailable");
   try {
     return decode(input);
   } catch (error) {
-    if (code === "catalog_publication_manifest_invalid" && error instanceof z.ZodError) {
-      const path = error.issues[0]?.path;
-      if (path?.[0] === "skus") return invalidAt(code, path.join("."));
-    }
+    if (error instanceof CatalogPublicationError) throw error;
+    if (error instanceof z.ZodError && code === "catalog_publication_manifest_invalid")
+      return invalidAt(code, fieldPath(error.issues[0]?.path ?? []) || "publication");
     return publicationRefuse(code, "dependency_unavailable");
   }
 }
 
-export function decodeStoredPublicationManifest(text: unknown): CatalogPublicationManifestV2 {
-  return decodeStored(text, CATALOG_PUBLICATION_LIMITS.manifestBytes, 0, "catalog_publication_manifest_invalid", input => {
-    const manifest = manifestShape.parse(input);
-    decodePublishedProduct(manifest.product, new Set());
-    return manifest;
-  });
+type StoredFieldIssue = Issue & PlatformIssue & { stored: true };
+type Decoded<T> = { ok: true; value: T } | { ok: false; issue: StoredFieldIssue };
+type PacketRows = { publications: readonly unknown[]; skuRevisions: readonly unknown[] };
+
+function storedField(code: PlatformCode, path: string): Decoded<never> {
+  return { ok: false, issue: { ...publicationIssue(code, "structural", path), stored: true } };
+}
+
+export function decodePublicationPacket(input: { manifest: unknown }): Decoded<CatalogPublicationManifestV2>;
+export function decodePublicationPacket(input: PacketRows): Decoded<void>;
+export function decodePublicationPacket(input: { manifest: unknown } | PacketRows): Decoded<unknown> {
+  if ("manifest" in input) {
+    const code = "catalog_publication_manifest_invalid";
+    try {
+      const manifest = decodeStored(input.manifest, CATALOG_PUBLICATION_LIMITS.manifestBytes, 0, code, value => {
+        const parsed = manifestShape.parse(value);
+        decodePublishedProduct(parsed.product, new Set());
+        return parsed;
+      });
+      return { ok: true, value: manifest };
+    } catch (error) {
+      if (!(error instanceof CatalogPublicationError)) throw error;
+      const issue = error.diagnostic;
+      return storedField(issue.kind === "platform" ? issue.code : code, issue.path || "publication");
+    }
+  }
+
+  const revisions = new Map<string, Record<string, unknown>>();
+  const revisionCode = "catalog_publication_sku_revision_invalid";
+  for (const [index, row] of input.skuRevisions.entries()) {
+    const source = packetRow(row);
+    const parsed = id.safeParse(source?.id);
+    if (!source || !parsed.success || revisions.has(parsed.data)) return storedField(revisionCode, `catalog_sku_revisions.${index}.id`);
+    revisions.set(parsed.data, source);
+  }
+  for (const row of input.publications) {
+    const decoded = decodePublicationPacket({ manifest: packetRow(row)?.canonical_state });
+    if (!decoded.ok) return decoded;
+    for (const [index, ref] of decoded.value.skus.entries()) {
+      const revision = revisions.get(ref.revisionId);
+      if (!revision || revision.product_id !== decoded.value.product.id || revision.sku_id !== ref.skuId
+        || revision.revision !== ref.revision || revision.digest !== ref.digest)
+        return storedField(revisionCode, `skus.${index}.revisionId`);
+    }
+  }
+  return { ok: true, value: undefined };
+}
+
+function packetRow(row: unknown): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = typeof row === "string" ? JSON.parse(row) : row;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  } catch { /* The decoder reports the first missing field in the row. */ }
+}
+
+export function requireDecodedPublication<T>(decoded: Decoded<T>): T {
+  if (!decoded.ok) throw new CatalogPublicationError(decoded.issue);
+  return decoded.value;
 }
 
 export function decodeStoredPublicationSku(text: unknown): CatalogPublishedSku {
@@ -319,7 +374,7 @@ export function assertPublicationRegistration(text: string, path: string): void 
 /** @internal Shared by native PostgreSQL adapters and catalogue preparation. */
 export const nativeCatalogPublication = {
   assertPublishedSkuIdentity,
-  decodeStoredPublicationManifest, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
+  decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
   publicationJson, publicationDigest, SKU_PAGE_DEPTH, limits: CATALOG_PUBLICATION_LIMITS,
   catalogPublicationAdmissionRefusal, publicationReadFailure, publicationRefuse, publicationRemedy,
 };

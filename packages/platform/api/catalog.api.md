@@ -2726,6 +2726,7 @@ export interface CatalogPublicationRefusal {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: "publisher_not_authorized" | "candidate_invalid" | "head_conflict" | "publication_authority_unavailable" | "publication_not_supported";
     message?: string;
+    path?: string;
 }
 /** Success requires coherent authoritative document and lifecycle facts. */
 export type CatalogPublicationReadResult = {
@@ -3751,7 +3752,7 @@ export declare const catalogDraftStoredApplyResultSchema: z.ZodType<CatalogDraft
 import type { CatalogDraftPayloadV2 } from "./contracts/draftV2.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
-import { type CatalogDraftValidation } from "./draftValidation.js";
+import { type CatalogDraftValidation, type DraftValidationIssues } from "./draftValidation.js";
 import { CatalogCombinationError } from "./variantCombination.js";
 export declare const catalogCombinationIssue: (error: CatalogCombinationError, prefix?: string) => {
     path: string;
@@ -3761,6 +3762,7 @@ export declare const catalogCombinationIssue: (error: CatalogCombinationError, p
  * @experimental
  */
 export declare function validateCatalogDraftV2(payload: CatalogDraftPayloadV2, registry: CatalogProductTypeRegistry, references?: CatalogAttributeReferencePort): Promise<CatalogDraftValidation>;
+export declare function validateDraftV2Issues(payload: CatalogDraftPayloadV2, registry: CatalogProductTypeRegistry, references?: CatalogAttributeReferencePort): Promise<DraftValidationIssues>;
 ```
 ## dist/catalog/draftV3Schemas.d.ts
 
@@ -3825,6 +3827,7 @@ export declare function resolveCatalogDraftProvenance(provenance: CatalogDraftPr
 ```ts
 import type { CatalogDraftPayload } from "./draftSchemas.js";
 import { type CatalogDraftIssue, type CatalogProductTypeRegistry } from "./productTypeSchemas.js";
+import { type Issue } from "./publicationError.js";
 export interface CatalogDraftReadiness {
     publication: {
         status: "incomplete" | "not_assessed";
@@ -3842,8 +3845,23 @@ export type CatalogDraftValidation = {
     valid: true;
     readiness: CatalogDraftReadiness;
 };
+type OwnedReadiness = {
+    [K in keyof CatalogDraftReadiness]: Omit<CatalogDraftReadiness[K], "issues"> & {
+        issues: Issue[];
+    };
+};
+export type DraftValidationIssues = {
+    valid: false;
+    issues: Issue[];
+} | {
+    valid: true;
+    readiness: OwnedReadiness;
+};
 /** Supplied facts must be true; absent publish-time facts remain draft readiness issues. */
 export declare function validateCatalogDraft(payload: CatalogDraftPayload, registry: CatalogProductTypeRegistry): CatalogDraftValidation;
+export declare function draftValidationResult(result: DraftValidationIssues): CatalogDraftValidation;
+export declare function validateDraftIssues(payload: CatalogDraftPayload, registry: CatalogProductTypeRegistry): DraftValidationIssues;
+export {};
 ```
 ## dist/catalog/foundationSchemas.d.ts
 
@@ -4346,7 +4364,7 @@ export declare function createCatalogProductTypeRegistry(definitions: readonly C
 import { z } from "./validation.js";
 import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2 } from "./publicationContracts.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
-import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationReadFailure, publicationRemedy } from "./publicationError.js";
+import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationReadFailure, publicationRemedy, type Issue, type PlatformCode, type PlatformIssue } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 export declare const SKU_PAGE_DEPTH = 3;
 export declare function canonicalCatalogPublicationJson(input: unknown, depth?: number): string;
@@ -4382,14 +4400,33 @@ export declare function assertPublishedSkuDocumentExclusion(sku: CatalogPublishe
 /** Refuses exact copies of canonical values or raw text using the selected and caller-supplied revision digests. */
 export declare function catalogPublicationManifestSchema(documentDigests?: ReadonlySet<string>): z.ZodType<CatalogPublicationManifestV2>;
 export declare function publicationContent(content: CatalogDraftSharedContentV3, subject?: string, documentDigest?: string): CatalogPublishedContent;
-export declare function decodeStoredPublicationManifest(text: unknown): CatalogPublicationManifestV2;
+type StoredFieldIssue = Issue & PlatformIssue & {
+    stored: true;
+};
+type Decoded<T> = {
+    ok: true;
+    value: T;
+} | {
+    ok: false;
+    issue: StoredFieldIssue;
+};
+type PacketRows = {
+    publications: readonly unknown[];
+    skuRevisions: readonly unknown[];
+};
+export declare function decodePublicationPacket(input: {
+    manifest: unknown;
+}): Decoded<CatalogPublicationManifestV2>;
+export declare function decodePublicationPacket(input: PacketRows): Decoded<void>;
+export declare function requireDecodedPublication<T>(decoded: Decoded<T>): T;
 export declare function decodeStoredPublicationSku(text: unknown): CatalogPublishedSku;
 export declare function decodeStoredPublicationReceipt(text: unknown): CatalogPublicationReceiptV2;
 export declare function assertPublicationRegistration(text: string, path: string): void;
 /** @internal Shared by native PostgreSQL adapters and catalogue preparation. */
 export declare const nativeCatalogPublication: {
     assertPublishedSkuIdentity: typeof assertPublishedSkuIdentity;
-    decodeStoredPublicationManifest: typeof decodeStoredPublicationManifest;
+    decodePublicationPacket: typeof decodePublicationPacket;
+    requireDecodedPublication: typeof requireDecodedPublication;
     decodeStoredPublicationReceipt: typeof decodeStoredPublicationReceipt;
     decodeStoredPublicationSku: typeof decodeStoredPublicationSku;
     publicationJson: (input: unknown, maxBytes?: number, depth?: number) => string;
@@ -4405,9 +4442,10 @@ export declare const nativeCatalogPublication: {
     };
     catalogPublicationAdmissionRefusal: typeof catalogPublicationAdmissionRefusal;
     publicationReadFailure: typeof publicationReadFailure;
-    publicationRefuse: (code: string, outcome?: CatalogPublicationError["outcome"]) => never;
+    publicationRefuse: (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]) => never;
     publicationRemedy: typeof publicationRemedy;
 };
+export {};
 ```
 ## dist/catalog/publicationContracts.d.ts
 
@@ -4487,6 +4525,7 @@ export interface CatalogPublicationFailure {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: string;
     message?: string;
+    path?: string;
 }
 ```
 ## dist/catalog/publicationError.d.ts
@@ -4494,6 +4533,8 @@ export interface CatalogPublicationFailure {
 ```ts
 import type { CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
+import type { CatalogCandidateError } from "./candidate.js";
+import type { CatalogConformanceCode } from "./contracts/catalogConformance.js";
 import { z } from "./validation.js";
 export declare const publicationPriceRefusalReason: z.ZodEnum<{
     base_price_ambiguous: "base_price_ambiguous";
@@ -4507,105 +4548,46 @@ export declare const publicationPriceRefusalReason: z.ZodEnum<{
     price_list_not_found: "price_list_not_found";
     price_list_not_active: "price_list_not_active";
 }>;
-export declare function publicationIssue(code: string, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject?: string): CatalogCandidateIssue;
+declare const publicationCodes: readonly ["activation_not_assessed", "activation_unknown", "catalog_action_conflict", "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable", "catalog_lifecycle_fresh_sale_refused", "catalog_lifecycle_last_active_child", "catalog_lifecycle_raw_status_fenced", "catalog_lifecycle_state_conflict", "catalog_lifecycle_transition_refused", "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent", "catalog_publication_activation_effect_missing", "catalog_publication_approval_missing", "catalog_publication_approval_state_valid", "catalog_publication_approval_wrong", "catalog_publication_attributes_invalid", "catalog_publication_authored_amounts_invalid", "catalog_publication_axes_invalid", "catalog_publication_busy", "catalog_publication_candidate_already_issued", "catalog_publication_candidate_invalid", "catalog_publication_command_key_reused", "catalog_publication_committed_at_valid", "catalog_publication_content_invalid", "catalog_publication_cursor_invalid", "catalog_publication_decided_at_valid", "catalog_publication_derived_source_mismatch", "catalog_publication_document_bytes_unavailable", "catalog_publication_document_invalid", "catalog_publication_document_required", "catalog_publication_document_revision_sequence", "catalog_publication_document_source_mismatch", "catalog_publication_document_source_missing", "catalog_publication_document_text_copied", "catalog_publication_draft_advanced", "catalog_publication_eligibility_source_mismatch", "catalog_publication_envelope_too_large", "catalog_publication_facts_invalid", "catalog_publication_gross_below_net", "catalog_publication_gross_mass_invalid", "catalog_publication_gross_mass_required", "catalog_publication_gtin_conflict", "catalog_publication_gtin_invalid", "catalog_publication_head_invalid", "catalog_publication_history_item_too_large", "catalog_publication_identifier_blank", "catalog_publication_identifier_conflict", "catalog_publication_identifier_effect_missing", "catalog_publication_identifier_key_reused", "catalog_publication_identifier_primary_invalid", "catalog_publication_identifier_requires_created_sku", "catalog_publication_identifier_source_mismatch", "catalog_publication_identity_conflict", "catalog_publication_integral_grams_required", "catalog_publication_issue_sealed", "catalog_publication_lifecycle_assertion_changed", "catalog_publication_lineage_invalid", "catalog_publication_lineage_unknown", "catalog_publication_live_drift", "catalog_publication_activation_membership_required", "catalog_publication_logistics_source_mismatch", "catalog_publication_manifest_invalid", "catalog_publication_mass_required_until_mc5", "catalog_publication_media_evidence_mismatch", "catalog_publication_media_readiness_unproven", "catalog_publication_media_validation_unavailable", "catalog_publication_membership_change_not_allowed", "catalog_publication_membership_effect_missing", "catalog_publication_membership_source_mismatch", "catalog_publication_metadata_effect_missing", "catalog_publication_net_weight_unsupported", "catalog_publication_operation_invalid", "catalog_publication_operation_source_ambiguous", "catalog_publication_operation_source_mismatch", "catalog_publication_operation_source_missing", "catalog_publication_page_invalid", "catalog_publication_pointer_capability_unconsumed", "catalog_publication_post_state_changed", "catalog_publication_presentation_effect_missing", "catalog_publication_presentation_invalid", "catalog_publication_presentation_source_mismatch", "catalog_publication_presentation_unavailable", "catalog_publication_price_changed", "catalog_publication_price_key_reused", "catalog_publication_price_readiness", "catalog_publication_price_unavailable", "catalog_publication_primary_sku_required", "catalog_publication_product_identity_conflict", "catalog_publication_product_name_source_mismatch", "catalog_publication_query_invalid", "catalog_publication_read_invalid", "catalog_publication_readback_item_too_large", "catalog_publication_receipt_input_invalid", "catalog_publication_receipt_invalid", "catalog_publication_receipt_unsupported", "catalog_publication_record_immutable", "catalog_publication_reserved_carrier", "catalog_publication_roster_limit", "catalog_publication_route_conflict", "catalog_publication_rule_failed", "catalog_publication_rules_binding_mismatch", "catalog_publication_rules_digest_mismatch", "catalog_publication_rules_module_invalid", "catalog_publication_scope_expansion", "catalog_publication_sku_effect_missing", "catalog_publication_sku_identity_changed", "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid", "catalog_publication_sku_revision_invalid", "catalog_publication_sku_title_invalid", "catalog_publication_sku_too_large", "catalog_publication_source_invalid", "catalog_publication_source_mismatch", "catalog_publication_tax_class_unavailable", "catalog_publication_v3_activation_readiness_failed", "catalog_publication_v3_active_primary_required", "catalog_publication_v3_compile_archive_refused", "catalog_publication_v3_compile_change_noop", "catalog_publication_v3_compile_derived_facts_mismatch", "catalog_publication_v3_compile_document_absent", "catalog_publication_v3_compile_document_conflict", "catalog_publication_v3_compile_document_stale", "catalog_publication_v3_compile_identifier_conflict", "catalog_publication_v3_compile_primary_foreign", "catalog_publication_v3_compile_primary_immutable", "catalog_publication_v3_compile_product_absent", "catalog_publication_v3_compile_product_conflict", "catalog_publication_v3_compile_product_incomplete", "catalog_publication_v3_compile_sku_absent", "catalog_publication_v3_compile_sku_archived", "catalog_publication_v3_compile_sku_conflict", "catalog_publication_v3_document_digest_mismatch", "catalog_publication_v3_document_invalid", "catalog_publication_v3_document_not_canonical", "catalog_publication_v3_document_reference_stale", "catalog_publication_v3_presentation_required", "catalog_publication_v3_structural_readiness_failed", "catalog_publication_wire_invalid", "catalog_publications_canonical_state_check", "catalog_sku_revisions_full_facts_check", "channel_identity_not_assessed", "commerce_product_slug_unsupported", "commercial_activation_not_assessed", "content_missing", "dimension_not_declared", "dimension_not_installed", "current_primary_mismatch", "document_reference_missing", "duplicate_dimension", "duplicate_option_combination", "duplicate_sku_code", "duplicate_sku_id", "duplicate_trade_identifier", "foreign_product_reference", "gross_mass_invalid", "gross_mass_missing", "intent_sku_absent", "logistics_reference_missing", "media_readiness_mismatch", "media_readiness_unknown", "media_reference_missing", "net_content_invalid", "net_content_missing", "net_content_option_mismatch", "option_quantity_invalid", "option_type_invalid", "option_value_invalid", "price_reference_missing", "price_validation_unavailable", "primary_sku_missing", "primary_sku_not_in_product", "publication_evidence_unavailable", "publication_head_unavailable", "publication_preparation_unavailable", "publisher_not_authorized", "retained_read_not_authorized", "retained_revision_unavailable", "retained_source_mismatch", "sku_code_missing", "sku_missing", "slug_missing", "trade_identifier_invalid", "trade_identifier_quantity_invalid", "trade_identifier_scheme_unsupported", "type_not_installed", "unit_trade_identifier_missing"];
+export type PlatformCode = typeof publicationCodes[number] | CatalogConformanceCode | CatalogCandidateError["code"] | z.infer<typeof publicationPriceRefusalReason>;
+type Rule = "validateContent" | "validateProduct" | "validatePrices" | "presentationReadiness" | "assessActivation";
+export type PlatformIssue = {
+    kind: "platform";
+    code: PlatformCode;
+    stored?: true;
+};
+export type Issue = Omit<CatalogCandidateIssue, "code" | "message"> & {
+    detail?: string;
+} & (PlatformIssue | {
+    kind: "adopterRule";
+    rule: Rule;
+    code: string;
+});
+export type EvaluationIssue = {
+    outcome: CatalogPublicationFailure["outcome"];
+    diagnostic: Issue;
+};
+export declare function publicationIssue(code: PlatformCode, phase: CatalogCandidateIssue["phase"], path: string, subject?: string): Issue & PlatformIssue;
+export declare function adopterIssue(rule: Rule, code: string, path: string): Issue;
+export declare function renderPublicationIssue(issue: Issue): CatalogCandidateIssue & {
+    message: string;
+};
 /** @internal */
 export declare class CatalogPublicationError extends Error {
-    readonly code: string;
-    readonly outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
-    readonly diagnostic?: CatalogCandidateIssue | undefined;
-    constructor(code: string, outcome?: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported", diagnostic?: CatalogCandidateIssue | undefined);
+    readonly outcome: CatalogPublicationFailure["outcome"];
+    readonly diagnostic: Issue;
+    constructor(issue: PlatformCode | Issue, outcome?: CatalogPublicationFailure["outcome"]);
+    get code(): string;
+    get stored(): boolean;
 }
-export declare function publicationDiagnostic(error: CatalogPublicationError, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject: string): CatalogCandidateIssue;
-export declare const publicationRefuse: (code: string, outcome?: CatalogPublicationError["outcome"]) => never;
-export declare const publicationRefusals: {
-    readonly catalog_publication_cursor_invalid: readonly ["candidate_invalid", "Restart from the first page or reuse the continuation returned for this product."];
-    readonly catalog_publication_query_invalid: readonly ["candidate_invalid", "Reload the product and use the publication identifiers returned for it."];
-    readonly catalog_publication_absent: readonly ["catalog_publication_absent", "The selected publication does not exist. Reload the product and select one of its publications."];
-    readonly head_conflict: readonly ["head_conflict", "The selected publication head does not match the saved publication. Reload the product and select its publication again."];
-    readonly catalog_publication_lineage_unknown: readonly ["catalog_publication_lineage_unknown", "This product has no publication yet. Publish a revision of the product before reading its publication."];
-    readonly catalog_publication_read_invalid: readonly ["catalog_publication_read_invalid", "The saved publication could not be read. Try again, and ask the store operator to check its publication history if this continues."];
-    readonly catalog_publication_envelope_too_large: readonly ["catalog_publication_envelope_too_large", "The response is too large. Read the publication page by page."];
-    readonly catalog_publication_history_item_too_large: readonly ["catalog_publication_history_item_too_large", "A saved publication is too large for a history page. Read that publication with the full page reader."];
-    readonly catalog_publication_readback_item_too_large: readonly ["catalog_publication_readback_item_too_large", "A saved SKU revision is too large for one page. Ask the store operator to check the publication size limits."];
-    readonly catalog_publication_receipt_unsupported: readonly ["catalog_publication_receipt_unsupported", "Receipt lookup needs an authorized publisher. Authorize the reader, then look up the receipt again."];
-    readonly publisher_not_authorized: readonly ["publisher_not_authorized", "Sign in as a store administrator and try again."];
-    readonly retained_read_not_authorized: readonly ["retained_read_not_authorized", "This account cannot read the retained revision. Use the account, order or fulfilment that owns it."];
-    readonly retained_revision_unavailable: readonly ["retained_revision_unavailable", "The retained revision is not available in this store. Check that its source was accepted here, then try again."];
-    readonly retained_source_mismatch: readonly ["retained_source_mismatch", "The retained revision does not match the selected source. Reload the source and select its revision again."];
-    readonly catalog_publication_wire_invalid: readonly ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."];
-    readonly catalog_publication_axes_invalid: readonly ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."];
-    readonly catalog_publication_attributes_invalid: readonly ["publication_attributes_invalid", "An attribute value is invalid. Check the value type in the product or SKU definition."];
-    readonly catalog_publication_content_invalid: readonly ["publication_content_invalid", "Product content is invalid. Review the presentation fields and SKU settings."];
-    readonly catalog_publication_sku_title_invalid: readonly ["publication_sku_title_invalid", "A SKU title is missing or too long. Enter a shorter title."];
-    readonly catalog_publication_gtin_invalid: readonly ["publication_gtin_invalid", "A SKU barcode has an invalid GTIN. Check its digits and try again."];
-    readonly catalog_publication_page_invalid: readonly ["publication_details_too_large", "The product and one SKU exceed the publication size limit. Reduce product or SKU details and prepare it again."];
-    readonly catalog_publication_live_drift: readonly ["publication_changed", "The current product or a SKU differs from the prepared publication. Reload the product and prepare it again."];
-    readonly catalog_publication_manifest_invalid: readonly ["publication_details_invalid", "The publication contains invalid product details. Review the product and prepare it again."];
-    readonly catalog_publication_head_invalid: readonly ["publication_changed", "The current publication changed. Reload the product and try again."];
-    readonly catalog_publication_lineage_invalid: readonly ["publication_version_invalid", "The selected previous publication is unavailable. Reload the product and select its current publication."];
-    readonly catalog_publication_document_invalid: readonly ["publication_content_changed", "The selected product content differs from the approved revision. Review the product and prepare it again."];
-    readonly catalog_publication_record_immutable: readonly ["publication_requires_new_revision", "Saved publication details cannot be changed. Reload the product and prepare a new publication."];
-    readonly catalog_publication_issue_sealed: readonly ["publication_requires_new_revision", "This publication is complete. Create a new publication to add the revision."];
-    readonly catalog_publication_sku_revision_invalid: readonly ["publication_revision_invalid", "The product revisions do not match this publication. Reload the product and prepare it again."];
-    readonly catalog_publication_receipt_invalid: readonly ["publication_incomplete", "The publication is incomplete. Reload the product and check its publication status before you try again."];
-    readonly catalog_publication_approval_missing: readonly ["publication_approval_missing", "This publication needs an active approval. Approve the proposed revision first."];
-    readonly catalog_publication_candidate_already_issued: readonly ["publication_candidate_already_issued", "This candidate is already issued; revoking it has no effect. No action is needed."];
-    readonly catalog_publication_net_weight_unsupported: readonly ["publication_net_weight_unsupported", "Net content must be expressed in whole grams at scale 0 to publish. Other units cannot be published yet."];
-    readonly catalog_publication_approval_wrong: readonly ["publication_approval_wrong", "The approval has changed. Reload the active decision and try again."];
-    readonly catalog_publication_approval_state_valid: readonly ["publication_approval_state_invalid", "The approved product details are invalid. Each SKU may appear once in the approved state. Prepare the publication again."];
-    readonly catalog_publication_post_state_changed: readonly ["publication_post_state_changed", "The product or its SKUs differ from the approval. Prepare the publication again."];
-    readonly catalog_publication_roster_limit: readonly ["publication_roster_limit", "A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again."];
-    readonly catalog_publication_sku_too_large: readonly ["publication_sku_too_large", string];
-    readonly catalog_publication_sku_identity_changed: readonly ["publication_sku_identity_changed", "A SKU code differs from its published identity. Restore the saved code or prepare a new SKU."];
-    readonly catalog_publication_document_required: readonly ["publication_document_required", "Select a product document revision and prepare the draft again."];
-    readonly catalog_publication_primary_sku_required: readonly ["publication_primary_sku_required", "Select the primary SKU and prepare the draft again."];
-    readonly catalog_publication_reserved_carrier: readonly ["publication_reserved_carrier", "Keep the authored document in its designated draft field. Remove this reserved key from published details."];
-    readonly catalog_publication_facts_invalid: readonly ["publication_facts_invalid", "Remove reserved document keys from the published product or SKU details. Keep the authored document only in its designated draft field, then prepare the publication again."];
-    readonly catalog_publication_receipt_input_invalid: readonly ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Restore the original result from a verified copy or ask the store operator to recover it."];
-    readonly catalog_publication_committed_at_valid: readonly ["publication_time_invalid", "The publication date is out of range. Re-export a result dated between years 0001 and 9999."];
-    readonly catalog_publication_decided_at_valid: readonly ["publication_decision_time_invalid", "The approval date is out of range. Re-export a decision dated between years 0001 and 9999."];
-    readonly catalog_publications_canonical_state_check: readonly ["publication_details_invalid", "The saved product details are too large or empty. Review the product and prepare it again."];
-    readonly catalog_sku_revisions_full_facts_check: readonly ["publication_revision_invalid", "A SKU's saved details are too large or empty. Review the SKU and prepare the product again."];
-    readonly catalog_publication_candidate_invalid: readonly ["publication_approval_invalid", "Approval does not match the selected product revision. Review and approve that revision again."];
-    readonly catalog_publication_pointer_capability_unconsumed: readonly ["publication_content_not_saved", "The selected product content was not saved. Select the content again and retry."];
-    readonly catalog_publication_busy: readonly ["publication_busy", "Another catalogue change is in progress. Retry with the same command key."];
-    readonly catalog_publication_command_key_reused: readonly ["publication_command_key_reused", "This command key belongs to a different request. Retry the original request or use a fresh key."];
-    readonly catalog_publication_gtin_conflict: readonly ["publication_gtin_conflict", "This GTIN is already assigned. Verify the barcode and prepare the draft again."];
-    readonly catalog_publication_identifier_conflict: readonly ["publication_identifier_conflict", "This identifier is already assigned. Check its issuer and value."];
-    readonly catalog_publication_identifier_blank: readonly ["publication_identifier_blank", "Enter a nonblank value for this identifier."];
-    readonly catalog_publication_identifier_key_reused: readonly ["publication_identifier_key_reused", "Use a distinct issuer and value pair for this identifier."];
-    readonly catalog_publication_draft_advanced: readonly ["publication_draft_advanced", "The saved draft changed. Prepare its current revision."];
-    readonly catalog_publication_route_conflict: readonly ["publication_route_conflict", "Another product uses this route. Choose a different route and prepare the draft again."];
-    readonly catalog_publication_lifecycle_assertion_changed: readonly ["publication_lifecycle_assertion_changed", "Reload the SKU revisions and prepare the lifecycle changes again."];
-    readonly catalog_publication_tax_class_unavailable: readonly ["publication_tax_class_unavailable", "Install or activate the tax class declared by this product type."];
-    readonly catalog_publication_price_key_reused: readonly ["publication_price_key_reused", "Use a distinct command key for each price change in the draft."];
-    readonly catalog_publication_price_changed: readonly ["publication_price_changed", "The current base price differs from the draft. Reload it and prepare the draft again."];
-    readonly catalog_publication_price_unavailable: readonly ["publication_price_unavailable", "The base price could not be verified. Check the price list or retry the command."];
-    readonly catalog_publication_price_readiness: readonly ["publication_price_readiness", "The proposed prices or offers do not meet storefront readiness. Check their setup and prepare the draft again."];
-    readonly catalog_publication_sku_price_not_ready: readonly ["publication_sku_price_not_ready", "Set a positive gross base price and check the subscription price for this SKU in the effective price list."];
-    readonly catalog_publication_sku_price_shape_invalid: readonly ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list."];
-    readonly price_list_not_active: readonly ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency."];
-    readonly price_list_not_found: readonly ["price_list_not_found", "Select an installed, effective price list for the settlement region and currency, then prepare the draft again."];
-    readonly command_key_reused: readonly ["command_key_reused", "Give the changed price operation a fresh command key and prepare the draft again."];
-    readonly command_fingerprint_invalid: readonly ["command_fingerprint_invalid", "Review the selected draft and prepare it again."];
-    readonly command_invalid: readonly ["command_invalid", "Review the selected draft and prepare it again."];
-    readonly operator_mismatch: readonly ["operator_mismatch", "Review the selected draft and prepare it again."];
-    readonly command_in_progress: readonly ["command_in_progress", "Retry the publication with the same command keys after the price change finishes."];
-    readonly sku_not_found: readonly ["sku_not_found", "Select an existing SKU for the price change or create it in this publication."];
-    readonly sku_archived: readonly ["sku_archived", "Restore the SKU before changing its price or remove the price change."];
-    readonly base_price_ambiguous: readonly ["base_price_ambiguous", "Resolve overlapping base price entries for this SKU and price list, then prepare the draft again."];
-    readonly catalog_definition_drift: readonly ["catalog_definition_drift", "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying."];
-    readonly publication_preparation_unavailable: readonly ["publication_preparation_unavailable", "Review the selected draft and prepare it again."];
-    readonly publication_evaluation_refused: readonly ["publication_evaluation_refused", "Review the selected draft and prepare it again."];
-    readonly catalog_publication_identity_conflict: readonly ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."];
-    readonly duplicate_combination: readonly ["duplicate_combination", "A SKU already has this combination of options. Use distinct options for the new SKU."];
-};
-export type AdmissionDiagnostic = keyof typeof publicationRefusals;
-export declare const refusePublicationCommand: (code: AdmissionDiagnostic, outcome?: CatalogPublicationError["outcome"]) => never;
-export declare function publicationRemedy(code: AdmissionDiagnostic): string;
+export declare function publicationDiagnostic(error: CatalogPublicationError, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject: string): Issue;
+export declare const publicationRefuse: (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]) => never;
+export type AdmissionDiagnostic = PlatformCode;
+export declare const refusePublicationCommand: (code: PlatformCode, outcome?: CatalogPublicationError["outcome"]) => never;
+export declare function publicationRemedy(code: PlatformCode): string;
 type AdmissionRefusal = {
     outcome: "validation_issue";
-    reason: (typeof publicationRefusals)[AdmissionDiagnostic][0];
+    reason: string;
     message: string;
     path?: string;
 };

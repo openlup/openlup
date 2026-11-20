@@ -42,4 +42,5 @@ export interface CatalogPublicationFailure {
   outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
   reason: string;
   message?: string;
+  path?: string;
 }

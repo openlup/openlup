@@ -8,7 +8,7 @@ import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
 import { canonicalizeCatalogCombinationV2 } from "./variantCombination.js";
 import type { CatalogPublicationDocument, CatalogPublicationDraftEvidence, CatalogPublicationEvidence, ExpectedPublicationHead } from "./publicationEvidence.js";
 import { matchesPublicationHead, publicationHeadSchema } from "./publicationEvidence.js";
-import { decodeStoredPublicationManifest, decodeStoredPublicationSku, publicationDigest, publicationJson, SKU_PAGE_DEPTH } from "./publicationCodec.js";
+import { decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationSku, publicationDigest, publicationJson, SKU_PAGE_DEPTH } from "./publicationCodec.js";
 import { isValidGtin } from "./foundationSchemas.js";
 import { readPublicationDraftRecord } from "./publicationIntent.js";
 import type { parseCatalogCandidateReference } from "./candidateService.js";
@@ -97,7 +97,7 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
   const head = publicationHeadSchema.nullable().parse(row?.head);
   requireProjection(matchesPublicationHead(expected, head), "head_conflict");
   requireProjection(head || row?.live === false, "catalog_publication_lineage_unknown", "unsupported");
-  const manifest = head ? decodeStoredPublicationManifest(row?.canonical_state) : null;
+  const manifest = head ? requireDecodedPublication(decodePublicationPacket({ manifest: row?.canonical_state })) : null;
   if (manifest) {
     requireProjection(publicationDigest(manifest) === row?.digest && manifest.product.id === productId
       && manifest.product.document?.digest === head?.documentDigest, "catalog_publication_manifest_invalid", "validation_issue");
@@ -149,7 +149,7 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
 
 export async function assertCurrentPublicationRoster(db: PgQueryExecutor, productId: string) {
   const row = await readPublicationHead(db, productId);
-  if (row?.head) decodeStoredPublicationManifest(row.canonical_state);
+  if (row?.head) requireDecodedPublication(decodePublicationPacket({ manifest: row.canonical_state }));
 }
 
 const effectivePriceList = `SELECT id,region_code,currency FROM public.price_lists
@@ -162,10 +162,10 @@ function refusePriceOperation(operation: Plan["priceOperations"][number], reason
   if (!parsed.success) return refusePublicationCommand("catalog_publication_price_unavailable", "dependency_unavailable");
   const code = parsed.data;
   if (code !== "command_key_reused") return refusePublicationCommand(code, outcome);
-  throw new CatalogPublicationError(code, outcome, {
+  throw new CatalogPublicationError({
     ...publicationIssue(code, "pricing", "skus.priceOperations", operation.commandKey),
-    message: `Price command "${operation.commandKey}". ${publicationRemedy(code)}`,
-  });
+    detail: `Price command "${operation.commandKey}". ${publicationRemedy(code)}`,
+  }, outcome);
 }
 
 async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperations"], priced: CatalogPublishedSku[]) {
@@ -240,7 +240,7 @@ async function assertSkuPrices(db: PgQueryExecutor, priced: CatalogPublishedSku[
     requireProjection(row.list_id === reservedList, "catalog_publication_price_readiness", "validation_issue");
     if (row.ready && !row.invalid_shape) continue;
     const code = row.ready ? "catalog_publication_sku_price_shape_invalid" : "catalog_publication_sku_price_not_ready";
-    throw new CatalogPublicationError(code, "validation_issue", publicationIssue(code, "activation", "skus", codes.get(row.id)));
+    throw new CatalogPublicationError(publicationIssue(code, "activation", "skus", codes.get(row.id)));
   }
 }
 
@@ -360,7 +360,7 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
   }, references), String((previous.head?.revision ?? 0) + 1));
   if (!attributeRows.prepared) {
     const issue = attributeRows.issues[0];
-    throw new CatalogPublicationError(issue?.code ?? "catalog_publication_attributes_invalid", "validation_issue", issue);
+    throw new CatalogPublicationError(issue ? publicationIssue(issue.code, undefined, issue.path) : "catalog_publication_attributes_invalid");
   }
   // The relation fence holds through issuance. Compare final effects with the
   // actual row even when compensation projects an unchanged sealed SKU.

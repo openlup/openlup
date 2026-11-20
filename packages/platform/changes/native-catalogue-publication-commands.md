@@ -1,1 +1,2 @@
 - Add the opt-in PostgreSQL catalogue commands binding for approving, revoking, publishing and replaying a receipted v3 draft. Enable the approval seal on candidate preparation and apply the complete native migration chain before binding the owner transaction.
+- Publication refusals identify the affected field when available and explain how to correct the draft or recover a sealed publication. Adopter rule refusals name the rule, its code and the field. The released refusal contract adds an optional path. [catalog-contracts.api.md](../api/catalog-contracts.api.md)

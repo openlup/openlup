@@ -83,6 +83,37 @@ function facade(data: Fixture, deps?: Partial<CatalogCandidatePublicationDeps>, 
   });
 }
 
+it.each([
+  ["validateContent", "product.sharedContent.title"],
+  ["validateProduct", "product"],
+  ["validatePrices", "skus.0.priceOperations.0"],
+  ["presentationReadiness", "product"],
+  ["assessActivation", "product"],
+] as const)("keeps a platform-spelled code owned by %s", async (rule, path) => {
+  const code = "head_conflict";
+  const data = rule === "assessActivation" ? await revision() : input();
+  const verdict = async () => ({ ready: false, reasons: [code] });
+  if (rule === "validateContent" || rule === "validateProduct") {
+    const issues = rule === "validateContent" ? [{ path: "title", code }] : [code];
+    Object.assign(data, setupRules(artifact.replace(`${rule}: () => []`, `${rule}: () => ${JSON.stringify(issues)}`)));
+  } else if (rule === "presentationReadiness") {
+    data.observations = { ...data.observations, presentationReadiness: verdict };
+  } else if (rule === "validatePrices") {
+    withPrice(data);
+    data.validatePrices = async () => [{ path, code }];
+  } else {
+    activate(data, "eligibility");
+    media(data);
+    data.observations = { ...data.observations, verifyMedia: async () => true, assessActivation: verdict };
+  }
+  const preview = await facade(data).prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: data.expectedHead });
+  const refusal = { code, path, message: `Fix the rule violation ${code} reported by ${rule} at ${path}.` };
+  expect(preview.preparation?.activation.issues).toContainEqual(expect.objectContaining(refusal));
+  await expect(compileCatalogPublication(data)).rejects.toMatchObject({
+    outcome: "validation_issue", diagnostic: { kind: "adopterRule", rule, code, path }, message: refusal.message,
+  });
+});
+
 const priceList = "60000000-0000-4000-8000-000000000001";
 function withPrice(data: Fixture) {
   const sku = data.payload.skus[0]!;
@@ -874,7 +905,8 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   if (draftAdvanced) expect(readDraft?.mock.calls.every(([, revision]) => revision === record.revision)).toBe(true);
   expect(replacement).not.toHaveBeenCalled();
   if (rulesAsset && diagnostic?.cause) expect(() => loadCatalogRules(Buffer.from(rulesAsset)).validateContent({}))
-    .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause, ...(message && { message: expect.stringContaining(message) }) }) }));
+    .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause }),
+      ...(message && { message: expect.stringContaining(message) }) }));
   for (const [index, mode] of ["first-decision", "compile"].entries()) {
     const result = compileCatalogPublication({ ...data, record, evidence, observations,
       ...(latestReadRejects && { readCurrentHead: rejectLatest }),
@@ -882,7 +914,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
       ...(evaluation && { evaluation }) }, mode as "first-decision" | "compile");
     const decisionReason = expected[index + 1];
     if (decisionReason) await expect(result).rejects.toMatchObject({ code: decisionReason,
-      ...(decisionReason === expected[0] && diagnostic && { diagnostic: { ...diagnostic, ...(message && { message: expect.stringContaining(message) }) } }),
+      ...(decisionReason === expected[0] && diagnostic && { diagnostic, ...(message && { message: expect.stringContaining(message) }) }),
       ...((decisionReason.endsWith("_unavailable") || decisionReason === "catalog_publication_read_invalid") && { outcome: "dependency_unavailable" }) });
     else {
       const compiled = await result;
@@ -900,7 +932,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   expect(canonicalCatalogDraftJson(record.payload)).toBe(before);
   if (priceListRefusal) expect(preview?.preparation?.structural.issues).toContainEqual({ code: "price_list_not_found", phase: "pricing",
     path: "skus.0.priceOperations.0", subject: priceList,
-    message: "Select an installed, effective price list for the settlement region and currency, then prepare the draft again." });
+    message: "Fix the rule violation price_list_not_found reported by validatePrices at skus.0.priceOperations.0." });
   if (activationReady) {
     expect(preview?.preparation?.activation.outcome).toBe("ready");
     expect(assessActivation).toHaveBeenCalledTimes(4);
@@ -1055,7 +1087,7 @@ it("a supplied invalid optional hook refuses before the installer executor", asy
     id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x", types: [definition], taxClasses: [], capabilities: {},
   }, () => malformed));
   await expect(install()).rejects.toMatchObject({ code: "catalog_publication_rules_module_invalid",
-    diagnostic: { hook: "validateMembershipChange", message: expect.stringContaining("Export it as a function or omit it.") } });
+    diagnostic: { hook: "validateMembershipChange" }, message: expect.stringContaining("Export it as a function or omit it.") });
   expect(query).not.toHaveBeenCalled();
 });
 
@@ -1296,8 +1328,8 @@ it("checks the exact and one-byte-over UTF-8 limits on the final evaluator outpu
       expect(decodeStoredPublicationSku(wire)).toEqual(finalSku);
     } else {
       await expect(evaluation).rejects.toMatchObject({
-        code: "catalog_publication_sku_too_large", diagnostic: { subject: retained.code, path: "skus",
-          message: "Reduce the facts or details for SKU ARTICLE and prepare the publication again." },
+        code: "catalog_publication_sku_too_large", diagnostic: { subject: retained.code, path: "skus" },
+        message: "Reduce the facts or details for SKU ARTICLE and prepare the publication again.",
       });
     }
   }

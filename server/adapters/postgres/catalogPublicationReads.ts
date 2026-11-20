@@ -5,7 +5,7 @@ import { nativeCatalogPublication, type VerifiedCatalogPublisher, type CatalogPu
   type CatalogRetainedSourceBinding, type CatalogPublicationFailure, type AdmissionDiagnostic } from "@openlup/platform/catalog";
 import type { CatalogHeadRef, CatalogPublicationReceipt, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
 
-const { limits, decodeStoredPublicationManifest, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
+const { limits, decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
   publicationJson, publicationDigest, SKU_PAGE_DEPTH, publicationReadFailure, publicationRefuse, publicationRemedy,
   assertPublishedSkuIdentity } = nativeCatalogPublication;
 
@@ -54,7 +54,7 @@ const equal = (left: unknown, right: unknown) => publicationJson(left) === publi
 async function verifiedIssue(db: PgQueryExecutor, publicationId: string, productId?: string) {
   // Admission seals the graph. Bind the exact document and original result
   // without replaying every issued SKU to read one retained page.
-  const { rows } = await db.query(`SELECT p.id,p.product_id,p.revision,public.catalog_publication_manifest_text(p.product_id,p.canonical_state,p.digest,false) AS canonical_state,p.digest,r.result,
+  const { rows } = await db.query(`SELECT p.id,p.product_id,p.revision,p.canonical_state,p.digest,r.result,
     p.command_key,p.command_fingerprint,p.actor_id,
     to_char(p.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS committed_at,
     d.digest AS document_digest,
@@ -69,7 +69,8 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
   const row = rows[0]!;
   requireCondition(rows.length === 1 && row.id === publicationId && (productId === undefined || row.product_id === productId));
   const head = headSchema.parse({ publicationId, revision: row.revision, documentDigest: row.document_digest });
-  const manifest = decodeStoredPublicationManifest(row.canonical_state);
+  const manifest = requireDecodedPublication(decodePublicationPacket({ manifest: row.canonical_state }));
+  await db.query("SELECT public.catalog_publication_manifest_text($1,$2,$3,false)", [row.product_id, row.canonical_state, row.digest]);
   requireCondition(equal(manifest.product.document, row.document_reference), "catalog_publication_document_invalid");
   requireCondition(manifest.product.id === row.product_id && manifest.product.document?.digest === head.documentDigest
     && publicationDigest(manifest) === row.digest, "catalog_publication_manifest_invalid");
