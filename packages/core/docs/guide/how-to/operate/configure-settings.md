@@ -42,6 +42,14 @@ validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, pass
 `explain checkout_recovery_reminders` to the settings script.
 
+For connected `show` and `preview`, use a `postgres://` or `postgresql://` URL
+with a TCP host, username and database. Percent-encode reserved characters in
+credentials and the database name. An omitted port uses 5432. The only query
+option is `sslmode`, with `disable`, `require` or `verify-full` as its value.
+`require` and `verify-full` verify the server certificate, while `disable` or
+an omitted mode uses plaintext. PostgreSQL connection defaults in the process
+environment do not affect these reads.
+
 ## Check owned configuration before proposing a change
 
 1. Pass `list --goal <words>` to your application’s settings script.

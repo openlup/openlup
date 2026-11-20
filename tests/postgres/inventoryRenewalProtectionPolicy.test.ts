@@ -405,8 +405,7 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
   const url = new URL(resource!.connectionString);
   url.username = installation.runtimeLogin;
   url.password = "synthetic-runtime";
-  url.searchParams.set("options", "-c default_transaction_read_only=on");
-  const runtime = new Pool({ connectionString: url.toString() });
+  const runtime = new Pool({ connectionString: url.toString(), options: "-c default_transaction_read_only=on" });
   const instant = new Date(asOf).toISOString();
   const calls: string[] = [];
   const tool = settingsReadTools.find(candidate => candidate.name === "settings__preview")!;

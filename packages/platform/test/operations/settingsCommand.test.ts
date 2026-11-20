@@ -6,7 +6,12 @@ import { runSettingsCommand, type SettingsAppBindings } from "../../src/operatio
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
 const key = "inventory_renewal_protection";
-const url = "postgresql://db.example/shop";
+const url = "postgresql://sample@read.invalid/shop";
+const databaseOptions = {
+  host: "read.invalid", port: 5432, user: "sample", password: expect.any(Function), database: "shop", ssl: false,
+  sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
+  application_name: "openlup settings", connectionTimeoutMillis: 0,
+};
 const asOf = new Date(0).toISOString();
 const refusalPrefix = "commerce_setting_preview_";
 
@@ -80,19 +85,74 @@ it("names --goal when used with show", async () => {
   });
 });
 
-it.each(["postgrest://sample@example.test/shop", "https://example.test/shop", "postgresql:///shop", "", "postgres://["])(
-  "validates the database URL for show and preview before binding: %j", async databaseUrl => {
-    const bind = vi.fn();
-    for (const command of [["show", key], ["preview", key, "--value", "{}"]]) {
-      const { exit, output } = await run([...command, "--database-url", databaseUrl, "--json"], { host: { bind } });
+it.each([
+  ["omitted URL", undefined, null],
+  ["empty URL", "", "Supply a read-capable database URL."],
+  ["postgres scheme", url.replace("postgresql:", "postgres:"), {}],
+  ["postgresql scheme", url, {}],
+  ...[1, 5432, 65535].map(port => [`explicit port ${port}`, url.replace("/shop", `:${port}/shop`), { port }] as const),
+  ...["", "not-a-port", "0", "65536"].map(port => [`invalid port ${port}`, url.replace("/shop", `:${port}/shop`), "port from 1 to 65535"] as const),
+  ["IPv4", url.replace("read.invalid", "192.0.2.1"), { host: "192.0.2.1" }],
+  ["IPv6", url.replace("read.invalid", "[2001:db8::1]"), { host: "2001:db8::1" }],
+  ["escaped credentials and database", "postgresql://some%40user:fake%25%252F@read.invalid/shop%2Fwest",
+    { user: "some@user", password: "fake%%2F", database: "shop/west" }],
+  ["database name with a dot segment", `${url}/../west`, { database: "shop/../west" }],
+  ["empty password", url.replace("@", ":@"), {}],
+  ["missing user", url.replace("sample@", ""), "with a TCP host, username and database"],
+  ["empty user", url.replace("sample@", ":fake@"), "with a TCP host, username and database"],
+  ["missing host", url.replace("sample@read.invalid", ""), "with a TCP host, username and database"],
+  ["missing database path", url.replace("/shop", ""), "with a TCP host, username and database"],
+  ["empty database path", url.replace("shop", ""), "with a TCP host, username and database"],
+  ["wrong protocol", url.replace("postgresql:", "https:"), "Supply a postgres:// or postgresql:// URL"],
+  ["malformed URL", "postgres://[", "Supply a postgres:// or postgresql:// URL"],
+  ["socket hostname", url.replace("read.invalid", "%2Ffake%2Fsocket"), "with a TCP host, username and database"],
+  ["escaped hostname", url.replace("read", "%72ead"), "with a TCP host, username and database"],
+  ["bad username escape", url.replace("sample", "sample%"), "valid URL components"],
+  ["bad password escape", url.replace("@", ":sample%Q1@"), "valid URL components"],
+  ["bad database UTF-8", `${url}%FF`, "valid URL components"],
+  ["bad query escape", `${url}?sslmode=disable%`, "use one sslmode"],
+  ["surrounding whitespace", ` ${url} `, "Remove surrounding whitespace"],
+  ["raw control character", url.replace("sample", "sam\tple"), "control characters"],
+  ["escaped control character", url.replace("@", ":fake%00@"), "without control characters"],
+  ["fragment", `${url}#section`, "fragment"],
+  ["empty fragment", `${url}#`, "fragment"],
+  ["disabled TLS", `${url}?sslmode=disable`, {}],
+  ...["require", "verify-full"].map(mode => [`TLS ${mode}`, `${url}?sslmode=${mode}`, { ssl: { rejectUnauthorized: true } }] as const),
+  ["unlisted TLS mode", `${url}?sslmode=prefer`, "use one sslmode"],
+  ["empty TLS mode", `${url}?sslmode=`, "use one sslmode"],
+  ["repeated TLS mode", `${url}?sslmode=disable&sslmode=require`, "use one sslmode"],
+  ["repeated TLS mode by encoded name", `${url}?sslmode=disable&%73slmode=require`, "use one sslmode"],
+  ...["host", "hostaddr", "port", "dbname", "user", "password", "options", "service", "socket", "sslrootcert", "other"]
+    .map(name => [`disallowed ${name} option`, `${url}?${name}=fake`, "Remove PostgreSQL URL query options"] as const),
+  ["bare query", `${url}?`, "use one sslmode"],
+  ["empty query field", `${url}?sslmode=disable&`, "use one sslmode"],
+] as const)("admits settings database URLs: %s", async (_, databaseUrl, expected) => {
+  for (const command of [["show", key], ["preview", key, "--value", "{}"]]) {
+    const isPreview = command[0] === "preview";
+    const bind = vi.fn(async (_input: Parameters<NonNullable<Parameters<typeof runSettingsCommand>[2]>["bind"]>[0]) => ({
+      readers: { [key]: async () => ({ present: false as const }) },
+      previewers: { [key]: async () => ({ schemaVersion: 1 as const }) },
+    }));
+    const flags = databaseUrl === undefined ? [] : [`--database-url=${databaseUrl}`];
+    const { exit, output } = await run([...command, ...flags, "--json"], { host: { bind } });
+    if (typeof expected === "string") {
       expect(exit).toBe(64);
-      // Connected show deliberately validates URLs before importing the binding.
-      expect(JSON.parse(output).refusal).toMatchObject({ path: ["database-url"], code: command[0] === "show"
-        ? "commerce_setting_read_input_invalid" : refusalPrefix + "input_invalid" });
+      expect(JSON.parse(output).refusal).toMatchObject({ path: ["database-url"], hint: expect.stringContaining(expected),
+        code: isPreview ? refusalPrefix + "input_invalid" : "commerce_setting_read_input_invalid" });
+      expect(output).not.toMatch(/read\.invalid|sample|fake/u);
+      expect(bind).not.toHaveBeenCalled();
+    } else if (expected === null) {
+      expect(exit).toBe(isPreview ? 1 : 0);
+      if (isPreview) expect(JSON.parse(output).refusal.code).toBe(refusalPrefix + "connection_required");
+      expect(bind).not.toHaveBeenCalled();
+    } else {
+      expect(exit).toBe(0);
+      expect(bind).toHaveBeenCalledExactlyOnceWith({ database: { ...databaseOptions, ...expected }, app: undefined, configuration: undefined });
+      const password = bind.mock.calls[0]![0].database?.password;
+      if (typeof password === "function") expect(password()).toBe("");
     }
-    expect(bind).not.toHaveBeenCalled();
-  },
-);
+  }
+});
 
 it.each([
   [["-"], "{}", {}, 1],
@@ -110,7 +170,7 @@ it.each([
     "--configuration", "sample", "--as-of", asOf, ...skus.flatMap(sku => ["--sku", sku]), "--json"], { host: { bind }, stdin });
   expect(exit).toBe(0);
   expect(output).toBe(document(await previewSetting({ key, proposed: expected, skus, asOf }, bindings.previewers)));
-  expect(bind).toHaveBeenCalledExactlyOnceWith({ databaseUrl: url, app: "./app.mjs", configuration: "sample" });
+  expect(bind).toHaveBeenCalledExactlyOnceWith({ database: databaseOptions, app: "./app.mjs", configuration: "sample" });
   expect(preview).toHaveBeenNthCalledWith(1, expected, { skus: skus.slice(0, 2), asOf, refuse: refuseSettingsPreview });
   expect(close).toHaveBeenCalledTimes(1);
   expect(readStdin).toHaveBeenCalledTimes(reads);
@@ -228,7 +288,7 @@ it.each([
   [["preview", key, "--value", "{}", "--goal", "stock"], ["goal"], "Use --goal with list."],
   [["preview", key, "--value", "{}", "--database-url="], ["database-url"], "Supply a read-capable database URL."],
   [["preview", "--database-url="], ["database-url"], "Supply a read-capable database URL."],
-  [["preview", key, "--value", "{}", "--database-url", "postgresql:///shop"], ["database-url"], "Supply a PostgreSQL URL for the intended store."],
+  [["preview", key, "--value", "{}", "--database-url", "postgresql:///shop"], ["database-url"], "Supply a postgres:// or postgresql:// URL with a TCP host, username and database."],
 ] as const)("names the invalid preview argument in %j", async (argv, path, hint) => {
   const { exit, output } = await run([...argv, "--json"]);
   expect(exit).toBe(64);
@@ -243,7 +303,7 @@ it("uses an app-owned checkout reader without falling back to catalogue timing",
   const { exit, output } = await run(["show", reminder, "--database-url", url, "--app", app, "--json"], { host });
   expect(exit).toBe(0);
   expect(output).toBe(document(await showSetting({ key: reminder }, readers)));
-  expect(host.bind).toHaveBeenCalledExactlyOnceWith({ databaseUrl: url, app, configuration: undefined });
+  expect(host.bind).toHaveBeenCalledExactlyOnceWith({ database: databaseOptions, app, configuration: undefined });
 });
 
 it("prints the reason and reference for a fact without value fields", async () => {
@@ -273,7 +333,7 @@ it.each([
     code: refusalPrefix + "configuration_unknown", path: ["configuration"],
     hint: `Unknown configuration ${configuration.includes("://") ? "ID" : JSON.stringify(configuration)}. Use one of these IDs: coffee, supplements.`,
   });
-  expect(host.bind).toHaveBeenCalledExactlyOnceWith({ databaseUrl: flags.some(flag => flag === url) ? url : undefined, app: "./app.ts", configuration });
+  expect(host.bind).toHaveBeenCalledExactlyOnceWith({ database: flags.some(flag => flag === url) ? databaseOptions : undefined, app: "./app.ts", configuration });
   expect(close).toHaveBeenCalledOnce();
 });
 
@@ -289,7 +349,7 @@ it.each([
   const { exit, output } = await run(["preview", key, "--value", proposal, "--app", "./app.ts", "--configuration", "coffee", ...flags, "--json"], { host });
   expect(exit).toBe(status);
   expect(JSON.parse(output)).toMatchObject({ schemaVersion: 1, refusal: { code: refusalPrefix + code, path } });
-  if (bindCalled) expect(host.bind).toHaveBeenCalledExactlyOnceWith({ databaseUrl: undefined, app: "./app.ts", configuration: "coffee" });
+  if (bindCalled) expect(host.bind).toHaveBeenCalledExactlyOnceWith({ database: undefined, app: "./app.ts", configuration: "coffee" });
   else expect(host.bind).not.toHaveBeenCalled();
   expect(close).toHaveBeenCalledTimes(bindCalled ? 1 : 0);
   expect(preview).not.toHaveBeenCalled();

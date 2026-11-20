@@ -31,8 +31,13 @@ export type SettingsAppBindings = {
   };
 } | { configurationIds: readonly string[] };
 
+type SettingsDatabase = {
+  host: string; port: number; user: string; password: string | (() => string); database: string;
+  ssl: false | { rejectUnauthorized: true }; sslnegotiation: "postgres";
+  options: string; replication: "false"; client_encoding: "utf8"; application_name: string; connectionTimeoutMillis: 0;
+};
 type SettingsHost = {
-  bind(input: { databaseUrl?: string; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
+  bind(input: { database?: SettingsDatabase; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
   loadCheck?(input: { app: string; configuration?: string }): Promise<SettingsAppBindings | undefined>;
   formatPreview?(result: PreviewDocument): string;
 };
@@ -280,6 +285,45 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
   ].join("\n");
 }
 
+function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; hint: string } {
+  const path = ["database-url"];
+  if (!input) return { path, hint: "Supply a read-capable database URL." };
+  const target = "Supply a postgres:// or postgresql:// URL with a TCP host, username and database.";
+  if (input !== input.trim() || /[\p{Cc}#]/u.test(input)) {
+    return { path, hint: "Remove surrounding whitespace, control characters and the fragment from the PostgreSQL URL." };
+  }
+  const [, authority, databasePath] = /^postgres(?:ql)?:\/\/([^/?#]*)(\/[^?#]*)?/iu.exec(input) ?? [];
+  const hostPort = authority?.split("@").at(-1) ?? "";
+  const portAt = hostPort.lastIndexOf(":");
+  const specifiedPort = portAt > hostPort.lastIndexOf("]") ? hostPort.slice(portAt + 1) : undefined;
+  const port = specifiedPort === undefined ? 5432 : Number(specifiedPort);
+  if (specifiedPort !== undefined && (!/^\d+$/u.test(specifiedPort) || port < 1 || port > 65535)) {
+    return { path, hint: "Omit the PostgreSQL URL port or use a port from 1 to 65535." };
+  }
+  const url = URL.parse(input);
+  if (!url?.hostname || url.hostname.includes("%") || !url.username || !databasePath?.slice(1)) return { path, hint: target };
+  const sslmode = url.searchParams.get("sslmode");
+  if (input.includes("?") && (!url.search || url.search.includes("&") || url.searchParams.size !== 1
+    || (sslmode !== "disable" && sslmode !== "require" && sslmode !== "verify-full"))) {
+    return { path, hint: "Remove PostgreSQL URL query options or use one sslmode set to disable, require or verify-full." };
+  }
+  try {
+    const user = decodeURIComponent(url.username);
+    const password = decodeURIComponent(url.password);
+    const database = decodeURIComponent(databasePath.slice(1));
+    if (![user, password, database].some(value => /\p{Cc}/u.test(value))) {
+      return {
+        host: url.hostname.replace(/^\[|\]$/gu, ""), port, user, password: password || (() => ""), database,
+        ssl: sslmode === "require" || sslmode === "verify-full" ? { rejectUnauthorized: true } : false,
+        // Truthy no-op startup values prevent pg from inheriting process connection defaults.
+        sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
+        application_name: "openlup settings", connectionTimeoutMillis: 0,
+      };
+    }
+  } catch { /* Malformed credential or database escapes are refused without echoing input. */ }
+  return { path, hint: "Encode the PostgreSQL username, password and database as valid URL components without control characters." };
+}
+
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export async function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number> {
   let json = argv.includes("--json");
@@ -355,10 +399,9 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   preview = command === "preview";
   const databaseUrl = values["database-url"];
   if (values.goal !== undefined && command !== "list") return invalid("goal", "Use --goal with list.");
-  const url = databaseUrl === undefined ? undefined : URL.parse(databaseUrl);
-  const invalidDatabase = databaseUrl !== undefined && (!url?.hostname || !["postgres:", "postgresql:"].includes(url.protocol))
-    ? { path: ["database-url"], hint: databaseUrl ? "Supply a PostgreSQL URL for the intended store." : "Supply a read-capable database URL." }
-    : undefined;
+  const admission = databaseUrl === undefined ? undefined : admitDatabaseUrl(databaseUrl);
+  const invalidDatabase = admission && "hint" in admission ? admission : undefined;
+  const database = admission && "host" in admission ? admission : undefined;
   if (preview && databaseUrl === "" && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (preview && !key) return invalid("key", "Pass the setting key and one proposed JSON value with --value.");
   if (preview && extra.length) return invalid("proposed", "Pass one proposed JSON value with --value.");
@@ -445,11 +488,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       }
     }
     if (resolveConfiguration && !values.app) return [needsApp("configuration")];
-    const connectedUrl = invalidDatabase ? undefined : databaseUrl;
-    if (preview && connectedUrl && !host) return [needsApp(), 74];
+    if (preview && database && !host) return [needsApp(), 74];
     // An explicit configuration can be resolved without a pool, including before a URL refusal.
-    const bindings = (connectedUrl || resolveConfiguration)
-      ? await host?.bind({ databaseUrl: connectedUrl, app: values.app, configuration: values.configuration }) : undefined;
+    const bindings = (database || resolveConfiguration)
+      ? await host?.bind({ database, app: values.app, configuration: values.configuration }) : undefined;
     try {
       if (bindings && "configurationIds" in bindings) {
         const id = values.configuration ?? "";
@@ -459,7 +501,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       }
       if (preview) {
         if (invalidDatabase) return [refuseSettingsPreview("commerce_setting_preview_input_invalid", invalidDatabase), 64];
-        const result = await previewSetting(input, connectedUrl ? bindings?.previewers : undefined);
+        const result = await previewSetting(input, database ? bindings?.previewers : undefined);
         if ("refusal" in result) {
           if (result.refusal.code === "commerce_setting_preview_input_invalid") return [result, 64];
           if (result.refusal.code === "commerce_setting_preview_unexpected") return [result, 74];

@@ -333,7 +333,7 @@ it.each([
   };
   write(starterSettingsHost, `export function createSettingsBindings() { return { previewers: { ${key}: async () => (${JSON.stringify(result)}) } }; }`);
   const text = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "--app", starterSettingsHost,
-    "preview", key, "--value", "{}", "--database-url", "postgresql://unused.invalid/shop"], { cwd: directory, encoding: "utf8" });
+    "preview", key, "--value", "{}", "--database-url", "postgresql://sample@unused.invalid/shop"], { cwd: directory, encoding: "utf8" });
   expect(text.status, text.stderr).toBe(0);
   expect(text.stdout).toContain(`Validation: ${validation.state}`);
   expect(text.stdout).toContain(`Horizon difference in days: ${difference?.renewalProtectionDays ?? "unavailable"}`);
