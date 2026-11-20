@@ -70,11 +70,11 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(() => closePostgres(container, pool), postgresTeardownTimeoutMs);
 
-function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>) {
+function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>, connection = pool) {
   let allowed = true;
   const api = createPostgresCatalogPublicationCommands({
     authorizeHuman: async (userId: string) => ({ ok: true, userId, role: "admin", isMachineActor: false }),
-    catalogPublicationOwner: { run: work => transaction(pool, async db => {
+    catalogPublicationOwner: { run: work => transaction(connection, async db => {
       await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
       return work({ query: (sql, args) => query ? query(db, sql, args) : db.query(sql, args) });
     }) },
@@ -407,7 +407,8 @@ it.each([[6, "inactive"], [15, "missing"], [16, "expired"], [17, "wrong settleme
   expect(await api.execute(commands.approve, who)).toMatchObject({ outcome: "committed" });
   expect(await api.execute(commands.publish, who), sqlFailure).toMatchObject(problem === "missing"
     ? { outcome: "validation_issue", reason: "price_list_not_found",
-      message: "Select an installed, effective price list for the settlement region and currency, then prepare the draft again." }
+      message: "Select an installed, effective price list for the settlement region and currency, then prepare the draft again.",
+      path: "skus.priceOperations.priceListId", subject: inactiveList }
     : { outcome: "validation_issue", reason: "price_list_not_active",
       message: "Activate the intended price list or select an effective list for the settlement region and currency." });
   expect(changed).toBe(1);
@@ -728,4 +729,62 @@ describe("publication activation prices", () => {
     expect(await api.execute(next.publish, who)).toMatchObject({ outcome: "committed", receipt: { changes: [] } });
     expect((await state()).rows[0]?.sellable_standalone).toBe(true);
   });
+});
+
+
+it("commits deferred publication checks through the restricted login", async () => {
+  const forward = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+  await transaction(pool, async db => {
+    await db.query("SET LOCAL openlup.qualified.role_mode = 'installer-managed'");
+    await db.query(readFileSync(forward, "utf8"));
+  });
+  const password = randomUUID();
+  await pool.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${password}'`);
+  const url = new URL(container.connectionString);
+  url.username = "openlup_catalog_publication";
+  url.password = password;
+  const publisher = new Pool({ connectionString: url.href });
+  try {
+    expect((await publisher.query(`SELECT session_user,current_user,rolsuper,rolinherit,rolbypassrls,
+      EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE roleid=oid OR member=oid) AS memberships,
+      has_table_privilege('public.catalog_publications','SELECT') AS issue_read,
+      has_table_privilege('public.catalog_publications','INSERT') AS issue_insert,
+      has_table_privilege('public.catalog_publications','UPDATE,DELETE,TRUNCATE') AS issue_mutation,
+      has_any_column_privilege('public.catalog_product_document_revisions','UPDATE') AS document_mutation,
+      has_any_column_privilege('public.catalog_attribute_projection','UPDATE') AS projection_mutation,
+      has_any_column_privilege('public.outbox_events','SELECT,UPDATE') AS outbox_read_or_update,
+      has_column_privilege('public.catalog_draft_heads','revision','UPDATE') AS draft_fence,
+      has_column_privilege('public.catalog_draft_heads','status','UPDATE') AS draft_status_update,
+      has_function_privilege('public.catalog_publication_record_command(jsonb)','EXECUTE') AS recorder,
+      has_function_privilege('public.catalog_draft_apply(text,text,text)','EXECUTE') AS draft_writer
+      FROM pg_catalog.pg_roles WHERE rolname=current_user`)).rows).toEqual([{
+      session_user: "openlup_catalog_publication", current_user: "openlup_catalog_publication", rolsuper: false,
+      rolinherit: false, rolbypassrls: false, memberships: false, issue_read: true, issue_insert: true, issue_mutation: false,
+      document_mutation: false, projection_mutation: false, outbox_read_or_update: false, draft_fence: true,
+      draft_status_update: false, recorder: true, draft_writer: false,
+    }]);
+    await pool.query("INSERT INTO public.catalog_tax_classes VALUES ('example:standard','Standard','active')");
+    expect(await transaction(publisher, db => db.query("SELECT status FROM public.catalog_tax_classes FOR SHARE")))
+      .toMatchObject({ rows: [{ status: "active" }] });
+    await expect(publisher.query("UPDATE public.catalog_tax_classes SET status='retired'")).rejects.toMatchObject({ code: "42501" });
+    const data = authored(26), priceListId = randomUUID();
+    await pool.query(`INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from)
+      VALUES($1,'Publication list','ZZ','XXX','active',statement_timestamp()-interval '1 hour')`, [priceListId]);
+    data.payload.skus[0]!.priceOperations = [{ schemaVersion: 1, commandKey: randomUUID(), variantId: data.skuId, priceListId,
+      mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1733, expected: { entryId: null, unitPriceMinor: null } }];
+    await save(data, 1);
+    const prepared = await prepare(data, 1, null);
+    let sqlFailure: string | undefined;
+    const api = native(async (db, sql, args) => db.query(sql, args).catch((error: Error) => {
+      sqlFailure = error.message;
+      throw error;
+    }), publisher);
+    const who = (await api.authorize(actor))!;
+    const approved = await api.execute(prepared.approve, who);
+    expect(approved, sqlFailure).toMatchObject({ outcome: "committed" });
+    const published = await api.execute(prepared.publish, who);
+    expect(published, sqlFailure).toMatchObject({ outcome: "committed", receipt: { head: { revision: 1 } } });
+    expect((await pool.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows)
+      .toEqual([{ revision: 1 }]);
+  } finally { await publisher.end(); }
 });

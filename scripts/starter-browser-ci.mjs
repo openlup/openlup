@@ -326,7 +326,7 @@ export async function runStarterBrowser(options) {
       await command('npm', ['run', 'build'], app, env);
       const installed = createRequire(join(app, 'package.json'));
       const migrations = await import(pathToFileURL(installed.resolve('@openlup/platform/migrations')).href);
-      const { applyDemoSeed, demonstrationMarker } = await import(pathToFileURL(join(app, 'installation/install.ts')).href);
+      const { applyDemoSeed, demonstrationMarker, provisionDemonstrationPublicationPassword } = await import(pathToFileURL(join(app, 'installation/install.ts')).href);
       const { readStarterCatalogueRules } = await import(pathToFileURL(join(app, 'host/editor-catalogue.ts')).href);
       const catalogueRules = readStarterCatalogueRules();
       const { selectConfiguration } = await import(pathToFileURL(join(app, 'owned/store.config.ts')).href);
@@ -361,9 +361,11 @@ export async function runStarterBrowser(options) {
               const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
               if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
               console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
+              const publicationPasswordFile = join(scratch, `${groupIndex}-${configuration}-publication-password`);
               const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
               await installer.connect();
               try {
+                privateValues.push(await provisionDemonstrationPublicationPassword(installer, publicationPasswordFile));
                 const seed = { connection: installer, installRole, runtimeRole, catalogueRules };
                 phase = `seed_${configuration}`;
                 await applyDemoSeed(selectConfiguration(configuration), seed);
@@ -387,7 +389,7 @@ export async function runStarterBrowser(options) {
               phase = `host_${configuration}`;
               const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
                 '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile],
-              { cwd: state, env: { ...env, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
+              { cwd: state, env: { ...env, PGPASSWORD: password, STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE: publicationPasswordFile }, stdio: ['ignore', 'pipe', 'pipe'] });
               const exited = watchStarterHost(child, configuration, defer, recordLoss);
               let hostOutput = '';
               for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { hostOutput += String(chunk); outputs.push(String(chunk)); });

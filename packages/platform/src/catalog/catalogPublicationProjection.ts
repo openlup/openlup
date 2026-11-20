@@ -73,7 +73,9 @@ export async function readNativeDraftEvidence(db: PgQueryExecutor, reference: Re
 }
 
 export async function publicationRelationFence(db: PgQueryExecutor, productId: string) {
-  await db.query(`LOCK TABLE public.catalog_products, public.catalog_skus, public.catalog_sku_identifiers,
+  const { rows } = await db.query("SELECT current_user = 'openlup_catalog_publication' AS restricted");
+  if (rows[0]?.restricted === true) await db.query("SELECT public.catalog_publication_lock_projection()");
+  else await db.query(`LOCK TABLE public.catalog_products, public.catalog_skus, public.catalog_sku_identifiers,
     public.catalog_product_document_revisions, public.catalog_attribute_projection IN SHARE ROW EXCLUSIVE MODE NOWAIT`);
   await db.query("SELECT id FROM public.catalog_products WHERE id=$1 FOR NO KEY UPDATE NOWAIT", [productId]);
   await db.query("SELECT product_id FROM public.catalog_publication_heads WHERE product_id=$1 FOR NO KEY UPDATE NOWAIT", [productId]);
@@ -161,6 +163,8 @@ function refusePriceOperation(operation: Plan["priceOperations"][number], reason
   const parsed = publicationPriceRefusalReason.safeParse(reason);
   if (!parsed.success) return refusePublicationCommand("catalog_publication_price_unavailable", "dependency_unavailable");
   const code = parsed.data;
+  if (code === "price_list_not_found")
+    throw new CatalogPublicationError(publicationIssue(code, "pricing", "skus.priceOperations.priceListId", operation.priceListId), outcome);
   if (code !== "command_key_reused") return refusePublicationCommand(code, outcome);
   throw new CatalogPublicationError({
     ...publicationIssue(code, "pricing", "skus.priceOperations", operation.commandKey),

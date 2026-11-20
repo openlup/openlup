@@ -9,8 +9,8 @@ import { editorProducts, readStarterCatalogueRules, stageStarterCatalogueBuild, 
 import { randomBytes } from 'node:crypto';
 import { installCatalogDefinitions } from '@openlup/platform/catalog';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { link, lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
 
 export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
@@ -43,6 +43,28 @@ export async function prepareDemonstrationQuoteKey(connection: InstallConnection
     || file.uid !== process.getuid?.()) throw new Error('starter_quote_acceptance_key_invalid');
   await readQuoteAcceptanceKeyring(path);
   return path;
+}
+
+/** Called by the installer on its private connection, after the qualified forward. */
+export async function provisionDemonstrationPublicationPassword(connection: InstallConnection, path: string): Promise<string> {
+  const temporary = await mkdtemp(resolve(dirname(path), '.publication-'));
+  const source = resolve(temporary, 'password');
+  try {
+    await writeFile(source, randomBytes(32).toString('hex') + '\n', { mode: 0o600 });
+    try { await link(source, path); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+  } finally { await rm(temporary, { recursive: true, force: true }); }
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let password: string;
+  try {
+    const file = await handle.stat();
+    if (!file.isFile() || file.uid !== process.getuid?.() || (file.mode & 0o777) !== 0o600 || file.size !== 65)
+      throw new Error('starter_catalogue_publication_password_invalid');
+    password = (await handle.readFile('utf8')).trim();
+    if (!/^[a-f0-9]{64}$/u.test(password)) throw new Error('starter_catalogue_publication_password_invalid');
+  } finally { await handle.close(); }
+  await connection.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${password}'`);
+  return password;
 }
 
 export interface DemonstrationInstallation {
@@ -101,7 +123,10 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
       row.is_addon, row.sellable_standalone, row.sellable_in_subscription,row.net_weight_g]);
     await installRenewalStockProtectionPolicy(connection, config.inventory.renewalProtection);
     await installCheckoutRecoveryReminderSchedule(connection, config.checkoutRecoveryReminders);
-    for (const row of seed.settings) await connection.query(`INSERT INTO public.commerce_settings(key,value_text)
+    const settlement = seed.priceLists[0]!;
+    const settings = [...seed.settings, { key: 'settlement_region', value: settlement.region_code },
+      { key: 'settlement_currency', value: settlement.currency }];
+    for (const row of settings) await connection.query(`INSERT INTO public.commerce_settings(key,value_text)
       VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`, [row.key,row.value]);
     const stock = installation.stock ?? (await import('@openlup/platform/fulfillment')).createPostgresFulfillmentStockSyncPort(connection,
       { sourceKey: `starter-demo:${config.id}`,readLocalInventoryStock: async () => [] });
@@ -127,6 +152,11 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
         : existing[key] !== value)) throw new Error('starter_price_seed_conflict');
     }
     await seedQuoteAuthority(config, seed, connection);
+    // The demonstration can attest the empty installed cohort for native price checks.
+    if (catalogueReceipt) await connection.query(`SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()
+      WHERE EXISTS (SELECT 1 FROM public.commerce_offer_policy_cohort_marking WHERE marked_count=0)
+        AND NOT EXISTS (SELECT 1 FROM public.subscriptions
+          WHERE offer_policy_assignment_state='legacy_frozen' AND NOT is_test_fixture)`);
     for (const { addressReference: row } of acquisitionAddresses) {
       await connection.query(`INSERT INTO acquisition_private.address_references
         (source, reference, revision, provenance, active) VALUES ($1,$2,$3,$4,true)
@@ -204,6 +234,8 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
     const applied = await runner.apply();
     const status = await runner.status();
     if (status.pending.length) throw new Error('starter_installation_incomplete');
+    const publicationPasswordFile = process.env.STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE;
+    if (publicationPasswordFile) await provisionDemonstrationPublicationPassword(bootstrap, publicationPasswordFile);
     process.stdout.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');
   } finally { await bootstrap.end(); }
   const catalogueRules = readStarterCatalogueRules();

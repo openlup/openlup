@@ -1554,6 +1554,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/qa_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5002,6 +5006,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/q2_20261123192500_catalog_publication_authority.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/qa_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5367,6 +5375,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogPublicationProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogPublicationReads.ts",
       "class": "public-output"
     },
     {

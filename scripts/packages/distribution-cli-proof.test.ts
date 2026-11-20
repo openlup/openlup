@@ -275,6 +275,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
       return JSON.parse(refusal.stdout);
     }, path)) : [];
   const checkUpgradedFiles = () => {
+    expect(read("AGENTS.md")).toContain("customize-the-starter.md#publish-a-saved-catalogue-draft");
     expect(read(reminderInstallationTest)).toBe(to.files[reminderInstallationTest]);
     expect(read(starterLifecycle)).toBe(to.files[starterLifecycle]);
     if (localTest) expect(read(localTest.path)).toBe(localTest.bytes);

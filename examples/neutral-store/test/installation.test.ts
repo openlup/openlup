@@ -267,7 +267,12 @@ for (const config of Object.values(configurations)) {
     }
     const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
     const reminders = first.calls.filter(call => call.values?.[0] === 'checkout_recovery_reminders');
-    const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call) && call.text.startsWith('INSERT INTO public.'));
+    const settlement = first.calls.filter(call => ['settlement_region', 'settlement_currency'].includes(String(call.values?.[0])));
+    assert.deepEqual(settlement.map(call => call.values), [
+      ['settlement_region', config.market.country], ['settlement_currency', config.market.currency],
+    ]);
+    const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call)
+      && !settlement.includes(call) && call.text.startsWith('INSERT INTO public.'));
     assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);

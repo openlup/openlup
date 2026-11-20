@@ -14,7 +14,7 @@ export const operations = [
   'operator.customer', 'operator.recovery', 'operator.shipments', 'operator.shipment',
   'operator.label', 'operator.handoff', 'operator.delivery', 'operator.invoice',
   'operator.returnApprove', 'operator.returnReject',
-  'operator.bundles', 'operator.bundle', 'operator.bundleCommand', 'operator.catalogDrafts',
+  'operator.bundles', 'operator.bundle', 'operator.bundleCommand', 'operator.catalogDrafts', 'operator.catalogPublication',
   'operator.reviews', 'operator.reviewModerate', 'operator.partners', 'operator.partnerTransition',
   'review.read', 'review.submit', 'unsubscribe.apply',
   'tracking.read', 'acquisition.submit', 'research.submit', 'partners.submit',
@@ -26,7 +26,8 @@ export type ActionInput = Record<string, unknown>;
 
 export type ActionResult =
   | { ok: true; value: unknown; replayed?: boolean }
-  | { ok: false; code: string; field?: string; status?: 400 | 403 | 409 | 503; issues?: readonly { path: string; code: string; message?: string }[] };
+  | { ok: false; code: string; field?: string; status?: 400 | 403 | 409 | 503; message?: string; path?: string; subject?: string;
+    issues?: readonly { path: string; code: string; message?: string; subject?: string }[] };
 
 export interface AppConfigurationResponse {
   config: StoreConfig;

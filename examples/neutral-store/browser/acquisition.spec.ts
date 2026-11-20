@@ -15,6 +15,7 @@ import { createPostgresRenewalReservationPort } from '@openlup/platform/inventor
 import { createDirectOperatorInvitationStore, createDirectOperatorIdentityDirectory, createPostgresAccountLinkStore, createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
 import { createPostgresNotificationRecipientsPort } from '@openlup/platform/communications';
 import { configurations } from '../owned/store.config.ts';
+import { buildDemoSeed } from '../owned/demo-seed.ts';
 import type { Locale } from '../shared/config.ts';
 import { createPrivateCapture } from '../host/private-capture.ts';
 import { runScheduledCare } from '../host/scheduled-renewal.ts';
@@ -74,6 +75,101 @@ async function call(page: Page, operation: string, data: Record<string, unknown>
     headers: { Origin: material.baseURL, 'X-Starter-Request': '1', 'Idempotency-Key': key } });
   return response.json();
 }
+test('publishes and recovers an installed catalogue issue under human authority', async ({ page, browser }) => {
+  const operation = 'operator.catalogPublication', drafts = 'operator.catalogDrafts', locale = market.defaultLocale;
+  const config = configurations[material.id]!, draftId = randomUUID(), missingListId = randomUUID();
+  const priceListId = buildDemoSeed(config).priceLists[0]!.id;
+  const principal = await portalOperator(page, locale);
+  const email = (await owner.query('SELECT email FROM public.platform_human_principals WHERE principal_id=$1', [principal])).rows[0].email;
+  const example = await call(page, drafts, { action: 'example' });
+  expect(example.ok).toBe(true);
+  const payload = example.value, productId = payload.product.id, sku = payload.skus[0], variantId = sku.id;
+  const price = { schemaVersion: 1, commandKey: randomUUID(), priceListId, variantId,
+    mode: 'one_time', minQty: 1, amountKind: 'gross', unitPriceMinor: 1733, expected: { entryId: null, unitPriceMinor: null } };
+  sku.priceOperations = [{ ...price, priceListId: missingListId }];
+  expect(await call(page, drafts, { action: 'create', draftId, expectedRevision: 0, payload }))
+    .toMatchObject({ ok: true, value: { outcome: 'committed', record: { revision: 1 } } });
+  const prepare = async (expectedRevision: number) => {
+    const prepared = await call(page, drafts, { action: 'prepare', draftId, expectedRevision });
+    expect(prepared).toMatchObject({ ok: true, value: { expectedHead: null, candidateRef: expect.any(String),
+      candidateDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), preparation: { postStateDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) } } });
+    const { candidateRef, candidateDigest, expectedHead, preparation } = prepared.value;
+    const candidate = { productId, candidateRef, candidateDigest };
+    expect(await call(page, operation, { action: 'approve', ...candidate, postStateDigest: preparation.postStateDigest }))
+      .toMatchObject({ ok: true, value: { outcome: 'committed', receipt: { candidateDigest, postStateDigest: preparation.postStateDigest } } });
+    return { action: 'publish', ...candidate, expectedHead, changes: [] };
+  };
+  const snapshot = async () => (await owner.query(`SELECT
+    (SELECT count(*)::int FROM public.catalog_products WHERE id=$1) AS products,
+    (SELECT count(*)::int FROM public.catalog_skus WHERE product_id=$1) AS skus,
+    (SELECT count(*)::int FROM public.catalog_publications WHERE product_id=$1) AS issues,
+    (SELECT count(*)::int FROM public.catalog_publication_heads WHERE product_id=$1) AS heads,
+    (SELECT count(*)::int FROM public.catalog_publication_decisions WHERE product_id=$1) AS decisions,
+    (SELECT count(*)::int FROM public.catalog_operator_receipts WHERE scope_id=$1) AS receipts,
+    (SELECT count(*)::int FROM public.catalog_sku_revisions WHERE product_id=$1) AS revisions,
+    (SELECT COALESCE(jsonb_agg(jsonb_build_array(price_list_id,unit_price_minor)), '[]') FROM public.price_entries WHERE variant_id=$2) AS prices,
+    (SELECT count(*)::int FROM public.catalog_price_setup_receipts WHERE idempotency_key=ANY($3)) AS price_receipts,
+    (SELECT COALESCE(jsonb_agg(idempotency_key), '[]') FROM public.outbox_events
+      WHERE aggregate_id=$1 AND event_type='catalog.publication.committed') AS events`, [productId, variantId, [price.commandKey]])).rows[0];
+
+  const invalid = await prepare(1), invalidKey = randomUUID(), before = await snapshot();
+  const other = await browser.newContext();
+  try {
+    const unauthorised = await other.newPage();
+    for (const signedIn of [false, true]) {
+      if (signedIn) await portalOperator(unauthorised, locale, 'distributor');
+      expect(await call(unauthorised, operation, invalid, invalidKey)).toEqual({ ok: false, code: 'operator_required' });
+      expect(await call(unauthorised, operation, { action: 'receipt', productId, commandKey: invalidKey }))
+        .toEqual({ ok: false, code: 'operator_required' });
+      expect(await snapshot()).toEqual(before);
+    }
+  } finally { await other.close(); }
+  const remedy = 'Select an installed, effective price list for the settlement region and currency, then prepare the draft again.';
+  expect(await call(page, operation, invalid, invalidKey)).toMatchObject({ ok: false, code: 'price_list_not_found',
+    path: 'skus.priceOperations.priceListId', subject: missingListId, message: remedy });
+  expect(await snapshot()).toEqual(before);
+
+  sku.priceOperations = [price];
+  expect(await call(page, drafts, { action: 'revise', draftId, expectedRevision: 1, payload }))
+    .toMatchObject({ ok: true, value: { outcome: 'committed', record: { revision: 2 } } });
+  const publish = await prepare(2), commandKey = randomUUID();
+  expect(publish.candidateDigest).not.toBe(invalid.candidateDigest);
+  const lost = await page.request.post(`${material.baseURL}/api/actions/${operation}`, { data: publish,
+    headers: { Origin: material.baseURL, 'X-Starter-Request': '1', 'Idempotency-Key': commandKey } });
+  await lost.dispose();
+  expect(await snapshot()).toMatchObject({ issues: 1, revisions: 1, price_receipts: 1 });
+
+  // Age the consumed fixture challenge past its delivery cooldown before requesting another.
+  await owner.query(`UPDATE public.operator_identity_challenges SET created_at=created_at-interval '2 minutes',
+    expires_at=expires_at-interval '2 minutes', used_at=used_at-interval '2 minutes'
+    WHERE principal_id=$1 AND used_at IS NOT NULL`, [principal]);
+  const fresh = await browser.newContext();
+  try {
+    const recoveredPage = await fresh.newPage();
+    await signIn(recoveredPage, email, locale, undefined, true);
+    const recovered = await call(recoveredPage, operation, { action: 'receipt', productId, commandKey });
+    expect(recovered).toMatchObject({ ok: true, value: { outcome: 'found', receipt: { schemaVersion: 2, productId, commandKey,
+      head: { revision: 1 }, changes: [{ variantId, sku: sku.code, variantRevision: 1, state: 'draft' }] } } });
+    const { receipt } = recovered.value;
+    expect(await call(recoveredPage, operation, publish, commandKey)).toEqual({
+      ok: true, replayed: true, value: { outcome: 'replayed', receipt },
+    });
+    const { head } = receipt;
+    expect(await call(recoveredPage, operation, { action: 'current', productId }))
+      .toMatchObject({ ok: true, value: { outcome: 'found', head } });
+    expect(await call(recoveredPage, operation, { action: 'exact', head, cursor: null }))
+      .toMatchObject({ ok: true, value: { outcome: 'page', schemaVersion: 2, head, product: { id: productId },
+        items: [{ reference: { skuId: variantId, revision: 1 }, facts: { code: sku.code } }], nextCursor: null } });
+    expect(await call(recoveredPage, operation, { action: 'history', productId }))
+      .toMatchObject({ ok: true, value: { outcome: 'page', receipts: [{ head, commandKey }], nextCursor: null } });
+    expect(await snapshot()).toEqual({ products: 1, skus: 1, issues: 1, heads: 1, decisions: 2, receipts: 3,
+      revisions: 1, prices: [[priceListId, price.unitPriceMinor]], price_receipts: 1, events: [head.publicationId] });
+    expect(await call(recoveredPage, 'offer.validate', { cart: { schemaVersion: 1, configuration: material.id,
+      mode: 'one_time', cadenceDays: null, lines: [{ sku: sku.code, quantity: 1 }] } }))
+      .toEqual({ ok: false, code: 'unknown_sku' });
+  } finally { await fresh.close(); }
+});
+
 test('owned offer admission refuses forged fresh checkout requests without durable writes',async ({ page }) => {
   const config = configurations[material.id]!;
   const snapshot = async () => (await owner.query(`SELECT

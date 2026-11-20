@@ -26,6 +26,9 @@ const parsedProvenanceRefusal = "imports or reconstructs provider provenance";
 
 const OPAQUE_CARRIERS = new Map([
   ["db/platform/migrations/20261123190000_catalog_publication.sql", ["CROSS JOIN LATERAL (SELECT d.document_payload AS payload) stored"]],
+  ["db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql", [
+    "GRANT INSERT (id, product_id, revision_no, schema_id, document_ref, source_ref, document_payload, digest, provenance)",
+  ]],
   ["server/adapters/postgres/connectedStoreCapture.ts", ['"id", "product_id", "revision_no", "schema_id", "document_ref", "document_payload",']],
   [PUBLICATION_PROJECTION, [
     "AND (op->>'canonicalText')::jsonb=d.document_payload",

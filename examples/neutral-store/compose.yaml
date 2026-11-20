@@ -21,6 +21,8 @@ services:
   installation:
     build: .
     command: ['node', 'lifecycle.mjs', 'install']
+    environment:
+      STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE: /application/.context/catalogue-builds/.publication-password
     volumes:
       - installation-socket:/var/run/postgresql
       - catalogue-builds:/application/.context/catalogue-builds
@@ -32,6 +34,7 @@ services:
     command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0']
     environment:
       DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
+      STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE: /application/.context/catalogue-builds/.publication-password
     volumes:
       - catalogue-builds:/application/.context/catalogue-builds:ro
     depends_on:
@@ -53,6 +56,7 @@ configs:
     content: |
       # Only the one-shot installer receives the Unix socket volume.
       local all all trust
-      # No secrets or keys are required for this isolated fictional database.
+      host neutral_store openlup_catalog_publication all scram-sha-256
+      # Runtime access is limited to this isolated fictional database.
       host neutral_store starter_runtime all trust
       host all all all reject

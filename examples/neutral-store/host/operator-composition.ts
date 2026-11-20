@@ -2,14 +2,19 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
-  canonicalCatalogDraftJson, evaluateBundleComposition, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
-import type { PgQueryExecutor } from '@openlup/platform/data';
+  canonicalCatalogDraftJson, evaluateBundleComposition, createPostgresCatalogPublicationCommands, createPostgresCatalogPublicationReads,
+  type CatalogPublicationCommand, type CatalogPublicationFailure, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
+import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
 import { starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { ActionBinding, ActionContext, ApplicationBindings } from './bindings.ts';
 
 const refused = (code: string) => ({ ok: false as const, code });
 const success = (value: unknown) => ({ ok: true as const, value });
+function publicationRefused({ reason: code, message, path, subject }: CatalogPublicationFailure) {
+  return { ...refused(code), ...(message === undefined ? {} : { message }), ...(path === undefined ? {} : { path }),
+    ...(subject === undefined ? {} : { subject }), ...(path === undefined ? {} : { issues: [{ code, path, message, subject }] }) };
+}
 const text = (value: unknown, max = 200): value is string => typeof value === 'string'
   && value.trim() === value && value.length > 0 && value.length <= max;
 const uuid = (value: unknown): value is string => typeof value === 'string'
@@ -43,7 +48,9 @@ function publicationExample(type: CatalogProductTypeRef): CatalogDraftPayloadV3 
 }
 
 /** Operator identity is established by native request authentication before dispatch. */
-export function composeOperatorCapabilities(input: { executor: PgQueryExecutor; connectionString: string }):
+export function composeOperatorCapabilities(input: {
+  executor: PgQueryExecutor; connectionString: string; publication?: PostgresRoleFreeTransactionLane<PgQueryExecutor> | undefined;
+}):
 Pick<ApplicationBindings, 'actions' | 'close'> {
   const catalogue = starterCatalogue();
   const current = catalogue.current;
@@ -58,6 +65,41 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     authorizeOperator: async context => context.actor.operatorRef ? { actorId: context.actor.operatorRef } : null,
   });
   const actions: ApplicationBindings['actions'] = {};
+  // Native request authentication has already verified the operator session and active admin membership.
+  const authorizeHuman = async ({ actor }: ActionContext) => actor.operatorRef && actor.sessionToken
+    ? { ok: true as const, userId: actor.operatorRef, role: 'admin', isMachineActor: false } : { ok: false as const };
+  const commands = input.publication && createPostgresCatalogPublicationCommands({
+    catalogPublicationOwner: input.publication, authorizeHuman, registry: catalogue.registry,
+  });
+  const publication = input.publication && createPostgresCatalogPublicationReads({ transactions: input.publication, authorizeHuman });
+  if (commands && publication) actions['operator.catalogPublication'] = async (payload, context) => {
+    if (!(await authorizeHuman(context)).ok) return refused('operator_required');
+    if (payload.action === 'approve' || payload.action === 'publish') {
+      const { locale: _locale, ...command } = payload;
+      if (Object.hasOwn(command, 'commandKey')) return refused('starter_input_invalid');
+      const capability = await commands.authorize(context);
+      if (!capability) return refused('operator_required');
+      // The native runner strictly parses the command after attaching the transport key.
+      const result = await commands.execute({ ...command, commandKey: context.commandKey } as CatalogPublicationCommand, capability);
+      return 'reason' in result ? publicationRefused(result) : { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };
+    }
+    const { action, productId, head, commandKey, cursor = null } = payload;
+    if (cursor !== null && typeof cursor !== 'string') return refused('starter_input_invalid');
+    if (action === 'exact' && only(payload, ['action', 'head', 'cursor']) && isRecord(head)) {
+      const result = await publication.readbackV2(head as unknown as Parameters<typeof publication.readbackV2>[0], cursor);
+      return 'reason' in result ? publicationRefused(result) : success(result);
+    }
+    if (!uuid(productId)) return refused('starter_input_invalid');
+    if (action === 'receipt' && only(payload, ['action', 'productId', 'commandKey']) && text(commandKey)) {
+      const capability = await publication.authorize(context);
+      if (!capability) return refused('operator_required');
+      const result = await publication.receipt({ productId, commandKey }, capability);
+      return 'reason' in result ? publicationRefused(result) : success(result);
+    }
+    const result = action === 'current' && only(payload, ['action', 'productId']) ? await publication.reads.current(productId)
+      : action === 'history' && only(payload, ['action', 'productId', 'cursor']) ? await publication.reads.history(productId, cursor) : null;
+    return result ? ('reason' in result ? publicationRefused(result) : success(result)) : refused('starter_input_invalid');
+  };
   const support = (detail: boolean): ActionBinding => async (payload, context) => {
     if (!context.actor.operatorRef) return refused('operator_required');
     if (!only(payload, [detail ? 'customerRef' : 'query'])
@@ -154,6 +196,19 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     if (payload.action === 'prepare') {
       if (!uuid(payload.draftId) || !Number.isSafeInteger(payload.expectedRevision) || Number(payload.expectedRevision) < 1 || 'payload' in payload)
         return refused('starter_input_invalid');
+      if (commands && publication) {
+        const capability = await commands.authorize(context);
+        if (!capability) return refused('operator_required');
+        const draftRevision = Number(payload.expectedRevision);
+        const saved = await drafts.get({ draftId: payload.draftId, revision: draftRevision }, context);
+        if ('reason' in saved) return publicationRefused(saved);
+        if (!saved.record) return refused('draft_not_found');
+        const current = await publication.reads.current(saved.record.productId);
+        if ('reason' in current) return publicationRefused(current);
+        const expectedHead = current.outcome === 'found' ? current.head : null;
+        const preview = await commands.prepareCandidate({ draftId: payload.draftId, draftRevision, expectedHead }, capability);
+        return 'reason' in preview ? publicationRefused(preview) : success({ ...preview, expectedHead });
+      }
       let rulesVersion: number | undefined;
       const service = createCatalogCandidateServiceWithPublication({ registry: catalogue.registry,
         async readDraft(draftId, revision) {

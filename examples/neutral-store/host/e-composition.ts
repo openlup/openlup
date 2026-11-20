@@ -8,15 +8,8 @@ import type { PartnersB2BInquirySubmitRequest } from '@openlup/platform/marketin
 import { composeOperatorCapabilities } from './operator-composition.ts';
 import type { ActionBinding, ApplicationBindings } from './bindings.ts';
 
-interface QueryExecutor {
-  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
-}
-
 /** Call only after the selected installed catalogue and restricted roles are ready. */
-export function composeExistingCapabilities(input: {
-  executor: QueryExecutor;
-  connectionString: string;
-}): Pick<ApplicationBindings, 'actions' | 'close'> {
+export function composeExistingCapabilities(input: Parameters<typeof composeOperatorCapabilities>[0]): Pick<ApplicationBindings, 'actions' | 'close'> {
   const lifecycle = createPostgresOrderReviewLifecyclePort(input.executor);
   const reviews = createOrderReviewHandlers(lifecycle);
   const admin = createOrderReviewAdminHandlers(lifecycle, createPostgresOrderReviewAdminReadPort(input.executor));

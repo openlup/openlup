@@ -1338,14 +1338,18 @@
         {
           "file": "db/platform/migrations/20261123191000_catalog_publication_commands.sql",
           "sha256": "2a83d6f21a923669dcab4230569dcb7c1e4218d87b6c8e99589f857854725907"
+        },
+        {
+          "file": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
+          "sha256": "7860bfc9083381a0a8ecc2b41a0c2a566772df9b38e5430e8705f2c69030d983"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "b0e5b3ac447383aec5cd6185f9b24b0d669a1416a40ef9313490c16a5716d158"
+          "withRestore": "655f1e9d8c8090b50809ab7ac62002d1d82512183c8609154676d8959691411a"
         },
         "separateMigrator": {
-          "withRestore": "251787e365f84f52f45692256850352af5b104baeef10395fd3a8b74949613d6"
+          "withRestore": "73065f952461d0bfb4a6587660c1d25c42605efa912709d1b608904857f5988c"
         }
       }
     },
@@ -2890,6 +2894,11 @@
       "file": "q2_20261103200000_runtime_lock_and_conflict_completion.sql",
       "source": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
       "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
+    },
+    {
+      "file": "q2_20261123192500_catalog_publication_authority.sql",
+      "source": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
+      "sha256": "7860bfc9083381a0a8ecc2b41a0c2a566772df9b38e5430e8705f2c69030d983"
     },
     {
       "file": "qa_00000000000000_platform_baseline.sql",

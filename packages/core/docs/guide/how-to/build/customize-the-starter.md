@@ -623,22 +623,51 @@ operator, open **Catalogue drafts**, and choose **Load draft example**. To
 check the bundled title rule, clear `product.sharedContent.presentation.title`
 in the JSON and choose **Save**. Expect `title_required` at that field. Restore
 the title, save, and choose **Prepare saved draft** with the saved draft ID and
-revision. Preparation can report that publication evidence is unavailable.
-Earlier saved drafts keep their installed rule version.
+revision. Earlier saved drafts keep their installed rule version.
+
+### Publish a saved catalogue draft
+
+Run `./lifecycle up` to install the catalogue rules and provision the private
+publication connection for the demonstration host. Sign in as a human
+administrator. The following actions use the same verified operator session as
+the draft editor. Send JSON to `POST /api/actions/<operation>` from the starter
+origin with `X-Starter-Request: 1` and an `Idempotency-Key` header. Use a fresh
+UUID for each new request unless retrying a command.
+
+1. Save a version 3 draft. Send `{action: "prepare", draftId, expectedRevision}`
+   to `operator.catalogDrafts` using the saved revision. Review the returned
+   `issues` and `preparation`. The response includes the `expectedHead` resolved
+   from the saved product. A draft with prices can have a
+   `preparation.postStateDigest` while its price check is still pending.
+2. Have the administrator review the proposed effects and send
+   `{action: "approve", productId, candidateRef, candidateDigest, postStateDigest}`
+   to `operator.catalogPublication`. Use the product ID and digests from
+   preparation. Keep the decision receipt.
+3. Send `{action: "publish", productId, candidateRef, candidateDigest, expectedHead, changes: []}`
+   to the same operation with a distinct publication key. Keep the request body
+   and its key until you have the publication receipt. The example issues a
+   draft SKU. Offer admission remains an application decision.
+4. If the response is lost, sign in and send
+   `{action: "receipt", productId, commandKey}` with the original publication
+   key in the body. Use a fresh transport header for the lookup. The authorized
+   result is `found` with the full receipt or `absent`. Retry with the same
+   issuing administrator, original publish body and original header key. A
+   committed command returns the same receipt with `replayed: true`.
+5. Use `{action: "current", productId}` to read the current head. Send
+   `{action: "exact", head, cursor: null}` with the receipt's head to get the
+   schema-version 2 product and SKU facts as issued. Continue with `nextCursor` and the same head
+   until the cursor is null. Read newest-first receipt summaries with
+   `{action: "history", productId, cursor: null}` and its continuation cursor.
 
 ### Correct a price-list refusal
 
-When your application supplies a price validator for catalogue preparation,
-`price_list_not_found` in the `pricing` phase identifies a missing target
-list. A path such as `skus.0.priceOperations.0` identifies the first price
-operation on the first SKU. The issue's `subject` is that operation's
-`priceListId`.
-
-The demonstration seed in `owned/demo-seed.ts` derives one list ID from the
-selected configuration ID and its market currency. Use the list installed for
-that configuration and currency. Set the affected operation's `priceListId`
-to the installed ID, save the correction, and prepare the new draft revision.
-The supplied starter's **Prepare saved draft** action has no price validator.
+A publish response with `price_list_not_found` identifies
+`skus.priceOperations.priceListId` and carries the rejected ID as `subject`.
+Find the effective list for the selected configuration in `owned/demo-seed.ts`.
+The demonstration's `buildDemoSeed(config).priceLists[0].id` is derived from
+the configuration ID and market currency. Revise the affected operation to use
+that list and a fresh price command key. Save, prepare and approve the new draft
+revision, then publish it with a fresh publication key.
 
 ## Replace acquisition location choices
 

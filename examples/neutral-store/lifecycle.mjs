@@ -193,7 +193,7 @@ async function databaseBrowserRecipe(argv) {
   const { default: pg } = await import('pg');
   const { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } = await import('@openlup/platform/migrations');
   const { configurations } = await import('./owned/store.config.ts');
-  const { applyDemoSeed, demonstrationMarker } = await import('./installation/install.ts');
+  const { applyDemoSeed, demonstrationMarker, provisionDemonstrationPublicationPassword } = await import('./installation/install.ts');
   const { readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
   const application = root;
   const directory = resolve(application, '.context/care-browser');
@@ -249,6 +249,8 @@ async function databaseBrowserRecipe(argv) {
       const runtimeUrl = ownerUrl.replace('postgres@', 'starter_runtime@');
       const state = resolve(directory, config.id);
       await mkdir(state, { recursive: true, mode: 0o700 });
+      const publicationPasswordFile = resolve(state, 'publication-password');
+      await provisionDemonstrationPublicationPassword(owner, publicationPasswordFile);
       const keyring = resolve(state, 'quote-key.json');
       await writeFile(keyring, JSON.stringify({ current: randomBytes(32).toString('base64url') }), { mode: 0o600 });
       const probe = createServer().listen(0, '127.0.0.1');
@@ -259,7 +261,7 @@ async function databaseBrowserRecipe(argv) {
       const port = address.port;
       await new Promise(done => probe.close(() => done()));
       const host = spawn(process.execPath, ['--experimental-strip-types', resolve(application, 'host/server.ts'),
-        '--configuration', config.id, '--port', String(port), '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyring], { cwd: state, stdio: ['ignore', 'pipe', 'pipe'] });
+        '--configuration', config.id, '--port', String(port), '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyring], { cwd: state, env: { ...process.env, STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE: publicationPasswordFile }, stdio: ['ignore', 'pipe', 'pipe'] });
       hosts.push(host);
       let logs = '';
       host.stdout?.on('data', value => { logs += value.toString(); });
