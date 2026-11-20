@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PartnerAcquisitionPort } from "../../../src/domains/partners/ports.js";
 vi.mock("#deployment-route-policy", async (importOriginal) => {
   const actual = await importOriginal<typeof import("#deployment-route-policy")>();
@@ -88,6 +88,15 @@ function authOptions(allowed = true) {
     })),
   };
 }
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("partner acquisition direct BFF", () => {
   it("refuses submit and authorized transition throughout the declared legacy drain", async () => {

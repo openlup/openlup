@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createOutboxCheckoutRecoveryEmailHandler } from "./outboxCheckoutRecoveryEmailHandler.js";
 import { COMMERCE_CHECKOUT_RECOVERY_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
@@ -13,6 +13,14 @@ import {
 import type { OutboxEventRow } from "./outboxDispatchContracts.js";
 
 const OK = { ok: true as const, resendId: "re_1", httpStatus: 200, providerError: null, aborted: false };
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function makeDeps(overrides?: {
   recipient?: { email: string; firstName: string | null; country?: string | null } | null;

@@ -3,10 +3,55 @@ export { executePreparedAttemptMechanism } from "./preparedAttempt.js";
 export { paymentSourceFingerprint, paymentPayloadFingerprint, paymentTruthFingerprint,
   paymentReconciliationFingerprint, assertPaymentTruthEvent } from "./paymentTruth.js";
 export { createVerifiedPaymentIngress } from "./verifiedIngress.js";
-export { readMethodLifecycleEvent } from "./paymentMethodLifecycle.js";
+export {
+  METHOD_SCHEME_SNAPSHOT_KEY,
+  METHOD_LAST_DIGITS_SNAPSHOT_KEY,
+  METHOD_EXPIRES_AT_SNAPSHOT_KEY,
+  methodFactSnapshotKeys,
+  expiryForMethodRefWrite,
+  readMethodLifecycleEvent,
+} from "./paymentMethodLifecycle.js";
+export type { ProviderWebhookWithMethodLifecycle } from "./paymentMethodLifecycle.js";
+export {
+  evidenceToken,
+  evidenceRecord,
+  serializeFailureEvidence,
+  failureEvidencePayload,
+} from "./paymentFailureEvidence.js";
+export type {
+  FailureObservationSource,
+  FailureObservationDisposition,
+  PaymentFailureEvidence,
+} from "./paymentFailureEvidence.js";
+export { silenceIsOverdue } from "./paymentAttemptSilenceWindow.js";
+export { tryReopenPreparedAbsence } from "./paymentProviderReconciliationAbsenceReopen.js";
+export {
+  CAPTURE_REVIEW_RESULT_KIND,
+  PROTECTED_FAILURE_RESULT_KIND,
+  evidencePayload,
+  terminalAmountMismatch,
+  applyResultKey,
+  observedEvidenceKey,
+  preparedAttemptEvidenceKey,
+  absenceReopenKey,
+  absenceProbeEvidenceKey,
+  bucket,
+  clamp,
+  safeMessage,
+  classificationOf,
+} from "./paymentProviderReconciliationEvidence.js";
 export { handoffExplicitPaymentRefusal } from "./paymentWebhookPostProcessing.js";
-export { runPaymentProviderReconciliationWorker } from "./paymentProviderReconciliationWorker.js";
-export { verifyPaymentAttemptNow } from "./paymentVerifyNowService.js";
+export type { PaymentRefusalHandoff, PaymentFailureDunningPort } from "./paymentWebhookPostProcessing.js";
+export {
+  DEFAULT_STALE_AFTER_SECONDS,
+  runPaymentProviderReconciliationWorker,
+} from "./paymentProviderReconciliationWorker.js";
+export {
+  verifyPaymentAttemptNow,
+  hasCommittedCaptureReview,
+  sameCanonicalAttempt,
+  toClaimedAttemptShape,
+} from "./paymentVerifyNowService.js";
 export { runExecutionConformance, runDurableEventConformance } from "./eventConformanceRunner.js";
 export { runPaymentAdapterConformance } from "./adapterConformance.js";
 
@@ -23,7 +68,11 @@ export { paymentSchemaDescriptor } from "./schemaCapabilities.js";
 
 export { createCheckoutActivePaymentActionResolver } from "./checkoutActivePaymentActionResolver.js";
 export { createCheckoutRecoveryPaymentResolver } from "./checkoutRecoveryPaymentResolver.js";
-export { createCommercePaymentVerifyHandler } from "./paymentVerifyNowHandler.js";
+export {
+  paymentVerifyRequestSchema,
+  createCommercePaymentVerifyHandler,
+} from "./paymentVerifyNowHandler.js";
+export type { PaymentVerifyRequest } from "./paymentVerifyNowHandler.js";
 
 export { createPaymentServices } from "./bindings.js";
 
@@ -43,3 +92,9 @@ export { createPostgresRecordedSubscriptionMethodReader } from "./postgresSubscr
 export { createPostgresPaymentProviderReconciliationPort } from "./postgresPaymentProviderReconciliation.js";
 export { createPostgresProviderPaymentRail } from "./postgresProviderRail.js";
 export type { PostgresProviderPaymentRail, PostgresProviderAttemptSnapshot } from "./postgresProviderRail.js";
+export {
+  createPaymentProviderRegistry,
+  toCoreCaptureHandoff,
+  fromCoreCaptureHandoff,
+  toCorePaymentProviderCapability,
+} from "./providerRegistry.js";

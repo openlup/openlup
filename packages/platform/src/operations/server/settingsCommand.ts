@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
 import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
+import { admitDatabaseUrl, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
   explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
@@ -31,17 +32,23 @@ export type SettingsAppBindings = {
   };
 } | { configurationIds: readonly string[] };
 
+type SettingsDatabase = {
+  host: string; port: number; user: string; password: string | (() => string); database: string;
+  ssl: false | { rejectUnauthorized: true; host: string };
+};
 type SettingsHost = {
-  bind(input: { databaseUrl?: string; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
+  bind(input: { database?: SettingsDatabase; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
   loadCheck?(input: { app: string; configuration?: string }): Promise<SettingsAppBindings | undefined>;
   formatPreview?(result: PreviewDocument): string;
+  previewResultSchema?: ZodType;
 };
-type SettingsIo = { write(text: string): void; warn?(text: string): void; readStdin(): Promise<string> };
+type SettingsIo = { write(text: string): void; warn?(text: string): void; readStdin(): Promise<string>; input?: AsyncIterable<Buffer> };
 type Result = Awaited<ReturnType<typeof previewSetting<PreviewDocument>>>
   | ReturnType<typeof listSettings> | Awaited<ReturnType<typeof showSetting>> | ReturnType<typeof explainSetting>
   | z.infer<ReturnType<typeof catalogueWithAppSettings>["appShowResult"]>;
 
 const help = `openlup settings (experimental) list [--goal <text>] | show <key> | preview <key> --value <json-or-> | explain <refusal-code-or-key>
+openlup settings mcp [--app <module>] [--configuration <id>] [--database-url <url>]
 Use --json for a versioned settings document. Preview before any change.
 Pass --value - to read one JSON value from stdin or --value=-1 for a negative number.
 For connected show or preview, pass --database-url <read-capable-url>.
@@ -83,17 +90,11 @@ function text(result: Result, host?: SettingsHost): string {
 }
 
 const checkHelp = `openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
-Check reported file values against packaged schemas and run the application's optional startup validation.
+Check reported file values against available setting schemas and run the application's optional startup validation.
 Exit codes: 0 checked, 1 invalid, 2 no file member, 64 invalid syntax or configuration, 74 app module or factory not found.`;
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
 type FileBinding = NonNullable<Extract<SettingsAppBindings, { file?: unknown }>["file"]>;
-type FileSource = { location?: Location; catalogueReference?: Location };
-type FileValue = { state: "not-reported" }
-  | (FileSource & ({ state: "present"; value: JsonValue } | { state: "unreportable"; message: string }));
-type Validation = { state: "valid" | "not-validated" } | { state: "invalid"; paths: string[][] };
-type AppValidation = { state: "passed" } | { state: "not-provided"; hint?: string }
-  | { state: "failed"; message: string; phase?: "load" };
 
 type DeclaredFileEntry = Extract<SettingsFileEntry, { descriptor: unknown }>;
 type AppSetting = { setting: z.infer<typeof settingDescriptorSchema>; entry: DeclaredFileEntry; schema?: ZodType };
@@ -111,14 +112,20 @@ function inMemberOrder<T extends object>(ordered: T, original: Readonly<Record<s
   return Object.fromEntries(Object.keys(ordered).map(key => [key, original[key]])) as T;
 }
 
-function declaredSettings(file?: FileBinding) {
+function declaredSettings(file?: FileBinding, warn?: SettingsIo["warn"]) {
   const declarations = new Map<string, AppSetting>();
+  const packaged = loadSettingsCatalogue().entries;
+  const missingDescriptors: string[] = [];
   for (const [key, entry] of Object.entries(file?.entries ?? {})) {
-    if (entry?.descriptor === undefined) continue;
+    const packagedKey = packaged.some(setting => setting.key === key);
+    if (entry?.descriptor === undefined) {
+      if (warn && entry && !packagedKey) missingDescriptors.push(key);
+      continue;
+    }
     const refuse = (hint: string) => appRefusal("commerce_setting_read_input_invalid", ["file", "entries", key, "descriptor"],
       "The application setting declaration is invalid.", hint, "Correct the named declaration and retry.",
       "openlup settings list --app <module>");
-    if (loadSettingsCatalogue().entries.some(setting => setting.key === key)) {
+    if (packagedKey) {
       return refuse(`${key} is a packaged setting. Choose another key or report the installed file value and location without a descriptor.`);
     }
     if (typeof entry.location?.file !== "string" || typeof entry.location.symbol !== "string") {
@@ -151,6 +158,10 @@ function declaredSettings(file?: FileBinding) {
     });
     declarations.set(key, { setting: ordered, entry, schema });
   }
+  if (missingDescriptors.length) {
+    const keys = missingDescriptors.sort().map(key => JSON.stringify(key)).join(", ");
+    warn?.(`Settings app: value reported without a descriptor for ${keys}. Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n`);
+  }
   return { declarations };
 }
 
@@ -176,13 +187,13 @@ function isJsonValue(value: unknown, ancestors = new Set<object>()): value is Js
   return valid;
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, fallback = "Application validation failed."): string {
   try {
     const message = typeof error === "string" ? error
       : error && typeof error === "object" && "message" in error ? error.message : undefined;
-    if (typeof message === "string") return message.replace(/\s+/gu, " ").trim().slice(0, 180) || "Application validation failed.";
+    if (typeof message === "string") return message.replace(/\s+/gu, " ").trim().slice(0, 180) || fallback;
   } catch { /* A thrown value need not have a readable message. */ }
-  return "Application validation failed.";
+  return fallback;
 }
 
 async function checkApp(file?: FileBinding): Promise<AppValidation> {
@@ -196,11 +207,12 @@ async function checkApp(file?: FileBinding): Promise<AppValidation> {
   }
 }
 
-function reportedFileValue(entry: FileBinding["entries"][string] | undefined, reference?: Location): FileValue {
+function reportedFileValue(entry: FileBinding["entries"][string] | undefined): FileValue {
   if (!entry) return { state: "not-reported" };
   const { location, value } = entry;
+  if (value === undefined && entry.descriptor !== undefined) return { state: "not-reported" };
   const source = typeof location?.file === "string" && typeof location.symbol === "string"
-    ? { location: { file: location.file, symbol: location.symbol } } : reference ? { catalogueReference: reference } : {};
+    ? { location: { file: location.file, symbol: location.symbol } } : {};
   try {
     if (isJsonValue(value)) return { state: "present", ...source, value };
   } catch { /* The value cannot be inspected as JSON. */ }
@@ -230,7 +242,7 @@ async function checkDocument(file: FileBinding | undefined, appValidation: AppVa
     if (entry.kind !== "code" && entry.kind !== "installed") return [];
     const reported = file && Object.hasOwn(file.entries, entry.key) ? file.entries[entry.key] : undefined;
     const declaration = declarations?.get(entry.key);
-    const value = declaration ? appFileValue(declaration.entry) : reportedFileValue(reported, "file" in entry.change ? entry.change : undefined);
+    const value = declaration ? appFileValue(declaration.entry) : reportedFileValue(reported);
     const location = declaration?.entry.location;
     const takesEffect = location ? `${location.file} ${location.symbol}` : Object.values(entry.change).join(" ");
     return [validateFileValue(value, entry.schema ?? null, declaration?.schema).then(validation => ({
@@ -258,12 +270,10 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
     ...rows.flatMap(row => {
       const file = row.file;
       const source = file.state === "not-reported" ? undefined : file.location;
-      const reference = file.state === "not-reported" ? undefined : file.catalogueReference;
       return [
         `${row.key}: file ${file.state}, schema ${row.validation.state}${row.validation.state === "invalid"
           ? ` at ${row.validation.paths.map(path => path.join(".") || "<value>").join(", ")}` : ""}`,
-        ...(source ? [`  ${source.file} · ${source.symbol}`] : reference
-          ? [`  Starter catalogue reference — ${reference.file} · ${reference.symbol}`] : []),
+        ...(source ? [`  ${source.file} · ${source.symbol}`] : []),
         ...(file.state === "present" ? [`  Value: ${JSON.stringify(file.value)}`] : file.state === "unreportable" ? [`  ${file.message}`] : []),
         `  Effect: ${row.effect} Change: ${row.takesEffect}`,
         ...(row.store ? [`  Store: not checked. ${row.note}`] : []),
@@ -284,6 +294,39 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     const result = preview ? refuseSettingsPreview("commerce_setting_preview_input_invalid") : invalidSettingsCommand();
     return emit(field && hint ? { ...result, refusal: { ...result.refusal, path: [field], hint } } : result, 64);
   };
+  if (argv[0] === "mcp") {
+    // Hosts must route process output away from the protocol stream they pass as io.write.
+    // Hosts must supply a strict preview result schema, since the output gate accepts what that schema admits.
+    if (!io.input || !host?.previewResultSchema) return invalid();
+    // Load the loop after CLI initialization. Tools call this command for the ordinary settings operations.
+    const { runSettingsMcp, settingsMcpContext } = await import("./settingsMcp.js");
+    const { context, hint } = settingsMcpContext(argv.slice(1));
+    if (!context) {
+      io.warn?.(hint + "\n");
+      return 64;
+    }
+    if (context.app && host.loadCheck) {
+      const missing = "Check the --app path and the createSettingsBindings export.";
+      let bindings;
+      let failure = missing;
+      try {
+        bindings = await host.loadCheck({ app: context.app, configuration: context.configuration });
+      } catch (error) {
+        failure = errorMessage(error, "") || missing;
+      }
+      if (!bindings) {
+        io.warn?.(`Settings app: ${failure}\n`);
+        return 74;
+      }
+      if ("configurationIds" in bindings) {
+        const id = context.configuration ?? "";
+        io.warn?.(`Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.\n`);
+        return 64;
+      }
+    }
+    await runSettingsMcp(io.input, line => io.write(line), context, host, host.previewResultSchema);
+    return 0;
+  }
   const parser = {
     args: [...argv], allowPositionals: true,
     options: {
@@ -311,6 +354,12 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     io.write((json ? JSON.stringify({ schemaVersion: 1, help: usage }) : usage) + "\n");
     return 0;
   }
+  const configurationHint = (ids: readonly string[]) => {
+    const id = values.configuration ?? "";
+    return `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${ids.join(", ")}.`;
+  };
+  const invalidConfiguration = (ids: readonly string[]) => ({ refusal: { ...invalidSettingsCommand().refusal,
+    path: ["configuration"], hint: configurationHint(ids) } });
   const loadApp = () => host?.loadCheck?.({ app: values.app!, configuration: values.configuration });
   if (command === "check") {
     if (values["database-url"] !== undefined) return invalid("database-url", "Settings check is offline. Use settings preview with --database-url for connected effects.");
@@ -337,26 +386,24 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       } }, 74);
     }
     if ("configurationIds" in bindings) {
-      const id = values.configuration ?? "";
-      return invalid("configuration", `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`);
+      return emit(invalidConfiguration(bindings.configurationIds), 64);
     }
-    const admitted = declaredSettings(bindings.file);
+    const admitted = declaredSettings(bindings.file, io.warn);
     if ("refusal" in admitted) return emit(admitted, 64);
     return report(bindings.file, await checkApp(bindings.file), admitted.declarations);
   }
   preview = command === "preview";
   const databaseUrl = values["database-url"];
   if (values.goal !== undefined && command !== "list") return invalid("goal", "Use --goal with list.");
-  const url = databaseUrl === undefined ? undefined : URL.parse(databaseUrl);
-  const invalidDatabase = databaseUrl !== undefined && (!url?.hostname || !["postgres:", "postgresql:"].includes(url.protocol))
-    ? { path: ["database-url"], hint: databaseUrl ? "Supply a PostgreSQL URL for the intended store." : "Supply a read-capable database URL." }
-    : undefined;
+  const admission = databaseUrl === undefined ? undefined : admitDatabaseUrl(databaseUrl);
+  const invalidDatabase = admission && "hint" in admission ? admission : undefined;
+  const database = admission && "host" in admission ? admission : undefined;
   if (preview && databaseUrl === "" && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (preview && !key) return invalid("key", "Pass the setting key and one proposed JSON value with --value.");
   if (preview && extra.length) return invalid("proposed", "Pass one proposed JSON value with --value.");
   if (extra.length || (command === "list" ? key !== undefined : !key)
     || (databaseUrl !== undefined && command !== "show" && !preview)
-    || (!preview && (values.value !== undefined || values.sku || values.configuration !== undefined || values["as-of"] !== undefined))
+    || (!preview && (values.value !== undefined || values.sku || (values.configuration !== undefined && !values.app) || values["as-of"] !== undefined))
     || values.app === "") return invalid();
   if (!preview && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (command !== "list" && command !== "explain" && command !== "show" && !preview) return invalid();
@@ -368,7 +415,8 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   if (offline && (command !== "show" || !databaseUrl || "refusal" in offline
     || !("setting" in offline) || offline.setting.kind !== "installed")) {
     const exit = command === "list" && "refusal" in offline ? 64 : undefined;
-    if (!values.app || !host?.loadCheck || (command === "list" ? "refusal" in offline : !("refusal" in offline))) {
+    const packaged = command !== "list" && !("refusal" in offline);
+    if (!values.app || exit !== undefined || (values.configuration === undefined && (!host?.loadCheck || packaged))) {
       return emit(offline, exit);
     }
     const missing = "Check the --app path and the createSettingsBindings export.";
@@ -383,8 +431,12 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     try { bindings = await loadApp(); }
     catch (error) { return loadFailure(errorMessage(error), 1); }
     if (!bindings) return loadFailure(missing, 74);
+    if (values.configuration !== undefined && "configurationIds" in bindings) {
+      return emit(invalidConfiguration(bindings.configurationIds), 64);
+    }
+    if (packaged) return emit(offline, exit);
     const file = "configurationIds" in bindings ? undefined : bindings.file;
-    const admitted = declaredSettings(file);
+    const admitted = declaredSettings(file, command === "list" ? io.warn : undefined);
     if ("refusal" in admitted) return emit(admitted, 64);
     const declarations = admitted.declarations;
     if (command === "list") {
@@ -396,12 +448,12 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     let observation: z.infer<ReturnType<typeof catalogueWithAppSettings>["appShowResult"]>["observation"] = { state: "offline" };
     if (command === "show") {
       const reported = appFileValue(declaration.entry);
-      if (reported.state !== "present") {
+      if (reported.state === "unreportable") {
         const { location } = declaration.entry;
         return emit(appUnavailable(["file", "entries", key!, "value"], `Could not read ${key} at ${location.file}.`,
           "openlup settings show <key> --app <module>"), 74);
       }
-      observation = { state: "file", configuration: file.configuration, value: reported.value };
+      if (reported.state === "present") observation = { state: "file", configuration: file.configuration, value: reported.value };
     }
     const { appShowResult } = catalogueWithAppSettings([declaration.setting]);
     const result = { schemaVersion: 1 as const, setting: declaration.setting, observation };
@@ -437,21 +489,20 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       }
     }
     if (resolveConfiguration && !values.app) return [needsApp("configuration")];
-    const connectedUrl = invalidDatabase ? undefined : databaseUrl;
-    if (preview && connectedUrl && !host) return [needsApp(), 74];
+    if (preview && database && !host) return [needsApp(), 74];
     // An explicit configuration can be resolved without a pool, including before a URL refusal.
-    const bindings = (connectedUrl || resolveConfiguration)
-      ? await host?.bind({ databaseUrl: connectedUrl, app: values.app, configuration: values.configuration }) : undefined;
+    const bindings = (database || resolveConfiguration)
+      ? await host?.bind({ database, app: values.app, configuration: values.configuration }) : undefined;
     try {
       if (bindings && "configurationIds" in bindings) {
-        const id = values.configuration ?? "";
+        if (!preview) return [invalidConfiguration(bindings.configurationIds), 64];
         return [refuseSettingsPreview("commerce_setting_preview_configuration_unknown", {
-          path: ["configuration"], hint: `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`,
+          path: ["configuration"], hint: configurationHint(bindings.configurationIds),
         }), 64];
       }
       if (preview) {
         if (invalidDatabase) return [refuseSettingsPreview("commerce_setting_preview_input_invalid", invalidDatabase), 64];
-        const result = await previewSetting(input, connectedUrl ? bindings?.previewers : undefined);
+        const result = await previewSetting(input, database ? bindings?.previewers : undefined);
         if ("refusal" in result) {
           if (result.refusal.code === "commerce_setting_preview_input_invalid") return [result, 64];
           if (result.refusal.code === "commerce_setting_preview_unexpected") return [result, 74];
@@ -470,8 +521,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   }
   let outcome: [Result, number?];
   try { outcome = await dispatch(); }
-  catch {
-    const hint = "Check the read-capable database connection and that --app exports createSettingsBindings.";
+  catch (error) {
+    const hint = error instanceof Error && error.message === "NODE_PG_FORCE_NATIVE"
+      ? "Unset NODE_PG_FORCE_NATIVE for this command to use the JavaScript PostgreSQL client, then retry."
+      : "Check the read-capable database connection and that --app exports createSettingsBindings.";
     outcome = [preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint }) : unavailable(hint), 74];
   }
   return emit(...outcome);

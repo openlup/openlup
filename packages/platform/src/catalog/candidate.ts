@@ -12,7 +12,7 @@ import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
 import { z } from "./validation.js";
-import { publicationIssue } from "./publicationError.js";
+import { publicationIssue, renderPublicationIssue } from "./publicationError.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
@@ -102,7 +102,7 @@ export function createCatalogCandidateService(deps: CatalogCandidateDeps): Catal
         .update(canonicalCatalogDraftJson([{ ...payload.product.type, definitionDigest: installed }])).update(",")
         .update(canonicalCatalogDraftJson(expectedHead)).update("]").digest("hex");
       const unknown = { outcome: "unknown" as const,
-        issues: [publicationIssue("publication_preparation_unavailable", "structural", "product.type", definition.key)] };
+        issues: [renderPublicationIssue(publicationIssue("publication_preparation_unavailable", "structural", "product.type", definition.key))] };
       return { head: expectedHead, preview: { candidateRef, candidateDigest, issues,
         preparation: { structural: unknown, activation: unknown }, impact: { productId: record.productId, skuIds: payload.skus.map(sku => sku.id),
           priceOperationCount: payload.schemaVersion !== 1 ? payload.skus.reduce((sum, sku) => sum + (sku.priceOperations?.length ?? 0), 0) : 0 } } };

@@ -117,22 +117,24 @@ its users or operators can observe.
 
 ## Add a setting
 
-### Kind `code`
+Place a row in the packaged catalogue when OpenLup owns the installed policy,
+the host callback contract, the capability gap or the invariant. Keep the
+package's per-kind recipe for its domain data or executable descriptor and
+regenerate the carriers. When the application owns a configurable value in its
+code, [declare it in its settings binding](packages/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own)
+with the owned file, symbol, goal and effect. Report that file value through the
+binding, run the app's startup check, and use its settings script to verify
+discovery. Application declarations require no package catalogue edit.
 
-Use [the subscription edit window](packages/core/docs/guide/how-to/operate/settings-catalogue.md#subscriptioncreationeditwindowhours)
-for settings changed by editing the owned configuration and validated in TypeScript.
-
-1. Add a JSON entry in `packages/platform/src/<domain>/settings-data.json`. Name
-   the owned file and symbol, the existing validation, when the value takes
-   effect and which records keep their original terms.
-2. Build the workspaces and run `node scripts/settings-catalogue.ts --write`.
-   Descriptive entries need no generator edit.
-3. Run `node scripts/settings-catalogue.ts` to check that the reader-guide page
-   and packaged catalogue reproduce byte for byte.
-
-For `cap` or `invariant`, use the same data file and regeneration steps. Include
+For `cap` or `invariant`, add an entry to `packages/platform/src/<domain>/settings-data.json`
+and run the same regeneration steps as for installed settings. Include
 `key`, `domain`, `kind`, `goal`, `schemaVersion: 1`, a read-only `runtime` with one
 `reason`, and `change.reference` for where to act. Omit value fields.
+
+For `callback`, add a value descriptor to the owning domain's `settings-data.json`.
+Use `kind: "callback"` and the read-only runtime level. Describe the default,
+effect and records that keep existing values. Set `change.reference` to the guide
+for the platform callback contract, then regenerate the catalogue as below.
 
 ### Kind `installed`
 
@@ -660,8 +662,10 @@ next step and remains missing execution proof. Every applicable check still runs
 For optional local feedback after committing and recording the required native
 reviews, run the full local command set with `node scripts/verify-local.mjs` from
 the task worktree root.
-Add `--pgtap` when the change reaches database inputs (including runtime, fixture,
-configuration or harness changes), or when requesting that raw diagnostic.
+pgTAP is auto-selected when SQL changes under `db/` or `packages/*/sql/`; add
+`--pgtap` to force explicit selection when the change reaches other database
+inputs (including runtime, fixture, configuration or harness changes), or when
+requesting that raw diagnostic.
 The runner uses the commands below once: a single locked install, lint's package
 prerequisites, both reference builds, shared package/API/coverage gates and one
 `test:scoped`. Hosted shards, event-bound dependency comparison and receipt
@@ -676,22 +680,27 @@ the first root-worker observation; later synthetic fixture output cannot stand
 in for it. Machine resource policy and explicit worker settings remain effective.
 Tree-wide and UI neutrality run before installation and heavy phases: their
 Node/Git checks need no dependencies. All thirteen mandatory phases remain;
-pgTAP is still explicitly selected. The runner consumes the explained plan;
+pgTAP is auto-selected when SQL changes under `db/` or `packages/*/sql/` and
+`--pgtap` still forces explicit selection. The runner consumes the explained plan;
 execution still checks the current candidate and review before/after commands.
-Build/package/root phases stay serial because they share generated outputs.
-SSR output stays in a unique ignored worktree scratch directory so external npm
-imports still resolve; cold package artifacts stay outside the checkout.
-The first failure stops the run without an automatic retry or reuse of earlier
-passes. The manual equivalents remain available:
+Independent read-only phases (`resource: null`) run concurrently (default
+concurrency 4) before installation; build/package/root phases stay serial
+because they share generated outputs. SSR output stays in a unique ignored
+worktree scratch directory so external npm imports still resolve; cold package
+artifacts stay outside the checkout. The first failure stops further launches
+(draining any already-started read-only phases in the current wave) without an
+automatic retry or reuse of earlier passes. The manual equivalents remain available:
 
 ```bash
 # Cheap checks need no dependency install.
 npm run oss:published-tree -- --policy
 npm run oss:published-tree -- --inventory
+# Or run both in one pass with shared tree/snapshot scanning:
+npm run oss:published-tree -- --self-check
 # dco (needs no install): the commits your branch adds to origin/main
 npm run check:dco-signoff -- "$(git rev-parse origin/main)" "$(git rev-parse HEAD)"
-# gitleaks: complete history, as on main pushes; CI scans only a PR or merge-group range
-gitleaks git . --config config/gitleaks.toml --redact --no-banner
+# gitleaks: verify-local.mjs scans base..head unless config/gitleaks.toml or .gitleaksignore changed (matching CI); omit --log-opts for full history
+gitleaks git . --config config/gitleaks.toml --redact --no-banner --log-opts="$(git merge-base HEAD origin/main)..HEAD"
 node scripts/public-ci-neutrality.mjs --base-commit "$(git merge-base HEAD origin/main)"
 node --experimental-strip-types packages/ui/smoke/neutrality.ts
 # The runner uses the validated OPENLUP_STACK_BASE instead of the fork point
@@ -716,7 +725,7 @@ node --experimental-strip-types scripts/packages/required-package-gates.ts \
 npm run test:scoped
 # Hosted test-full-shard runs eight parallel independent installations, each with:
 # node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE points to runner temp)
-# npm test -- --shard=N/8 (N = 1, 2, 3, 4, 5, 6, 7, 8)
+# node scripts/ci-vitest-shard.mjs --shard N --total 8 (N = 1, 2, 3, 4, 5, 6, 7, 8)
 # pgtap (Docker required; no Supabase CLI or npm install)
 node scripts/public-ci-pgtap.mjs
 ```
@@ -731,12 +740,14 @@ See the [invoicing forward owner](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoi
 For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).
 
-The three `oss:published-tree` modes are distinct checks. `--policy` verifies
+The four `oss:published-tree` modes are distinct checks. `--policy` verifies
 the public policy, catalogue, documentation ownership, generated navigation and
-source-map freshness; `--inventory` verifies the selected
-tree, and `--typecheck` compares the preview's diagnostics with its tracked
-compatibility debt. The source repository's aggregate typechecker is not part of
-the projected command inventory and is not a substitute for `--typecheck`.
+source-map freshness; `--inventory` verifies the selected tree; `--self-check`
+runs both `--policy` and `--inventory` in a single pass over the tracked tree
+and source-release snapshot; and `--typecheck` compares the preview's
+diagnostics with its tracked compatibility debt. The source repository's
+aggregate typechecker is not part of the projected command inventory and is not
+a substitute for `--typecheck`.
 `check:dco-signoff` takes both range ends as full 40-character commit SHAs,
 hence `git rev-parse`: it refuses a short SHA or a ref name with exit code 2,
 and exits 1 on a range that contains no commit. In a fork, use the remote that
@@ -955,13 +966,24 @@ the hosted runner's CPU speed; size bounds for hosted runners as described below
 Locale overrides (`LC_*`), a system gitconfig and `OPENLUP_STACK_BASE` are also
 removed; other local environment variables pass through unchanged.
 
-`preflight` is advisory: no CI job or review step runs it, and it exits non-zero
+Run `npm run preflight -- --fast` before reporting a change ready and before starting reviewers.
+It checks worktree cleanliness, mergeability against `origin/main`, both neutrality gates,
+ast-grep, publication policy and inventory, and DCO. If fetch fails, it uses the local `origin/main`.
+The fast tier does not replace full preflight or hosted CI.
+
+Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
 `git merge-base HEAD origin/main`, plus uncommitted and untracked files, and prints
 one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
 
 - the published-tree typecheck of the required `typecheck` job, after the package build;
 - the ast-grep scan from [lint rules](#commands-and-lint-rules);
+- `ast-grep hygiene`: the first-line file-wide `ast-grep-ignore` check and
+  `ast-grep` rule tests (`ast-grep test --skip-snapshot-tests`);
+- `eslint changed`: ESLint on changed non-deleted JS/TS files before package builds;
+- `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
+  changed; reports `WARN` when the working tree has uncommitted or untracked
+  changes;
 - `npm run inventory:refresh` when SQL under `db/` or `packages/*/sql/` changed;
   it has no check mode, so a rewritten inventory stays in the working tree and
   is reported for commit. It needs Docker and reports `WARN` without it; because
@@ -1005,7 +1027,7 @@ only after the original callback drains. Missing Docker or PostgreSQL fails the
 witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
-Hosted `test-full-shard` jobs run `npm test -- --shard=N/8` in eight independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+Hosted `test-full-shard` jobs run `node scripts/ci-vitest-shard.mjs --shard N --total 8` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`) in eight independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard
@@ -1163,7 +1185,7 @@ The Outbox companion reads `config/ci-images.json` through its image helper;
 image-pin-only changes therefore retain its real interruption and refusal
 witnesses even when unrelated bounded tooling fixtures are excluded.
 
-All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file and every dot-prefixed segment anywhere also runs everything. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
+All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file outside the allowlisted root documentation files (`README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `GOVERNANCE.md`, `CHANGELOG.md`) and every dot-prefixed segment anywhere also runs everything; root documentation edits still run `scripts/documentation-cli.test.ts` and all unlisted doc/policy checks. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
 
 Review input completeness against the actual test/import closure. Extend [scope falsifiers](scripts/ci-test-scope.test.ts) for the new dependency behavior; row-derived tests alone cannot discover an omitted input. Preserve shared triggers, rename/deletion coverage, identical shard selection and errors selecting everything.
 
@@ -1621,12 +1643,21 @@ authority. Review evidence grants no merge, release, settings or credential righ
      `.github` policies and agent instruction files. Admission or review machinery
      retains its higher floor.
 
-   A blocker is a correctness or security bug, or a direct contradiction of the
-   rules or acceptance criteria. Treat unjustified adopter-visible concepts or
-   steps, leaked internals and unactionable errors as material findings that block.
-   State the concrete cost. A fail-closed edge case, style or wording alone is
-   advice. Argument-parsing edge cases in a read-only command are advice unless
-   they change which store is read or report success for a refused input.
+   A blocker is a correctness or security bug, or a material contradiction of the
+   rules or acceptance criteria. Behaviour unchanged from the base is not a
+   finding of this change; record it as advice and a follow-up. A refusal stricter
+   than the criteria is advice unless it refuses a released or documented valid
+   input or has another material effect, such as a wrong-fix error. A finding
+   against a document outside the tree (brief, specification, PR body, criteria
+   wording) is advice to the lead; the reviewed tree keeps its reviews. Material
+   findings include wrong published effects or persisted data,
+   a released-API change, a security defect, and an unactionable or wrong-fix
+   error; these stay blockers in every round.
+
+   Treat unjustified adopter-visible concepts or steps, leaked internals and
+   unactionable errors as material findings that block. State the concrete cost.
+   Style or wording alone is advice. Reading the wrong store or reporting success
+   for a refused input in a read-only command is a wrong published effect.
    By default, counted reviews use a fresh local CLI
    reviewer (for example Codex) through the qualified route below; the lead
    coordinates, checks results and decides. The lead chooses reasoning effort by
@@ -1635,11 +1666,12 @@ authority. Review evidence grants no merge, release, settings or credential righ
    receipt as a PR comment, then request auto-merge once within merge authority.
    Pending checks may finish afterwards; required source and group checks must
    pass before the queue merges. Confirm the merge on `main`.
-7. **FAIL: one fix commit.** Commit the fix, then review only that fix as a delta,
-   with the open finding cards, at the same floors above. This needs the failed
-   candidate to have had its full floor of complete reviews; after a FAIL from
-   delta reviews only, the next candidate takes a full review. Close every
-   blocking finding explicitly and return to PASS when review succeeds.
+7. **FAIL: one fix commit.** Commit the fix, then review the cumulative delta
+   since the last candidate with its full floor of complete reviews, with the
+   open finding cards, at the delta floor, or take a full review if no such
+   candidate exists, the base, intent, or author changed, or the repair history
+   is no longer linear and merge-free. Close every blocking finding explicitly
+   and return to PASS when review succeeds.
 
    Count every review round. A repair cycle fails to converge if a finding of an
    already-seen class reappears on another path, the number of material findings
@@ -1737,6 +1769,18 @@ Write ignored `.context/scratch/agent-review/intent.json`:
 
 Keep the intent for the life of the change (later candidates may touch more paths);
 changing `risk` or `criteria` requires `prepare --new` and a full review.
+A ruling that only reclassifies findings as advice or states an exclusion travels
+in the brief; it does not change the intent.
+
+Use this template for the approved criteria:
+
+```text
+This change covers <one sentence describing the scope>.
+In-scope behaviours: <complete list>. In-scope paths: <complete list>.
+Out of scope: <one sentence>.
+Proofs: <complete list of behaviour proofs, each failing when its behaviour is
+reverted>; required checks: <the repository checks that must pass>.
+```
 
 Codex may omit `authorSessionId` to use `CODEX_THREAD_ID`. Refresh the local main
 reference before preparation so the cheap merge preflight catches known conflicts.
@@ -1811,14 +1855,17 @@ on that tree cover interaction with main.
 
 Before each external write, recheck actual authority, the live head and the
 applicable receipt. A known failed required check needs diagnosis. Conflicting
-mergeability stops enqueue attempts; `UNKNOWN` permits one fresh read, then
-diagnosis. Leave `BEHIND` to the queue. Never use `--admin` for this route.
+mergeability stops enqueue attempts. If mergeability is `UNKNOWN` while checking
+manually, take one fresh read, then diagnose. Leave `BEHIND` to the queue. Never
+use `--admin` for this route.
 A non-null `autoMergeRequest` means armed; only `mergeQueueEntry` confirms queue
 entry. Observe an existing request instead of repeatedly arming it.
 
 Where activated, trusted `Queue Handoff` can insert a still-armed exact head once
-after the required source successes and current native proof. It does not arm
-an unarmed PR, poll or automatically requeue an evicted head. Its App is scoped
+after the required source successes and current native proof. At each of its two
+mergeability checks, it re-reads `UNKNOWN` up to six times, 10 seconds apart.
+Persistent `UNKNOWN` requires re-running the job. It does not arm an unarmed PR
+or automatically requeue an evicted head. Its App is scoped
 to this repository with no bypass; its private key stays in the main-only
 `openlup-merge-queue` environment, separate from release credentials. Queue
 Handoff's built-in workflow token is read-only. Activation and settings remain

@@ -1,26 +1,26 @@
 import { isValidGtin } from "./foundationSchemas.js";
 import type { CatalogDraftPayload } from "./draftSchemas.js";
-import type { CatalogDraftValidation } from "./draftValidation.js";
+import type { DraftValidationIssues } from "./draftValidation.js";
 import {
   canonicalCatalogOption, validateCatalogQuantity,
-  type CatalogDraftIssue, type CatalogProductTypeRegistry,
+  type CatalogProductTypeRegistry,
 } from "./productTypeSchemas.js";
+import { adopterIssue, publicationIssue, type Issue, type PlatformCode } from "./publicationError.js";
 
 /** The offline checker uses JSON pointers while the released draft validator retains its dot paths. */
 export function validateDraftFacts(
   payload: Pick<CatalogDraftPayload, "product" | "skus">, registry: CatalogProductTypeRegistry, jsonPointers = false,
-): CatalogDraftValidation {
+): DraftValidationIssues {
   const at = (...parts: (string | number)[]) => jsonPointers
     ? "/" + parts.map(part => String(part).replaceAll("~", "~0").replaceAll("/", "~1")).join("/")
     : parts.join(".");
-  const issues: CatalogDraftIssue[] = [];
-  const publication: CatalogDraftIssue[] = [];
-  const commercial: CatalogDraftIssue[] = [];
-  const add = (path: string, code: string) => issues.push({ path, code });
-  const missing = (path: string, code: string) => publication.push({ path, code });
+  const issues: Issue[] = [], publication: Issue[] = [], commercial: Issue[] = [];
+  const add = (path: string, code: PlatformCode) => issues.push(publicationIssue(code, undefined, path));
+  const missing = (path: string, code: PlatformCode) => publication.push(publicationIssue(code, undefined, path));
+  const assess = (path: string, code: PlatformCode) => commercial.push(publicationIssue(code, undefined, path));
   const { product, skus } = payload;
   const definition = registry.resolve(product.type);
-  if (!definition) return { valid: false, issues: [{ path: at("product", "type"), code: "type_not_installed" }] };
+  if (!definition) return { valid: false, issues: [publicationIssue("type_not_installed", undefined, at("product", "type"))] };
   const dimensions = new Map(definition.dimensions.map((dimension) => [dimension.key, dimension]));
   const netContentKey = definition.dimensions.find((dimension) => dimension.kind === "quantity" && dimension.role === "net_content")?.key;
   if (new Set(product.dimensions).size !== product.dimensions.length) add(at("product", "dimensions"), "duplicate_dimension");
@@ -29,9 +29,8 @@ export function validateDraftFacts(
   });
   if (product.sharedContent !== undefined) {
     const path = at("product", "sharedContent");
-    issues.push(...definition.validateContent(product.sharedContent).map(issue => ({
-      ...issue, path: path + (issue.path ? jsonPointers ? at(...issue.path.split(".")) : `.${issue.path}` : ""),
-    })));
+    issues.push(...definition.validateContent(product.sharedContent).map(issue =>
+      adopterIssue("validateContent", issue.code, path + (issue.path ? jsonPointers ? at(...issue.path.split(".")) : `.${issue.path}` : ""))));
   } else if (!product.documentRevision) missing(at("product", "sharedContent"), "content_missing");
   if (product.documentRevision && product.documentRevision.productId !== product.id) add(at("product", "documentRevision", "productId"), "foreign_product_reference");
   if (product.primarySkuId && !skus.some((sku) => sku.id === product.primarySkuId)) add(at("product", "primarySkuId"), "primary_sku_not_in_product");
@@ -88,14 +87,14 @@ export function validateDraftFacts(
       // Checked here, not in the wire schema, so a stored revision without a quantity stays readable.
       if (identifier.packagingLevel === "case" ? (identifier.quantity ?? 0) < 2 : (identifier.quantity ?? 1) !== 1) add(skuPath("identifiers", identifierIndex, "quantity"), "trade_identifier_quantity_invalid");
     });
-    if (!sku.identifiers?.length) commercial.push({ path: skuPath("identifiers"), code: "channel_identity_not_assessed" });
-    if (!sku.identifiers?.some((identifier) => identifier.scheme === "gs1:gtin" && identifier.packagingLevel === "unit")) commercial.push({ path: skuPath("identifiers"), code: "unit_trade_identifier_missing" });
-    if (!sku.priceRef) commercial.push({ path: skuPath("priceRef"), code: "price_reference_missing" });
-    if (!sku.logisticsRef) commercial.push({ path: skuPath("logisticsRef"), code: "logistics_reference_missing" });
+    if (!sku.identifiers?.length) assess(skuPath("identifiers"), "channel_identity_not_assessed");
+    if (!sku.identifiers?.some((identifier) => identifier.scheme === "gs1:gtin" && identifier.packagingLevel === "unit")) assess(skuPath("identifiers"), "unit_trade_identifier_missing");
+    if (!sku.priceRef) assess(skuPath("priceRef"), "price_reference_missing");
+    if (!sku.logisticsRef) assess(skuPath("logisticsRef"), "logistics_reference_missing");
   });
   if (issues.length) return { valid: false, issues };
   // Opaque references are not current pricing, stock, logistics or publication proof.
-  commercial.push({ path: at("skus"), code: "commercial_activation_not_assessed" });
+  assess(at("skus"), "commercial_activation_not_assessed");
   return { valid: true, readiness: {
     publication: { status: publication.length ? "incomplete" : "not_assessed", issues: publication },
     commercial: { status: "inactive", issues: commercial },

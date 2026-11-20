@@ -1,21 +1,5 @@
 [
   {
-    "key": "offer.freeShippingFromMinor",
-    "domain": "shipping",
-    "kind": "code",
-    "goal": "Set the free shipping threshold in currency minor units.",
-    "schemaVersion": 1,
-    "examples": [],
-    "fallback": 1000,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Both samples set the threshold to 1000 minor units.",
-    "effect": {"appliesTo": "The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.", "frozenOn": ["The order draft saves the quote's shipping terms when present."], "impact": "customer-promise"},
-    "runtime": {"level": "read-only", "reason": "The starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver."},
-    "change": {"file": "owned/store.config.ts", "symbol": "offer.freeShippingFromMinor"},
-    "schema": {"type": "integer", "minimum": 0, "maximum": 2147483647, "description": "assertConfig checks whole minor units from 0 through 2147483647."},
-    "rules": []
-  },
-  {
     "key": "savedAddressValidation",
     "domain": "shipping",
     "kind": "callback",
@@ -28,7 +12,7 @@
     "whyThisDefault": "Hosts can choose address formats required by their delivery integrations while preserving existing behavior by default.",
     "effect": {"appliesTo": "Subsequent saved-address submissions after deployment.", "frozenOn": ["Existing saved addresses and captured delivery destinations keep their stored values."], "impact": "customer-promise"},
     "runtime": {"level": "read-only", "reason": "The callbacks are executable host code."},
-    "change": {"file": "owned/acquisition-policy.ts", "symbol": "savedAddressValidation"},
+    "change": {"reference": "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences"},
     "rules": []
   },
   {

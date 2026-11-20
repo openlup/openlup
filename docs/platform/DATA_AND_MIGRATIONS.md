@@ -972,11 +972,26 @@ A product can retain up to 10,000 SKUs. Native transfer also limits a packet to
 rows. A product that fits the read limit can therefore exceed the transfer
 limit. Exact reads bind the stored issue,
 document and original result by key. Admission and selected reads use the same
-native product and SKU checks. Current and legacy reads select observation
+native product and SKU checks. Stored reads do not re-run preparation rules,
+such as the refusal of a copied authored document. Data sealed outside the
+writer path is the importer's responsibility. Current and legacy reads select observation
 fields for the bounded roster. A full page checks at most 100 SKU sizes and
 loads only the selected SKU revisions, up to the 8 MiB response limit.
 
 Apply the complete native chain before binding native publication reads.
+The [publication commands forward](../../db/platform/migrations/20261123191000_catalog_publication_commands.sql)
+adds an owner-only recorder for operational decisions and issuance. It appends the
+issue, receipt, head and outbox event in the transaction that applies the approved
+effects. The same deferred admission checks validate those writes at commit.
+
+Publication reserves canonical GTINs across issuers for marked identifiers and
+reserves option combinations across all statuses for published SKUs. The
+identifier marker is nullable. Existing rows retain their issuer-scoped
+keys. New publication checks existing identifiers under the catalogue relation
+fence. A later unmarked legacy write may share a GTIN with another issuer.
+Connected restore preserves markers and recognizes the exact predecessor
+installation profile with its original identifier columns.
+
 A managed implementation can use the same relations, composite keys and
 deferred checks, with owner-only writes under row-level security and
 session-derived human membership. Category-specific storage remains with the

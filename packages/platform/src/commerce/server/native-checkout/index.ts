@@ -209,3 +209,149 @@ export function createPostgresAcquisitionCheckoutPersistence(pool: NativeAcquisi
     },
   };
 }
+
+export interface NativeCheckoutOrderRow {
+  id: string;
+  client_id: string;
+  status: string;
+  total_amount_minor: number | string;
+  currency_code: string;
+  metadata: Record<string, unknown>;
+  created_at: string | Date;
+  recreated_from_order_id: string | null;
+}
+
+export interface NativeCheckoutOrderItemRow {
+  id: string;
+  sku_id: string;
+  quantity: number;
+}
+
+export interface NativeCheckoutPriorDraftOrderRow {
+  id: string;
+  status: string;
+  total_amount_minor: number | string;
+  currency_code: string;
+  snapshot: unknown;
+  completed: boolean;
+}
+
+export interface NativeCheckoutSettlementIntentRow {
+  id: string;
+  status: string;
+  external_ref: string | null;
+}
+
+export interface PostgresNativeCheckoutHostPort {
+  readOrder(orderId: string): Promise<NativeCheckoutOrderRow | null>;
+  readOrderItems(orderId: string): Promise<NativeCheckoutOrderItemRow[]>;
+  readPriorDraftOrder(input: {
+    idempotencyKey: string;
+    clientId: string | null;
+    email: string;
+    channelKey: string;
+  }): Promise<NativeCheckoutPriorDraftOrderRow | null>;
+  openSettlementIntent(input: {
+    idempotencyKey: string;
+    orderId: string;
+    channelKey: string;
+    amountMinor: number;
+    currency: string;
+    metadataJson?: string;
+    now: string;
+  }): Promise<void>;
+  readSettlementIntent(input: {
+    orderId: string;
+    channelKey: string;
+  }): Promise<NativeCheckoutSettlementIntentRow | null>;
+  readClientEmail(input: {
+    clientId: string;
+    principalId: string;
+  }): Promise<string | null>;
+  isInitialCheckoutOrder(orderId: string): Promise<boolean>;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Additive PostgreSQL host port for native checkout order reads, settlement
+ * intent lifecycle, client email lookup, and initial-order recurring fence.
+ */
+export function createPostgresNativeCheckoutHostPort(
+  executor: NativeCheckoutQuery,
+): PostgresNativeCheckoutHostPort {
+  return {
+    async readOrder(orderId) {
+      if (!UUID_PATTERN.test(orderId)) return null;
+      const row = (await executor.query(
+        `SELECT id,client_id,status,total_amount_minor,currency_code,metadata,created_at,recreated_from_order_id
+         FROM public.commerce_orders WHERE id=$1`,
+        [orderId],
+      )).rows[0];
+      return (row as unknown as NativeCheckoutOrderRow | undefined) ?? null;
+    },
+    async readOrderItems(orderId) {
+      const result = await executor.query(
+        "SELECT id,sku_id,quantity FROM public.commerce_order_items WHERE order_id=$1 ORDER BY line_ordinal",
+        [orderId],
+      );
+      return result.rows as unknown as NativeCheckoutOrderItemRow[];
+    },
+    async readPriorDraftOrder(input) {
+      const row = (await executor.query(
+        `SELECT o.id,o.status,o.total_amount_minor,o.currency_code,o.metadata->'quoteSnapshot' AS snapshot,
+           EXISTS(SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id=o.id AND i.channel_key=$4) AS completed
+         FROM public.commerce_order_draft_receipts r
+         JOIN public.commerce_orders o ON o.id=r.order_id
+         JOIN public.clients c ON c.id=o.client_id
+         WHERE r.idempotency_key=$1 AND ($2::uuid IS NOT NULL AND c.id=$2 OR $2::uuid IS NULL AND lower(btrim(c.email))=$3)`,
+        [input.idempotencyKey, input.clientId, input.email, input.channelKey],
+      )).rows[0];
+      return (row as unknown as NativeCheckoutPriorDraftOrderRow | undefined) ?? null;
+    },
+    async openSettlementIntent(input) {
+      await executor.query(
+        "SELECT public.commerce_open_settlement_intent($1,$2::uuid,$3,$4::bigint,$5,$6::jsonb,$7::timestamptz)",
+        [
+          input.idempotencyKey,
+          input.orderId,
+          input.channelKey,
+          input.amountMinor,
+          input.currency,
+          input.metadataJson ?? "{}",
+          input.now,
+        ],
+      );
+    },
+    async readSettlementIntent(input) {
+      const row = (await executor.query(
+        "SELECT id,status,external_ref FROM public.commerce_settlement_intents WHERE order_id=$1 AND channel_key=$2",
+        [input.orderId, input.channelKey],
+      )).rows[0];
+      return (row as unknown as NativeCheckoutSettlementIntentRow | undefined) ?? null;
+    },
+    async readClientEmail(input) {
+      const row = (await executor.query(
+        "SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2",
+        [input.clientId, input.principalId],
+      )).rows[0];
+      return typeof row?.email === "string" ? row.email : null;
+    },
+    async isInitialCheckoutOrder(orderId) {
+      if (!UUID_PATTERN.test(orderId)) return false;
+      const row = (await executor.query(
+        `SELECT NOT (
+           EXISTS (SELECT 1 FROM public.subscription_cycles cycle
+             JOIN public.subscription_renewal_operations operation ON operation.id=cycle.renewal_operation_id
+             WHERE cycle.id=orders.subscription_cycle_id)
+           OR EXISTS (SELECT 1 FROM public.subscription_retry_obligations obligation
+             WHERE obligation.order_id=orders.id OR obligation.cycle_id=orders.subscription_cycle_id)
+           OR EXISTS (SELECT 1 FROM public.subscription_dunning_cases cases
+             WHERE cases.cycle_id=orders.subscription_cycle_id)
+         ) AS initial_checkout FROM public.commerce_orders orders WHERE orders.id=$1::uuid`,
+        [orderId],
+      )).rows[0];
+      return row?.initial_checkout === true;
+    },
+  };
+}

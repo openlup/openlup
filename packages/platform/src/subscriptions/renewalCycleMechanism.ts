@@ -11,6 +11,7 @@ import type {
 } from "./contracts/renewal.js";
 import {
   recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome,
+  defaultFailedRenewalResult, defaultReadRenewalTotalGrossMinor, defaultRenewalCycleKey, defaultRenewalExecutionKey,
   type RenewalPreflightPolicy, type RenewalReplayPolicy, type RenewalOutcomePolicy,
 } from "./renewalCycleRefusalMechanism.js";
 
@@ -37,6 +38,67 @@ export interface RenewalCyclePolicy<D extends HostedRenewalDue, CI, IR extends R
   preflight: RenewalPreflightPolicy<D, CI, IR>;
   replay: RenewalReplayPolicy;
   outcome: RenewalOutcomePolicy;
+}
+
+/** Build a RenewalCyclePolicy with canonical key dialect, defaults, and overridable hooks. */
+export function createDefaultRenewalCyclePolicy<
+  D extends HostedRenewalDue,
+  CI,
+  IR extends RenewalIntentResult,
+  P extends string,
+  I extends PaymentExecutionBaseInput,
+  M extends string | null | undefined,
+  F extends string,
+>(
+  overrides: Pick<
+    RenewalCyclePolicy<D, CI, IR, P, I, M, F>,
+    | "validateProvider"
+    | "intentInput"
+    | "identity"
+    | "providerFlow"
+    | "prepareInput"
+    | "executionInput"
+    | "isNotChargeable"
+    | "mandateBlockReason"
+    | "preflight"
+    | "outcome"
+  > & Partial<Omit<RenewalCyclePolicy<D, CI, IR, P, I, M, F>, "replay">> & {
+    replay?: Partial<RenewalReplayPolicy>;
+  },
+): RenewalCyclePolicy<D, CI, IR, P, I, M, F> {
+  const defaultNow = overrides.defaultNow ?? (() => new Date().toISOString());
+  const replay: RenewalReplayPolicy = {
+    scaReason: "off_session_sca_required",
+    defaultNow,
+    failure: overrides.outcome.failure,
+    unacknowledgedReason: (status) =>
+      status === "created" ? "provider_attempt_prepared_without_provider_ack" : `provider_attempt_${status}`,
+    ...overrides.replay,
+  };
+  return {
+    readTotal: defaultReadRenewalTotalGrossMinor,
+    failed: defaultFailedRenewalResult,
+    cycleKey: defaultRenewalCycleKey,
+    executionKey: defaultRenewalExecutionKey,
+    skippedNotChargeable: (due, ctx) => ({
+      subscriptionId: due.subscriptionId,
+      outcome: "skipped",
+      cycleId: ctx.cycleId,
+      cycleNumber: ctx.cycleNumber,
+      orderId: ctx.orderId,
+      paymentIntentId: ctx.paymentIntentId,
+      attemptStatus: null,
+      replayed: false,
+      reason: "subscription_not_chargeable",
+    }),
+    finalizeKey: (key) => `${key}:finalize-attempt`,
+    executionIndeterminate: () => new Error("provider_execution_indeterminate"),
+    defaultNow,
+    invalidTotalsReason: "invalid_totals",
+    reservationBlockReason: "reservation_preflight_blocked",
+    ...overrides,
+    replay,
+  };
 }
 
 /** One hosted cycle: admission and stock precede one prepare/execute/finalize. */

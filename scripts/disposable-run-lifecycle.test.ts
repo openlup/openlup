@@ -137,3 +137,32 @@ it("handles SIGTERM queued during synchronous coverage finalization", async () =
     expect(rows[0].at(-1)).toMatch(/^label=dev\.disposable\.run=/);
   } finally { clearTimeout(timer); }
 });
+
+it("skips Docker CLI sweeps on targeted unit-test runs that never label a disposable container", async () => {
+  const { clearDisposableRunActivity, disposableLabelArgs, hasDisposableRunActivity, hasTargetedTestArgs } = await import("./disposable-docker.mjs");
+  expect(hasTargetedTestArgs(["run", "scripts/ci-test-scope.test.ts"])).toBe(true);
+  expect(hasTargetedTestArgs(["run", "tests/postgres/disposableDockerReap.test.ts", "-t", "interrupt fixture", "--maxWorkers=1"])).toBe(true);
+  expect(hasTargetedTestArgs(["run", "packages/platform/test"])).toBe(true);
+  expect(hasTargetedTestArgs(["run", "--coverage"])).toBe(false);
+  expect(hasTargetedTestArgs(["run", "--config", "/tmp/vitest.config.mts", "--maxWorkers=1"])).toBe(false);
+  expect(hasTargetedTestArgs(["0"])).toBe(false);
+
+  const witnessRun = `activity-witness-${Date.now()}`;
+  expect(hasDisposableRunActivity(witnessRun)).toBe(false);
+  disposableLabelArgs({ run: witnessRun });
+  expect(hasDisposableRunActivity(witnessRun)).toBe(true);
+  clearDisposableRunActivity(witnessRun);
+  expect(hasDisposableRunActivity(witnessRun)).toBe(false);
+
+  const directory = mkdtempSync(join(scratch, "targeted-")), ownBin = join(directory, "bin"), calls = join(directory, "docker.log");
+  mkdirSync(ownBin);
+  writeFileSync(join(ownBin, "docker"), `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';appendFileSync(${JSON.stringify(calls)},JSON.stringify(process.argv.slice(2))+'\\n');`, { mode: 0o700 });
+  writeFileSync(join(ownBin, "vitest"), `#!${process.execPath}\nprocess.exit(0);`, { mode: 0o700 });
+  const child = spawn(process.execPath, [resolve("scripts/run-vitest.mjs"), "run", "scripts/ci-test-scope.test.ts"], {
+    cwd: directory,
+    env: { ...processEnvironment, CI: "false", PATH: `${ownBin}:${processEnvironment.PATH}` },
+  });
+  const [code] = await once(child, "exit");
+  expect(code).toBe(0);
+  expect(() => readFileSync(calls, "utf8")).toThrow();
+});

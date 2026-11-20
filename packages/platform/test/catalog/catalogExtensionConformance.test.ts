@@ -120,6 +120,54 @@ describe("trusted catalogue projection", () => {
 });
 
 describe("offline catalogue conformance", () => {
+  it.each([
+    { name: "camelCase", key: "recycledCover",
+      remedy: /start with a lowercase letter, then use only lowercase letters, digits, underscores or hyphens.*recycled_cover/u },
+    { name: "overlong", key: "a".repeat(65), remedy: /1–64 characters/u },
+    { name: "reserved", key: "constructor", remedy: /reserved names __proto__, constructor and prototype/u },
+  ])("explains how to fix a $name attribute key", async ({ key, remedy }) => {
+    const p = pack();
+    const attribute: AttributeDefinition = { key, scope: "product", valueType: { kind: "boolean" },
+      required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} };
+    p.types[0].attributes = [attribute];
+
+    const report = await check(p);
+    expect(report.exitCode).toBe(1);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: "definition_attribute_invalid",
+      path: "/packs/0/pack/types/0/attributes/0/key",
+      fix: expect.stringMatching(remedy),
+    }));
+
+    p.types[0].attributes = [{ ...attribute, key: "recycled_cover" }];
+    expect((await check(p)).exitCode).toBe(0);
+  });
+  it.each([
+    { name: "required locale missing from the declared locales",
+      valueType: { kind: "localized_text" as const, maxLength: 100, locales: ["en"], requiredLocales: ["pl"] },
+      correction: { kind: "localized_text" as const, maxLength: 100, locales: ["en", "pl"], requiredLocales: ["pl"] },
+      field: "requiredLocales", remedy: /^Correct the attribute definition at the reported path to match the attribute grammar\b/u },
+    { name: "text attribute with inverted bounds",
+      valueType: { kind: "text" as const, minLength: 10, maxLength: 3 },
+      correction: { kind: "text" as const, minLength: 10, maxLength: 10 },
+      field: "maxLength", remedy: /attribute kind, cardinality or bounds/u },
+  ])("explains how to fix a $name", async ({ valueType, correction, field, remedy }) => {
+    const p = pack();
+    const attribute: AttributeDefinition = { key: "description", scope: "product", valueType,
+      required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} };
+    p.types[0].attributes = [attribute];
+
+    const report = await check(p);
+    expect(report.exitCode).toBe(1);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: "definition_attribute_invalid",
+      path: `/packs/0/pack/types/0/attributes/0/valueType/${field}`,
+      fix: expect.stringMatching(remedy),
+    }));
+
+    p.types[0].attributes = [{ ...attribute, valueType: correction }];
+    expect((await check(p)).exitCode).toBe(0);
+  });
   it("conformance_reuses_row_validators", async () => {
     const cases: [string, (p: CatalogPackInput) => void][] = [
       ["definition_duplicate_identity", p => { p.types = [...p.types, p.types[0]]; }],

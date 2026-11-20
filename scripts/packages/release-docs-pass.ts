@@ -132,53 +132,189 @@ export function listReleaseDocumentation({ root, since = previousCoreTag(root), 
   return { since: since ?? null, changes: listed, websiteReferences, websiteChecked, warnings: [...new Set(warnings)] };
 }
 
-/** Compare complete top-level declaration blocks inside a report's TypeScript fences. */
-export function summarizeApiDiff(before: string, after: string): { added: string[]; removed: string[]; changed: string[] } {
-  const declarations = (source: string) => {
-    const blocks = new Map<string, Array<{ first: string; text: string }>>();
-    let fence = false, typescript = false, block: string[] = [], leading: string[] = [], first = "", key = "";
-    const finish = () => {
-      if (!block.length) return;
-      const text = block.map((line) => line.trimEnd()).join("\n").trimEnd();
-      const existing = blocks.get(key) ?? [];
-      if (!existing.some((entry) => entry.text === text)) blocks.set(key, [...existing, { first, text }]);
-      block = [];
-    };
-    for (const line of source.split(/\r?\n/u)) {
-      if (line.startsWith("```")) {
+type Declaration = { first: string; text: string };
+
+/** Compare complete top-level declaration blocks inside one declaration file or unheaded report. */
+function apiDeclarations(source: string) {
+  const blocks = new Map<string, Declaration[]>();
+  let fence = false, typescript = false, block: string[] = [], leading: string[] = [], first = "", key = "";
+  const finish = () => {
+    if (!block.length) return;
+    const text = block.map((line) => line.trimEnd()).join("\n").trimEnd();
+    const family = blocks.get(key) ?? [];
+    family.push({ first, text });
+    blocks.set(key, family);
+    block = [];
+  };
+  for (const line of source.split(/\r?\n/u)) {
+    if (line.startsWith("```")) {
+      finish();
+      leading = [];
+      typescript = !fence && /^```ts(?:\s.*)?$/u.test(line);
+      fence = !fence;
+    } else if (typescript) {
+      const declaration = /^(?:export\s+)?(?:declare\s+)?(?:default\s+)?(?:abstract\s+|async\s+)?(?:const\s+(?=enum\s))?(const|let|var|function|class|interface|type|enum|namespace|module)\b(?:\s+([\w$]+|"[^"]+"|'[^']+'))?/u.exec(line);
+      if (declaration || /^export\s+(?:\*|\{|type\s+\*)/u.test(line)) {
         finish();
+        first = line.trimEnd();
+        key = declaration?.[2] ? `${declaration[1]} ${declaration[2]}` : first;
+        block = [...leading, line];
         leading = [];
-        typescript = !fence && /^```ts(?:\s.*)?$/u.test(line);
-        fence = !fence;
-      } else if (typescript) {
-        const declaration = /^(?:export\s+)?(?:declare\s+)?(?:default\s+)?(?:abstract\s+|async\s+)?(?:const\s+(?=enum\s))?(const|let|var|function|class|interface|type|enum|namespace|module)\b(?:\s+([\w$]+|"[^"]+"|'[^']+'))?/u.exec(line);
-        if (declaration || /^export\s+(?:\*|\{|type\s+\*)/u.test(line)) {
-          finish();
-          first = line.trimEnd();
-          key = declaration?.[2] ? `${declaration[1]} ${declaration[2]}` : first;
-          block = [...leading, line];
-          leading = [];
-        } else if (/^(?:\/\/|\/\*\*| \*)/u.test(line)) leading.push(line);
-        else if (/^import\b/u.test(line)) leading = [];
-        else {
-          if (block.length) block.push(...leading, line);
-          leading = [];
-        }
+      } else if (/^(?:\/\/|\/\*\*| \*)/u.test(line)) leading.push(line);
+      else if (/^import\b/u.test(line)) leading = [];
+      else {
+        if (block.length) block.push(...leading, line);
+        leading = [];
       }
     }
-    finish();
-    return blocks;
-  };
-  const oldBlocks = declarations(before), newBlocks = declarations(after);
-  const firstLines = (blocks: Array<{ first: string }>) => blocks.map(({ first }) => first);
-  const added: string[] = [], removed: string[] = [], changed: string[] = [];
-  for (const [key, blocks] of newBlocks) {
-    const old = oldBlocks.get(key);
-    if (!old) added.push(...firstLines(blocks));
-    else if (JSON.stringify(old.map(({ text }) => text).sort()) !== JSON.stringify(blocks.map(({ text }) => text).sort())) changed.push(...firstLines(blocks));
   }
-  for (const [key, blocks] of oldBlocks) if (!newBlocks.has(key)) removed.push(...firstLines(blocks));
-  return { added: [...new Set(added)], removed: [...new Set(removed)], changed: [...new Set(changed)] };
+  finish();
+  return blocks;
+}
+
+function unmatchedDeclarations(blocks: Declaration[], opposite: Declaration[]): string[] {
+  const remaining = opposite.slice();
+  return blocks.filter(({ text }) => {
+    const match = remaining.findIndex((entry) => entry.text === text);
+    if (match === -1) return true;
+    remaining.splice(match, 1);
+    return false;
+  }).map(({ text }) => text);
+}
+
+export function summarizeApiDiff(before: string, after: string) {
+  const oldBlocks = apiDeclarations(before), newBlocks = apiDeclarations(after);
+  const added: string[] = [], removed: string[] = [], changed: string[] = [];
+  for (const [key, current] of newBlocks) {
+    const old = oldBlocks.get(key) ?? [];
+    if (!old.length && current.length === 1) added.push(current[0]!.first);
+    else if (old.length === 1 && current.length === 1) {
+      if (old[0]!.text !== current[0]!.text) changed.push(current[0]!.first);
+    } else (old.length ? changed : added).push(...unmatchedDeclarations(current, old));
+  }
+  for (const [key, old] of oldBlocks) {
+    const current = newBlocks.get(key) ?? [];
+    if (old.length === 1 && !current.length) removed.push(old[0]!.first);
+    else if (old.length > 1 || current.length > 1) removed.push(...unmatchedDeclarations(old, current));
+  }
+  return { added, removed, changed };
+}
+
+const GATES = /^packages\/[^/]+\/release-gates\.json$/u;
+const bytewise = (a: string, b: string) => Buffer.compare(Buffer.from(a), Buffer.from(b));
+const snapshotRecovery = (directory: string) =>
+  `run \`npm run api:update -w ${directory}\`, commit the snapshot changes, then rerun release:bump.`;
+
+function snapshotSections(source: string) {
+  const unheaded: string[] = [], files: Array<{ path: string; lines: string[] }> = [];
+  let lines = unheaded, fenced = false, typescript = false;
+  for (const line of source.split("\n")) {
+    const heading = !fenced && /^## (dist\/.+)$/u.exec(line.trimEnd());
+    if (heading) {
+      lines = [];
+      files.push({ path: heading[1]!, lines });
+    } else if (line.startsWith("```")) {
+      if (!fenced) typescript = /^```ts(?:\s.*)?$/u.test(line.trimEnd());
+      if (typescript) lines.push(fenced ? "```" : "```ts");
+      fenced = !fenced;
+    } else if (fenced && typescript) lines.push(line);
+  }
+  return { unheaded: unheaded.join("\n"), files };
+}
+
+function readApiSurface(root: string, ref: string, directory: string) {
+  const gates = `${directory}/release-gates.json`;
+  const paths = documentationGit(root, ["ls-tree", "-r", "-z", "--name-only", ref, "--", `${directory}/api`, gates]).toString("utf8").split("\0");
+  const read = (path: string) => documentationGit(root, ["show", `${ref}:${path}`]).toString("utf8");
+  const files = new Map<string, { body: string; report: string; carriers: Set<string>; conflicting: boolean }>();
+  const unheaded = new Map<string, string>();
+  for (const report of paths.filter((path) => API_REPORT.test(path)).sort(bytewise)) {
+    const snapshot = snapshotSections(read(report));
+    unheaded.set(report, snapshot.unheaded);
+    for (const { path, lines } of snapshot.files) {
+      const body = lines.join("\n");
+      const entry = files.get(path) ?? { body, report, carriers: new Set<string>(), conflicting: false };
+      entry.carriers.add(report);
+      entry.conflicting ||= entry.body !== body;
+      files.set(path, entry);
+    }
+  }
+  const surface = paths.includes(gates) ? (JSON.parse(read(gates)) as { packageSurface?: Record<string, { snapshot: string }> }).packageSurface : undefined;
+  const subpaths = new Map(Object.entries(surface ?? {}).map(([subpath, { snapshot }]) => [subpath, posix.join(directory, snapshot)]));
+  const configured = new Set(subpaths.values());
+  for (const [path, { carriers, conflicting }] of files) {
+    if (!conflicting) continue;
+    const reports = [...carriers];
+    const stale = reports.filter((report) => !configured.has(report));
+    const remedy = stale.length
+      ? stale.map((report) => `${report} is not a configured snapshot of @openlup/${posix.basename(directory)}: delete it, ${snapshotRecovery(directory)}`).join(" ")
+      : `regenerate the API snapshots: ${snapshotRecovery(directory)}`;
+    throw new Error(`${directory}: ${reports.join(" and ")} have conflicting bodies for ${path} at ${ref}; ${remedy}`);
+  }
+  return { files, unheaded, subpaths };
+}
+
+const declarationLabels = { added: "Added", removed: "Removed", changed: "Changed" } as const;
+type DeclarationCategory = keyof typeof declarationLabels;
+type ApiRow = { category: DeclarationCategory; file: string; text: string };
+
+function apiSections(root: string, since: string): string[] {
+  const changes = releaseChanges(root, since);
+  const paths = changes.flatMap(changedPaths);
+  const directories = new Set(paths.filter((path) => API_REPORT.test(path) || GATES.test(path)).map((path) => path.split("/").slice(0, 2).join("/")));
+  const sections: string[] = [];
+  let listedDeclarations = false, noticedSubpath = false;
+  for (const directory of directories) {
+    const before = readApiSurface(root, since, directory), after = readApiSurface(root, "HEAD", directory);
+    const reports = new Map<string, { rows: ApiRow[]; notices: string[] }>();
+    const section = (report: string) => {
+      const value = reports.get(report) ?? { rows: [], notices: [] };
+      reports.set(report, value);
+      return value;
+    };
+    const compare = (file: string, oldText: string, newText: string, oldReport: string, newReport: string) => {
+      if (oldText === newText) return;
+      const { added, removed, changed } = summarizeApiDiff(oldText, newText);
+      for (const [category, rows, report] of [["added", added, newReport], ["removed", removed, oldReport], ["changed", changed, newReport]] as const) {
+        if (rows.length) section(report).rows.push(...rows.map((text) => ({ category, file, text })));
+      }
+    };
+    for (const file of new Set([...before.files.keys(), ...after.files.keys()])) {
+      const old = before.files.get(file), current = after.files.get(file);
+      compare(file, old?.body ?? "", current?.body ?? "", old?.report ?? "", current?.report ?? "");
+    }
+    for (const { status, path, previousPath } of changes) {
+      const oldReport = previousPath ?? path;
+      const old = status === "A" ? "" : before.unheaded.get(oldReport) ?? "";
+      const current = status === "D" ? "" : after.unheaded.get(path) ?? "";
+      compare("", old, current, oldReport, path);
+    }
+    for (const [label, from, to] of [["Added", after.subpaths, before.subpaths], ["Removed", before.subpaths, after.subpaths]] as const) {
+      for (const [subpath, report] of from) if (!to.has(subpath)) section(report).notices.push(`${label} package subpath \`${subpath}\`.`);
+    }
+    for (const [report, { rows, notices }] of [...reports].sort(([a], [b]) => bytewise(a, b))) {
+      listedDeclarations ||= rows.length > 0;
+      noticedSubpath ||= notices.length > 0;
+      sections.push(`### \`${report}\``, ...notices);
+      const qualify = new Set(rows.map(({ file }) => file)).size > 1;
+      const seen = new Set<string>();
+      for (const [category, label] of Object.entries(declarationLabels)) {
+        const excerpts: string[] = [];
+        let previousFile: string | undefined;
+        for (const { file, text } of rows.filter((row) => row.category === category)) {
+          const key = `${file}\0${text}`;
+          if (seen.has(key)) throw new Error(`${directory}: indistinguishable declaration rows in ${report} for ${file || "unheaded declarations"}; regenerate the API snapshots: ${snapshotRecovery(directory)}`);
+          seen.add(key);
+          if (qualify && file !== previousFile) excerpts.push(`// ${file || "Unheaded declarations"}`);
+          excerpts.push(text);
+          previousFile = file;
+        }
+        if (excerpts.length) sections.push(`${label} declarations:`, ["```ts nocheck", "// API report diff: not compiled.", ...excerpts, "```"].join("\n"));
+      }
+    }
+  }
+  if (!listedDeclarations) sections.push(noticedSubpath || paths.some((path) => API_REPORT.test(path)) ? "No top-level declarations changed." : "No API reports changed since the previous release.");
+  return sections;
 }
 
 /** Assemble from the caller's exact consumed fragments, without reading or deleting fragment files. */
@@ -193,17 +329,8 @@ export function assembleUpgradePage({ root, version, since, fragments }: { root:
     if (notes.length) sections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
   }
   sections.push("## API changes");
-  const changes = since ? releaseChanges(root, since).filter((change) => changedPaths(change).some((path) => API_REPORT.test(path))) : [];
-  for (const change of changes) {
-    const before = change.status === "A" ? "" : documentationGit(root, ["show", `${since}:${change.previousPath ?? change.path}`]).toString("utf8");
-    const after = change.status === "D" ? "" : documentationGit(root, ["show", `HEAD:${change.path}`]).toString("utf8");
-    const { added, removed, changed } = summarizeApiDiff(before, after);
-    sections.push(`### \`${change.path}\``);
-    for (const [label, lines] of [["Added declarations", added], ["Removed declarations", removed], ["Changed declarations", changed]] as const) if (lines.length) sections.push(`${label}:`, ["```ts nocheck", "// API report diff: not compiled.", ...lines, "```"].join("\n"));
-    if (!added.length && !removed.length && !changed.length) sections.push("No top-level declarations changed.");
-  }
-  if (!since) sections.push("The previous release could not be determined: no core release tag is an ancestor of HEAD.");
-  else if (!changes.length) sections.push("No API reports changed since the previous release.");
+  if (since) sections.push(...apiSections(root, since));
+  else sections.push("The previous release could not be determined: no core release tag is an ancestor of HEAD.");
   const text = `${sections.join("\n\n")}\n`;
   const planned = planReleaseGuide(root, version, { [file]: text });
   return { text, violations: [...planned.violations, ...planned.pageViolations[file]!] };

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AGENT_CUSTOMER_READ_FLAG,
   auditAgentCustomerRead,
@@ -10,16 +10,17 @@ import {
 } from "./agentCustomerReadGuard.js";
 
 describe("agentCustomerReadGuard — flag + gate", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("commerceAgentCustomerReadEnabled reads the env flag", () => {
-    const prev = process.env.COMMERCE_AGENT_CUSTOMER_READ_ENABLED;
-    process.env.COMMERCE_AGENT_CUSTOMER_READ_ENABLED = "true";
+    vi.stubEnv("COMMERCE_AGENT_CUSTOMER_READ_ENABLED", "true");
     expect(commerceAgentCustomerReadEnabled()).toBe(true);
-    process.env.COMMERCE_AGENT_CUSTOMER_READ_ENABLED = "false";
+    vi.stubEnv("COMMERCE_AGENT_CUSTOMER_READ_ENABLED", "false");
     expect(commerceAgentCustomerReadEnabled()).toBe(false);
-    delete process.env.COMMERCE_AGENT_CUSTOMER_READ_ENABLED;
+    vi.stubEnv("COMMERCE_AGENT_CUSTOMER_READ_ENABLED", undefined);
     expect(commerceAgentCustomerReadEnabled()).toBe(false);
-    if (prev === undefined) delete process.env.COMMERCE_AGENT_CUSTOMER_READ_ENABLED;
-    else process.env.COMMERCE_AGENT_CUSTOMER_READ_ENABLED = prev;
   });
 
   it("blocks ONLY a machine actor when the flag is off; humans never blocked", () => {

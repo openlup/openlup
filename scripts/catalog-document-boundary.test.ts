@@ -13,6 +13,7 @@ const PERIMETERS = [
 ] as const;
 const PORTABLE_MIGRATION = "db/platform/migrations/20260827220000_catalog_document_revision_foundation.sql";
 const PORTABLE_ADAPTER = "packages/platform/src/catalog/catalogSkuEnvelope.ts";
+const PUBLICATION_PROJECTION = "packages/platform/src/catalog/catalogPublicationProjection.ts";
 const QUOTE_READER = "packages/platform/src/catalog/commerceQuoteCatalogRead.ts";
 const QUOTE_PAYLOAD_SELECT = "revision.document_payload AS revision_document_payload, revision.digest AS revision_digest";
 const QUOTE_PAYLOAD_USES = [
@@ -24,8 +25,12 @@ const parsedProvenance = "SyntheticProvenance";
 const parsedProvenanceRefusal = "imports or reconstructs provider provenance";
 
 const OPAQUE_CARRIERS = new Map([
-  ["db/platform/migrations/20261123190000_catalog_publication.sql", "CROSS JOIN LATERAL (SELECT d.document_payload AS payload) stored"],
-  ["server/adapters/postgres/connectedStoreCapture.ts", '"id", "product_id", "revision_no", "schema_id", "document_ref", "document_payload",'],
+  ["db/platform/migrations/20261123190000_catalog_publication.sql", ["CROSS JOIN LATERAL (SELECT d.document_payload AS payload) stored"]],
+  ["server/adapters/postgres/connectedStoreCapture.ts", ['"id", "product_id", "revision_no", "schema_id", "document_ref", "document_payload",']],
+  [PUBLICATION_PROJECTION, [
+    "AND (op->>'canonicalText')::jsonb=d.document_payload",
+    "(id,product_id,revision_no,schema_id,document_ref,source_ref,document_payload,digest,provenance)",
+  ]],
 ]);
 const documentTable = String.raw`(?:"?public"?\s*\.\s*)?"?catalog_product_document_revisions"?`;
 
@@ -123,7 +128,8 @@ function violations(files: readonly SourceFile[]): string[] {
       .split("\n")
       .filter((line) => /\bdocument_payload\b/.test(line) && !line.trimStart().startsWith("--"));
     const opaqueQuoteRead = file.path === QUOTE_READER && opaqueQuotePayloadPassThrough(file.source, payloadLines);
-    const opaqueCarrier = payloadLines.length === 1 && payloadLines[0]?.trim() === OPAQUE_CARRIERS.get(file.path);
+    const allowedCarrierLines = new Set(OPAQUE_CARRIERS.get(file.path));
+    const opaqueCarrier = payloadLines.every((line) => allowedCarrierLines.delete(line.trim()));
     if (!isTestSource && readsWholeDocument(file.source)) found.push(`${file.path}: document rows must use explicit projections`);
     const opaqueStorage = file.path === PORTABLE_MIGRATION
       && payloadLines.every((line) => /^\s*document_payload jsonb NOT NULL,\s*$/.test(line));
@@ -169,6 +175,17 @@ describe("portable catalog document boundary", () => {
   });
 
   it.each([
+    ["reads a payload field", "SELECT d.document_payload->>'name' FROM public.catalog_product_document_revisions d"],
+    ["logs the payload", "console.log(row.document_payload);"],
+    ["repeats a carrier line", "AND (op->>'canonicalText')::jsonb=d.document_payload"],
+  ])("accepts the publication projection and refuses a variant that %s", (_, extraLine) => {
+    const path = PUBLICATION_PROJECTION;
+    const source = readFileSync(join(ROOT, path), "utf8");
+    expect(violations([{ path, source }])).toEqual([]);
+    expect(violations([{ path, source: `${source}\n${extraLine}` }])).toEqual([`${path}: ${opaque}`]);
+  });
+
+  it.each([
     ["SELECT document_payload->>'name' FROM public.catalog_product_document_revisions", "document payload must remain opaque SQL storage only"],
     ["SELECT DISTINCT ON (d.id) * FROM ONLY public.catalog_product_document_revisions d", "document rows must use explicit projections"],
     ["SELECT to_jsonb(catalog_product_document_revisions) FROM public.catalog_product_document_revisions WHERE id=$1", "document rows must use explicit projections"],
@@ -180,9 +197,10 @@ describe("portable catalog document boundary", () => {
   });
 
   it("refuses a second opaque use on the same allowed path", () => {
-    const [path, use] = [...OPAQUE_CARRIERS][0]!;
-    expect(violations([{ path, source: use }])).toEqual([]);
-    expect(violations([{ path, source: `${use}\n${use}` }])).toContain(`${path}: document payload must remain opaque SQL storage only`);
+    const [path, allowedLines] = [...OPAQUE_CARRIERS][0]!;
+    const source = allowedLines.join("\n");
+    expect(violations([{ path, source }])).toEqual([]);
+    expect(violations([{ path, source: `${source}\n${source}` }])).toContain(`${path}: ${opaque}`);
   });
 
   it.each([

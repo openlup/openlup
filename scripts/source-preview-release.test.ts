@@ -287,7 +287,7 @@ const CORE_SCRIPTS = {
   "typecheck:smoke": "tsc -p tsconfig.smoke.json --noEmit",
 };
 const OUTBOX_SCRIPTS = {
-  build: "tsc -p tsconfig.build.json",
+  build: "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
   prepack: "npm run build",
   test: "vitest run test",
   prepublishOnly: "node -e \"throw new Error('OUTBOX_DIRECTORY_PUBLISH_REFUSED')\"",

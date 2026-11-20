@@ -26,6 +26,17 @@ export interface NativeSubscriptionCommandBinding {
     | SubscriptionCommandRefusal>;
 }
 
+const PREVIEW_NOOP_ACTIONS = new Set([
+  "slide_next_cycle",
+  "update_bundle",
+  "resize_bundle",
+  "update_package_template",
+  "update_plan_length",
+  "add_addon",
+  "remove_addon",
+  "update_addon_quantity",
+]);
+
 const refusalCodes = new Set<SubscriptionCommandRefusal["reason"]>([
   "multi_cycle_prepaid_unsupported",
   "subscription_command_addon_not_found",
@@ -152,10 +163,11 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
       }
     }
     let result: Record<string, unknown> | undefined;
-    if (!preview && !Object.hasOwn(input.payload, "acceptedQuoteHash")) {
+    if (!preview && !Object.hasOwn(input.payload, "acceptedQuoteHash") && PREVIEW_NOOP_ACTIONS.has(input.action)) {
       // N2 owns every command's no-op decision. Keep only its terminal noop;
       // other direct applies must retain their quote requirement without
       // persisting a speculative quote or refusal from this preview probe.
+      // Actions outside PREVIEW_NOOP_ACTIONS always refuse preview in N2.
       await executor.query("SAVEPOINT subscription_command_noop");
       const { rows } = await executor.query("SELECT public.subscription_command_preview($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz) AS response", values);
       const candidate = commandResult(subscriptionRecord(rows[0]?.response));

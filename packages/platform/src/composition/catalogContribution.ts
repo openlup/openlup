@@ -1,4 +1,5 @@
 import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+import { buildCapabilityContribution } from "./buildCapabilityContribution.js";
 
 /** Actual selected callables, supplied by the host; declarations never activate them. */
 export interface CatalogContributionInput {
@@ -14,19 +15,22 @@ export interface CatalogContributionInput {
 export function createCatalogContribution(input: CatalogContributionInput) {
   const contributions: Contribution[] = [];
   const ports: Record<string, unknown> = {};
+  let routes: { [k: string]: (...args: never[]) => unknown } = {};
   for (const module of ["catalog", "pricing", "promotions"] as const) {
-    const selected = input[module];
-    for (const [name, callable] of Object.entries(selected)) ports[`@openlup/platform/${module}:${name}`] = callable;
-    contributions.push({
-      manifest: {
-        name: "@openlup/platform", version: input.version, kind: "rail",
-        module: { id: module, kind: "capability", provides: [`./${module}`], dependsOn: [] },
-        emits: [], handles: [], schedules: [], env: [], requiredPorts: Object.keys(selected),
-        routes: module === "catalog" ? input.routes.map(route => route.id) : [],
-        ...(module === "catalog" ? { requiredSchema: input.requiredSchema } : {}),
-      },
-      handlers: [], schedules: [], routes: module === "catalog" ? input.routes : [],
+    const built = buildCapabilityContribution({
+      id: module,
+      version: input.version,
+      provides: [`./${module}`],
+      dependsOn: [],
+      ...(module === "catalog" ? { requiredSchema: input.requiredSchema, routes: input.routes } : {}),
+      ports: input[module],
+      includePort: () => true,
     });
+    contributions.push(built.contribution);
+    Object.assign(ports, built.ports);
+    if (module === "catalog") {
+      routes = built.routes;
+    }
   }
-  return { contributions, ports, routes: Object.fromEntries(input.routes.map(route => [`@openlup/platform/catalog:${route.id}`, route.handle])) };
+  return { contributions, ports, routes };
 }

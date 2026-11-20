@@ -34,9 +34,9 @@ export type {
 } from "./facts.js";
 
 /** @beta */
-export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export { FULFILLMENT_STATUS_MAP, FULFILLMENT_STATUS_EFFECTS, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
 /** @beta */
-export type { FulfillmentStatusStage, FulfillmentStatusMap } from "./statusMap.js";
+export type { FulfillmentStatusStage, FulfillmentStatusMap, FulfillmentStatusEffect } from "./statusMap.js";
 
 /** @beta */
 export { fulfillmentProgressPresentation } from "./trackingProgress.js";

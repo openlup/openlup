@@ -1,11 +1,14 @@
 import { expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { createCatalogCandidateService, type CatalogCandidateDeps } from "../../src/catalog/candidate.js";
 import { createCatalogCandidateServiceWithPublication } from "../../src/catalog/candidateService.js";
 import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 import { CATALOG_PUBLICATION_LIMITS } from "../../src/catalog/publicationContracts.js";
-import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, publicationDigest, publicationJson } from "../../src/catalog/publicationCodec.js";
+import { assertPublishedSkuDocumentExclusion, catalogPublicationManifestSchema, decodePublishedSku, decodeStoredPublicationSku, publicationDigest, publicationJson, SKU_PAGE_DEPTH } from "../../src/catalog/publicationCodec.js";
 import { loadCatalogPublicationRules } from "../../src/catalog/publicationRules.js";
 import { loadCatalogRules, withCatalogPublicationRules } from "../../src/catalog/catalogPublicationRules.js";
 import type { CatalogCandidateIssue } from "../../src/catalog/contracts/candidate.js";
@@ -16,6 +19,9 @@ import type { PublicationDraftRecord, PublicationIntent } from "../../src/catalo
 import { compileCatalogPublicationDraft } from "../../src/catalog/publicationDraft.js";
 import type { CatalogCandidatePublicationDeps } from "../../src/catalog/publicationEvidence.js";
 import { artifact, input, revision, setupRules, type PublicationFixture } from "./fixtures/publicationInput.js";
+
+import { publicationPriceRefusalReason } from "../../src/catalog/publicationError.js";
+import { publicationWireVectors } from "../../src/catalog/testing/publicationWireVectors.js";
 
 type Fixture = PublicationFixture;
 type Verdict = [preview: string | null, firstDecision: string | null, compile: string | null];
@@ -80,6 +86,37 @@ function facade(data: Fixture, deps?: Partial<CatalogCandidatePublicationDeps>, 
     ...data.observations, ...deps,
   });
 }
+
+it.each([
+  ["validateContent", "product.sharedContent.title"],
+  ["validateProduct", "product"],
+  ["validatePrices", "skus.0.priceOperations.0"],
+  ["presentationReadiness", "publication.operations.6"],
+  ["assessActivation", "product"],
+] as const)("keeps a platform-spelled code owned by %s", async (rule, path) => {
+  const code = "head_conflict";
+  const data = rule === "assessActivation" ? await revision() : input();
+  const verdict = async () => ({ ready: false, reasons: [code] });
+  if (rule === "validateContent" || rule === "validateProduct") {
+    const issues = rule === "validateContent" ? [{ path: "title", code }] : [code];
+    Object.assign(data, setupRules(artifact.replace(`${rule}: () => []`, `${rule}: () => ${JSON.stringify(issues)}`)));
+  } else if (rule === "presentationReadiness") {
+    data.observations = { ...data.observations, presentationReadiness: verdict };
+  } else if (rule === "validatePrices") {
+    withPrice(data);
+    data.validatePrices = async () => [{ path, code }];
+  } else {
+    activate(data, "eligibility");
+    media(data);
+    data.observations = { ...data.observations, verifyMedia: async () => true, assessActivation: verdict };
+  }
+  const preview = await facade(data).prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: data.expectedHead });
+  const refusal = { code, path, message: `Fix the rule violation ${code} reported by ${rule} at ${path}.` };
+  expect(preview.preparation?.activation.issues).toContainEqual(expect.objectContaining(refusal));
+  await expect(compileCatalogPublication(data)).rejects.toMatchObject({
+    outcome: "validation_issue", diagnostic: { kind: "adopterRule", rule, code, path }, message: refusal.message,
+  });
+});
 
 const priceList = "60000000-0000-4000-8000-000000000001";
 function withPrice(data: Fixture) {
@@ -249,6 +286,23 @@ const cases: Case[] = [
   }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
   diagnostic: { phase: "structural", path: "publication.operations.3", subject: "example:article" },
   message: "move the identifier after its SKU creation" },
+  ...([
+    ["a whitespace-only value", ["example:serial"], " \t ", "catalog_publication_identifier_blank", "Enter a nonblank value"],
+    ["an issuer/value pair repeated across schemes", ["example:serial", "example:alternate"], "ABC", "catalog_publication_identifier_key_reused", "Use a distinct issuer and value pair"],
+  ] as const).map(([id, schemes, value, code, remedy]): Case => ({
+    id: `identifier admission refuses ${id}`,
+    arrange(data) {
+      const sku = data.payload.skus[0]!;
+      const identifiers = schemes.map(scheme => ({ scheme, issuer: "example", value, packagingLevel: "unit" as const }));
+      sku.identifiers!.push(...identifiers);
+      data.payload.publication.operations.splice(5, 0, ...identifiers.map(identifier => ({
+        op: "create_identifier" as const, skuCode: sku.code!, ...identifier, quantity: 1, isPrimary: false, label: null, sourceRef: null,
+      })));
+    },
+    expected: reason(code),
+    diagnostic: { phase: "structural", path: `publication.operations.${4 + schemes.length}`, subject: "ARTICLE" },
+    message: `SKU ARTICLE. ${remedy}`,
+  })),
   { id: "a repeated requested mode keeps its indexed field and fix", arrange(data) {
     data.payload.product.sharedContent.requestedModes[0]!.modes = ["one_time", "one_time"];
   }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
@@ -565,7 +619,7 @@ const cases: Case[] = [
     const facts = { derived: data.payload.product.sharedContent.document! };
     data.payload.product.sharedContent.publicationSkus[0]!.facts = facts;
     operation(data, "create_sku", { facts });
-  }, expected: reason("catalog_publication_facts_invalid"), ...beforeRoute },
+  }, expected: reason("catalog_publication_document_text_copied"), ...beforeRoute },
   { id: "A-5 zero mass reaches the same ingress refusal", arrange: data => { data.payload.skus[0]!.netContent!.unscaled = "0"; },
     expected: reason("catalog_publication_integral_grams_required"),
     diagnostic: { path: "skus.0.netContent", phase: "structural", subject: "ARTICLE" } },
@@ -747,6 +801,11 @@ const cases: Case[] = [
   { id: "D-052 create must materialize every authored identifier", arrange: data => {
     data.payload.publication.operations = data.payload.publication.operations.filter(value => value.op !== "create_identifier");
   }, expected: reason("catalog_publication_identifier_effect_missing") },
+  { id: "a created product needs a presentation operation", arrange: data => {
+    data.payload.publication.operations = data.payload.publication.operations.filter(value => value.op !== "set_product_presentation");
+  }, expected: reason("catalog_publication_v3_structural_readiness_failed"), outcome: "blocked-input",
+    diagnostic: { phase: "structural", path: "product" },
+    message: "A new product needs its presentation. Add a set_product_presentation operation that matches the draft presentation." },
   { id: "D-061 authored gross below net is a hard dark refusal", arrange: data => {
     data.payload.skus[0]!.grossMass = { dimension: "mass", unit: "openlup:kg", unscaled: "99", scale: 3 };
   }, expected: reason("catalog_publication_gross_below_net") },
@@ -855,7 +914,8 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   if (draftAdvanced) expect(readDraft?.mock.calls.every(([, revision]) => revision === record.revision)).toBe(true);
   expect(replacement).not.toHaveBeenCalled();
   if (rulesAsset && diagnostic?.cause) expect(() => loadCatalogRules(Buffer.from(rulesAsset)).validateContent({}))
-    .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause, ...(message && { message: expect.stringContaining(message) }) }) }));
+    .toThrow(expect.objectContaining({ code: expected[0], diagnostic: expect.objectContaining({ hook: diagnostic.hook, cause: diagnostic.cause }),
+      ...(message && { message: expect.stringContaining(message) }) }));
   for (const [index, mode] of ["first-decision", "compile"].entries()) {
     const result = compileCatalogPublication({ ...data, record, evidence, observations,
       ...(latestReadRejects && { readCurrentHead: rejectLatest }),
@@ -863,7 +923,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
       ...(evaluation && { evaluation }) }, mode as "first-decision" | "compile");
     const decisionReason = expected[index + 1];
     if (decisionReason) await expect(result).rejects.toMatchObject({ code: decisionReason,
-      ...(decisionReason === expected[0] && diagnostic && { diagnostic: { ...diagnostic, ...(message && { message: expect.stringContaining(message) }) } }),
+      ...(decisionReason === expected[0] && diagnostic && { diagnostic, ...(message && { message: expect.stringContaining(message) }) }),
       ...((decisionReason.endsWith("_unavailable") || decisionReason === "catalog_publication_read_invalid") && { outcome: "dependency_unavailable" }) });
     else {
       const compiled = await result;
@@ -881,7 +941,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   expect(canonicalCatalogDraftJson(record.payload)).toBe(before);
   if (priceListRefusal) expect(preview?.preparation?.structural.issues).toContainEqual({ code: "price_list_not_found", phase: "pricing",
     path: "skus.0.priceOperations.0", subject: priceList,
-    message: "Select an installed price list for this price change, then prepare the draft again." });
+    message: "Fix the rule violation price_list_not_found reported by validatePrices at skus.0.priceOperations.0." });
   if (activationReady) {
     expect(preview?.preparation?.activation.outcome).toBe("ready");
     expect(assessActivation).toHaveBeenCalledTimes(4);
@@ -1036,7 +1096,7 @@ it("a supplied invalid optional hook refuses before the installer executor", asy
     id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x", types: [definition], taxClasses: [], capabilities: {},
   }, () => malformed));
   await expect(install()).rejects.toMatchObject({ code: "catalog_publication_rules_module_invalid",
-    diagnostic: { hook: "validateMembershipChange", message: expect.stringContaining("Export it as a function or omit it.") } });
+    diagnostic: { hook: "validateMembershipChange" }, message: expect.stringContaining("Export it as a function or omit it.") });
   expect(query).not.toHaveBeenCalled();
 });
 
@@ -1103,14 +1163,15 @@ it("K-3 document-free published content round-trips while the authored draft ret
   const priorDigest = createHash("sha256").update(priorText).digest("hex");
   expect(catalogPublicationManifestSchema(new Set([priorDigest])).safeParse(display(priorText)).error?.issues[0]?.path)
     .toEqual(["product", "presentation", "title"]);
-  expect(catalogPublishedSkuSchema.safeParse({ ...skus[0], facts: { derived: document } }).success).toBe(false);
+  expect(() => assertPublishedSkuDocumentExclusion({ ...skus[0]!, facts: { derived: document! } },
+    new Set([product.document!.digest]))).toThrow(/copied document/);
 });
 
 it.each([
   { id: "N-EXACT-OBJECT-COPY", field: "shortName", document: { fr: "Article", en: "Item" },
     exact: { shortName: { en: "Item", fr: "Article" } }, different: { shortName: { en: "Item", fr: "Example" } } },
-  { id: "O-EXACT-CANONICAL-STRING", field: "title", document: 'An "example" title',
-    exact: { title: 'An "example" title' }, different: { title: 'Another "example" title' } },
+  { id: "O-EXACT-CANONICAL-STRING", field: "title", document: { title: 'An "example" title' },
+    exact: { title: canonicalCatalogDraftJson({ title: 'An "example" title' }) }, different: { title: 'Another "example" title' } },
 ])("$id excludes the canonical display value from compile and the manifest", async ({ field, document, exact, different }) => {
   const data = { ...input(), ...setupRules(artifact + `
 module.exports.identifyDocument = () => ({
@@ -1176,13 +1237,13 @@ it("local dispatch decodes every installed hook result before transport", () => 
 
 it("cycle1 publication envelope exact UTF-8 boundary", () => {
   const value = { text: "é" }, text = canonicalCatalogDraftJson(value), bytes = Buffer.byteLength(text);
-  expect(() => publicationDigest(value, bytes - 1)).toThrow("catalog_publication_envelope_too_large");
+  expect(() => publicationDigest(value, bytes - 1)).toThrow(expect.objectContaining({ code: "catalog_publication_envelope_too_large" }));
   expect(publicationDigest(value, bytes)).toBe(publicationDigest(value, bytes + 1));
 
   const limit = CATALOG_PUBLICATION_LIMITS.skuBytes;
   const exactLimit = "é".repeat((limit - 2) / 2);
   expect(Buffer.byteLength(publicationJson(exactLimit, limit))).toBe(limit);
-  expect(() => publicationJson(exactLimit + "x", limit)).toThrow("catalog_publication_envelope_too_large");
+  expect(() => publicationJson(exactLimit + "x", limit)).toThrow(expect.objectContaining({ code: "catalog_publication_envelope_too_large" }));
 });
 
 it("W33 complete generated promotions must be present in the sealed draft", async () => {
@@ -1191,7 +1252,7 @@ it("W33 complete generated promotions must be present in the sealed draft", asyn
   data.evidence.product!.status = "draft";
   data.evidence.skus[0]!.status = "draft";
   data.observations = { presentationReadiness: ready };
-  await expect(compileCatalogPublication(data, "first-decision")).rejects.toThrow("catalog_publication_activation_effect_missing");
+  await expect(compileCatalogPublication(data, "first-decision")).rejects.toThrow(expect.objectContaining({ code: "catalog_publication_activation_effect_missing" }));
   data.record.payload = compileCatalogPublicationDraft(data.payload, data.payload.product.sharedContent.presentation, data.evidence);
   expect((await compileCatalogPublication(data, "first-decision")).operations.filter(operation =>
     operation.op === "set_product_status" || operation.op === "set_sku_status").map(operation => operation.op))
@@ -1223,7 +1284,7 @@ it.each(["W50_V6-N001_predicate_precedence_boundary", "W50_V6-N002_predicate_pre
   }
   for (const slug of [undefined, null, 4, {}, "", "a".repeat(65), "A", "_a", "-a", " a", "a ", "a\na", "ą", "a.b", "a/b"]) {
     Object.assign(data.payload.product, { slug });
-    expect(() => assertCatalogPublicationPreparation(data.payload)).toThrow("commerce_product_slug_unsupported");
+    expect(() => assertCatalogPublicationPreparation(data.payload)).toThrow(expect.objectContaining({ code: "commerce_product_slug_unsupported" }));
   }
 });
 
@@ -1233,8 +1294,148 @@ it("W17_V5-1856_predicate_precedence_boundary", () => {
   for (const [unscaled, accepts] of [["9007199254740992", false], ["9007199254740993", true], ["9007199254740994", true]] as const) {
     const compare = () => assertCatalogPublicationGrossMass(net, { ...net, unscaled }, definition);
     if (accepts) expect(compare).not.toThrow();
-    else expect(compare).toThrow("catalog_publication_gross_below_net");
+    else expect(compare).toThrow(expect.objectContaining({ code: "catalog_publication_gross_below_net" }));
   }
   expect(() => assertCatalogPublicationGrossMass({ ...net, unscaled: "100", scale: 0 },
     { ...net, unit: "openlup:kg", unscaled: "1", scale: 1 }, definition)).not.toThrow();
+});
+
+it("runs the shared shape vectors through the published and stored SKU decoders", async () => {
+  const { skus: [sku] } = await compileCatalogPublication(input());
+  for (const vector of publicationWireVectors.filter(vector => vector.targetBytes === undefined)) {
+    const value = vector.apply(sku!);
+    if (vector.valid) {
+      const decoded = decodePublishedSku(value, "skus.0");
+      const bytes = publicationJson(decoded, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH);
+      expect(decodeStoredPublicationSku(bytes), vector.name).toEqual(value);
+      expect(() => publicationJson({ items: [{ facts: decoded }] }), vector.name).not.toThrow();
+    } else {
+      expect(() => decodePublishedSku(value, "skus.0"), vector.name).toThrow();
+    }
+  }
+});
+
+it("checks the exact and one-byte-over UTF-8 limits on the final evaluator output after binding the receipt", async () => {
+  for (const vector of publicationWireVectors.filter(vector => vector.targetBytes !== undefined)) {
+    const data = await revision();
+    const retained = data.evidence.skus[0]!;
+    const grossMass = { ...retained.netContent, unscaled: "120" };
+    data.payload.skus.push({ ...input().payload.skus[0]!, grossMass });
+    data.record.commandKey = "k".repeat(240);
+    data.evidence.drafts[0]!.receipt = catalogPublicationClaim(data.record);
+    const issuingSku = { ...retained, grossMass, source: catalogPublicationClaim(data.record) };
+    retained.facts = (vector.apply(issuingSku) as typeof issuingSku).facts;
+    Object.assign(data, setupRules(artifact + "\nmodule.exports.deriveSkuFacts = (_text, sku) => sku.facts;"));
+    expect(Buffer.byteLength(publicationJson({ ...retained, grossMass }))).toBeLessThan(CATALOG_PUBLICATION_LIMITS.skuBytes);
+
+    const evaluation = compileCatalogPublication(data, "first-decision");
+    if (vector.valid) {
+      const { skus: [finalSku] } = await evaluation;
+      expect(finalSku!.source).toEqual(catalogPublicationClaim(data.record));
+      const wire = publicationJson(finalSku, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH);
+      expect(Buffer.byteLength(wire)).toBe(vector.targetBytes);
+      expect(decodeStoredPublicationSku(wire)).toEqual(finalSku);
+    } else {
+      await expect(evaluation).rejects.toMatchObject({
+        code: "catalog_publication_sku_too_large", diagnostic: { subject: retained.code, path: "skus" },
+        message: "Reduce the facts or details for SKU ARTICLE and prepare the publication again.",
+      });
+    }
+  }
+});
+
+it("explains how to order primary SKU selection before activation", async () => {
+  const data = input();
+  data.payload.publication.operations = data.payload.publication.operations.filter(operation => operation.op !== "set_primary_sku");
+  const activation = data.payload.publication.operations.length;
+  data.payload.publication.operations.push({ op: "set_product_status", productSlug: "article", status: "active" });
+  await expect(compileCatalogPublication(data, "first-decision")).rejects.toMatchObject({
+    code: "catalog_publication_v3_compile_product_incomplete",
+    diagnostic: { path: `publication.operations.${activation}` },
+    message: "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status.",
+  });
+});
+
+it("refuses a whole-gram amount whose authored scale cannot be issued natively", async () => {
+  const data = input();
+  const netContent = { dimension: "mass", unit: "openlup:g", unscaled: "1000", scale: 1 } as const;
+  data.payload.skus[0]!.netContent = netContent;
+  const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null };
+  const diagnostic = { code: "catalog_publication_net_weight_unsupported", path: "skus.netContent", subject: "ARTICLE",
+    message: expect.stringContaining("whole grams at scale 0") };
+  const preview = await facade(data).prepareCandidate(query);
+  expect(preview.preparation?.structural.issues).toContainEqual(expect.objectContaining(diagnostic));
+  const { message, ...field } = diagnostic;
+  for (const mode of ["first-decision", "compile"] as const)
+    await expect(compileCatalogPublication(data, mode)).rejects.toMatchObject({ code: field.code, diagnostic: field, message });
+  expect(data.payload.skus[0]!.netContent).toEqual(netContent);
+});
+
+it.each([
+  ["document", "catalog_publication_document_required"],
+  ["primarySkuId", "catalog_publication_primary_sku_required"],
+] as const)("gives a typed preparation refusal for a missing native product %s", async (field, code) => {
+  const data = input();
+  const skip = field === "document" ? ["move_document_pointer", "create_sku", "set_primary_sku",
+    "create_identifier", "set_eligibility", "set_sku_metadata", "set_offer_membership", "set_derived_sku_facts", "set_sku_status"] : ["set_primary_sku"];
+  data.payload.publication.operations = data.payload.publication.operations.filter(operation => !skip.includes(operation.op));
+  await expect(compileCatalogPublication(data)).rejects.toMatchObject({ code, diagnostic: { path: `product.${field}` } });
+});
+
+it("refuses a nested reserved key in published intent at its exact field", async () => {
+  const data = input();
+  data.payload.product.sharedContent.publicationSkus[0]!.facts = { neutral: [{ canoniCAL__text: false }] };
+  const preview = await facade(data).prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null });
+  expect(preview.preparation?.structural.issues).toContainEqual(expect.objectContaining({
+    code: "catalog_publication_reserved_carrier", path: "product.sharedContent.publicationSkus.0.facts.neutral.0.canoniCAL__text",
+  }));
+});
+
+it.each(['"scalar"', '{"label":"article"} true'])("refuses registration text %s before calling document rules", async canonicalText => {
+  const data = input();
+  const digest = createHash("sha256").update(canonicalText).digest("hex");
+  operation(data, "register_document_revision", { canonicalText, digest });
+  data.payload.product.documentRevision!.digest = digest;
+  await expect(compileCatalogPublication(data)).rejects.toMatchObject({ code: "catalog_publication_v3_document_invalid",
+    diagnostic: { path: expect.stringMatching(/^publication\.operations\.\d+\.canonicalText$/u) } });
+});
+
+it("requires a remedy at the production table for every platform code", () => {
+  const file = fileURLToPath(new URL("../../src/catalog/publicationError.ts", import.meta.url));
+  const config = fileURLToPath(new URL("../../tsconfig.build.json", import.meta.url));
+  const options = { ...ts.getParsedCommandLineOfConfigFile(config, {}, {
+    ...ts.sys, onUnRecoverableConfigFileDiagnostic: diagnostic => { throw new Error(String(diagnostic.messageText)); },
+  })!.options, noEmit: true, types: ["node"] };
+  const host = ts.createCompilerHost(options);
+  const readFile = host.readFile.bind(host);
+  const source = readFileSync(file, "utf8");
+  const sentinel = "unmapped_refusal_sentinel";
+  const extended = source.replace(/(type PlatformCode\s*=)/u, `$1 "${sentinel}" |`);
+  const table = "const publicationRefusals = {";
+  const check = (replacement: string) => {
+    host.readFile = name => name === file ? replacement : readFile(name);
+    return ts.getPreEmitDiagnostics(ts.createProgram([file], options, host));
+  };
+
+  const diagnostics = check(extended);
+  const missing = diagnostics.find(item => item.file?.fileName === file && item.code === 1360
+    && ts.flattenDiagnosticMessageText(item.messageText, "\n").includes(sentinel));
+  expect(missing).toBeDefined();
+  const line = missing!.file!.getLineAndCharacterOfPosition(missing!.start!).line;
+  expect(extended.split("\n")[line]).toContain("satisfies Record<PlatformCode, Remedy>");
+  const fixed = extended.replace(table, `${table}\n  ${sentinel}: { fix: "Supply the missing value." },`);
+  expect(check(fixed).map(item => ts.flattenDiagnosticMessageText(item.messageText, "\n"))).toEqual([]);
+}, 30_000);
+
+it("recognizes every price refusal literal emitted by the SQL claim and apply routines", () => {
+  const sql = readFileSync(new URL("../../../../db/platform/migrations/20261123191000_catalog_publication_commands.sql", import.meta.url), "utf8");
+  const claim = sql.split("CREATE FUNCTION public.catalog_price_setup_claim(")[1]!.split("\n$$;")[0]!;
+  const apply = sql.split("CREATE FUNCTION public.catalog_price_setup_apply_claimed(")[1]!.split("\n$$;")[0]!;
+  const caseRefusals = apply.match(/v_refusal\s*:=\s*CASE([\s\S]+?)\bEND;/u)?.[1] ?? "";
+  const literals = [
+    ...claim.matchAll(/'reason',\s*'([a-z_]+)'/gu),
+    ...caseRefusals.matchAll(/\bTHEN\s*'([a-z_]+)'/gu),
+    ...apply.matchAll(/\bv_refusal\s*:=\s*'([a-z_]+)'/gu),
+  ].map(match => match[1]!);
+  expect([...new Set(literals)].sort()).toEqual([...publicationPriceRefusalReason.options].sort());
 });

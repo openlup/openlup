@@ -6,9 +6,14 @@ import { readFileSync } from "node:fs";
 import { env as processEnvironment } from "node:process";
 import path from "path";
 import { flatTestTimeoutMs, type DurationSections } from "./scripts/ci-vitest-duration-keys.ts";
+import { hasTargetedTestArgs } from "./scripts/disposable-docker.mjs";
 
 // The wrapper pins only its own child; a nested invocation gets a new identity.
 const disposableRunKey = Symbol.for("openlup.disposable.run");
+const disposableWrappedKey = Symbol.for("openlup.disposable.wrapped");
+const disposableTargetedKey = Symbol.for("openlup.disposable.targeted");
+process[disposableWrappedKey] ??= Boolean(processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER);
+process[disposableTargetedKey] ??= hasTargetedTestArgs(process.argv.slice(2));
 process[disposableRunKey] ??= processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER ?? randomUUID();
 processEnvironment.OPENLUP_DISPOSABLE_RUN = process[disposableRunKey];
 delete processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER;

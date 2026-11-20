@@ -1,4 +1,4 @@
-import { catalogPublicationAdmissionRefusal } from "./catalogPublicationReads.js";
+import { nativeCatalogPublication } from "@openlup/platform/catalog";
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import {
@@ -12,9 +12,18 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
 import { assertConnectedCatalogPublications, connectedNativeStoreTables,
   connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
+const { catalogPublicationAdmissionRefusal, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
+
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
 const migrationLock = "openlup:public-platform-migrations:v1";
+// Complete sealed-history installation inventories before the nullable GTIN scheme column.
+const beforePublicationCommands = {
+  bootstrap: "1c9190ad0520e6ce8229a81ed9ba756da528986d19cad09fc1716d72dadd70c0",
+  separate: "c19175002e39e2b4100841e7138759a4dd07fe3158ebd3ce5f7283a5e8d538a9",
+  "installer-managed": "10be382792deaf1cb8f7c1620984d3c47a5c7e8b1cb1634aa7e44374370d2c00",
+  "operator-provisioned": "9979a84636b80febb605161e2df5fe14b59ad975781b697bd42fee0dcd9dc71c",
+} as const;
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
   "commerce_offer_policy_cohort_marking"] as const;
@@ -302,6 +311,15 @@ export async function restoreConnectedNativeStore(input: {
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
+  try {
+    requireDecodedPublication(decodePublicationPacket({
+      publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,
+    }));
+  } catch (error) {
+    const refusal = catalogPublicationAdmissionRefusal(error);
+    if (!refusal) throw error;
+    throw Object.assign(new PostgresTransferError("target_conflict"), { cause: refusal });
+  }
   const client = await input.owner.connect().catch(() => { throw new PostgresTransferError("database_unavailable"); });
   let locked = false, unlockFailed = false;
   let result: { captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number } | undefined;
@@ -318,8 +336,11 @@ export async function restoreConnectedNativeStore(input: {
       || facts.login !== fresh.observation.login || facts.login !== installation.migrationLogin) fail("invalid_input");
     const manifest = expectedManifest(installation);
     const expectedLedger = [manifest.baseline, ...manifest.forward];
-    if (packet.compatible.catalogueId !== manifest.objectInventorySha256
-      || fresh.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
+    const profile = installation.generation === "qualified-admin" ? installation.roleMode
+      : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
+    const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
+    if (fresh.compatible.catalogueId !== manifest.objectInventorySha256
+      || !older && packet.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");
     if (ledger.rows.length !== expectedLedger.length
@@ -347,7 +368,17 @@ export async function restoreConnectedNativeStore(input: {
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
         WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped
         AND a.attgenerated='' AND a.attidentity='' ORDER BY a.attnum`, [`public.${table}`])).rows;
-      if (JSON.stringify(actual) !== JSON.stringify(source.get(table)!.columns.map(({ name, type }) => ({ name, type })))) fail("schema_conflict", table);
+      const stored = source.get(table)!;
+      const convert = older && table === "catalog_sku_identifiers";
+      const expected = convert ? actual.slice(0, -1) : actual;
+      if (JSON.stringify(expected) !== JSON.stringify(stored.columns.map(({ name, type }) => ({ name, type }))))
+        fail("schema_conflict", table);
+      if (convert) {
+        if (actual.at(-1)?.name !== "scheme" || actual.at(-1)?.type !== "text") fail("schema_conflict", table);
+        const { rows } = await client.query<{ row: string }>(`SELECT (value::jsonb || '{"scheme":null}'::jsonb)::text AS row
+          FROM unnest($1::text[]) AS retained(value)`, [stored.rows]);
+        source.set(table, { table, columns: actual, rows: rows.map(row => row.row) });
+      }
     }
     await assertInsertTriggers(client);
     await assertOutsideEmpty(client, relations);
@@ -383,7 +414,8 @@ export async function restoreConnectedNativeStore(input: {
         // Classic subscriptions and their events use the locked owner path;
         // the generic row importer deliberately refuses their binding triggers.
         if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events"].includes(table)) {
-          const { sha256: _old, ...payload } = { ...packet.compatible, tables: [{ ...b, rows: parentOrder(table, b.rows) }] };
+          const { sha256: _old, ...payload } = { ...packet.compatible, catalogueId: manifest.objectInventorySha256,
+            tables: [{ ...b, rows: parentOrder(table, b.rows) }] };
           const bounded: CompatiblePostgresPacket = { ...payload, sha256: digest(JSON.stringify(payload)) };
           await restoreCompatiblePostgresRows({ catalogueId: manifest.objectInventorySha256, packet: bounded,
             target: { withTransaction: work => work({ query: (sql, values) => client.query(sql, values ? [...values] : undefined) }) } });
@@ -472,6 +504,7 @@ export async function restoreConnectedNativeStore(input: {
       // No alignment case or source policy is activated while shipment/hold INSERT
       // triggers replay. Preserve the captured policy only after all retained data.
       await restoreSettings(client, baseline.get("subscription_delivery_alignment_control")!, source.get("subscription_delivery_alignment_control")!);
+      await nativeCatalogPublication.assertPublishedSkuIdentity(client);
       await client.query("SET CONSTRAINTS ALL IMMEDIATE");
       await assertOutsideEmpty(client, relations);
       if (!await equalCensus(client, source)) fail("target_conflict");

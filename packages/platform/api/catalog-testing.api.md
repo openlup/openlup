@@ -110,4 +110,19 @@ export interface CatalogConformanceReport {
 /** @experimental Opt-in offline checks; JSON text only; no caller callbacks. */
 export { runCatalogExtensionConformance } from "./catalogExtensionConformance.js";
 export type { CatalogConformanceSubject, CatalogRefusalFixture, CatalogConformanceFinding, CatalogConformanceReport } from "./contracts.js";
+export { publicationWireVectors } from "./publicationWireVectors.js";
+```
+## dist/catalog/testing/publicationWireVectors.d.ts
+
+```ts
+import { type CatalogPublishedSku } from "../index.js";
+type Vector = {
+    name: string;
+    apply(sku: CatalogPublishedSku): Record<string, unknown>;
+    valid: boolean;
+    targetBytes?: number;
+    sqlNormalizesZero?: boolean;
+};
+export declare const publicationWireVectors: readonly Vector[];
+export {};
 ```

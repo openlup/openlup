@@ -52,6 +52,8 @@ export interface CatalogPublicationEvidence {
  * @experimental
  */
 export interface CatalogCandidatePublicationDeps {
+  /** Include the native v3 approval seal in complete structural preparation. */
+  includeApprovalSeal?: boolean;
   /** Share a fixed instant and any required locale or time zone across observations. */
   evaluation?: CatalogRulesContext;
   readEvidence(request: { candidate: CatalogDraftClaimV3; productId: string; expectedHead: CatalogHeadRef | null }): Promise<CatalogPublicationEvidence | null>;

@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RescheduleModal } from "@/pages/account/v2/subscriptions/modals/RescheduleModal";
 import { createReferenceI18n } from "./subscriptionMessages";
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("selected profile renewal language", () => {
   it("renders the existing modal as planned renewal/charge with a separate estimated delivery", () => {

@@ -92,11 +92,14 @@ const PENDING = {
 };
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
   getCommercePaymentStatus.mockReset();
   verifyCommercePaymentNowBounded.mockClear();
   clearCheckoutContinuation();
 });
 afterEach(() => {
+  vi.useRealTimers();
   clearCheckoutContinuation();
   vi.unstubAllGlobals();
 });

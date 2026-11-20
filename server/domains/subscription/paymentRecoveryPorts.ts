@@ -35,6 +35,7 @@ export interface SubscriptionRecoveryCaseResolution {
 export interface SubscriptionPaymentRecoverySetupPort extends SubscriptionPaymentRecoveryPort {
   resolveRecoveryCaseSubscription(input: {
     tokenEvidence: SubscriptionRecoveryTokenEvidence;
+    providerKind?: string;
   }): Promise<SubscriptionRecoveryCaseResolution | null>;
 }
 

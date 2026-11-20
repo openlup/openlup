@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createPersistedState } from "@/lib/persistentCommerceState";
 import {
@@ -19,6 +19,15 @@ import {
 import { defaultConfiguratorFormData } from "./configuratorFormStore";
 
 const KEY = getConfiguratorDraftStorageKey(PUBLIC_CONFIGURATOR_DRAFT_SCOPE);
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function intent(): ConfiguratorDraftIntent {
   return serializeConfiguratorIntent(

@@ -2,17 +2,28 @@
 
 Find the renewal stock protection horizon or other business settings before
 choosing how to change them. The [Settings catalogue](settings-catalogue.md)
-lists each key, its owner and the expected effect. This discovery surface is
-experimental.
+covers platform settings, capabilities and invariants. Use your application's
+settings script to discover settings declared by the app. This discovery surface
+is experimental.
 
 ## Find a setting
 
 From an extracted starter with matching packages installed, use the settings
-script shown in its `AGENTS.md`. Try these arguments:
+script shown in its `AGENTS.md`. The script supplies the application binding, so
+list includes both packaged settings and settings declared by the starter.
+Without an application binding, discovery covers the packaged catalogue.
+Try these arguments:
 
 - `list --goal "renewal stock protection horizon"`
 - `show inventory_renewal_protection --json`
 - `explain commerce_setting_unknown`
+
+Each goal word matches the start of a word in the setting’s description, key,
+domain or search terms, including words inside camelCase keys. A nonblank goal
+with no letters or decimal digits returns no results (a blank goal is refused
+with exit code 64). The list shows settings that match every goal word in
+catalogue order, or, if there are none, up to ten partial matches ranked by the
+number of matching words, with ties in catalogue order.
 
 The commands work offline. For settings with a value, `show` includes the value
 schema where available, the default and its source, the effect on future
@@ -22,8 +33,10 @@ run `./node_modules/.bin/openlup-context search "renewal stock protection horizo
 
 ## Read the effective behavior
 
-Offline results for package keys show catalogue metadata. For inventory and
-reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
+Offline `show` for package keys returns catalogue metadata. For a declared
+app setting with a reported value, `show` also returns a file observation with
+the configuration selected by the binding and the value it reports. For
+inventory and reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
 inventory row uses the platform fallback. For unpinned reminder episodes, an
@@ -36,9 +49,35 @@ validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, pass
 `explain checkout_recovery_reminders` to the settings script.
 
+For connected `show` and `preview`, supply a `postgres://` or `postgresql://`
+URL that exactly matches the URL parser's serialization. Omit whitespace and dot
+segments that would change its serialization. Supply one TCP host, a username,
+an optional password and one non-empty database path segment. Omit the colon for an empty password.
+For a DNS host, use lowercase letters, digits, dots and hyphens. Each label
+must begin and end with a letter or digit and can have up to 63 characters.
+The whole name can have up to 253 characters, including any trailing dot.
+The final label cannot be all digits, `0x` alone, or `0x` followed only by
+hexadecimal digits. For IPv4, use four decimal octets from 0 to 255 separated
+by dots, without leading zeros. Use brackets and lowercase hexadecimal without
+leading zeros for IPv6, compress the first longest run of two or more zero
+fields to `::`, and write a single zero field as `0`. An omitted port uses
+5432. Write an explicit port from 1 to 65535 without leading zeros. The command
+decodes the username, password and database name once. Use valid UTF-8 escapes
+and omit control characters, including escaped controls. The decoded username
+and database name each have a limit of 63 UTF-8 bytes. Omit fragments and omit
+the query entirely unless it is exactly `?sslmode=disable`, `?sslmode=require`
+or `?sslmode=verify-full`. `require` and `verify-full` verify the server
+certificate against the named host using Node's trust store. `disable` or an
+omitted mode uses plaintext. The URL alone sets the host, port, username,
+password, database and TLS mode. `PG`-prefixed environment variables and
+password files cannot change those settings. Other driver variables still
+apply. Both commands refuse when the driver loads the native client. Unset
+`NODE_PG_FORCE_NATIVE` to use the JavaScript client. Applications that replace
+the driver or pool manage their own connections.
+
 ## Check owned configuration before proposing a change
 
-1. Use `list --goal <words>` to find the key.
+1. Pass `list --goal <words>` to your application’s settings script.
 2. Run `check --configuration <id>` with the starter's settings script to read
    values from the selected owned configuration and find their locations.
 3. Edit the owned configuration and rerun `check`.
@@ -48,8 +87,8 @@ with remediation. To explain the absent-row behavior offline, pass
 
 Check uses the settings app binding offline. It opens no database connection
 and performs no writes. Installed rows say “Store: not checked.” The starter
-checks installed policies for drift at boot. Check prints an app-supplied
-location or labels the available starter catalogue reference separately.
+checks installed policies for drift at boot. Check includes a file location on
+a reported value when the binding supplies one.
 
 Check reports the application's startup validation when supplied. It uses the
 packaged schema for known package values and the supplied Zod schema for an
@@ -60,8 +99,9 @@ The starter checks its reported configuration ID against the registry and runs
 arguments and installer package availability. Seed preparation runs after
 database bootstrap.
 A file value that cannot be represented as JSON is reported as unreportable
-and fails check without a schema verdict. Value-only entries for unknown keys
-are ignored. Declared app rows use the effect and location from the declaration.
+and fails check without a schema verdict. For a value-only entry with no packaged
+key, list and check name the missing declaration on stderr. Add its descriptor
+as shown below. Declared app rows use the effect and location from the declaration.
 
 With `--json`, check emits one version-1 document. Exit 0 means checked and
 exit 1 means invalid. If importing the selected module or calling its binding
@@ -78,7 +118,9 @@ same assertion the app runs at startup. For connected effects, use
 
 ## Declare a setting of your own
 
-Keep the value and its business rule in your application's owned code. For a
+Keep the value and its business rule in your application's owned code.
+When a declared value is undefined, the key stays discoverable, show returns its
+descriptor with an offline observation, and check marks its value not reported. For a
 gift wrapping fee, put this in `owned/gift.config.ts` and call
 `quoteGiftOrderMinor` from your gift quote code.
 
@@ -123,8 +165,8 @@ From the application root, pass the owned binding to the installed command.
 ./node_modules/.bin/openlup settings --app ./owned/settings-host.ts check
 ```
 
-List finds the new key by goal. Show reports the configured value and where to
-edit it. Check reports the app row and runs the existing app validation.
+List finds the new key by goal. Show reports the file observation and where to
+edit the value. Check reports the app row and runs the existing app validation.
 In this example, change 150 to -1 to exercise the assertion. Check exits 1 and
 includes this line. Restore a valid amount and rerun check before opening your
 pull request.
@@ -144,11 +186,7 @@ Use `preview inventory_renewal_protection` with
 
 Use `--configuration <id>` to select a stock source when the app has multiple
 configurations. Use `--as-of <UTC-ISO-instant>` to repeat an observation at the
-same instant. The host can also compose the read-only MCP definition
-`settings__preview` with `previewSetting` from `@openlup/platform/operations/server`.
-Bind the inventory key to `previewRenewalStockProtection` from
-`@openlup/platform/inventory` using the intended store's pool and stock source.
-Pass through the options supplied by `previewSetting`.
+same instant.
 The CLI decodes JSON once. Preview and the installer work from decoded values,
 including finite JavaScript numbers and own JSON fields. For example,
 `14.0000000000000001` decodes to `14` and previews as `14`. A raw PostgreSQL
@@ -178,20 +216,23 @@ The starter's settings script calls the experimental package command and passes
 `--app ./owned/settings-host.ts`. Set the script to
 `openlup settings --app ./owned/settings-host.ts` in a composed app with the same
 layout. The module exports one function, `createSettingsBindings({ db, configuration })`.
-It supplies read-only readers, previewers or a stock source key for the selected
-configuration. If the requested ID is unknown, return
+The binding can supply `file` entries for offline discovery and an optional
+startup validator for `check`. Connected commands use readers, previewers or a
+stock source key from the binding. If the requested configuration ID is unknown, return
 `{ configurationIds: [...] }` with the available IDs. The CLI owns the
 database connection and calls the module without a pool when resolving
-`--configuration` offline. The module must avoid starting the application,
-writing data or printing to stdout. Pass an explicit
-`--app` only for application code you trust.
+`--configuration` offline. With an explicit `--configuration`, show and explain
+resolve it before answering even for package keys, and list the valid IDs if it is unknown.
+The module must avoid starting the application, writing data or printing to
+stdout. Pass an explicit `--app` only for application code you trust.
 
-Offline list, show and explain work without an app or database. With a
+List, show and explain work for platform keys without an app or database. With a
 PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
 A stock preview needs the application's stock source. A connected reminder
 show needs the application's checkout wave policy. A connected show of any
-installed setting requires a reader for that key. Supply `--app` when the
-command requests a binding, or omit the URL to read the catalogue offline.
+installed setting requires a reader for that key. Supply `--app` to read app
+declarations or to provide a binding for a connected read. Omit the URL to
+discover settings offline.
 
 Use `--value -` to read one JSON value from stdin. Use `--value=-1` when
 passing a negative number directly. The command exits with 0 on completion,
@@ -203,17 +244,18 @@ Use `--json` to get one settings document with `schemaVersion: 1` on stdout.
 
 A domain keeps an executable descriptor in code and exports it from a
 non-browser entry. The generator reads descriptive entries from the domain's
-data file. Installed consumers discover those entries in the packaged catalogue.
+data file. These platform entries make up the packaged catalogue.
 
 A `code` setting is supplied by the adopter's application. A `callback`
 setting binds host-owned code. An `installed` setting has a store-specific
 policy row when explicitly configured. A capability gap (`cap`) or platform
-invariant (`invariant`) has no editable setting value.
+invariant (`invariant`) has no editable setting value. Find `code` settings with
+the application's settings script or with `openlup settings --app <module> list`.
 
 `read-only` covers discovery. `preview` allows inspection of a proposed
-change, and `ready` requires qualification for runtime changes. The current
-catalogue gives the runtime level, reason and existing change mechanism for
-each key. Renewal stock protection is at `preview`; the host installer still
+change, and `ready` requires qualification for runtime changes. `show` gives the runtime
+level, its reason when present and the existing change mechanism for the selected
+key. Renewal stock protection is at `preview`; the host installer still
 owns changes.
 
 ## Refusals
@@ -225,10 +267,10 @@ and whether retrying can help.
 
 | Code | Next step |
 | --- | --- |
-| `commerce_setting_unknown` | Find the installed key with `list`. |
+| `commerce_setting_unknown` | Run `list` with your application’s settings script for app keys, or use an unbound `list` for platform keys. |
 | `commerce_setting_refusal_unknown` | Check the exact refusal code from this version. |
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
-| `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
+| `commerce_setting_read_unavailable` | For a connected read, verify the store connection, read access and installed value. For a binding failure, check the application binding named in the refusal. |
 | `commerce_setting_preview_connection_required` | Use a read-capable connection to the intended store and supply the app bindings if requested. |
 | `commerce_setting_preview_unsupported` | Use `show` for value details or a reason and reference. |
 | `commerce_setting_preview_json_invalid` | Correct the proposed JSON. |
@@ -242,3 +284,53 @@ and whether retrying can help.
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |
+
+## Use the settings server from an MCP client
+
+The settings server is read-only. After installing the extracted starter's
+dependencies, configure your MCP client to run the starter's settings script
+from the application root. In clients that support a working directory,
+replace `/absolute/path/to/store` with that root.
+
+```json
+{
+  "mcpServers": {
+    "openlup-settings": {
+      "command": "npm",
+      "args": ["--silent", "run", "settings", "--", "mcp"],
+      "cwd": "/absolute/path/to/store"
+    }
+  }
+}
+```
+
+You can also use absolute paths to the installed binary and settings host.
+
+```json
+{
+  "mcpServers": {
+    "openlup-settings": {
+      "command": "/absolute/path/to/store/node_modules/.bin/openlup",
+      "args": ["settings", "mcp", "--app", "/absolute/path/to/store/owned/settings-host.ts"]
+    }
+  }
+}
+```
+
+If the `--app` module fails to load, the server stops at launch and reports the
+reason on stderr. For your first call, use `settings_list` with a known
+application key as `goal`. Confirm that the key appears in the result to verify
+the application binding.
+
+| Tool | Use it to |
+| --- | --- |
+| `settings_list` | Find platform and app settings by goal. |
+| `settings_show` | Pass `key` for the setting's details and any available value observation. |
+| `settings_explain` | Pass a setting key or refusal code as `keyOrCode` to get an explanation and the next step. |
+| `settings_check` | Run the application's offline check and see which reported values were validated. |
+| `settings_preview` | Pass `key` and the proposed JSON `value` to estimate a change for a supported setting. |
+
+For connected show and preview, add `--database-url` and a read-capable
+PostgreSQL URL to the client's private launch configuration. Supply one TCP host,
+a username and the database name. Use `--configuration <id>` to select an app
+configuration. Tool calls cannot override the application, configuration or URL.

@@ -113,7 +113,7 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
-export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
+export type { SettingReader, SettingPreviewer } from "./settingsRead.js";
 export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 export { runSettingsCommand, type SettingsAppBindings, type SettingsFileEntry } from "./settingsCommand.js";
 ```
@@ -295,9 +295,20 @@ export type SettingsAppBindings = {
 } | {
     configurationIds: readonly string[];
 };
+type SettingsDatabase = {
+    host: string;
+    port: number;
+    user: string;
+    password: string | (() => string);
+    database: string;
+    ssl: false | {
+        rejectUnauthorized: true;
+        host: string;
+    };
+};
 type SettingsHost = {
     bind(input: {
-        databaseUrl?: string;
+        database?: SettingsDatabase;
         app?: string;
         configuration?: string;
     }): Promise<SettingsAppBindings & {
@@ -308,11 +319,13 @@ type SettingsHost = {
         configuration?: string;
     }): Promise<SettingsAppBindings | undefined>;
     formatPreview?(result: PreviewDocument): string;
+    previewResultSchema?: ZodType;
 };
 type SettingsIo = {
     write(text: string): void;
     warn?(text: string): void;
     readStdin(): Promise<string>;
+    input?: AsyncIterable<Buffer>;
 };
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export declare function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number>;
@@ -397,36 +410,10 @@ export type SettingPreviewer<Result extends {
     skus: readonly string[];
     refuse: typeof refuseSettingsPreview;
 }) => Promise<Result | PreviewRefusal>;
-/** @experimental Shared dispatcher for CLI and host-mounted MCP preview. */
+/** @experimental Dispatch a preview to the selected domain previewer. */
 export declare function previewSetting<Result extends {
     schemaVersion: 1;
 } = never>(input: unknown, previewers?: Readonly<Record<string, SettingPreviewer<Result>>>): Promise<Result | PreviewRefusal>;
-/** @experimental MCP definitions for adopters composing a read-only settings head. */
-export declare const settingsReadTools: readonly [{
-    readonly name: "settings__list";
-    readonly description: "Find a key by business goal, then use settings__show for value details or a reason and reference.";
-    readonly inputSchema: Record<string, unknown>;
-    readonly outputSchema: Record<string, unknown>;
-    readonly annotations: {
-        readonly readOnlyHint: true;
-    };
-}, {
-    readonly name: "settings__show";
-    readonly description: "Call settings__list if you need the key. Read value details or a reason and reference. If refused, read remediation.";
-    readonly inputSchema: Record<string, unknown>;
-    readonly outputSchema: Record<string, unknown>;
-    readonly annotations: {
-        readonly readOnlyHint: true;
-    };
-}, {
-    readonly name: "settings__preview";
-    readonly description: "Call before any change to the setting. Use settings__show for the value schema. If the value is invalid or preview is refused, read remediation.";
-    readonly inputSchema: Record<string, unknown>;
-    readonly outputSchema: Record<string, unknown>;
-    readonly annotations: {
-        readonly readOnlyHint: true;
-    };
-}];
 export {};
 ```
 ## dist/operations/server/toolSchema.d.ts

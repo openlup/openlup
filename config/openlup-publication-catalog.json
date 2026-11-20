@@ -830,6 +830,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/vitest-shard-weights.json",
+      "class": "public-output"
+    },
+    {
       "path": "db/bootstrap/node-supabase/30_rate_limit_buckets.sql",
       "class": "public-output"
     },
@@ -1511,6 +1515,10 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_publication.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261123191000_catalog_publication_commands.sql",
       "class": "public-output"
     },
     {
@@ -4954,6 +4962,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123191000_catalog_publication_commands.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5354,6 +5366,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogPublicationCommands.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogPublicationProjection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogPublicationRules.ts",
       "class": "public-output"
     },
@@ -5558,6 +5578,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationSkuIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationValidation.ts",
       "class": "public-output"
     },
@@ -5603,6 +5627,10 @@
     },
     {
       "path": "packages/platform/src/catalog/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/testing/publicationWireVectors.ts",
       "class": "public-output"
     },
     {
@@ -6966,6 +6994,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/buildCapabilityContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/catalogContribution.ts",
       "class": "public-output"
     },
@@ -7387,6 +7419,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/providerReconciliationWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerRegistry.ts",
       "class": "public-output"
     },
     {
@@ -8478,6 +8514,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/server/settingsCommandSupport.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/settingsMcp.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/server/settingsRead.ts",
       "class": "public-output"
     },
@@ -8563,6 +8607,10 @@
     },
     {
       "path": "packages/platform/src/payments/paymentAttemptSilenceWindow.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentFailureEvidence.ts",
       "class": "public-output"
     },
     {
@@ -8659,6 +8707,10 @@
     },
     {
       "path": "packages/platform/src/payments/providerRecoveryReaders.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/providerRegistry.ts",
       "class": "public-output"
     },
     {
@@ -9570,6 +9622,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresNativeCheckoutSubscriptionPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/postgresNoticeExtensions.ts",
       "class": "public-output"
     },
@@ -10298,7 +10354,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/commerce/managedTypes.test.ts",
+      "path": "packages/platform/test/commerce/nativeCheckoutHostPort.test.ts",
       "class": "public-output"
     },
     {
@@ -10390,10 +10446,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/commerce/omsSchemaTypes.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/test/commerce/operatorCheckoutPaymentLink.test.ts",
       "class": "public-output"
     },
@@ -10439,10 +10491,6 @@
     },
     {
       "path": "packages/platform/test/commerce/orderReviewMedia.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/commerce/orderReviewPorts.test.ts",
       "class": "public-output"
     },
     {
@@ -10815,6 +10863,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/providerCommandLedger.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/providerRegistry.test.ts",
       "class": "public-output"
     },
     {
@@ -11314,6 +11366,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/migrations/packagedCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
       "class": "public-output"
     },
@@ -11435,6 +11491,10 @@
     },
     {
       "path": "packages/platform/test/payments/preparedAttempt.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/providerRegistry.test.ts",
       "class": "public-output"
     },
     {
@@ -12022,6 +12082,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/postgresNativeCheckoutSubscriptionPort.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
       "class": "public-output"
     },
@@ -12274,6 +12338,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/build-packages-incremental.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/build-packages-incremental.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/catalog-document-boundary.test.ts",
       "class": "public-output"
     },
@@ -12350,7 +12422,19 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-vitest-duration-keys.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-vitest-duration-keys.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-shard.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-shard.test.ts",
       "class": "public-output"
     },
     {
@@ -12931,6 +13015,14 @@
     },
     {
       "path": "scripts/packages/exact-set-qualification.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/fixtures/settings-upgrade-host.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/fixtures/starter-settings.main.json",
       "class": "public-output"
     },
     {
@@ -14266,14 +14358,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/noop_payment/noopPaymentAdapter.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/noop_payment/noopPaymentAdapter.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/noop_payment/noopPaymentExecutionAdapter.test.ts",
       "class": "public-output"
     },
@@ -14382,11 +14466,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/postgres/catalogPublicationReads.ts",
+      "path": "server/adapters/postgres/catalogPublicationReads.test.ts",
       "class": "public-output"
     },
     {
-      "path": "server/adapters/postgres/catalogPublicationWire.ts",
+      "path": "server/adapters/postgres/catalogPublicationReads.ts",
       "class": "public-output"
     },
     {
@@ -16566,14 +16650,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/tpay/tpaySimulatorPaymentReadbackProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpaySimulatorPaymentReadbackProvider.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/vercel/blobStorage.ts",
       "class": "public-output"
     },
@@ -18114,10 +18190,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/auth/standardWebhooks.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/bundle/README.md",
       "class": "public-output"
     },
@@ -18154,10 +18226,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/catalog/catalogDraftHandler.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/catalog/catalogDraftValidation.ts",
       "class": "public-output"
     },
@@ -18191,10 +18259,6 @@
     },
     {
       "path": "server/domains/catalog/referenceCatalogHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/catalog/resolvedSkuProjection.ts",
       "class": "public-output"
     },
     {
@@ -18259,10 +18323,6 @@
     },
     {
       "path": "server/domains/channels/quarantineClassifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/clients/acquisitionCaseHandlers.ts",
       "class": "public-output"
     },
     {
@@ -19267,10 +19327,6 @@
     },
     {
       "path": "server/domains/commerce/outboxDispatchRegistry.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/outboxDispatchRegistryComposition.ts",
       "class": "public-output"
     },
     {
@@ -20726,19 +20782,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/platform/platformWatchdogDecision.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/platform/platformWatchdogDeliveryPolicy.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/domains/platform/platformWatchdogDeliveryPolicy.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/platform/platformWatchdogQueue.ts",
       "class": "public-output"
     },
     {
@@ -20862,10 +20910,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/subscription/automaticRenewalExecution.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/subscription/automaticRenewalPorts.ts",
       "class": "public-output"
     },
@@ -20970,14 +21014,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/subscription/runAutomaticSubscriptionRenewal.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/subscription/runAutomaticSubscriptionRenewal.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/subscription/runSubscriptionRenewalBatch.test.ts",
       "class": "public-output"
     },
@@ -21047,10 +21083,6 @@
     },
     {
       "path": "server/domains/subscription/subscriptionRenewalInvocation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/subscription/subscriptionRenewalOutcomes.ts",
       "class": "public-output"
     },
     {
@@ -22111,10 +22143,6 @@
     },
     {
       "path": "server/runtime/settlementProfileBootstrap.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/runtime/subscription/automaticRenewalPaymentRails.ts",
       "class": "public-output"
     },
     {
@@ -23898,10 +23926,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/bundle/contracts.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/bundle/ports.ts",
       "class": "public-output"
     },
@@ -24450,10 +24474,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/emails/guideCard.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/emails/orderCanceled.ts",
       "class": "public-output"
     },
@@ -24526,19 +24546,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/energyPolicy.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/firstSubscriptionPricePresentation.test.ts",
       "class": "public-output"
     },
     {
       "path": "src/domains/commerce/firstSubscriptionPricePresentation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/fulfillmentCancellationEligibility.ts",
       "class": "public-output"
     },
     {
@@ -24642,10 +24654,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/omsFulfillmentContractSchemas.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/omsFulfillmentDebug.test.ts",
       "class": "public-output"
     },
@@ -24690,10 +24698,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/omsOrderLineMoney.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/omsPaymentMethodSummary.ts",
       "class": "public-output"
     },
@@ -24702,19 +24706,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/omsProviderEvidenceSchemas.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/omsReadModel.test.ts",
       "class": "public-output"
     },
     {
       "path": "src/domains/commerce/omsReadModel.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/omsReadModelCommunication.ts",
       "class": "public-output"
     },
     {
@@ -24759,10 +24755,6 @@
     },
     {
       "path": "src/domains/commerce/omsReferenceBinding.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/orderDraftErrors.ts",
       "class": "public-output"
     },
     {
@@ -24823,10 +24815,6 @@
     },
     {
       "path": "src/domains/commerce/outboxEventEquivalence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/packageQuantityPolicy.ts",
       "class": "public-output"
     },
     {
@@ -25850,10 +25838,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/payment/providerAttemptIdempotency.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/payment/pspIntegrationPlan.test.ts",
       "class": "public-output"
     },
@@ -26170,10 +26154,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/promo/ports.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/promo/promo.test.ts",
       "class": "public-output"
     },
@@ -26203,10 +26183,6 @@
     },
     {
       "path": "src/domains/risk/core/evaluator.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/risk/core/rules.ts",
       "class": "public-output"
     },
     {
@@ -26562,15 +26538,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/subscription/subscriptionEngineLifecycle.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/subscription/subscriptionEnginePayment.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/subscription/subscriptionEnginePayment.ts",
       "class": "public-output"
     },
     {
@@ -26583,10 +26551,6 @@
     },
     {
       "path": "src/domains/subscription/subscriptionEngineTypes.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/subscription/subscriptionEngineUtils.ts",
       "class": "public-output"
     },
     {
@@ -28778,10 +28742,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/test/example.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/test/framerMotionMock.tsx",
       "class": "public-output"
     },
@@ -30190,6 +30150,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/catalogPublicationCommands.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/catalogPublicationFixture.ts",
       "class": "public-output"
     },
@@ -31481,7 +31445,7 @@
     },
     {
       "name": "prelint",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
+      "command": "node scripts/build-packages-incremental.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31541,7 +31505,7 @@
     },
     {
       "name": "pretest",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
+      "command": "node scripts/build-packages-incremental.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31587,7 +31551,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-2031519770f977de75b1836c28d953fc6cea9544ffa4dd1f4d994c463d14d6a2"
+      "digest": "sha256-7f2f88eb43581e036a35b93b9933d4f702e4fbee336bba7931e86eadbb4ee736"
     },
     {
       "path": "packages/core/package.json",
@@ -31595,7 +31559,7 @@
     },
     {
       "path": "packages/outbox/package.json",
-      "digest": "sha256-c1989ac91260eb152a27b461f4eee0db11f04d9f17cccedc9bf41958ca0d3ef6"
+      "digest": "sha256-53aa375f4bc21965d8fd3735b2aa60980c2fec0d43411611c1574b5f30d7b16d"
     },
     {
       "path": "packages/platform/package.json",

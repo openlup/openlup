@@ -1,7 +1,6 @@
 ### Read-only preview for renewal stock protection
 
-- The experimental `previewSetting` dispatcher and read-only
-  `settings__preview` tool report one validation outcome, the
+- The experimental settings preview command and `settings_preview` tool report one validation outcome, the
   current installed policy, current availability by SKU, and an estimate of
   proposed availability at the same instant and in the same snapshot. Existing
   reservations keep their quantities and expiry times. Apply

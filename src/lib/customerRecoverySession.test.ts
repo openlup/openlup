@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom -- exercises browser-path behavior (window/storage/DOM). */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   capturePaymentRecoveryTokenFromUrl,
   clearPaymentRecoverySession,
@@ -14,7 +14,13 @@ import {
   saveCustomerReturnTo,
 } from "./customerRecoverySession";
 
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   clearPaymentRecoverySession();
   window.sessionStorage.clear();

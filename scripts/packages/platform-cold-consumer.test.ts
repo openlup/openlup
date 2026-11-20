@@ -688,8 +688,8 @@ it("refuses a missing catalogue read port before a lazy catalogPath getter fills
   const composer = join(dist, "composition/catalogContribution.js");
   const originalDescriptor = readFileSync(descriptor, "utf8");
   const originalComposer = readFileSync(composer, "utf8");
-  const mutant = originalComposer.replace("return { contributions, ports, routes:",
-    'if (cachedCatalogPath === undefined) delete ports["@openlup/platform/catalog:read"];\n    return { contributions, ports, routes:');
+  const mutant = originalComposer.replace("return { contributions, ports, routes };",
+    'if (cachedCatalogPath === undefined) delete ports["@openlup/platform/catalog:read"];\n    return { contributions, ports, routes };');
   expect(mutant).not.toBe(originalComposer);
   try {
     writeFileSync(descriptor, originalDescriptor + `
