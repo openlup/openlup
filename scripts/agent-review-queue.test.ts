@@ -47,7 +47,10 @@ function handoffFixture() {
     return '';
   });
   const enqueue = vi.fn(async () => { f.queuePr.mergeQueueEntry = { id: 'QUEUE_1' }; return { id: 'QUEUE_1' }; });
-  return { ...f, api, runGit, enqueue, execute: () => enqueueAfterChecks({ event: f.event, env: f.env, api, runGit, enqueue, now: () => f.clock }), state: f };
+  const pauseMergeability = vi.fn(async (_ms: number) => {});
+  const liveReads = () => api.get.mock.calls.filter(([path]) => path.startsWith('/graphql?')).length;
+  return { ...f, api, runGit, enqueue, pauseMergeability, liveReads, state: f,
+    execute: () => enqueueAfterChecks({ event: f.event, env: f.env, api, runGit, enqueue, pauseMergeability, now: () => f.clock }) };
 }
 
 describe('hosted receipt comments', () => {
@@ -332,6 +335,73 @@ describe('CI completion queue handoff', () => {
     };
     if (['head', 'disarmed', 'queued'].includes(change)) await expect(f.execute()).resolves.toMatchObject({ status: 'skipped' });
     else await expect(f.execute()).rejects.toThrow();
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each([1, 2])('queues once when UNKNOWN clears at mergeability check %i', async check => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === check ? 'UNKNOWN' : 'MERGEABLE';
+    };
+    await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+    expect(f.liveReads()).toBe(4);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
+  });
+  it('refuses persistent UNKNOWN after six re-reads', async () => {
+    const f = handoffFixture();
+    f.queuePr.mergeable = 'UNKNOWN';
+    await expect(f.execute()).rejects.toThrow('PR mergeability is still unknown after 7 reads; re-run the Queue Handoff job');
+    expect(f.liveReads()).toBe(7);
+    expect(f.pauseMergeability.mock.calls).toEqual(Array.from({ length: 6 }, () => [10_000]));
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['CONFLICTING', 'PR conflicts with main; merge main into the branch and push; auto-merge stays armed'],
+    ['INVALID', 'invalid PR mergeability response'],
+  ])('refuses %s mergeability immediately', async (mergeability, message) => {
+    const f = handoffFixture();
+    f.queuePr.mergeable = mergeability;
+    await expect(f.execute()).rejects.toThrow(message);
+    expect(f.liveReads()).toBe(1);
+    expect(f.pauseMergeability).not.toHaveBeenCalled();
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each(['head changes', 'PR is disarmed'])('skips when the %s while mergeability is UNKNOWN', async change => {
+    const f = handoffFixture();
+    f.queuePr.mergeable = 'UNKNOWN';
+    f.pauseMergeability.mockImplementationOnce(async () => {
+      if (change === 'head changes') f.queuePr.headRefOid = receipt.base;
+      else Object.assign(f.queuePr, { autoMergeRequest: null });
+    });
+    await expect(f.execute()).resolves.toEqual({ status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' });
+    expect(f.liveReads()).toBe(2);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it('refuses an intent change during the final mergeability check', async () => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?') && f.liveReads() === 2) f.queuePr.mergeable = 'UNKNOWN';
+    };
+    f.pauseMergeability.mockImplementationOnce(async () => {
+      f.queuePr.autoMergeRequest.enabledAt = '2026-10-24T12:01:00Z';
+    });
+    await expect(f.execute()).rejects.toThrow('mergeability or auto-merge authority changed before enqueue');
+    expect(f.liveReads()).toBe(3);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it('bounds pauses independently across both mergeability checks', async () => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 7 ? 'MERGEABLE' : 'UNKNOWN';
+    };
+    const pausedAfterReads: number[] = [];
+    f.pauseMergeability.mockImplementation(async () => { pausedAfterReads.push(f.liveReads()); });
+    await expect(f.execute()).rejects.toThrow('PR mergeability is still unknown after 7 reads; re-run the Queue Handoff job');
+    expect(f.liveReads()).toBe(14);
+    expect(pausedAfterReads).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]);
+    expect(f.pauseMergeability.mock.calls).toEqual(Array.from({ length: 12 }, () => [10_000]));
     expect(f.enqueue).not.toHaveBeenCalled();
   });
   it('does not retry a GitHub enqueue refusal', async () => {
