@@ -1,5 +1,5 @@
 import { market } from '../owned/market.config.ts';
-import { test as base, expect, type Request } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { copy } from '../owned/copy.ts';
@@ -45,13 +45,12 @@ test('native support roster, catalogue administration, replay and operator admis
     return response.json();
   };
   const operatorLocale = market.defaultLocale;
-  const redeemed = new Map<string, string>();
-  const signIn = async (kind: 'operator' | 'customer', email: string, target = page) => {
+  const signIn = async (kind: 'operator' | 'customer', email: string) => {
     if (kind === 'operator') {
-      await target.goto(routes.admin[operatorLocale]);
-      const request = target.locator('#operator-sign-in form').first();
+      await page.goto(routes.admin[operatorLocale]);
+      const request = page.locator('#operator-sign-in form').first();
       await request.getByLabel(copy[operatorLocale].email, { exact: true }).fill(email);
-      const response = target.waitForResponse(item => item.url().endsWith('/api/actions/auth.operator'));
+      const response = page.waitForResponse(item => item.url().endsWith('/api/actions/auth.operator'));
       await request.getByRole('button', { name: copy[operatorLocale].operatorRequestSignIn, exact: true }).click();
       expect((await (await response).json()).ok).toBe(true);
     } else expect((await action('auth.request', { email })).ok).toBe(true);
@@ -61,18 +60,17 @@ test('native support roster, catalogue administration, replay and operator admis
         const messages = compose('exec', '-T', '--user', 'node', 'application', 'cat',
           '/application/.context/captured-messages/identity.jsonl').trim().split('\n').map(line => JSON.parse(line));
         token = messages.filter(message => message.email === email).at(-1)?.token ?? '';
-        return /^[A-Za-z0-9_-]{43}$/.test(token) && token !== redeemed.get(email);
+        return /^[A-Za-z0-9_-]{43}$/.test(token);
       } catch { return false; }
     }).toBe(true);
     if (kind === 'operator') {
-      const redemption = target.locator('#operator-sign-in form').nth(1);
+      const redemption = page.locator('#operator-sign-in form').nth(1);
       await redemption.getByLabel(copy[operatorLocale].operatorToken, { exact: true }).fill(token);
-      const response = target.waitForResponse(item => item.url().endsWith('/api/actions/auth.operator'));
+      const response = page.waitForResponse(item => item.url().endsWith('/api/actions/auth.operator'));
       await redemption.getByRole('button', { name: copy[operatorLocale].operatorRedeemToken, exact: true }).click();
       expect((await (await response).json()).ok).toBe(true);
       expect(await redemption.locator('[name=token]').evaluate(input => (input as HTMLInputElement).value.length === 0)).toBe(true);
     } else expect((await action('auth.verify', { token })).ok).toBe(true);
-    redeemed.set(email, token);
   };
   for (const locale of market.locales) {
     await page.goto(routes.admin[locale]);
@@ -229,76 +227,27 @@ test('native support roster, catalogue administration, replay and operator admis
   const draftPanel = page.locator('#catalogue-drafts');
   const draftForm = draftPanel.locator('form').nth(1);
   const draftId = await draftForm.locator('[name=draftId]').inputValue();
-  const draftAction = (request: Request, kind: string) =>
-    request.url().endsWith('/api/actions/operator.catalogDrafts') && request.postDataJSON()?.action === kind;
-  const waitDraft = (kind: string) => page.waitForResponse(response => draftAction(response.request(), kind));
-  const legacyKey = randomUUID();
-  const legacyExample = (await action('operator.catalogDrafts', { action: 'example' })).value;
-  const legacy = { action: 'create', draftId: randomUUID(), expectedRevision: 0, payload: {
-    ...legacyExample, product: { ...legacyExample.product, type: { key: 'starter:item', version: 1 } },
-  } };
-  const legacyCreated = await action('operator.catalogDrafts', legacy, legacyKey);
-  expect(legacyCreated).toMatchObject({ ok: true, value: { outcome: 'committed', record: {
-    payload: { product: { type: { version: 714101500 } } },
-  } } });
-  const button = draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true });
-  type DraftReply = { value: { record: { productId: string; payload: {
-    product: { type: { version: number }; sharedContent: { title: string } };
-  } } } };
-  let observed: { request: Request; created: DraftReply } | undefined;
-  await page.route('**/api/actions/operator.catalogDrafts', async route => {
-    const request = route.request();
-    if (!draftAction(request, 'create')) return route.continue();
-    const reply = await route.fetch();
-    observed = { request, created: await reply.json() };
-    await route.abort();
-  });
-  await button.click();
-  await expect(draftForm.locator('.action-result')).toContainText('starter_transport_unavailable');
-  if (!observed) throw new Error('starter_pinned_draft_request_missing');
-  const { request, created } = observed;
-  const pinnedKey = request.headers()['idempotency-key']!;
-  expect(pinnedKey).toMatch(/^pin:[a-f0-9-]{36}$/u);
-  expect(created).toMatchObject({ ok: true, value: { outcome: 'committed', record: { actorId: principal } } });
-  await page.unroute('**/api/actions/operator.catalogDrafts');
+  const draftCreated = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  const created = await (await draftCreated).json();
+  expect(created.ok).toBe(true);
+  expect(created.value.outcome).toBe('committed');
+  expect(created.value.record.actorId).toBe(principal);
   expect(sql(`SELECT count(*) FROM public.catalog_products WHERE id='${created.value.record.productId}'::uuid`)).toBe('0');
-  compose('restart', 'application');
-  await expect.poll(async () => {
-    try { return (await page.request.get(`${baseURL}/api/config`)).ok(); } catch { return false; }
-  }).toBe(true);
-  // Age the consumed fixture challenge past the native one-minute request limit.
-  sql(`UPDATE public.operator_identity_challenges SET created_at=created_at-interval '1 minute',
-    expires_at=expires_at-interval '1 minute',used_at=used_at-interval '1 minute'
-    WHERE principal_id='${principal}'::uuid AND used_at IS NOT NULL`);
-  const reauthentication = await context.newPage();
-  try { await signIn('operator', 'operator@example.test', reauthentication); }
-  finally { await reauthentication.close(); }
-  const draftReplay = waitDraft('create');
-  await button.click();
-  const replayedDraft = await draftReplay;
-  expect(replayedDraft.request().headers()['idempotency-key']).toBe(pinnedKey);
-  expect(replayedDraft.request().postData()).toBe(request.postData());
-  expect((await replayedDraft.json()).replayed).toBe(true);
-  await expect(draftForm.locator('.action-result')).toContainText('replayed');
-  const legacyReplayed = await action('operator.catalogDrafts', legacy, legacyKey);
-  expect(legacyReplayed.value.record).toEqual(legacyCreated.value.record);
-  expect(legacyReplayed.replayed).toBe(true);
-  const changed = { ...request.postDataJSON(), payload: { ...created.value.record.payload,
-    product: { ...created.value.record.payload.product, type: { key: 'starter:item', version: 1 } } } };
-  expect((await action('operator.catalogDrafts', changed, pinnedKey)).code).toBe('catalog_draft_command_key_reused');
-  expect((await action('operator.catalogDrafts', { action: 'get', draftId }, pinnedKey)).code).toBe('starter_command_identity_required');
+  const draftReplay = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  expect((await (await draftReplay).json()).replayed).toBe(true);
   const typeVersion = Number(created.value.record.payload.product.type.version);
   expect(Number.isSafeInteger(typeVersion) && typeVersion > 1).toBe(true);
-  await expect(draftForm.locator('.action-result')).toContainText(String(typeVersion));
   expect(sql(`SELECT count(*) FROM public.catalog_type_versions WHERE type_key='starter:item' AND version=${typeVersion}`)).toBe('1');
   const staleDraft = structuredClone(created.value.record.payload);
   const uninstalledVersion = typeVersion === 2 ? 3 : 2;
   staleDraft.product.type.version = uninstalledVersion;
   await draftForm.locator('[name=draftId]').fill(randomUUID());
   await draftForm.locator('[name=payload]').fill(JSON.stringify(staleDraft));
-  const staleReply = waitDraft('example');
+  const staleReply = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
   await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
-  const fix = `Use a registered authoring version of starter:item or restore the installed build for starter:item@${uninstalledVersion}.`;
+  const fix = `rules version ${uninstalledVersion} is not installed; run ./lifecycle up`;
   expect(await (await staleReply).json()).toMatchObject({ ok: false,
     issues: [{ path: 'product.type', code: 'type_not_installed', message: fix }] });
   await expect(draftForm.locator('.action-result')).toContainText(fix);
@@ -306,7 +255,7 @@ test('native support roster, catalogue administration, replay and operator admis
   invalidDraft.product.sharedContent.title = '';
   await draftForm.locator('[name=draftId]').fill(randomUUID());
   await draftForm.locator('[name=payload]').fill(JSON.stringify(invalidDraft));
-  const reply = waitDraft('create');
+  const reply = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
   await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
   expect(await (await reply).json()).toMatchObject({ ok: false, code: 'catalog_draft_payload_invalid',
     issues: [{ path: 'product.sharedContent.title', code: 'title_required' }] });
@@ -328,21 +277,14 @@ test('native support roster, catalogue administration, replay and operator admis
   await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
   await expect(draftForm.locator('.action-result')).toContainText('product.sharedContent.presentation.title');
   await draftInput.fill(JSON.stringify(example));
-  const savedExample = waitDraft('create');
+  const savedExample = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
   await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
   expect(await (await savedExample).json()).toMatchObject({ ok: true, value: { record: { draftId: exampleId, revision: 1 } } });
   const prepareDraft = draftPanel.locator('form').filter({ has: page.getByRole('button', { name: /Prepare saved draft|Przygotuj zapisany szkic/u }) });
   await prepareDraft.locator('[name=draftId]').fill(exampleId);
-  const preparedExample = waitDraft('prepare');
+  const preparedExample = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
   await prepareDraft.locator('button[type=submit]').click();
   expect(await (await preparedExample).json()).toMatchObject({ ok: true, value: { structural: { outcome: 'unknown' } } });
-  const concurrent = { action: 'create', draftId: randomUUID(), expectedRevision: 0,
-    payload: (await action('operator.catalogDrafts', { action: 'example' })).value };
-  const concurrentKey = `pin:${randomUUID()}`;
-  const replies = await Promise.all([action('operator.catalogDrafts', concurrent, concurrentKey),
-    action('operator.catalogDrafts', concurrent, concurrentKey)]);
-  expect(replies.map(reply => reply.value?.outcome).sort()).toEqual(['committed', 'replayed']);
-  expect(replies[0].value.record).toEqual(replies[1].value.record);
   expect((await action('operator.catalogDrafts', { action: 'create', draftId: randomUUID(), expectedRevision: 0, payload: {} })).code).toBe('catalog_draft_input_invalid');
   expect((await action('operator.catalogDrafts', { actorRef: principal })).code).toBe('starter_input_invalid');
   await action('auth.signOut');

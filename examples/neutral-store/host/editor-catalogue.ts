@@ -3,15 +3,14 @@ import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync }
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
-import { canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackIssues, createCatalogProductTypeRegistry, withCatalogPublicationRules,
-  type CatalogDefinitionInstallReceipt, type CatalogProductTypeInput, type CatalogProductTypeRef, type CatalogProductTypeRegistry, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
+import { canonicalCatalogDraftJson, catalogDefinitionDigest, createCatalogProductTypeRegistry, withCatalogPublicationRules,
+  type CatalogDefinitionInstallReceipt, type CatalogProductTypeInput, type CatalogProductTypeRef, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
 import { catalogDraftRegistry } from '../owned/catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
 
 export const starterCatalogueType = { key: 'starter:item', version: 1 } as const;
-const authoringRegistry: CatalogProductTypeRegistry = catalogDraftRegistry;
 const buildDirectory = fileURLToPath(new URL('../.context/catalogue-builds', import.meta.url));
 
 function readOptional(path: URL | string): Buffer | undefined {
@@ -26,68 +25,36 @@ export function readStarterCatalogueRules(): Buffer | undefined {
   return readOptional(new URL('../owned/catalogue-rules.cjs', import.meta.url));
 }
 
-const identity = (ref: CatalogProductTypeRef) => `${ref.key}@${ref.version}`;
-const base = (ref: CatalogProductTypeRef) => identity(ref) === identity(starterCatalogueType);
-const rulesPin = (type: Omit<CatalogProductTypeInput, 'validateContent'>, artifact: Uint8Array) =>
-  2 + createHash('sha256').update(canonicalCatalogDraftJson(type)).update(artifact).digest().readUInt32BE() % 2_147_483_646;
+/** The installer and operator host run from the same image built by lifecycle up. */
+export function starterCataloguePack(artifact: Uint8Array) {
+  const definition = catalogDraftRegistry.resolve(starterCatalogueType);
+  if (!definition) throw new Error('Define starter:item at version 1 in owned/catalogue.ts to install catalogue rules.');
+  const { validateContent: _legacyRule, validatorRef: _legacyRef, ...legacyType } = definition;
+  const unit = 'openlup:g';
+  const catalogueType = { ...legacyType,
+    units: legacyType.units.some(row => row.code === unit) ? legacyType.units
+      : [...legacyType.units, { code: unit, dimension: 'mass' as const, integral: true }],
+    netContentUnits: [...new Set([...legacyType.netContentUnits, unit])],
+  };
+  // Keep version 1 for the shipped draft example. The immutable installer refuses a collision.
+  const version = 2 + createHash('sha256').update(canonicalCatalogDraftJson(catalogueType)).update(artifact).digest().readUInt32BE() % 2_147_483_646;
+  return starterBuild({ ...catalogueType, version }, artifact);
+}
 
 function starterBuild(type: Omit<CatalogProductTypeInput, 'validateContent'>, artifact: Uint8Array) {
-  const namespace = type.key.split(':', 1)[0]!;
-  return withCatalogPublicationRules({ id: `${namespace}:local-rules`, namespace, version: type.version, openlupRange: '1.x',
+  return withCatalogPublicationRules({ id: 'starter:local-rules', namespace: 'starter', version: type.version, openlupRange: '1.x',
     types: [type], capabilities: {}, taxClasses: [] }, () => artifact);
 }
 
-function preflightRefusal(code: string, path: string, hint: string): never {
-  throw Object.assign(new Error(code), { issue: { code, path }, hint });
-}
-
-/** Install immutable builds in the order declared in the owned registry. */
-export function prepareStarterCatalogueRules(rules: Uint8Array | undefined) {
-  if (!rules) return;
-  const artifact = Buffer.from(rules);
-  const legacy = authoringRegistry.resolve(starterCatalogueType);
-  const definitions = authoringRegistry.definitions ?? (legacy ? [legacy] : undefined);
-  if (!definitions) preflightRefusal('starter_catalogue_rules_registry_required', '/definitions',
-    'Export the registry from createCatalogProductTypeRegistry or supply its definitions.');
-  const pins = new Set<string>();
-  const builds = definitions.map((definition, index) => {
-    const { validateContent: _inline, validatorRef: _ref, ...metadata } = definition;
-    const authoring = { key: definition.key, version: definition.version };
-    const reference = definition.taxClass === undefined ? definition.subscriptionProfileRef === undefined
-      ? undefined : 'subscriptionProfileRef' : 'taxClass';
-    if (reference) preflightRefusal('starter_catalogue_rules_reference_unsupported', `/types/${index}/${reference}`,
-      'Remove the unsupported reference from the product type.');
-    const unit = 'openlup:g';
-    const type = base(authoring) ? { ...metadata,
-      units: metadata.units.some(row => row.code === unit) ? metadata.units
-        : [...metadata.units, { code: unit, dimension: 'mass' as const, integral: true }],
-      netContentUnits: [...new Set([...metadata.netContentUnits, unit])],
-    } : metadata;
-    const version = rulesPin(type, artifact);
-    const pack = starterBuild({ ...type, version }, artifact);
-    const pin = `${pack.id}@${version}`;
-    if (authoringRegistry.resolve({ key: type.key, version }) || pins.has(pin))
-      preflightRefusal('starter_catalogue_rules_version_conflict', `/types/${index}/version`, 'Choose a different authoring version.');
-    const issue = catalogPackIssues(pack)[0];
-    if (issue) preflightRefusal(issue.code, issue.path.replace(/^\/types\/0/u, `/types/${index}`), 'Correct the indicated definition field.');
-    pins.add(pin);
-    return { authoring, pack };
-  });
-  return { artifact, builds };
-}
-
-const fileName = (ref: CatalogProductTypeRef) => `${encodeURIComponent(ref.key)}@${ref.version}.json`;
-
-/** Publish a verified build only after its definition install commits. */
-export function stageStarterCatalogueBuild(artifact: Buffer, pack: ReturnType<typeof starterBuild>,
-  authoring: CatalogProductTypeRef, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory) {
-  const definition = pack.types[0]!;
+/** Stage the receipt and exact rules. Only a committed install may publish their link. */
+export function stageStarterCatalogueBuild(artifact: Buffer, receipt: CatalogDefinitionInstallReceipt, directory = buildDirectory) {
+  const definition = starterCataloguePack(artifact).types[0]!;
   const { validateContent: _callback, ...type } = definition;
   const installed = receipt.types.find(row => row.key === type.key && row.version === type.version);
   if (!installed || installed.definitionDigest !== catalogDefinitionDigest(definition)) throw new Error('starter_catalogue_install_receipt_invalid');
   const bytes = Buffer.from(canonicalCatalogDraftJson({ type, asset: artifact.toString('base64'), installed }));
   mkdirSync(directory, { recursive: true });
-  const target = join(directory, base(authoring) ? `${type.version}.json` : fileName(type));
+  const target = join(directory, `${type.version}.json`);
   const previous = readOptional(target);
   if (previous) {
     if (!previous.equals(bytes)) throw Object.assign(new Error('starter_catalogue_build_conflict'), { code: 'EEXIST' });
@@ -108,58 +75,33 @@ export function stageStarterCatalogueBuild(artifact: Buffer, pack: ReturnType<ty
 }
 
 export function starterCatalogue(directory = buildDirectory) {
-  const plan = prepareStarterCatalogueRules(readStarterCatalogueRules());
-  const current = new Map(plan?.builds.map(({ authoring, pack }) => [identity(authoring), pack.types[0]!]));
-  const currentPins = new Set([...current.values()].map(identity));
-  const history = new Map<string, { type: NonNullable<ReturnType<typeof authoringRegistry.resolve>>; digest: string; legacy: boolean }>();
+  const artifact = readStarterCatalogueRules();
+  const pack = artifact && starterCataloguePack(artifact);
+  const current = pack && createCatalogProductTypeRegistry(pack.types).resolve(pack.types[0]!);
+  const history = new Map<number, { type: NonNullable<typeof current>; digest: string }>();
   function readInstalled(ref: CatalogProductTypeRef) {
-    if (!Number.isSafeInteger(ref.version) || ref.version <= 1) return;
-    const cached = history.get(identity(ref));
+    if (ref.key !== starterCatalogueType.key || !Number.isSafeInteger(ref.version) || ref.version <= 1) return;
+    const cached = history.get(ref.version);
     if (cached) return cached;
-    const keyed = readOptional(join(directory, fileName(ref)));
-    const legacy = keyed === undefined && ref.key === starterCatalogueType.key;
-    const raw = keyed ?? (legacy ? readOptional(join(directory, `${ref.version}.json`)) : undefined);
+    // A visible receipt link was published only after its definition committed.
+    const raw = readOptional(join(directory, `${ref.version}.json`));
     if (!raw) return;
     const { type, asset, installed } = JSON.parse(raw.toString()) as {
       type: Omit<CatalogProductTypeInput, 'validateContent'>; asset: string;
       installed: CatalogDefinitionInstallReceipt['types'][number];
     };
-    if (identity(type) !== identity(ref) || identity(installed) !== identity(ref))
+    if (type.key !== ref.key || type.version !== ref.version || installed.key !== ref.key || installed.version !== ref.version)
       throw new Error('starter_catalogue_build_invalid');
     const restored = starterBuild(type, Buffer.from(asset, 'base64'));
     const definition = createCatalogProductTypeRegistry(restored.types).resolve(ref)!;
     const digest = catalogDefinitionDigest(definition);
-    if (digest !== installed.definitionDigest || type.validatorRef !== definition.validatorRef)
-      throw new Error('starter_catalogue_build_invalid');
-    const build = { type: definition, digest, legacy };
-    history.set(identity(ref), build);
+    if (digest !== installed.definitionDigest) throw new Error('starter_catalogue_build_invalid');
+    const build = { type: definition, digest };
+    history.set(ref.version, build);
     return build;
   }
-  const registry = { resolve: (ref: CatalogProductTypeRef) => readInstalled(ref)?.type ?? authoringRegistry.resolve(ref) };
-  const pinnedRegistry = { resolve: (ref: CatalogProductTypeRef) => readInstalled(ref)?.type
-    ?? (plan ? undefined : authoringRegistry.resolve(ref)) };
-  const legacyRegistry = { resolve(ref: CatalogProductTypeRef) {
-    const installed = readInstalled(ref);
-    return installed?.legacy ? installed.type : authoringRegistry.resolve(ref);
-  } };
-  return {
-    current: current.values().next().value, baseType: current.get(identity(starterCatalogueType)),
-    registry, pinnedRegistry, legacyRegistry, readInstalled,
-    firstInstalled() {
-      for (const pin of current.values()) {
-        const installed = readInstalled(pin);
-        if (installed) return installed;
-      }
-    },
-    currentFor: (ref: CatalogProductTypeRef) => current.get(identity(ref)),
-    resolveSave(ref: CatalogProductTypeRef) {
-      const derived = current.get(identity(ref));
-      return pinnedRegistry.resolve(derived ? { key: derived.key, version: derived.version } : ref);
-    },
-    derivesPin: (ref: CatalogProductTypeRef) => currentPins.has(identity(ref)),
-    hasRegisteredKey: (ref: CatalogProductTypeRef) => authoringRegistry.definitions?.some(type => type.key === ref.key)
-      || Boolean(authoringRegistry.resolve(ref)),
-  };
+  return { current, readInstalled, registry: { resolve: (ref: CatalogProductTypeRef) =>
+    readInstalled(ref)?.type ?? catalogDraftRegistry.resolve(ref) } };
 }
 
 export function demoIdentifier(config: StoreConfig, kind: string, key: string): string {

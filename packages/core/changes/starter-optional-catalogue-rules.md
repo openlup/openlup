@@ -6,4 +6,3 @@ rules, copy `owned/catalogue-rules.cjs` and `owned/catalogue-rules.test.cjs`
 from a fresh extraction of the target starter and move your content checks
 to the bundle's `validateContent`. Run `node --test owned/catalogue-rules.test.cjs`,
 then `./lifecycle up` to use those rules in the operator form.
-Starter draft saves resolve the installed catalogue type before submission. Existing draft command keys continue to work with no upgrade step.

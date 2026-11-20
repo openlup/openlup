@@ -27,8 +27,6 @@ export interface ActionFormOptions {
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
   prepare?: (values: ActionInput) => Promise<ActionInput | null>;
-  freezePrepared?: boolean;
-  transportKey?: (values: ActionInput, key: string) => string;
   onSuccess?: (value: unknown) => void;
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
@@ -123,7 +121,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         } finally { inFlight = false; submit.disabled = false; reset.disabled = false; }
       }
       if (!current()) return;
-      const serialized = options.freezePrepared ? input : JSON.stringify(values);
+      const serialized = JSON.stringify(values);
       if (priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
       priorInput = serialized;
       inFlight = true;
@@ -132,9 +130,9 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       form.setAttribute('aria-busy', 'true');
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
-        const result = await act(options.operation, values, options.transportKey?.(values, commandKey) ?? commandKey);
+        const result = await act(options.operation, values, commandKey);
         if (!current()) return;
-        uncertain = options.freezePrepared || !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
+        uncertain = !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
           ? { input, prepared: values } : undefined;
         output.replaceChildren(result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),
