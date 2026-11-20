@@ -30110,6 +30110,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/starterCatalogDraftForm.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/watchdogExecution.test.ts",
       "class": "public-output"
     },

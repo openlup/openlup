@@ -169,7 +169,8 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     if (payload.action === 'example') {
       if ('type' in payload) {
         const ref = productTypeRef(payload.type);
-        if (!ref) return refused('starter_input_invalid');
+        if (!ref) return { ...refused('starter_input_invalid'), issues: [{ path: 'product.type', code: 'type_ref_invalid',
+          message: 'Enter a registered product type key and a positive integer version.' }] };
         const resolved = catalogue.resolveSave(ref);
         if (resolved) return success({ type: { key: resolved.key, version: resolved.version } });
         const pin = catalogue.currentFor(ref) ?? ref;
@@ -223,6 +224,11 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
           expectedRevision: payload.expectedRevision, ...(authored === undefined ? {} : { payload: authored }),
           commandKey: context.commandKey }, context);
     if ('reason' in result) {
+      if (pinned && ['draft_command_key_reused', 'command_key_reused'].includes(result.reason)) {
+        const code = 'catalog_draft_command_key_reused';
+        return { ...refused(code), status: 409, issues: [{ path: 'commandKey', code,
+          message: 'Read the draft and confirm its revision. Retry the original with its exact key and body, or choose Start a new action and use the current revision for a different save. Revise a completed create or use a different draft ID.' }] };
+      }
       const issues = 'issues' in result && Array.isArray(result.issues) ? result.issues : [];
       const type = isRecord(authored) && isRecord(authored.product) ? productTypeRef(authored.product.type) : undefined;
       const detail = issues.map(issue => issue.code === 'type_not_installed' && type

@@ -285,7 +285,22 @@ test('native support roster, catalogue administration, replay and operator admis
   expect(legacyReplayed.replayed).toBe(true);
   const changed = { ...request.postDataJSON(), payload: { ...created.value.record.payload,
     product: { ...created.value.record.payload.product, type: { key: 'starter:item', version: 1 } } } };
-  expect((await action('operator.catalogDrafts', changed, pinnedKey)).code).toBe('catalog_draft_command_key_reused');
+  await page.route('**/api/actions/operator.catalogDrafts', async route => {
+    if (!draftAction(route.request(), 'create')) return route.continue();
+    await route.fulfill({ response: await route.fetch({ postData: changed }) });
+  }, { times: 1 });
+  const conflict = waitDraft('create');
+  await button.click();
+  expect((await conflict).status()).toBe(409);
+  await expect(draftForm.locator('.action-result')).toContainText('catalog_draft_command_key_reused');
+  await expect(draftForm.locator('.action-result')).toContainText('Read the draft and confirm its revision');
+  await expect(draftForm.locator('.action-result')).toContainText('Start a new action');
+  const afterConflict = waitDraft('create');
+  await button.click();
+  const confirmed = await afterConflict;
+  expect(confirmed.request().headers()['idempotency-key']).toBe(pinnedKey);
+  expect(confirmed.request().postData()).toBe(request.postData());
+  expect((await confirmed.json()).replayed).toBe(true);
   expect((await action('operator.catalogDrafts', { action: 'get', draftId }, pinnedKey)).code).toBe('starter_command_identity_required');
   const typeVersion = Number(created.value.record.payload.product.type.version);
   expect(Number.isSafeInteger(typeVersion) && typeVersion > 1).toBe(true);

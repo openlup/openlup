@@ -197,6 +197,8 @@ function bundleActions(context: PageContext): HTMLElement {
 
 function catalogDraftActions(context: PageContext): HTMLElement {
   const productId = crypto.randomUUID();
+  const polski = context.locale === 'pl';
+  const pin = el('p', { role: 'status' });
   const draftEditor = actionForm(context, { operation: 'operator.catalogDrafts', title: 'catalogDraftCommand', submit: 'save',
       fields: [
         { name: 'action', label: 'catalogDraftAction', type: 'select', options:
@@ -211,23 +213,30 @@ function catalogDraftActions(context: PageContext): HTMLElement {
       ], transform: values => ({ action: values.action, draftId: values.draftId,
         expectedRevision: values.expectedRevision,
         ...(values.action === 'abandon' ? {} : { payload: JSON.parse(String(values.payload)) as unknown }) }),
-      freezePrepared: true,
-      transportKey: (values, key) => values.action === 'create' || values.action === 'revise' ? `pin:${key}` : key,
-      async prepare(values) {
+      freezePrepared: {
+        when: values => values.action === 'create' || values.action === 'revise',
+        key: () => `pin:${crypto.randomUUID()}`,
+      },
+      async prepare(values, current) {
+        pin.replaceChildren();
         if (values.action === 'abandon') return values;
         const payload = values.payload;
-        if (!isRecord(payload) || !isRecord(payload.product) || !isRecord(payload.product.type)) return values;
-        const resolved = await act('operator.catalogDrafts', { action: 'example', type: payload.product.type }, crypto.randomUUID());
-        if (resolved.ok && isRecord(resolved.value) && isRecord(resolved.value.type))
+        const type = isRecord(payload) && isRecord(payload.product) ? payload.product.type ?? null : null;
+        const resolved = await act('operator.catalogDrafts', { action: 'example', type }, crypto.randomUUID());
+        if (!current()) return null;
+        if (resolved.ok && isRecord(resolved.value) && isRecord(resolved.value.type) && isRecord(payload) && isRecord(payload.product)) {
+          pin.textContent = `${polski ? 'Typ szkicu' : 'Draft type'} ${resolved.value.type.key}@${resolved.value.type.version}`;
           return { ...values, payload: { ...payload, product: { ...payload.product, type: resolved.value.type } } };
+        }
         const output = draftEditor.querySelector('.action-result');
-        if (output && !resolved.ok) output.replaceChildren(refusal(context, resolved.code), renderValue(resolved.issues ?? []));
+        if (output) output.replaceChildren(resolved.ok ? refusal(context, 'starter_response_invalid')
+          : el('div', {}, refusal(context, resolved.code), renderValue(resolved.issues ?? [])));
         return null;
       },
     });
-
-
-  const polski = context.locale === 'pl';
+  draftEditor.addEventListener('input', () => pin.replaceChildren());
+  draftEditor.addEventListener('change', () => pin.replaceChildren());
+  append(draftEditor, pin);
   const example = actionForm(context, { operation: 'operator.catalogDrafts',
     submit: { label: polski ? 'Wczytaj przykładowy szkic' : 'Load draft example' }, input: () => ({ action: 'example' }),
     onSuccess(value) {
