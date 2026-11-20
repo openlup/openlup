@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
-import { admit, digest, coverageState, protectedCoveragePath, receiptBody, receiptSummary, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, digest, coverageState, protectedCoveragePath, receiptBody, receiptSummary, recordReport, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
@@ -54,6 +54,92 @@ function addRegistry(path: string, source: string, entry: string) {
   const list = [...registry.lists[0], entry]; const replacement = path === REGISTRY_PATHS[1] ? JSON.stringify(list) : `[\n${list.map(value => `  ${JSON.stringify(value)},`).join('\n')}\n]`;
   return source.slice(0, start) + replacement + source.slice(end);
 }
+
+describe('review input transport', () => {
+  const invisible = '\u0010\u001b\u007f\u0085';
+  const whitespace = '\tline\nnext\rreturn';
+
+  it('strips report controls before storage and admits the unchanged receipt after caret rewriting', async () => {
+    const f = await fixture();
+    await f.cli('prepare', f.request);
+    const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await f.report({
+      documentation: 'Documentation' + invisible + whitespace,
+      findings: [{ id: 'advice', summary: 'Finding' + invisible + whitespace, material: false }],
+      ['extra\u0010']: ['nested\u0085'],
+    });
+    expect(notice.mock.calls).toEqual([['record: removed 10 invisible control characters from the report']]);
+    const { report } = (await f.state()).history.at(-1);
+    expect(report).toMatchObject({
+      documentation: 'Documentation' + whitespace,
+      findings: [{ id: 'advice', summary: 'Finding' + whitespace, material: false }],
+      extra: ['nested'],
+    });
+    expect(report).not.toHaveProperty('extra\u0010');
+    await f.report();
+    await f.cli('receipt', '12');
+    const body = vi.mocked(console.log).mock.lastCall![0];
+    expect(body).toMatch(/^<!-- openlup-native-review-receipt v3 -->\n/u);
+    expect(body).not.toMatch(/\\u00(?:0[0-9a-f]|1[0-9a-f]|7f|[89][0-9a-f])/iu);
+    expect(body).not.toMatch(/[\p{Cc}--[\n]]/v);
+    const transported = body.replaceAll('\\u0010', '\\^P');
+    expect(transported).toBe(body);
+    const receipt = parseReceipt(transported);
+    const session = await f.state();
+    expect(receipt?.sessionDigest).toBe(digest(session));
+    expect(admit({ receipt, observed: { ...session.candidate, pr: 12, baseValid: true }, now: Date.now() }).ok).toBe(true);
+  });
+
+  it('records clean JSON with the same bytes and digest as direct recording and no notice', async () => {
+    const f = await fixture();
+    await f.cli('prepare', f.request);
+    const previous = await f.state();
+    const at = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(at);
+    const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await f.report({ documentation: '  Literal text \\u0010 is evidence.  ' });
+    const input = JSON.parse(await readFile(join(f.scratch, 'report.json'), 'utf8'));
+    const expected = recordReport(previous, input, at);
+    expect(await readFile(join(f.scratch, 'agent-review/session.json'), 'utf8')).toBe(JSON.stringify(expected, null, 2) + '\n');
+    expect(digest(await f.state())).toBe(digest(expected));
+    expect(notice).not.toHaveBeenCalled();
+  });
+
+  it('normalises intent before preparing and on a later read for the coverage digest', async () => {
+    const f = await fixture();
+    const input = JSON.stringify({ authorSessionId: 'author', intent: { risk: 'behavior', criteria: 'Criteria' + invisible + whitespace, ['extra\u0010']: ['metadata'] } });
+    await writeFile(f.request, input);
+    const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const previous = await f.review();
+    expect(previous.intent).toEqual({ risk: 'behavior', criteria: 'Criteria' + whitespace, extra: ['metadata'] });
+    expect(notice.mock.calls).toEqual([['prepare: removed 5 invisible control characters from the intent']]);
+
+    await f.write('app.ts', 'export const before = 3;\n');
+    f.commit();
+    await f.cli('prepare', f.request);
+    expect(notice).toHaveBeenCalledTimes(2);
+    expect(notice).toHaveBeenLastCalledWith('prepare: removed 5 invisible control characters from the intent');
+    const candidate = (await f.state()).candidate;
+    expect(candidate.coverage).toMatchObject({ kind: 'repair', previous: digest(previous.history) });
+    await f.report();
+    await f.report();
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    await expect(f.cli('verify')).resolves.toBe(0);
+    expect(await readFile(f.request, 'utf8')).toBe(input);
+  });
+
+  it('refuses a Git path containing a control character and preserves the previous session bytes', async () => {
+    const f = await fixture();
+    await f.cli('prepare', f.request);
+    const path = join(f.scratch, 'agent-review/session.json');
+    const previous = await readFile(path, 'utf8');
+    await f.write('before\u0010after.txt', 'fixture\n');
+    f.commit();
+    const outcome = await f.cli('prepare', f.request).catch(error => error.message);
+    expect(await readFile(path, 'utf8')).toBe(previous);
+    expect(outcome).toBe('invalid: history[2].candidate.changedPaths[1] contains a control character (U+0010); rename the file or remove the character, then prepare again');
+  });
+});
 
 describe('closed registry grammar', () => {
   it('rejects duplicate JSON keys and unsupported syntax', () => {

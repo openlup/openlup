@@ -149,9 +149,30 @@ describe('hosted receipt comments', () => {
     const duplicate = `${rendered}\n\n${machine}`;
     expect(parseReceipt(duplicate)).toBeNull();
     await expect(waitFor(duplicate)).rejects.toThrow(
-      'receipt comment 42 is not a valid receipt (for example an edited or duplicated machine block); post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
+      'receipt comment 42: no machine block in the expected form; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
     );
     await expect(waitFor(rendered, duplicate)).resolves.toEqual(summary);
+  });
+
+  it('reports the JSON offset and remedy when a client rewrites the control escape', async () => {
+    const rendered = receiptBody(modernReceipt('reviewer\u0010-1'));
+    const rewritten = rendered.replaceAll('\\u0010', '\\^P');
+    expect(parseReceipt(rendered)).not.toBeNull();
+    expect(parseReceipt(rewritten)).toBeNull();
+    const offset = rewritten.split('\n').find(line => line.includes('\\^P'))!.indexOf('\\^P') + 1;
+    const error = await waitFor(rewritten).catch(error => error);
+    expect(error.message).toContain('receipt comment 42: machine block is not valid JSON at offset ' + offset +
+      '; a client may have rewritten control characters; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`');
+    expect(error.message).not.toContain('for example an edited or duplicated machine block');
+  });
+
+  it('reports an undecodable compressed block and the remedy', async () => {
+    const rendered = receiptBody(modernReceipt(undefined, undefined, 'x'.repeat(65_536)));
+    const malformed = rendered.replace(/\n```text\n[^\n]+/u, '\n```text\nAAAA');
+    expect(parseReceipt(malformed)).toBeNull();
+    await expect(waitFor(malformed)).rejects.toThrow(
+      'receipt comment 42: compressed block does not decode; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
+    );
   });
 
   it.each(['raw v2', 'raw v3', 'gzip v3'])('parses and admits the bare %s format', async format => {
@@ -168,7 +189,7 @@ describe('hosted receipt comments', () => {
     const f = handoffFixture();
     f.state.comments = [comment(), comment({ id: 42, body: `${RECEIPT_MARKER}\ninvalid` })];
     f.runGit.mockRejectedValueOnce(new Error('unknown base'));
-    const reason = 'receipt objects could not be verified: unknown base; post a corrected receipt; receipt comment 42 is not a valid receipt (for example an edited or duplicated machine block); post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`';
+    const reason = 'receipt objects could not be verified: unknown base; post a corrected receipt; receipt comment 42: no machine block in the expected form; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`';
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       await expect(wait(f)).rejects.toThrow(reason);

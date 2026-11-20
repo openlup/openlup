@@ -303,7 +303,51 @@ async function boundedJson(path, limit = 1024 * 1024) {
     demand(bytesRead <= limit, 'JSON input exceeds size bound'); return JSON.parse(bytes.subarray(0, bytesRead).toString('utf8'));
   } finally { await handle.close(); }
 }
+const INVISIBLE_CONTROL = /[\p{Cc}--[\t\n\r]]/v;
+const INVISIBLE_CONTROLS = new RegExp(INVISIBLE_CONTROL.source, 'gv');
+const controlCode = character => character.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+
+function mapJsonText(value, map) {
+  if (typeof value === 'string') return map(value);
+  if (Array.isArray(value)) {
+    const items = [];
+    for (const item of value) items.push(mapJsonText(item, map));
+    return items;
+  }
+  if (value && typeof value === 'object') {
+    const entries = [];
+    for (const [key, item] of Object.entries(value)) entries.push([map(key), mapJsonText(item, map)]);
+    return Object.fromEntries(entries);
+  }
+  return value;
+}
+async function readReviewInput(path, verb, kind) {
+  let removed = 0;
+  const value = mapJsonText(await boundedJson(path), text => text.replace(INVISIBLE_CONTROLS, () => {
+    removed += 1;
+    return '';
+  }));
+  if (removed) console.error(`${verb}: removed ${removed} invisible control character${removed === 1 ? '' : 's'} from the ${kind}`);
+  return value;
+}
+function assertControlFreeText(text, path) {
+  const control = INVISIBLE_CONTROL.exec(text)?.[0];
+  if (control) demand(false, `${path} contains a control character (U+${controlCode(control)}); rename the file or remove the character, then prepare again`);
+}
+function assertControlFreeState(value, path = '') {
+  if (typeof value === 'string') assertControlFreeText(value, path);
+  else if (value && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) {
+      const field = Array.isArray(value) ? `${path}[${key}]`
+        : /^[a-zA-Z_$][\w$]*$/u.test(key) ? `${path ? path + '.' : ''}${key}`
+          : `${path}[${JSON.stringify(key).replace(INVISIBLE_CONTROLS, character => '\\u' + controlCode(character))}]`;
+      assertControlFreeText(key, field);
+      assertControlFreeState(item, field);
+    }
+  }
+}
 async function saveState(path, state) {
+  assertControlFreeState(state);
   const bytes = `${JSON.stringify(state, null, 2)}\n`; demand(Buffer.byteLength(bytes) <= 8 * 1024 * 1024, 'session exceeds 8 MiB; previous state preserved');
   const temporary = `${path}.${randomUUID()}.tmp`;
   try { await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 }); await rename(temporary, path); }
@@ -368,7 +412,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     let session; try { session = await boundedJson(path, 8 * 1024 * 1024); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     if (verb === 'prepare') {
       const fresh = args[0] === '--new'; if (fresh) args.shift();
-      const spec = await boundedJson(args[0] ?? join(directory, 'intent.json'));
+      const spec = await readReviewInput(args[0] ?? join(directory, 'intent.json'), verb, 'intent');
       const observed = { ...await captureSessionCandidate(cwd, undefined, { env }), intent: spec.intent, authorSessionId: spec.authorSessionId ?? env.CODEX_THREAD_ID };
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
         try { await git(cwd, 'merge-base', '--is-ancestor', session.candidate.head, observed.head); }
@@ -420,7 +464,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     const observed = await captureSessionCandidate(cwd, session.candidate.base, { env });
     demand(observed.clean, 'commit source changes before review', 'dirty');
     demand(['base', 'head', 'tree'].every(key => observed[key] === session.candidate[key]), 'candidate changed; prepare again', 'stale');
-    if (verb === 'record') { session = recordReport(session, await boundedJson(args[0]), Date.now()); await saveState(path, session); return 0; }
+    if (verb === 'record') { session = recordReport(session, await readReviewInput(args[0], verb, 'report'), Date.now()); await saveState(path, session); return 0; }
     await validateEconomySession(cwd, session);
     const decision = verdict(session, observed, Date.now()); demand(decision.ok, decision.reason, decision.code);
     if (verb === 'receipt') await assertMergePreflight(cwd, observed, { env });
