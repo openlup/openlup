@@ -264,7 +264,7 @@ const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 // `PUBLIC_PACKAGE_EXECUTION_SURFACES` pins these workspace scripts by digest; the first test names a drift.
 const CORE_SCRIPTS = {
   build: "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
-  "build:ensure": "node -e \"if(process.env.OPENLUP_DIST_READY==='1'&&require('node:fs').existsSync('dist'))process.exit(0);require('node:child_process').execFileSync(process.platform==='win32'?'npm.cmd':'npm',['run','build'],{stdio:'inherit'})\"",
+  "build:cached": "node --experimental-strip-types ./scripts/build-if-missing.ts",
   "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
   "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
   ci: "npm run test:coverage && npm run typecheck:smoke && npm run api:check && npm run docs:check && npm run release:check && npm run test:consumer",
@@ -272,7 +272,7 @@ const CORE_SCRIPTS = {
   "docs:check": "node --experimental-strip-types ./scripts/documentation-contract.ts",
   prepack: "npm run build",
   prepublishOnly: "node --experimental-strip-types ./scripts/refuse-publish.ts",
-  "release:admission": "npm run build:ensure && node --experimental-strip-types ./scripts/release-check.ts admission",
+  "release:admission": "npm run build:cached && node --experimental-strip-types ./scripts/release-check.ts admission",
   "release:audit": "node --experimental-strip-types ./scripts/release-check.ts audit",
   "release:bundle": "node --experimental-strip-types ./scripts/release-bundle.ts",
   "release:check": "npm run build && node --experimental-strip-types ./scripts/release-check.ts all",
@@ -282,7 +282,7 @@ const CORE_SCRIPTS = {
   "release:publish-block": "node --experimental-strip-types ./scripts/release-check.ts publish",
   "release:sbom": "node --experimental-strip-types ./scripts/release-check.ts sbom",
   "test:consumer": "node --experimental-strip-types ./scripts/core-package-consumer-smoke.ts",
-  "test:coverage": "npm run build:ensure && npm run test:runtime-import && vitest run --config vitest.config.ts --coverage && node --experimental-strip-types ./test/assertNoZeroCoverage.ts",
+  "test:coverage": "npm run build:cached && npm run test:runtime-import && vitest run --config vitest.config.ts --coverage && node --experimental-strip-types ./test/assertNoZeroCoverage.ts",
   "test:runtime-import": "node -e \"const p=require('./package.json'); Promise.all(Object.keys(p.exports).filter((s)=>s!=='./package.json').map((s)=>import(s==='.'?p.name:p.name+'/'+s.slice(2)))).then((m)=>console.log('core runtime import ok', m.length))\"",
   "test:smoke": "npm run build && npm run test:runtime-import && vitest run --config vitest.config.ts",
   "typecheck:smoke": "tsc -p tsconfig.smoke.json --noEmit",

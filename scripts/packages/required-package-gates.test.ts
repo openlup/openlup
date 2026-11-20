@@ -53,13 +53,14 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { env as processEnvironment } from 'node:process';
 const phase = process.argv[2], name = basename(process.cwd()), root = resolve('../..');
 if (phase === 'build') {
   appendFileSync(join(root, 'builds.jsonl'), JSON.stringify({ phase, name }) + '\\n');
   mkdirSync('dist', { recursive: true });
   writeFileSync('dist/index.js', readFileSync('src/index.ts'));
 } else {
-  appendFileSync(join(root, 'trace.jsonl'), JSON.stringify({ phase, name, ...(phase === 'required' ? { distReady: process.env.OPENLUP_DIST_READY } : {}) }) + '\\n');
+  appendFileSync(join(root, 'trace.jsonl'), JSON.stringify({ phase, name, ...(phase === 'required' ? { distReady: processEnvironment.OPENLUP_DIST_READY } : {}) }) + '\\n');
   if (phase === 'api') {
     assert.equal(readFileSync('dist/index.js', 'utf8'), readFileSync('src/index.ts', 'utf8'));
     if (${Boolean(options.failingApi)}) throw new Error('synthetic API failure');
@@ -198,34 +199,39 @@ describe("inventory-driven required package gates", () => {
     expect(observations(input.root)).toEqual([{ phase: "api", name: "alpha" }, { phase: "required", name: "alpha", distReady: "1" }]);
   }, 60_000);
 
-  it("reuses freshly built dist in @openlup/core build:ensure only when OPENLUP_DIST_READY=1 and dist exists", () => {
+  it("reuses freshly built dist in @openlup/core build:cached only when OPENLUP_DIST_READY=1 and dist exists", () => {
     const coreManifest = JSON.parse(readFileSync(join(source, "../../packages/core/package.json"), "utf8")) as { scripts: Record<string, string> };
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "core-build-ensure-")));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "core-build-cached-")));
     roots.push(root);
+    mkdirSync(join(root, "scripts"), { recursive: true });
+    writeFileSync(
+      join(root, "scripts/build-if-missing.ts"),
+      readFileSync(join(source, "../../packages/core/scripts/build-if-missing.ts")),
+    );
     writeFileSync(join(root, "package.json"), JSON.stringify({
-      name: "synthetic-core-build-ensure",
+      name: "synthetic-core-build-cached",
       private: true,
       scripts: {
         build: "node -e \"const fs=require('node:fs'); fs.mkdirSync('dist',{recursive:true}); fs.appendFileSync('build-count.log','built\\n');\"",
-        "build:ensure": coreManifest.scripts["build:ensure"],
+        "build:cached": coreManifest.scripts["build:cached"],
       },
     }));
-    const runEnsure = (env: Record<string, string | undefined>) => spawnSync("npm", ["run", "build:ensure"], {
+    const runCached = (env: Record<string, string | undefined>) => spawnSync("npm", ["run", "build:cached"], {
       cwd: root, env: { ...isolatedConsumerEnv(), ...env }, encoding: "utf8", timeout: 15_000,
     });
     const buildCount = () => existsSync(join(root, "build-count.log")) ? readFileSync(join(root, "build-count.log"), "utf8").trim().split("\n").length : 0;
 
     // 1. OPENLUP_DIST_READY=1 without dist/ still builds (fail-safe).
-    expect(runEnsure({ OPENLUP_DIST_READY: "1" }).status).toBe(0);
+    expect(runCached({ OPENLUP_DIST_READY: "1" }).status).toBe(0);
     expect(buildCount()).toBe(1);
     expect(existsSync(join(root, "dist"))).toBe(true);
 
     // 2. OPENLUP_DIST_READY=1 with existing dist/ skips redundant rebuild.
-    expect(runEnsure({ OPENLUP_DIST_READY: "1" }).status).toBe(0);
+    expect(runCached({ OPENLUP_DIST_READY: "1" }).status).toBe(0);
     expect(buildCount()).toBe(1);
 
     // 3. Standalone invocation without OPENLUP_DIST_READY always runs build.
-    expect(runEnsure({}).status).toBe(0);
+    expect(runCached({}).status).toBe(0);
     expect(buildCount()).toBe(2);
   }, 30_000);
 

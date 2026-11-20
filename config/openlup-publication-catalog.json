@@ -3218,6 +3218,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/scripts/build-if-missing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/scripts/core-package-consumer-audit.ts",
       "class": "public-output"
     },
@@ -31491,7 +31495,7 @@
     },
     {
       "path": "packages/core/package.json",
-      "digest": "sha256-4081df0eb6a247a9ffeb532405bc58cd217e4cd5cdc54e1e0db9c200f94cbd87"
+      "digest": "sha256-4f6bcde0848f6c84669b06720154b12e47a3f73d75a1cfd7f54fd7802bc745ca"
     },
     {
       "path": "packages/outbox/package.json",
