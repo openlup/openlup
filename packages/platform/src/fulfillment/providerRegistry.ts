@@ -5,9 +5,13 @@ export function createFulfillmentProviderRegistry(
 ): FulfillmentProviderRegistry {
   const byRef = new Map<string, FulfillmentProviderAdapter>();
   for (const adapter of adapters) {
-    const ref = adapter.capabilities.providerRef.trim();
+    const rawRef = adapter.capabilities.providerRef;
+    const ref = rawRef.trim();
     if (!ref) {
       throw new Error("fulfillment_provider_ref_required");
+    }
+    if (ref !== rawRef) {
+      throw new Error(`fulfillment_provider_ref_untrimmed:${ref}`);
     }
     if (byRef.has(ref)) {
       throw new Error(`duplicate_fulfillment_provider_ref:${ref}`);

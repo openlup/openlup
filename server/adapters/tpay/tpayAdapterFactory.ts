@@ -139,7 +139,7 @@ function createReferenceTpayAdapter(options: Parameters<typeof createTpayPayment
         successUrl: referenceReturnUrl(transaction.successUrl, options.successUrl, input),
         errorUrl: referenceReturnUrl(transaction.errorUrl, options.errorUrl, input),
         simulatorContext: transaction.simulatorContext
-          ? { ...transaction.simulatorContext, returnPath: "/konto/zamowienie/status" } : transaction.simulatorContext,
+          ? { ...transaction.simulatorContext, returnPath: input.returnPath ?? "/konto/zamowienie/status" } : transaction.simulatorContext,
       }),
     },
   });

@@ -90,11 +90,20 @@ describe("PaymentProviderRegistry and capture handoff translator", () => {
     expect(projected.captureFlows).toEqual([{ kind: "custom_setup", handoff: "embedded_client_secret" }]);
   });
 
-  it("rejects blank or duplicate provider kinds", () => {
+  it("rejects blank, untrimmed, or duplicate provider kinds and unknown handoffs", () => {
     const adapter = syntheticAdapter("rail-a", []);
     expect(() => createPaymentProviderRegistry([adapter, syntheticAdapter("rail-a", [])]))
       .toThrow("duplicate_payment_provider_kind:rail-a");
     expect(() => createPaymentProviderRegistry([syntheticAdapter("   ", [])]))
       .toThrow("payment_provider_kind_required");
+    expect(() => createPaymentProviderRegistry([syntheticAdapter(" rail-a ", [])]))
+      .toThrow("payment_provider_kind_untrimmed:rail-a");
+    expect(() => toCoreCaptureHandoff("unexpected" as never))
+      .toThrow("unknown_adapter_capture_handoff:unexpected");
+    expect(() => fromCoreCaptureHandoff("unexpected" as never))
+      .toThrow("unknown_core_capture_handoff:unexpected");
+    const cap = createPaymentProviderRegistry([adapter]).asCapabilityRegistry().get("rail-a")!;
+    expect(Object.isFrozen(cap)).toBe(true);
+    expect(Object.isFrozen(cap.captureFlows)).toBe(true);
   });
 });

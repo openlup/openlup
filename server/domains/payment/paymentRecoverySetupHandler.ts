@@ -92,6 +92,9 @@ export function createPaymentRecoverySetupHandler({
   caseDisplayFacts,
   now = () => new Date(),
 }: PaymentRecoverySetupHandlerDeps) {
+  if (!methodPort && !createSetupIntent) {
+    throw new Error("payment_recovery_setup_method_port_required");
+  }
   return async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     const admitted = await admitPaymentRecoveryRequest({
       req,

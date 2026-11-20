@@ -393,4 +393,17 @@ describe("createPaymentRecoverySetupHandler", () => {
       }),
     );
   });
+
+  it("fails closed eagerly at construction when neither methodPort nor createSetupIntent is supplied", () => {
+    const ensureCustomer = ensureCustomerMock();
+    expect(() =>
+      createPaymentRecoverySetupHandler({
+        enabled: () => true,
+        authenticateCustomer: async () => ({ ok: true, userId: CUSTOMER_USER_ID }),
+        recoveryPort: port(),
+        ensureCustomer,
+      }),
+    ).toThrow("payment_recovery_setup_method_port_required");
+    expect(ensureCustomer).not.toHaveBeenCalled();
+  });
 });

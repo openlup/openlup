@@ -24,6 +24,10 @@ export function toCoreCaptureHandoff(handoff: AdapterCaptureHandoff): PaymentMet
       return "payer_supplied_code";
     case "redirect":
       return null;
+    default: {
+      const exhaustive: never = handoff;
+      throw new Error(`unknown_adapter_capture_handoff:${String(exhaustive)}`);
+    }
   }
 }
 
@@ -36,6 +40,10 @@ export function fromCoreCaptureHandoff(
       return "client-confirmed";
     case "payer_supplied_code":
       return "customer-authorization";
+    default: {
+      const exhaustive: never = handoff;
+      throw new Error(`unknown_core_capture_handoff:${String(exhaustive)}`);
+    }
   }
 }
 
@@ -48,22 +56,24 @@ export function toCorePaymentProviderCapability(
   for (const flow of capabilities.captureFlows) {
     const handoff = toCoreCaptureHandoff(flow.handoff);
     if (handoff !== null) {
-      translatedFlows.push({ kind: flow.kind, handoff });
+      translatedFlows.push(Object.freeze({ kind: flow.kind, handoff }));
     }
   }
-  return {
+  return Object.freeze({
     providerKind: capabilities.providerKind,
     requiresStoredMandateEvidence: capabilities.requiresStoredMandateEvidence,
     assessMandate: capabilities.assessMandate,
     unattendedChargeFlow: capabilities.unattendedChargeFlow,
-    payerContext: overrides?.payerContext ? { ...overrides.payerContext } : { ...capabilities.payerContext },
-    methodHealth: { ...capabilities.methodHealth },
-    terminalOutcomeReporting: { ...capabilities.terminalOutcomeReporting },
+    payerContext: Object.freeze(overrides?.payerContext ? { ...overrides.payerContext } : { ...capabilities.payerContext }),
+    methodHealth: Object.freeze({ ...capabilities.methodHealth }),
+    terminalOutcomeReporting: Object.freeze({ ...capabilities.terminalOutcomeReporting }),
     mandateUpsertIsSubscriptionScoped: capabilities.mandateUpsertIsSubscriptionScoped,
-    captureFlows: overrides?.captureFlows
-      ? overrides.captureFlows.map((flow) => ({ ...flow }))
-      : translatedFlows,
-  };
+    captureFlows: Object.freeze(
+      overrides?.captureFlows
+        ? overrides.captureFlows.map((flow) => Object.freeze({ ...flow }))
+        : translatedFlows,
+    ),
+  });
 }
 
 export function createPaymentProviderRegistry(
@@ -71,9 +81,13 @@ export function createPaymentProviderRegistry(
 ): PaymentProviderRegistry {
   const byKind = new Map<string, PaymentAdapter>();
   for (const adapter of adapters) {
-    const kind = adapter.capabilities.providerKind.trim();
+    const rawKind = adapter.capabilities.providerKind;
+    const kind = rawKind.trim();
     if (!kind) {
       throw new Error("payment_provider_kind_required");
+    }
+    if (kind !== rawKind) {
+      throw new Error(`payment_provider_kind_untrimmed:${kind}`);
     }
     if (byKind.has(kind)) {
       throw new Error(`duplicate_payment_provider_kind:${kind}`);
@@ -101,7 +115,8 @@ export function createPaymentProviderRegistry(
     ): PaymentProviderCapabilityRegistry {
       const projected = new Map<string, PaymentProviderCapabilityDescriptor>();
       for (const [kind, adapter] of byKind) {
-        projected.set(kind, toCorePaymentProviderCapability(adapter.capabilities, overrides?.[kind]));
+        const override = overrides && Object.hasOwn(overrides, kind) ? overrides[kind] : undefined;
+        projected.set(kind, toCorePaymentProviderCapability(adapter.capabilities, override));
       }
       return {
         get(providerKind: string): PaymentProviderCapabilityDescriptor | null {
