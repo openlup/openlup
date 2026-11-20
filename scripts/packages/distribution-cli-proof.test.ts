@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest,
+  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers,
   reminderInstallationTest, starterLifecycle, starterOptionalCatalogueFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization } from "./distribution-cli-proof.ts";
 
@@ -198,13 +198,7 @@ it("migrates the pristine catalogue after the 1.2.0 starter release", () => {
   const upgraded = spawnSync(process.execPath, [bin, "upgrade", "apply", "--root", app, "--from", join(app, "from.json"),
     "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { cwd: app, encoding: "utf8" });
   expect(upgraded.status, upgraded.stdout).toBe(0);
-  const verifyWrappers = () => {
-    for (const script of ["catalogue:check", "catalogue:check:source"]) {
-      const report = JSON.parse(execFileSync("npm", ["run", "--silent", script], { cwd: app, encoding: "utf8",
-        env: { ...env, TMPDIR: target, TMP: target, TEMP: target } }));
-      expect(report).toMatchObject({ exitCode: 0, command: script.endsWith(":source") ? "catalogue project" : "catalogue check" });
-    }
-  };
+  const verifyWrappers = () => proveStarterCatalogueWrappers(app, target);
   verifyWrappers();
 
   write("released-catalogue.ts", previous);

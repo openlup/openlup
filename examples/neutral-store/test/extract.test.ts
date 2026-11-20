@@ -10,6 +10,7 @@ import { setTimeout } from 'node:timers/promises';
 import { configurations } from '../owned/store.config.ts';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
+import { proveStarterCatalogueWrappers } from '../../../scripts/packages/distribution-cli-proof.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // Source-release tests keep scratch inside this application.
@@ -529,6 +530,21 @@ test('RP2 source wrapper checks the independent registry from packed dependencie
     const owned = await readFile(path, 'utf8');
     assert.equal(invoke('catalogue:check', 0).command, 'catalogue check');
     assert.equal(invoke('catalogue:check:source', 0).command, 'catalogue project');
+
+    const manifestPath = resolve(target, 'package.json');
+    const manifestBytes = await readFile(manifestPath);
+    const manifest = JSON.parse(manifestBytes.toString('utf8'));
+    try {
+      for (const [script, wrong] of [
+        ['catalogue:check', manifest.scripts['catalogue:check:source']],
+        ['catalogue:check:source', manifest.scripts['catalogue:check:source'] + ';'],
+      ]) {
+        await writeFile(manifestPath, JSON.stringify({ ...manifest, scripts: { ...manifest.scripts, [script]: wrong } }));
+        assert.throws(() => proveStarterCatalogueWrappers(target, directory),
+          { message: `unexpected starter catalogue script: ${script}` });
+      }
+    } finally { await writeFile(manifestPath, manifestBytes); }
+    proveStarterCatalogueWrappers(target, directory);
 
     const independent = owned.replaceAll('starter:', 'independent:').replaceAll("'starter'", "'independent'");
     await writeFile(path, independent);
