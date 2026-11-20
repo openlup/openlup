@@ -15406,7 +15406,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/commerce/oms/types.test-d.ts",
+      "path": "server/adapters/supabase/commerce/oms/types.test.ts",
       "class": "public-output"
     },
     {
