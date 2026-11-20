@@ -211,6 +211,19 @@ function catalogDraftActions(context: PageContext): HTMLElement {
       ], transform: values => ({ action: values.action, draftId: values.draftId,
         expectedRevision: values.expectedRevision,
         ...(values.action === 'abandon' ? {} : { payload: JSON.parse(String(values.payload)) as unknown }) }),
+      freezePrepared: true,
+      transportKey: (values, key) => values.action === 'create' || values.action === 'revise' ? `pin:${key}` : key,
+      async prepare(values) {
+        if (values.action === 'abandon') return values;
+        const payload = values.payload;
+        if (!isRecord(payload) || !isRecord(payload.product) || !isRecord(payload.product.type)) return values;
+        const resolved = await act('operator.catalogDrafts', { action: 'example', type: payload.product.type }, crypto.randomUUID());
+        if (resolved.ok && isRecord(resolved.value) && isRecord(resolved.value.type))
+          return { ...values, payload: { ...payload, product: { ...payload.product, type: resolved.value.type } } };
+        const output = draftEditor.querySelector('.action-result');
+        if (output && !resolved.ok) output.replaceChildren(refusal(context, resolved.code), renderValue(resolved.issues ?? []));
+        return null;
+      },
     });
 
 
