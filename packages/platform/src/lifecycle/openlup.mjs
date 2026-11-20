@@ -120,16 +120,24 @@ async function main(args) {
       return text;
     };
     const io = { write: text => process.stdout.write(text), warn: text => process.stderr.write(text), readStdin };
-    if (args[1] === "mcp") {
+    const settingsArgs = args.slice(1);
+    let commandIndex = 0;
+    while (/^--(?:app|configuration|database-url)(?:=|$)/u.test(settingsArgs[commandIndex] ?? "")) {
+      const inline = settingsArgs[commandIndex].includes("=");
+      if (!inline && /^-./u.test(settingsArgs[commandIndex + 1] ?? "")) break;
+      commandIndex += inline ? 1 : 2;
+    }
+    if (settingsArgs[commandIndex] === "mcp") {
+      const mcpArgs = ["mcp", ...settingsArgs.slice(0, commandIndex), ...settingsArgs.slice(commandIndex + 1)];
       const write = process.stdout.write.bind(process.stdout);
       process.stdout.write = process.stderr.write.bind(process.stderr);
       globalThis.console = new Console(process.stderr);
       // eslint-disable-next-line no-restricted-syntax -- tool entry uses the same public preview contract as the catalogue generator
       const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
-      process.exitCode = await runSettingsCommand(args.slice(1), { ...io, write, input: process.stdin },
+      process.exitCode = await runSettingsCommand(mcpArgs, { ...io, write, input: process.stdin },
         { ...host, previewResultSchema: renewalStockProtectionPreviewResult });
     } else {
-      process.exitCode = await runSettingsCommand(args.slice(1), io, host);
+      process.exitCode = await runSettingsCommand(settingsArgs, io, host);
     }
     return;
   }

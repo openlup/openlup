@@ -596,7 +596,7 @@ export function createSettingsBindings(input) {
       toolCall(7, "check"), toolCall(8, "preview", { key: "inventory_renewal_protection", value: null }),
       "{", request(9, "unknown", []), toolCall(10, "show", { key, app: "ignored" }), toolCall(11, "show", { key: 1 }),
       toolCall(12, "unknown"), "x".repeat(1024 * 1024 + 1), request(13, "ping"),
-      `{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"settings_preview","arguments":{"value":${nestedValue}}}}`,
+      `{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"settings_preview","arguments":{"key":"inventory_renewal_protection","value":${nestedValue}}}}`,
       request(15, "ping"), malformedUtf8, request(16, "ping"),
     ];
     const executable = join(app, "node_modules/.bin/openlup");
@@ -609,6 +609,29 @@ export function createSettingsBindings(input) {
     const replies = session.stdout.trimEnd().split("\n").map(line => JSON.parse(line));
     assert.deepEqual(replies.map(row => row.id), [1, 2, 3, 4, 5, 6, 7, 8, null, 9, 10, 11, 12, null, 13, 14, 15, null, 16]);
     const byId = new Map(replies.filter(row => row.id !== null).map(row => [row.id, row]));
+    const discovery = init + "\n" + request(3, "tools/list") + "\n";
+    for (const prefixed of [
+      ["settings", "--app", appPath, "mcp"],
+      ["settings", `--app=${appPath}`, "mcp"],
+      ["settings", "--configuration=supplements", "--database-url", "postgresql://probe@db.invalid/shop", "--app", appPath, "mcp"],
+    ]) {
+      const alternate = spawnSync(executable, prefixed, { cwd: app, env: environment, encoding: "utf8", input: discovery });
+      assert.ifError(alternate.error);
+      assert.equal(alternate.status, 0);
+      assert.deepEqual(alternate.stdout.trimEnd().split("\n").map(line => JSON.parse(line)), [byId.get(2), byId.get(3)]);
+    }
+    const missing = spawnSync(executable, ["settings", "--app", join(directory, "missing.mjs"), "mcp"],
+      { cwd: app, env: environment, encoding: "utf8", input: discovery });
+    assert.ifError(missing.error);
+    assert.equal(missing.status, 74);
+    assert.equal(missing.stdout, "");
+    assert.equal(missing.stderr, "Settings app: Check the --app path and the createSettingsBindings export.\n");
+    const malformed = spawnSync(executable, ["settings", "--app", "--configuration", "mcp"],
+      { cwd: app, env: environment, encoding: "utf8", input: discovery });
+    assert.ifError(malformed.error);
+    assert.equal(malformed.status, 64);
+    assert.match(malformed.stdout, /Supply a value for --app/u);
+    assert.equal(malformed.stderr, "");
     assert.equal(byId.get(2).result.protocolVersion, "2025-06-18");
     const listing = byId.get(3).result;
     const tools: { name: string; annotations?: { readOnlyHint?: boolean }; inputSchema: { additionalProperties?: boolean }; outputSchema?: object }[] = listing.tools;

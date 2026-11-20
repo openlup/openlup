@@ -548,7 +548,7 @@ it("exchanges all five MCP tools and recovers from bad frames with the packed bi
     const validateInput = clientValidator.getValidator(tool.inputSchema);
     const validateOutput = clientValidator.getValidator(tool.outputSchema!);
     const document = CallToolResultSchema.parse(results[index]).structuredContent!;
-    expect(validateInput({}).valid, tool.name).toBe(true);
+    expect(validateInput({}).valid, tool.name).toBe(["settings_list", "settings_check"].includes(tool.name));
     expect(validateInput({ databaseUrl: "ignored" }).valid, tool.name).toBe(false);
     expect(validateOutput(document).valid, tool.name).toBe(true);
     expect(validateOutput({ ...document, extra: true }).valid, tool.name).toBe(false);
