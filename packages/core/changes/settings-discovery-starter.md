@@ -12,7 +12,10 @@
 - If the upgrade refuses because the planned host path became occupied, keep the
   local file and remove its creation from the target snapshot. Replan and apply
   the reconciled snapshots, then replay. The installed application upgrades with
-  its local host bindings intact. Follow
-  `show inventory_renewal_protection --json`
-  to verify the command. Stock or reminder policy installation remains a separate
-  deployment step.
+  its local host bindings intact.
+- After applying the snapshot, update the installed dependencies to match the
+  target extraction. Use the settings script with
+  `show inventory_renewal_protection --database-url <read-capable-url> --json`
+  against the intended store to verify the command and load the owned binding.
+  A missing or broken binding returns `commerce_setting_read_unavailable` with
+  exit 74. Stock or reminder policy installation remains a separate deployment step.

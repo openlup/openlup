@@ -67,6 +67,50 @@ it("refuses an extracted starter without the settings script", () => {
   expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
 });
 
+it("loads the settings binding on connected show and reports a missing module", () => {
+  const { directory } = fixture();
+  const show = (...args: string[]) => spawnSync(process.execPath, [
+    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "--app", starterSettingsHost,
+    "show", "inventory_renewal_protection", "--json", ...args,
+  ], { cwd: directory, encoding: "utf8" });
+  const offline = show();
+  expect(offline.status, offline.stderr).toBe(0);
+  expect(JSON.parse(offline.stdout)).toMatchObject({ observation: { state: "offline" } });
+  const connected = show("--database-url", "postgresql://unused.invalid/shop");
+  expect(connected.status, connected.stderr).toBe(74);
+  expect(JSON.parse(connected.stdout)).toMatchObject({ refusal: {
+    code: "commerce_setting_read_unavailable", path: ["key"], hint: expect.stringContaining("createSettingsBindings"),
+  } });
+});
+
+it.each([
+  ["valid with fresh availability", { state: "valid", value: { renewalProtectionDays: 21 } },
+    { renewalProtectionDays: 7 }, 5, false, "Normalized:", "5 currently available, 3 estimated under the proposal (provider)"],
+  ["invalid with stale and unavailable values", { state: "invalid", code: "invalid_policy", rule: "rule", hint: "hint",
+    remediation: { action: "action", command: "command" } },
+    null, null, true, "invalid_policy", "unavailable currently available, unavailable estimated under the proposal (provider, stale)"],
+] as const)("renders connected preview text for %s", (_, validation, difference, current, stale, detail, quantities) => {
+  const { directory, write } = fixture();
+  const key = "inventory_renewal_protection";
+  const result = {
+    schemaVersion: 1, key, asOf: new Date(0).toISOString(), current: { renewalProtectionDays: 14 },
+    proposed: {}, validation, difference, uncertainty: "Observed at the supplied instant.",
+    effect: { newPurchaseAvailability: "nonincreasing", skus: [{ sku: "SKU-1", source: "provider", stale,
+      currentAvailableForNewPurchases: current, proposedAvailableForNewPurchases: current === null ? null : 3 }] },
+  };
+  write(starterSettingsHost, `export function createSettingsBindings() { return { previewers: { ${key}: async () => (${JSON.stringify(result)}) } }; }`);
+  const text = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "--app", starterSettingsHost,
+    "preview", key, "--value", "{}", "--database-url", "postgresql://unused.invalid/shop"], { cwd: directory, encoding: "utf8" });
+  expect(text.status, text.stderr).toBe(0);
+  expect(text.stdout).toContain(`Validation: ${validation.state}`);
+  expect(text.stdout).toContain(`Horizon difference in days: ${difference?.renewalProtectionDays ?? "unavailable"}`);
+  expect(text.stdout).toContain(detail);
+  // The package formatter includes the new estimate beside the original current quantity.
+  expect(text.stdout).toContain(`SKU-1: ${quantities}`);
+  expect(text.stdout).toContain("Existing reservations keep their quantities and expiry times.");
+  expect(text.stdout).toContain(result.uncertainty);
+});
+
 it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const editor = starterEditorPorts;
