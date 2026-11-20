@@ -689,7 +689,7 @@ describe('hosted review decisions', () => {
     const sleep = vi.fn(async ms => { clock += ms; }); const runGit = vi.fn();
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      await expect(waitNativeAdmission({ event: { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api, runGit, now: () => clock, sleep, deadlineMs: 30000 })).rejects.toThrow('bounded 20-minute receipt wait expired');
+      await expect(waitNativeAdmission({ event: { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api, runGit, now: () => clock, sleep, deadlineMs: 30000 })).rejects.toThrow('bounded 3-minute receipt wait expired');
       expect(sleep.mock.calls).toEqual([[15000], [15000]]); expect(runGit).not.toHaveBeenCalled();
       const lookups = api.get.mock.calls.filter(([path]) => path.includes('/collaborators/')).length;
       // A real 'read' answer is cached; a failed lookup is retried on every poll, never trusted.
