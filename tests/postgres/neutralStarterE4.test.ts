@@ -450,15 +450,21 @@ it('all three operation limits preserve the complete effect snapshot over replay
 }, 60000);
 
 // The browser journey is local preview evidence; hosted runners do not install browsers.
-it.runIf(existsSync(chromium.executablePath()))('runs the separate browser spec in both installed configurations without changing the purchase witness', () => {
+it.runIf(existsSync(chromium.executablePath()))('runs the separate browser spec in both installed configurations without changing the purchase witness', async () => {
   const fixturePath = join(scratch, 'browser-fixture.json');
   const config = join(app, '.context/e4-browser.config.mjs');
   writeFileSync(config, `import {defineConfig} from '@playwright/test';\nexport default defineConfig({testDir:'../browser',testMatch:'e4.spec.ts',workers:1,fullyParallel:false,
     use:{headless:true,trace:'off',screenshot:'off',video:'off',fixturePath:${JSON.stringify(fixturePath)}},
     projects:${JSON.stringify(hosts.map(host => ({ name: host.id, use: { baseURL: host.baseURL } })))}});\n`);
-  try { process.stdout.write(command(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', '--config', config])); }
-  catch (error) {
-    if (error && typeof error === 'object' && 'stdout' in error) process.stdout.write(String(error.stdout));
-    throw error;
+  for (const host of hosts) {
+    // Clear prior test-harness challenges for these fixture accounts before each configuration
+    // so e4.spec.ts exercises real 1/min issuance without sleeping 61s between runs.
+    await installer.query('DELETE FROM public.customer_identity_challenges WHERE client_id IN (SELECT id FROM public.clients WHERE lower(email) = lower($1))', [customerEmail]);
+    await installer.query('DELETE FROM public.operator_identity_challenges WHERE principal_id = $1', [operatorId]);
+    try { process.stdout.write(command(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', '--config', config, '--project', host.id])); }
+    catch (error) {
+      if (error && typeof error === 'object' && 'stdout' in error) process.stdout.write(String(error.stdout));
+      throw error;
+    }
   }
-}, 180000);
+}, 120000);
