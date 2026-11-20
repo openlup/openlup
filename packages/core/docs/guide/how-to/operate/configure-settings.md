@@ -61,12 +61,12 @@ and database name each have a limit of 63 UTF-8 bytes. Omit fragments and omit
 the query entirely unless it is exactly `?sslmode=disable`, `?sslmode=require`
 or `?sslmode=verify-full`. `require` and `verify-full` verify the server
 certificate against the named host using Node's trust store. `disable` or an
-omitted mode uses plaintext. The launcher's pool removes `PG`-prefixed
-environment variables immediately before creating each client. It supplies an
-empty password if the URL omits one, so password files are skipped. Unset
-`NODE_PG_FORCE_NATIVE` to use the JavaScript driver for connected reads.
-Applications that replace the driver or pool, change the environment after
-cleanup, or preload the driver in another mode manage their own connections.
+omitted mode uses plaintext. The URL alone sets the host, port, username,
+password, database and TLS mode. `PG`-prefixed environment variables and
+password files cannot change those settings. Other driver variables still
+apply. Both commands refuse when the driver loads the native client. Unset
+`NODE_PG_FORCE_NATIVE` to use the JavaScript client. Applications that replace
+the driver or pool manage their own connections.
 
 ## Check owned configuration before proposing a change
 
