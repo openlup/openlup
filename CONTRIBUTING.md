@@ -1637,11 +1637,11 @@ authority. Review evidence grants no merge, release, settings or credential righ
    receipt as a PR comment, then request auto-merge once within merge authority.
    Pending checks may finish afterwards; required source and group checks must
    pass before the queue merges. Confirm the merge on `main`.
-7. **FAIL: one fix commit.** Commit the fix, then review only that fix as a delta,
-   with the open finding cards, at the same floors above. This needs the failed
-   candidate to have had its full floor of complete reviews; after a FAIL from
-   delta reviews only, the next candidate takes a full review. Close every
-   blocking finding explicitly and return to PASS when review succeeds.
+7. **FAIL: one fix commit.** Commit the fix, then review the cumulative delta
+   since the last candidate with its full floor of complete reviews, with the
+   open finding cards, at the delta floor, or take a full review if no such
+   candidate exists or the base or intent changed. Close every blocking finding
+   explicitly and return to PASS when review succeeds.
 
    Count every review round. A repair cycle fails to converge if a finding of an
    already-seen class reappears on another path, the number of material findings

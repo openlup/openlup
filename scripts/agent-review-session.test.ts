@@ -10,6 +10,15 @@ const prepare = (extra = {}) => prepareCandidate(null, { ...observed, intent, au
 const report = (extra = {}) => ({ reviewer: 'reviewer-1', cold: true, tree: observed.tree, verdict: 'PASS', findings: [], closes: [], documentation: 'Reviewed canonical guidance and secondary examples; no documentation impact.', ...extra });
 const passed = () => recordReport(prepare(), report(), time);
 
+it.each(['intent.criteria', 'authorSessionId'])('reports the length limit for %s and keeps the existing blank error', field => {
+  const input = (value: string | undefined) => field === 'intent.criteria' ? { intent: { ...intent, criteria: value } } : { authorSessionId: value };
+  expect(() => prepare(input('x'.repeat(4097)))).toThrow(`invalid: ${field} is 4097 characters (limit 4,096); shorten it`);
+  expect(() => prepare(input('x'.repeat(4096)))).not.toThrow();
+  for (const value of [undefined, '', ' '.repeat(4097)]) {
+    expect(() => prepare(input(value))).toThrow('invalid: author and intent.criteria are required');
+  }
+});
+
 describe('native receipt transport', () => {
   const rawBody = (marker: string, summary: unknown) => `${marker}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
   const textBody = (payload: string) => `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${payload}\n\`\`\``;

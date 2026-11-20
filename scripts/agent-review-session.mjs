@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { digest, explainSession, protectedCoveragePath, carryOver, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
+import { digest, explainSession, protectedCoveragePath, carryOver, cumulativeRepairPrefix, fullReviewReports, demand, integrationReviewContext, prepareCandidate, receiptBody, receiptSummary, recordReport, verdict } from './agent-review-decide.mjs';
 import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryOnlyCurrent, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { generatedCarrier, runLandingGenerators, withPredictedTree } from './agent-review-generators.mjs';
@@ -221,10 +221,14 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
   if (!session || !observed.rules ||
     digest(observed.intent) !== digest(session.history.findLast(event => event.type === 'prepare').intent) ||
     observed.authorSessionId !== session.history.findLast(event => event.type === 'prepare').authorSessionId) return undefined;
-  const passed = verdict(session, session.candidate, now).ok;
-  if (!passed && (session.candidate.base !== observed.base || !fullReviewReports(session))) return undefined;
+  const decision = verdict(session, session.candidate, now);
+  const sameBase = session.candidate.base === observed.base;
+  const priorFull = !decision.ok && sameBase && fullReviewReports(session);
+  const cumulative = !priorFull && sameBase && decision.code === 'needs_agent_review'
+    ? cumulativeRepairPrefix(session) : undefined;
+  if (!decision.ok && !priorFull && !cumulative) return undefined;
   let proof; let kind; let from = session.candidate.head; let to = observed.head;
-  if (session.candidate.base !== observed.base) {
+  if (!sameBase) {
     // An integration base must be on main; a repair keeps its existing (possibly stacked) base.
     if (!await ancestor(git, cwd, observed.base, 'origin/main')) return undefined;
     kind = 'integration';
@@ -243,10 +247,12 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
     } catch { return undefined; }
   } else {
     if (session.candidate.rules?.version !== 3) return undefined;
-    const delta = await captureCommittedReviewCandidate(cwd, session.candidate.head, observed.head);
-    const commits = (await git(cwd, 'rev-list', '--merges', `${session.candidate.head}..${observed.head}`)).trim();
+    from = cumulative?.candidate.head ?? from;
+    const delta = await captureCommittedReviewCandidate(cwd, from, observed.head);
+    const commits = (await git(cwd, 'rev-list', '--merges', `${from}..${observed.head}`)).trim();
     if (!await ancestor(git, cwd, session.candidate.head, observed.head) || commits || !delta.changedPaths.length) return undefined;
-    proof = { paths: delta.changedPaths, modeChanged: delta.modeChanged }; kind = 'repair';
+    if (cumulative && !await ancestor(git, cwd, from, session.candidate.head)) return undefined;
+    proof = { paths: delta.changedPaths, modeChanged: delta.modeChanged, ...(cumulative ? { cumulativeFrom: from } : {}) }; kind = 'repair';
   }
   // Full object names keep the digest identical in every clone; abbreviated ones
   // lengthen with the number of objects in the repository that runs git.
@@ -273,7 +279,7 @@ export async function validateEconomySession(cwd, session, runGit = git) {
         const recorded = digest(event.candidate.coverage); const kind = event.candidate.coverage.proof?.kind;
         const edge = await captureCoverageEdge(cwd, before, observed, event.at, kind, { allowDerived: event.candidate.coverage.proof?.derived === true });
         // An edge recorded before full-index digests replays through the abbreviated diff it was recorded with.
-        const legacy = edge && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true, allowDerived: event.candidate.coverage.proof?.derived === true }) : undefined;
+        const legacy = edge && !edge.proof.cumulativeFrom && digest(edge) !== recorded ? await captureCoverageEdge(cwd, before, observed, event.at, kind, { abbreviatedIndex: true, allowDerived: event.candidate.coverage.proof?.derived === true }) : undefined;
         demand(edge && (digest(edge) === recorded || (legacy && digest(legacy) === recorded)), 'recorded coverage proof differs');
       }
     }
