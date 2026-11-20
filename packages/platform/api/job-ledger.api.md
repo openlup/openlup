@@ -49,7 +49,7 @@ export {};
 ```ts
 export type { SqlExecutor } from "@openlup/core/readiness";
 export { createPostgresDataGateway, createPostgresGatewayTypeOverrides, createPostgresRoleFreeTransactionLane, createPostgresTransactionRunner, postgresTimestampTzToRfc3339, resolvePostgresDataGatewayEnv, type PostgresDataGatewayEnv, type PostgresDataGatewayOptions, type PostgresRoleFreeTransactionLane, type PostgresTransactionRunner, } from "./postgresGateway.js";
-export { PgGatewayClient, PgQueryBuilder, type PgQueryExecutor, type PgShimError, type PgShimResult, } from "./queryBuilder.js";
+export { asPostgresSqlExecutor, PgGatewayClient, PgQueryBuilder, type PgQueryExecutor, type PgShimError, type PgShimResult, } from "./queryBuilder.js";
 export { createActorClient, createServiceClient, readSupabaseActorDataGatewayEnv, readSupabaseDataGatewayEnv, type SupabaseCreateClient, type SupabaseDataGatewayEnv, } from "./supabaseClientFactory.js";
 export { createSupabaseDataGateway, type SupabaseDataGatewayOptions } from "./supabaseGateway.js";
 export { createDataBindings, type ActorOnlyDataPort, type DataBindingDependencies, type DataBindings, type DataPortBindingOptions, } from "./binding.js";
@@ -112,11 +112,11 @@ export declare function createPostgresDataGateway(env: PostgresDataGatewayEnv, o
  * Only a named owner-authority capability of the deployment may hold a lane.
  *
  * Defaults to `PostgresRoleFreeTransactionLane<unknown>` for 1.x compatibility;
- * pass a supertype of `PgGatewayClient` (such as `PgGatewayClient`, `SqlExecutor`,
- * or `PgQueryExecutor`) as the type argument for typed callbacks without casts.
+ * pass a supertype of the underlying gateway (such as `PgGatewayClient`,
+ * `SqlExecutor`, or `PgQueryExecutor`) for typed callbacks without casts.
  */
 export declare function createPostgresRoleFreeTransactionLane(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresRoleFreeTransactionLane;
-export declare function createPostgresRoleFreeTransactionLane<G>(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresRoleFreeTransactionLane<[PgGatewayClient] extends [G] ? G : never>;
+export declare function createPostgresRoleFreeTransactionLane<G>(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresRoleFreeTransactionLane<[PgGatewayClient & SqlExecutor] extends [G] ? G : never>;
 /** Resolve the gateway env from process env (DATABASE_URL), mirroring the supabase binding shape. */
 export declare function resolvePostgresDataGatewayEnv(env: Record<string, string | undefined>): PostgresDataGatewayEnv;
 ```
@@ -124,6 +124,7 @@ export declare function resolvePostgresDataGatewayEnv(env: Record<string, string
 
 ```ts
 import type { PoolClient } from "pg";
+import type { SqlExecutor } from "@openlup/core/readiness";
 import { type PgQueryExecutor, type PgShimError, type PgShimResult } from "./queryBuilderSql.js";
 export type { PgQueryExecutor, PgShimError, PgShimResult };
 /**
@@ -171,12 +172,14 @@ export declare class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimRe
 export declare class PgGatewayClient {
     private readonly client;
     constructor(client: PgQueryExecutor);
-    query<Row extends Record<string, unknown> = Record<string, unknown>>(text: string, values?: readonly unknown[]): Promise<{
-        rows: Row[];
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
     }>;
     from<T = Record<string, unknown>>(table: string): PgQueryBuilder<T>;
     rpc(functionName: string, args?: Record<string, unknown>): Promise<PgShimResult>;
 }
+/** Adapt an existing query implementation for typed rows. The caller supplies the SQL row shape. */
+export declare function asPostgresSqlExecutor(client: PgQueryExecutor): SqlExecutor;
 export type { PoolClient };
 ```
 ## dist/data/queryBuilderSql.d.ts

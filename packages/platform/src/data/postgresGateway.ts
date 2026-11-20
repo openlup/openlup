@@ -5,7 +5,7 @@ import type { Pool, PoolClient } from "pg";
 import type { DataGatewayPort } from "@openlup/core/platform-runtime";
 import type { SqlExecutor } from "@openlup/core/readiness";
 import { attachPgErrorListener } from "./pgErrorListener.js";
-import { PgGatewayClient } from "./queryBuilder.js";
+import { asPostgresSqlExecutor, PgGatewayClient } from "./queryBuilder.js";
 
 type ActorClaims = { sub?: string; role?: string } | null;
 
@@ -36,14 +36,7 @@ export function createPostgresTransactionRunner(pool: Pool): PostgresTransaction
   return {
     async withTransaction<T>(work: (client: SqlExecutor) => Promise<T>): Promise<T> {
       const client = await pool.connect();
-      const executor: SqlExecutor = {
-        query<Row extends Record<string, unknown> = Record<string, unknown>>(
-          text: string,
-          values?: readonly unknown[],
-        ): Promise<{ rows: Row[] }> {
-          return client.query<Row>(text, values ? [...values] : undefined);
-        },
-      };
+      const executor = asPostgresSqlExecutor(client);
       try {
         await client.query("BEGIN");
         const result = await work(executor);
@@ -139,8 +132,8 @@ export function createPostgresDataGateway(
  * Only a named owner-authority capability of the deployment may hold a lane.
  *
  * Defaults to `PostgresRoleFreeTransactionLane<unknown>` for 1.x compatibility;
- * pass a supertype of `PgGatewayClient` (such as `PgGatewayClient`, `SqlExecutor`,
- * or `PgQueryExecutor`) as the type argument for typed callbacks without casts.
+ * pass a supertype of the underlying gateway (such as `PgGatewayClient`,
+ * `SqlExecutor`, or `PgQueryExecutor`) for typed callbacks without casts.
  */
 export function createPostgresRoleFreeTransactionLane(
   env: PostgresDataGatewayEnv,
@@ -149,11 +142,12 @@ export function createPostgresRoleFreeTransactionLane(
 export function createPostgresRoleFreeTransactionLane<G>(
   env: PostgresDataGatewayEnv,
   options?: PostgresDataGatewayOptions,
-): PostgresRoleFreeTransactionLane<[PgGatewayClient] extends [G] ? G : never>;
+): PostgresRoleFreeTransactionLane<[PgGatewayClient & SqlExecutor] extends [G] ? G : never>;
 export function createPostgresRoleFreeTransactionLane(
   env: PostgresDataGatewayEnv,
   options: PostgresDataGatewayOptions = {},
 ): PostgresRoleFreeTransactionLane<PgGatewayClient> {
+  // The lane constructs its own gateway over the driver. Its query supports the SqlExecutor view.
   const transactions = createPooledPostgresTransactions(env, options);
   return { run: (work) => transactions.run(async () => {}, work), close: transactions.close };
 }
