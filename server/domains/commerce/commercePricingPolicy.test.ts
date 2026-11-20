@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   CommercePricingPolicyRequestError,
@@ -16,7 +16,12 @@ import {
 } from "./offerPolicyReadiness.js";
 
 const saved = { ...process.env };
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
 afterEach(() => {
+  vi.useRealTimers();
   process.env = { ...saved };
   resetOfferPolicyReadinessCacheForTests();
 });
