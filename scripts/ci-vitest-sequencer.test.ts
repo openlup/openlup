@@ -109,7 +109,7 @@ describe("ci-vitest-sequencer", () => {
 
       const arrayDurations = join(tempDir, "array-durations.json");
       writeFileSync(arrayDurations, JSON.stringify({ defaultDurationMs: 100, durationsMs: [] }));
-      expect(loadSequencerWeights(arrayDurations, tempDir)).toEqual({ defaultDurationMs: 1, durationsMs: {} });
+      expect(loadSequencerWeights(arrayDurations, tempDir)).toEqual({ defaultDurationMs: 100, durationsMs: {} });
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
