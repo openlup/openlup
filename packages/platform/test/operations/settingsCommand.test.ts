@@ -1033,6 +1033,56 @@ it("refuses a non-canonical MCP launch URL before reading or writing protocol fr
 });
 
 it.each([
+  ["throwing binding", async () => { throw new Error("rejected edit"); }, 74, "Settings app: rejected edit\n"],
+  ["throw without a message", async () => { throw new Error(); }, 74,
+    "Settings app: Check the --app path and the createSettingsBindings export.\n"],
+  ["missing binding", async () => undefined, 74, "Settings app: Check the --app path and the createSettingsBindings export.\n"],
+  ["unknown configuration", async () => ({ configurationIds: ["west"] }), 64,
+    'Unknown configuration "missing". Use one of these IDs: west.\n'],
+] as const)("refuses MCP launch with a %s before reading or writing protocol frames", async (_, load, exit, warning) => {
+  const write = vi.fn();
+  const warn = vi.fn();
+  const loadCheck = vi.fn(load);
+  const input = { [Symbol.asyncIterator]: vi.fn(() => { throw new Error("unexpected frame input"); }) };
+  expect(await runSettingsCommand(["mcp", "--app=./app.ts", "--configuration=missing"], {
+    write, warn, input, readStdin: async () => "",
+  }, { bind: vi.fn(), loadCheck, previewResultSchema: renewalStockProtectionPreviewResult })).toBe(exit);
+  expect(loadCheck).toHaveBeenCalledExactlyOnceWith({ app: "./app.ts", configuration: "missing" });
+  expect(warn).toHaveBeenCalledExactlyOnceWith(warning);
+  expect(write).not.toHaveBeenCalled();
+  expect(input[Symbol.asyncIterator]).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["settings_show", {}, "key"],
+  ["settings_explain", {}, "keyOrCode"],
+  ["settings_preview", { value: null }, "key"],
+  ["settings_preview", { key }, "value"],
+  ["settings_preview", {}, undefined],
+  ["settings_preview", { value: null, skus: 1 }, undefined],
+] as const)("refuses %s arguments %j and continues the session", async (name, args, field) => {
+  using dispatch = vi.spyOn(await import("../../src/operations/server/settingsCommand.js"), "runSettingsCommand");
+  const input = (async function* () {
+    yield Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) + "\n");
+    yield Buffer.from('{"jsonrpc":"2.0","id":2,"method":"ping"}\n');
+  })();
+  const write = vi.fn<(line: string) => void>();
+  const bind = vi.fn();
+  const loadCheck = vi.fn(async () => ({}));
+  expect(await runSettingsCommand(["mcp", "--app=./app.ts", `--database-url=${url}`], { write, input, readStdin: async () => "" }, {
+    bind, loadCheck, previewResultSchema: renewalStockProtectionPreviewResult,
+  })).toBe(0);
+  expect(write.mock.calls.map(([line]) => JSON.parse(line))).toEqual([
+    { jsonrpc: "2.0", id: 1, error: { code: -32602, message: field
+      ? `Invalid arguments for ${name}: ${field} is required. See tools/list.` : "Invalid tool or arguments. See tools/list." } },
+    { jsonrpc: "2.0", id: 2, result: {} },
+  ]);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(loadCheck).toHaveBeenCalledExactlyOnceWith({ app: "./app.ts", configuration: undefined });
+  expect(bind).not.toHaveBeenCalled();
+});
+
+it.each([
   ["at the top level", "1e400"],
   ["nested in an array", '{"nested":[{"amount":1e400}]}'],
   ["under an own __proto__ member", '{"__proto__":{"amount":1e400}}'],

@@ -281,8 +281,23 @@ and whether retrying can help.
 ## Use the settings server from an MCP client
 
 The settings server is read-only. After installing the extracted starter's
-dependencies, use this JSON in your MCP client configuration. Replace
-`/absolute/path/to/store` with the starter directory.
+dependencies, configure your MCP client to run the starter's settings script
+from the application root. In clients that support a working directory,
+replace `/absolute/path/to/store` with that root.
+
+```json
+{
+  "mcpServers": {
+    "openlup-settings": {
+      "command": "npm",
+      "args": ["--silent", "run", "settings", "--", "mcp"],
+      "cwd": "/absolute/path/to/store"
+    }
+  }
+}
+```
+
+You can also use absolute paths to the installed binary and settings host.
 
 ```json
 {
@@ -295,13 +310,18 @@ dependencies, use this JSON in your MCP client configuration. Replace
 }
 ```
 
+If the `--app` module fails to load, the server stops at launch and reports the
+reason on stderr. For your first call, use `settings_list` with a known
+application key as `goal`. Confirm that the key appears in the result to verify
+the application binding.
+
 | Tool | Use it to |
 | --- | --- |
 | `settings_list` | Find platform and app settings by goal. |
-| `settings_show` | Read the allowed values and the available file or store observation for a key. |
-| `settings_explain` | Explain a setting or a refusal code, including remediation. |
-| `settings_check` | Validate the selected application's file settings offline. |
-| `settings_preview` | Estimate a change for supported settings using the proposed JSON value. |
+| `settings_show` | Pass `key` for the setting's details and any available value observation. |
+| `settings_explain` | Pass a setting key or refusal code as `keyOrCode` to get an explanation and the next step. |
+| `settings_check` | Run the application's offline check and see which reported values were validated. |
+| `settings_preview` | Pass `key` and the proposed JSON `value` to estimate a change for a supported setting. |
 
 For connected show and preview, add `--database-url` and a read-capable
 PostgreSQL URL to the client's private launch configuration. Supply one TCP host,

@@ -187,13 +187,13 @@ function isJsonValue(value: unknown, ancestors = new Set<object>()): value is Js
   return valid;
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, fallback = "Application validation failed."): string {
   try {
     const message = typeof error === "string" ? error
       : error && typeof error === "object" && "message" in error ? error.message : undefined;
-    if (typeof message === "string") return message.replace(/\s+/gu, " ").trim().slice(0, 180) || "Application validation failed.";
+    if (typeof message === "string") return message.replace(/\s+/gu, " ").trim().slice(0, 180) || fallback;
   } catch { /* A thrown value need not have a readable message. */ }
-  return "Application validation failed.";
+  return fallback;
 }
 
 async function checkApp(file?: FileBinding): Promise<AppValidation> {
@@ -304,6 +304,25 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     if (!context) {
       io.warn?.(hint + "\n");
       return 64;
+    }
+    if (context.app && host.loadCheck) {
+      const missing = "Check the --app path and the createSettingsBindings export.";
+      let bindings;
+      let failure = missing;
+      try {
+        bindings = await host.loadCheck({ app: context.app, configuration: context.configuration });
+      } catch (error) {
+        failure = errorMessage(error, "") || missing;
+      }
+      if (!bindings) {
+        io.warn?.(`Settings app: ${failure}\n`);
+        return 74;
+      }
+      if ("configurationIds" in bindings) {
+        const id = context.configuration ?? "";
+        io.warn?.(`Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.\n`);
+        return 64;
+      }
     }
     await runSettingsMcp(io.input, line => io.write(line), context, host, host.previewResultSchema);
     return 0;
