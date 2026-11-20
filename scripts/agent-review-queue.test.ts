@@ -152,37 +152,18 @@ describe('hosted receipt comments', () => {
     });
   });
 
+  const notice = (reason: string) =>
+    `receipt comment 42: Review receipt machine block could not be parsed: ${reason}. Re-run \`node scripts/agent-review-session.mjs receipt 12\` and post its exact output.`;
+  const v2Remedy = ' A v2 receipt needs a session prepared on current main.';
+
   it.each([false, true])('refuses a duplicate machine block with gzip=%s and names the comment and remedy', async gzip => {
     const summary = modernReceipt();
     const rendered = gzip ? receiptBody(summary) : historicalRawReceipt(summary);
     const machine = rendered.split('\n').slice(-5, -2).join('\n');
     const duplicate = `${rendered}\n\n${machine}`;
     expect(parseReceipt(duplicate)).toBeNull();
-    await expect(waitFor(duplicate)).rejects.toThrow(
-      'receipt comment 42: no single machine block after the marker; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
-    );
+    await expect(waitFor(duplicate)).rejects.toThrow(notice('no machine block in the form the receipt command prints'));
     await expect(waitFor(rendered, duplicate)).resolves.toEqual(summary);
-  });
-
-  it('reports the JSON offset and remedy when a client rewrites the control escape', async () => {
-    const rendered = historicalRawReceipt(modernReceipt('reviewer\u0010-1'));
-    const rewritten = rendered.replaceAll('\\u0010', '\\^P');
-    expect(parseReceipt(rendered)).not.toBeNull();
-    expect(parseReceipt(rewritten)).toBeNull();
-    const offset = rewritten.split('\n').find(line => line.includes('\\^P'))!.indexOf('\\^P') + 1;
-    const error = await waitFor(rewritten).catch(error => error);
-    expect(error.message).toContain('receipt comment 42: machine block is not valid JSON at offset ' + offset +
-      '; a client may have rewritten control characters; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`');
-    expect(error.message).not.toContain('for example an edited or duplicated machine block');
-  });
-
-  it('reports an undecodable compressed block and the remedy', async () => {
-    const rendered = receiptBody(modernReceipt());
-    const malformed = rendered.replace(/\n```text\n[^\n]+/u, '\n```text\nAAAA');
-    expect(parseReceipt(malformed)).toBeNull();
-    await expect(waitFor(malformed)).rejects.toThrow(
-      'receipt comment 42: compressed block does not decode; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
-    );
   });
 
   it.each([null, undefined, 42, {}, []].map(body => [body]))('diagnoses a non-string body %j', body => {
@@ -193,57 +174,54 @@ describe('hosted receipt comments', () => {
     const fence = (type: string, payload: string) => `\`\`\`${type}\n${payload}\n\`\`\``;
     const raw = (payload: string) => fence('json', payload);
     const gzip = (payload: string) => fence('text', payload);
-    const compressed = (version: number) => gzipSync(JSON.stringify({ version })).toString('base64');
-    const noBlock = 'no single machine block after the marker';
-    const wrongMarker = 'machine block does not match the receipt marker';
-    const framing = 'machine block is valid but the comment framing differs from the receipt command output';
-    const hint = '; a client may have rewritten control characters';
-    const valid = raw('{"version":3}');
+    const compress = (payload: string | Buffer) => gzipSync(payload).toString('base64');
+    const noBlock = 'no machine block in the form the receipt command prints';
+    const version = 'receipt version does not match its marker';
+    const badEscape = '{"version":3,"note":"\\^P"}';
+    const badEscapeNotice = 'Bad escaped character in JSON at position 22 (line 1 column 23) at offset 22';
+    const members = Buffer.concat([gzipSync('{"version":3}'), gzipSync('')]).toString('base64');
     it.each([
-      ['size limit', ECONOMY_RECEIPT_MARKER, valid.padEnd(1024 * 1024, ' '), 'receipt body exceeds the size limit'],
-      ['unknown marker', '<!-- openlup-native-review-receipt v9 -->', valid, noBlock],
-      ['missing block', ECONOMY_RECEIPT_MARKER, 'unfenced JSON', noBlock],
-      ['unterminated fence', ECONOMY_RECEIPT_MARKER, valid.slice(0, -3), noBlock],
-      ['two blocks', ECONOMY_RECEIPT_MARKER, valid + '\n' + valid, noBlock],
-      ['JSON fence below gzip marker', COMPRESSED_RECEIPT_MARKER, valid, 'machine block type does not match the receipt marker'],
-      ['text fence below JSON marker', ECONOMY_RECEIPT_MARKER, gzip(compressed(3)), 'machine block type does not match the receipt marker'],
-      ['punctuation in base64', COMPRESSED_RECEIPT_MARKER, gzip('AAAA!'), 'compressed block does not decode'],
-      ['invalid base64', COMPRESSED_RECEIPT_MARKER, gzip('!!!!'), 'compressed block does not decode'],
-      ['invalid gzip', COMPRESSED_RECEIPT_MARKER, gzip('AAAA'), 'compressed block does not decode'],
-      ['wrong gzip version', COMPRESSED_RECEIPT_MARKER, gzip(compressed(2)), wrongMarker],
-      ['unexpected token', ECONOMY_RECEIPT_MARKER, raw('{"version":3,"note":!}'), 'machine block is not valid JSON'],
-      ['position text in the payload', ECONOMY_RECEIPT_MARKER, raw('x at position 987'), 'machine block is not valid JSON'],
-      ['truncated JSON', ECONOMY_RECEIPT_MARKER, raw('{"version":'), 'machine block is truncated'],
-      ['bad escape', ECONOMY_RECEIPT_MARKER, raw('{"version":3,"note":"\\^P"}'), 'machine block is not valid JSON at offset 22' + hint],
-      ['bad control character', ECONOMY_RECEIPT_MARKER, raw('{"version":3,"note":"\u0010"}'), 'machine block is not valid JSON at offset 21' + hint],
-      ['unterminated string', ECONOMY_RECEIPT_MARKER, raw('{"version":3,"note":"open'), 'machine block is not valid JSON at offset 25'],
-      ['wrong raw v3 version', ECONOMY_RECEIPT_MARKER, raw('{"version":2}'), wrongMarker],
-      ['wrong raw v2 version', RECEIPT_MARKER, valid, wrongMarker],
-      ['valid JSON with extra text', ECONOMY_RECEIPT_MARKER, valid + '\nextra', framing],
-      ['valid gzip with extra text', COMPRESSED_RECEIPT_MARKER, gzip(compressed(3)) + '\nextra', framing],
-    ])('diagnoses %s while the parser still refuses the comment', (_label, marker, block, reason) => {
+      ['size limit', ECONOMY_RECEIPT_MARKER, 'x'.repeat(1024 * 1024), 'receipt body exceeds the size limit'],
+      ['block extraction', ECONOMY_RECEIPT_MARKER, 'unfenced JSON', noBlock],
+      ['mismatched fence', COMPRESSED_RECEIPT_MARKER, raw('{"version":3}'), noBlock],
+      ['noncanonical base64', COMPRESSED_RECEIPT_MARKER, gzip('AAAA='), 'base64 is not canonical'],
+      ['gzip header flags', COMPRESSED_RECEIPT_MARKER, gzip('AAAA'), 'gzip header is missing or has unsupported flags'],
+      ['zlib failure', COMPRESSED_RECEIPT_MARKER, gzip('AAAAAA=='), 'incorrect header check'],
+      ['trailing gzip data', COMPRESSED_RECEIPT_MARKER, gzip(members), 'gzip stream has trailing data'],
+      ['strict UTF-8', COMPRESSED_RECEIPT_MARKER, gzip(compress(Buffer.from([0xff]))), 'The encoded data was not valid for encoding utf-8'],
+      ['gzip version mismatch', COMPRESSED_RECEIPT_MARKER, gzip(compress('{"version":2}')), version],
+      ['raw version mismatch', ECONOMY_RECEIPT_MARKER, raw('{"version":2}'), version],
+      ['null v2 receipt', RECEIPT_MARKER, raw('null'), 'receipt JSON is null'],
+      ['unexpected end', ECONOMY_RECEIPT_MARKER, raw('{"version":'), 'Unexpected end of JSON input'],
+      ['position-bearing JSON error', ECONOMY_RECEIPT_MARKER, raw(badEscape), badEscapeNotice],
+      ['gzip JSON error', COMPRESSED_RECEIPT_MARKER, gzip(compress(badEscape)), badEscapeNotice],
+      ['position text in an excerpt', ECONOMY_RECEIPT_MARKER, raw('x at position 987'), "Unexpected token 'x'"],
+      ['quoted input excerpt', ECONOMY_RECEIPT_MARKER, raw('undefined'), 'input is not valid JSON'],
+      ['multiline untrusted excerpt', COMPRESSED_RECEIPT_MARKER, gzip(compress('é\n::字')), "Unexpected token '?'"],
+    ])('reports the parser error for %s', async (_label, marker, block, reason) => {
       const rendered = placement === 'bare' ? marker + '\n' + block
         : `${marker}\n\nSummary\n\n${RECEIPT_DETAILS_HEADER}\n\n${block}\n\n</details>`;
       expect(parseReceipt(rendered)).toBeNull();
       expect(diagnoseReceipt(rendered)).toBe(reason);
+      await expect(waitFor(rendered)).rejects.toThrow(notice(reason) + (marker === RECEIPT_MARKER ? v2Remedy : ''));
     });
+  });
+
+  it('caps the parser message and keeps it on one printable ASCII line', () => {
+    const rendered = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n{}\n\`\`\``;
+    const parse = vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
+      throw new SyntaxError('message\né' + 'x'.repeat(160));
+    });
+    try {
+      expect(diagnoseReceipt(rendered)).toBe('message??' + 'x'.repeat(151));
+    } finally { parse.mockRestore(); }
   });
 
   it('tells an author to prepare on current main when a rewritten v2 receipt is refused', async () => {
     const rendered = body({ ...receipt, reviewers: ['old\u0010-reviewer'] }).replaceAll('\\u0010', '\\^P');
-    expect(parseReceipt(rendered)).toBeNull();
-    await expect(waitFor(rendered)).rejects.toThrow(
-      'post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`; a v2 receipt needs a session prepared on current main (it then prints a v3 receipt)',
-    );
-  });
-
-  it('reports a marker mismatch for valid gzip JSON with the wrong version', async () => {
-    const payload = gzipSync(JSON.stringify({ ...receipt, version: 2 })).toString('base64');
-    const malformed = `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${payload}\n\`\`\``;
-    expect(parseReceipt(malformed)).toBeNull();
-    await expect(waitFor(malformed)).rejects.toThrow(
-      'receipt comment 42: machine block does not match the receipt marker; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
-    );
+    const reason = diagnoseReceipt(rendered);
+    expect(reason).toMatch(/^Bad escaped character in JSON at position \d+/u);
+    await expect(waitFor(rendered)).rejects.toThrow(notice(reason!) + v2Remedy);
   });
 
   it.each(['raw v2', 'raw v3', 'gzip v3'])('parses and admits the bare %s format', async format => {
@@ -260,7 +238,8 @@ describe('hosted receipt comments', () => {
     const f = handoffFixture();
     f.state.comments = [comment(), comment({ id: 42, body: `${RECEIPT_MARKER}\ninvalid` })];
     f.runGit.mockRejectedValueOnce(new Error('unknown base'));
-    const reason = 'receipt objects could not be verified: unknown base; post a corrected receipt; receipt comment 42: no single machine block after the marker; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`; a v2 receipt needs a session prepared on current main (it then prints a v3 receipt)';
+    const reason = 'receipt objects could not be verified: unknown base; post a corrected receipt; ' +
+      notice('no machine block in the form the receipt command prints') + v2Remedy;
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       await expect(wait(f)).rejects.toThrow(reason);

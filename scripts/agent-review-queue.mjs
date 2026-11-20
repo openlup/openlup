@@ -17,7 +17,6 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 const RECEIPT_LIMIT = 1024 * 1024;
-const MARKER_MISMATCH = 'machine block does not match the receipt marker';
 /**
  * The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration.
  * @param {readonly string[]} changedPaths
@@ -26,26 +25,16 @@ const MARKER_MISMATCH = 'machine block does not match the receipt marker';
 export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = () => false) {
   return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
-function decodeGzipReceipt(encoded, wrongVersion = null) {
-  try {
-    const payload = Buffer.from(encoded, 'base64');
-    if (payload.toString('base64') !== encoded) return null;
-    if (payload[3] !== 0) return null; // The encoder emits no optional gzip header fields.
-    const options = { maxOutputLength: RECEIPT_LIMIT };
-    const buffer = gunzipSync(payload, options);
-    // gunzip can ignore trailing bytes or join members. The first deflate stream must end at the final trailer.
-    const deflate = payload.subarray(10, -8);
-    if (inflateRawSync(deflate, { ...options, info: true }).engine.bytesWritten !== deflate.length) return null;
-    const receipt = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer));
-    return receipt?.version === 3 ? receipt : wrongVersion;
-  } catch { return null; }
-}
-function decodeRawReceipt(marker, json) {
-  try {
-    const receipt = JSON.parse(json);
-    if (marker === ECONOMY_RECEIPT_MARKER ? receipt?.version !== 3 : receipt?.version !== undefined) return null;
-    return receipt;
-  } catch { return null; }
+function decodeGzipText(encoded) {
+  const payload = Buffer.from(encoded, 'base64');
+  if (payload.toString('base64') !== encoded) throw new Error('base64 is not canonical');
+  if (payload[3] !== 0) throw new Error('gzip header is missing or has unsupported flags');
+  const options = { maxOutputLength: RECEIPT_LIMIT };
+  const buffer = gunzipSync(payload, options);
+  // gunzip can ignore trailing bytes or join members. The first deflate stream must end at the final trailer.
+  const deflate = payload.subarray(10, -8);
+  if (inflateRawSync(deflate, { ...options, info: true }).engine.bytesWritten !== deflate.length) throw new Error('gzip stream has trailing data');
+  return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer);
 }
 function bareReceiptBlock(body) {
   if (body.startsWith(`${COMPRESSED_RECEIPT_MARKER}\n`)) {
@@ -70,52 +59,31 @@ function framedReceiptBlock(body) {
   if (!match || match[1] !== (gzip ? 'text' : 'json')) return null;
   return { marker, payload: match[2] };
 }
-function decodeReceiptBlock(block) {
-  if (!block) return null;
-  return block.marker === COMPRESSED_RECEIPT_MARKER ? decodeGzipReceipt(block.payload) : decodeRawReceipt(block.marker, block.payload);
+function decodeReceipt(body) {
+  // Bare and framed bodies have different closing delimiters, so they cannot both match.
+  const block = bareReceiptBlock(body) ?? framedReceiptBlock(body);
+  if (!block) throw new Error('no machine block in the form the receipt command prints');
+  const receipt = JSON.parse(block.marker === COMPRESSED_RECEIPT_MARKER ? decodeGzipText(block.payload) : block.payload);
+  if (block.marker === RECEIPT_MARKER ? receipt?.version !== undefined : receipt?.version !== 3) {
+    throw new Error('receipt version does not match its marker');
+  }
+  if (receipt === null) throw new Error('receipt JSON is null');
+  return receipt;
 }
 export function parseReceipt(body) {
   if (typeof body !== 'string' || body.length > RECEIPT_LIMIT) return null;
-  return decodeReceiptBlock(bareReceiptBlock(body)) ?? decodeReceiptBlock(framedReceiptBlock(body));
+  try { return decodeReceipt(body); } catch { return null; }
 }
 // Only describe comments parseReceipt already refused. Never expose parser text that quotes the payload.
 export function diagnoseReceipt(body) {
   if (typeof body !== 'string') return 'comment body is not text';
   if (body.length > RECEIPT_LIMIT) return 'receipt body exceeds the size limit';
-  const lines = body.split('\n');
-  const marker = lines[0];
-  const noBlock = 'no single machine block after the marker';
-  if (![RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER].includes(marker)) return noBlock;
-  let block;
-  for (let index = 1; index < lines.length; index++) {
-    const fence = lines[index];
-    if (fence !== '```json' && fence !== '```text') continue;
-    const end = lines.indexOf('```', index + 1);
-    if (end < 0) break;
-    if (block) return noBlock;
-    block = { fence, payload: lines.slice(index + 1, end).join('\n') };
-    index = end;
+  try { decodeReceipt(body); } catch (error) {
+    const message = error.message.replace(/(?:, |^)(?:\.\.\.)?"[\s\S]* is not valid JSON$/u, '') || 'input is not valid JSON';
+    const offset = /\bposition (\d+)(?: \(line \d+ column \d+\))?$/u.exec(message)?.[1];
+    return message.replace(/[^\x20-\x7e]/gu, '?').slice(0, 160) + (offset === undefined ? '' : ' at offset ' + offset);
   }
-  if (!block) return noBlock;
-  const compressed = marker === COMPRESSED_RECEIPT_MARKER;
-  if (block.fence !== (compressed ? '```text' : '```json')) return 'machine block type does not match the receipt marker';
-  if (compressed) {
-    const decoded = decodeGzipReceipt(block.payload, MARKER_MISMATCH);
-    if (decoded === null) return 'compressed block does not decode';
-    if (decoded === MARKER_MISMATCH) return MARKER_MISMATCH;
-  } else {
-    let receipt;
-    try { receipt = JSON.parse(block.payload); }
-    catch (error) {
-      const message = error.message;
-      if (message === 'Unexpected end of JSON input') return 'machine block is truncated';
-      const offset = /\bposition (\d+)(?: \(line \d+ column \d+\))?$/u.exec(message)?.[1];
-      const hint = /^Bad (?:escaped|control) character/u.test(message) ? '; a client may have rewritten control characters' : '';
-      return 'machine block is not valid JSON' + (offset === undefined ? '' : ' at offset ' + offset) + hint;
-    }
-    if (marker === ECONOMY_RECEIPT_MARKER ? receipt?.version !== 3 : receipt?.version !== undefined) return MARKER_MISMATCH;
-  }
-  return 'machine block is valid but the comment framing differs from the receipt command output';
+  return null;
 }
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments) {
   const comments = [];
@@ -195,8 +163,8 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
     }
     const invalid = invalidComments[0];
     const v2Remedy = invalid?.body.split('\n', 1)[0] === RECEIPT_MARKER
-      ? '; a v2 receipt needs a session prepared on current main (it then prints a v3 receipt)' : '';
-    invalidCommentNotice = invalid ? `; receipt comment ${invalid.id}: ${diagnoseReceipt(invalid.body)}; post the unchanged output of \`node scripts/agent-review-session.mjs receipt ${prNumber}\`${v2Remedy}` : '';
+      ? ' A v2 receipt needs a session prepared on current main.' : '';
+    invalidCommentNotice = invalid ? `; receipt comment ${invalid.id}: Review receipt machine block could not be parsed: ${diagnoseReceipt(invalid.body)}. Re-run \`node scripts/agent-review-session.mjs receipt ${prNumber}\` and post its exact output.${v2Remedy}` : '';
     console.log(`needs_agent_review: ${reason}${invalidCommentNotice}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
   throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
