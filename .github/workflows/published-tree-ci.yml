@@ -578,7 +578,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          filter: blob:none
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:

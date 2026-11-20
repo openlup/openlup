@@ -808,7 +808,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(admission).toContain("timeout-minutes: 8");
     expect(admission).toContain("issues: read\n      contents: read\n      pull-requests: read");
     expect(admission).not.toMatch(/(?:actions|contents|issues|pull-requests): write/u);
-    expect(admission).toContain("ref: main\n          fetch-depth: 0\n          filter: blob:none\n          persist-credentials: false");
+    expect(admission).toContain("ref: main\n          fetch-depth: 0\n          persist-credentials: false");
     expect(admission).toContain("package-manager-cache: false");
     expect(admission).toContain("run: node scripts/agent-review-queue.mjs wait");
     expect(admission).not.toContain("npm ci");
