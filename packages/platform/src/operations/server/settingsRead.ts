@@ -44,7 +44,9 @@ export function listSettings(input: unknown): ListResult | { refusal: SettingRef
   });
 }
 
-function absentObservation(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], effective?: JsonValue): Observation {
+type ValueEntry = Extract<ReturnType<typeof loadSettingsCatalogue>["entries"][number], { rules: unknown }>;
+
+function absentObservation(setting: ValueEntry, effective?: JsonValue): Observation {
   const absent = setting.absentMeans;
   return absent
     ? { state: "absent", absentMeans: absent.description, source: absent.source,
@@ -148,7 +150,7 @@ export async function previewSetting<Result extends { schemaVersion: 1 } = never
   const { key, skus = [], asOf = new Date().toISOString() } = parsed.data;
   const setting = loadSettingsCatalogue().entries.find(entry => entry.key === key);
   if (!setting) return refuseSettingsPreview("commerce_setting_unknown");
-  if (!setting.previewSchema) return refuseSettingsPreview("commerce_setting_preview_unsupported");
+  if (!("previewSchema" in setting) || !setting.previewSchema) return refuseSettingsPreview("commerce_setting_preview_unsupported");
   const preview = Object.hasOwn(previewers, key) ? previewers[key] : undefined;
   if (!preview) return refuseSettingsPreview("commerce_setting_preview_connection_required");
   try {
@@ -173,14 +175,14 @@ let toolSchemas: ReturnType<typeof createSettingsToolSchemas> | undefined;
 export const settingsReadTools = [
   {
     name: "settings__list",
-    description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.",
+    description: "Find a key by business goal, then use settings__show for value details or a reason and reference.",
     inputSchema: toolInputSchema(settingsListRequest),
     get outputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).listOutput; },
     annotations: { readOnlyHint: true },
   },
   {
     name: "settings__show",
-    description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.",
+    description: "Call settings__list if you need the key. Read value details or a reason and reference. If refused, read remediation.",
     get inputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).showInput; },
     get outputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).showOutput; },
     annotations: { readOnlyHint: true },

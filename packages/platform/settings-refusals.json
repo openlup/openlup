@@ -107,7 +107,7 @@
         "key"
       ],
       "rule": "This setting has no connected preview.",
-      "hint": "Use show to read the setting's effect and change mechanism.",
+      "hint": "Use show for value details or a reason and reference.",
       "remediation": {
         "retry": true,
         "action": "Choose a setting that supports preview.",

@@ -10,8 +10,6 @@ Keep at least one active human administrator.
 Search terms include operator permissions, administrative access.
 
 - Owner **account-support** · kind **invariant** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The last human administrator is required for recoverable administration.
 
 Show offline: `show account-support.recoverableAdministration --json`.
@@ -22,8 +20,6 @@ Accept additional catalogue media formats.
 Search terms include product assortment, SKU records.
 
 - Owner **catalog** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The media contract admits a fixed set of validated formats.
 
 Show offline: `show catalog.additionalMediaFormats --json`.
@@ -34,8 +30,6 @@ Represent product net contents in units other than grams.
 Search terms include product assortment, SKU records.
 
 - Owner **catalog** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The catalogue read envelope uses grams for net contents.
 
 Show offline: `show catalog.netContentUnits --json`.
@@ -46,8 +40,6 @@ Use catalogue SKUs that have no GTIN.
 Search terms include product assortment, SKU records.
 
 - Owner **catalog** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native catalogue identities require a GTIN.
 
 Show offline: `show catalog.optionalGtin --json`.
@@ -71,8 +63,6 @@ Distinguish separate reasons for manually holding an order.
 Search terms include store orders, checkout processing.
 
 - Owner **commerce** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native order controls record a fixed manual hold reason.
 
 Show offline: `show commerce.manualHoldReasons --json`.
@@ -83,8 +73,6 @@ Serve several markets from one starter configuration.
 Search terms include store orders, checkout processing.
 
 - Owner **commerce** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - A starter configuration has one market and composes its own quote and checkout admission.
 
 Show offline: `show commerce.multipleMarkets --json`.
@@ -95,8 +83,6 @@ Redeem promotion codes in native checkout.
 Search terms include store orders, checkout processing.
 
 - Owner **commerce** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native checkout path lacks a promotion-code resolver.
 
 Show offline: `show commerce.promotionCodeRedemption --json`.
@@ -107,8 +93,6 @@ Choose the allowed return reasons.
 Search terms include store orders, checkout processing.
 
 - Owner **commerce** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native order service still enforces a fixed vocabulary.
 
 Show offline: `show commerce.returnReasons --json`.
@@ -119,8 +103,6 @@ Settle orders and renewal cycles with zero payable.
 Search terms include store orders, checkout processing.
 
 - Owner **commerce** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path.
 
 Show offline: `show commerce.zeroPayableSettlements --json`.
@@ -131,8 +113,6 @@ Define account consent purposes and copy revisions.
 Search terms include messaging, notifications.
 
 - Owner **communications** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native account consent path uses fixed purposes and a fixed copy revision.
 
 Show offline: `show communications.accountConsentPurposes --json`.
@@ -143,8 +123,6 @@ Use additional languages for OpenLup communications and identity.
 Search terms include messaging, notifications.
 
 - Owner **communications** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Package contracts restrict the supported locale vocabulary.
 
 Show offline: `show communications.additionalLocales --json`.
@@ -155,8 +133,6 @@ Offer additional delivery methods.
 Search terms include shipping, dispatch, delivery.
 
 - Owner **fulfillment** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The delivery contract has a fixed set of native method kinds.
 
 Show offline: `show fulfillment.additionalDeliveryMethods --json`.
@@ -167,8 +143,6 @@ Dispatch independent shipments from one order.
 Search terms include shipping, dispatch, delivery.
 
 - Owner **fulfillment** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native shipment sequencing needs additional fulfillment modeling for this case.
 
 Show offline: `show fulfillment.independentShipments --json`.
@@ -179,8 +153,6 @@ Register a new account through a magic link.
 Search terms include account access, sign-in.
 
 - Owner **identity** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native sign-in port admits existing accounts only.
 
 Show offline: `show identity.magicLinkRegistration --json`.
@@ -191,8 +163,6 @@ Preserve the original reservation expiry on replay.
 Search terms include stock, allocation, availability.
 
 - Owner **inventory** · kind **invariant** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - A replay returns the existing hold without changing stock allocation or expiry.
 
 Show offline: `show inventory.reservationReplayExpiry --json`.
@@ -203,8 +173,6 @@ Set safety stock and channel exposure in available-to-promise calculations.
 Search terms include stock, allocation, availability.
 
 - Owner **inventory** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native available-to-promise currently uses zero safety stock and no channel allocation.
 
 Show offline: `show inventory.safetyStock --json`.
@@ -229,8 +197,6 @@ Require the invoice amount and currency to agree with the payment.
 Search terms include billing documents, adjustments.
 
 - Owner **invoicing** · kind **invariant** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - An invoice relies on matching durable payment evidence.
 
 Show offline: `show invoicing.invoicePaymentMatch --json`.
@@ -241,8 +207,6 @@ Issue a partial invoice correction.
 Search terms include billing documents, adjustments.
 
 - Owner **invoicing** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native correction contract supports full reversal.
 
 Show offline: `show invoicing.partialInvoiceCorrections --json`.
@@ -283,8 +247,6 @@ Choose the delay and link lifetime for a payment decline notice.
 Search terms include charge handling, settlement.
 
 - Owner **payments** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native decline notices wait three minutes and issue links for 24 hours.
 
 Show offline: `show payments.declineNoticeTiming --json`.
@@ -295,8 +257,6 @@ Authorize a payment now and capture it later.
 Search terms include charge handling, settlement.
 
 - Owner **payments** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The current payment adapter contract has no separate capture operation.
 
 Show offline: `show payments.deferredCapture --json`.
@@ -307,8 +267,6 @@ Request a refund through the payment rail.
 Search terms include charge handling, settlement.
 
 - Owner **payments** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The current payment adapter contract has no funds-refund operation.
 
 Show offline: `show payments.paymentRefunds --json`.
@@ -319,8 +277,6 @@ Register a payment provider capability profile for reconciliation.
 Search terms include charge handling, settlement.
 
 - Owner **payments** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native recovery uses a fixed set of qualified provider profiles.
 
 Show offline: `show payments.providerProfiles --json`.
@@ -331,8 +287,6 @@ Require verified signature, attempt, amount and currency for payment evidence.
 Search terms include charge handling, settlement.
 
 - Owner **payments** · kind **invariant** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Settlement relies on verified provider evidence tied to the charged attempt.
 
 Show offline: `show payments.verifiedPaymentEvidence --json`.
@@ -343,8 +297,6 @@ Quote an offer total that cannot be divided evenly by quantity.
 Search terms include quote amounts, price calculation.
 
 - Owner **pricing** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The offer pricing contract needs an allocation that reconciles each line.
 
 Show offline: `show pricing.indivisibleOfferTotals --json`.
@@ -355,8 +307,6 @@ Quote a basket with mixed tax rates.
 Search terms include quote amounts, price calculation.
 
 - Owner **pricing** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The strict quote contract rejects mixed tax rates in one quote.
 
 Show offline: `show pricing.mixedTaxRates --json`.
@@ -367,8 +317,6 @@ Apply quantity price breaks in a strict quote.
 Search terms include quote amounts, price calculation.
 
 - Owner **pricing** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native strict quote selects base prices only.
 
 Show offline: `show pricing.quantityPriceBreaks --json`.
@@ -379,8 +327,6 @@ Keep line totals equal to unit price times quantity in the same currency.
 Search terms include quote amounts, price calculation.
 
 - Owner **pricing** · kind **invariant** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Financial evidence must reconcile.
 
 Show offline: `show pricing.reconciledQuoteLines --json`.
@@ -391,8 +337,6 @@ Choose a sales channel for strict quotes and price lists.
 Search terms include quote amounts, price calculation.
 
 - Owner **pricing** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native strict quote and base-price writer currently use one fixed channel.
 
 Show offline: `show pricing.salesChannels --json`.
@@ -403,8 +347,6 @@ Select the subscription price rounding rule.
 Search terms include quote amounts, price calculation.
 
 - Owner **pricing** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The current subscription price policy rounds down to the configured quantum.
 
 Show offline: `show pricing.subscriptionPriceRounding --json`.
@@ -415,8 +357,6 @@ Choose the subtotal basis for free shipping.
 Search terms include discount rules, offer adjustments.
 
 - Owner **promotions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native threshold decisions use a fixed basis.
 
 Show offline: `show promotions.freeShippingBasis --json`.
@@ -427,8 +367,6 @@ Combine promotion codes using compatibility groups.
 Search terms include discount rules, offer adjustments.
 
 - Owner **promotions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The adjustment engine needs additional combination rules.
 
 Show offline: `show promotions.promotionCompatibilityGroups --json`.
@@ -467,8 +405,6 @@ Support optional postal codes and address regions.
 Search terms include delivery destination, address details.
 
 - Owner **shipping** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native address contract requires a postal code and has no region field.
 
 Show offline: `show shipping.addressRegions --json`.
@@ -479,8 +415,6 @@ Save additional payment method preferences.
 Search terms include delivery destination, address details.
 
 - Owner **shipping** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The customer preferences contract has a fixed payment method vocabulary.
 
 Show offline: `show shipping.paymentMethodPreferences --json`.
@@ -533,8 +467,6 @@ Reprice renewal shipping from the current address.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Retained native terms carry one shipping threshold profile.
 
 Show offline: `show subscriptions.addressBasedRenewalShipping --json`.
@@ -545,8 +477,6 @@ Renew subscriptions on a fixed calendar day.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native cadence is expressed in days.
 
 Show offline: `show subscriptions.calendarCadence --json`.
@@ -557,8 +487,6 @@ Offer custom subscription pause durations.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native lifecycle commands support two weeks, one month and indefinite.
 
 Show offline: `show subscriptions.customPauseDurations --json`.
@@ -569,8 +497,6 @@ Require delivery evidence and move alignment only later.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **invariant** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - A late delivery extends the cycle without stacking deliveries. A replacement counts only after arrival.
 
 Show offline: `show subscriptions.deliveryAlignmentEvidence --json`.
@@ -581,8 +507,6 @@ Schedule introductory discounts by renewal cycle.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native terms support one introductory phase before the retained terms take over.
 
 Show offline: `show subscriptions.introductoryPhases --json`.
@@ -607,8 +531,6 @@ Prepay several subscription deliveries.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native commands refuse multi-cycle prepaid subscriptions.
 
 Show offline: `show subscriptions.prepaidCycles --json`.
@@ -619,8 +541,6 @@ Change a renewal price without changing the subscription basket.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Native renewal prices are locked until an edit changes the terms.
 
 Show offline: `show subscriptions.renewalPriceChanges --json`.
@@ -631,8 +551,6 @@ Calculate a subscription reschedule date in the market time zone.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native command compares dates using UTC days.
 
 Show offline: `show subscriptions.rescheduleTimeZone --json`.
@@ -643,8 +561,6 @@ Use one retry schedule for host and provider-recorded payment failures.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule.
 
 Show offline: `show subscriptions.retrySchedule --json`.
@@ -655,8 +571,6 @@ Use the same delivery controls for managed and native notices.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Managed and native delivery paths use separate controls.
 
 Show offline: `show subscriptions.sharedDeliveryControls --json`.
@@ -667,9 +581,7 @@ Set the stock hold lifetime when a renewal leaves stock wait.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
-- Native stock-wait recovery fixes the hold at 15 minutes in SQL.
+- Native stock-wait recovery fixes the hold at 15 minutes in SQL. The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused.
 
 Show offline: `show subscriptions.stockWaitHoldLifetime --json`.
 
@@ -679,8 +591,6 @@ Set windows for subscriber review requests.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Review branches exist in SQL and need composition before exposing a setting.
 
 Show offline: `show subscriptions.subscriberReviewWindows --json`.
@@ -691,8 +601,6 @@ Reconcile unknown payment outcomes before retrying and stop on hard declines.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **invariant** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - Retrying a charge with an unknown outcome risks charging twice.
 
 Show offline: `show subscriptions.unknownPaymentReconciliation --json`.
@@ -703,8 +611,6 @@ Send winback again for a new cancellation episode.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
 - The native winback receipt deduplicates by subscription.
 
 Show offline: `show subscriptions.winbackEpisodeDeduplication --json`.

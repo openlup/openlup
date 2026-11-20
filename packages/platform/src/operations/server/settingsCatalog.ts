@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { settingDescriptorSchema as descriptor, settingRefusalSchema } from "./toolSchema.js";
+import { settingDescriptorSchema as descriptor, settingDescriptorSummary, settingRefusalSchema } from "./toolSchema.js";
 
 export const settingsVersion = 1;
 const packageData = (name: string): unknown =>
@@ -41,15 +41,19 @@ function readSettingsCatalogue() {
     .filter(code => !code.startsWith("commerce_setting_preview_")));
 
   const key = z.enum(entries.map(entry => entry.key));
-  const summary = descriptor.pick({ key: true, goal: true, kind: true, runtime: true, change: true }).extend({ key });
-  const { domain, schema, previewSchema, rules, examples, fallback, absentMeans, defaultBasis, whyThisDefault, effect } = descriptor.shape;
-  // Keep the existing show contract and its field order in CLI and MCP JSON.
-  const setting = summary.extend({
-    domain, schemaVersion: z.number(), schema: schema.unwrap(), previewSchema: previewSchema.unwrap(),
-    rules, examples, fallback, absentMeans, defaultBasis, whyThisDefault, effect,
-  });
+  const [value, ...facts] = descriptor.options;
+  const summaryFields = Object.fromEntries(
+    settingDescriptorSummary.keyof().options.map(field => [field, true]),
+  ) as Record<keyof typeof settingDescriptorSummary.shape, true>;
+  const summary = z.discriminatedUnion(descriptor.def.discriminator, [
+    value.pick(summaryFields).extend({ key }), ...facts.map(branch => branch.pick(summaryFields).extend({ key })),
+  ]);
+  // The generator materializes both schema fields on value entries, even when null.
+  const setting = z.discriminatedUnion(descriptor.def.discriminator, [
+    value.required({ schema: true, previewSchema: true }).extend({ key }), ...facts.map(branch => branch.extend({ key })),
+  ]);
   const showRequest = z.strictObject({ key });
   const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema });
   const listResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), entries: z.array(summary) });
-  return { entries: z.array(setting).parse(entries), searchTerms, previewOutputSchema, byCode, refusalSchema, showRequest, showResult, listResult };
+  return { entries, searchTerms, previewOutputSchema, byCode, refusalSchema, showRequest, showResult, listResult };
 }

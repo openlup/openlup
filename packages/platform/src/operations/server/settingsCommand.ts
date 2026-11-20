@@ -41,19 +41,24 @@ function text(result: Result, host?: SettingsHost): string {
     return [code, rule, hint, remediation.action, remediation.command].join("\n");
   }
   if ("entries" in result) return result.entries.length
-    ? result.entries.map(({ key, kind, runtime, goal, change }) =>
-      `${key} (${kind}, ${runtime.level})\n  ${goal}\n  Change: ${Object.values(change).join(" ")}`).join("\n")
+    ? result.entries.map(({ key, kind, runtime, goal, change }) => [
+      `${key} (${kind}, ${runtime.level})`, `  ${goal}`,
+      ...((kind === "cap" || kind === "invariant") && "reason" in runtime ? [`  ${runtime.reason}`] : []),
+      `  Change: ${Object.values(change).join(" ")}`,
+    ].join("\n")).join("\n")
     : "No settings matched the goal.";
   if (!("setting" in result)) return host?.formatPreview?.(result) ?? JSON.stringify(result, null, 2);
   const { setting, observation } = result;
   return [setting.key + " — " + setting.goal, `Owner: ${setting.domain}`,
     `Kind: ${setting.kind} (${setting.runtime.level})`,
     ...("reason" in setting.runtime ? [setting.runtime.reason] : []),
-    `Default: ${JSON.stringify(setting.fallback)}`,
-    `Basis: ${setting.defaultBasis.kind}${setting.defaultBasis.kind === "reference-code" ? " (matches the reference deployment’s code)" : ""}`,
-    setting.whyThisDefault, ...(setting.absentMeans ? [setting.absentMeans.description] : []),
-    `Schema: ${JSON.stringify(setting.schema)}`, `Effect: ${setting.effect.appliesTo}`,
-    `Frozen on: ${setting.effect.frozenOn.join(" ") || "No records named"}`,
+    ...("effect" in setting ? [
+      `Default: ${JSON.stringify(setting.fallback)}`,
+      `Basis: ${setting.defaultBasis.kind}${setting.defaultBasis.kind === "reference-code" ? " (matches the reference deployment’s code)" : ""}`,
+      setting.whyThisDefault, ...(setting.absentMeans ? [setting.absentMeans.description] : []),
+      `Schema: ${JSON.stringify(setting.schema)}`, `Effect: ${setting.effect.appliesTo}`,
+      `Frozen on: ${setting.effect.frozenOn.join(" ") || "No records named"}`,
+    ] : []),
     `Change: ${Object.values(setting.change).join(" ")}`, `Observation: ${JSON.stringify(observation)}`].join("\n");
 }
 

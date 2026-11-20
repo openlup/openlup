@@ -5,14 +5,8 @@
     "goal": "Accept additional catalogue media formats.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The media contract admits a fixed set of validated formats.",
-    "effect": {"appliesTo": "The media contract admits a fixed set of validated formats.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The media contract admits a fixed set of validated formats."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogadditionalmediaformats"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogadditionalmediaformats"}
   },
   {
     "key": "catalog.netContentUnits",
@@ -20,14 +14,8 @@
     "goal": "Represent product net contents in units other than grams.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The catalogue read envelope uses grams for net contents.",
-    "effect": {"appliesTo": "The catalogue read envelope uses grams for net contents.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The catalogue read envelope uses grams for net contents."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalognetcontentunits"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalognetcontentunits"}
   },
   {
     "key": "catalog.optionalGtin",
@@ -35,13 +23,7 @@
     "goal": "Use catalogue SKUs that have no GTIN.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Native catalogue identities require a GTIN.",
-    "effect": {"appliesTo": "Native catalogue identities require a GTIN.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Native catalogue identities require a GTIN."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogoptionalgtin"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogoptionalgtin"}
   }
 ]
