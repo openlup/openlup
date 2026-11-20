@@ -41,8 +41,11 @@ function text(result: Result, host?: SettingsHost): string {
     return [code, rule, hint, remediation.action, remediation.command].join("\n");
   }
   if ("entries" in result) return result.entries.length
-    ? result.entries.map(({ key, kind, runtime, goal, change }) =>
-      `${key} (${kind}, ${runtime.level})\n  ${goal}\n  Change: ${Object.values(change).join(" ")}`).join("\n")
+    ? result.entries.map(({ key, kind, runtime, goal, change }) => [
+      `${key} (${kind}, ${runtime.level})`, `  ${goal}`,
+      ...((kind === "cap" || kind === "invariant") && "reason" in runtime ? [`  ${runtime.reason}`] : []),
+      `  Change: ${Object.values(change).join(" ")}`,
+    ].join("\n")).join("\n")
     : "No settings matched the goal.";
   if (!("setting" in result)) return host?.formatPreview?.(result) ?? JSON.stringify(result, null, 2);
   const { setting, observation } = result;

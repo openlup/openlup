@@ -165,6 +165,8 @@ it("uses the same dispatcher bytes for offline results and refusals", async () =
 it.each([
   ["empty result", ["list", "--goal", "no-such-setting"], "No settings matched the goal."],
   ["list result", ["list", "--goal", "inventory buffer"], "inventory_renewal_protection (installed, preview)"],
+  ["compact list reason", ["list", "--goal", "shipping.addressRegions"],
+    "\n  The native address contract requires a postal code and has no region field.\n  Change: docs/guide/"],
   ["text refusal", ["show", "unknown"], "commerce_setting_unknown"],
   ["text explanation", ["explain", "commerce_setting_unknown"], "commerce_setting_unknown"],
   ["text provenance", ["show", key], "Basis: reference-code (matches the reference deployment’s code)"],

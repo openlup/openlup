@@ -41,8 +41,13 @@ function readSettingsCatalogue() {
     .filter(code => !code.startsWith("commerce_setting_preview_")));
 
   const key = z.enum(entries.map(entry => entry.key));
-  const summary = settingDescriptorSummary.extend({ key });
   const [value, ...facts] = descriptor.options;
+  const summaryFields = Object.fromEntries(
+    settingDescriptorSummary.keyof().options.map(field => [field, true]),
+  ) as Record<keyof typeof settingDescriptorSummary.shape, true>;
+  const summary = z.discriminatedUnion(descriptor.def.discriminator, [
+    value.pick(summaryFields).extend({ key }), ...facts.map(branch => branch.pick(summaryFields).extend({ key })),
+  ]);
   // The generator materializes both schema fields on value entries, even when null.
   const setting = z.discriminatedUnion(descriptor.def.discriminator, [
     value.required({ schema: true, previewSchema: true }).extend({ key }), ...facts.map(branch => branch.extend({ key })),

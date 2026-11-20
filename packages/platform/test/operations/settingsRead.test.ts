@@ -175,6 +175,16 @@ it.each([
   expect(entries[0]?.key).toBe(key);
 });
 
+it("accepts every catalogue list summary and enforces the compact branch", () => {
+  const { entries, listResult } = loadSettingsCatalogue();
+  const listed = listResult.parse(listSettings({}));
+  expect(listed.entries.map(entry => entry.key)).toEqual(entries.map(entry => entry.key));
+  const cap = listed.entries.find(entry => entry.kind === "cap");
+  if (!cap) throw new Error("Expected a capability summary");
+  expect(listResult.safeParse({ ...listed, entries: [{ ...cap, runtime: { level: "ready" } }] }).success).toBe(false);
+  expect(listResult.safeParse({ ...listed, entries: [{ ...cap, change: { operation: "apply" } }] }).success).toBe(false);
+});
+
 it("projects read-only MCP inputs and results from the settings read contracts", async () => {
   const [list, show, preview] = settingsReadTools;
   const { showRequest, showResult } = loadSettingsCatalogue();
