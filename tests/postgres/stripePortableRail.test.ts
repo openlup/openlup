@@ -198,7 +198,8 @@ it("captures signed evidence, records the saved method, then attaches the paid p
   expect(active.renewalAttachment).toBe("complete"); subscriptionId = String(active.activation.subscriptionId);
   expect(await createPostgresPaymentMethodStore(env.runtime).read(rail.provider, currentMethod)).toMatchObject({ subscription_id: subscriptionId });
 });
-it("acknowledges a completed historical capture through the shipping native rail using one read", async () => {
+it.each([{}, { amount: "300", amount_received: 200 }])(
+  "acknowledges a completed historical capture through the shipping native rail using one read for %j", async amounts => {
   // Keep the original paid receipt and model the additive column on a migrated row.
   const stored = (await env.owner.query(`UPDATE public.payment_provider_attempt_evidence SET captured_amount_basis=NULL
     WHERE settlement_intent_id=$1 AND event_type='payment.succeeded'
@@ -209,7 +210,7 @@ it("acknowledges a completed historical capture through the shipping native rail
     executor: { query(sql, values) { queries.push(sql); return env.runtime.query(sql, values); } },
     adapter: rail.adapter, mode: rail.mode, truth, resolveMethodOwner: rejectMethodLookup, resolveSavedMethodOwner: rejectMethodLookup,
   });
-  const redelivery = signed("payment_intent.succeeded", { ...remote, status: "succeeded", setup_future_usage: "off_session",
+  const redelivery = signed("payment_intent.succeeded", { ...remote, ...amounts, status: "succeeded", setup_future_usage: "off_session",
     metadata: { paymentIntentId: intentId, clientId, mode: "subscription_cycle" } }, stored.provider_event_id);
   expect(await composed.ingress.receive(redelivery)).toMatchObject({
     status: 200, data: { paymentEventId: stored.id, replayed: true },

@@ -179,13 +179,13 @@ export function createVerifiedPaymentIngress({
             currency: typeof currency === "string" ? currency : null,
           };
           try {
-            operationalEvents({
+            void Promise.resolve(operationalEvents({
               name: "provider_payment_amount_mismatch",
               domain: "payment",
               surface: "webhook",
               details: { provider, providerEventId: verifiedEvidence.providerEventId,
                 providerPaymentId: verifiedEvidence.providerPaymentRef, ...amounts, outcome: "review_required" },
-            });
+            })).catch(() => {});
           } catch {
             // A diagnostic failure cannot change the refusal.
           }

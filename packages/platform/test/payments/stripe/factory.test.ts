@@ -300,6 +300,35 @@ describe("opt-in payment factory", () => {
     expect(applyPaymentResult).not.toHaveBeenCalled();
   });
 
+  it("returns the conflict evidence when the recorder returns a rejected promise", async () => {
+    const { adapter } = subject();
+    const delivery = signed(event("payment_intent.succeeded", { amount: 300, amount_received: 200 }));
+    const ingestPaymentEvent = vi.fn();
+    const applyPaymentResult = vi.fn();
+    let recorded = 0;
+    // Use a plain callback so the test spy cannot handle the returned rejection.
+    const operationalEvents = () => {
+      recorded += 1;
+      return Promise.reject(new Error("async recorder unavailable"));
+    };
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort, operationalEvents,
+      paymentControlPort: { ingestPaymentEvent, applyPaymentResult } });
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      expect(await ingress.receive(delivery)).toMatchObject({ status: 409, data: {
+        reason: "provider_amount_mismatch", configuredAmountMinor: 300, paidAmountMinor: 200, currency: "EUR",
+      } });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(recorded).toBe(1);
+      expect(ingestPaymentEvent).not.toHaveBeenCalled();
+      expect(applyPaymentResult).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
   it("refuses redelivery of a released requested-amount receipt without a completed-receipt lookup", async () => {
     const { adapter } = subject();
     const completedReceipt = { paymentEventId: "historical-event", paymentIntentId: "historical-intent",
@@ -321,11 +350,17 @@ describe("opt-in payment factory", () => {
     expect(applyPaymentResult).not.toHaveBeenCalled();
   });
 
-  it.each([500, undefined])("acknowledges a completed legacy receipt after collected money changes to %s", async amount_received => {
+  it.each([
+    { object: { amount_received: 500 }, legacyAmount: request.money.amountMinor },
+    { object: { amount_received: undefined }, legacyAmount: request.money.amountMinor },
+    { object: { amount: "300", amount_received: 200 }, legacyAmount: 200 },
+  ])("acknowledges a completed legacy receipt for $object", async ({ object, legacyAmount }) => {
     const { adapter } = subject();
-    const prior = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded")));
+    const prior = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded", {
+      amount: legacyAmount, amount_received: legacyAmount,
+    })));
     if (prior.kind !== "money") throw new Error("Expected verified legacy identity");
-    const delivery = signed(event("payment_intent.succeeded", { amount_received }));
+    const delivery = signed(event("payment_intent.succeeded", object));
     const current = await adapter.verifyPort.verifyAndNormalize(delivery);
     expect(current).toMatchObject({ historicalCaptureFingerprint: prior.fingerprint });
     const findCompletedHistoricalCapture = vi.fn(async () => "prior-local-event");

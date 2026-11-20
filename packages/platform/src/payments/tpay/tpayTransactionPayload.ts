@@ -233,9 +233,15 @@ type TransactionAmountField = { field: string; amountMinor: number } | { field: 
 
 function amountField(field: string, value: unknown, unit: "major" | "minor"): TransactionAmountField | null {
   if (value == null) return null;
-  const amount = readNullableTransactionAmount(value);
-  const amountMinor = amount === null || unit === "minor" ? amount : Math.round(amount * 100);
-  return amountMinor !== null && Number.isSafeInteger(amountMinor) && (unit === "major" || amountMinor >= 0)
+  let amountMinor: unknown = value;
+  if (unit === "major") {
+    const amount = readNullableTransactionAmount(value);
+    amountMinor = amount === null ? null : Math.round(amount * 100);
+  } else if (typeof value === "string") {
+    const text = value.trim();
+    amountMinor = /^[0-9]+$/.test(text) ? Number(text) : null;
+  }
+  return typeof amountMinor === "number" && Number.isSafeInteger(amountMinor) && (unit === "major" || amountMinor >= 0)
     ? { field, amountMinor }
     : { field, malformed: true };
 }
