@@ -182,7 +182,7 @@ describe("retained renewal pricing characterization", () => {
     expect(codec.decode(codec.encode(bound))).toEqual(bound);
   });
 
-  it("uses lightweight SQL for mandate/delivery admission, single snapshot load in buildCycleSnapshots, and 1-query combined delivery admission", async () => {
+  it("uses lightweight SQL for mandate/delivery admission, single snapshot load in buildCycleSnapshots, and skips alignment query when statically blocked", async () => {
     const codec = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
     const queries: string[] = [];
     const executor = {
@@ -193,9 +193,6 @@ describe("retained renewal pricing characterization", () => {
         if (sql.includes("subscription_renewal_purchase_terms")) return { rows: [row(terms())] };
         if (sql.includes("t.authorization_ref") && !sql.includes("subscription_renewal_purchase_terms")) {
           return { rows: [{ authorization_ref: "auth-1", unattended_charge_authorized_at: at, method_authorized: true }] };
-        }
-        if (sql.includes("t.delivery_admission") && sql.includes("existing_cycle")) {
-          return { rows: [{ delivery_admission: "allowed", delivery_block_reason: null, existing_cycle: false, mode: "off", captured_case: false }] };
         }
         if (sql.includes("t.delivery_admission")) {
           return { rows: [{ delivery_admission: "blocked", delivery_block_reason: "manual_hold" }] };
@@ -223,12 +220,12 @@ describe("retained renewal pricing characterization", () => {
     expect(queries).toHaveLength(1);
     expect(queries[0]).not.toContain("subscription_renewal_purchase_terms");
 
-    // withNativeDeliveryAlignmentRenewalAdmission collapses static + context into 1 query when sharing executor
+    // withNativeDeliveryAlignmentRenewalAdmission short-circuits static block before existing_cycle query
     queries.length = 0;
-    const aligned = withNativeDeliveryAlignmentRenewalAdmission({ ...store }, executor, () => at);
-    expect(await aligned.admitDeliveryAlignment(schedule)).toEqual({ allowed: true, state: "static", reason: "allowed" });
+    const aligned = withNativeDeliveryAlignmentRenewalAdmission(store, executor, () => at);
+    expect(await aligned.admitDeliveryAlignment(schedule)).toEqual({ allowed: false, state: "static", reason: "manual_hold", deferred: false });
     expect(queries).toHaveLength(1);
-    expect(queries[0]).toContain("existing_cycle");
+    expect(queries[0]).not.toContain("existing_cycle");
   });
 
   it("preserves canonical fingerprint and wire parity even when string fields contain key-like markers", () => {

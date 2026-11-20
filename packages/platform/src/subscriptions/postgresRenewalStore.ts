@@ -58,8 +58,6 @@ const MANDATE_EVIDENCE_SQL = `SELECT t.authorization_ref,
 const DELIVERY_ADMISSION_SQL = `SELECT t.delivery_admission,t.delivery_block_reason
  FROM public.subscriptions s JOIN public.subscription_renewal_terms t ON t.subscription_id=s.id
  WHERE s.id=$1::uuid AND s.next_cycle_at=$2::timestamptz`;
-/** Internal marker linking native static admission back to its query executor. */
-export const nativeStaticAdmissionExecutors = new WeakMap<RenewalStorePort["admitDeliveryAlignment"], SubscriptionQueryExecutor>();
 export function subscriptionRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("subscription_renewal_response_invalid");
   return value as Record<string, unknown>;
@@ -165,6 +163,5 @@ export function createPostgresRenewalStore(executor: SubscriptionQueryExecutor, 
         [input.operationId, input.claimToken, input.reason, input.occurredAt]);
     },
   };
-  nativeStaticAdmissionExecutors.set(store.admitDeliveryAlignment, executor);
   return store;
 }
