@@ -1514,6 +1514,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123191000_catalog_publication_commands.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4954,6 +4958,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123191000_catalog_publication_commands.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5350,6 +5358,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogPublicationCommands.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogPublicationProjection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogPublicationRules.ts",
       "class": "public-output"
     },
@@ -5546,6 +5562,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationSkuIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationValidation.ts",
       "class": "public-output"
     },
@@ -5591,6 +5611,10 @@
     },
     {
       "path": "packages/platform/src/catalog/testing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/testing/publicationWireVectors.ts",
       "class": "public-output"
     },
     {
@@ -11322,6 +11346,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/migrations/packagedCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
       "class": "public-output"
     },
@@ -14406,11 +14434,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/postgres/catalogPublicationReads.ts",
+      "path": "server/adapters/postgres/catalogPublicationReads.test.ts",
       "class": "public-output"
     },
     {
-      "path": "server/adapters/postgres/catalogPublicationWire.ts",
+      "path": "server/adapters/postgres/catalogPublicationReads.ts",
       "class": "public-output"
     },
     {
@@ -30087,6 +30115,10 @@
     },
     {
       "path": "tests/postgres/catalogPublication.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublicationCommands.test.ts",
       "class": "public-output"
     },
     {

@@ -173,7 +173,7 @@ export const PLATFORM_MODULE_GRAPH = {
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.
   "catalog/testing": { values: ["catalog"], types: ["catalog/contracts"] },
-  catalog: { contracts: true, values: ["pricing", "data"], types: ["bff", "http"] },
+  catalog: { contracts: true, values: ["pricing", "data", "migrations"], types: ["bff", "http"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
   kernel: { values: [], types: [] },

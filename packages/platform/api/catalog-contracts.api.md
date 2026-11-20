@@ -561,6 +561,8 @@ export interface CatalogCandidatePreview {
     issues: readonly CatalogDraftIssue[];
     /** @experimental Reports what needs attention before the draft is ready. */
     preparation?: {
+        /** Present on opted-in native v3 preparation with complete structural evidence. */
+        postStateDigest?: string;
         structural: {
             outcome: "staged" | "blocked-input" | "unknown";
             issues: readonly CatalogCandidateIssue[];
@@ -986,8 +988,6 @@ export interface CatalogDraftListQuery {
 }
 /** Reject lossy JSON inputs, prototype keys and excessive recursion before validation or hashing. */
 export declare function canonicalCatalogDraftJson(input: unknown): string;
-/** @internal Shared scalar and JSON rules for publication envelopes. */
-export declare function canonicalCatalogPublicationJson(input: unknown): string;
 ```
 ## dist/catalog/contracts/draftV2.d.ts
 
@@ -1403,6 +1403,7 @@ export interface CatalogPublicationRefusal {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: "publisher_not_authorized" | "candidate_invalid" | "head_conflict" | "publication_authority_unavailable" | "publication_not_supported";
     message?: string;
+    path?: string;
 }
 /** Success requires coherent authoritative document and lifecycle facts. */
 export type CatalogPublicationReadResult = {
@@ -1604,6 +1605,8 @@ export interface CatalogTypeDefinitionV2 extends Omit<CatalogProductTypeInput, "
     attributes: readonly AttributeDefinition[];
 }
 export interface CatalogProductTypeRegistry {
+    /** Immutable definitions in registration order, when the registry supports enumeration. */
+    readonly definitions?: readonly Readonly<CatalogProductTypeInput>[];
     resolve(ref: CatalogProductTypeRef): CatalogProductTypeDefinition | undefined;
 }
 export declare function validateCatalogQuantity(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): boolean;

@@ -27,6 +27,15 @@ describe("installed catalog types", () => {
     expect(() => createCatalogProductTypeRegistry([{ ...definition, netContentUnits: ["unknown:unit"] }])).toThrow();
     expect(() => createCatalogProductTypeRegistry([{ ...definition, dimensions: [{ key: "size", kind: "quantity", dimension: "mass", units: ["item:piece"] }] }])).toThrow();
   });
+  it("enumerates the immutable registered versions in declaration order", () => {
+    const next = { ...definition, version: 2 };
+    const input = [next, definition];
+    const registry = createCatalogProductTypeRegistry(input);
+    input.reverse();
+    expect(registry.definitions).toEqual([registry.resolve(next), registry.resolve(definition)]);
+    expect(Object.isFrozen(registry.definitions)).toBe(true);
+    expect(registry.definitions?.every(Object.isFrozen)).toBe(true);
+  });
   it.each([
     ["mass", "si:gram", "9007199254740993001", 3, true],
     ["volume", "si:millilitre", "125", 2, true],

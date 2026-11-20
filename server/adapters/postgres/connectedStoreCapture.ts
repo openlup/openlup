@@ -1,11 +1,15 @@
-import { catalogPublicationAdmissionRefusal } from "./catalogPublicationReads.js";
+import { nativeCatalogPublication } from "@openlup/platform/catalog";
+import type { PgQueryExecutor } from "@openlup/platform/data";
 import { createHash } from "node:crypto";
 import {
   captureCompatiblePostgresRows, PostgresTransferError,
   type CompatiblePostgresPacket, type CompatiblePostgresSnapshot, type CompatiblePostgresTable,
 } from "@openlup/platform/portability";
 
-export async function assertConnectedCatalogPublications(db: { query(sql: string): Promise<unknown> }) {
+const { catalogPublicationAdmissionRefusal, assertPublishedSkuIdentity, decodePublicationPacket, requireDecodedPublication } = nativeCatalogPublication;
+
+export async function assertConnectedCatalogPublications(db: PgQueryExecutor) {
+  await assertPublishedSkuIdentity(db);
   // Evaluate both decoders in PostgreSQL without returning the projections.
   await db.query(`SELECT count(public.catalog_publication_product_facts(id,publication_facts,true))
     FROM public.catalog_products WHERE publication_facts IS NOT NULL`);
@@ -211,7 +215,6 @@ export async function captureConnectedNativeStore(input: {
         emptyOutsideProfile.push(`${relation.schema}.${relation.table}`);
         outsideProfileCensus.push({ relation: `${relation.schema}.${relation.table}`, owner: relation.owner, rows: "0", disposition: "unsupported-empty" });
       }
-      await assertConnectedCatalogPublications(db);
       let count = packet.tables.reduce((sum, table) => sum + table.rows.length, 0);
       let bytes = packet.tables.reduce((sum, table) => sum + table.rows.reduce((total, row) => total + Buffer.byteLength(row), 0), 0);
       const tables: ConnectedStoreOwnedRows[] = [];
@@ -232,6 +235,11 @@ export async function captureConnectedNativeStore(input: {
         if (count > maximumRows || bytes > maximumBytes) throw new PostgresTransferError("limit_exceeded", table);
         tables.push({ table, columns, rows });
       }
+      requireDecodedPublication(decodePublicationPacket({
+        publications: tables.find(table => table.table === "catalog_publications")!.rows,
+        skuRevisions: tables.find(table => table.table === "catalog_sku_revisions")!.rows,
+      }));
+      await assertConnectedCatalogPublications(db);
       const result = {
         format: "openlup.native-retained-store.v1" as const,
         compatible: packet, owned: tables,

@@ -17,6 +17,8 @@ export interface CatalogCandidatePreview {
   candidateRef: string; candidateDigest: string; issues: readonly CatalogDraftIssue[];
   /** @experimental Reports what needs attention before the draft is ready. */
   preparation?: {
+    /** Present on opted-in native v3 preparation with complete structural evidence. */
+    postStateDigest?: string;
     structural: { outcome: "staged" | "blocked-input" | "unknown"; issues: readonly CatalogCandidateIssue[] };
     activation: { outcome: "ready" | "pending" | "blocked-input" | "unknown"; issues: readonly (CatalogCandidateIssue & {
       channel?: "one_time" | "subscription";
