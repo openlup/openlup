@@ -295,9 +295,20 @@ export type SettingsAppBindings = {
 } | {
     configurationIds: readonly string[];
 };
+type SettingsDatabase = {
+    host: string;
+    port: number;
+    user: string;
+    password: string | (() => string);
+    database: string;
+    ssl: false | {
+        rejectUnauthorized: true;
+        host: string;
+    };
+};
 type SettingsHost = {
     bind(input: {
-        databaseUrl?: string;
+        database?: SettingsDatabase;
         app?: string;
         configuration?: string;
     }): Promise<SettingsAppBindings & {

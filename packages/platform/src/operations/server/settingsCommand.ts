@@ -1,3 +1,4 @@
+import { isIPv4 } from "node:net";
 import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
@@ -31,8 +32,12 @@ export type SettingsAppBindings = {
   };
 } | { configurationIds: readonly string[] };
 
+type SettingsDatabase = {
+  host: string; port: number; user: string; password: string | (() => string); database: string;
+  ssl: false | { rejectUnauthorized: true; host: string };
+};
 type SettingsHost = {
-  bind(input: { databaseUrl?: string; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
+  bind(input: { database?: SettingsDatabase; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
   loadCheck?(input: { app: string; configuration?: string }): Promise<SettingsAppBindings | undefined>;
   formatPreview?(result: PreviewDocument): string;
 };
@@ -280,6 +285,45 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
   ].join("\n");
 }
 
+function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; hint: string } {
+  const path = ["database-url"];
+  const url = URL.parse(input);
+  if (!url || url.href !== input) return { path,
+    hint: "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use brackets and lowercase hexadecimal without leading zeros for IPv6, compress the first longest run of two or more zero fields to ::, and write a single zero field as 0. Omit the port or use a port from 1 to 65535 without leading zeros, and write an empty password without the colon. Remove whitespace and dot segments." };
+  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return { path, hint: "Use the postgres:// or postgresql:// scheme." };
+  const dnsName = url.hostname.length <= 253 && /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.?$/u.test(url.hostname);
+  const ipv4Like = /(?:^|\.)(?:[0-9]+|0x[0-9a-f]*)\.?$/u.test(url.hostname);
+  if (!url.hostname.startsWith("[") && !(dnsName && (!ipv4Like || isIPv4(url.hostname)))) {
+    return { path, hint: url.hostname
+      ? "Use one lowercase DNS name, dotted-decimal IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. A DNS name uses only letters, digits, dots and hyphens. Each label must begin and end with a letter or digit. Keep each DNS label to 63 characters and the name to 253 characters, including any trailing dot. The final label cannot be all digits, 0x alone, or 0x followed only by hexadecimal digits. Write IPv4 as four decimal octets from 0 to 255 separated by dots, without leading zeros."
+      : "Name the TCP host using the postgresql://user@host/database form." };
+  }
+  const port = Number(url.port || 5432);
+  if (port < 1 || port > 65535) return { path, hint: "Omit the PostgreSQL URL port or use a port from 1 to 65535." };
+  if (!url.username) return { path, hint: "Name the PostgreSQL username before @ in the URL." };
+  if (!/^\/[^/]+$/u.test(url.pathname)) return { path, hint: "Use one non-empty database path segment after the host and port." };
+  const encoding = { path, hint: "Encode the PostgreSQL username, password and database as valid UTF-8 URL components without control characters." };
+  let user: string, password: string, database: string;
+  try {
+    user = decodeURIComponent(url.username);
+    password = decodeURIComponent(url.password);
+    database = decodeURIComponent(url.pathname.slice(1));
+  } catch { return encoding; }
+  if ([user, password, database].some(value => /\p{Cc}/u.test(value))) return encoding;
+  if (Buffer.byteLength(user, "utf8") > 63 || Buffer.byteLength(database, "utf8") > 63) {
+    return { path, hint: "Use a PostgreSQL username and database name of at most 63 bytes each in UTF-8." };
+  }
+  if (url.href.includes("#")) return { path, hint: "Remove the fragment from the PostgreSQL URL." };
+  if (url.href.includes("?") && !["?sslmode=disable", "?sslmode=require", "?sslmode=verify-full"].includes(url.search)) {
+    return { path, hint: "Omit the query or use a single sslmode option written exactly as ?sslmode=disable, ?sslmode=require or ?sslmode=verify-full. If your provider needs another option, use a provider URL that works with verified TLS under Node's trust store." };
+  }
+  const host = url.hostname.replace(/^\[|\]$/gu, "");
+  return {
+    host, port, user, password: password || (() => ""), database,
+    ssl: url.search === "?sslmode=require" || url.search === "?sslmode=verify-full" ? { rejectUnauthorized: true, host } : false,
+  };
+}
+
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export async function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number> {
   let json = argv.includes("--json");
@@ -355,10 +399,9 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   preview = command === "preview";
   const databaseUrl = values["database-url"];
   if (values.goal !== undefined && command !== "list") return invalid("goal", "Use --goal with list.");
-  const url = databaseUrl === undefined ? undefined : URL.parse(databaseUrl);
-  const invalidDatabase = databaseUrl !== undefined && (!url?.hostname || !["postgres:", "postgresql:"].includes(url.protocol))
-    ? { path: ["database-url"], hint: databaseUrl ? "Supply a PostgreSQL URL for the intended store." : "Supply a read-capable database URL." }
-    : undefined;
+  const admission = databaseUrl === undefined ? undefined : admitDatabaseUrl(databaseUrl);
+  const invalidDatabase = admission && "hint" in admission ? admission : undefined;
+  const database = admission && "host" in admission ? admission : undefined;
   if (preview && databaseUrl === "" && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (preview && !key) return invalid("key", "Pass the setting key and one proposed JSON value with --value.");
   if (preview && extra.length) return invalid("proposed", "Pass one proposed JSON value with --value.");
@@ -445,11 +488,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       }
     }
     if (resolveConfiguration && !values.app) return [needsApp("configuration")];
-    const connectedUrl = invalidDatabase ? undefined : databaseUrl;
-    if (preview && connectedUrl && !host) return [needsApp(), 74];
+    if (preview && database && !host) return [needsApp(), 74];
     // An explicit configuration can be resolved without a pool, including before a URL refusal.
-    const bindings = (connectedUrl || resolveConfiguration)
-      ? await host?.bind({ databaseUrl: connectedUrl, app: values.app, configuration: values.configuration }) : undefined;
+    const bindings = (database || resolveConfiguration)
+      ? await host?.bind({ database, app: values.app, configuration: values.configuration }) : undefined;
     try {
       if (bindings && "configurationIds" in bindings) {
         const id = values.configuration ?? "";
@@ -459,7 +501,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       }
       if (preview) {
         if (invalidDatabase) return [refuseSettingsPreview("commerce_setting_preview_input_invalid", invalidDatabase), 64];
-        const result = await previewSetting(input, connectedUrl ? bindings?.previewers : undefined);
+        const result = await previewSetting(input, database ? bindings?.previewers : undefined);
         if ("refusal" in result) {
           if (result.refusal.code === "commerce_setting_preview_input_invalid") return [result, 64];
           if (result.refusal.code === "commerce_setting_preview_unexpected") return [result, 74];
@@ -478,8 +520,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   }
   let outcome: [Result, number?];
   try { outcome = await dispatch(); }
-  catch {
-    const hint = "Check the read-capable database connection and that --app exports createSettingsBindings.";
+  catch (error) {
+    const hint = error instanceof Error && error.message === "NODE_PG_FORCE_NATIVE"
+      ? "Unset NODE_PG_FORCE_NATIVE for this command to use the JavaScript PostgreSQL client, then retry."
+      : "Check the read-capable database connection and that --app exports createSettingsBindings.";
     outcome = [preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint }) : unavailable(hint), 74];
   }
   return emit(...outcome);

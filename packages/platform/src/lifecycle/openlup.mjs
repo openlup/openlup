@@ -36,8 +36,14 @@ function refuse(exitCode, code, observed, fix, cause = exitCode === 64 ? "Invali
   emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding] }, `${renderFinding(finding)}\n${help}`);
 }
 
-async function bindSettings({ databaseUrl, app, configuration }) {
-  const db = databaseUrl ? new (await import("pg")).Pool({ connectionString: databaseUrl }) : undefined;
+async function bindSettings({ database, app, configuration }) {
+  let db;
+  if (database) {
+    const { Pool, Client } = await import("pg");
+    if (typeof Client.prototype.getStartupConf !== "function") throw new Error("NODE_PG_FORCE_NATIVE");
+    db = new Pool(database);
+  }
+  db?.on("error", () => {});
   const close = async () => { await db?.end(); };
   try {
     let overrides = {};
