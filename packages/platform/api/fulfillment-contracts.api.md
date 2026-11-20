@@ -1095,6 +1095,16 @@ export interface FulfillmentStockSyncPort {
         replayed: boolean;
         readBack: boolean;
     }>;
+    recordStockSnapshotBatch?(inputs: readonly {
+        requestKey: string;
+        snapshot: StockSnapshot;
+        local: LocalStock;
+        mismatchKind: "none";
+        inventoryClass: "sellable" | "packaging" | null;
+    }[]): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }[]>;
     recordProviderStockCurrent(input: {
         requestKey: string;
         snapshot: StockSnapshot;
@@ -1105,6 +1115,16 @@ export interface FulfillmentStockSyncPort {
         replayed: boolean;
         readBack: boolean;
     }>;
+    recordProviderStockCurrentBatch?(inputs: readonly {
+        requestKey: string;
+        snapshot: StockSnapshot;
+        inventoryClass: "sellable" | "packaging" | null;
+        lastSyncedAt: string;
+        staleAfter: string;
+    }[]): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }[]>;
     recordMovement(input: {
         requestKey: string;
         movement: StockMovement;
@@ -1123,6 +1143,17 @@ export interface FulfillmentStockSyncPort {
     }): Promise<{
         replayed: boolean;
     }>;
+    recordLowStockEvidenceBatch?(inputs: readonly {
+        requestKey: string;
+        skuRef: string;
+        thresholdKind: Exclude<Threshold, "forecast">;
+        severity: "info" | "warning" | "critical";
+        providerForSaleQuantity: number;
+        localAvailableQuantity: number;
+        syncRunId: string;
+    }[]): Promise<{
+        replayed: boolean;
+    }[]>;
     resolveLowStockEvidence(input: {
         skuRef: string;
         activeThresholdKinds: Threshold[];
@@ -1130,6 +1161,13 @@ export interface FulfillmentStockSyncPort {
     }): Promise<{
         resolved: number;
     }>;
+    resolveLowStockEvidenceBatch?(inputs: readonly {
+        skuRef: string;
+        activeThresholdKinds: Threshold[];
+        syncRunId: string;
+    }[]): Promise<{
+        resolved: number;
+    }[]>;
 }
 interface ProductPack {
     ean: string;

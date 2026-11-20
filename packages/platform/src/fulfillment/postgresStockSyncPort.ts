@@ -43,9 +43,90 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       const s=v.snapshot, l=v.local;
       return nativeCall(db,'fulfillment_record_stock_snapshot',[source,v.requestKey,fingerprint(v),s.skuRef,s.totalQuantity,s.forSaleQuantity,s.reservedOrUnavailableQuantity,l.onHand,l.reserved,l.unavailable,l.safetyStock,v.inventoryClass,s.syncRunId]);
     },
+    async recordStockSnapshotBatch(inputs) {
+      if (!inputs.length) return [];
+      const result = await db.query(
+        `WITH ordered AS MATERIALIZED (
+          SELECT t.ord, t.request_key, t.fingerprint, t.sku, t.provider_total, t.provider_for_sale,
+            t.provider_reserved_unavail, t.local_on_hand, t.local_reserved, t.local_unavailable,
+            t.local_safety, t.inventory_class, t.sync_run_id
+          FROM unnest(
+            $2::text[], $3::text[], $4::text[], $5::integer[], $6::integer[], $7::integer[],
+            $8::integer[], $9::integer[], $10::integer[], $11::integer[], $12::text[], $13::text[]
+          ) WITH ORDINALITY AS t(
+            request_key, fingerprint, sku, provider_total, provider_for_sale,
+            provider_reserved_unavail, local_on_hand, local_reserved, local_unavailable,
+            local_safety, inventory_class, sync_run_id, ord
+          )
+          ORDER BY t.request_key, t.ord
+        )
+        SELECT ordered.ord, public.fulfillment_record_stock_snapshot(
+          $1::text, ordered.request_key, ordered.fingerprint, ordered.sku, ordered.provider_total,
+          ordered.provider_for_sale, ordered.provider_reserved_unavail, ordered.local_on_hand,
+          ordered.local_reserved, ordered.local_unavailable, ordered.local_safety,
+          ordered.inventory_class, ordered.sync_run_id
+        ) AS response
+        FROM ordered`,
+        [
+          source,
+          inputs.map((item) => item.requestKey),
+          inputs.map((item) => fingerprint(item)),
+          inputs.map((item) => item.snapshot.skuRef),
+          inputs.map((item) => item.snapshot.totalQuantity),
+          inputs.map((item) => item.snapshot.forSaleQuantity),
+          inputs.map((item) => item.snapshot.reservedOrUnavailableQuantity),
+          inputs.map((item) => item.local.onHand),
+          inputs.map((item) => item.local.reserved),
+          inputs.map((item) => item.local.unavailable),
+          inputs.map((item) => item.local.safetyStock),
+          inputs.map((item) => item.inventoryClass),
+          inputs.map((item) => item.snapshot.syncRunId),
+        ],
+      );
+      return scatterBatchResponses<{ replayed: boolean; readBack: boolean }>(inputs.length, result.rows);
+    },
     recordProviderStockCurrent(v) {
       const s=v.snapshot;
       return nativeCall(db,'fulfillment_record_stock_current',[source,v.requestKey,fingerprint(v),s.skuRef,s.totalQuantity,s.forSaleQuantity,s.reservedOrUnavailableQuantity,v.inventoryClass,v.lastSyncedAt,v.staleAfter,s.syncRunId]);
+    },
+    async recordProviderStockCurrentBatch(inputs) {
+      if (!inputs.length) return [];
+      // Order inside PostgreSQL by sku (database collation) + ord so row locks on
+      // fulfillment_stock_current match ORDER BY stock.sku FOR UPDATE while keeping caller order within a SKU.
+      const result = await db.query(
+        `WITH ordered AS MATERIALIZED (
+          SELECT t.ord, t.request_key, t.fingerprint, t.sku, t.total_qty, t.for_sale_qty,
+            t.reserved_unavail_qty, t.inventory_class, t.last_synced_at, t.stale_after, t.sync_run_id
+          FROM unnest(
+            $2::text[], $3::text[], $4::text[], $5::integer[], $6::integer[], $7::integer[],
+            $8::text[], $9::timestamptz[], $10::timestamptz[], $11::text[]
+          ) WITH ORDINALITY AS t(
+            request_key, fingerprint, sku, total_qty, for_sale_qty, reserved_unavail_qty,
+            inventory_class, last_synced_at, stale_after, sync_run_id, ord
+          )
+          ORDER BY t.sku, t.ord
+        )
+        SELECT ordered.ord, public.fulfillment_record_stock_current(
+          $1::text, ordered.request_key, ordered.fingerprint, ordered.sku, ordered.total_qty,
+          ordered.for_sale_qty, ordered.reserved_unavail_qty, ordered.inventory_class,
+          ordered.last_synced_at, ordered.stale_after, ordered.sync_run_id
+        ) AS response
+        FROM ordered`,
+        [
+          source,
+          inputs.map((item) => item.requestKey),
+          inputs.map((item) => fingerprint(item)),
+          inputs.map((item) => item.snapshot.skuRef),
+          inputs.map((item) => item.snapshot.totalQuantity),
+          inputs.map((item) => item.snapshot.forSaleQuantity),
+          inputs.map((item) => item.snapshot.reservedOrUnavailableQuantity),
+          inputs.map((item) => item.inventoryClass),
+          inputs.map((item) => item.lastSyncedAt),
+          inputs.map((item) => item.staleAfter),
+          inputs.map((item) => item.snapshot.syncRunId),
+        ],
+      );
+      return scatterBatchResponses<{ replayed: boolean; readBack: boolean }>(inputs.length, result.rows);
     },
     recordMovement(v) {
       const { providerRef, syncRunId, collectedAt, sourceRevision, revisionSource, skuRef, quantityKind, quantity, occurredAt, operationType, documentRef, lotRef, expirationDate } = v.movement;
@@ -56,8 +137,81 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       // Quantities, severity and run evidence are observations of the same alert identity.
       fingerprint({ requestKey: v.requestKey, skuRef: v.skuRef, thresholdKind: v.thresholdKind }),
       v.skuRef,v.thresholdKind,v.severity,v.providerForSaleQuantity,v.localAvailableQuantity]),
+    async recordLowStockEvidenceBatch(inputs) {
+      if (!inputs.length) return [];
+      // Align cross-SKU lock ordering with resolveLowStockEvidenceBatch in database collation.
+      const result = await db.query(
+        `WITH ordered AS MATERIALIZED (
+          SELECT t.ord, t.request_key, t.fingerprint, t.sku, t.threshold_kind, t.severity,
+            t.provider_for_sale, t.local_available
+          FROM unnest(
+            $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::integer[], $8::integer[]
+          ) WITH ORDINALITY AS t(
+            request_key, fingerprint, sku, threshold_kind, severity, provider_for_sale, local_available, ord
+          )
+          ORDER BY t.sku, t.ord
+        )
+        SELECT ordered.ord, public.fulfillment_record_stock_evidence(
+          $1::text, ordered.request_key, ordered.fingerprint, ordered.sku, ordered.threshold_kind,
+          ordered.severity, ordered.provider_for_sale, ordered.local_available
+        ) AS response
+        FROM ordered`,
+        [
+          source,
+          inputs.map((item) => item.requestKey),
+          inputs.map((item) => fingerprint({ requestKey: item.requestKey, skuRef: item.skuRef, thresholdKind: item.thresholdKind })),
+          inputs.map((item) => item.skuRef),
+          inputs.map((item) => item.thresholdKind),
+          inputs.map((item) => item.severity),
+          inputs.map((item) => item.providerForSaleQuantity),
+          inputs.map((item) => item.localAvailableQuantity),
+        ],
+      );
+      return scatterBatchResponses<{ replayed: boolean }>(inputs.length, result.rows);
+    },
     resolveLowStockEvidence: v => nativeCall(db,'fulfillment_resolve_stock_evidence',[source,v.skuRef,v.activeThresholdKinds,v.syncRunId]),
+    async resolveLowStockEvidenceBatch(inputs) {
+      if (!inputs.length) return [];
+      const payload = inputs.map((item) => ({
+        skuRef: item.skuRef,
+        activeThresholdKinds: item.activeThresholdKinds,
+        syncRunId: item.syncRunId,
+      }));
+      const result = await db.query(
+        `WITH ordered AS MATERIALIZED (
+          SELECT t.ord, t.elem
+          FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
+          ORDER BY t.elem->>'skuRef', t.ord
+        )
+        SELECT ordered.ord, public.fulfillment_resolve_stock_evidence(
+          $1::text,
+          ordered.elem->>'skuRef',
+          ARRAY(SELECT jsonb_array_elements_text(ordered.elem->'activeThresholdKinds')),
+          ordered.elem->>'syncRunId'
+        ) AS response
+        FROM ordered`,
+        [source, JSON.stringify(payload)],
+      );
+      return scatterBatchResponses<{ resolved: number }>(inputs.length, result.rows);
+    },
   };
+}
+function scatterBatchResponses<T>(expectedCount: number, rows: readonly Record<string, unknown>[]): T[] {
+  if (rows.length !== expectedCount) throw new Error('fulfillment_native_response_missing');
+  const responses = new Array<T>(expectedCount);
+  const seen = new Array<boolean>(expectedCount).fill(false);
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const response = row?.response;
+    const rawOrd = row?.ord;
+    const ord = typeof rawOrd === 'number' ? rawOrd : typeof rawOrd === 'string' && /^\d+$/.test(rawOrd) ? Number(rawOrd) : Number.NaN;
+    if (response === undefined || !Number.isInteger(ord) || ord < 1 || ord > expectedCount || seen[ord - 1]) {
+      throw new Error('fulfillment_native_response_missing');
+    }
+    seen[ord - 1] = true;
+    responses[ord - 1] = response as T;
+  }
+  return responses;
 }
 function timestamp(value: unknown): string | null { return value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : null; }
 function fingerprint(value: unknown): string { return createHash('sha256').update(stable(value)).digest('hex'); }
