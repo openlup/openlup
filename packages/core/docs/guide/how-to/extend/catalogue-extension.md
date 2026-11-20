@@ -8,10 +8,9 @@ authoring registry lazily from the same packs. The module and its imports run
 with the operator's process permissions, so use this command only with trusted code.
 
 The CLI writes deterministic UTF-8 JSON, with sorted keys and original array
-order, to a private scratch directory outside the application and working
-directories. The application root is the nearest ancestor of the trusted
-module's resolved file with a `package.json`. The CLI reads the file back and
-checks those bytes once. Registered content validators must return
+order, to a private scratch directory. The CLI resolves symlinks and requires
+scratch to be outside the working directory and every ancestor of the trusted
+module with a `package.json`. The CLI reads the file back and checks those bytes once. Registered content validators must return
 synchronously. The report gives the file, SHA-256, timings, checker invocation
 count, recheck and inert replay commands. The scratch file can be deleted after replay.
 

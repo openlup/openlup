@@ -7,18 +7,22 @@ import { pathToFileURL } from "node:url";
 const shellCommand = args => "npx --no -- openlup " + args.map(value => /^[A-Za-z0-9_./=-]+$/u.test(value)
   ? value : "'" + value.replaceAll("'", "'\"'\"'") + "'").join(" ");
 
-async function applicationRoot(source) {
-  let directory = dirname(source);
+async function checkApplicationScratch(source, scratch) {
+  let directory = dirname(source), foundPackage = false;
   for (;;) {
     try {
-      if ((await fs.stat(join(directory, "package.json"))).isFile()) return directory;
+      if ((await fs.stat(join(directory, "package.json"))).isFile()) {
+        foundPackage = true;
+        if (contains(directory, scratch)) throw new Error("Scratch is inside an application directory");
+      }
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
     const parent = dirname(directory);
-    if (parent === directory) throw new Error("Catalogue application package.json not found");
+    if (parent === directory) break;
     directory = parent;
   }
+  if (!foundPackage) throw new Error("Catalogue application package.json not found");
 }
 
 function contains(root, path) {
@@ -38,10 +42,10 @@ export async function runCatalogue(command, args, path, json, { emit, refuse, re
       fix = "Point --trusted-packs at a readable module within an application with a package.json.";
       const cwd = await fs.realpath(process.cwd());
       const sourcePath = await fs.realpath(resolve(cwd, path));
-      const root = await applicationRoot(sourcePath);
-      fix = "Choose a writable OS temporary directory outside the application and working directories.";
+      fix = "Use a trusted module within an application with a package.json and choose a writable OS temporary directory outside the application and working directories.";
       const scratch = await fs.realpath(tmpdir());
-      if (contains(root, scratch) || contains(cwd, scratch)) throw new Error("Scratch is inside the application or working directory");
+      if (contains(cwd, scratch)) throw new Error("Scratch is inside the working directory");
+      await checkApplicationScratch(sourcePath, scratch);
       fix = "Check that --trusted-packs resolves to a module exporting catalogueConformance with JSON fixture data and registered content validators.";
       const { catalogueConformance } = await import(pathToFileURL(sourcePath).href);
       // eslint-disable-next-line no-restricted-syntax -- the installed bin alone uses the internal compiled projector

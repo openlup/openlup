@@ -4,10 +4,12 @@ import {
   validateCatalogAttributes, prepareCatalogAttributeProjection, canonicalizeCatalogCombinationV2,
   validateCatalogCombinationChangesV2, CatalogCombinationError,
   catalogDraftPayloadSchema, catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema,
-  createCatalogProductTypeRegistry, validateCatalogDraft, validateCatalogDraftV2,
+  createCatalogProductTypeRegistry,
   type CatalogConformanceCode, type CatalogPackInput,
 } from "../index.js";
-import { catalogDraftV3ValidationPayload } from "../draftV3Schemas.js";
+import { validateDraftFacts } from "../draftFacts.js";
+import { validateDraftAttributes } from "../attributeValues.js";
+import { validateDraftCombinations } from "../combinationOptions.js";
 import { verifyCatalogRulesAtInstall } from "../publicationRules.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
 
@@ -103,7 +105,9 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       if (error instanceof SyntaxError) throw error;
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
       if (!OWNER_INPUT_CODES.has(named)) throw error;
-      add(named, `${path}${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
+      const suffix = error instanceof CatalogCombinationError
+        ? error.path.startsWith("/") ? error.path : pointer(error.path.split(".")) : "";
+      add(named, path + suffix);
       return undefined;
     }
   }
@@ -178,31 +182,30 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       if (!admitted) continue;
       if (!admitted.success) { admitted.error.issues.forEach(issue => add("draft_input_invalid", `${path}${pointer(issue.path)}`)); continue; }
       const payload = admitted.data;
-      const draftRegistry = { resolve: (ref: Parameters<typeof registry.resolve>[0]) => {
-        const definition = registry.resolve(ref);
-        return definition && { ...definition, validateContent: (content: unknown) => {
-          if (!validators) {
-            add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
-            return [];
-          }
-          const result = definition.validateContent(content);
-          if (typeof (result as unknown as PromiseLike<unknown> | undefined)?.then === "function") {
-            void Promise.resolve(result).catch(() => undefined);
-            throw new TypeError("Catalogue validateContent must return synchronously");
-          }
-          contentChecked = true;
-          return result;
-        } };
-      } };
-      const validate = () => payload.schemaVersion === 1 ? validateCatalogDraft(payload, draftRegistry)
-        : validateCatalogDraftV2(payload.schemaVersion === 2 ? payload : catalogDraftV3ValidationPayload(payload), draftRegistry);
-      const validation = validators ? await validate() : await owner(path, validate);
-      if (!validation) continue;
-      if (!validation.valid) for (const issue of validation.issues) {
-        const suffix = issue.path.startsWith("/") ? issue.path.replace(/^\/productAttributes(?=\/|$)/u, "/product/attributes")
-          : issue.path ? pointer(issue.path.split(".")) : "";
-        add(issue.code, path + suffix, "", ["conformance_owner_unavailable", "attribute_reference_unresolved"].includes(issue.code));
-      }
+      const definition = registry.resolve(payload.product.type);
+      const validation = validateDraftFacts(payload, { resolve: () => definition && { ...definition, validateContent: content => {
+        if (!validators) {
+          add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
+          return [];
+        }
+        const result = definition.validateContent(content);
+        const then = (result as unknown as PromiseLike<unknown> | undefined)?.then;
+        if (typeof then === "function") {
+          void then.call(result, undefined, () => undefined);
+          throw new TypeError("Catalogue validateContent must return synchronously");
+        }
+        contentChecked = true;
+        return result;
+      } } }, true);
+      if (!validation.valid) for (const issue of validation.issues) add(issue.code, path + issue.path);
+      if (payload.schemaVersion === 1 || !definition) continue;
+
+      const attributeIssues = await owner(path, () => validateDraftAttributes(definition, payload));
+      for (const issue of attributeIssues ?? [])
+        add(issue.code, path + issue.path, "", issue.code === "attribute_reference_unresolved");
+      await owner(path, () => validateDraftCombinations(definition, payload, (code, suffix) => {
+        throw new CatalogCombinationError(code, suffix);
+      }, true));
     }
     if (contentChecked) packsWithContent++;
     for (const [i, fixture] of (quantities ?? []).entries()) {

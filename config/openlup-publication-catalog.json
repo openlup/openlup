@@ -5274,6 +5274,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/attributeValues.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/backfillCatalogNetContent.ts",
       "class": "public-output"
     },
@@ -5362,6 +5366,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/combinationOptions.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/commerceQuoteCatalogRead.ts",
       "class": "public-output"
     },
@@ -5447,6 +5455,10 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/variantAxes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftFacts.ts",
       "class": "public-output"
     },
     {

@@ -1514,6 +1514,55 @@ it("RP2 confines scratch from a nested working directory", () => {
   expect(call(sourceArgs("./catalogue.mjs"), 0, [], temp, owned).command).toBe("catalogue project");
 });
 
+it.each([false, true])("RP2 confines scratch across nested package boundaries (symlinked: %s)", linked => {
+  const { app, temp, write, call } = packedCatalogue();
+  const owned = join(app, "owned"), submodule = join(owned, "submodule"), cache = join(app, "cache");
+  mkdirSync(submodule, { recursive: true }); mkdirSync(cache);
+  write("owned/catalogue.mjs", sourceModule({ packs: [{ pack: fixturePack }] }));
+  write("owned/submodule/package.json", '{"type":"module"}');
+  const source = write("owned/submodule/catalogue.mjs", 'export { catalogueConformance } from "../catalogue.mjs";');
+  const sourceLink = join(temp, "linked-source.mjs"), cacheLink = join(temp, "linked-cache");
+  symlinkSync(source, sourceLink); symlinkSync(cache, cacheLink);
+  call(sourceArgs(linked ? sourceLink : "./submodule/catalogue.mjs"), 74, [], linked ? cacheLink : cache, owned);
+  expect(readdirSync(cache)).toEqual([]);
+  expect(call(sourceArgs(sourceLink), 0, [], temp, owned).command).toBe("catalogue project");
+});
+
+it.each([false, true])("RP2 reports the saved axis and independent owner evidence (unresolved reference: %s)", reference => {
+  const { write, call } = packedCatalogue();
+  const values = { namespace: "sample:finish", id: "unresolved" };
+  const pack = { ...fixturePack, types: [{ ...fixturePack.types[0],
+    dimensions: [{ key: "lined", kind: "boolean" }], attributes: [{
+      key: "finish", scope: "product", valueType: { kind: "reference", allowlist: [values.namespace] }, required: false,
+      cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {},
+    }],
+  }] };
+  const base = { product: { ...contentDraft.product, dimensions: ["lined"], ...(reference ? { attributes: { finish: values } } : {}) },
+    skus: [{ id: skuId, productId, options: { lined: { kind: "boolean", value: true } } }] };
+  const v3 = { ...base, schemaVersion: 3, product: { ...base.product,
+    sharedContent: { schemaVersion: 1, catalogAction: "create", presentation: {},
+      offerMemberships: [], requestedModes: [], publicationSkus: [] } },
+    publication: { kind: "release", evidence: {}, operations: [] } };
+  const data = { packs: [{ pack, drafts: [{ ...base, schemaVersion: 2 }, v3] }] };
+  const projected = call(sourceArgs(write("axis.mjs", sourceModule(data))), 1);
+  const artifact = projected.transport.subjectPath;
+  const subject = JSON.parse(readFileSync(artifact, "utf8"));
+  for (const report of [projected, call(replayArgs(artifact), 1)]) {
+    const checkFinding = (code: string, path: string, value: unknown) => {
+      const finding = report.findings.find((entry: { code: string; path: string }) => entry.code === code && entry.path === path);
+      expect(finding, `${code} at ${path}`).toBeDefined();
+      const saved = finding.path.split("/").slice(1).reduce((node: unknown, key: string) =>
+        node && typeof node === "object" ? (node as Record<string, unknown>)[key] : undefined, subject);
+      expect(saved, path).toEqual(value);
+    };
+    for (const index of [0, 1]) {
+      const draftPath = `/packs/0/drafts/${index}/product`;
+      checkFinding("axis_not_installed", `${draftPath}/dimensions/0`, "lined");
+      if (reference) checkFinding("attribute_reference_unresolved", `${draftPath}/attributes/finish`, values);
+    }
+  }
+});
+
 it("RP2 replays v2 owner violations and points to saved attribute values", () => {
   const { write, call } = packedCatalogue();
   const pack = { ...fixturePack, types: [{ ...fixturePack.types[0], attributes: [{
@@ -1550,6 +1599,18 @@ it("RP2 refuses async validators with one sanitized report and matching exit", (
   expect(call(sourceArgs(write("async.mjs", source)), 74).findings[0]).toMatchObject({
     code: "OPENLUP_E_CLI_FAILURE", fix: expect.stringContaining("return synchronously"),
   });
+});
+
+it("RP2 handles a rejecting thenable with a one-read getter", () => {
+  const { write, call } = packedCatalogue();
+  const source = sourceModule({ packs: [{ pack: fixturePack, drafts: [contentDraft] }] }, `() => {
+    const rejection = Promise.reject(new Error("SYNTHETIC_PRIVATE_DETAIL"));
+    let reads = 0;
+    return { get then() { return ++reads === 1 ? rejection.then.bind(rejection) : undefined; } };
+  }`);
+  expect(call(sourceArgs(write("thenable.mjs", source)), 74).findings).toEqual([expect.objectContaining({
+    code: "OPENLUP_E_CLI_FAILURE", fix: expect.stringContaining("return synchronously"),
+  })]);
 });
 
 it("RP2 snapshots registration descriptors once and refuses getters", () => {
