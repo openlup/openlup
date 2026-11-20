@@ -1,44 +1,15 @@
-import type { PaymentAttemptStatus } from "../../../src/domains/payment/types.js";
-import type { PreparedProviderAttemptRuntimePort } from "../../../src/domains/commerce/ports.js";
-import { isPaymentControlSubscriptionNotChargeable } from "../../../src/domains/commerce/paymentAttemptAdmission.js";
 import { resolveSubscriptionPaymentMethodStatus } from "../../../src/domains/subscription/paymentMethodLifecycle.js";
-import type { PayerContextRequirements, PaymentExecutionProviderDecline } from "@openlup/core/payment";
-import { declineFailureReason } from "../../shared/finalizeDeclinedAttempt.js";
-import { propagateSubscriptionCycleChargeFailure } from "./propagateSubscriptionCycleChargeFailure.js";
+import type { PayerContextRequirements } from "@openlup/core/payment";
 import type {
-  ChargeDeps,
   DueSubscription,
   SubscriptionRenewalChargeResult,
 } from "./chargeSubscriptionCycleOffSession.js";
-
-interface ReplayPreparedAttemptContext {
-  cycleId: string;
-  cycleNumber: number;
-  orderId: string;
-  paymentIntentId: string;
-  executionIdempotencyKey: string;
-  providerIdempotencyKey: string;
-  providerRequestFingerprint: string;
-  providerKind: string;
-}
 
 interface RenewalArtifactContext {
   cycleId: string;
   cycleNumber: number;
   orderId: string;
   paymentIntentId: string;
-}
-
-export async function prepareRenewalProviderAttempt(
-  paymentPort: PreparedProviderAttemptRuntimePort,
-  input: Parameters<PreparedProviderAttemptRuntimePort["prepareProviderAttempt"]>[0],
-): Promise<Awaited<ReturnType<PreparedProviderAttemptRuntimePort["prepareProviderAttempt"]>> | null> {
-  try {
-    return await paymentPort.prepareProviderAttempt(input);
-  } catch (error) {
-    if (isPaymentControlSubscriptionNotChargeable(error)) return null;
-    throw error;
-  }
 }
 
 export function skippedNotChargeableRenewalResult(
@@ -55,70 +26,6 @@ export function skippedNotChargeableRenewalResult(
     attemptStatus: null,
     replayed: false,
     reason: "subscription_not_chargeable",
-  };
-}
-
-export async function replayPreparedAttempt(
-  deps: ChargeDeps,
-  due: DueSubscription,
-  ctx: ReplayPreparedAttemptContext,
-  status: PaymentAttemptStatus,
-): Promise<SubscriptionRenewalChargeResult> {
-  if (status === "requires_action") {
-    const propagation = await propagateSubscriptionCycleChargeFailure(deps.chargeFailurePropagation, {
-      kind: "off_session_requires_action",
-      executionIdempotencyKey: ctx.executionIdempotencyKey,
-      providerIdempotencyKey: ctx.providerIdempotencyKey,
-      providerRequestFingerprint: ctx.providerRequestFingerprint,
-      paymentIntentId: ctx.paymentIntentId,
-      cycleId: ctx.cycleId,
-      subscriptionId: due.subscriptionId,
-      orderUuid: ctx.orderId,
-      providerKind: ctx.providerKind,
-      failureReason: "off_session_sca_required",
-      occurredAt: (deps.now ?? defaultNow)(),
-      attemptAlreadyPrepared: true,
-    });
-    return {
-      subscriptionId: due.subscriptionId,
-      outcome: "requires_action",
-      cycleId: ctx.cycleId,
-      cycleNumber: ctx.cycleNumber,
-      orderId: ctx.orderId,
-      paymentIntentId: ctx.paymentIntentId,
-      attemptStatus: status,
-      replayed: true,
-      dunningCaseId: propagation.dunningCaseId,
-      retryAttempt: propagation.retryAttempt,
-      applyReplayed: propagation.applyReplayed,
-    };
-  }
-  if (status === "sent_to_provider" || status === "processing") {
-    return {
-      subscriptionId: due.subscriptionId,
-      outcome: "charged",
-      cycleId: ctx.cycleId,
-      cycleNumber: ctx.cycleNumber,
-      orderId: ctx.orderId,
-      paymentIntentId: ctx.paymentIntentId,
-      attemptStatus: status,
-      replayed: true,
-    };
-  }
-  return {
-    subscriptionId: due.subscriptionId,
-    outcome: "failed",
-    cycleId: ctx.cycleId,
-    cycleNumber: ctx.cycleNumber,
-    orderId: ctx.orderId,
-    paymentIntentId: ctx.paymentIntentId,
-    attemptStatus: status,
-    replayed: true,
-    dunningCaseId: null,
-    retryAttempt: null,
-    reason: status === "created"
-      ? "provider_attempt_prepared_without_provider_ack"
-      : `provider_attempt_${status}`,
   };
 }
 
@@ -211,10 +118,4 @@ export function buildExecutionIdempotencyKey(
 ): string {
   const base = `${cycleOrderIdempotencyKey}:payment-execution:attempt:${retryAttempt}`;
   return providerAttemptSequence > 0 ? `${base}:provider-seq:${providerAttemptSequence}` : base;
-}
-
-export function safeErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message.slice(0, 240);
-  if (typeof error === "string") return error.slice(0, 240);
-  return "unknown_execution_error";
 }

@@ -6954,6 +6954,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/buildCapabilityContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/catalogContribution.ts",
       "class": "public-output"
     },
@@ -18098,10 +18102,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/auth/standardWebhooks.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/bundle/README.md",
       "class": "public-output"
     },
@@ -18138,10 +18138,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/catalog/catalogDraftHandler.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/catalog/catalogDraftValidation.ts",
       "class": "public-output"
     },
@@ -18175,10 +18171,6 @@
     },
     {
       "path": "server/domains/catalog/referenceCatalogHandler.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/catalog/resolvedSkuProjection.ts",
       "class": "public-output"
     },
     {
@@ -18243,10 +18235,6 @@
     },
     {
       "path": "server/domains/channels/quarantineClassifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/clients/acquisitionCaseHandlers.ts",
       "class": "public-output"
     },
     {
@@ -19251,10 +19239,6 @@
     },
     {
       "path": "server/domains/commerce/outboxDispatchRegistry.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/commerce/outboxDispatchRegistryComposition.ts",
       "class": "public-output"
     },
     {
@@ -20710,19 +20694,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/platform/platformWatchdogDecision.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/platform/platformWatchdogDeliveryPolicy.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/domains/platform/platformWatchdogDeliveryPolicy.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/platform/platformWatchdogQueue.ts",
       "class": "public-output"
     },
     {
@@ -21031,10 +21007,6 @@
     },
     {
       "path": "server/domains/subscription/subscriptionRenewalInvocation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/subscription/subscriptionRenewalOutcomes.ts",
       "class": "public-output"
     },
     {
@@ -22095,10 +22067,6 @@
     },
     {
       "path": "server/runtime/settlementProfileBootstrap.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/runtime/subscription/automaticRenewalPaymentRails.ts",
       "class": "public-output"
     },
     {
@@ -23882,10 +23850,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/bundle/contracts.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/bundle/ports.ts",
       "class": "public-output"
     },
@@ -24434,10 +24398,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/emails/guideCard.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/emails/orderCanceled.ts",
       "class": "public-output"
     },
@@ -24510,19 +24470,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/energyPolicy.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/firstSubscriptionPricePresentation.test.ts",
       "class": "public-output"
     },
     {
       "path": "src/domains/commerce/firstSubscriptionPricePresentation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/fulfillmentCancellationEligibility.ts",
       "class": "public-output"
     },
     {
@@ -24626,10 +24578,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/omsFulfillmentContractSchemas.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/omsFulfillmentDebug.test.ts",
       "class": "public-output"
     },
@@ -24674,10 +24622,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/omsOrderLineMoney.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/omsPaymentMethodSummary.ts",
       "class": "public-output"
     },
@@ -24686,19 +24630,11 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/commerce/omsProviderEvidenceSchemas.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/commerce/omsReadModel.test.ts",
       "class": "public-output"
     },
     {
       "path": "src/domains/commerce/omsReadModel.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/omsReadModelCommunication.ts",
       "class": "public-output"
     },
     {
@@ -24743,10 +24679,6 @@
     },
     {
       "path": "src/domains/commerce/omsReferenceBinding.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/orderDraftErrors.ts",
       "class": "public-output"
     },
     {
@@ -24807,10 +24739,6 @@
     },
     {
       "path": "src/domains/commerce/outboxEventEquivalence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/commerce/packageQuantityPolicy.ts",
       "class": "public-output"
     },
     {
@@ -25834,10 +25762,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/payment/providerAttemptIdempotency.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/payment/pspIntegrationPlan.test.ts",
       "class": "public-output"
     },
@@ -26154,10 +26078,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/promo/ports.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/promo/promo.test.ts",
       "class": "public-output"
     },
@@ -26187,10 +26107,6 @@
     },
     {
       "path": "src/domains/risk/core/evaluator.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/risk/core/rules.ts",
       "class": "public-output"
     },
     {
@@ -26546,15 +26462,7 @@
       "class": "public-output"
     },
     {
-      "path": "src/domains/subscription/subscriptionEngineLifecycle.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/domains/subscription/subscriptionEnginePayment.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/subscription/subscriptionEnginePayment.ts",
       "class": "public-output"
     },
     {
@@ -26567,10 +26475,6 @@
     },
     {
       "path": "src/domains/subscription/subscriptionEngineTypes.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/domains/subscription/subscriptionEngineUtils.ts",
       "class": "public-output"
     },
     {

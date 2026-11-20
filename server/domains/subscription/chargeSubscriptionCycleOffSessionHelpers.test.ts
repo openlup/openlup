@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ChargeDeps, DueSubscription } from "./chargeSubscriptionCycleOffSession.js";
+import type { DueSubscription } from "./chargeSubscriptionCycleOffSession.js";
 import {
   failureResult,
   providerCustomerRef,
   readTotalGrossMinor,
-  replayPreparedAttempt,
   tpayPayer,
   validateProviderChargeInput,
 } from "./chargeSubscriptionCycleOffSessionHelpers.js";
@@ -74,31 +73,6 @@ describe("chargeSubscriptionCycleOffSessionHelpers", () => {
     expect(readTotalGrossMinor({ totals: { totalGross: { amountMinor: 0 } } })).toBeNull();
     expect(readTotalGrossMinor({ totals: { totalGross: { amountMinor: 12.5 } } })).toBeNull();
     expect(readTotalGrossMinor({ totals: {} })).toBeNull();
-  });
-
-  it("replays prepared attempts without making another provider call", async () => {
-    const result = await replayPreparedAttempt(
-      { now: () => "2026-07-03T12:00:00.000Z" } as ChargeDeps,
-      stripeDue,
-      {
-        cycleId: "cycle_123",
-        cycleNumber: 4,
-        orderId: "order_123",
-        paymentIntentId: "intent_123",
-        executionIdempotencyKey: "exec_123",
-        providerIdempotencyKey: "provider_key_123",
-        providerRequestFingerprint: "fingerprint_123",
-        providerKind: "stripe",
-      },
-      "created",
-    );
-
-    expect(result).toMatchObject({
-      outcome: "failed",
-      attemptStatus: "created",
-      replayed: true,
-      reason: "provider_attempt_prepared_without_provider_ack",
-    });
   });
 
   it("keeps failure results explicit when preflight cannot build a payable cycle", () => {

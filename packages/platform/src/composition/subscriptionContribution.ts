@@ -1,4 +1,5 @@
 import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+import { buildCapabilityContribution } from "./buildCapabilityContribution.js";
 
 /** One selected subscription job; no second scheduler or automatic registration. */
 export function createSubscriptionContribution(input: {
@@ -9,17 +10,19 @@ export function createSubscriptionContribution(input: {
 }) {
   if (!Number.isFinite(input.cadenceSeconds) || input.cadenceSeconds <= 0) throw new Error("subscription_cadence_invalid");
   const schedules = input.run ? [{ id: "subscriptions-renewal", cadenceSeconds: input.cadenceSeconds, run: input.run }] : [];
-  const contribution: Contribution = {
-    manifest: {
-      name: "@openlup/platform", version: input.version, kind: "rail",
-      module: { id: "subscriptions", kind: "capability", provides: ["./subscriptions", "./subscriptions/contracts"], dependsOn: [] },
-      emits: [], handles: [], schedules: schedules.map(({ id, cadenceSeconds }) => ({ id, cadenceSeconds })),
-      env: [], requiredPorts: ["run"], routes: [], requiredSchema: input.requiredSchema,
-    }, handlers: [], schedules, routes: [],
-  };
+  const built = buildCapabilityContribution({
+    id: "subscriptions",
+    version: input.version,
+    provides: ["./subscriptions", "./subscriptions/contracts"],
+    dependsOn: [],
+    requiredSchema: input.requiredSchema,
+    ports: { run: input.run },
+    includePort: Boolean,
+    schedules,
+  });
   return {
-    contributions: [contribution],
+    contributions: [built.contribution],
     ports: input.run ? { "@openlup/platform/subscriptions:run": input.run } : {},
-    triggers: Object.fromEntries(schedules.map(schedule => [`@openlup/platform/subscriptions:${schedule.id}`, schedule.run])),
+    triggers: built.triggers as { [k: string]: () => Promise<unknown> },
   };
 }

@@ -6,7 +6,14 @@ import type {
   SubscriptionCycleSnapshotResult, SubscriptionRenewalChargeResult,
   CycleChargeFailurePropagationPort, FailurePropagationContext, CycleRetryState,
 } from "../../src/subscriptions/contracts/index.js";
-import { executeRenewalCycle, checkRenewalDeliveryAdmission, type RenewalCyclePolicy } from "../../src/subscriptions/index.js";
+import {
+  executeRenewalCycle,
+  checkRenewalDeliveryAdmission,
+  createDefaultRenewalCyclePolicy,
+  createDefaultRenewalPreflightPolicy,
+  createDefaultRenewalFailurePolicy,
+  type RenewalCyclePolicy,
+} from "../../src/subscriptions/index.js";
 import { recordRenewalPreflightBlock } from "../../src/subscriptions/renewalCycleRefusalMechanism.js";
 import { propagateRenewalFailure, type RenewalFailurePolicy } from "../../src/subscriptions/renewalCycleFailureMechanism.js";
 
@@ -366,6 +373,79 @@ describe("neutral durable renewal refusal ladder", () => {
     Object.defineProperty(f.port, "readDurableAttemptInstant", { get() { throw new Error("unused port read"); } });
     expect(await propagateRenewalFailure(f.port, f.ctx, f.policy)).toEqual({ dunningCaseId: null, retryAttempt: null, applyReplayed: false, dunningPropagationFailed: false });
     expect(f.trace).toEqual([]);
+  });
+
+  it("provides canonical overridable defaults via createDefaultRenewalFailurePolicy, createDefaultRenewalPreflightPolicy, and createDefaultRenewalCyclePolicy", () => {
+    const failurePolicy = createDefaultRenewalFailurePolicy({
+      resolveClassification: () => ({ failureClass: "transient", decidedBy: "test" }),
+    });
+    expect(failurePolicy.recordKey("exec-1")).toBe("exec-1:record-attempt");
+    expect(failurePolicy.applyKey("exec-1")).toBe("exec-1:apply-result");
+    expect(failurePolicy.dunningKey("exec-1", 2)).toBe("exec-1:dunning:2");
+    expect(failurePolicy.preparedSuffix).toBe(":prepare-attempt");
+    expect(failurePolicy.blockedSuffix).toBe(":record-attempt");
+    expect(failurePolicy.dunningFailureKey).toBe("renewal_dunning_propagation_failed");
+
+    const due = {
+      subscriptionId: "sub-1",
+      nextCycleAt: "1999-01-01T00:00:00.000Z",
+      providerKind: "  ",
+      providerMethodRef: "pm-1",
+    };
+    const preflightPolicy = createDefaultRenewalPreflightPolicy({
+      intentInput: () => ({}),
+      identity: () => ({ providerIdempotencyKey: "p", providerRequestFingerprint: "f" }),
+      failure: failurePolicy,
+    });
+    expect(preflightPolicy.cycleKey(due)).toBe("subscription:sub-1:cycle:1999-01-01T00:00:00.000Z");
+    expect(preflightPolicy.executionKey("cycle-1", 1, 0)).toBe("cycle-1:payment-execution:attempt:1");
+    expect(preflightPolicy.executionKey("cycle-1", 1, 2)).toBe("cycle-1:payment-execution:attempt:1:provider-seq:2");
+    expect(preflightPolicy.normalizedProvider("  ")).toBe("unknown");
+    expect(preflightPolicy.normalizedProvider(" rail-a ")).toBe("rail-a");
+    expect(preflightPolicy.readTotal({ totals: { totalGross: { amountMinor: 4200 } } })).toBe(4200);
+    expect(preflightPolicy.readTotal({ totals: { totalGross: { amountMinor: 0 } } })).toBeNull();
+
+    const cyclePolicy = createDefaultRenewalCyclePolicy({
+      validateProvider: () => null,
+      intentInput: () => ({}),
+      identity: () => ({ providerIdempotencyKey: "p", providerRequestFingerprint: "f" }),
+      providerFlow: (flow) => flow,
+      prepareInput: () => ({
+        idempotencyKey: "k",
+        paymentIntentId: "pi",
+        provider: "rail",
+        providerIdempotencyKey: "pk",
+        providerRequestFingerprint: "pf",
+        providerFlow: "flow",
+        paymentMethodRef: "pm",
+        requestPayload: {},
+      }),
+      executionInput: () => ({
+        idempotencyKey: "k",
+        providerIdempotencyKey: "pk",
+        providerRequestFingerprint: "pf",
+        paymentIntentId: "pi",
+        amountMinor: 4200,
+        currency: "EUR",
+        mode: "subscription_cycle",
+      }),
+      isNotChargeable: () => false,
+      mandateBlockReason: "mandate_missing",
+      preflight: preflightPolicy,
+      outcome: {
+        declineReason: () => "declined",
+        classifyDecline: () => ({ failureClass: "transient", decidedBy: "test" }),
+        scaReason: "off_session_sca_required",
+        defaultNow: () => "1999-01-01T00:00:00.000Z",
+        failure: failurePolicy,
+      },
+    });
+    expect(cyclePolicy.finalizeKey("exec-1")).toBe("exec-1:finalize-attempt");
+    expect(cyclePolicy.invalidTotalsReason).toBe("invalid_totals");
+    expect(cyclePolicy.reservationBlockReason).toBe("reservation_preflight_blocked");
+    expect(cyclePolicy.replay.unacknowledgedReason("created")).toBe("provider_attempt_prepared_without_provider_ack");
+    expect(cyclePolicy.replay.unacknowledgedReason("failed")).toBe("provider_attempt_failed");
+    expect(cyclePolicy.executionIndeterminate().message).toBe("provider_execution_indeterminate");
   });
 });
 }

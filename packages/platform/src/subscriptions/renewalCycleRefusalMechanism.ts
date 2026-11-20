@@ -31,6 +31,79 @@ export interface RenewalReplayPolicy extends Pick<RenewalOutcomePolicy, "scaReas
   unacknowledgedReason(status: PaymentAttemptStatus): string;
 }
 
+export function defaultReadRenewalTotalGrossMinor(orderSnapshot: Record<string, unknown>): number | null {
+  const totals = orderSnapshot.totals;
+  if (!totals || typeof totals !== "object" || Array.isArray(totals)) return null;
+  const totalGross = (totals as Record<string, unknown>).totalGross;
+  if (!totalGross || typeof totalGross !== "object" || Array.isArray(totalGross)) return null;
+  const amount = (totalGross as Record<string, unknown>).amountMinor;
+  return typeof amount === "number" && Number.isInteger(amount) && amount > 0 ? amount : null;
+}
+
+export function defaultRenewalCycleKey<D extends HostedRenewalDue>(due: D): string {
+  return `subscription:${due.subscriptionId}:cycle:${due.nextCycleAt}`;
+}
+
+export function defaultRenewalExecutionKey(
+  cycleOrderIdempotencyKey: string,
+  retryAttempt: number,
+  providerAttemptSequence: number,
+): string {
+  const base = `${cycleOrderIdempotencyKey}:payment-execution:attempt:${retryAttempt}`;
+  return providerAttemptSequence > 0 ? `${base}:provider-seq:${providerAttemptSequence}` : base;
+}
+
+export function defaultFailedRenewalResult<D extends HostedRenewalDue>(
+  due: D,
+  cycleId: string | null,
+  cycleNumber: number | null,
+  orderId: string | null,
+  paymentIntentId: string | null,
+  reason: string,
+  propagation?: FailurePropagationResult,
+): SubscriptionRenewalChargeResult {
+  return {
+    subscriptionId: due.subscriptionId,
+    outcome: "failed",
+    cycleId,
+    cycleNumber,
+    orderId,
+    paymentIntentId,
+    attemptStatus: propagation ? "failed" : null,
+    replayed: false,
+    dunningCaseId: propagation?.dunningCaseId ?? null,
+    retryAttempt: propagation?.retryAttempt ?? null,
+    ...(propagation ? {
+      applyReplayed: propagation.applyReplayed,
+      dunningPropagationFailed: propagation.dunningPropagationFailed,
+    } : {}),
+    reason,
+  };
+}
+
+/** Build a RenewalPreflightPolicy with canonical keys, total reader, and overridable hooks. */
+export function createDefaultRenewalPreflightPolicy<
+  D extends HostedRenewalDue,
+  CI,
+  IR extends RenewalIntentResult,
+>(
+  overrides: Pick<RenewalPreflightPolicy<D, CI, IR>, "intentInput" | "identity" | "failure">
+    & Partial<RenewalPreflightPolicy<D, CI, IR>>,
+): RenewalPreflightPolicy<D, CI, IR> {
+  return {
+    isOperatorOnly: () => false,
+    logOperatorBlock: () => {},
+    readTotal: defaultReadRenewalTotalGrossMinor,
+    cycleKey: defaultRenewalCycleKey,
+    executionKey: defaultRenewalExecutionKey,
+    normalizedProvider: (provider) => provider?.trim() || "unknown",
+    failed: defaultFailedRenewalResult,
+    invalidTotalsReason: "invalid_totals",
+    defaultNow: () => new Date().toISOString(),
+    ...overrides,
+  };
+}
+
 /** Alternate preflight owns its full order/intent/failure chain, without reservation or dispatch. */
 export async function recordRenewalPreflightBlock<D extends HostedRenewalDue, CI,
   IR extends RenewalIntentResult, M extends string | null | undefined>(
