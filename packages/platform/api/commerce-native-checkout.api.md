@@ -53,4 +53,65 @@ export declare function createPostgresAcquisitionCheckoutPersistence(pool: Nativ
         clientId?: string | null;
     }): Promise<NativeCheckoutDraftResponse>;
 };
+export interface NativeCheckoutOrderRow {
+    id: string;
+    client_id: string;
+    status: string;
+    total_amount_minor: number | string;
+    currency_code: string;
+    metadata: Record<string, unknown>;
+    created_at: string | Date;
+    recreated_from_order_id: string | null;
+}
+export interface NativeCheckoutOrderItemRow {
+    id: string;
+    sku_id: string;
+    quantity: number;
+}
+export interface NativeCheckoutPriorDraftOrderRow {
+    id: string;
+    status: string;
+    total_amount_minor: number | string;
+    currency_code: string;
+    snapshot: unknown;
+    completed: boolean;
+}
+export interface NativeCheckoutSettlementIntentRow {
+    id: string;
+    status: string;
+    external_ref: string | null;
+}
+export interface PostgresNativeCheckoutHostPort {
+    readOrder(orderId: string): Promise<NativeCheckoutOrderRow | null>;
+    readOrderItems(orderId: string): Promise<NativeCheckoutOrderItemRow[]>;
+    readPriorDraftOrder(input: {
+        idempotencyKey: string;
+        clientId: string | null;
+        email: string;
+        channelKey: string;
+    }): Promise<NativeCheckoutPriorDraftOrderRow | null>;
+    openSettlementIntent(input: {
+        idempotencyKey: string;
+        orderId: string;
+        channelKey: string;
+        amountMinor: number;
+        currency: string;
+        metadataJson?: string;
+        now: string;
+    }): Promise<void>;
+    readSettlementIntent(input: {
+        orderId: string;
+        channelKey: string;
+    }): Promise<NativeCheckoutSettlementIntentRow | null>;
+    readClientEmail(input: {
+        clientId: string;
+        principalId: string;
+    }): Promise<string | null>;
+    isInitialCheckoutOrder(orderId: string): Promise<boolean>;
+}
+/**
+ * Additive PostgreSQL host port for native checkout order reads, settlement
+ * intent lifecycle, client email lookup, and initial-order recurring fence.
+ */
+export declare function createPostgresNativeCheckoutHostPort(executor: NativeCheckoutQuery): PostgresNativeCheckoutHostPort;
 ```

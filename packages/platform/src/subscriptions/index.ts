@@ -85,3 +85,5 @@ export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
+export { createPostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";
+export type { PostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";

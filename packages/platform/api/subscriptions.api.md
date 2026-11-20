@@ -601,6 +601,8 @@ export { createExactSubscriptionRepricer } from "./exactEditQuote.js";
 export { createSubscriptionSizingRules, apportionSubscriptionUnits } from "./subscriptionSizing.js";
 export type { SubscriptionSizingUnit, SubscriptionSizingPolicy } from "./subscriptionSizing.js";
 export { createPostgresSubscriptionAutoResume } from "./postgresAutoResume.js";
+export { createPostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";
+export type { PostgresNativeCheckoutSubscriptionPort } from "./postgresNativeCheckoutSubscriptionPort.js";
 ```
 ## dist/subscriptions/lifecycleMessages.d.ts
 
@@ -1138,6 +1140,34 @@ export declare function createPostgresLifecycleMessages(options: NativeLifecycle
     }>;
 };
 export {};
+```
+## dist/subscriptions/postgresNativeCheckoutSubscriptionPort.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface PostgresNativeCheckoutSubscriptionPort {
+    declareProvisionalActivation(input: {
+        idempotencyKey: string;
+        orderId: string;
+        cadenceDays: number;
+        now: string;
+    }): Promise<void>;
+    readActivationCadenceDays(orderId: string): Promise<number | null>;
+    clientHasLiveOrPendingSubscription(clientId: string): Promise<boolean>;
+    readTemplateVersion(input: {
+        subscriptionId: string;
+        clientId: string;
+    }): Promise<number | null>;
+    readCommandReceiptExpectedVersion(input: {
+        actorId: string;
+        idempotencyKey: string;
+    }): Promise<number | null>;
+}
+/**
+ * Additive PostgreSQL host port for initial subscription activation and
+ * customer-owned subscription reads during native checkout and recovery.
+ */
+export declare function createPostgresNativeCheckoutSubscriptionPort(executor: SubscriptionQueryExecutor): PostgresNativeCheckoutSubscriptionPort;
 ```
 ## dist/subscriptions/postgresProviderRenewalBinding.d.ts
 

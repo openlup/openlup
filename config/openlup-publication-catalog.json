@@ -9570,6 +9570,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresNativeCheckoutSubscriptionPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/postgresNoticeExtensions.ts",
       "class": "public-output"
     },
@@ -10299,6 +10303,10 @@
     },
     {
       "path": "packages/platform/test/commerce/managedTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/nativeCheckoutHostPort.test.ts",
       "class": "public-output"
     },
     {
@@ -12027,6 +12035,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/postgresLifecycleMessages.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/postgresNativeCheckoutSubscriptionPort.test.ts",
       "class": "public-output"
     },
     {
