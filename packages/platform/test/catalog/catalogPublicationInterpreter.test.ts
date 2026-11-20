@@ -1405,7 +1405,7 @@ it("requires a remedy at the production table for every platform code", () => {
   const readFile = host.readFile.bind(host);
   const source = readFileSync(file, "utf8");
   const sentinel = "unmapped_refusal_sentinel";
-  const extended = source.replace(/(export type PlatformCode\s*=)/u, `$1 "${sentinel}" |`);
+  const extended = source.replace(/(type PlatformCode\s*=)/u, `$1 "${sentinel}" |`);
   const table = "const publicationRefusals = {";
   const check = (replacement: string) => {
     host.readFile = name => name === file ? replacement : readFile(name);

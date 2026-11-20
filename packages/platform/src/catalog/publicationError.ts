@@ -96,8 +96,11 @@ const publicationCodes = [
   "unit_trade_identifier_missing",
 ] as const;
 
-export type PlatformCode = typeof publicationCodes[number] | CatalogConformanceCode
+/** @internal The platform-owned refusal vocabulary. */
+type PlatformCode = typeof publicationCodes[number] | CatalogConformanceCode
   | CatalogCandidateError["code"] | z.infer<typeof publicationPriceRefusalReason>;
+export type { PlatformCode };
+
 type Rule = "validateContent" | "validateProduct" | "validatePrices" | "presentationReadiness" | "assessActivation";
 export type PlatformIssue = { kind: "platform"; code: PlatformCode; stored?: true };
 export type Issue = Omit<CatalogCandidateIssue, "code" | "message"> & { detail?: string } & (
