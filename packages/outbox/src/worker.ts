@@ -198,7 +198,8 @@ export async function runOutboxDispatchWorker(deps: {
     const batch = [...claimed].sort(compareByCreatedAtThenId);
     let unstarted: UnstartedItem[] = [];
     const skippedIndices = new Set<number>();
-    const snoozedAggregatesInBatch = new Set<string>();
+    const unstartedAggregatesInBatch = new Set<string>();
+    let hitSoftBudget = false;
 
     for (let index = 0; index < batch.length; index += 1) {
       if (skippedIndices.has(index)) continue;
@@ -229,9 +230,12 @@ export async function runOutboxDispatchWorker(deps: {
         continue;
       }
 
+      const rowAggregateKey = aggregateKeyOf(row);
       const elapsed = clock.now() - startedAt;
-      if (elapsed + handler.timeoutMs + MARK_MARGIN_MS > config.softBudgetMs) {
-        unstarted.push({ eventId: row.id, claimToken, eventType: row.event_type, aggregateKey: aggregateKeyOf(row) });
+      if (elapsed + handler.timeoutMs + MARK_MARGIN_MS > config.softBudgetMs || unstartedAggregatesInBatch.has(rowAggregateKey)) {
+        hitSoftBudget = true;
+        unstartedAggregatesInBatch.add(rowAggregateKey);
+        unstarted.push({ eventId: row.id, claimToken, eventType: row.event_type, aggregateKey: rowAggregateKey });
         continue;
       }
 
@@ -270,7 +274,7 @@ export async function runOutboxDispatchWorker(deps: {
         await applyMarkFailed(row, claimToken, "snooze", outcome.reason);
         if (snoozeScope === "event_type") {
           snoozedEventTypes.add(row.event_type);
-          snoozedAggregatesInBatch.add(aggregateKeyOf(row));
+          const blockedAggregates = new Set<string>([rowAggregateKey]);
           const hasRemainingActiveTypes = allowlist.some((eventType) => !snoozedEventTypes.has(eventType));
           if (!hasRemainingActiveTypes) {
             const remainder: ClaimedItem[] = unstarted.map(({ eventId, claimToken: token }) => ({ eventId, claimToken: token }));
@@ -288,13 +292,14 @@ export async function runOutboxDispatchWorker(deps: {
             break drain;
           }
 
-          // Release only remaining rows belonging to snoozed types or transitively
-          // blocked aggregates while continuing to drain healthy event types.
+          // Release only tail-gated rows of the snoozed type and later rows
+          // belonging to snoozed types or transitively blocked aggregates while
+          // keeping earlier healthy tail-gated rows for immediate delay-0 release.
           const toRelease: ClaimedItem[] = [];
           const keptUnstarted: UnstartedItem[] = [];
           for (const item of unstarted) {
-            if (snoozedEventTypes.has(item.eventType) || snoozedAggregatesInBatch.has(item.aggregateKey)) {
-              snoozedAggregatesInBatch.add(item.aggregateKey);
+            if (snoozedEventTypes.has(item.eventType)) {
+              blockedAggregates.add(item.aggregateKey);
               toRelease.push({ eventId: item.eventId, claimToken: item.claimToken });
             } else {
               keptUnstarted.push(item);
@@ -305,8 +310,8 @@ export async function runOutboxDispatchWorker(deps: {
             if (skippedIndices.has(rest)) continue;
             const candidate = batch[rest];
             const candidateAgg = aggregateKeyOf(candidate);
-            if (snoozedEventTypes.has(candidate.event_type) || snoozedAggregatesInBatch.has(candidateAgg)) {
-              snoozedAggregatesInBatch.add(candidateAgg);
+            if (snoozedEventTypes.has(candidate.event_type) || blockedAggregates.has(candidateAgg)) {
+              blockedAggregates.add(candidateAgg);
               skippedIndices.add(rest);
               const restToken = candidate.metadata?.claimToken;
               if (typeof restToken === "string" && restToken.length > 0) {
@@ -343,8 +348,8 @@ export async function runOutboxDispatchWorker(deps: {
         unstarted.map(({ eventId, claimToken: token }) => ({ eventId, claimToken: token })),
         0,
       );
-      break;
     }
+    if (unstarted.length > 0 || hitSoftBudget) break;
     if (claimed.length < config.batchSize) break;
   }
 

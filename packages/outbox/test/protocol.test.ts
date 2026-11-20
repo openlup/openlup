@@ -160,4 +160,57 @@ describe("portable worker protocol", () => {
     expect(() => validateScheduledConfig({ ...config, snoozeScope: "invalid" as never }, 60, [100])).toThrow(/snoozeScope/);
   });
 
+  it("preserves aggregate ordering and soft-budget drain stop when tail-gated rows meet snoozeScope event_type", async () => {
+    const batch1 = [
+      syntheticOutboxRow({ id: "e-1", aggregate_id: "agg-x", event_type: "example.heavy", created_at: "1999-01-01T00:00:01Z" }),
+      syntheticOutboxRow({ id: "e-2", aggregate_id: "agg-x", event_type: "example.light", created_at: "1999-01-01T00:00:02Z" }),
+      syntheticOutboxRow({ id: "e-3", aggregate_id: "agg-y", event_type: "example.light", created_at: "1999-01-01T00:00:03Z" }),
+    ];
+    const db = store([batch1, [syntheticOutboxRow({ id: "e-4", aggregate_id: "agg-z", event_type: "example.heavy" })]]);
+    db.markFailed.mockResolvedValue({ status: "snoozed" } as never);
+    const heavy = processed("example.heavy", 15_000);
+    const light = { ...processed("example.light", 500), handle: vi.fn(async () => ({ kind: "snooze" as const, reason: "down" })) };
+
+    const r = await runOutboxDispatchWorker({
+      store: db,
+      registry: uniqueRegistry([heavy, light]),
+      config: { ...config, batchSize: 3, softBudgetMs: 5_000, snoozeScope: "event_type" },
+      clock: { now: () => 1_000 },
+    });
+
+    // e-1 (heavy) exceeds soft budget -> tail-gated; e-2 (same agg-x) must NOT overtake e-1;
+    // e-3 (independent agg-y) runs and snoozes, releasing e-2 (same snoozed type) with snoozeSeconds,
+    // while keeping earlier healthy e-1 for delay-0 release and stopping before a second claimBatch.
+    expect(heavy.handle).not.toHaveBeenCalled();
+    expect(light.handle).toHaveBeenCalledTimes(1);
+    expect(db.claimBatch).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ ok: true, snoozed: 1, released: 2, processed: 0, batches: 1 });
+    expect(db.releaseUnprocessed).toHaveBeenNthCalledWith(1, [{ eventId: "e-2", claimToken: "synthetic-token" }], 300);
+    expect(db.releaseUnprocessed).toHaveBeenNthCalledWith(2, [{ eventId: "e-1", claimToken: "synthetic-token" }], 0);
+  });
+
+  it("keeps knownEventTypes undefined across batches when omitted under snoozeScope event_type", async () => {
+    const db = store([
+      [syntheticOutboxRow({ id: "e-1", aggregate_id: "agg-a", event_type: "example.one" })],
+      [syntheticOutboxRow({ id: "e-2", aggregate_id: "agg-b", event_type: "example.two" })],
+    ]);
+    db.markFailed.mockResolvedValue({ status: "snoozed" } as never);
+    const one = { ...processed("example.one"), handle: vi.fn(async () => ({ kind: "snooze" as const, reason: "down" })) };
+    const two = processed("example.two");
+
+    const r = await runOutboxDispatchWorker({
+      store: db,
+      registry: uniqueRegistry([one, two]),
+      config: { ...config, batchSize: 1, snoozeScope: "event_type" },
+    });
+    expect(r).toMatchObject({ ok: true, snoozed: 1, processed: 1, batches: 2 });
+    expect(db.claimBatch).toHaveBeenNthCalledWith(2, {
+      eventTypes: ["example.two"],
+      knownEventTypes: undefined,
+      batchSize: 1,
+      visibilitySeconds: 300,
+      maxAttempts: 8,
+    });
+  });
+
 });
