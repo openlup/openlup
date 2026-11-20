@@ -36,6 +36,44 @@ validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, pass
 `explain checkout_recovery_reminders` to the settings script.
 
+## Check owned configuration before proposing a change
+
+1. Use `list --goal <words>` to find the key.
+2. Run `check --configuration <id>` with the starter's settings script to read
+   values from the selected owned configuration and find their locations.
+3. Edit the owned configuration and rerun `check`.
+4. For an installed setting with preview support, run a separate connected
+   `preview` if you need to estimate the effect on a store. Open a pull request
+   with the file change and the check results.
+
+Check uses the settings app binding offline. It opens no database connection
+and performs no writes. Installed rows say “Store: not checked.” The starter
+checks installed policies for drift at boot. Check prints an app-supplied
+location or labels the available starter catalogue reference separately.
+
+Check reports the application's startup validation when supplied and the
+packaged schema result for each reported JSON value with an executable schema.
+The starter checks its reported configuration ID against the registry and runs
+`assertConfig`. The actual launch and install check their command-line
+arguments and installer package availability. Seed preparation runs after
+database bootstrap.
+A file value that cannot be represented as JSON is reported as unreportable
+and fails check without a schema verdict. Bindings for keys outside the
+catalogue are ignored. Each row uses the catalogue's effect and change text.
+
+With `--json`, check emits one version-1 document. Exit 0 means checked and
+exit 1 means invalid. If importing the selected module or calling its binding
+factory throws, check exits 1 with the configuration rejection and a bounded
+single-line cause. A missing module or binding factory exits 74 with a hint
+to check the path and export. Invalid arguments and unknown configurations
+exit 64.
+
+Exit 2 means the binding has no `file` member. Add
+`file: { configuration, entries }` to the return value of your existing
+`createSettingsBindings` and rerun. Use `validate` on that member to call the
+same assertion the app runs at startup. For connected effects, use
+`preview` with `--database-url`.
+
 ## Preview before changing a setting
 
 From the extracted starter, preview the proposed inventory policy against the

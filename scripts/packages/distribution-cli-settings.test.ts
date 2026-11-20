@@ -1,10 +1,14 @@
 import { afterEach, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
   includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+
+import { proveNeutralStarterConsumer } from "./exact-set-qualification.mjs";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -33,7 +37,8 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   candidate("ownership.json", { managed: ["package.json", "ownership.json"], owned: ["AGENTS.md", starterSettingsHost], generated: [] });
   const pkg = { dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
   candidate("package.json", pkg);
-  candidate(starterSettingsHost, "export function createSettingsBindings() { return {}; }");
+  const file = "file: { configuration: 'sample', entries: { 'offer.freeShippingFromMinor': { value: 12000 } } }";
+  candidate(starterSettingsHost, "export function createSettingsBindings() { return { " + file + " }; }");
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
   migrateStarterOwned(app, target, from, to);
   migrateStarterOwned(app, target, from, to);
@@ -60,6 +65,23 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   expect(apply().applied).toEqual([]);
   expect(readFileSync(hostFile, "utf8")).toBe(customized ? local : to.files[starterSettingsHost]);
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
+
+  const check = (status: number) => {
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
+      "settings", "check", "--app", "./" + starterSettingsHost, "--json"], { cwd: app, encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  if (customized) {
+    expect(check(2)).toMatchObject({ state: "unknown", appValidation: { hint: expect.stringContaining("Add file: { configuration, entries }") } });
+    const reconciled = local.replace("stockSourceKey: 'local'", "stockSourceKey: 'local', " + file);
+    write(starterSettingsHost, reconciled);
+    expect(apply().applied).toEqual([]);
+    expect(readFileSync(hostFile, "utf8")).toBe(reconciled);
+  }
+  expect(check(0)).toMatchObject({ state: "checked", configuration: "sample", rows: expect.arrayContaining([
+    expect.objectContaining({ key: "offer.freeShippingFromMinor", file: expect.objectContaining({ value: 12000 }) }),
+  ]) });
 });
 
 it("refuses an extracted starter without the settings script", () => {
@@ -67,20 +89,84 @@ it("refuses an extracted starter without the settings script", () => {
   expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
 });
 
-it("loads the settings binding on connected show and reports a missing module", () => {
-  const { directory } = fixture();
-  const show = (...args: string[]) => spawnSync(process.execPath, [
-    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "--app", starterSettingsHost,
-    "show", "inventory_renewal_protection", "--json", ...args,
-  ], { cwd: directory, encoding: "utf8" });
-  const offline = show();
-  expect(offline.status, offline.stderr).toBe(0);
-  expect(JSON.parse(offline.stdout)).toMatchObject({ observation: { state: "offline" } });
-  const connected = show("--database-url", "postgresql://unused.invalid/shop");
-  expect(connected.status, connected.stderr).toBe(74);
-  expect(JSON.parse(connected.stdout)).toMatchObject({ refusal: {
-    code: "commerce_setting_read_unavailable", path: ["key"], hint: expect.stringContaining("createSettingsBindings"),
-  } });
+it.each([
+  ["subscriptionCreation", "starter_subscription_creation_invalid", "subscriptionCreation.editWindowHours"],
+  ["inventory", "inventory_renewal_protection_policy_invalid", "inventory_renewal_protection"],
+  ["id", "starter_configuration_unknown", undefined],
+])("reports startup validation for an invalid starter %s", (field, message, key) => {
+  const { directory, write } = fixture();
+  const starter = resolve("examples/neutral-store/owned");
+  const load = (name: string) => JSON.stringify(pathToFileURL(join(starter, name)).href);
+  const id = field === "id" ? "unregistered" : "supplements";
+  write("missing-config.mjs", `
+    const { configurations } = await import(${load("store.config.ts")});
+    ${key ? `delete configurations.supplements[${JSON.stringify(field)}];` : `configurations.supplements.id = ${JSON.stringify(id)};`}
+    const { createSettingsBindings } = await import(${load("settings-host.ts")});
+    export { createSettingsBindings };
+  `);
+  const run = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings",
+    "check", "--app", "./missing-config.mjs", "--configuration", "supplements", "--json"], { cwd: directory, encoding: "utf8" });
+  expect(run.status, run.stderr || run.stdout).toBe(1);
+  expect(JSON.parse(run.stdout)).toMatchObject({
+    configuration: id, state: "invalid", appValidation: { state: "failed", message },
+    ...(key ? { rows: expect.arrayContaining([expect.objectContaining({ key, file: { state: "not-reported" } })]) } : {}),
+  });
+});
+
+it.each([
+  ["module not found", undefined, 74, undefined, undefined],
+  ["no factory export", "export const other = 1;", 74, undefined, undefined],
+  ["throws at import", "throw new Error('starter_subscription_offer_invalid');", 1, "load", "starter_subscription_offer_invalid"],
+  ["throws in the factory", "export function createSettingsBindings() { throw new Error('invalid policy'); }", 1, "load", "invalid policy"],
+  ["throws in validate", "export function createSettingsBindings() { return { file: { configuration: 'sample', entries: {}, validate() { throw Error('startup rejected'); } } }; }",
+    1, undefined, "startup rejected"],
+] as const)("classifies %s through the binary", (_, source, status, phase, message) => {
+  const { directory, write } = fixture();
+  if (source) write(starterSettingsHost, source);
+  const args = [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "check", "--app", starterSettingsHost];
+  const run = (...flags: string[]) => spawnSync(process.execPath, [...args, ...flags], { cwd: directory, encoding: "utf8" });
+  const json = run("--json");
+  expect(json.status, json.stderr).toBe(status);
+  if (status === 74) expect(JSON.parse(json.stdout)).toMatchObject({
+    schemaVersion: 1, refusal: { code: "commerce_setting_read_unavailable", path: ["app"], hint: expect.stringContaining("createSettingsBindings") },
+  });
+  else {
+    const report = JSON.parse(json.stdout);
+    expect(report).toMatchObject({ schemaVersion: 1, state: "invalid", appValidation: { state: "failed", message } });
+    expect(report.appValidation.phase).toBe(phase);
+    expect(run().stdout).toContain(phase === "load" ? `Application configuration rejected while loading — ${message}` : `App startup validation: failed — ${message}`);
+  }
+});
+
+it.each([
+  ["candidate", true, 1, false], ["candidate", false, 1, true], ["released", false, 0, false],
+] as const)("requires the check smoke in %s mode with reported file values=%s", (mode, reportsFile, calls, rejects) => {
+  const { directory: app, write } = fixture();
+  write("package-lock.json", {});
+  write("package.json", { scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } });
+  write(starterSettingsHost, `export function createSettingsBindings() { return ${reportsFile ? `{ file: {
+    configuration: "sample", validate() {}, entries: {
+      inventory_renewal_protection: { value: { revision: "sample", renewalProtectionDays: 14 },
+        location: { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" } },
+    },
+  } }` : "{}"}; }`);
+  const settingsCalls: string[][] = [];
+  const proof = () => proveNeutralStarterConsumer(app, {
+    mode, application: app, environment: {}, packages: [], settingsDiscovery: false,
+    lockfileSha256: createHash("sha256").update(readFileSync(join(app, "package-lock.json"))).digest("hex"),
+    verifyInstalled() {},
+    run(command, args, cwd) {
+      if (command === "git" && args[0] === "rev-parse") return realpathSync(app);
+      if (command !== join(app, "node_modules/.bin/openlup")) return "";
+      settingsCalls.push(args);
+      const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), ...args], { cwd, encoding: "utf8" });
+      if (result.status !== 0) throw new Error(`settings smoke exited ${result.status}`);
+      return result.stdout;
+    },
+  });
+  if (rejects) expect(proof).toThrow("settings smoke exited 2");
+  else expect(proof).not.toThrow();
+  expect(settingsCalls).toEqual(calls ? [["settings", "--app", "./owned/settings-host.ts", "check", "--json"]] : []);
 });
 
 it.each([
