@@ -515,3 +515,29 @@ it("persists verified failure diagnostics without copying raw error messages or 
   expect(JSON.stringify(event)).not.toContain("private");
   expect(JSON.stringify(event)).not.toContain("Private payer");
 });
+
+it("maps only active dispute events and rejects closed disputes and unrecognized requires_action payloads", () => {
+  const withdrawn = normalizeStripeWebhookEvent({
+    id: "evt_dispute_withdrawn",
+    type: "charge.dispute.funds_withdrawn",
+    created: 1800000020,
+    data: { object: { id: "dp_1", payment_intent: "pi_dispute_1", amount: 5000, currency: "pln" } },
+  });
+  expect(withdrawn).toMatchObject({ eventType: "payment.disputed", providerPaymentId: "pi_dispute_1" });
+
+  for (const unsupported of ["charge.dispute.closed", "charge.dispute.funds_reinstated", "charge.dispute.updated"]) {
+    expect(() => normalizeStripeWebhookEvent({
+      id: `evt_${unsupported}`,
+      type: unsupported,
+      created: 1800000021,
+      data: { object: { id: "dp_2", payment_intent: "pi_dispute_2", amount: 5000, currency: "pln", status: "won" } },
+    })).toThrow(`Unsupported Stripe webhook event: ${unsupported}`);
+  }
+
+  expect(() => normalizeStripeWebhookEvent({
+    id: "evt_unknown_requires_action",
+    type: "invoice.payment_action_required",
+    created: 1800000022,
+    data: { object: { id: "in_1", status: "requires_action", amount: 5000, currency: "pln" } },
+  })).toThrow("Unsupported Stripe webhook event: invoice.payment_action_required");
+});

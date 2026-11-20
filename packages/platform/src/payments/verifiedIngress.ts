@@ -1,6 +1,6 @@
 import { CAPTURE_REVIEW_RESULT_KIND, PROTECTED_FAILURE_RESULT_KIND } from "./paymentProviderReconciliationEvidence.js";
 import type { PaymentIngressPort, PaymentVerifyNormalizePort, RefundEvidencePolicy, VerifiedMethodEvidence, VerifiedPaymentEvidence } from "./contracts/evidence.js";
-import { projectVerifiedEvidence } from "./verifiedEvidenceProjection.js";
+import { attachReusableMethodOwner, projectVerifiedEvidence } from "./verifiedEvidenceProjection.js";
 const PAYMENT_WEBHOOK_EVENT_TYPES = [
   "payment.succeeded",
   "payment.failed",
@@ -175,11 +175,11 @@ export function createVerifiedPaymentIngress({
 
       if (verifiedEvidence.kind === "method" && verifiedEvidence.reusableMethod && resolveMethodOwner) {
         const owner = await resolveMethodOwner(verifiedEvidence);
-        event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy, owner ?? undefined);
+        event = attachReusableMethodOwner(event, verifiedEvidence, owner ?? undefined);
       }
       if (verifiedEvidence.kind === "money" && verifiedEvidence.reusableMethod && resolveSavedMethodOwner) {
         const owner = await resolveSavedMethodOwner(verifiedEvidence);
-        event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy, owner ?? undefined);
+        event = attachReusableMethodOwner(event, verifiedEvidence, owner ?? undefined);
       }
       const ports = createPorts
         ? await createPorts(event)
