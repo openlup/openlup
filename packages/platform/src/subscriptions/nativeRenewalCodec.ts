@@ -29,22 +29,37 @@ const snapshotSchema = z.object({
   stockSourceKey: ref, settlementChannelKey: ref, authorizationRef: ref, payerAccountRef: ref.nullable(),
   unattendedChargeAuthorizedAt: z.iso.datetime(),
 }).strict();
+function linesEqual(left: readonly RenewalLine[], right: readonly RenewalLine[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    const a = left[i]!, b = right[i]!;
+    if (a.lineOrdinal !== b.lineOrdinal || a.sku !== b.sku || a.quantity !== b.quantity || a.unitAmountMinor !== b.unitAmountMinor) return false;
+  }
+  return true;
+}
+function shippingTermsEqual(
+  left: RenewalFrozenSnapshot["pricingSnapshot"]["shippingTerms"] | null | undefined,
+  right: RenewalFrozenSnapshot["pricingSnapshot"]["shippingTerms"] | null | undefined,
+): boolean {
+  if (left == null || right == null) return left == null && right == null;
+  return left.version === right.version && left.currency === right.currency
+    && left.flatMinor === right.flatMinor && left.freeThresholdMinor === right.freeThresholdMinor;
+}
 function validate(snapshot: RenewalFrozenSnapshot) {
   snapshotSchema.parse(snapshot);
-  const items = nativeRenewalCanonicalJson(snapshot.orderSnapshot.lines);
   const pricing = snapshot.pricingSnapshot;
   const subtotal = snapshot.orderSnapshot.lines.reduce((sum, item) => sum + item.quantity * item.unitAmountMinor, 0);
   const discount = pricing.discountAmountMinor ?? 0;
   const terms = pricing.shippingTerms;
   const marker = snapshot.orderSnapshot.shippingQuoteRef;
-  if (items !== nativeRenewalCanonicalJson(snapshot.templateSnapshot.lines)
+  if (!linesEqual(snapshot.orderSnapshot.lines, snapshot.templateSnapshot.lines)
     || subtotal - discount + pricing.shippingAmountMinor !== pricing.totalAmountMinor || discount > subtotal
     || (pricing.productSubtotalAmountMinor !== undefined && pricing.productSubtotalAmountMinor !== subtotal)
     || (snapshot.frozenRevision === REVISION && (pricing.shippingAmountMinor !== 0 || pricing.discountAmountMinor !== undefined))
     || (terms && (terms.currency !== pricing.currency || pricing.shippingAmountMinor !== (subtotal - discount < terms.freeThresholdMinor ? terms.flatMinor : 0)))
     || (marker && typeof marker === "object" && marker.shippingAmountMinor !== pricing.shippingAmountMinor)
     || (marker && typeof marker === "object" && marker.kind === "retained_shipping"
-      && nativeRenewalCanonicalJson(marker.terms) !== nativeRenewalCanonicalJson(terms ?? null))
+      && !shippingTermsEqual(marker.terms, terms ?? null))
     || (snapshot.frozenRevision === REVISION && (Object.keys(pricing).length !== 5 || typeof marker === "object" && marker?.kind === "retained_shipping"))
     || (snapshot.frozenRevision === "native.purchase-renewal.v2" && (pricing.productSubtotalAmountMinor === undefined || pricing.discountAmountMinor === undefined
       || ((terms || pricing.shippingAmountMinor > 0) && (!marker || typeof marker !== "object" || marker.kind !== "retained_shipping"))
@@ -109,8 +124,32 @@ function body(s: RenewalFrozenSnapshot): Record<string, unknown> {
     authorizationRef: s.authorizationRef, payerAccountRef: s.payerAccountRef,
     unattendedChargeAuthorizedAt: instant(s.unattendedChargeAuthorizedAt) };
 }
+const BODY_KEYS_BEFORE_FP = [
+  "authorizationRef", "clientId", "contractVersion", "currency", "cycle", "cycleNumber", "externalAttemptSequence",
+] as const;
+const BODY_KEYS_AFTER_FP = [
+  "frozenRevision", "lines", "orderSnapshot", "payerAccountRef", "pricingSnapshot", "retryAttempt",
+  "scheduledAt", "settlementChannelKey", "stockSourceKey", "subscriptionId", "templateSnapshot",
+  "totalAmountMinor", "unattendedChargeAuthorizedAt",
+] as const;
+function canonicalBodyParts(s: RenewalFrozenSnapshot): { withoutFingerprint: string; withFingerprint: string } {
+  const doc = body(s);
+  const before = BODY_KEYS_BEFORE_FP.map(k => `${JSON.stringify(k)}:${nativeRenewalCanonicalJson(doc[k])}`).join(",");
+  const after = BODY_KEYS_AFTER_FP.map(k => `${JSON.stringify(k)}:${nativeRenewalCanonicalJson(doc[k])}`).join(",");
+  return {
+    withoutFingerprint: `{${before},${after}}`,
+    withFingerprint: `{${before},"frozenFingerprint":${JSON.stringify(s.frozenFingerprint)},${after}}`,
+  };
+}
 function fingerprint(s: RenewalFrozenSnapshot): string {
-  return createHash("sha256").update(nativeRenewalCanonicalJson(body(s)), "utf8").digest("hex");
+  return createHash("sha256").update(canonicalBodyParts(s).withoutFingerprint, "utf8").digest("hex");
+}
+function serializeVerifiedSnapshot(snapshot: RenewalFrozenSnapshot): string {
+  validate(snapshot);
+  const parts = canonicalBodyParts(snapshot);
+  const expected = createHash("sha256").update(parts.withoutFingerprint, "utf8").digest("hex");
+  if (snapshot.frozenFingerprint !== expected) throw new Error("subscription_renewal_snapshot_fingerprint_mismatch");
+  return parts.withFingerprint;
 }
 /** Production native dialect: no closure state and no host metadata on readback. */
 export function createNativeRenewalCodec(): NativeRenewalCodec {
@@ -120,8 +159,10 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
       // millisecond-label dialects. Strip only zero microseconds; native frozen
       // IDENTITY fields below always use six digits.
       const scheduledAt = instant(row.scheduled_at).replace(/(\.\d{3})000Z$/, "$1Z");
+      const cadenceDays = integer(row.cadence_days, 1);
+      if (cadenceDays > 2_147_483_647) throw new Error("subscription_renewal_snapshot_integer_invalid");
       return { subscriptionId: text(row, "subscription_id"), clientId: text(row, "client_id"),
-        scheduledAt, scheduledInstant: Date.parse(scheduledAt), cadenceDays: whole.positive().max(2_147_483_647).parse(integer(row.cadence_days, 1)), cycle: correlation(row),
+        scheduledAt, scheduledInstant: Date.parse(scheduledAt), cadenceDays, cycle: correlation(row),
         currency: text(row, "currency_code"), stockSourceKey: text(row, "stock_source_key"),
         settlementChannelKey: text(row, "settlement_channel_key"), authorizationRef: text(row, "authorization_ref"),
         payerAccountRef: nullable(row.payer_account_ref), unattendedChargeAuthorizedAt: instant(row.unattended_charge_authorized_at),
@@ -134,8 +175,8 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
       const facts = subscriptionRecord(row.purchase_facts);
       if (due.cycle.status !== "correlated") throw new Error("subscription_renewal_cycle_correlation_required");
       const frozenLines = lines(row.lines);
-      const pricing = nativeRenewalPrice(row, frozenLines, due.cycle.logicalCycleNumber);
       const retained = nativeRetainedTerms(row);
+      const pricing = nativeRenewalPrice(row, frozenLines, due.cycle.logicalCycleNumber, retained ?? null);
       const snapshot: RenewalFrozenSnapshot = { subscriptionId: due.subscriptionId, scheduledAt: instant(due.scheduledAt),
         scheduledInstant: due.scheduledInstant, contractVersion: CONTRACT,
         clientId: due.clientId, frozenRevision: retained ? "native.purchase-renewal.v2" : REVISION, frozenFingerprint: "", cycle: due.cycle,
@@ -152,10 +193,8 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
       return snapshot;
     },
     encode(snapshot) {
-      validate(snapshot);
-      if (snapshot.frozenFingerprint !== fingerprint(snapshot)) throw new Error("subscription_renewal_snapshot_fingerprint_mismatch");
       // Round-trip through canonical bytes prevents undefined or extra host values.
-      return JSON.parse(nativeRenewalCanonicalJson({ ...body(snapshot), frozenFingerprint: snapshot.frozenFingerprint })) as Record<string, unknown>;
+      return JSON.parse(serializeVerifiedSnapshot(snapshot)) as Record<string, unknown>;
     },
     decode(wire) {
       const scheduledAt = text(wire, "scheduledAt");
@@ -171,7 +210,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
         authorizationRef: text(wire, "authorizationRef"), payerAccountRef: nullable(wire.payerAccountRef),
         unattendedChargeAuthorizedAt: text(wire, "unattendedChargeAuthorizedAt"),
       };
-      if (!Number.isFinite(snapshot.scheduledInstant) || nativeRenewalCanonicalJson(codec.encode(snapshot)) !== nativeRenewalCanonicalJson(wire)) throw new Error("subscription_renewal_snapshot_wire_mismatch");
+      if (!Number.isFinite(snapshot.scheduledInstant) || serializeVerifiedSnapshot(snapshot) !== nativeRenewalCanonicalJson(wire)) throw new Error("subscription_renewal_snapshot_wire_mismatch");
       return snapshot;
     },
     readback(row) {
@@ -184,7 +223,7 @@ export function createNativeRenewalCodec(): NativeRenewalCodec {
     identity(snapshot: RenewalSchedule) { return `subscription:${snapshot.subscriptionId}:cycle:${instant(snapshot.scheduledAt).replace(/(?:\.(\d*))?Z$/, (_, fraction = "") => `.${fraction.padEnd(3, "0").slice(0, 3)}Z`)}`; },
     fingerprint,
     withDestination(snapshot, destinationId) {
-      codec.encode(snapshot);
+      serializeVerifiedSnapshot(snapshot);
       const next = { ...snapshot, orderSnapshot: { ...snapshot.orderSnapshot, shippingAddressRef: z.uuid().parse(destinationId),
         shippingQuoteRef: snapshot.orderSnapshot.shippingQuoteRef ?? { kind: "zero_shipping" as const, shippingAmountMinor: 0 as const } } };
       next.frozenFingerprint = fingerprint(next);
