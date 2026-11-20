@@ -22,6 +22,9 @@ for (const [subpath, target] of Object.entries(codeExports)) {
 }
 
 const maturityRank = { testing: 0, experimental: 1, stable: 2 };
+for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
+  assert(Object.hasOwn(maturityRank, contract.maturity), `unknown maturity ${contract.maturity} for ${subpath}`);
+}
 const entrypoints = new Map(Object.entries(gates.packageSurface).map(([subpath, contract]) => {
   const entrypoint = resolveInsidePackage(contract.entrypoint);
   assert(existsSync(entrypoint), `missing declaration entrypoint ${contract.entrypoint}; run npm run build`);

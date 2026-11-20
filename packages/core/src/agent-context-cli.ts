@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // Opt-in development tool. Kernel exports never import this file.
-import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { findPackageJSON } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -237,45 +237,106 @@ function querySymbol(query: string): string | undefined {
 }
 
 function stripDeclarationComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//gu, "")
-    .replace(/\/\/[^\n]*/gu, "");
+  let out = "";
+  let index = 0;
+  const length = source.length;
+  while (index < length) {
+    const ch = source[index]!;
+    const next = source[index + 1];
+    if (ch === '"' || ch === "'" || ch === "`") {
+      const quote = ch;
+      out += ch;
+      index++;
+      while (index < length) {
+        const current = source[index]!;
+        out += current;
+        index++;
+        if (current === "\\" && index < length) {
+          out += source[index]!;
+          index++;
+          continue;
+        }
+        if (current === quote) break;
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      index += 2;
+      while (index < length && source[index] !== "\n") index++;
+      out += " ";
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      index += 2;
+      let sawNewline = false;
+      while (index < length) {
+        if (source[index] === "*" && source[index + 1] === "/") {
+          index += 2;
+          break;
+        }
+        if (source[index] === "\n") sawNewline = true;
+        index++;
+      }
+      out += sawNewline ? "\n" : " ";
+      continue;
+    }
+    out += ch;
+    index++;
+  }
+  return out;
 }
 
-function resolveDeclarationFile(packageRoot: string, fromFile: string, specifier: string): string | undefined {
+function isContainedRegularFile(packageRoot: string, realRoot: string, candidate: string): boolean {
+  const rel = relative(packageRoot, candidate);
+  if (!rel || isAbsolute(rel)) return false;
+  const segments = rel.split(sep);
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) return false;
+  let current = packageRoot;
+  for (let index = 0; index < segments.length; index++) {
+    current = join(current, segments[index]!);
+    if (!existsSync(current)) return false;
+    const state = lstatSync(current);
+    if (state.isSymbolicLink()) return false;
+    const isLast = index === segments.length - 1;
+    if (isLast) {
+      if (!state.isFile() || state.size > guideFileBytes) return false;
+    } else if (!state.isDirectory()) {
+      return false;
+    }
+  }
+  const realCandidate = realpathSync(candidate);
+  return realCandidate.startsWith(`${realRoot}${sep}`);
+}
+
+function resolveDeclarationFile(packageRoot: string, realRoot: string, fromFile: string, specifier: string): string | undefined {
   if (!specifier.startsWith(".")) return undefined;
   const base = resolve(dirname(fromFile), specifier);
   const candidates = specifier.endsWith(".js")
     ? [`${base.slice(0, -3)}.d.ts`]
     : [base, `${base}.d.ts`, resolve(base, "index.d.ts")];
   for (const candidate of candidates) {
-    const rel = relative(packageRoot, candidate);
-    if (isAbsolute(rel) || rel.split(sep).includes("..")) continue;
-    if (!existsSync(candidate)) continue;
-    const state = lstatSync(candidate);
-    if (state.isFile() && state.size <= guideFileBytes) return candidate;
+    if (isContainedRegularFile(packageRoot, realRoot, candidate)) return candidate;
   }
   return undefined;
 }
 
-function collectExportedSymbols(packageRoot: string, entrypoint: string): Set<string> {
+function collectExportedSymbols(packageRoot: string, realRoot: string, entrypoint: string): Set<string> {
   const symbols = new Set<string>();
   const visited = new Set<string>();
-  const pending = [entrypoint];
-  const fileLimit = 64;
-  while (pending.length > 0 && visited.size < fileLimit) {
-    const file = pending.pop()!;
+  const queued = new Set<string>([entrypoint]);
+  const queue = [entrypoint];
+  const fileLimit = 256;
+  let head = 0;
+  while (head < queue.length && visited.size < fileLimit) {
+    const file = queue[head++]!;
     if (visited.has(file)) continue;
-    const rel = relative(packageRoot, file);
-    if (isAbsolute(rel) || rel.split(sep).includes("..") || !existsSync(file)) continue;
-    const state = lstatSync(file);
-    if (!state.isFile() || state.size > guideFileBytes) continue;
+    if (!isContainedRegularFile(packageRoot, realRoot, file)) continue;
     visited.add(file);
     const cleaned = stripDeclarationComments(readFileSync(file, "utf8"));
-    for (const match of cleaned.matchAll(/^\s*export\s+(?:declare\s+)?(?:abstract\s+)?(?:const\s+enum|enum|function|const|let|var|class|interface|type|namespace)\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/gmu)) {
+    for (const match of cleaned.matchAll(/^export\s+(?:declare\s+)?(?:abstract\s+)?(?:const\s+enum|enum|function|const|let|var|class|interface|type|namespace)\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/gmu)) {
       if (match[1]) symbols.add(match[1]);
     }
-    for (const match of cleaned.matchAll(/^\s*export\s+(?:type\s+)?\{([^}]*)\}/gmu)) {
+    for (const match of cleaned.matchAll(/^export\s+(?:type\s+)?\{([^}]*)\}/gmu)) {
       const body = match[1] ?? "";
       for (const rawItem of body.split(",")) {
         const cleanedItem = rawItem.replace(/^\s*type\s+/u, "").trim();
@@ -285,12 +346,15 @@ function collectExportedSymbols(packageRoot: string, entrypoint: string): Set<st
         else if (/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(cleanedItem)) symbols.add(cleanedItem);
       }
     }
-    for (const match of cleaned.matchAll(/^\s*export\s+\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s+from\s+["']([^"']+)["']/gmu)) {
+    for (const match of cleaned.matchAll(/^export\s+(?:type\s+)?\*\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s+from\s+["']([^"']+)["']/gmu)) {
       if (match[1]) symbols.add(match[1]);
     }
-    for (const match of cleaned.matchAll(/^\s*export\s+\*\s+from\s+["']([^"']+)["']/gmu)) {
-      const target = match[1] ? resolveDeclarationFile(packageRoot, file, match[1]) : undefined;
-      if (target && !visited.has(target)) pending.push(target);
+    for (const match of cleaned.matchAll(/^export\s+(?:type\s+)?\*\s+from\s+["']([^"']+)["']/gmu)) {
+      const target = match[1] ? resolveDeclarationFile(packageRoot, realRoot, file, match[1]) : undefined;
+      if (target && !queued.has(target)) {
+        queued.add(target);
+        queue.push(target);
+      }
     }
   }
   return symbols;
@@ -349,10 +413,10 @@ function exportHits(item: InstalledPackage, query: string, terms: string[], rawT
     if (!matchedByName && symbol && target && typeof target === "object" && !Array.isArray(target)) {
       const typesTarget = (target as { types?: unknown }).types;
       if (typeof typesTarget === "string" && typesTarget.endsWith(".d.ts")) {
+        const realRoot = realpathSync(item.root);
         const entrypoint = resolve(item.root, typesTarget);
-        const rel = relative(item.root, entrypoint);
-        if (!isAbsolute(rel) && !rel.split(sep).includes("..") && existsSync(entrypoint)) {
-          const exported = collectExportedSymbols(item.root, entrypoint);
+        if (isContainedRegularFile(item.root, realRoot, entrypoint)) {
+          const exported = collectExportedSymbols(item.root, realRoot, entrypoint);
           if (exported.has(symbol)) {
             hits.push({
               title: `${title} (${symbol})`,
