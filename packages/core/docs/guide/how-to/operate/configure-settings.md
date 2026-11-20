@@ -18,6 +18,13 @@ Try these arguments:
 - `show inventory_renewal_protection --json`
 - `explain commerce_setting_unknown`
 
+Each goal word matches the start of a word in the setting’s description, key,
+domain or search terms, including words inside camelCase keys. A nonblank goal
+with no letters or decimal digits returns no results (a blank goal is refused
+with exit code 64). The list shows settings that match every goal word in
+catalogue order, or, if there are none, up to ten partial matches ranked by the
+number of matching words, with ties in catalogue order.
+
 The commands work offline. For settings with a value, `show` includes the value
 schema where available, the default and its source, the effect on future
 decisions and the records that keep their current values. For a capability or
