@@ -25,13 +25,17 @@ afterAll(() => h.stop(), postgresTeardownTimeoutMs);
 
 async function seed() {
   await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");
-  const f = await fixture(h.pool);
+  const f = await fixture(h.pool, 1, true, true);
   const skuId = randomUUID(), sku = `SKU-${skuId}`;
   await h.pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Fixture')", [skuId, sku]);
   await h.pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Fixture')", [skuId, sku]);
   await h.pool.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,next_cycle_number,currency_code,stock_source_key,
-    settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES($1,2,'XXX','fixture','fixture',$2,'fixture')`, [f.subscription, AT]);
+    settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES($1,1,'XXX','fixture','fixture',$2,'fixture')`, [f.subscription, AT]);
   await h.pool.query('INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,1,900)', [f.subscription, sku]);
+  await h.pool.query(
+    'INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3,$4)',
+    [f.order, f.subscription, JSON.stringify({ templateId: 'fixture', shippingAmountMinor: 0 }), AT],
+  );
   await h.pool.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
     inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
     VALUES('fixture',$1,10,10,0,'sellable',$2,'2027-01-01','fixture',$1,$3)`, [sku, NOW, 'a'.repeat(64)]);
@@ -243,7 +247,7 @@ it.each(['off', 'protect', 'auto_align'] as const)('G23 new-cycle admission at %
     const replayRows = await alignmentRows(db), count = admissions(r.queries).length;
     await runOneAutomaticSubscriptionRenewal(r.deps, due, NOW);
     await db.query('INSERT INTO public.subscription_dunning_cases(subscription_id,cycle_id,client_id,idempotency_key) SELECT $1,id,$2,$3 FROM public.subscription_cycles WHERE renewal_operation_id=$4', [f.subscription, f.client, `g23-dunning-${f.subscription}`, claim.operationId]);
-    expect(await r.deps.store.admitDeliveryAlignment({ ...due, occurredAt: NOW })).toEqual({ allowed: true, reason: null });
+    expect(await r.deps.store.admitDeliveryAlignment({ ...due, occurredAt: NOW })).toEqual({ allowed: true, state: 'static', reason: 'allowed' });
     expect(admissions(r.queries)).toHaveLength(count);
     expect(await alignmentRows(db)).toEqual(replayRows);
     await db.query('ROLLBACK');
@@ -348,7 +352,7 @@ it.each(['protect', 'auto_align'] as const)('G23 static block wins over a captur
     const result = await runOneAutomaticSubscriptionRenewal(r.deps, due, NOW);
     expect(result).toMatchObject({ status: 'refused', reason: 'delivery_alignment_protected' });
     expect(await r.store.readRenewal(result.identityKey)).toMatchObject({ state: 'refused', terminalOutcome: 'refused',
-      terminalReason: 'delivery_alignment_protected', terminalAt: NOW });
+      terminalReason: 'delivery_alignment_protected', terminalAt: NOW.replace(/\.000Z$/, '.000000Z') });
     expect(admissions(r.queries)).toHaveLength(0);
     expect(await alignmentRows(db)).toEqual(before);
     expect(r.execute).not.toHaveBeenCalled();
