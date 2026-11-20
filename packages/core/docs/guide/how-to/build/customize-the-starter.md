@@ -321,7 +321,9 @@ The default factory wires `createQuoteShippingPromotions` to the host's promotio
 ports and the shipping policy from `offer.shippingMinor`,
 `offer.freeShippingFromMinor` and `quote.policy.effectiveFrom`. The free threshold
 uses the product amount after discounts. The quote retains shipping terms for
-acceptance and later delivery pricing.
+acceptance and later delivery pricing. To retain the threshold when reusing the
+quote helper in a replacement resolver, supply the `commerceSettingsPort` with
+the threshold in its shipping policy.
 
 Keep carrier configuration and clients in the owned server file or its
 application-owned adapters. Read credentials from private runtime inputs there;

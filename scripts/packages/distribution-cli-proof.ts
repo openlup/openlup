@@ -246,6 +246,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
+  const settingsHost = join(app, starterSettingsHost);
+  if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
   phase("migrate-owned-contracts", () => { migrateStarterOwned(app, pair.to, from, to); });
   phase("customize-owned", () => {
     for (const [path, before, after] of [
@@ -548,7 +550,8 @@ export function proveSettingsDiscovery(app: string, execute = (command: string, 
   assert(existsSync(join(app, starterSettingsHost)), "extracted starter settings host missing");
   // Run the script's own command line through the installed binary's absolute path.
   const [binary, ...scriptArgs] = String(manifest.scripts.settings).split(" ");
-  const checked = JSON.parse(execute(join(app, "node_modules/.bin", binary!), [...scriptArgs, "check", "--json"], app));
+  const executable = join(app, "node_modules/.bin", binary!);
+  const checked = JSON.parse(execute(executable, [...scriptArgs, "check", "--json"], app));
   assert.equal(checked.schemaVersion, 1);
   assert.equal(checked.state, "checked");
   assert.equal(checked.appValidation.state, "passed");
@@ -557,6 +560,13 @@ export function proveSettingsDiscovery(app: string, execute = (command: string, 
   assert.deepEqual(stock?.file.location, { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" });
   assert.deepEqual(stock?.validation, { state: "valid" });
   assert.deepEqual(stock?.store, { state: "not-checked" });
+  assert.match(execute(executable, [...scriptArgs, "list", "--goal", "free shipping"], app), /^offer\.freeShippingFromMinor \(/mu);
+  for (const key of [
+    "offer.freeShippingFromMinor", "offer.subscriptionDiscountBps", "purchase.reservationMinutes",
+    "subscriptionCreation.editWindowHours", "subscriptionOffers.deliveryCycles", "subscriptions.lifecycleNoticeRetryBudget",
+  ]) {
+    assert.equal(checked.rows.find((row: { key: string }) => row.key === key)?.validation.state, "valid", key);
+  }
 }
 
 /** Uses the cold consumer's existing owned database; SQL repair is harness work. */

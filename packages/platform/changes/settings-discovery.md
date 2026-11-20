@@ -1,4 +1,4 @@
-- Discover settings, capability gaps and invariants from the installed catalogue
+- Discover platform settings, capability gaps and invariants from the installed catalogue
   and refusal vocabulary. The read-only settings API and the domain discovery
   exports are experimental.
 

@@ -1,52 +1,45 @@
-### Report the starter configuration to settings check
+### Discover and check the starter's owned settings
 
-The target extraction includes the file binding in `owned/settings-host.ts`.
-When that path is absent, include its creation under the existing settings
-host upgrade step. When the path already exists, keep it and add the following
-changes by hand, retaining your application bindings and using your selected
-configuration. An owned file is never overwritten.
+Update the installed OpenLup packages together. Include the target's
+`owned/settings-host.ts` as a creation in the upgrade snapshot if that path
+is absent. If the file exists, preserve it and merge the following additions by hand.
+
+Ensure the upgraded application manifest declares `"zod": "4.6.6"` in
+dependencies and update its lockfile. In `owned/settings-host.ts`, add the Zod
+import after the `pg` type import, extend the settings type import, annotate
+`entries`, and replace the existing filter as follows:
 
 ```diff
-diff --git a/owned/settings-host.ts b/owned/settings-host.ts
-index 00b9518e0..7c7c4d95d 100644
---- a/owned/settings-host.ts
-+++ b/owned/settings-host.ts
-@@ -4,2 +4,3 @@ import type { SettingsAppBindings } from '@openlup/platform/operations/server';
- import { checkoutWavePolicy } from './acquisition-policy.ts';
-+import { assertConfig } from '../shared/config.ts';
- import { configurations, selectConfiguration } from './store.config.ts';
-@@ -12,4 +13,25 @@ export function createSettingsBindings({ db, configuration }: {
-   }
-+  const config = selectConfiguration(configuration);
-+  const file = 'owned/store.config.ts';
-+  const entries = {
-+    'offer.freeShippingFromMinor': { value: config.offer?.freeShippingFromMinor, location: { file, symbol: 'offer.freeShippingFromMinor' } },
-+    'offer.subscriptionDiscountBps': { value: config.offer?.subscriptionDiscountBps, location: { file, symbol: 'offer.subscriptionDiscountBps' } },
-+    'purchase.reservationMinutes': { value: config.purchase?.reservationMinutes, location: { file, symbol: 'purchase.reservationMinutes' } },
-+    'subscriptionCreation.editWindowHours': { value: config.subscriptionCreation?.editWindowHours, location: { file, symbol: 'subscriptionCreation.editWindowHours' } },
-+    'subscriptionOffers.deliveryCycles': { value: config.subscriptionOffers, location: { file, symbol: 'subscriptionOffers' } },
-+    'subscriptions.lifecycleNoticeRetryBudget': { value: config.renewal?.subscriptionCare?.dispatch?.maxAttempts,
-+      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.dispatch.maxAttempts' } },
-+    inventory_renewal_protection: { value: config.inventory?.renewalProtection, location: { file, symbol: 'inventory.renewalProtection' } },
-+    checkout_recovery_reminders: { value: config.checkoutRecoveryReminders, location: { file, symbol: 'checkoutRecoveryReminders' } },
-+  };
-   return {
--    stockSourceKey: `starter-demo:${selectConfiguration(configuration).id}`,
-+    stockSourceKey: `starter-demo:${config.id}`,
-+    file: {
-+      configuration: config.id,
-+      validate() {
-+        assertConfig(config);
-+        selectConfiguration(config.id);
-+      },
-+      entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.value !== undefined)),
-+    },
-     readers: db ? {
+ import type { Pool } from 'pg';
++import { z } from 'zod';
+-import type { SettingsAppBindings } from '@openlup/platform/operations/server';
++import type { SettingsAppBindings, SettingsFileEntry } from '@openlup/platform/operations/server';
+-  const entries = {
++  const entries: Record<string, SettingsFileEntry> = {
+-      entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.value !== undefined)),
++      entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.descriptor !== undefined || entry.value !== undefined)),
 ```
 
-After updating the installed packages, pass `check` to the settings script
-documented in the extracted application’s `AGENTS.md`.
-A binding without the new member still loads; check exits 2 and names the
-addition above. A failure from `assertConfig` exits 1 and gives the startup
-validation message. Existing startup refusals and policy installation steps
-still apply; check opens no database connection.
+Copy the six `descriptor` members with their native Zod schemas from the target
+starter's `file.entries` into the existing entries for
+`offer.freeShippingFromMinor`, `offer.subscriptionDiscountBps`,
+`purchase.reservationMinutes`, `subscriptionCreation.editWindowHours`,
+`subscriptionOffers.deliveryCycles` and `subscriptions.lifecycleNoticeRetryBudget`.
+Keep your value expressions, file locations and app-specific entries.
+The filter keeps declarations with missing values and omits undefined
+value-only reports.
+If your binding has no `file` member yet, merge the target's
+`file: { configuration, entries, validate }` section using your selected
+configuration and existing startup assertion. Keep the installed policy
+entries value-only and preserve your connected readers and stock source.
+
+From the app root, pass these arguments to the settings script in `AGENTS.md`:
+
+- `list --goal "free shipping"`
+- `show offer.freeShippingFromMinor --json`
+- `check --json`
+
+Confirm that the list includes the key, show reports the expected file value and
+check includes the six declarations. For a value reported without a descriptor,
+add the matching descriptor as above and rerun. These reads require no database
+connection.

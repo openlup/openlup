@@ -12918,6 +12918,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/fixtures/settings-upgrade-host.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/fixtures/starter-settings.main.json",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/generate-release-bom-cli.ts",
       "class": "public-output"
     },
