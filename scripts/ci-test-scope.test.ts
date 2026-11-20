@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { env as processEnvironment } from 'node:process';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { excludedToolingTests, scopeFromEvent, scopeFromLocal, TOOLING_INPUTS, writeTestScope } from './ci-test-scope.mjs';
+import { excludedToolingTests, resolveGitExecutable, ROOT_DOC_FILES, scopeFromEvent, scopeFromLocal, TOOLING_INPUTS, writeTestScope } from './ci-test-scope.mjs';
 
 const base = 'a'.repeat(40);
 const all = Object.keys(TOOLING_INPUTS).sort();
@@ -24,7 +24,8 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['packages/core/src/index.ts']))
       .toEqual(Object.entries(TOOLING_INPUTS).filter(([, inputs]) => !inputs.includes('packages/')).map(([test]) => test).sort());
   });
-  it.each(['package.json', 'package-lock.json', 'vitest.config.ts', 'scripts/run-vitest.mjs',
+  it.each(['package.json', 'package-lock.json', 'vitest.config.ts', 'tsconfig.json', 'tsconfig.app.json',
+    'LICENSE', 'UNKNOWN.md', 'scripts/run-vitest.mjs',
     'scripts/ci-test-scope.mjs', 'scripts/ci-test-scope.test.ts', '.github/workflows/any.yml',
     '.github/actions/example/action.yml',
     'eslint.config.js', '.nvmrc', 'scripts/packages/new-helper.ts', 'tests/setup/scrub-git-env.ts',
@@ -38,11 +39,40 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['docs/platform/README.md'])).toEqual(all);
     expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all);
     expect(excludedToolingTests(['config/openlup-packages.json'])).toEqual(all.filter(test =>
-      !['outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
+      !['distribution-cli-proof', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
   });
-  it('retains the Outbox real-process witnesses for image-pin-only changes', () => {
-    expect(excludedToolingTests(['config/ci-images.json']))
-      .not.toContain('scripts/packages/outbox-consumer-proof.test.ts');
+  it.each(ROOT_DOC_FILES)(
+    'does not disable all exclusions for root doc %s while retaining doc and policy checks',
+    doc => {
+      const excluded = excludedToolingTests([doc]);
+      expect(excluded).toEqual(all.filter(test => test !== 'scripts/documentation-cli.test.ts'));
+      expect(excluded).not.toContain('scripts/documentation-cli.test.ts');
+      for (const unlisted of ['scripts/oss-published-tree-check.test.ts', 'scripts/dco-signoff-check.test.ts',
+        'scripts/check-publishable-gap-enumeration.test.ts', 'scripts/public-ci-neutrality.test.ts',
+        'scripts/packages/platform-agent-guide.test.ts']) {
+        expect(excluded).not.toContain(unlisted);
+      }
+      expect(excluded).toContain('scripts/packages/outbox-consumer-proof.test.ts');
+      expect(excluded).toContain('scripts/packages/distribution-cli-proof.test.ts');
+    },
+  );
+  it('retains the Outbox and distribution witnesses for image-pin-only changes', () => {
+    const excluded = excludedToolingTests(['config/ci-images.json']);
+    expect(excluded).not.toContain('scripts/packages/outbox-consumer-proof.test.ts');
+    expect(excluded).not.toContain('scripts/packages/distribution-cli-proof.test.ts');
+  });
+  it('retains distribution-cli-proof, guide-tutorial and pgtap-parity for their actual dependency closures', () => {
+    expect(excludedToolingTests(['examples/neutral-store/extract.mjs']))
+      .toEqual(all.filter(test => test !== 'scripts/packages/distribution-cli-proof.test.ts'));
+    expect(excludedToolingTests(['examples/neutral-store/owned/catalogue.ts']))
+      .not.toContain('scripts/packages/distribution-cli-proof.test.ts');
+    expect(excludedToolingTests(['packages/platform/src/lifecycle/openlup.mjs']))
+      .not.toContain('scripts/packages/distribution-cli-proof.test.ts');
+    expect(excludedToolingTests(['packages/core/docs/guide/start/tutorial.md']))
+      .not.toContain('scripts/packages/guide-tutorial.test.ts');
+    expect(excludedToolingTests(['packages/core/src/index.ts']))
+      .toContain('scripts/pgtap-parity.test.ts');
+    expect(excludedToolingTests(['scripts/pgtap-parity.mjs'])).toEqual([]);
   });
   it.each(Object.entries(TOOLING_INPUTS).flatMap(([test, inputs]) => inputs.map(input => [test, input] as const)))(
     'runs %s when its declared input %s changes', (test, input) => {
@@ -154,5 +184,36 @@ describe('local scope', () => {
       execFileSync(process.execPath, [script, ...args], { cwd, env });
       expect(readFileSync(output, 'utf8')).toBe(`${all.join('\n')}\n`);
     }
+  });
+});
+
+describe('git executable resolution', () => {
+  it('prefers the fixed /usr/bin/git binary with a locked PATH when executable', () => {
+    const dir = scratch(), preferred = join(dir, 'git');
+    writeFileSync(preferred, '#!/bin/sh\n');
+    chmodSync(preferred, 0o755);
+    expect(resolveGitExecutable({ preferred, pathValue: '/opt/homebrew/bin:/usr/local/bin' }))
+      .toEqual({ binary: preferred, path: '/usr/bin:/bin' });
+  });
+
+  it('falls back to an executable git file from PATH when /usr/bin/git is unavailable', () => {
+    const dir = scratch();
+    const dirWithSubdir = join(dir, 'dir-entry'), nonExecDir = join(dir, 'non-exec'), validDir = join(dir, 'valid');
+    mkdirSync(join(dirWithSubdir, 'git'), { recursive: true });
+    mkdirSync(nonExecDir, { recursive: true });
+    writeFileSync(join(nonExecDir, 'git'), '#!/bin/sh\n');
+    chmodSync(join(nonExecDir, 'git'), 0o644);
+    mkdirSync(validDir, { recursive: true });
+    writeFileSync(join(validDir, 'git'), '#!/bin/sh\n');
+    chmodSync(join(validDir, 'git'), 0o755);
+    const pathValue = [dirWithSubdir, nonExecDir, validDir].join(delimiter);
+    expect(resolveGitExecutable({ preferred: join(dir, 'missing-git'), pathValue }))
+      .toEqual({ binary: join(validDir, 'git'), path: pathValue });
+  });
+
+  it('falls back to bare git when neither preferred nor PATH contains an executable git', () => {
+    const empty = scratch();
+    expect(resolveGitExecutable({ preferred: join(empty, 'missing-git'), pathValue: empty }))
+      .toEqual({ binary: 'git', path: empty });
   });
 });
