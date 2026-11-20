@@ -391,11 +391,23 @@ describe('CI completion queue handoff', () => {
     expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
     expect(f.enqueue).not.toHaveBeenCalled();
   });
+  it('skips when the PR is disarmed during the final source run listing', async () => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 2 ? 'UNKNOWN' : 'MERGEABLE';
+      if (path.includes('/actions/workflows/published-tree-ci.yml/runs?') && f.pauseMergeability.mock.calls.length > 0) {
+        Object.assign(f.queuePr, { autoMergeRequest: null });
+      }
+    };
+    await expect(f.execute()).resolves.toEqual({ status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' });
+    expect(f.liveReads()).toBe(3);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
   it.each([
     ['a newer same-head run', 'a newer source run or attempt supersedes this completion'],
     ['a new attempt of the current run', 'source run or attempt changed'],
-    ['the same source run and attempt', undefined],
-  ])('rechecks source currency after final UNKNOWN clears with %s', async (scenario, refusal) => {
+  ])('refuses %s during the final pause before taking another snapshot', async (scenario, refusal) => {
     const f = handoffFixture();
     f.state.getHook = path => {
       if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 2 ? 'UNKNOWN' : 'MERGEABLE';
@@ -404,26 +416,43 @@ describe('CI completion queue handoff', () => {
       if (scenario === 'a newer same-head run') {
         f.listing.workflow_runs.push({ ...f.run, id: 101, conclusion: 'failure' });
         f.listing.total_count++;
+      } else {
+        f.run.run_attempt++;
       }
-      if (scenario === 'a new attempt of the current run') f.run.run_attempt++;
     });
-    if (refusal) {
-      await expect(f.execute()).rejects.toThrow(refusal);
-      expect(f.liveReads()).toBe(3);
-      expect(f.enqueue).not.toHaveBeenCalled();
-    } else {
-      await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
-      expect(f.enqueue).toHaveBeenCalledTimes(1);
-      const graphQL = expect.stringContaining('/graphql?');
-      expect(f.api.get.mock.calls.slice(-5)).toEqual([
-        [graphQL],
-        ['/repos/openlup/openlup/actions/runs/100'],
-        [expect.stringContaining('/actions/workflows/published-tree-ci.yml/runs?')],
-        ['/repos/openlup/openlup/collaborators/merge-owner/permission'],
-        [graphQL],
-      ]);
-    }
+    await expect(f.execute()).rejects.toThrow(refusal);
+    expect(f.liveReads()).toBe(2);
     expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each([
+    { mergeability: 'immediate MERGEABLE', pause: false },
+    { mergeability: 'UNKNOWN then MERGEABLE', pause: true },
+  ])('takes the final snapshot after the source check with $mergeability', async ({ pause }) => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = pause && f.liveReads() === 2 ? 'UNKNOWN' : 'MERGEABLE';
+    };
+    await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+    expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
+    expect(f.pauseMergeability).toHaveBeenCalledTimes(pause ? 1 : 0);
+    expect(f.liveReads()).toBe(pause ? 4 : 3);
+    const runPath = '/repos/openlup/openlup/actions/runs/100';
+    const listingPath = `/repos/openlup/openlup/actions/workflows/published-tree-ci.yml/runs?event=pull_request&head_sha=${receipt.head}&per_page=100`;
+    expect(f.api.get.mock.calls.filter(([path]) => path === runPath)).toHaveLength(pause ? 3 : 2);
+    expect(f.api.get.mock.calls.filter(([path]) => path === listingPath)).toHaveLength(pause ? 3 : 2);
+    const graphQL = expect.stringContaining('/graphql?');
+    expect(f.api.get.mock.calls.slice(-5)).toEqual([
+      [runPath],
+      [listingPath],
+      [graphQL],
+      ['/repos/openlup/openlup/collaborators/merge-owner/permission'],
+      [graphQL],
+    ]);
+    const reads = f.api.get.mock.invocationCallOrder;
+    const [enqueue] = f.enqueue.mock.invocationCallOrder;
+    expect(enqueue).toBeGreaterThan(reads.at(-2)!);
+    expect(enqueue).toBeLessThan(reads.at(-1)!);
   });
   it('bounds pauses independently across both mergeability checks', async () => {
     const f = handoffFixture();

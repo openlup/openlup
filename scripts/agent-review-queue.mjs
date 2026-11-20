@@ -211,9 +211,10 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     return response.data.repository.pullRequest;
   };
   const eligible = pr => pr.state === 'OPEN' && pr.isDraft === false && pr.merged === false && pr.baseRefName === 'main' && pr.headRefOid === source.head_sha;
-  const readMergeable = async checkIntent => {
+  const readMergeable = async (checkIntent, beforeRead) => {
     const maxReads = 7;
     for (let reads = 1; ; reads += 1) {
+      if (beforeRead) await beforeRead();
       const pr = await live();
       if (!eligible(pr) || !pr.autoMergeRequest || pr.mergeQueueEntry) return null;
       checkIntent?.(pr.autoMergeRequest);
@@ -259,12 +260,10 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
     env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit,
     sleep: () => { throw new Error('Current native review is unavailable at CI completion; no enqueue retry'); } });
-  await sourceCurrent();
   const pr = await readMergeable(currentIntent => {
     demand(currentIntent.enabledAt === intent.enabledAt && currentIntent.enabledBy?.login === login,
       'mergeability or auto-merge authority changed before enqueue');
-  });
-  await sourceCurrent();
+  }, sourceCurrent);
   if (!pr) return skipped;
   if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
   const finalAccess = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
