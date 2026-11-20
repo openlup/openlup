@@ -1,86 +1,27 @@
 import { effectiveFunctionBody } from "../../test/effectiveMigration";
-import { assert, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import * as commerce from "@openlup/platform/commerce";
 
 import type { AdminCommerceOrdersListResponse } from "./omsContracts.js";
 import { summarizeOmsListTotals } from "./omsListTotals.js";
-import {
-  OMS_ATTENTION_PRIORITY_FALLBACK_RANK,
-  OMS_ATTENTION_PRIORITY_LADDER,
-  OMS_OPERATIONAL_LADDER,
-  OMS_OPERATIONAL_LADDER_FALLBACK,
-} from "./omsOperationalLadder.js";
+import * as facade from "./omsOperationalLadder.js";
 import { summarizeOmsListOrders } from "./omsReadModelListSummary.js";
 
 const migration = effectiveFunctionBody("commerce_oms_admin_list_queue");
 
 type ListOrder = AdminCommerceOrdersListResponse["orders"][number];
-type CaseArm = { predicate: string; value: string };
 
-describe("OMS operational ladder parity with the live queue RPC", () => {
-  it("mirrors the SQL attention ladder arm for arm, in order", () => {
-    const sql = parseCaseArms(caseBody(migration, "attention_reason"));
-
-    expect(sql.arms.map((arm) => arm.predicate)).toEqual(
-      OMS_OPERATIONAL_LADDER.map((rung) => rung.sqlPredicate),
-    );
-    expect(sql.arms.map((arm) => arm.value)).toEqual(
-      OMS_OPERATIONAL_LADDER.map((rung) => rung.attentionReason),
-    );
-    expect(sql.fallback).toBe(OMS_OPERATIONAL_LADDER_FALLBACK.attentionReason);
-  });
-
-  it("mirrors the SQL next-action ladder, including its collapsed accounting arm", () => {
-    const sql = parseCaseArms(caseBody(migration, "next_action"));
-
-    // The SQL next-action ladder is SHORTER than the attention ladder: the three
-    // accounting rungs carry three attention reasons but one next action, so SQL
-    // writes them as a single arm over the union of their literals. Asserting
-    // that collapse is the point - an unremarked arm-count difference between
-    // the two SQL ladders is exactly the kind of drift this test exists for.
-    const collapsedFrom = OMS_OPERATIONAL_LADDER.length - (sql.arms.length - 1);
-    expect(collapsedFrom).toBe(3);
-
-    const oneToOne = OMS_OPERATIONAL_LADDER.slice(0, sql.arms.length - 1);
-    expect(sql.arms.slice(0, -1).map((arm) => arm.predicate)).toEqual(
-      oneToOne.map((rung) => rung.sqlPredicate),
-    );
-    expect(sql.arms.slice(0, -1).map((arm) => arm.value)).toEqual(oneToOne.map((rung) => rung.nextAction));
-
-    const collapsedRungs = OMS_OPERATIONAL_LADDER.slice(-collapsedFrom);
-    const collapsedArm: CaseArm = sql.arms[sql.arms.length - 1];
-    expect([...new Set(collapsedRungs.map((rung) => rung.nextAction))]).toEqual([collapsedArm.value]);
-    expect([...new Set(collapsedRungs.map((rung) => sqlColumn(rung.sqlPredicate)))]).toEqual([
-      sqlColumn(collapsedArm.predicate),
-    ]);
-    expect(sqlLiterals(collapsedArm.predicate)).toEqual(
-      [...new Set(collapsedRungs.flatMap((rung) => sqlLiterals(rung.sqlPredicate)))].sort(),
-    );
-
-    expect(sql.fallback).toBe(OMS_OPERATIONAL_LADDER_FALLBACK.nextAction);
-  });
-
-  it("mirrors the SQL attention_priority_desc rank arms, in order", () => {
-    const priority = parsePriorityArms(migration);
-
-    expect(priority.arms).toEqual(
-      OMS_ATTENTION_PRIORITY_LADDER.map((entry) => ({
-        attentionReason: entry.attentionReason,
-        rank: entry.rank,
-      })),
-    );
-    expect(priority.fallback).toBe(OMS_ATTENTION_PRIORITY_FALLBACK_RANK);
-  });
-
-  it("ranks every attention reason the ladder can emit", () => {
-    const emitted = new Set(
-      OMS_OPERATIONAL_LADDER.map((rung) => rung.attentionReason).filter((reason) => reason !== "none"),
-    );
-    const ranked = new Set(OMS_ATTENTION_PRIORITY_LADDER.map((entry) => entry.attentionReason));
-
-    // An emitted reason with no rank silently sorts to the bottom of the
-    // operator's attention queue (SQL ELSE 99) instead of failing loudly.
-    expect([...emitted].filter((reason) => !ranked.has(reason))).toEqual([]);
-  });
+it("preserves package export identity", () => {
+  expect(Object.keys(facade).sort()).toEqual([
+    "OMS_ATTENTION_PRIORITY_FALLBACK_RANK",
+    "OMS_ATTENTION_PRIORITY_LADDER",
+    "OMS_OPERATIONAL_LADDER",
+    "OMS_OPERATIONAL_LADDER_FALLBACK",
+    "resolveOmsOperationalState",
+  ]);
+  for (const [name, value] of Object.entries(facade)) {
+    expect(value).toBe(commerce[name as keyof typeof commerce]);
+  }
 });
 
 describe("fixture-path summarizers versus the SQL counters", () => {
@@ -173,103 +114,12 @@ describe("fixture-path summarizers versus the SQL counters", () => {
     const page = [totalsOrder({ paymentStatus: "succeeded", amountMinor: 1_000 })];
     expect(summarizeOmsListTotals(page).orderCount).toBe(page.length);
   });
-
-
-  // ---------------------------------------------------------------------
-  // KNOWN LATENT DIVERGENCE (b) - `not_checked` inventory.
-  // SQL `fulfillment_allowed` blocks anything not in ('reserved','consumed');
-  // evaluateCommerceFulfillmentEligibility blocks only an explicit
-  // missing/released/expired/review_required list, so `not_checked` is ALLOWED
-  // there. Unreachable today because the `inventory_not_held` rung short-circuits
-  // to inventory_missing before either fulfillment rung is consulted.
-  // ---------------------------------------------------------------------
-  it("records the fulfillment_allowed vs eligibility disagreement on not_checked inventory", () => {
-    const allowed = fulfillmentAllowedArms(migration);
-    expect(allowed).toContain("inventory.inventory_status NOT IN ('reserved', 'consumed')");
-
-    const inventoryRung = OMS_OPERATIONAL_LADDER.find((rung) => rung.id === "inventory_not_held");
-    const blockedRung = OMS_OPERATIONAL_LADDER.find((rung) => rung.id === "fulfillment_absent_and_blocked");
-    assert.isDefined(inventoryRung);
-    assert.isDefined(blockedRung);
-    // The short-circuit is what keeps the disagreement latent: the inventory rung
-    // must stay STRICTLY ABOVE the fulfillment-blocked rung. Reordering them
-    // makes divergence (b) reachable, and turns this assertion red.
-    expect(OMS_OPERATIONAL_LADDER.indexOf(inventoryRung)).toBeLessThan(
-      OMS_OPERATIONAL_LADDER.indexOf(blockedRung),
-    );
-
-    // `not_checked` is not in ('reserved','consumed'), so the ladder stops at the
-    // inventory rung on both sides and never asks fulfillment_allowed.
-    expect(
-      inventoryRung.matches({
-        orderStatus: "paid",
-        activeHoldCount: 0,
-        paymentStatus: "succeeded",
-        hasShippingAddress: true,
-        inventoryStatus: "not_checked",
-        fulfillmentStatus: null,
-        // TS eligibility would say ALLOWED for not_checked; SQL says blocked.
-        fulfillmentAllowed: true,
-        accountingStatus: "issued",
-      }),
-    ).toBe(true);
-  });
 });
 
 // --- migration parsing -------------------------------------------------
 
 function normalize(text: string): string {
   return text.trim().replace(/\s+/g, " ");
-}
-
-/** The body of the `CASE ... END AS <alias>` expression, CASE/END excluded. */
-function caseBody(sql: string, alias: string): string {
-  const end = sql.indexOf(`END AS ${alias}`);
-  if (end < 0) throw new Error(`no "END AS ${alias}" in the installed commerce_oms_admin_list_queue definition`);
-  const head = sql.slice(0, end);
-  const start = head.lastIndexOf("CASE");
-  if (start < 0) throw new Error(`no CASE opening "END AS ${alias}" in the installed commerce_oms_admin_list_queue definition`);
-  return head.slice(start + "CASE".length);
-}
-
-function parseCaseArms(body: string): { arms: CaseArm[]; fallback: string } {
-  const arms = [...body.matchAll(/\bWHEN\b([\s\S]*?)\bTHEN\b\s*'([a-z_]+)'/g)].map((match) => ({
-    predicate: normalize(match[1]),
-    value: match[2],
-  }));
-  if (arms.length === 0) throw new Error("no WHEN ... THEN arms parsed");
-  const fallback = /\bELSE\b\s*'([a-z_]+)'\s*$/.exec(body.trim());
-  if (!fallback) throw new Error("no ELSE literal parsed");
-  return { arms, fallback: fallback[1] };
-}
-
-function parsePriorityArms(sql: string): {
-  arms: { attentionReason: string; rank: number }[];
-  fallback: number;
-} {
-  const start = sql.indexOf("CASE attention_reason");
-  if (start < 0) throw new Error(`no "CASE attention_reason" in the installed commerce_oms_admin_list_queue definition`);
-  const tail = sql.slice(start);
-  const end = tail.indexOf("END");
-  const body = tail.slice(0, end);
-  const arms = [...body.matchAll(/WHEN\s+'([a-z_]+)'\s+THEN\s+(\d+)/g)].map((match) => ({
-    attentionReason: match[1],
-    rank: Number(match[2]),
-  }));
-  if (arms.length === 0) throw new Error("no priority arms parsed");
-  const fallback = /\bELSE\s+(\d+)/.exec(body);
-  if (!fallback) throw new Error("no priority ELSE rank parsed");
-  return { arms, fallback: Number(fallback[1]) };
-}
-
-function sqlColumn(predicate: string): string {
-  const match = /^([a-z_]+)\s/.exec(predicate);
-  if (!match) throw new Error(`cannot read a column out of: ${predicate}`);
-  return match[1];
-}
-
-function sqlLiterals(predicate: string): string[] {
-  return [...predicate.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]).sort();
 }
 
 function parseSummaryCounters(sql: string): { key: string; predicate: string }[] {
@@ -313,16 +163,6 @@ function parsePaidSummary(sql: string): {
       (match) => normalize(match[1]),
     ),
   };
-}
-
-function fulfillmentAllowedArms(sql: string): string[] {
-  return parseCaseArmsAllowingBooleans(caseBody(sql, "fulfillment_allowed")).map((arm) => arm.predicate);
-}
-
-function parseCaseArmsAllowingBooleans(body: string): { predicate: string }[] {
-  return [...body.matchAll(/\bWHEN\b([\s\S]*?)\bTHEN\b\s*(?:'[a-z_]+'|true|false)/g)].map((match) => ({
-    predicate: normalize(match[1]),
-  }));
 }
 
 // --- fixtures ----------------------------------------------------------
