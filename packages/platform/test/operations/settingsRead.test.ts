@@ -185,36 +185,49 @@ describe("settings goal search", () => {
     expect(entries.map(entry => entry.key)).toContain(key);
   });
 
+  it("ignores a nondecimal numeric character in a goal", () => {
+    expect(listSettings({ goal: "renewal ⅕" })).toEqual(listSettings({ goal: "renewal" }));
+  });
+
   it("puts the matching camelCase key first", () => {
     const { entries } = catalogue.listResult.parse(listSettings({ goal: "shipping.addressRegions" }));
     expect(entries[0]?.key).toBe("shipping.addressRegions");
   });
 
   const appKey = "offer.freeShippingFromMinor";
-  const appCatalogue = catalogueWithAppSettings([settingDescriptorSchema.parse({
+  const skuKey = "offer.maxSKUCount";
+  const deliveryKey = "offer.deliveryWindow";
+  const appCatalogue = catalogueWithAppSettings([
+    [appKey, "Set the free shipping threshold in currency minor units."],
+    [skuKey, "Set the maximum number of items per offer."],
+    [deliveryKey, "配送の時間帯を設定する。"],
+  ].map(([key, goal]) => settingDescriptorSchema.parse({
     schemaVersion: 1,
-    key: appKey,
+    key,
     domain: "offer",
     kind: "code",
-    goal: "Set the free shipping threshold in currency minor units.",
+    goal,
     runtime: { level: "read-only", reason: "Edit the application configuration and deploy." },
-    change: { file: "offer.ts", symbol: appKey },
+    change: { file: "offer.ts", symbol: key },
     rules: [],
     examples: [],
     fallback: null,
     defaultBasis: { kind: "neutral" },
     whyThisDefault: "The application config supplies the value.",
     effect: { appliesTo: "Future orders", frozenOn: [], impact: "money" },
-  })]);
+  })));
 
   it.each([
-    ["free shiping threshold", 0],
-    ["shipping", undefined],
-  ] as const)("finds the app declaration for %s", (goal, first) => {
+    ["free shiping threshold", appKey, 0],
+    ["shipping", appKey, undefined],
+    ["count", skuKey, undefined],
+    ["sku", skuKey, undefined],
+    ["配送", deliveryKey, undefined],
+  ] as const)("finds the app declaration for %s", (goal, key, first) => {
     const { entries } = appCatalogue.listResult.parse(listCatalogueSettings({ goal }, appCatalogue));
     const keys = entries.map(entry => entry.key);
-    expect(keys).toContain(appKey);
-    if (first !== undefined) expect(keys[first]).toBe(appKey);
+    expect(keys).toContain(key);
+    if (first !== undefined) expect(keys[first]).toBe(key);
   });
 
   it("limits partial matches to ten and preserves catalogue order for ties", () => {

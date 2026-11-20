@@ -80,8 +80,9 @@ export function catalogueWithAppSettings(additions: readonly z.infer<typeof desc
 }
 
 function searchTokens(text: string) {
-  return text.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2")
-    .toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  return text.replace(/([\p{Ll}\p{Nd}])(\p{Lu})/gu, "$1 $2")
+    .replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu, "$1 $2")
+    .toLowerCase().match(/[\p{L}\p{Nd}]+/gu) ?? [];
 }
 
 export function listCatalogueSettings(input: unknown, catalogue?: ReturnType<typeof loadSettingsCatalogue>) {

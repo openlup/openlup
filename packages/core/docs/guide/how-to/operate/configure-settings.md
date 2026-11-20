@@ -19,10 +19,11 @@ Try these arguments:
 - `explain commerce_setting_unknown`
 
 Each goal word matches the start of a word in the setting’s description, key,
-domain or search terms, and a goal with no letters or numbers returns no results.
-If any settings match every goal word, the list shows those in catalogue order.
-Otherwise it shows up to ten partial matches, with the most matching words
-first and ties in catalogue order.
+domain or search terms. A nonblank goal with no letters or decimal digits
+returns no results (a blank goal is refused with exit code 64). The list shows
+settings that match every goal word in catalogue order, or, if there are none,
+up to ten partial matches ranked by the number of matching words, with ties in
+catalogue order.
 
 The commands work offline. For settings with a value, `show` includes the value
 schema where available, the default and its source, the effect on future
