@@ -238,7 +238,7 @@ jobs:
 
   install-browser:
     name: install-browser (${{ matrix.groups }})
-    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ always() && needs.install-packages.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [install-packages]
     runs-on: ubuntu-latest
     timeout-minutes: 8
