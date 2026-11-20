@@ -247,6 +247,7 @@ describe("opt-in payment factory", () => {
       paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult } });
     expect(await ingress.receive(delivery)).toMatchObject({ status: 409, data: {
       error: "Provider payment amounts disagree. Review the payment before settling.",
+      reason: "provider_amount_mismatch", configuredAmountMinor: 2699, paidAmountMinor: 2599, currency: "EUR",
     } });
     expect(ingestPaymentEvent).not.toHaveBeenCalled();
     expect(applyPaymentResult).not.toHaveBeenCalled();

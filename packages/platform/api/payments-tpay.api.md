@@ -834,6 +834,8 @@ export declare function buildTpayTransactionPayload(input: TpayTransactionCreate
 /** Webhook settlement requires positive paid money. */
 export declare function paidMajorToMinor(value: unknown): number | null;
 export declare function readPaidAmountMinor(transaction: Record<string, unknown>, payments: Record<string, unknown>): number | null;
+/** Keep paid aliases in authority order, including a malformed leading field. */
+export declare function readPaidAmountsMinor(transaction: Record<string, unknown>, payments: Record<string, unknown>): (number | null)[];
 ```
 ## dist/payments/tpay/webhookJwsVerifier.d.ts
 

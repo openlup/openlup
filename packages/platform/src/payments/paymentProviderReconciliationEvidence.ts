@@ -44,7 +44,8 @@ export function terminalAmountMismatch(
   if (status.status === "succeeded" && status.amountMinor === null) {
     return "provider_amount_missing";
   }
-  if (status.amountMinor !== null && status.amountMinor !== attempt.amountMinor) {
+  if ((status.status === "succeeded" && status.failureReason === "provider_amount_mismatch")
+    || (status.amountMinor !== null && status.amountMinor !== attempt.amountMinor)) {
     return "provider_amount_mismatch";
   }
   if (status.status === "succeeded" && status.capturedAmountBasis !== "provider_capture_v1") {

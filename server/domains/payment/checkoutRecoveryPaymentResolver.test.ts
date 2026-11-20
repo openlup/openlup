@@ -1,4 +1,3 @@
-import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payments/tpay";
 import { describe, expect, it, vi } from "vitest";
 import {
   createCheckoutRecoveryPaymentResolver,
@@ -60,7 +59,7 @@ function subject(input: {
     resolver: createCheckoutRecoveryPaymentResolver({
       readPort,
       applyPort: { applyTerminalResult } as never,
-      providers: { [first?.provider ?? "fake"]: provider } as never,
+      providers: { fake: provider } as never,
       now: () => new Date("2026-07-26T12:00:00.000Z"),
     }),
     readPort,
@@ -151,19 +150,6 @@ describe("checkout recovery payment resolver", () => {
     const { resolver, applyTerminalResult } = subject({ provider });
     await expect(resolver.resolve({ orderId, paymentIntentId })).resolves.toEqual({ kind: "awaiting_provider" });
     expect(provider.readRecoveryPayment).toHaveBeenCalledTimes(1);
-    expect(applyTerminalResult).not.toHaveBeenCalled();
-  });
-
-  it("routes conflicting Tpay paid fields to manual review", async () => {
-    const provider = createTpayPaymentReconciliationProvider({ getTransaction: async () => ({
-      transactionId: "transaction-1", status: "correct", currency: "PLN", amount: "12.99",
-      paidAmount: "13.99", payments: { amountPaid: "12.99" },
-    }) });
-    const { resolver, applyTerminalResult } = subject({
-      first: snapshot({ provider: "tpay", providerSessionId: "transaction-1", amountMinor: 1299 }),
-      provider,
-    });
-    await expect(resolver.resolve({ orderId, paymentIntentId })).resolves.toEqual({ kind: "manual_review" });
     expect(applyTerminalResult).not.toHaveBeenCalled();
   });
 

@@ -162,6 +162,18 @@ export function createVerifiedPaymentIngress({
           return;
         }
       }
+      if (verifiedEvidence.kind === "money" && verifiedEvidence.provider === provider
+        && verifiedEvidence.outcome === "succeeded" && verifiedEvidence.money === null) {
+        const { configuredAmountMinor, paidAmountMinor, currency } = verifiedEvidence.providerAuditPayload ?? {};
+        if (typeof configuredAmountMinor === "number" && Number.isSafeInteger(configuredAmountMinor)
+          && typeof paidAmountMinor === "number" && Number.isSafeInteger(paidAmountMinor)
+          && configuredAmountMinor !== paidAmountMinor) {
+          sendBffError(res, "CONFLICT", "Provider payment amounts disagree. Review the payment before settling.");
+          Object.assign(res.data, { reason: "provider_amount_mismatch", configuredAmountMinor, paidAmountMinor,
+            currency: typeof currency === "string" ? currency : null });
+          return;
+        }
+      }
       try { event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy); }
       catch (error) {
         if (error instanceof Error && error.message === "payment_control_result_amount_mismatch") throw error;

@@ -58,11 +58,14 @@ export function normalizeStripeWebhookEvent(
 
   const canonicalEventType = mapStripeEventType(eventType);
   const providerPaymentId = resolveLinkagePaymentId(eventType, object);
-  // A success can follow partial capture. The requested amount still describes
-  // refusals and other events that keep their existing evidence semantics.
+  const configuredAmountMinor = readOptionalNumber(object, "amount");
+  const paidAmountMinor = capturedAmountMinor(object.amount_received);
+  const amountConflict = canonicalEventType === "payment.succeeded" && paidAmountMinor !== null
+    && configuredAmountMinor !== undefined && Number.isSafeInteger(configuredAmountMinor)
+    && configuredAmountMinor !== paidAmountMinor;
   const amountMinor = canonicalEventType === "payment.succeeded"
-    ? capturedAmountMinor(object.amount_received)
-    : readOptionalNumber(object, "amount") ?? readOptionalNumber(object, "amount_received") ?? null;
+    ? (amountConflict ? null : paidAmountMinor)
+    : configuredAmountMinor ?? readOptionalNumber(object, "amount_received") ?? null;
   const currency = readOptionalString(object, "currency")?.toUpperCase() ?? null;
   const occurredAt = readOccurredAt(rawPayload);
   const reusableMethod = extractReusableMethod(canonicalEventType, object);
@@ -81,6 +84,7 @@ export function normalizeStripeWebhookEvent(
     refundKind: refund.refundKind,
     rawPayload: {
       ...stripeWebhookPayload({ eventId: providerEventId, eventType, providerPaymentId, amountMinor, currency }, object),
+      ...(amountConflict ? { configuredAmountMinor, paidAmountMinor } : {}),
       ...(refund.snapshot ? { stripeRefundSnapshot: refund.snapshot } : {}),
     },
     reusableMethod,

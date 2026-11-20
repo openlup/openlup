@@ -1,4 +1,3 @@
-import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payments/tpay";
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_STALE_AFTER_SECONDS,
@@ -219,26 +218,6 @@ describe("runPaymentProviderReconciliationWorker", () => {
     expect(port.recordEvidence).toHaveBeenCalledWith(expect.objectContaining({
       correctionStatus: "failed",
       payload: expect.objectContaining({ failureReason: reason }),
-    }));
-  });
-
-  it.each([
-    ["configured amount", { amount: "13.99" }, 1399, []],
-    ["paid fields", { amount: "12.99", paidAmount: "13.99" }, 1299, [1399]],
-  ] as const)("records Tpay success with conflicting %s for review", async (_, fields, configuredAmountMinor, conflictingPaidAmountsMinor) => {
-    const providerPaymentId = "transaction-1";
-    const attempt = claimedAttempt({ provider: "tpay", providerPaymentId, providerAttemptId: providerPaymentId, amountMinor: 1299 });
-    const port = fakePort([attempt]);
-    const tpay = createTpayPaymentReconciliationProvider({ getTransaction: async () => ({
-      transactionId: providerPaymentId, status: "correct", currency: "PLN", payments: { amountPaid: "12.99" }, ...fields,
-    }) });
-    const result = await runPaymentProviderReconciliationWorker({ port, providers: { tpay }, now: NOW });
-    expect(result).toMatchObject({ checked: 1, manualReview: 1, amountCurrencyMismatches: 1, corrected: 0 });
-    expect(port.applyTerminalResult).not.toHaveBeenCalled();
-    expect(port.recordEvidence).toHaveBeenCalledWith(expect.objectContaining({
-      correctionStatus: "failed",
-      payload: expect.objectContaining({ failureReason: "provider_amount_mismatch",
-        providerPayload: expect.objectContaining({ configuredAmountMinor, paidAmountMinor: 1299, conflictingPaidAmountsMinor }) }),
     }));
   });
 

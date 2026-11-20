@@ -230,16 +230,18 @@ export function readPaidAmountMinor(
   transaction: Record<string, unknown>,
   payments: Record<string, unknown>,
 ): number | null {
-  // The authenticated transaction DTO reports paid money in payments.amountPaid.
-  // Preserve older explicitly paid aliases when that DTO field is absent.
-  for (const key of ["amountPaid", "paidAmount"]) {
-    if (Object.hasOwn(payments, key)) return readPaidMajor(payments[key]);
-  }
-  for (const key of ["paidAmountMinor", "tr_paid_minor"]) {
-    if (Object.hasOwn(transaction, key)) return readPaidMinor(transaction[key]);
-  }
-  for (const key of ["paidAmount", "amountPaid", "tr_paid"]) {
-    if (Object.hasOwn(transaction, key)) return readPaidMajor(transaction[key]);
-  }
-  return null;
+  return readPaidAmountsMinor(transaction, payments)[0] ?? null;
+}
+
+/** Keep paid aliases in authority order, including a malformed leading field. */
+export function readPaidAmountsMinor(
+  transaction: Record<string, unknown>,
+  payments: Record<string, unknown>,
+): (number | null)[] {
+  // The authenticated DTO reports paid money in payments.amountPaid.
+  return [
+    ...["amountPaid", "paidAmount"].filter(key => Object.hasOwn(payments, key)).map(key => readPaidMajor(payments[key])),
+    ...["paidAmountMinor", "tr_paid_minor"].filter(key => Object.hasOwn(transaction, key)).map(key => readPaidMinor(transaction[key])),
+    ...["paidAmount", "amountPaid", "tr_paid"].filter(key => Object.hasOwn(transaction, key)).map(key => readPaidMajor(transaction[key])),
+  ];
 }

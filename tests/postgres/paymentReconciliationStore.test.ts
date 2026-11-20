@@ -4,7 +4,6 @@ import type { PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresPaymentProviderReconciliationPort, createPostgresPaymentWebhookControlPort,
   createPostgresProviderPaymentControlPort, createVerifiedPaymentIngress, runPaymentProviderReconciliationWorker } from "@openlup/platform/payments";
-import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payments/tpay";
 import type { PaymentIngressPort } from "@openlup/platform/payments/contracts";
 import { lifecycleInstallation, type LifecycleInstallation } from "./subscriptionLifecycleClosureFixture.js";
 import { call } from "./subscriptionNativeFixture.js";
@@ -208,15 +207,17 @@ it("settles two simultaneous verified webhook deliveries once and replays the hi
 });
 
 it.each([
-  ["configured amount", { amount: "130.99" }, 13099, []],
-  ["paid fields", { amount: "129.99", paidAmount: "130.99" }, 12999, [13099]],
-] as const)("records a Tpay success with conflicting %s without settling native payment", async (_, fields, configuredAmountMinor, conflictingPaidAmountsMinor) => {
+  ["configured amount", 13099, []],
+  ["paid fields", 12999, [13099]],
+] as const)("records a provider success with conflicting %s without settling native payment", async (_, configuredAmountMinor, conflictingPaidAmountsMinor) => {
   const f = await fixture("delta");
   await age(f);
   const reconciliation = port();
-  const provider = createTpayPaymentReconciliationProvider({ getTransaction: async providerPaymentId => ({
-    transactionId: providerPaymentId, status: "correct", currency: "XXX", payments: { amountPaid: "129.99" }, ...fields,
-  }) });
+  const provider = { readPayment: async () => ({
+    status: "succeeded" as const, providerStatus: "correct", occurredAt: at,
+    amountMinor: 12999, currency: "XXX", failureReason: "provider_amount_mismatch",
+    rawPayload: { configuredAmountMinor, paidAmountMinor: 12999, conflictingPaidAmountsMinor },
+  }) };
   const result = await runPaymentProviderReconciliationWorker({
     port: { ...reconciliation, async claimStaleAttempts(input) {
       return (await reconciliation.claimStaleAttempts({ ...input, limit: 100 })).filter(row => row.paymentAttemptId === f.attempt);
@@ -230,8 +231,9 @@ it.each([
     (SELECT status FROM public.commerce_settlement_intents WHERE id=$2) AS settlement_status,
     (SELECT count(*)::int FROM public.payment_truth_events WHERE settlement_intent_id=$2 AND outcome='captured') AS captures`,
   [f.order, f.intent])).rows).toEqual([{ order_status: "pending_payment", settlement_status: "created", captures: 0 }]);
-  expect((await db.query(`SELECT correction_status, payload FROM public.payment_provider_reconciliation_runs WHERE payment_intent_id=$1`,
-    [f.intent])).rows).toMatchObject([{ correction_status: "failed", payload: { failureReason: "provider_amount_mismatch",
+  expect((await db.query(`SELECT payload FROM public.payment_provider_reconciliation_runs
+    WHERE payment_intent_id=$1 AND correction_status='failed'`, [f.intent])).rows)
+    .toMatchObject([{ payload: { failureReason: "provider_amount_mismatch",
       providerPayload: { configuredAmountMinor, paidAmountMinor: 12999, conflictingPaidAmountsMinor } } }]);
 });
 

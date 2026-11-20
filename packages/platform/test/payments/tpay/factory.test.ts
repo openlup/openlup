@@ -7,6 +7,7 @@ import { TpayTransactionDispatchError } from "../../../src/payments/tpay/tpayDis
 import { createTpayJwsFixture } from "./webhookJws.testFixtures.js";
 import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceProjection.js";
 import { createVerifiedPaymentIngress, readMethodLifecycleEvent } from "../../../src/payments/index.js";
+import { createNativeRenewalCodec, createPostgresProviderRenewalBinding, createPostgresRenewalSettlementPort } from "../../../src/subscriptions/index.js";
 import { createPostgresProviderPaymentRail } from "../../../src/payments/postgresProviderRail.js";
 import type { PaymentAdapterCapabilities, PaymentAttemptPort, TransientSecret } from "../../../src/payments/contracts/index.js";
 
@@ -577,6 +578,40 @@ it("preserves purpose and exact identity/money checks on readback", async () => 
   expect(await adapter.readbackPort.readPayment({ identity, expectedMoney: { ...expectedMoney, amountMinor: 0 }, purpose: "recovery" }))
     .toMatchObject({ kind: "unknown" });
 });
+it("keeps a native renewal awaiting provider when collected and configured money agree but paid fields conflict", async () => {
+  const good = config(), remote = "api-1", now = () => new Date(instant * 1000).toISOString();
+  good.http.fetchImpl = vi.fn(async url => ({ ok: true, status: 200, text: async () => "",
+    json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 7200 }
+      : { transactionId: remote, status: "correct", amount: "12.99", paidAmount: "13.99", payments: { amountPaid: "12.99" },
+        currency: "PLN", date: { realization: now() } } }));
+  const request = { settlementIntentId: "intent", orderId: "order", subscriptionId: "subscription",
+    amountMinor: 1299, currency: "PLN", externalAttemptRef: remote };
+  const executor = { query: vi.fn(async () => ({ rows: [{ id: "operation", order_id: request.orderId,
+    subscription_id: request.subscriptionId, amount_minor: request.amountMinor, currency_code: request.currency, cycle_snapshot: {} }] })) };
+  const truth = { dunningTemplateSlug: "dunning", recoveryUrlPath: "/recover", recoveryTemplateSlug: "recovered" };
+  const paymentRail = createPostgresProviderPaymentRail({ adapter: createTpayPaymentAdapter(good), executor, truth, mode: "test",
+    resolveMethodOwner: async () => null, resolveSavedMethodOwner: async () => null });
+  const codec = { ...createNativeRenewalCodec(), decode: () => ({
+    cycle: { status: "correlated" }, settlementChannelKey: paymentRail.provider,
+  }) as ReturnType<ReturnType<typeof createNativeRenewalCodec>["decode"]> };
+  const applyTerminalResult = vi.fn(), recordEvidence = vi.fn(async () => ({ reconciliationId: "recorded" }));
+  const renewal = createPostgresProviderRenewalBinding({ enabled: true, channelKey: paymentRail.provider, executor, codec, now, truth,
+    withTransaction: vi.fn(), settlement: db => createPostgresRenewalSettlementPort(db, codec), search: async () => [],
+    paymentRail: { ...paymentRail,
+      async readAttempt() {
+        return { orderId: request.orderId, intentStatus: "processing", settlementStatus: applyTerminalResult.mock.calls.length ? "settled" : "created",
+          amountMinor: request.amountMinor, currency: request.currency, requestPayload: {}, responsePayload: {},
+          paymentAttempt: { id: "attempt", paymentIntentId: request.settlementIntentId, paymentId: "payment", provider: paymentRail.provider,
+            status: "processing", providerAttemptId: remote, providerSessionId: remote, idempotencyKey: "key" } };
+      },
+      reconciliation: { ...paymentRail.reconciliation, applyTerminalResult, recordEvidence },
+    },
+  });
+  expect(await renewal.rail.readOutcome(request)).toMatchObject({ status: "unknown", disposition: "ambiguous" });
+  expect(recordEvidence).not.toHaveBeenCalled();
+  expect(applyTerminalResult).not.toHaveBeenCalled();
+});
+
 it("never reports underpaid or overpaid succeeded readback with expected money (I-1/J-1)", async () => {
   for (const status of ["paid", "correct"]) {
     for (const paidAmount of ["10.00", "20.00", "30.00"]) {

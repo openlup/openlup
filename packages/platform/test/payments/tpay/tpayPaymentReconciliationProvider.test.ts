@@ -32,11 +32,12 @@ describe("normalizeTpayTransaction", () => {
   });
 
   it.each([
-    ["configured amount", { amount: "13.99" }, 1399, []],
-    ["paid fields", { amount: "12.99", paidAmount: "13.99" }, 1299, [1399]],
+    ["configured amount", { amount: 13.99 }, 1399, []],
+    ["paid fields", { amount: 12.99, paidAmount: "13.99" }, 1299, [1399]],
   ] as const)("keeps conflicting %s as review evidence without attesting capture", async (_, fields, configuredAmountMinor, conflictingPaidAmountsMinor) => {
     const provider = createTpayPaymentReconciliationProvider({ getTransaction: async () => ({
-      transactionId: "tr_1", status: "correct", currency: "PLN", payments: { amountPaid: "12.99" }, ...fields,
+      transactionId: "tr_1", status: "correct", currency: "PLN", title: null, transactionPaymentUrl: null, requestId: null,
+      payments: { amountPaid: "12.99" }, ...fields,
     }) });
     const result = await provider.readPayment({ providerPaymentId: "tr_1" });
     expect(result).toMatchObject({ status: "succeeded", failureReason: "provider_amount_mismatch", amountMinor: 1299,

@@ -1,13 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payments/tpay";
-const normalizeTpayTransaction = (transaction: Record<string, unknown>) =>
+const providerForTransaction = (transaction: Record<string, unknown>) =>
   createTpayPaymentReconciliationProvider({ getTransaction: async () => ({ transactionId: "01HX", title: null,
-    status: "pending", transactionPaymentUrl: null, amount: null, currency: null, requestId: null, payments: {}, ...transaction }) })
-    .readPayment({ providerPaymentId: String(transaction.transactionId) });
+    status: "pending", transactionPaymentUrl: null, amount: null, currency: null, requestId: null, payments: {}, ...transaction }) });
+const normalizeTpayTransaction = (transaction: Record<string, unknown>) =>
+  providerForTransaction(transaction).readPayment({ providerPaymentId: String(transaction.transactionId) });
 import { classificationOf } from "../../../domains/payment/paymentProviderReconciliationEvidence.js";
 // Aliased at the import site: the factory is constructed in a dozen cases, and
 // the adapter's vendor name is a fact about the import, not about each case.
 import { createSupabasePaymentProviderReconciliationPort as createPort } from "./paymentProviderReconciliation.js";
+import { runPaymentProviderReconciliationWorker } from "../../../domains/payment/paymentProviderReconciliationWorker.js";
+import { createCheckoutRecoveryPaymentResolver } from "../../../domains/payment/checkoutRecoveryPaymentResolver.js";
+import { verifyPaymentAttemptNow } from "@openlup/platform/payments";
+import type { VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
+
+const transactionProvider = "tpay" as const;
+
 
 describe("createSupabasePaymentProviderReconciliationPort", () => {
   it("claims prepared attempts through the service-role RPC and permits missing provider payment ids", async () => {
@@ -92,6 +100,44 @@ describe("createSupabasePaymentProviderReconciliationPort", () => {
       limit: 5,
       claimKey: "claim-invalid-context",
     })).rejects.toThrow("invalid payment context");
+  });
+
+  it.each([
+    ["configured amount", { amount: 13.99 }, 1399, []],
+    ["paid fields", { amount: 12.99, paidAmount: "13.99" }, 1299, [1399]],
+  ] as const)("retains a success with conflicting %s for review across the managed payment paths", async (_, fields, configuredAmountMinor, conflictingPaidAmountsMinor) => {
+    const remote = "01HX";
+    const row = claimedRow({ provider: transactionProvider, amount_cents: 1299,
+      provider_payment_id: remote, provider_attempt_id: remote, provider_session_id: remote });
+    const provider = providerForTransaction({ status: "correct", currency: row.currency, payments: { amountPaid: "12.99" }, ...fields });
+    const providers = { [transactionProvider]: provider };
+    const client = fakeClient();
+    client.rpc.mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: [row], error: null })
+      .mockResolvedValueOnce({ data: { paymentReconciliation: { id: "rec-1" } }, error: null });
+    const port = createPort(client);
+    const now = () => new Date(row.local_updated_at);
+    expect(await runPaymentProviderReconciliationWorker({ port, providers, now: now().toISOString() }))
+      .toMatchObject({ checked: 1, manualReview: 1, corrected: 0 });
+    expect(client.rpc).toHaveBeenCalledWith("commerce_payment_control_record_reconciliation", expect.objectContaining({
+      p_correction_status: "failed",
+      p_payload: expect.objectContaining({ failureReason: "provider_amount_mismatch",
+        providerPayload: expect.objectContaining({ configuredAmountMinor, paidAmountMinor: 1299, conflictingPaidAmountsMinor }) }),
+    }));
+    const snapshot: VerifiableAttemptSnapshot = {
+      orderId: row.order_id, orderClientId: "client-1", orderMode: "one_time_order",
+      paymentIntentId: row.payment_intent_id, intentStatus: "processing", intentProviderPaymentId: remote,
+      paymentAttemptId: row.payment_attempt_id, paymentId: row.payment_id, attemptStatus: "processing",
+      provider: transactionProvider, providerAttemptId: remote, providerSessionId: remote,
+      amountMinor: row.amount_cents, currency: row.currency, localUpdatedAt: row.local_updated_at,
+    };
+    await expect(verifyPaymentAttemptNow({ snapshot, applyPort: port, providers, now }))
+      .resolves.toMatchObject({ status: "manual_review", verified: true, applied: false });
+    const recovery = createCheckoutRecoveryPaymentResolver({ providers, applyPort: port, now,
+      readPort: { readVerifiableAttempt: async () => snapshot } });
+    await expect(recovery.resolve({ orderId: snapshot.orderId, paymentIntentId: snapshot.paymentIntentId }))
+      .resolves.toEqual({ kind: "manual_review" });
+    expect(client.rpc).not.toHaveBeenCalledWith("commerce_payment_control_apply_reconciliation_result", expect.anything());
   });
 
   it("records reconciliation evidence through payment-control", async () => {
@@ -554,7 +600,7 @@ it("carries diagnostics to the existing atomic persistence input without changin
   const normalized = await normalizeTpayTransaction({ transactionId: "01HX", status: "pending", payments: { attempts: [{ paymentErrorCode: "105" }] } });
   const result = await createPort({ rpc }).applyTerminalResult({
     idempotencyKey: "reconcile:attempt", expectedOrderId: "order", expectedPaymentIntentId: "intent",
-    expectedPaymentAttemptId: "attempt", expectedPaymentId: "payment", provider: "tpay", providerPaymentId: "01HX",
+    expectedPaymentAttemptId: "attempt", expectedPaymentId: "payment", provider: transactionProvider, providerPaymentId: "01HX",
     localStatus: "processing", providerStatus: "pending", resultStatus: "failed", occurredAt: "2026-09-11T10:00:00Z",
     failureReason: normalized.failureReason, checkedAt: "2026-09-11T10:00:00Z", ...classificationOf("failed", normalized),
     payload: { providerPayload: normalized.rawPayload },

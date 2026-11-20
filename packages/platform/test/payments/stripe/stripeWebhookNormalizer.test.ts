@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalizeStripeWebhookEvent } from "../../../src/payments/stripe/stripeWebhookNormalizer.js";
 
 describe("normalizeStripeWebhookEvent", () => {
-  it("maps payment_intent.succeeded into the plural handler's normalized shape", () => {
+  it("maps a conflicting payment_intent.succeeded without eligible capture money", () => {
     const event = normalizeStripeWebhookEvent({
       id: "evt_succeeded_1",
       type: "payment_intent.succeeded",
@@ -26,8 +26,9 @@ describe("normalizeStripeWebhookEvent", () => {
       providerPaymentId: "pi_1",
       paymentIntentId: null,
       paymentAttemptId: null,
-      amountMinor: 4990,
+      amountMinor: null,
       currency: "EUR",
+      rawPayload: { configuredAmountMinor: 5990, paidAmountMinor: 4990 },
       occurredAt: "2027-01-15T08:00:00.000Z",
       reusableMethod: null,
     });
