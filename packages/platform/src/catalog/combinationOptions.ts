@@ -16,6 +16,10 @@ const quantityOptionV2Schema = z.object({
 
 type Refuse = (code: CatalogCombinationCode, path: string) => never;
 
+export function combinationFindingPointer(parts: readonly PropertyKey[]): string {
+  return parts.map(part => `/${String(part).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
+}
+
 export function selectCombinationAxes(
   definition: CatalogProductTypeInput, axes: readonly string[], path: (key: string, index: number) => string, refuse: Refuse,
 ): ReadonlySet<string> {
@@ -81,9 +85,8 @@ export function validateDraftCombinations(
     // The released validator checks axes only when it reaches a complete SKU.
     const skuAxes = selected ?? selectCombinationAxes(definition, axes, key => `skus.${index}.axes.${key}`, refuse);
     const path = jsonPointers ? `/skus/${index}/options` : `skus.${index}.options`;
-    const separator = jsonPointers ? "/" : ".";
     const identity = canonicalizeCombinationOptions(definition, skuAxes, sku.options,
-      key => key === undefined ? path : `${path}${separator}${key}`, refuse);
+      key => key === undefined ? path : path + (jsonPointers ? combinationFindingPointer([key]) : `.${key}`), refuse);
     const bytes = Buffer.from(identity.canonicalOptionBytes).toString("hex");
     if (combinations.has(bytes)) refuse("duplicate_combination", path);
     combinations.add(bytes);

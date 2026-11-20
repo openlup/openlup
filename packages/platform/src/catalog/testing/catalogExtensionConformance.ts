@@ -9,13 +9,12 @@ import {
 } from "../index.js";
 import { validateDraftFacts } from "../draftFacts.js";
 import { validateDraftAttributes } from "../attributeValues.js";
-import { validateDraftCombinations } from "../combinationOptions.js";
+import { combinationFindingPointer as pointer, validateDraftCombinations } from "../combinationOptions.js";
 import { verifyCatalogRulesAtInstall } from "../publicationRules.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
 
 const boundary = "Offline definitions, exact quantities, supplied v1–v3 drafts, attribute validation/projection preparation and V2 combination fixtures. Draft admission checks operation and price shape. Reference evidence, retained options and refusal records are fixture observations. Category graphs, tax intervals, cadence, promotion grammar, price execution and publication require other evidence. Installed versions, database references, listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied by the checker.";
 const command = "npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json";
-const pointer = (parts: readonly PropertyKey[]): string => parts.map(part => `/${String(part).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const closed = (value: unknown, keys: readonly string[]): boolean => object(value) && Object.keys(value).every(key => keys.includes(key));
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
@@ -99,14 +98,14 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
         unknown: ["Installed and runtime state; see boundary"] } });
   }
   // Only shared owner calls enter this boundary; parsing, checker logic and CLI I/O remain outside.
-  async function owner<T>(path: string, work: () => T | Promise<T>): Promise<T | undefined> {
+  async function owner<T>(path: string, work: () => T | Promise<T>, combinationPath: "dot" | "pointer" = "dot"): Promise<T | undefined> {
     try { return await work(); }
     catch (error) {
       if (error instanceof SyntaxError) throw error;
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
       if (!OWNER_INPUT_CODES.has(named)) throw error;
       const suffix = error instanceof CatalogCombinationError
-        ? error.path.startsWith("/") ? error.path : pointer(error.path.split(".")) : "";
+        ? combinationPath === "pointer" ? error.path : pointer(error.path.split(".")) : "";
       add(named, path + suffix);
       return undefined;
     }
@@ -205,7 +204,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
         add(issue.code, path + issue.path, "", issue.code === "attribute_reference_unresolved");
       await owner(path, () => validateDraftCombinations(definition, payload, (code, suffix) => {
         throw new CatalogCombinationError(code, suffix);
-      }, true));
+      }, true), "pointer");
     }
     if (contentChecked) packsWithContent++;
     for (const [i, fixture] of (quantities ?? []).entries()) {
