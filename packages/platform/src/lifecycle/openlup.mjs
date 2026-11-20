@@ -8,11 +8,12 @@ import { parseArgs } from "node:util";
 const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
 openlup verify [--app ./application-observations.mjs] [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
+openlup catalogue project --trusted-packs ./owned/catalogue.ts [--json]
 openlup settings list|show|preview|explain [--help] [--json] (experimental)
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
 Verify loads no app implicitly. --app explicitly trusts and imports application code exporting createVerificationInput(); that module must only assemble observations and read-only probes, must not write stdout, and must close its own resources before returning/report completion. The CLI does not sandbox that module. Only the supplied schema observer is invoked by diagnosis; routes and jobs never run.
-Catalogue reads JSON text only; the supplied file is never imported. Reference and refusal records are fixture evidence. Application content validation is unavailable offline. PASS grants no install, migration, publication or activation authority.
+Catalogue check reads inert JSON. Catalogue project imports an explicitly trusted module exporting catalogueConformance with the operator’s process permissions and checks an external scratch subject. PASS grants no install, migration, publication or activation authority.
 Settings reads the catalogue offline by default. Connected show and preview use --database-url and explicit --app bindings where needed. Preview takes --value <json> or --value - for stdin. Settings JSON uses schemaVersion=1. A completed preview with an invalid policy exits 0, refusals exit 1, invalid syntax/input exits 64, and operation or app loading failures exit 74.
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid invocation/JSON, 74 operation or application loading failure. JSON uses formatVersion=1, one object on stdout.
 `;
@@ -106,11 +107,13 @@ async function main(args) {
     args, options: {
       json: { type: "boolean" }, help: { type: "boolean" },
       root: { type: "string" }, from: { type: "string" }, to: { type: "string" },
-      "schema-version": { type: "string" }, app: { type: "string" }, packs: { type: "string" },
+      "schema-version": { type: "string" }, app: { type: "string" }, packs: { type: "string" }, "trusted-packs": { type: "string" },
     }, strict: true, allowPositionals: true,
   });
   json = values.json === true;
-  if (values.help) {
+  if (values["trusted-packs"] !== undefined && (positionals[0] !== "catalogue" || positionals[1] !== "project" || values.packs !== undefined || values.app !== undefined)) {
+    refuse(64, "OPENLUP_E_CLI_INPUT", "Trusted pack paths are exclusive to catalogue project.", "Use one documented catalogue input flag.");
+  } else if (values.help) {
     emit({ command: "help", state: "complete", exitCode: 0, help }, help.trimEnd());
   } else if (positionals[0] === "upgrade" && ["plan", "apply"].includes(positionals[1]) && positionals.length === 2 && values.app === undefined && values.packs === undefined && values.root && values.from && values.to && /^(0|[1-9][0-9]*)$/u.test(values["schema-version"] ?? "") && Number.isSafeInteger(Number(values["schema-version"]))) {
     const command = `upgrade ${positionals[1]}`;
@@ -159,23 +162,12 @@ async function main(args) {
       const exitCode = report.state === "ready" ? 0 : report.state === "unknown" ? 2 : 1;
       emit({ command: "verify", exitCode, ...report, findings, boundary }, `verify: ${report.state}\n${boundary}\n${findings.map(renderFinding).join("\n")}`.trimEnd());
     }
-  } else if (positionals.length === 2 && positionals[0] === "catalogue" && positionals[1] === "check"
-    && typeof values.packs === "string" && values.packs.length > 0
+  } else if (positionals.length === 2 && positionals[0] === "catalogue"
+    && (positionals[1] === "check" ? values.packs : positionals[1] === "project" && values["trusted-packs"])
     && ![values.app, values.root, values.from, values.to, values["schema-version"]].some(value => value !== undefined)) {
     validatingInput = false;
-    // eslint-disable-next-line no-restricted-syntax -- tool entry loads the installed testing subpath; ordinary catalog cannot import testing
-    const { runCatalogExtensionConformance } = await import("@openlup/platform/catalog/testing");
-    const text = await fs.readFile(resolve(values.packs), "utf8");
-    let report;
-    try { report = await runCatalogExtensionConformance(text); }
-    // Checker failures default to 74: only the JSON.parse tag gives 64; owner input codes give 1; integrity failures give 74.
-    catch (error) {
-      if (error instanceof SyntaxError && error[Symbol.for("openlup.catalogue.json.parse")] === true) validatingInput = true;
-      throw error;
-    }
-    const recheck = "npx --no -- openlup " + process.argv.slice(2).map(value => /^[A-Za-z0-9_./=-]+$/u.test(value) ? value : "'" + value.replaceAll("'", "'\"'\"'") + "'").join(" ");
-    report.findings = report.findings.map(finding => ({ ...finding, recheck }));
-    emit({ command: "catalogue check", ...report }, `catalogue check: ${report.state}\n${report.boundary}\n${report.findings.map(renderFinding).join("\n")}`.trimEnd());
+    const { runCatalogue } = await import("./catalogueProject.mjs");
+    await runCatalogue(positionals.join(" "), args, values.packs ?? values["trusted-packs"], json, { emit, refuse, renderFinding });
   } else {
     refuse(64, "OPENLUP_E_CLI_INPUT", "Command or required options do not match the public syntax.", "Use openlup --help and explicit input paths.");
   }

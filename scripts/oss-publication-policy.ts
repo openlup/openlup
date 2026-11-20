@@ -66,7 +66,7 @@ export const PUBLIC_PACKAGE_COMMANDS: PublicPackageCommand[] = [
   publicCommand("test:scoped", "scope_file=$(mktemp) && trap 'rm -f \"$scope_file\"' EXIT && export OPENLUP_VITEST_EXCLUDE_FILE=\"$scope_file\" && node scripts/ci-test-scope.mjs && npm test"),
 ];
 export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] = [
-  { path: "examples/neutral-store/package.json", digest: "sha256-2f05e63cbad54452e990dad06a9cf6978160f30d192d5349d50cd408dd7873d4" },
+  { path: "examples/neutral-store/package.json", digest: "sha256-c30f60b239d95d16513deb232dc384112c279837aa3e0c13363dba086d0da31d" },
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
   { path: "packages/core/package.json", digest: "sha256-45f672a598c2c3f1d90c2a84fe2ddda11fb54315e2c52462691d2b22ca8dc7a6" },
   { path: "packages/outbox/package.json", digest: "sha256-c1989ac91260eb152a27b461f4eee0db11f04d9f17cccedc9bf41958ca0d3ef6" },
@@ -124,7 +124,7 @@ export function publicPublicationCatalogDigests(source: string) { const catalog 
 export const isGuidePageArea = (path: string): boolean => /^packages\/core\/docs\/guide(?:\/|$)/u.test(path);
 export const isGuidePage = (path: string): boolean => /^packages\/core\/docs\/guide\/(?:[a-z0-9][a-z0-9-]*\/)*[A-Za-z0-9][A-Za-z0-9_-]*\.md$/u.test(path);
 // The copied catalogue sample is documentation material, not an execution entrypoint.
-const isCatalogueSkeleton = (path: string): boolean => /^packages\/core\/docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/catalogue\.json$/u.test(path);
+export const isCatalogueSkeleton = (path: string): boolean => /^packages\/core\/docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/(?:catalogue\.json|(?:catalogue|pack|fixtures)\.ts)$/u.test(path);
 /** Regular readable Markdown or the closed copied sample; executable modes remain refused. */
 export function validateGuidePage(path: string, bytes: string | Buffer, mode: string): string {
   if ((!isGuidePage(path) && !isCatalogueSkeleton(path)) || mode !== "100644") throw new Error(`${path}: guide pages must be docs/guide/**/*.md with lowercase directories, regular and non-executable`);

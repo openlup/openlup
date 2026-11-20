@@ -1316,21 +1316,13 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
-Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
-`runCatalogExtensionConformance`. The existing bin runs
-`npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
-See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
-for the explicit subject, copied skeleton, supported offline checks and pending
-owners. The entry accepts JSON text and returns a Promise; the CLI reads text
-without importing user code. Attribute and combination fixtures reuse their
-owners. Content validation is unavailable offline. Refusal records check
-observations, and retained options do not prove stored identities. Quantity
-fixtures admit closed primitive fields before handoff. Only allowlisted owner
-input errors become exit-1 findings at the input path. Other exceptions propagate
-unchanged: the direct promise rejects and the CLI returns 74 without raw errors.
-The default is 74; only the tagged `JSON.parse` site gives 64. Integrity failures
-are excluded from the input allowlist and give 74. PASS grants no installation,
-migration, publication or activation authority.
+Run `openlup catalogue project --trusted-packs ./owned/catalogue.ts --json`
+to check trusted pack definitions and fixtures with their content validators.
+The module executes with the operator's permissions. The report identifies the
+scratch JSON and gives an inert replay command. `catalogue check --packs` and
+`runCatalogExtensionConformance` from `@openlup/platform/catalog/testing` read
+inert JSON. See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
+for the copied skeleton, offline checks and evidence limits.
 
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to
 `./catalog/contracts`. Descriptors preserve readonly literal type, unit, option,

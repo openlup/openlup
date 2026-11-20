@@ -365,7 +365,18 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
   rmSync(workspace, { recursive: true, force: true });
-  return () => phase("installed-application-and-owned-bytes", () => { assertCompleteStarter(app, to); checkUpgradeFiles(); });
+  return () => phase("installed-application-and-owned-bytes", () => {
+    assertCompleteStarter(app, to); checkUpgradeFiles();
+    if (to.files["package.json"]?.includes('"catalogue:check:source"')) {
+      const scratch = dirname(app);
+      for (const script of ["catalogue:check", "catalogue:check:source"]) {
+        const report = JSON.parse(execFileSync("npm", ["run", "--silent", script], { cwd: app, encoding: "utf8",
+          env: { ...isolatedConsumerEnv(), TMPDIR: scratch, TMP: scratch, TEMP: scratch } }));
+        assert.equal(report.command, script.endsWith(":source") ? "catalogue project" : "catalogue check");
+        assert.equal(report.exitCode, 0);
+      }
+    }
+  });
 }
 
 // CLI refusal reports can omit the command-specific payload. The assertions

@@ -7,8 +7,11 @@ import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import { syncBuiltinESMExports } from "node:module";
 import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.js";
+import { projectCatalogExtensionConformance } from "../../src/catalog/testing/catalogExtensionConformance.js";
 import { catalogPackIssues, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
-  validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError } from "../../src/catalog/index.js";
+  validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError,
+  catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler } from "../../src/catalog/index.js";
+import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import type { CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
 import type { CatalogPackInput, CatalogProductTypeRef, AttributeDefinition, CatalogAttributeInput, CatalogAttributeReferenceResolution } from "../../src/catalog/index.js";
 
@@ -21,6 +24,100 @@ function pack(): CatalogPackInput {
 const checkSubject = (value: unknown) => runCatalogExtensionConformance(JSON.stringify(value));
 function check(value: CatalogPackInput) { return checkSubject({ packs: [{ pack: value }] }); }
 const draft = () => ({ schemaVersion: 1 as const, product: { id: "00000000-0000-4000-8000-000000000001", type: { key: "stationery:item", version: 1 }, dimensions: [] }, skus: [] });
+const project = (source: unknown) => {
+  const projection = projectCatalogExtensionConformance(source);
+  return projection.check(projection.subject);
+};
+
+describe("trusted catalogue projection", () => {
+  it("compares v2 and v3 draft admission and validation to their owners", async () => {
+    const p = pack(), base = draft();
+    p.types[0].validateContent = () => [{ code: "title_required", path: "title" }];
+    const registry = createCatalogProductTypeRegistry(p.types);
+    const skuId = "00000000-0000-4000-8000-000000000002";
+    const price = { schemaVersion: 1, commandKey: "price:one", variantId: skuId, priceListId: skuId,
+      mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 900, expected: { entryId: null, unitPriceMinor: null } };
+    const v2 = { ...base, schemaVersion: 2, product: { ...base.product, sharedContent: { title: "" } },
+      skus: [{ id: skuId, productId: base.product.id, options: {}, priceOperations: [price] }] };
+    const op = { op: "create_product", productId: base.product.id, productSlug: "notebook", name: "Notebook" };
+    const v3 = { ...v2, schemaVersion: 3, product: { ...base.product, sharedContent: { schemaVersion: 1, catalogAction: "create",
+      presentation: {}, offerMemberships: [], requestedModes: [], publicationSkus: [] } },
+      publication: { kind: "release", evidence: {}, operations: [op] } };
+    const validDrafts = [catalogDraftPayloadV2Schema.parse(v2), catalogDraftPayloadV3Schema.parse(v3)];
+    for (const input of validDrafts) {
+      const owner = await validateCatalogDraftV2(input.schemaVersion === 2 ? input : catalogDraftV3ValidationPayload(input), registry);
+      expect(owner).toEqual({ valid: false, issues: [{ code: "title_required", path: "product.sharedContent.title" }] });
+      const report = await project({ packs: [{ pack: p, drafts: [input] }] });
+      expect(report.exitCode).toBe(1);
+      expect(report.findings).toEqual([expect.objectContaining({ code: "title_required", path: "/packs/0/drafts/0/product/sharedContent/title" })]);
+    }
+    for (const broken of [
+      { ...v3, publication: { ...v3.publication, operations: [{ ...op, name: 7 }] } },
+      { ...v3, skus: [{ ...v3.skus[0], priceOperations: [{ ...price, unitPriceMinor: "900" }] }] },
+    ]) {
+      const owner = catalogDraftPayloadV3Schema.safeParse(broken);
+      expect(owner.success).toBe(false);
+      if (owner.success) throw new Error("Invalid v3 admitted");
+      const findings = (await project({ packs: [{ pack: p, drafts: [broken] }] })).findings;
+      expect(findings.map(({ code, path }) => ({ code, path }))).toEqual(owner.error.issues.map(issue =>
+        ({ code: "draft_input_invalid", path: "/packs/0/drafts/0/" + issue.path.join("/") })).sort((a, b) => a.path.localeCompare(b.path)));
+    }
+  });
+
+  it("requires executed content per pack and keeps the draft cap per draft", async () => {
+    const p = pack(), base = draft();
+    const callback = vi.fn(() => []);
+    p.types[0].validateContent = callback;
+    const requiredChecks = ["draft-content"];
+    for (const drafts of [[], [base]]) {
+      expect((await project({ packs: [{ pack: p, drafts }], requiredChecks })).exitCode).toBe(2);
+    }
+    expect(callback).not.toHaveBeenCalled();
+    const large = { ...base, product: { ...base.product, sharedContent: "x".repeat(600_000) } };
+    expect(catalogDraftPayloadSchema.safeParse(large).success).toBe(true);
+    const projected = projectCatalogExtensionConformance({ packs: [{ pack: p, drafts: [large, large] }], requiredChecks });
+    expect(Buffer.byteLength(projected.subject)).toBeGreaterThan(1_048_576);
+    expect((await projected.check(projected.subject)).exitCode).toBe(0);
+    expect(callback).toHaveBeenCalledTimes(2);
+    await expect(projected.check(projected.subject + " ")).rejects.toThrow("bytes differ");
+    const second = { ...p, namespace: "example", types: [{ ...p.types[0], key: "example:item" }] };
+    expect((await project({ packs: [{ pack: p, drafts: [large] }, { pack: second }], requiredChecks })).exitCode).toBe(2);
+    expect((await runCatalogExtensionConformance(projected.subject)).exitCode).toBe(2);
+  });
+
+  it("refuses non-JSON values without coercion or invoking accessors", () => {
+    const getter = vi.fn(() => 0), cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    const values = [undefined, NaN, Infinity, -0, 1n, Symbol(), () => [], new Date(0),
+      Array(1), Object.assign([0], { extra: true }), { [Symbol()]: 1 }, cycle,
+      Object.defineProperty({}, "hidden", { value: 0 }),
+      Object.defineProperty({}, "getter", { enumerable: true, get: getter }),
+      { packs: { 0: { pack: { types: [{ validateContent: () => [] }] } } } }];
+    for (const value of values) expect(() => projectCatalogExtensionConformance({ packs: [], value })).toThrow();
+    expect(() => projectCatalogExtensionConformance(values.at(-1))).toThrow();
+    expect(getter).not.toHaveBeenCalled();
+  });
+
+  it("requires independently executed refusal evidence and measures zero draft apply calls", async () => {
+    const p = pack(), base = draft(), payload = { ...base, product: { ...base.product, sharedContent: {} } };
+    const issue = { code: "title_required", path: "product.sharedContent.title" };
+    p.types[0].validateContent = () => [{ code: issue.code, path: "title" }];
+    p.capabilities = { recurring: false };
+    const fixture = { name: "local refusal", capability: "recurring", expectedCode: issue.code, observedCode: issue.code, zeroEffects: true };
+    const report = await project({ packs: [{ pack: p, refusals: [fixture] }], requiredChecks: ["owner-refusals"] });
+    expect(report.exitCode).toBe(2);
+    expect(report.findings).toEqual([expect.objectContaining({ code: "conformance_owner_unavailable", path: "/requiredChecks/0" })]);
+    const apply = vi.fn();
+    const handler = createCatalogDraftHandler({ registry: createCatalogProductTypeRegistry(p.types),
+      store: { get: async () => null, list: async () => ({ items: [], nextCursor: null }), apply },
+      authorizeOperator: async () => ({ actorId: "operator:proof" }) });
+    expect(await handler.execute({ schemaVersion: 1, action: "create", draftId: base.product.id,
+      commandKey: "refused", expectedRevision: 0, payload }, {})).toEqual({
+      outcome: "validation_issue", reason: "draft_payload_invalid", issues: [issue],
+    });
+    expect(apply).not.toHaveBeenCalled();
+  });
+});
 
 describe("offline catalogue conformance", () => {
   it("conformance_reuses_row_validators", async () => {

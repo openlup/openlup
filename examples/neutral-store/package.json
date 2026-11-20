@@ -15,7 +15,8 @@
     "test": "node --experimental-strip-types --test",
     "test:browser": "playwright test",
     "settings": "openlup settings --app ./owned/settings-host.ts",
-    "catalogue:check": "openlup catalogue check --packs ./owned/catalogue.json --json"
+    "catalogue:check": "openlup catalogue check --packs ./owned/catalogue.json --json",
+    "catalogue:check:source": "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json"
   },
   "dependencies": {
     "@openlup/core": "file:artifacts/openlup-core.tgz",
