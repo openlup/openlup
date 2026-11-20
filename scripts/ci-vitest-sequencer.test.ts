@@ -1,0 +1,117 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+import type { TestSpecification, Vitest } from "vitest/node";
+import { digestKeyForPath, type DurationSections } from "./ci-vitest-duration-keys.ts";
+import {
+  DEFAULT_WEIGHTS_PATH,
+  WeightedSequencer,
+  loadSequencerWeights,
+  sortTestSpecificationsByWeight,
+} from "./ci-vitest-sequencer.ts";
+
+function makeSpec(rootDir: string, relativePath: string): TestSpecification {
+  return { moduleId: resolve(rootDir, relativePath) } as unknown as TestSpecification;
+}
+
+describe("ci-vitest-sequencer", () => {
+  it("sorts heaviest pinned files first regardless of alphabetical order or file size, supporting digest keys", () => {
+    const rootDir = "/repo";
+    const manifest: DurationSections = {
+      defaultDurationMs: 100,
+      durationsMs: {
+        "api/small-fast.test.ts": 250,
+        [digestKeyForPath("src/digest-heavy.test.ts")]: 120_000,
+        "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts": 506_000,
+        "tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts": 502_000,
+      },
+    };
+    const input = [
+      makeSpec(rootDir, "api/small-fast.test.ts"),
+      makeSpec(rootDir, "src/digest-heavy.test.ts"),
+      makeSpec(rootDir, "tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts"),
+      makeSpec(rootDir, "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts"),
+    ];
+    const snapshot = [...input];
+
+    const sorted = sortTestSpecificationsByWeight(input, manifest, rootDir);
+
+    expect(input).toEqual(snapshot);
+    expect(sorted.map((spec) => spec.moduleId)).toEqual([
+      resolve(rootDir, "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts"),
+      resolve(rootDir, "tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts"),
+      resolve(rootDir, "src/digest-heavy.test.ts"),
+      resolve(rootDir, "api/small-fast.test.ts"),
+    ]);
+  });
+
+  it("assigns defaultDurationMs to unweighed files and tie-breaks deterministically by code-unit order", () => {
+    const rootDir = "/repo";
+    const manifest: DurationSections = {
+      defaultDurationMs: 500,
+      durationsMs: {
+        "z/lighter-than-default.test.ts": 100,
+        "z/heavier-than-default.test.ts": 900,
+        "m/equal-to-default.test.ts": 500,
+      },
+    };
+    const input = [
+      makeSpec(rootDir, "z/lighter-than-default.test.ts"),
+      makeSpec(rootDir, "src/unweighed-b.test.ts"),
+      makeSpec(rootDir, "src/Unweighed-A.test.ts"),
+      makeSpec(rootDir, "m/equal-to-default.test.ts"),
+      makeSpec(rootDir, "z/heavier-than-default.test.ts"),
+    ];
+
+    const sorted = sortTestSpecificationsByWeight(input, manifest, rootDir);
+
+    expect(sorted.map((spec) => spec.moduleId)).toEqual([
+      resolve(rootDir, "z/heavier-than-default.test.ts"),
+      resolve(rootDir, "m/equal-to-default.test.ts"),
+      // Code-unit order places uppercase 'U' (0x55) before lowercase 'u' (0x75).
+      resolve(rootDir, "src/Unweighed-A.test.ts"),
+      resolve(rootDir, "src/unweighed-b.test.ts"),
+      resolve(rootDir, "z/lighter-than-default.test.ts"),
+    ]);
+  });
+
+  it("falls back cleanly when the weights manifest file is missing", async () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), "ci-vitest-sequencer-missing-"));
+    try {
+      const manifest = loadSequencerWeights(DEFAULT_WEIGHTS_PATH, emptyDir);
+      expect(manifest).toEqual({ defaultDurationMs: 1, durationsMs: {} });
+
+      const sequencer = new WeightedSequencer({ config: { root: emptyDir } } as unknown as Vitest);
+      const specs = [
+        makeSpec(emptyDir, "z/second.test.ts"),
+        makeSpec(emptyDir, "a/first.test.ts"),
+      ];
+      await expect(sequencer.sort(specs)).resolves.toEqual([
+        makeSpec(emptyDir, "a/first.test.ts"),
+        makeSpec(emptyDir, "z/second.test.ts"),
+      ]);
+    } finally {
+      rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it("instantiates WeightedSequencer against the repository manifest and sorts heaviest files first", async () => {
+    const rootDir = process.cwd();
+    const sequencer = new WeightedSequencer({ config: { root: rootDir } } as unknown as Vitest);
+    const heavyFile = "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts";
+    const mediumFile = "scripts/ci-vitest-shard.test.ts";
+    const lightFile = "scripts/preflight.test.ts";
+
+    const manifest = loadSequencerWeights(DEFAULT_WEIGHTS_PATH, rootDir);
+    expect(manifest.durationsMs[heavyFile]).toBeGreaterThan(manifest.durationsMs[lightFile]);
+
+    const sorted = await sequencer.sort([
+      makeSpec(rootDir, lightFile),
+      makeSpec(rootDir, mediumFile),
+      makeSpec(rootDir, heavyFile),
+    ]);
+
+    expect(sorted[0].moduleId).toBe(resolve(rootDir, heavyFile));
+  });
+});
