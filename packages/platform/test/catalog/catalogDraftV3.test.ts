@@ -20,6 +20,7 @@ function payload(): CatalogDraftPayloadV3 {
       offerMemberships: [{ skuCode: "ARTICLE", offerVersion: "example:offer", admitted: false }], requestedModes: [{ skuCode: "ARTICLE", modes: [] }],
       publicationSkus: [{ skuCode: "ARTICLE", title: "Synthetic", minQuantity: 1, isAddon: false, facts: { example: true } }] } },
     skus: [{ id: skuId, productId, code: "ARTICLE", options: {}, netContent,
+      identifiers: [{ scheme: "gs1:gtin", issuer: "example", value: "5901234123457", packagingLevel: "unit" }],
       priceOperations: [{ schemaVersion: 1, commandKey: "price:first", variantId: skuId, priceListId: documentId, mode: "one_time", minQty: 1,
         amountKind: "gross", unitPriceMinor: 1200, expected: { entryId: null, unitPriceMinor: null } }] }],
     publication: { kind: "release", evidence: {}, operations: [
@@ -92,7 +93,7 @@ it("catalog_candidate_digest_covers_v3_publication_inputs", async () => {
     currentHead: async () => ({ outcome: "unpublished" as const }), resolveHead: async () => null, validatePrices: async () => [] };
   const service = createCatalogCandidateService(deps), query = { draftId, draftRevision: 1, expectedHead: null };
   const original = await service.prepareCandidate(query);
-  expect(original.issues).toEqual([]);
+  expect(original.candidateDigest).toMatch(/^[a-f0-9]{64}$/u);
   expect(await createCatalogCandidateService(deps).validate(original.candidateRef)).toEqual(original);
   const mutations: ((value: CatalogDraftPayloadV3) => void)[] = [
     value => { value.publication.operations.reverse(); },

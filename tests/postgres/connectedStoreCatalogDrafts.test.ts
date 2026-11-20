@@ -1,18 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canonicalCatalogDraftJson, installCatalogDefinitions, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
+import { canonicalCatalogDraftJson, installCatalogDefinitions, withCatalogPublicationRules, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
   type CatalogDraftPublicationStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+const artifact = readFileSync(new URL("../../examples/neutral-store/owned/catalogue-rules.cjs", import.meta.url), "utf8");
 
 const relations = ["catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
   "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes", "catalog_skus", "catalog_products"] as const;
-const packs = [1, 2].map(version => ({ id: "example:transfer", namespace: "example", version, openlupRange: "0.44.x", capabilities: { publish: false },
+const packs = [1, 2].map(version => withCatalogPublicationRules({ id: "example:transfer", namespace: "example", version, openlupRange: "0.44.x", capabilities: { publish: false },
   types: [{ key: "example:transfer-item", version, units: [{ code: "openlup:piece", dimension: "count" as const, integral: true }],
-    netContentUnits: ["openlup:piece"], dimensions: [], validatorRef: `sha256:${String(version).repeat(64)}`, validateContent: () => [] }],
-  taxClasses: [{ key: "example:transfer-standard" }] }));
+    netContentUnits: ["openlup:piece"], dimensions: [], validateContent: () => [] }],
+  taxClasses: [{ key: "example:transfer-standard" }] }, () => Buffer.from(artifact)));
 const resources = storeJourneyResources();
 let source: JourneyInstallation, target: JourneyInstallation;
 let before: Awaited<ReturnType<typeof journeyCensus>>, restored: typeof before;

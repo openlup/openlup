@@ -150,7 +150,7 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
     "Preview needs to read availability for the named SKUs.", "Ask your store administrator for a connection that can read stock availability, then retry."),
   previewRefusal("validation_denied", ["proposed"], "This connection cannot check the proposed policy.",
     "Preview needs permission to validate this setting.", "Ask your store administrator for a connection with permission to preview this setting, then retry."),
-  previewRefusal("validation_missing", ["proposed"], "The store is missing support for checking the proposed policy.",
+  previewRefusal("validation_missing", ["proposed"], "The store is missing database support for previewing the proposed policy.",
     "Preview needs the matching installed OpenLup version.", "Ask your store administrator to update the store's OpenLup installation, then retry."),
   previewRefusal("unexpected", [], "The preview could not be completed.",
     "Check that the connection points to the intended store.", "Retry once. If preview still fails, contact your store administrator."),

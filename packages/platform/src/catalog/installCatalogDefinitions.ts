@@ -5,6 +5,7 @@ import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { catalogDefinitionJson } from "./catalogDefinitionDigest.js";
 import { catalogPackManifest } from "./catalogPackManifest.js";
 import { catalogPackIssues } from "./productTypeIssues.js";
+import { verifyCatalogRulesAtInstall } from "./publicationRules.js";
 
 /** Supply the native migration-owner executor explicitly. No runtime binding or hook is created.
  * @experimental
@@ -12,6 +13,7 @@ import { catalogPackIssues } from "./productTypeIssues.js";
 export async function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt> {
   const issue = catalogPackIssues(pack)[0];
   if (issue) throw Object.assign(new Error("invalid_catalog_pack"), { issue });
+  verifyCatalogRulesAtInstall(pack);
   const manifest = catalogPackManifest(pack);
   if (!Number.isSafeInteger(pack.version) || pack.version < 1 || pack.version > 2147483647
     || pack.types.some(type => !type.validatorRef)

@@ -521,6 +521,167 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
   expect(await state()).toEqual(before);
 });
 
+it("matches the installed stock read with contrasting sources, classes, due terms, cycle statuses, and exposure", async () => {
+  const [, sourceSku, packagingSku, pausedSku, foreignTermsSku, paidSku, skippedSku, cancelledSku,
+    nullClassSku, cancelledSubscriptionSku] = fixtureSkus;
+  const otherSource = "policy-fixture:other";
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    // Pins the stock source filter: this SKU has a different quantity in the other source.
+    await client.query(`INSERT INTO public.fulfillment_stock_current
+      (source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,
+       last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
+      VALUES ($1,$2,37,37,0,'sellable',$3,$3::timestamptz + interval '1 day','fixture','other-source',repeat('a',64))`,
+    [otherSource, sourceSku, asOf]);
+    // Pins r.source_key=p_source_key in 20261123152000_inventory_new_purchase_stock_preview.sql:29 with a live hold from the other source.
+    await client.query(`WITH other_order AS (
+      INSERT INTO public.commerce_orders(client_id,currency_code,total_amount_minor)
+      SELECT id,'XXX',0 FROM public.clients WHERE email='policy@example.invalid' RETURNING id
+    ), other_hold AS (
+      INSERT INTO public.fulfillment_inventory_reservations
+        (source_key,purchase_order_id,operation_fingerprint,status,expires_at,created_at)
+      SELECT $1,id,repeat('b',64),'held',$2::timestamptz + interval '1 day',$2::timestamptz
+      FROM other_order RETURNING id
+    )
+    INSERT INTO public.fulfillment_inventory_reservation_lines(reservation_id,operation_fingerprint,sku,quantity)
+    SELECT id,repeat('b',64),$3,12 FROM other_hold`, [otherSource, asOf, sourceSku]);
+    // Pins the sellable inventory-class filter: packaging has 100 units and contributes zero to ATP.
+    await client.query("UPDATE public.fulfillment_stock_current SET inventory_class='packaging' WHERE source_key=$1 AND sku=$2",
+      [source, packagingSku]);
+    // Pins stock.inventory_class='sellable' in 20261123152000_inventory_new_purchase_stock_preview.sql:41 against treating NULL as sellable.
+    await client.query("UPDATE public.fulfillment_stock_current SET inventory_class=NULL WHERE source_key=$1 AND sku=$2",
+      [source, nullClassSku]);
+    for (const [item, subscriptionStatus, termsSource, cycleStatus] of [
+      // Pins the active-subscription filter: the paused subscription has due terms.
+      [pausedSku, "paused", source, null],
+      // Pins s.status='active' in 20261123152000_inventory_new_purchase_stock_preview.sql:49 against admitting cancelled subscriptions with due terms.
+      [cancelledSubscriptionSku, "cancelled", source, null],
+      // Pins the renewal-terms source match: active demand belongs to another source.
+      [foreignTermsSku, "active", otherSource, null],
+      // Pins the paid exclusion: this cycle's live hold must not credit its due terms.
+      [paidSku, "active", source, "paid"],
+      // Pins the skipped exclusion: this cycle's live hold must not credit its due terms.
+      [skippedSku, "active", source, "skipped"],
+      // Pins the cancelled exclusion: this cycle's live hold must not credit its due terms.
+      [cancelledSku, "active", source, "cancelled"],
+    ] as const) {
+      const subscription = randomUUID();
+      await client.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at,status)
+        SELECT $1,id,28,$2::timestamptz,$3 FROM public.clients WHERE email='policy@example.invalid'`,
+      [subscription, asOf, subscriptionStatus]);
+      await client.query(`INSERT INTO public.subscription_renewal_terms
+        (subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref)
+        VALUES ($1,'XXX',$2,'fixture',$3,'fixture')`, [subscription, termsSource, asOf]);
+      await client.query(`INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
+        VALUES ($1,1,$2,11,100)`, [subscription, item]);
+      if (cycleStatus === null) continue;
+      const operation = randomUUID();
+      await client.query(`INSERT INTO public.subscription_renewal_operations
+        (id,subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,cycle_snapshot,
+         claim_token,claimed_by,claimed_at,lease_expires_at)
+        VALUES ($1::uuid,$2,$3,1,'policy-parity:' || $1::uuid::text,repeat('c',64),'{}',gen_random_uuid(),'fixture',$3,$3::timestamptz + interval '5 minutes')`,
+      [operation, subscription, asOf]);
+      await client.query(`INSERT INTO public.subscription_cycles
+        (subscription_id,scheduled_at,status,renewal_operation_id,renewal_operation_fingerprint)
+        VALUES ($1,$2,$3,$4,repeat('c',64))`, [subscription, asOf, cycleStatus, operation]);
+      const reservation = randomUUID();
+      await client.query(`INSERT INTO public.fulfillment_inventory_reservations
+        (id,renewal_operation_id,operation_fingerprint,source_key,status,expires_at,created_at)
+        VALUES ($1,$2,repeat('c',64),$3,'held',$4::timestamptz + interval '1 day',$4)`, [reservation, operation, source, asOf]);
+      await client.query(`INSERT INTO public.fulfillment_inventory_reservation_lines(reservation_id,operation_fingerprint,sku,quantity)
+        VALUES ($1,repeat('c',64),$2,4)`, [reservation, item]);
+    }
+    // Pins exposure's p_source_key and requested.sku arguments in 20261123152000_inventory_new_purchase_stock_preview.sql:55.
+    await client.query(`CREATE OR REPLACE FUNCTION public.inventory_channel_exposure_quantity(p_source_key text, p_sku text)
+      RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
+        SELECT to_jsonb((CASE WHEN p_source_key = '${otherSource}' THEN 10 ELSE 0 END)
+                       + (CASE WHEN p_sku = '${sourceSku}' THEN 5 ELSE 3 END));
+      $$`);
+    // Pins request-SKU de-duplication: the repeated SKU must still produce one result row.
+    const { rows } = await client.query(`SELECT
+      public.inventory_new_purchase_stock_read(source_key,$2,$3) AS installed,
+      public.inventory_new_purchase_stock_preview(source_key,$2,$3,to_jsonb(public.inventory_renewal_protection_days())) AS proposed
+      FROM (VALUES (1,$1::text), (2,$4::text)) sources(ordinal,source_key) ORDER BY ordinal`,
+    [source, JSON.stringify([...fixtureSkus, sku]), asOf, otherSource]);
+    const [primary, other] = rows;
+    expect(primary.installed).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sku: sourceSku, providerForSale: 100, activeHolds: 0, channelExposure: 5, availableForNewPurchases: 95 }),
+      ...[packagingSku, nullClassSku].map(item => expect.objectContaining({ sku: item, providerForSale: 100, availableForNewPurchases: 0 })),
+      ...[pausedSku, cancelledSubscriptionSku, foreignTermsSku].map(item => expect.objectContaining({
+        sku: item, renewalDemand: 0, channelExposure: 3, availableForNewPurchases: 97,
+      })),
+      ...[paidSku, skippedSku, cancelledSku].map(item => expect.objectContaining({
+        sku: item, activeHolds: 4, renewalDemand: 11, availableForNewPurchases: 82,
+      })),
+    ]));
+    expect(other.installed).toContainEqual(expect.objectContaining({
+      sku: sourceSku, providerForSale: 37, activeHolds: 12, channelExposure: 15, availableForNewPurchases: 10,
+    }));
+    for (const { installed, proposed } of rows) {
+      expect(installed).toHaveLength(fixtureSkus.length);
+      expect(proposed).toEqual(installed);
+    }
+  } finally {
+    try { await client.query("ROLLBACK"); }
+    finally { client.release(); }
+  }
+});
+
+it("keeps an estimate null for provider stock outside the catalogue and skips estimate queries for empty and invalid requests", async () => {
+  const key = "inventory_renewal_protection";
+  const value = { revision: "fixture-21", renewalProtectionDays: 21 };
+  const uncataloguedSku = `${sku}-UNCATALOGUED`;
+  const calls: string[] = [];
+  const preview = (skus: string[], proposed = value) => previewSetting({
+    key, proposed, skus, asOf: new Date(asOf).toISOString(),
+  }, {
+    [key]: (candidate, input) => previewRenewalStockProtection(key, candidate, {
+      ...input, sourceKey: source,
+      db: { async connect() {
+        const client = await db.connect();
+        return {
+          query(statement, params) { calls.push(statement); return client.query(statement, params); },
+          release: error => client.release(error),
+        };
+      } },
+    }),
+  });
+  await db.query(`INSERT INTO public.fulfillment_stock_current
+    (source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,
+     last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
+    VALUES ($1,$2,17,17,0,'sellable',$3,$3::timestamptz + interval '1 day','fixture','uncatalogued',repeat('a',64))`,
+  [source, uncataloguedSku, asOf]);
+  try {
+    expect(await preview([uncataloguedSku])).toMatchObject({
+      validation: { state: "valid" },
+      effect: { skus: [{ sku: uncataloguedSku, source: "provider", stale: false,
+        currentAvailableForNewPurchases: 17, proposedAvailableForNewPurchases: null }] },
+    });
+    expect(calls.splice(0)).toContainEqual(expect.stringContaining("SELECT public.inventory_new_purchase_stock_preview("));
+    expect(await preview([])).toMatchObject({ validation: { state: "valid" }, effect: { skus: [] } });
+    expect(calls.splice(0)).toEqual([
+      "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+      expect.stringContaining("SELECT value_text FROM public.commerce_settings"),
+      expect.stringContaining("SELECT public.inventory_renewal_protection_validate("),
+      "ROLLBACK",
+    ]);
+    expect(await preview([sku], { ...value, renewalProtectionDays: 0 })).toMatchObject({
+      validation: { state: "invalid" },
+      effect: { skus: [{ sku, currentAvailableForNewPurchases: 61, proposedAvailableForNewPurchases: null }] },
+    });
+    expect(calls).toEqual([
+      "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+      expect.stringContaining("SELECT value_text FROM public.commerce_settings"),
+      expect.stringContaining("SELECT public.inventory_new_purchase_stock_read("),
+      expect.stringContaining("SELECT public.inventory_renewal_protection_validate("),
+      "ROLLBACK",
+    ]);
+  } finally {
+    await db.query("DELETE FROM public.fulfillment_stock_current WHERE source_key=$1 AND sku=$2", [source, uncataloguedSku]);
+  }
+});
+
 it("the running starter editor sees the installer change from 14 to 21 via readInstalled", async () => {
   const config = structuredClone(selectConfiguration());
   config.inventory.renewalProtection = { revision: "editor-14", renewalProtectionDays: 14 };

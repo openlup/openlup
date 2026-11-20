@@ -194,6 +194,7 @@ async function databaseBrowserRecipe(argv) {
   const { createPlatformPostgresMigrationRunner, qualifiedPostgresStartupOptions } = await import('@openlup/platform/migrations');
   const { configurations } = await import('./owned/store.config.ts');
   const { applyDemoSeed, demonstrationMarker } = await import('./installation/install.ts');
+  const { readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
   const application = root;
   const directory = resolve(application, '.context/care-browser');
   const containers = [], hosts = [], pools = [];
@@ -243,7 +244,8 @@ async function databaseBrowserRecipe(argv) {
       if ((await runner.status()).pending.length)
         throw new Error('starter_database_browser_installation_incomplete');
       await owner.query(`COMMENT ON DATABASE neutral_store IS '${demonstrationMarker}'`);
-      await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime', close: async () => { } });
+      await applyDemoSeed(config, { connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
+        catalogueRules: readStarterCatalogueRules(), close: async () => { } });
       const runtimeUrl = ownerUrl.replace('postgres@', 'starter_runtime@');
       const state = resolve(directory, config.id);
       await mkdir(state, { recursive: true, mode: 0o700 });

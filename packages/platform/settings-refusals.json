@@ -169,7 +169,7 @@
       "path": [
         "proposed"
       ],
-      "rule": "The store is missing support for checking the proposed policy.",
+      "rule": "The store is missing database support for previewing the proposed policy.",
       "hint": "Preview needs the matching installed OpenLup version.",
       "remediation": {
         "retry": true,

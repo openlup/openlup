@@ -59,6 +59,7 @@ export const catalogDefinitionMetadataSchema = catalogProductTypeRefSchema.exten
   attributes: z.array(attributeSchema).max(1000).optional(),
   axes: z.array(z.object({ key: catalogDimensionKeySchema, attributeKey: catalogDimensionKeySchema, labels: labels.optional() }).strict()).max(16).optional(),
   validatorRef: z.string().regex(/^sha256:[a-f0-9]{64}$/u).optional(),
+  publicationRules: z.literal(true).optional(),
   subscriptionProfileRef: catalogProductTypeRefSchema.optional(),
   taxClass: z.string().min(1).max(120).optional(),
   labels: labels.optional(),

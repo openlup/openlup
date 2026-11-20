@@ -186,8 +186,10 @@ it.each([
   ["inventory_new_purchase_stock_read(", "42501", "stock_read_denied", /read stock availability/u],
   ["inventory_renewal_protection_validate(", "42501", "validation_denied", /permission to preview/u],
   ["inventory_renewal_protection_validate(", "42883", "validation_missing", /update the store/u],
+  ["inventory_new_purchase_stock_preview(", "42883", "validation_missing", /update the store/u,
+    "Apply the database forward 20261123152000_inventory_new_purchase_stock_preview.sql, then retry."],
   ["ROLLBACK", "other", "unexpected", /Retry once/u],
-] as const)("returns the same contextual refusal from domain and dispatcher when %s fails", async (operation, code, reason, action) => {
+] as const)("returns the same contextual refusal from domain and dispatcher when %s fails", async (operation, code, reason, action, hint?) => {
   const release = vi.fn();
   const query = vi.fn(async (statement: string) => {
     if (statement.includes(operation)) throw { code, message: "private details" };
@@ -202,6 +204,7 @@ it.each([
   });
   expect(direct).toMatchObject({ schemaVersion: 1, refusal: {
     code: `commerce_setting_preview_${reason}`,
+    ...(hint ? { path: ["proposed"], hint } : {}),
     remediation: { action: expect.stringMatching(action), command: expect.stringContaining("<read-capable-url>") },
   } });
   expect(JSON.stringify(direct)).not.toMatch(/private details|public[.]/u);

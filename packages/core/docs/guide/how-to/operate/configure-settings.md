@@ -114,7 +114,7 @@ recheck command and whether retrying can help.
 | `commerce_setting_preview_policy_read_denied` | Ask for a connection that can read the installed policy. |
 | `commerce_setting_preview_stock_read_denied` | Ask for a connection that can read stock and execute `inventory_new_purchase_stock_preview` for a proposed estimate. |
 | `commerce_setting_preview_validation_denied` | Ask for a connection with permission to preview this setting. |
-| `commerce_setting_preview_validation_missing` | Ask your store administrator to update the OpenLup installation. |
+| `commerce_setting_preview_validation_missing` | Ask your store administrator to update the OpenLup installation and apply any database forward named in the hint. |
 | `commerce_setting_preview_unexpected` | Retry once, then contact your store administrator if the same step still fails. |
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |

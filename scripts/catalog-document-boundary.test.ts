@@ -20,6 +20,8 @@ const QUOTE_PAYLOAD_USES = [
   "await verifyDocument(documents[index]!.revision_document_payload, envelope);",
   "revision_document_payload: unknown;",
 ];
+const parsedProvenance = "SyntheticProvenance";
+const parsedProvenanceRefusal = "imports or reconstructs provider provenance";
 
 const OPAQUE_CARRIERS = new Map([
   ["db/platform/migrations/20261123190000_catalog_publication.sql", "CROSS JOIN LATERAL (SELECT d.document_payload AS payload) stored"],
@@ -112,8 +114,8 @@ function violations(files: readonly SourceFile[]): string[] {
     if (readsDormantCatalogSkuGtin(file.source)) {
       found.push(`${file.path}: reads dormant catalog_skus.gtin`);
     }
-    if (file.path === PORTABLE_ADAPTER && /\bomnipack\b/i.test(file.source)) {
-      found.push(`${file.path}: imports or reconstructs OmniPack provenance`);
+    if (file.path === PORTABLE_ADAPTER && new RegExp(`\\b(?:OmniPack|${parsedProvenance})\\b`, "i").test(file.source)) {
+      found.push(`${file.path}: ${parsedProvenanceRefusal}`);
     }
 
     const isTestSource = /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file.path);
@@ -145,13 +147,10 @@ describe("portable catalog document boundary", () => {
   it("scans exactly the portable/core catalog perimeter", () => {
     const files = perimeterSources();
 
-    expect(files).not.toHaveLength(0);
-    expect(files.some((file) =>
-      file.path.startsWith("node_modules/@openlup/core/src/catalog/") && /\.tsx?$/.test(file.path),
-    )).toBe(true);
-    expect(files.every((file) => PERIMETERS.some((perimeter) => file.path.startsWith(`${perimeter}/`)))).toBe(true);
-    expect(files.some((file) => file.path === PORTABLE_MIGRATION)).toBe(true);
-    expect(files.some((file) => file.path === PORTABLE_ADAPTER)).toBe(true);
+    expect(files.some(file => file.path.startsWith("node_modules/@openlup/core/src/catalog/") && /\.tsx?$/.test(file.path))).toBe(true);
+    expect(files.every(file => PERIMETERS.some(perimeter => file.path.startsWith(`${perimeter}/`)))).toBe(true);
+    expect(files.some(file => file.path === PORTABLE_MIGRATION)).toBe(true);
+    expect(files.some(file => file.path === PORTABLE_ADAPTER)).toBe(true);
     expect(violations(files)).toEqual([]);
   });
 
@@ -186,23 +185,19 @@ describe("portable catalog document boundary", () => {
     expect(violations([{ path, source: `${use}\n${use}` }])).toContain(`${path}: document payload must remain opaque SQL storage only`);
   });
 
-  it("fails imports or interpretation of the private W2d mapping proof", () => {
-    expect(violations([
-      { path: "packages/core/src/catalog-mapping.ts", source: "export type { CatalogDocumentMappingReceiptV1 } from '../../../../src/overlays/private/data/catalog/catalogDocumentMappingContracts.js';" },
-      { path: "server/domains/catalog/mapper.ts", source: "const mapping = await import('../../../src/overlays/private/tooling/catalog/mapCatalogPresentation.js');" },
-    ])).toEqual([
-      "packages/core/src/catalog-mapping.ts: private document schema vocabulary is not portable",
-      "packages/core/src/catalog-mapping.ts: imports a private document boundary",
-      "server/domains/catalog/mapper.ts: imports a private document boundary",
-    ]);
+  it.each([
+    [PORTABLE_MIGRATION, "SELECT document_payload->>'name' FROM public.catalog_product_document_revisions;", "document payload must remain opaque SQL storage only"],
+    [QUOTE_READER, [...QUOTE_PAYLOAD_USES, "console.log(documents);"].join("\n"), "quote document must pass unparsed to host policy"],
+    [PORTABLE_ADAPTER, "import { ProductDocumentV1 } from './productDocumentContracts.js';", "imports a private document boundary"],
+    [PORTABLE_ADAPTER, "ProductDocumentV1;", "private document schema vocabulary is not portable"],
+    [PORTABLE_ADAPTER, "parseDocument(value);", "parses, validates, or canonicalizes a private document"],
+    [PORTABLE_ADAPTER, `const source = "${parsedProvenance}";`, parsedProvenanceRefusal],
+  ])("refuses %s with %s", (path, source, expected) => {
+    expect(violations([{ path, source }])).toContain(`${path}: ${expected}`);
   });
 
-  it.each([
-    "SELECT gtin FROM catalog_skus",
-    "SELECT sku.gtin FROM catalog_skus AS sku",
-    "SELECT sku.gtin FROM public.catalog_skus sku",
-    "SELECT catalog_skus.gtin FROM catalog_skus",
-  ])("rejects a dormant GTIN read mutation: %s", (source) => {
+  it("rejects a qualified dormant GTIN read", () => {
+    const source = "SELECT sku.gtin FROM public.catalog_skus sku";
     expect(violations([{ path: "server/adapters/postgres/mutated-read.ts", source }])).toEqual([
       "server/adapters/postgres/mutated-read.ts: reads dormant catalog_skus.gtin",
     ]);

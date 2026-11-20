@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { catalogDefinitionDigest, catalogPackManifest, canonicalCatalogDraftJson, createCatalogDefinitionWriteGuard,
-  createCatalogProductTypeRegistry, createPostgresCatalogDraftStore, installCatalogDefinitions, observeCatalogDefinitionReadiness } from "@openlup/platform/catalog";
+  createCatalogProductTypeRegistry, createPostgresCatalogDraftStore, installCatalogDefinitions, observeCatalogDefinitionReadiness,
+  withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
 import { verifyApp } from "@openlup/platform/lifecycle";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+const artifact = readFileSync(new URL("../../examples/neutral-store/owned/catalogue-rules.cjs", import.meta.url), "utf8");
 
 const path = "db/platform/migrations/20261122100000_catalog_definition_binding.sql";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -15,9 +17,11 @@ const containers: PostgresContainer[] = [], pools: Pool[] = [];
 let owner: Pool, runtime: Pool, observer: Pool, product: string, baseline: unknown;
 const definition = (version = 1) => ({ key: "example:item", version,
   units: [{ code: "openlup:piece", dimension: "count" as const, integral: true }], netContentUnits: ["openlup:piece"],
-  dimensions: [], validatorRef: `sha256:${String(version).repeat(64)}`, validateContent: () => [] });
-const pack = (id: string, version = 1): CatalogPackInput => ({ id: `example:${id}`, namespace: "example", version,
-  openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition(version)], taxClasses: [{ key: "example:standard" }] });
+  dimensions: [], validateContent: () => [] });
+const pack = (id: string, version = 1, rules = artifact) => withCatalogPublicationRules<CatalogPackInput>(
+  { id: `example:${id}`, namespace: "example", version, openlupRange: "0.44.x", capabilities: { publish: false },
+    types: [definition(version)], taxClasses: [{ key: "example:standard" }] }, () => Buffer.from(rules));
+const installedDefinition = () => pack("definition").types[0]!;
 const verifyCatalogRegistry = (catalogRegistry: Awaited<ReturnType<typeof observeCatalogDefinitionReadiness>>) => verifyApp({
   candidate: { artifact: "test", configuration: "test", environment: "test", database: "catalog-db", schema: "test" },
   inventoryComplete: true, loadedPackages: [{ name: "@openlup/core", version: "0.43.0", kind: "kernel" }], contributions: [], vocabulary: [], exemptions: [],
@@ -118,8 +122,9 @@ it("definition installation uses shared pack closure before SQL", async () => {
 it("pack_custom_unit_needs_no_ddl", async () => {
   const ddl = async () => (await owner.query("SELECT oid,relname,relkind FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY oid")).rows;
   const before = await ddl();
-  const input = pack("custom"); input.types = [{ ...definition(), key: "example:custom", units: [{ code: "example:pair", dimension: "count", integral: true,
-    factor: { canonicalUnit: "openlup:piece", unscaled: "2", scale: 0 } }], netContentUnits: ["example:pair"] }];
+  const input = withCatalogPublicationRules<CatalogPackInput>({ ...pack("custom"), types: [{ ...definition(), key: "example:custom",
+    units: [{ code: "example:pair", dimension: "count", integral: true,
+      factor: { canonicalUnit: "openlup:piece", unscaled: "2", scale: 0 } }], netContentUnits: ["example:pair"] }] }, () => Buffer.from(artifact));
   await installCatalogDefinitions(owner, input);
   expect(await ddl()).toEqual(before);
   expect((await owner.query("SELECT definition->'units' AS units FROM public.catalog_type_versions WHERE type_key='example:custom'")).rows[0].units)
@@ -134,13 +139,14 @@ it("pack_install_never_publishes", async () => {
 
 it("catalog_type_install_refuses_redefinition", async () => {
   const input = pack("immutable"); await installCatalogDefinitions(owner, input);
-  for (const changed of [{ ...definition(), validatorRef: `sha256:${"f".repeat(64)}` }, { ...definition(), dimensions: [{ key: "flag", kind: "boolean" as const }] }]) {
+  for (const changed of [pack("other", 1, artifact + "\n// Updated rules").types[0]!,
+    { ...installedDefinition(), dimensions: [{ key: "flag", kind: "boolean" as const }] }]) {
     await expect(installCatalogDefinitions(owner, { ...input, id: `example:changed-${randomUUID()}`, types: [changed] })).rejects.toMatchObject({ code: "23505" });
   }
   await expect(owner.query("UPDATE public.catalog_type_versions SET validator_ref='changed' WHERE type_key='example:item' AND version=1")).rejects.toMatchObject({ code: "55000" });
   await expect(owner.query("DELETE FROM public.catalog_type_versions WHERE type_key='example:item' AND version=1")).rejects.toMatchObject({ code: "55000" });
   expect((await owner.query("SELECT definition_digest FROM public.catalog_type_versions WHERE type_key='example:item' AND version=1")).rows[0].definition_digest)
-    .toBe(catalogDefinitionDigest(definition()));
+    .toBe(catalogDefinitionDigest(installedDefinition()));
 });
 
 it("live type binding requires an installed complete reference and a SKU inherits it", async () => {
@@ -166,7 +172,7 @@ it("runtime_refuses_registry_missing_referenced_version", async () => {
     expect(report.state).toBe("unsatisfied");
     expect(report.findings.map(finding => finding.code)).toEqual(["registry_missing_referenced_version"]);
   }
-  const registry = createCatalogProductTypeRegistry([definition()]);
+  const registry = createCatalogProductTypeRegistry([installedDefinition()]);
   const observed = await observeCatalogDefinitionReadiness(owner, registry, "catalog-db");
   expect(observed.complete).toBe(true);
   expect((await verifyCatalogRegistry(observed)).state).toBe("ready");
@@ -180,14 +186,14 @@ it("restricted_catalog_observer_never_reports_ready_or_calls_write", async () =>
     row_security_active('public.catalog_products') AS products, row_security_active('public.catalog_type_versions') AS definitions
     FROM pg_roles WHERE rolname=current_user`)).rows)
     .toEqual([{ rolsuper: false, rolbypassrls: false, owner_member: false, products: false, definitions: true }]);
-  const registry = createCatalogProductTypeRegistry([definition()]);
+  const registry = createCatalogProductTypeRegistry([installedDefinition()]);
   const guard = createCatalogDefinitionWriteGuard(observer, registry);
   let writes = 0;
   await owner.query("UPDATE public.catalog_products SET type_key='example:item',type_version=1 WHERE id=$1", [product]);
   try {
     const observation = await observeCatalogDefinitionReadiness(observer, registry, "catalog-db");
     expect(observation).toEqual({ database: "catalog-db", complete: false, referencedVersions: [{ key: "example:item", version: 1,
-      definitionDigest: null, registryDigest: catalogDefinitionDigest(definition()) }] });
+      definitionDigest: null, registryDigest: catalogDefinitionDigest(installedDefinition()) }] });
     expect((await verifyCatalogRegistry(observation)).state).toBe("unknown");
     await expect(guard(async () => { writes++; return runtime.query("UPDATE public.catalog_products SET name='Changed' WHERE id=$1", [product]); }))
       .rejects.toMatchObject({ code: "registry_missing_referenced_version" });

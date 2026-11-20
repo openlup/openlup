@@ -5,6 +5,9 @@ import { validateCatalogDraft, type CatalogDraftValidation } from "./draftValida
 import { validateCatalogAttributes } from "./attributeValidation.js";
 import { canonicalizeCatalogCombinationV2, CatalogCombinationError } from "./variantCombination.js";
 
+export const catalogCombinationIssue = (error: CatalogCombinationError, prefix = "") =>
+  ({ path: `${prefix}${error.path}`, code: error.code });
+
 /** Incomplete v2 drafts remain saveable; required attributes participate in publication readiness.
  * @experimental
  */
@@ -30,7 +33,7 @@ export async function validateCatalogDraftV2(payload: CatalogDraftPayloadV2, reg
       combinations.add(bytes);
     } catch (error) {
       if (!(error instanceof CatalogCombinationError)) throw error;
-      return { valid: false, issues: [{ path: `skus.${index}.${error.path}`, code: error.code }] };
+      return { valid: false, issues: [catalogCombinationIssue(error, `skus.${index}.`)] };
     }
   }
   result.readiness.publication.issues.push(...attributes.readinessIssues);
