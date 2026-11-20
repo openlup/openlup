@@ -444,4 +444,21 @@ describe("canonical manifest metadata without SQL files", () => {
         .toEqual(expect.arrayContaining([expect.stringMatching(/^platform migration manifest\.forward\[0\]/u)]));
     }
   });
+
+  it.each([null, undefined])("keeps full validation from falling back to metadata mode for %s migrations", migrations => {
+    for (const manifest of [legacy, current]) {
+      expect(() => evaluatePlatformMigrationManifest({ manifest, migrations: migrations as never })).toThrow(TypeError);
+    }
+  });
+
+  it("refuses conflicting metadata digests and preserves the full validator's SQL mismatch", () => {
+    const manifest = structuredClone(historical);
+    manifest.qualified.forward.find(({ file }) => file === QUALIFIED_RUNTIME_COMPLETION_FILE)!.sha256 = "0".repeat(64);
+    expect(evaluatePlatformMigrationManifestMetadata(manifest)).toEqual([
+      `platform migration manifest: conflicting SHA-256 digests for ${QUALIFIED_RUNTIME_COMPLETION_FILE}. Use the same digest in every plan`,
+    ]);
+    expect(evaluatePlatformMigrationManifest({ manifest, migrations: issuedMigrations })).toEqual([
+      `platform migration manifest: SHA-256 mismatch for ${QUALIFIED_RUNTIME_COMPLETION_FILE}`,
+    ]);
+  });
 });

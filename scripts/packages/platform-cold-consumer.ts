@@ -1,6 +1,7 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
 import ts from "typescript";
 import { checkPlatformMigrationProjection } from "./platform-migration-projection.ts";
+import { PLATFORM_MIGRATION_MANIFEST, type PlatformMigrationPlan } from "../platform-migration-manifest.ts";
 import { disposableLabelArgs } from "../disposable-docker.mjs";
 import { buildSync } from "esbuild";
 import { PORTABILITY_CONSUMER_PROOF } from "./portability-consumer-proof.ts";
@@ -2130,39 +2131,96 @@ console.log("synthetic three-pack warm check ms=" + (performance.now()-start).to
 `).trim());
 }
 
+const catalogDescriptor = "packages/platform/src/catalog/sql.ts";
+type CatalogMigrationTuple = { catalogPath: string; position: number; sha256: string };
+
+export function catalogMigrationExpectations(descriptor: string, manifest: Pick<PlatformMigrationPlan, "baseline" | "forward">): CatalogMigrationTuple[] {
+  const entries = [manifest.baseline, ...manifest.forward];
+  const stub = `
+const entries = ${JSON.stringify(entries)};
+export function packagedPlatformMigrationPosition(path, sha256) {
+  const position = entries.findIndex(entry => entry.file === path && entry.sha256 === sha256);
+  if (position === -1) throw new Error("no canonical path and SHA-256 match for " + path + ". Use the canonical path and SHA-256");
+  return position;
+}
+`;
+  let tuples: CatalogMigrationTuple[];
+  try {
+    const result = execFileSync(process.execPath, ["--input-type=module", "--eval", `
+import { readFileSync } from "node:fs";
+import { registerHooks } from "node:module";
+const { source, stub } = JSON.parse(readFileSync(0, "utf8"));
+const descriptorUrl = new URL(${JSON.stringify(catalogDescriptor)}, import.meta.url).href;
+const stubSpecifier = "../migrations/index.js";
+const stubUrl = new URL(stubSpecifier, descriptorUrl).href;
+registerHooks({
+  resolve(specifier, { parentURL }) {
+    if (parentURL === import.meta.url && specifier === descriptorUrl) return { url: descriptorUrl, shortCircuit: true };
+    if (parentURL === descriptorUrl && specifier === stubSpecifier) return { url: stubUrl, shortCircuit: true };
+    throw new Error("unsupported import " + specifier + ". Extend the catalogue descriptor stub map");
+  },
+  load(url) {
+    return { format: "module", source: url === descriptorUrl ? source : stub, shortCircuit: true };
+  },
+});
+try {
+  const { CATALOG_MIGRATIONS } = await import(descriptorUrl);
+  if (!Array.isArray(CATALOG_MIGRATIONS)) throw new Error("export CATALOG_MIGRATIONS as an array");
+  process.stdout.write(JSON.stringify(CATALOG_MIGRATIONS.map(({ catalogPath, position, sha256 }) => ({ catalogPath, position, sha256 }))));
+} catch (error) {
+  process.stderr.write(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
+`], {
+      cwd: root, env: isolatedConsumerEnv(), encoding: "utf8", timeout: 120_000, stdio: ["pipe", "pipe", "pipe"],
+      input: JSON.stringify({ source: stripTypeScriptTypes(descriptor), stub }),
+    });
+    tuples = JSON.parse(result);
+  } catch (error) {
+    const failure = error as Error & { stderr?: string };
+    throw new Error(`committed ${catalogDescriptor} does not evaluate: ${failure.stderr?.trim() || failure.message}`);
+  }
+  for (const tuple of tuples) {
+    const position = entries.findIndex(entry => entry.file === tuple.catalogPath);
+    const canonical = entries[position];
+    const unit = `committed ${catalogDescriptor}: ${tuple.catalogPath}`;
+    if (!canonical) throw new Error(`${unit} is absent from the canonical manifest. Select a path from ${PLATFORM_MIGRATION_MANIFEST}`);
+    if (tuple.position !== position) throw new Error(`${unit} position differs from the canonical manifest. Set position to ${position}`);
+    if (tuple.sha256 !== canonical.sha256) throw new Error(`${unit} sha256 differs from the canonical manifest. Set sha256 to ${canonical.sha256}`);
+  }
+  const seen = new Set<string>();
+  for (const { catalogPath } of tuples) {
+    if (seen.has(catalogPath)) throw new Error(`committed ${catalogDescriptor}: duplicate path ${catalogPath}. Remove the repeated entry`);
+    seen.add(catalogPath);
+  }
+  if (!tuples.length) throw new Error(`committed ${catalogDescriptor}: empty CATALOG_MIGRATIONS selection. Restore at least one migration entry`);
+  return tuples;
+}
+
 /** SDK-absent catalog operations and inert structural contribution, reused by the selected P7 case. */
 export function proveCatalogCompositionConsumer(consumer: string) {
   // HEAD owns expectations independently of both working-tree edits and packed bytes.
-  const descriptor = command("git", ["show", "HEAD:packages/platform/src/catalog/sql.ts"], root, isolatedConsumerEnv());
-  const manifest = JSON.parse(command("git", ["show", "HEAD:config/platform-migration-manifest.json"], root, isolatedConsumerEnv())) as
-    { baseline: { file: string; sha256: string }; forward: { file: string; sha256: string }[] };
-  const catalogPaths = [...descriptor.slice(descriptor.indexOf("= [", descriptor.indexOf("export const CATALOG_MIGRATIONS"))).matchAll(/catalogPath: "(db\/platform\/migrations\/[^"]+)"/gu)].map(match => match[1]!);
-  if (catalogPaths.length === 0 || new Set(catalogPaths).size !== catalogPaths.length) throw new Error("invalid committed catalogue descriptor");
-  const entries = [manifest.baseline, ...manifest.forward];
-  const expected = catalogPaths.map(catalogPath => {
-    const position = entries.findIndex(entry => entry.file === catalogPath);
-    if (position < 0) throw new Error(`committed catalogue manifest missing ${catalogPath}`);
-    return { catalogPath, position, sha256: entries[position]!.sha256 };
-  });
+  const descriptor = command("git", ["show", `HEAD:${catalogDescriptor}`], root, isolatedConsumerEnv());
+  const manifest = JSON.parse(command("git", ["show", `HEAD:${PLATFORM_MIGRATION_MANIFEST}`], root, isolatedConsumerEnv()));
+  const expected = catalogMigrationExpectations(descriptor, manifest);
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, renameSync } from "node:fs";
 import { createHash } from "node:crypto";
-import fs from "node:fs";
-import { syncBuiltinESMExports } from "node:module";
-const originalRead = fs.readFileSync;
-let manifestReads = 0;
-fs.readFileSync = function (path, ...args) {
-  if (String(path).endsWith("/sql/manifest.json")) manifestReads++;
-  return originalRead.call(this, path, ...args);
-};
-syncBuiltinESMExports();
-const catalog = await import("@openlup/platform/catalog");
-const { createCatalogContribution } = await import("@openlup/platform/composition");
-assert.equal(typeof catalog.CATALOG_MIGRATIONS.at(-1).id, "string");
-assert.equal(manifestReads, 0, "presence-only import opened the SQL manifest");
-fs.readFileSync = originalRead;
-syncBuiltinESMExports();
+const manifest = new URL("./node_modules/@openlup/platform/sql/manifest.json", import.meta.url);
+const aside = new URL("manifest.json.presence-probe", manifest);
+renameSync(manifest, aside);
+let catalog, composition;
+try {
+  catalog = await import("@openlup/platform/catalog");
+  composition = await import("@openlup/platform/composition");
+  assert.equal(typeof catalog.CATALOG_MIGRATIONS.at(-1).id, "string");
+} catch (cause) {
+  throw new Error("presence-only import failed without the packaged SQL manifest", { cause });
+} finally {
+  renameSync(aside, manifest);
+}
+const { createCatalogContribution } = composition;
 const statements = [];
 const executor = { query: async (sql, values) => { statements.push([sql, values]); return { rows: [] }; } };
 const native = catalog.createPostgresCatalogSkuEnvelopeReadPort(executor);

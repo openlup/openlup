@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -45,6 +46,7 @@ import {
   proveNativeCommunicationsOperations,
   proveResendConsumer,
   proveMarketingSyncConsumer,
+  catalogMigrationExpectations,
   proveCatalogCompositionConsumer,
   proveCatalogConformanceConsumer,
   runPlatformColdConsumer
@@ -554,6 +556,45 @@ function pristinePackedA1Fixture() {
 it("guide_skeleton_pack_passes_checker", () => {
   proveCatalogConformanceConsumer(pristinePackedA1Fixture());
 });
+
+const descriptorPath = "packages/platform/src/catalog/sql.ts";
+const selectedPath = "db/platform/migrations/20260102000000_selected.sql";
+const selectedDigest = "a".repeat(64);
+const descriptorManifest = {
+  baseline: { file: "db/platform/migrations/00000000000000_platform_baseline.sql", sha256: "b".repeat(64) },
+  forward: [{ file: selectedPath, sha256: selectedDigest }],
+};
+const descriptorEntry = JSON.stringify({ catalogPath: selectedPath, position: 1, sha256: selectedDigest });
+const descriptorSelection = `export const CATALOG_MIGRATIONS = [${descriptorEntry}] as const;`;
+
+it.each([
+  ["position disagrees", descriptorSelection.replace('"position":1', '"position":9'), `${selectedPath} position differs from the canonical manifest. Set position to 1`],
+  ["digest disagrees", descriptorSelection.replace(selectedDigest, "0".repeat(64)), `${selectedPath} sha256 differs from the canonical manifest. Set sha256 to ${selectedDigest}`],
+  ["invalid syntax", descriptorSelection + " const = ;", "does not evaluate:"],
+  ["missing array", "export const CATALOG_MIGRATIONS = {};", "does not evaluate: export CATALOG_MIGRATIONS as an array"],
+  ["commented-out selection", `export const CATALOG_MIGRATIONS = [/* ${descriptorEntry} */];`, "empty CATALOG_MIGRATIONS selection. Restore at least one migration entry"],
+  ["duplicate path", `export const CATALOG_MIGRATIONS = [${descriptorEntry},${descriptorEntry}];`, `duplicate path ${selectedPath}. Remove the repeated entry`],
+  ["unmanifested path", descriptorSelection.replace("selected.sql", "unknown.sql"), `${selectedPath.replace("selected.sql", "unknown.sql")} is absent from the canonical manifest. Select a path from config/platform-migration-manifest.json`],
+  ["unsupported import", 'import "node:path";\n' + descriptorSelection, "does not evaluate: unsupported import node:path. Extend the catalogue descriptor stub map"],
+])("refuses the committed catalogue descriptor when %s", (_name, descriptor, diagnostic) => {
+  const separator = diagnostic.startsWith("does not evaluate:") ? " " : ": ";
+  expect(() => catalogMigrationExpectations(descriptor, descriptorManifest))
+    .toThrow(`committed ${descriptorPath}${separator}${diagnostic}`);
+});
+
+it("evaluates the selected getter against the exact manifest tuple and ignores commented entries", () => {
+  const descriptor = `import { packagedPlatformMigrationPosition } from "../migrations/index.js";
+export const CATALOG_MIGRATIONS = [
+  // ${descriptorEntry},
+  { catalogPath: "${selectedPath}", sha256: "${selectedDigest}", get position() { return packagedPlatformMigrationPosition(this.catalogPath, this.sha256); } },
+] as const;`;
+  expect(catalogMigrationExpectations(descriptor, descriptorManifest)).toEqual([
+    { catalogPath: selectedPath, position: 1, sha256: selectedDigest },
+  ]);
+  expect(() => catalogMigrationExpectations(descriptor.replaceAll(selectedDigest, "0".repeat(64)), descriptorManifest))
+    .toThrow(`committed ${descriptorPath} does not evaluate: no canonical path and SHA-256 match for ${selectedPath}`);
+});
+
 it.each([
   ["missing", "CATALOG_MIGRATIONS.pop();"],
   // The added descriptor must leave the import-time manifest probe untouched.
@@ -569,6 +610,42 @@ it.each([
     expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/installed catalogue migrations differ from the committed canonical manifest/);
   } finally { writeFileSync(path, original); }
 });
+
+it.each([
+  ["sync", 'import { readFileSync } from "node:fs"; readFileSync(new URL("../../sql/manifest.json", import.meta.url));'],
+  ["promises", 'import { readFile } from "node:fs/promises"; await readFile(new URL("../../sql/manifest.json", import.meta.url));'],
+])("refuses an import-time packaged SQL manifest read via %s", (_name, mutation) => {
+  const consumer = pristinePackedA1Fixture();
+  const path = join(consumer, "node_modules/@openlup/platform/dist/catalog/index.js");
+  const manifestPath = join(consumer, "node_modules/@openlup/platform/sql/manifest.json");
+  const original = readFileSync(path, "utf8");
+  const manifest = readFileSync(manifestPath);
+  try {
+    writeFileSync(path, original + "\n" + mutation);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/presence-only import failed without the packaged SQL manifest/);
+    expect(readFileSync(manifestPath)).toEqual(manifest);
+  } finally { writeFileSync(path, original); }
+});
+
+it("refuses a packed catalogue unit whose stale SQL and SHA-256 agree", () => {
+  const consumer = pristinePackedA1Fixture();
+  const platform = join(consumer, "node_modules/@openlup/platform");
+  const descriptor = join(platform, "dist/catalog/sql.js");
+  const sql = join(platform, "sql/20260807140000_read_parity_catalog.sql");
+  const originalDescriptor = readFileSync(descriptor, "utf8");
+  const originalSql = readFileSync(sql, "utf8");
+  const staleSql = originalSql + "\n-- Different packed bytes\n";
+  const staleDigest = createHash("sha256").update(staleSql).digest("hex");
+  try {
+    writeFileSync(sql, staleSql);
+    writeFileSync(descriptor, originalDescriptor + `\nCATALOG_MIGRATIONS[0].sha256 = "${staleDigest}";`);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/installed catalogue migrations differ from the committed canonical manifest/);
+  } finally {
+    writeFileSync(descriptor, originalDescriptor);
+    writeFileSync(sql, originalSql);
+  }
+});
+
 it("proves installed portability copy/resume and rejects a copy that skips byte publication", () => {
   const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
   provePortabilityConsumer(consumer);
