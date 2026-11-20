@@ -1623,12 +1623,20 @@ authority. Review evidence grants no merge, release, settings or credential righ
      `.github` policies and agent instruction files. Admission or review machinery
      retains its higher floor.
 
-   A blocker is a correctness or security bug, or a direct contradiction of the
-   rules or acceptance criteria. Treat unjustified adopter-visible concepts or
-   steps, leaked internals and unactionable errors as material findings that block.
-   State the concrete cost. A fail-closed edge case, style or wording alone is
-   advice. Argument-parsing edge cases in a read-only command are advice unless
-   they change which store is read or report success for a refused input.
+   A blocker is a correctness or security bug, or a material contradiction of the
+   rules or acceptance criteria. Behaviour unchanged from the base is not a
+   finding of this change; record it as advice and a follow-up. A refusal stricter
+   than the criteria is advice unless it refuses a released or documented valid
+   input. A finding against a document outside the tree (brief, specification, PR
+   body, criteria wording) is advice to the lead; the reviewed tree keeps its
+   reviews. Material means wrong published effects or persisted data, a
+   released-API change, a security defect, or an unactionable or wrong-fix error;
+   these stay blockers in every round.
+
+   For findings about unjustified adopter-visible concepts or steps or leaked
+   internals, state the concrete cost and identify any material effect. Style or
+   wording alone is advice. Reading the wrong store or reporting success for a
+   refused input in a read-only command is a wrong published effect.
    By default, counted reviews use a fresh local CLI
    reviewer (for example Codex) through the qualified route below; the lead
    coordinates, checks results and decides. The lead chooses reasoning effort by
@@ -1739,6 +1747,17 @@ Write ignored `.context/scratch/agent-review/intent.json`:
 
 Keep the intent for the life of the change (later candidates may touch more paths);
 changing `risk` or `criteria` requires `prepare --new` and a full review.
+A ruling that only reclassifies findings as advice or states an exclusion travels
+in the brief; it does not change the intent.
+
+Use this template for the approved criteria:
+
+```text
+This change covers <one sentence describing the scope>.
+In-scope behaviours: <complete list>. In-scope paths: <complete list>.
+Out of scope: <one sentence>.
+Proofs: <complete list of checks, each failing when the behaviour it proves is reverted>.
+```
 
 Codex may omit `authorSessionId` to use `CODEX_THREAD_ID`. Refresh the local main
 reference before preparation so the cheap merge preflight catches known conflicts.
