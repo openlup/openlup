@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyPendingResume,
@@ -40,7 +40,13 @@ function active(nextAction: unknown) {
   return { kind: "active", response: { nextAction } } as Parameters<typeof decidePendingResume>[1];
 }
 
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 

@@ -45,6 +45,18 @@ async function fixture(enabled = true, controls: string[] = [], initialFiles: Re
   vi.spyOn(console, 'log').mockImplementation(() => {});
   return { cwd, git, write, base, head, commit, request, cli, state, report, review, mainMove, scratch, env };
 }
+function admitSourceReceipt(cwd: string, main: string, head: string, body: string) {
+  const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: head } };
+  const api = { get: async (path: string) => path.includes('/pulls/') ? pr : path.includes('/issues/')
+    ? [{ id: 1, body, user: { login: 'supervisor', type: 'User' } }]
+    : path.includes('/collaborators/') ? { permission: 'write' } : { object: { sha: main } } };
+  const runGit = async (cwd: string, ...args: string[]) => args.includes('fetch') ? '' : sourceGit(cwd, ...args);
+  let clock = Date.now();
+  return waitNativeAdmission({ cwd, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1,
+    event: { number: 12, repository: { private: false }, pull_request: { head: pr.head } },
+    env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
+  });
+}
 function addRegistry(path: string, source: string, entry: string) {
   if (path === REGISTRY_PATHS[0]) {
     const data = JSON.parse(source); data.publicPaths.push({ path: entry, class: 'public-output' });
@@ -138,7 +150,11 @@ describe('real Git coverage histories', () => {
       session.candidate.coverage.delta = legacy; session.history.findLast(event => event.type === 'prepare').candidate.coverage.delta = legacy;
       await writeFile(join(f.scratch, 'agent-review/session.json'), JSON.stringify(session));
       await f.report({ ordinary: true, delta: legacy }); await expect(f.cli('verify')).resolves.toBe(0);
-      await expect(validateEconomySession(f.cwd, await f.state())).resolves.toBeUndefined();
+      const historic = await f.state();
+      expect(historic.candidate.coverage.proof).toEqual({ paths: ['tests/demo.test.ts'], modeChanged: false });
+      await expect(validateEconomySession(f.cwd, historic)).resolves.toBeUndefined();
+      const receipt = receiptSummary(historic, 12, Date.now());
+      await expect(admitSourceReceipt(f.cwd, f.base, historic.candidate.head, receiptBody(receipt))).resolves.toEqual(receipt);
       await expect(validateEconomySession(other, await f.state())).rejects.toThrow('recorded coverage proof differs');
       session.candidate.coverage.delta = 'a'.repeat(64); session.history.findLast(event => event.type === 'prepare').candidate.coverage.delta = 'a'.repeat(64);
       await expect(validateEconomySession(f.cwd, session)).rejects.toThrow('recorded coverage proof differs');
@@ -412,13 +428,129 @@ describe('real Git coverage histories', () => {
     await f.report({ ordinary: true, delta: 'wrong', closes: ['F1'] });
     await expect(f.cli('verify')).rejects.toThrow('exact delta');
   });
-  it('does not inherit a failed candidate reviewed only by delta reports', async () => {
+  it('replays the cumulative repair after a full FAIL and a delta-only FAIL', async () => {
     const f = await fixture(); await f.review();
-    await f.write('app.ts', 'first repair\n'); f.commit(); await f.cli('prepare', f.request);
+    await f.write('anchor.md', 'latest candidate with full reports\n'); const anchor = f.commit(); await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL', findings: [{ id: 'F1', summary: 'broken fixture', material: true }] });
+    await f.report({ verdict: 'FAIL' });
+    const protectedPath = 'scripts/agent-review-extra.mjs';
+    await f.write(protectedPath, 'first repair\n'); f.commit(); await f.cli('prepare', f.request);
+    const first = await f.state();
+    await f.report({ ordinary: true, delta: first.candidate.coverage.delta, verdict: 'FAIL', findings: [{ id: 'F2', summary: 'repair still broken', material: true }] });
+    const failed = await f.state();
+    await f.write('app.ts', 'second repair\n'); f.commit(); await f.cli('prepare', f.request);
+    const next = await f.state(); const head = next.candidate.head;
+    const delta = digest(await sourceGit(f.cwd, 'diff', '--binary', '--full-index', '--no-renames', anchor, head));
+    expect(next.candidate.coverage).toEqual({ kind: 'repair', previous: digest(failed.history),
+      from: { base: f.base, head: first.candidate.head, tree: first.candidate.tree }, delta,
+      proof: { cumulativeFrom: anchor, paths: ['app.ts', protectedPath], modeChanged: false },
+    });
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0])).toMatchObject({
+      requirements: { scope: 'repair-delta', floor: 2 }, coverage: { cumulativeFrom: anchor, paths: ['app.ts', protectedPath] },
+    });
+    await f.report({ ordinary: true, delta, closes: ['F1'] });
+    expect(verdict(await f.state(), next.candidate, Date.now()).reason).toContain('2 independent PASS');
+    await f.report({ ordinary: true, delta });
+    expect(verdict(await f.state(), next.candidate, Date.now()).reason).toContain('close every material finding');
+    await f.report({ ordinary: true, delta, closes: ['F2'] });
+    await expect.soft(f.cli('verify')).resolves.toBe(0);
+    const receipt = receiptSummary(await f.state(), 12, Date.now());
+    const body = receiptBody(receipt);
+    expect(body).toContain('Reviewer floor 2 · Scope repair-delta');
+    await expect(admitSourceReceipt(f.cwd, f.base, head, body)).resolves.toEqual(receipt);
+  });
+  it('refuses cumulative repair across divergent fresh prepares in local and hosted replay', async () => {
+    const f = await fixture();
+    const request = JSON.parse(await readFile(f.request, 'utf8')); request.intent.risk = 'routine';
+    await writeFile(f.request, JSON.stringify(request));
+    const protectedPath = 'scripts/agent-review-anchor.mjs'; const source = 'protected fixture\n';
+    await f.write(protectedPath, source); const anchorHead = f.commit();
+    const anchor = await f.review();
+
+    f.git('checkout', '-q', '--detach', f.base);
+    await f.write('side.md', 'side of divergent merge\n'); const side = f.commit();
+    f.git('checkout', '-q', '--detach', f.base);
+    await f.write('branch.md', 'other side of divergent merge\n'); f.commit();
+    f.git('merge', '--no-ff', '-qm', 'divergent merge', side);
+    await f.cli('prepare', '--new', f.request);
+    f.git('checkout', '-q', '--detach', anchorHead);
+    f.git('rm', protectedPath); await f.write('app.ts', f.git('show', f.base + ':app.ts') + '\n');
+    await f.write('return.md', 'return to the original branch\n'); f.commit();
+    await f.cli('prepare', '--new', f.request);
+    await expect(f.cli('verify')).resolves.toBe(0);
+
+    await f.write(protectedPath, source); await f.write('app.ts', 'first repair\n');
+    const firstHead = f.commit(); await f.cli('prepare', f.request);
+    const first = await f.state();
+    await f.report({ ordinary: true, delta: first.candidate.coverage.delta, verdict: 'FAIL' });
+    const failed = await f.state();
+    await f.write('app.ts', 'second repair\n'); const head = f.commit(); await f.cli('prepare', f.request);
     const next = await f.state();
-    await f.report({ ordinary: true, delta: next.candidate.coverage.delta, verdict: 'FAIL', findings: [{ id: 'F1', summary: 'repair still broken', material: true }] });
+    expect.soft(next.candidate.coverage).toBeUndefined();
+    await f.cli('status', '--explain');
+    expect.soft(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements).toMatchObject({ scope: 'full', floor: 2 });
+
+    // The final Git range is linear even though the recorded prepare history is not.
+    expect(await sourceGit(f.cwd, 'rev-list', '--merges', anchorHead + '..' + head)).toBe('');
+    const delta = digest(await sourceGit(f.cwd, 'diff', '--binary', '--full-index', '--no-renames', anchorHead, head));
+    const edge = { kind: 'repair', previous: digest(failed.history),
+      from: { base: f.base, head: firstHead, tree: first.candidate.tree }, delta,
+      proof: { paths: ['app.ts', 'return.md'], modeChanged: false, cumulativeFrom: anchorHead },
+    };
+    next.candidate.coverage = edge; next.history.at(-1).candidate.coverage = edge;
+    await writeFile(join(f.scratch, 'agent-review/session.json'), JSON.stringify(next));
+    await f.report({ ordinary: true, delta });
+    const session = await f.state();
+    await expect.soft(f.cli('verify')).rejects.toThrow('recorded coverage proof differs');
+    const receipt = { ...receiptSummary(anchor, 12, Date.now()), head, tree: next.candidate.tree, session, sessionDigest: digest(session) };
+    const body = ECONOMY_RECEIPT_MARKER + '\n```json\n' + JSON.stringify(receipt) + '\n```';
+    await expect(admitSourceReceipt(f.cwd, f.base, head, body)).rejects.toThrow('receipt wait expired');
+  }, 30_000);
+  it('prepares a full review when the cumulative patch exceeds the Git buffer', async () => {
+    const f = await fixture(); await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL' }); await f.report({ verdict: 'FAIL' });
+    const patchSize = 9 * 1024 * 1024;
+    await f.write('first.txt', 'a'.repeat(patchSize) + '\n');
+    f.commit(); await f.cli('prepare', f.request);
+    const first = await f.state();
+    expect(first.candidate.coverage.kind).toBe('repair');
+    await f.report({ ordinary: true, delta: first.candidate.coverage.delta, verdict: 'FAIL' });
+    await f.write('second.txt', 'b'.repeat(patchSize) + '\n'); const head = f.commit();
+    await expect(sourceGit(f.cwd, 'diff', '--binary', '--full-index', '--no-renames', f.head, head))
+      .rejects.toMatchObject({ code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' });
+
+    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
+    expect((await f.state()).candidate).toMatchObject({ head });
+    expect((await f.state()).candidate.coverage).toBeUndefined();
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements).toMatchObject({ scope: 'full', floor: 2 });
+  }, 30_000);
+  it.each(['no full prefix', 'changed main base', 'changed stack base', 'changed intent'])('requires a full review after a delta-only FAIL with %s', async boundary => {
+    const f = await fixture();
+    const request = JSON.parse(await readFile(f.request, 'utf8')); request.intent.risk = 'routine';
+    await writeFile(f.request, JSON.stringify(request));
+    if (boundary !== 'no full prefix') {
+      await f.cli('prepare', f.request); await f.report({ verdict: 'FAIL' });
+    }
+    if (boundary === 'changed main base') f.git('update-ref', 'refs/remotes/origin/main', f.head);
+    if (boundary === 'changed stack base') f.env.OPENLUP_STACK_BASE = f.head;
+    if (boundary === 'changed intent') {
+      request.intent.criteria = 'Revised fixture outcome'; await writeFile(f.request, JSON.stringify(request));
+    }
+    const base = boundary === 'changed main base' || boundary === 'changed stack base' ? f.head : f.base;
+    await f.write('app.ts', f.git('show', `${base}:app.ts`) + '\n');
+    await f.write('repair.md', 'zero-floor candidate without full reports\n'); f.commit();
+    await f.cli('prepare', ...(boundary === 'changed intent' ? ['--new'] : []), f.request);
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await f.write('app.ts', 'first repair\n'); f.commit(); await f.cli('prepare', f.request);
+    const first = await f.state();
+    expect(first.candidate.coverage.kind).toBe('repair');
+    await f.report({ ordinary: true, delta: first.candidate.coverage.delta, verdict: 'FAIL' });
     await f.write('app.ts', 'second repair\n'); f.commit(); await f.cli('prepare', f.request);
     expect((await f.state()).candidate.coverage).toBeUndefined();
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements).toMatchObject({ scope: 'full', floor: 1 });
   });
   it('keeps integrations dependent on a passing prior verdict', async () => {
     const f = await fixture(); await f.cli('prepare', f.request);
@@ -565,16 +697,7 @@ describe('v3 source admission from real Git objects', () => {
       .replace(/```text\n[^\n]+/u, () => '```json\n' + JSON.stringify(summary));
     expect(body).toContain('Reviewer floor 0 · Scope git');
     expect(parseReceipt(body)).toEqual(summary);
-    const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: session.candidate.head } };
-    const api = { get: async (path: string) => path.includes('/pulls/') ? pr : path.includes('/issues/')
-      ? [{ id: 1, body, user: { login: 'supervisor', type: 'User' } }]
-      : path.includes('/collaborators/') ? { permission: 'write' } : { object: { sha: main } } };
-    const runGit = async (cwd: string, ...args: string[]) => args.includes('fetch') ? '' : sourceGit(cwd, ...args);
-    let clock = Date.now();
-    await expect(waitNativeAdmission({ cwd: f.cwd, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1,
-      event: { number: 12, repository: { private: false }, pull_request: { head: pr.head } },
-      env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
-    })).resolves.toEqual(summary);
+    await expect(admitSourceReceipt(f.cwd, main, session.candidate.head, body)).resolves.toEqual(summary);
   });
 });
 

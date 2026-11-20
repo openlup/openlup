@@ -18,6 +18,9 @@ export interface DisposableSweepRecord extends DisposableDecision {
 }
 
 export function currentRunId(): string | undefined;
+export function hasDisposableRunActivity(run: string | undefined): boolean;
+export function clearDisposableRunActivity(run: string | undefined): void;
+export function hasTargetedTestArgs(argv?: readonly string[]): boolean;
 export function disposableLabelArgs(options?: { run?: string }): string[];
 export function parseOwnerStart(value: string): number;
 export function ownerStart(pid: number | string, env?: NodeJS.ProcessEnv, timeout?: number): Promise<number>;

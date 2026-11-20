@@ -19,5 +19,6 @@ export function createCatalogProductTypeRegistry(definitions: readonly CatalogPr
     freeze(parsed);
     installed.set(`${parsed.key}@${parsed.version}`, Object.freeze({ ...parsed, validateContent }));
   }
-  return Object.freeze({ resolve: (ref: { key: string; version: number }) => installed.get(`${ref.key}@${ref.version}`) });
+  return Object.freeze({ definitions: Object.freeze([...installed.values()]),
+    resolve: (ref: { key: string; version: number }) => installed.get(`${ref.key}@${ref.version}`) });
 }

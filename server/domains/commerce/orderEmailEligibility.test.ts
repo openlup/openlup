@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PAYMENT_SESSION_ACTIVE,
   shouldSkipCheckoutRecovery,
@@ -9,6 +9,14 @@ import {
 } from "./orderEmailEligibility.js";
 
 describe("order email eligibility", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2035-01-15T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("allows draft confirmation only for draft orders without a payment", () => {
     expect(shouldSkipOrderDraftConfirmation({
       orderStatus: "draft",

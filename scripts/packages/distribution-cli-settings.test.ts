@@ -1,12 +1,14 @@
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
+import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
+import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery, proveSettingsMcp,
   includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 import { proveNeutralStarterConsumer } from "./exact-set-qualification.mjs";
@@ -478,6 +480,7 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
   const check = JSON.parse(defaultCheck.stdout);
   const value = check.rows.find((row: { key: string }) => row.key === key).file.value;
   const runtimeReason = "Edit the application configuration and deploy.";
+  const defaultReason = "The application config supplies the value.";
   const editWindowGoal = "Set how many hours before a renewal customers can edit a newly created subscription (edit cutoff, change deadline, activation window).";
   const goal = key === "subscriptionCreation.editWindowHours" ? editWindowGoal : before.goal;
   const displayedSchema = z.toJSONSchema(z.fromJSONSchema(before.schema), { target: "draft-07", io: "input", reused: "inline" });
@@ -488,13 +491,21 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
     const setting = command === "list" ? document.entries.find((row: { key: string }) => row.key === key) : document.setting;
     setting.goal = goal;
     setting.runtime.reason = runtimeReason;
-    if (command !== "list") setting.schema = displayedSchema;
+    if (command !== "list") {
+      setting.schema = displayedSchema;
+      setting.fallback = null;
+      setting.defaultBasis = { kind: "neutral" };
+      setting.whyThisDefault = defaultReason;
+    }
     if (command === "show") document.observation = fileObservation;
     return JSON.stringify(document) + "\n";
   }
   let expected = captured.stdout.replace(before.goal, goal);
   if (command !== "list") {
     expected = expected.replace(before.runtime.reason, runtimeReason)
+      .replace(`Default: ${JSON.stringify(before.fallback)}\n`, "Default: null\n")
+      .replace(/^Basis: .*$/mu, "Basis: neutral")
+      .replace(before.whyThisDefault, defaultReason)
       .replace(`Schema: ${JSON.stringify(before.schema)}\n`, `Schema: ${JSON.stringify(displayedSchema)}\n`);
   }
   if (command === "show") {
@@ -513,6 +524,73 @@ it.each(baseline.settings)("preserves starter discovery bytes for $key with only
   }
 });
 
-it.each(baseline.checks)("preserves the full starter check report for $args", captured => {
-  expect(runStarterSettings(starter, captured.args)).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
+const newStarterCheckKeys = [
+  "legal.returnsDays", "market", "offer.maxUnits", "offer.minUnits", "offer.shippingMinor",
+  "offer.subscriptionRoundingQuantumMinor", "purchase.attemptLimits", "purchase.tax.vatRateBps",
+  "renewal.retryBackoffHours", "renewal.subscriptionCare.notices", "renewal.subscriptionCare.pausePresets",
+  "renewal.subscriptionCare.terms", "shipping.rateResolver",
+];
+
+it.each(baseline.checks)("reports exactly the baseline and new starter check rows for $args", captured => {
+  const { stdout, ...actual } = runStarterSettings(starter, captured.args);
+  let existing: string;
+  if (captured.args.includes("--json")) {
+    const expected = JSON.parse(captured.stdout);
+    const document = JSON.parse(stdout);
+    const keys = new Set(expected.rows.map((row: { key: string }) => row.key));
+    expect(document.rows.map((row: { key: string }) => row.key).toSorted()).toEqual([...keys, ...newStarterCheckKeys].toSorted());
+    expect(JSON.stringify(document) + "\n").toBe(stdout);
+    document.rows = document.rows.filter((row: { key: string }) => keys.has(row.key));
+    existing = JSON.stringify(document) + "\n";
+  } else {
+    const blocks = (output: string) => output.split(/(?=^\S)/mu);
+    const key = (block: string) => /^(\S+): file /u.exec(block)?.[1];
+    const rowKeys = (parts: string[]) => parts.map(key).filter(value => value !== undefined);
+    const keys = new Set(rowKeys(blocks(captured.stdout)));
+    const actualBlocks = blocks(stdout);
+    expect(rowKeys(actualBlocks).toSorted()).toEqual([...keys, ...newStarterCheckKeys].toSorted());
+    existing = actualBlocks.map(block => {
+      const rowKey = key(block);
+      // New code rows end at Effect. Keep any text that follows them.
+      return rowKey === undefined || keys.has(rowKey) ? block : block.replace(/^[\s\S]*?^ {2}Effect: .*\n/mu, "");
+    }).join("");
+  }
+  expect({ ...actual, stdout: existing }).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
+});
+
+it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {
+  const { directory, write } = fixture();
+  const platform = join(directory, "node_modules/@openlup/platform");
+  mkdirSync(platform, { recursive: true });
+  mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
+  const packed = JSON.parse(execFileSync("npm", ["pack", resolve("packages/platform"), "--ignore-scripts",
+    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8" }));
+  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"]);
+  for (const dependency of ["zod", "@openlup/core", "@openlup/outbox"]) {
+    const target = join(directory, "node_modules", dependency);
+    rmSync(target, { recursive: true, force: true });
+    symlinkSync(resolve("node_modules", dependency), target, "dir");
+  }
+  symlinkSync(join(platform, "src/lifecycle/openlup.mjs"), join(directory, "node_modules/.bin/openlup"));
+  write(starterSettingsHost, `export function createSettingsBindings() {
+    return { file: { configuration: "supplements", validate() {}, entries: {
+      "offer.freeShippingFromMinor": { value: 1000, location: { file: "owned/store.config.ts", symbol: "threshold" },
+        descriptor: { domain: "shipping", goal: "Free shipping threshold",
+          effect: { appliesTo: "New orders.", impact: "customer-promise", frozenOn: [] } } },
+    } } };
+  }`);
+  const { listing, results } = proveSettingsMcp(directory);
+  const { tools } = ListToolsResultSchema.parse(listing);
+  expect(tools).toHaveLength(5);
+  const clientValidator = new AjvJsonSchemaValidator();
+  for (const [index, tool] of tools.entries()) {
+    const validateInput = clientValidator.getValidator(tool.inputSchema);
+    const validateOutput = clientValidator.getValidator(tool.outputSchema!);
+    const document = CallToolResultSchema.parse(results[index]).structuredContent!;
+    expect(validateInput({}).valid, tool.name).toBe(["settings_list", "settings_check"].includes(tool.name));
+    expect(validateInput({ databaseUrl: "ignored" }).valid, tool.name).toBe(false);
+    expect(validateOutput(document).valid, tool.name).toBe(true);
+    expect(validateOutput({ ...document, extra: true }).valid, tool.name).toBe(false);
+    expect(validateOutput({ ...document, schemaVersion: undefined }).valid, tool.name).toBe(false);
+  }
 });

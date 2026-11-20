@@ -1444,8 +1444,10 @@ validator. Export the hooks documented by `CatalogPublicationRulesModule`.
 
 Use the named presentation fields for titles, routes, short names, advertised
 weights, media references, and accents. List advertised weights in ascending
-order without duplicates. Keep derived SKU facts to scalar values. Give each
-display field its own value. Copying a whole authored document into a display
+order without duplicates. Derived SKU facts can contain bounded JSON objects,
+arrays and scalar values. Published SKU details have a 2,097,152-byte UTF-8
+limit and must fit the publication page depth limit. Give each display field
+its own value. Copying a whole authored document into a display
 field fails preparation, including a copy as a localized map or array.
 An exact copy has an equal canonical JSON value. Transformed or re-encoded content, such as JSON serialized inside a string, other encodings or normalized text, is outside this rule.
 Content is refused while an earlier revision of the document cannot be read.
@@ -1454,6 +1456,25 @@ Store structured display values as typed public attributes.
 
 Render public product attributes supplied by the catalogue read model. The
 existing projection admits up to 2,048 bytes per projected text value.
+
+#### Native publication commands
+
+Apply the complete native migration chain before binding
+`createPostgresCatalogPublicationCommands` from `@openlup/platform/catalog`.
+Supply a dedicated catalogue owner transaction lane, an installed rules registry
+and a server verifier for human administrators. Authorize the operator through
+the binding. The binding checks live administrator membership on every command.
+
+Enable `includeApprovalSeal` on the opted-in candidate service. Copy the
+candidate reference, digest and `preparation.postStateDigest` into the approval
+request. A structural seal can be available while activation is pending. Publish
+using the same candidate, its full expected head, and a distinct command key.
+Retry an uncertain response with the original command and key. If the approval
+or expected head changed, prepare the current draft again.
+
+To repair live drift, save a `compensation` revision against the current head
+and approve it under a fresh key. Publishing it appends another revision. An
+issued candidate's approval remains effective for its history.
 
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,
@@ -1470,7 +1491,9 @@ namespace, tax-class and profile references, then reuses those definition issues
 with paths under `/types`. These checks perform no I/O or callback execution.
 `createCatalogProductTypeRegistry` uses the definition issue list
 and throws its first issue as `error.issue`, retaining the
-`invalid_catalog_type_definition` refusal. The Node entry `./catalog` exports
+`invalid_catalog_type_definition` refusal. The registry exposes optional
+read-only `definitions` in declaration order. Custom registries can supply
+`resolve` alone. The Node entry `./catalog` exports
 `CATALOG_CONFORMANCE_RULES`, an exhaustive typed record supplying severity, rule,
 fix and installed recipe destinations. Browser contracts export
 `CatalogConformanceCode` and its related shapes as types only; the union reuses

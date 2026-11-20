@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Tool-only Node entry; importing platform engine entries never starts this CLI.
+import { Console } from "node:console";
 import { promises as fs } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,6 +10,7 @@ const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SN
 openlup verify [--app ./application-observations.mjs] [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
 openlup settings list|show|preview|explain [--help] [--json] (experimental)
+openlup settings mcp [--app <module>] [--configuration <id>] [--database-url <url>] (experimental, read-only stdio)
 openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
@@ -108,6 +110,7 @@ function formatSettingsPreview(result) {
 async function main(args) {
   if (args[0] === "settings") {
     validatingInput = false;
+    const host = { bind: bindSettings, loadCheck: loadSettingsCheck, formatPreview: formatSettingsPreview };
     // eslint-disable-next-line no-restricted-syntax -- tool entry loads the existing installed server subpath only for settings
     const { runSettingsCommand } = await import("@openlup/platform/operations/server");
     const readStdin = async () => {
@@ -116,9 +119,26 @@ async function main(args) {
       for await (const chunk of process.stdin) text += chunk;
       return text;
     };
-    process.exitCode = await runSettingsCommand(args.slice(1), {
-      write: text => process.stdout.write(text), warn: text => process.stderr.write(text), readStdin,
-    }, { bind: bindSettings, loadCheck: loadSettingsCheck, formatPreview: formatSettingsPreview });
+    const io = { write: text => process.stdout.write(text), warn: text => process.stderr.write(text), readStdin };
+    const settingsArgs = args.slice(1);
+    let commandIndex = 0;
+    while (/^--(?:app|configuration|database-url)(?:=|$)/u.test(settingsArgs[commandIndex] ?? "")) {
+      const inline = settingsArgs[commandIndex].includes("=");
+      if (!inline && /^-./u.test(settingsArgs[commandIndex + 1] ?? "")) break;
+      commandIndex += inline ? 1 : 2;
+    }
+    if (settingsArgs[commandIndex] === "mcp") {
+      const mcpArgs = ["mcp", ...settingsArgs.slice(0, commandIndex), ...settingsArgs.slice(commandIndex + 1)];
+      const write = process.stdout.write.bind(process.stdout);
+      process.stdout.write = process.stderr.write.bind(process.stderr);
+      globalThis.console = new Console(process.stderr);
+      // eslint-disable-next-line no-restricted-syntax -- tool entry uses the same public preview contract as the catalogue generator
+      const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
+      process.exitCode = await runSettingsCommand(mcpArgs, { ...io, write, input: process.stdin },
+        { ...host, previewResultSchema: renewalStockProtectionPreviewResult });
+    } else {
+      process.exitCode = await runSettingsCommand(settingsArgs, io, host);
+    }
     return;
   }
   const { values, positionals } = parseArgs({

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { expect, it, vi } from "vitest";
 
 const fixtures = vi.hoisted(() => ({ sql: "" }));

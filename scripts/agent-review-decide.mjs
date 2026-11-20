@@ -12,7 +12,8 @@ const SHA = /^[a-f0-9]{40}$/u;
 const RISKS = ['prose', 'routine', 'behavior', 'unknown'];
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export function demand(ok, reason, code = 'invalid') { if (!ok) throw new Error(`${code}: ${reason}`); }
-const identity = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 4096;
+const IDENTITY_LIMIT = 4096;
+const identity = value => typeof value === 'string' && value.trim().length > 0 && value.length <= IDENTITY_LIMIT;
 const result = (ok, code, reason) => ({ ok, code, reason });
 function sensitivePath(path) {
   return /^(?:\.github|config|db|supabase)(?:\/|$)/iu.test(path) || /\.sql$/iu.test(path) ||
@@ -97,6 +98,26 @@ function prefixSession(session, end) {
   const version = history.some(item => item.type === 'rules' || item.candidate?.rules?.version === 3) ? 3 : 2;
   return { ...session, version, history, candidate: event.candidate, preparedAt: event.at };
 }
+export function cumulativeRepairPrefix(session) {
+  const { candidate, intent, authorSessionId } = latestPrepare(session);
+  const reports = currentReports(session);
+  if (!candidate.coverage || !reports.some(report => report.verdict === 'FAIL') ||
+    !reports.every(report => report.ordinary === true && report.delta === candidate.coverage.delta)) return undefined;
+  const intentDigest = digest(intent);
+  let repair = candidate.coverage;
+  let end = session.history.findLastIndex(event => event.type === 'prepare');
+  for (let index = end - 1; index >= 0; index--) {
+    const prior = session.history[index];
+    if (prior.type !== 'prepare') continue;
+    if (repair?.kind !== 'repair' || repair.from?.head !== prior.candidate.head) return undefined;
+    if (prior.candidate.base !== candidate.base || prior.candidate.rules?.base !== candidate.rules?.base ||
+      prior.authorSessionId !== authorSessionId || digest(prior.intent) !== intentDigest) return undefined;
+    const prefix = prefixSession(session, end);
+    if (fullReviewReports(prefix)) return prefix;
+    repair = prior.candidate.coverage;
+    end = index;
+  }
+}
 export function coverageRequirement(session) {
   demand(digest(session.candidate) === digest(latestPrepare(session)?.candidate), 'candidate differs from history');
   const start = session.history.findLastIndex(event => event.type === 'prepare');
@@ -113,12 +134,15 @@ export function coverageRequirement(session) {
     demand(edge.previous === digest(prior.history) && digest(edge.from) === digest({ base: prior.candidate.base, head: prior.candidate.head, tree: prior.candidate.tree }), 'coverage prefix differs');
     demand(digest(event.intent) === digest(latestIntent(prior)) && event.authorSessionId === latestPrepare(prior).authorSessionId, 'coverage intent or author changed');
     const decision = verdict(prior, prior.candidate, event.at);
-    const priorFull = !decision.ok && edge.kind === 'repair' ? fullReviewReports(prior) : undefined;
+    const cumulativeFrom = edge.proof?.cumulativeFrom;
+    const repair = cumulativeFrom === undefined ? prior : cumulativeRepairPrefix(prior);
+    demand(cumulativeFrom === undefined || (edge.kind === 'repair' && decision.code === 'needs_agent_review' && repair?.candidate.head === cumulativeFrom), 'cumulative repair prefix differs');
+    const priorFull = !decision.ok && edge.kind === 'repair' && repair ? fullReviewReports(repair) : undefined;
     demand(decision.ok || priorFull, 'prior coverage is incomplete or unresolved');
     const portable = edge.kind === 'integration' && ['portable-git', 'portable-registry-union', 'portable-derived', 'portable-resolution'].includes(edge.proof?.kind);
     inherited = priorFull ? {
       earliest: Math.min(...priorFull.map(report => report.at)), expires: Math.min(...priorFull.map(report => report.at + DAY)),
-      base: prior.candidate.base, paths: prior.candidate.changedPaths,
+      base: repair.candidate.base, paths: repair.candidate.changedPaths,
     } : prior.version === 2 && portable ? {
       earliest: Math.min(...currentReports(prior).filter(report => report.verdict === 'PASS').map(report => report.at)),
       expires: legacyReviewExpiry(prior), base: prior.candidate.base, paths: prior.candidate.changedPaths,
@@ -159,6 +183,10 @@ export function integrationReviewContext(session, observed, { parents, baseAnces
 }
 export function prepareCandidate(session, observed, now, fresh = false) {
   candidateValid(observed); demand(Number.isFinite(now), 'prepare time is invalid'); demand(observed.clean, 'commit source changes before prepare', 'dirty');
+  for (const [field, value] of [['authorSessionId', observed.authorSessionId], ['intent.criteria', observed.intent?.criteria]]) {
+    if (typeof value === 'string' && value.length > IDENTITY_LIMIT && value.trim())
+      demand(false, `${field} is ${value.length} characters (limit ${IDENTITY_LIMIT.toLocaleString('en-US')}); shorten it`);
+  }
   demand(identity(observed.authorSessionId) && identity(observed.intent?.criteria), 'author and intent.criteria are required');
   const intent = observed.intent; classifyRisk(observed, intent.risk);
   if (session) {
@@ -283,6 +311,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     proofKind: edge.proof?.kind ?? null,
     scope,
     delta: edge.delta ?? null,
+    ...(edge.proof?.cumulativeFrom ? { cumulativeFrom: edge.proof.cumulativeFrom } : {}),
     paths: deltaPaths ?? (edge.kind === 'repair' ? edge.proof?.paths ?? [] : edge.proof?.resolution ?? []),
     modeChanged: Boolean(edge.proof?.modeChanged),
     ordinaryAllowed: Boolean(deltaPaths && deltaDigest),

@@ -17,3 +17,5 @@ export {
 export * from "./qualifiedInstall.js";
 export * from "./selectedCatalogProjection.js";
 export * from "./rdsControlRoles.js";
+
+export { packagedPlatformMigrationPosition } from "./packagedCatalog.js";
