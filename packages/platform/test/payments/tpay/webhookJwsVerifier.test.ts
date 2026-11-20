@@ -113,7 +113,10 @@ describe("Tpay JWS verifier", () => {
       "https://secure.sandbox.tpay.com/x509/cert.pem#frag",
       "https://secure.sandbox.tpay.com/x509/cert.pem#",
       "https://secure.sandbox.tpay.com/x509/..%2fother/cert.pem",
+      "https://secure.sandbox.tpay.com/x509/..%2\tfother/cert.pem",
       "https://secure.sandbox.tpay.com/x509/..%5cother/cert.pem",
+      "https://secure.sandbox.tpay.com/x509/..%5\rcother/cert.pem",
+      "https://secure.sandbox.tpay.com/x509/cert.pem\n",
       "http://secure.sandbox.tpay.com/x509/cert.pem",
     ]) {
       const header = base64Url(JSON.stringify({ x5u: trickyUrl }));

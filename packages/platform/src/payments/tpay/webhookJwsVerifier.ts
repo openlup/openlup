@@ -58,7 +58,16 @@ export async function verifyTpayJwsSignature({
   return verifyDetached({ signingInput: signedPayload, signature, signingCertificatePem });
 }
 
+function hasAsciiControlChar(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
 function canonicalizeAllowedCertificateUrl(candidate: string, allowedPrefix: string): string | null {
+  if (hasAsciiControlChar(candidate) || hasAsciiControlChar(allowedPrefix)) return null;
   if (/[?#]/u.test(candidate) || /[?#]/u.test(allowedPrefix)) return null;
   if (/%2f|%5c/iu.test(candidate)) return null;
   let allowed: URL;
@@ -73,6 +82,7 @@ function canonicalizeAllowedCertificateUrl(candidate: string, allowedPrefix: str
   if (allowed.username || allowed.password || allowed.search || allowed.hash) return null;
   if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
   if (parsed.origin !== allowed.origin) return null;
+  if (/%2f|%5c/iu.test(parsed.pathname)) return null;
   const prefixPath = allowed.pathname.endsWith("/") ? allowed.pathname : `${allowed.pathname}/`;
   if (!parsed.pathname.startsWith(prefixPath) || parsed.pathname.length <= prefixPath.length) return null;
   return parsed.href;
