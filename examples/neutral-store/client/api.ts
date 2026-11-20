@@ -7,14 +7,14 @@ export async function configuration(): Promise<AppConfigurationResponse> {
   return response.json() as Promise<AppConfigurationResponse>;
 }
 
-export async function act(operation: Operation, input: ActionInput, commandKey: string): Promise<ActionResult> {
+export async function act(operation: Operation, input: ActionInput | string, commandKey: string): Promise<ActionResult> {
   try {
     const response = await fetch(`/api/actions/${operation}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Starter-Request': '1', 'Idempotency-Key': commandKey },
       credentials: 'same-origin',
       cache: 'no-store',
-      body: JSON.stringify(input),
+      body: typeof input === 'string' ? input : JSON.stringify(input),
       signal: AbortSignal.timeout(20000),
     });
     const result: unknown = await response.json();

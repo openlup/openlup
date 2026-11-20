@@ -165,11 +165,8 @@ const shippingScript = String.raw`
   } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();await runtime.end();await owner.end();}
 `;
 
-// About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
-// The child measured at most 2.703 s; retain its separate 20 s deadline.
-for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
-  const caseStarted = performance.now();
-  const container = await runPostgresContainer({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
+async function starterDatabase(label: string) {
+  const container = await runPostgresContainer({ name: `starter-quote-${label}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
   containers.push(container);
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
   const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
@@ -180,6 +177,14 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
   await runner.apply();expect((await runner.status()).pending).toEqual([]);
   await owner.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
   const runtime = new URL(container.connectionString);runtime.username = 'starter_runtime';runtime.password = 'synthetic-conformance';
+  return { container, runtime };
+}
+
+// About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
+// The child measured at most 2.703 s; retain its separate 20 s deadline.
+for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
+  const caseStarted = performance.now();
+  const { container, runtime } = await starterDatabase(`${configuration}-${multiSize ? "multi" : "single"}`);
   const probe = createServer();
   await new Promise<void>(resolve => probe.listen(0,'127.0.0.1',resolve));
   const address = probe.address();
@@ -379,4 +384,220 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
     } finally { writeFileSync(mutation.path,original); }
   }
   console.info(JSON.stringify({ configuration, caseMs: performance.now() - caseStarted, childMs: performance.now() - childStarted }));
+}, 95_000);
+
+it('preserves base and legacy catalogue receipts and reads retained builds', async () => {
+  const { container, runtime } = await starterDatabase('catalogue');
+  const app = join(consumer, 'catalogue-app');
+  cpSync(join(consumer, 'application'), app, { recursive: true });
+  const owned = join(app, 'owned/catalogue.ts');
+  const registry = 'export const catalogDraftRegistry';
+  const source = readFileSync(owned, 'utf8');
+  expect(source).toContain(registry);
+  writeFileSync(owned, source.replace(registry, `
+    types.push({...types[0]!, version: 2});
+    ${registry}`));
+  const script = String.raw`
+    import assert from 'node:assert/strict';
+    import {createHash, randomUUID} from 'node:crypto';
+    import {appendFileSync, readFileSync, unlinkSync, writeFileSync} from 'node:fs';
+    import pg from 'pg';
+    import {createCatalogDraftHandlerV3, createPostgresCatalogDraftStoreV3, canonicalCatalogDraftJson,
+      installCatalogDefinitions, withCatalogPublicationRules} from '@openlup/platform/catalog';
+    import {configurations} from './owned/store.config.ts';
+    import {applyDemoSeed} from './installation/install.ts';
+    import {readStarterCatalogueRules, starterCatalogue, starterCataloguePack} from './host/editor-catalogue.ts';
+    import {composeOperatorCapabilities} from './host/operator-composition.ts';
+    const config = configurations.supplements;
+    const owner = new pg.Pool({connectionString: fixture.ownerUrl}), runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const bindings = [];
+    const start = (executor = runtime) => {
+      const binding = composeOperatorCapabilities({executor, connectionString: fixture.runtimeUrl});
+      bindings.push(binding);
+      return binding.actions['operator.catalogDrafts'];
+    };
+    const effects = async () => (await owner.query('SELECT (SELECT count(*) FROM public.catalog_draft_revisions) AS revisions,'
+      + ' (SELECT count(*) FROM public.catalog_draft_command_receipts) AS receipts')).rows;
+    try {
+      const install = {connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
+        catalogueRules: readStarterCatalogueRules(), close: async () => {}};
+      const rulesFile = 'owned/catalogue-rules.cjs';
+      unlinkSync(rulesFile);
+      const inline = start();
+      const operatorRef = randomUUID(), commandKey = randomUUID();
+      const context = {config, actor: {customerRef: null, operatorRef}, commandKey};
+      const newDraft = payload => ({action: 'create', draftId: randomUUID(), expectedRevision: 0, payload});
+      const inlineDraft = version => newDraft({schemaVersion: 1, product: {id: randomUUID(), type: {key: 'starter:item', version},
+        dimensions: [], sharedContent: {title: 'Example item'}}, skus: []});
+      const inlineBase = inlineDraft(1), inlineLocal = inlineDraft(2);
+      const send = (input, key = randomUUID(), handler = action) => handler(input, {...context, commandKey: key});
+      assert.equal((await send(inlineBase, undefined, inline)).value?.outcome, 'committed', 'rules-absent inline Save');
+      assert.equal((await send(inlineLocal, undefined, inline)).value?.outcome, 'committed');
+      writeFileSync(rulesFile, install.catalogueRules);
+      await applyDemoSeed(config, install);
+      await applyDemoSeed(config, install);
+      const action = start();
+      const revise = draft => ({...draft, action: 'revise', expectedRevision: 1, payload: {
+        ...draft.payload, product: {...draft.payload.product, sharedContent: {title: 'Edited item'}},
+      }});
+      const baseEdit = revise(inlineBase), ref = baseEdit.payload.product.type;
+      const resolved = await send({action: 'example', type: ref, draftId: baseEdit.draftId, expectedRevision: 1});
+      assert.deepEqual(resolved.value?.type, ref, 'title-only revise resolves to the saved inline type');
+      baseEdit.payload.product.type = resolved.value.type;
+      assert.deepEqual((await send(baseEdit)).value?.record.payload.product.type, ref, 'stock inline revise preserves the saved type');
+      const localEdit = await send(revise(inlineLocal));
+      assert.equal(localEdit.value?.record.payload.product.type.version, 2, 'unmarked revise still accepts the registered inline type');
+      const base = (await send({action: 'example', type: ref})).value?.type;
+      assert.deepEqual(base, {key: 'starter:item', version: 714101500}, 'base authoring type resolves to its installed pin');
+      const payload = (await send({action: 'example'})).value;
+      const kept = {key: 'example:article', version: 42};
+      const artifact = install.catalogueRules;
+      const oldPack = withCatalogPublicationRules({ ...starterCataloguePack(artifact), id: 'example:local-rules',
+        namespace: 'example', version: kept.version, types: [{ ...starterCataloguePack(artifact).types[0], ...kept }] }, () => artifact);
+      const installed = (await installCatalogDefinitions(owner, oldPack)).types[0];
+      const {validateContent, ...type} = oldPack.types[0];
+      const keptFile = '.context/catalogue-builds/' + encodeURIComponent(kept.key) + '@' + kept.version + '.json';
+      writeFileSync(keptFile, canonicalCatalogDraftJson({type, asset: artifact.toString('base64'), installed}));
+      assert.deepEqual((await send({action: 'example', type: kept, draftId: baseEdit.draftId, expectedRevision: 2})).value?.type,
+        kept, 'an explicitly selected retained version keeps its exact pin');
+      const file = '.context/catalogue-builds/714101500.json';
+      const bytes = readFileSync(file);
+      assert.equal(createHash('sha256').update(bytes).digest('hex'),
+        'cd36418dee1de7afbe9a5bf5748ef3aaad3a962990cd7ff617208bd1593eb5bb', 'golden base receipt bytes');
+      const installedDraft = inlineDraft(1);
+      installedDraft.payload.product.type = base;
+      const pinnedBaseKey = 'pin:' + randomUUID();
+      const baseSaved = await send(installedDraft, pinnedBaseKey);
+      assert.equal(baseSaved.value?.outcome, 'committed', 'original base pin saves before build loss');
+      writeFileSync('recorded-build.json', bytes);
+      writeFileSync('recorded-draft.json', JSON.stringify({operatorRef, draft: installedDraft}), {mode: 0o600});
+      const legacy = newDraft({...payload, product: {...payload.product, type: {...base, version: 1}}});
+      // Seed with the command the base writer passed to the native handler after translating @1.
+      const baseWriter = createCatalogDraftHandlerV3({store: createPostgresCatalogDraftStoreV3(runtime),
+        registry: starterCatalogue().registry, authorizeOperator: async () => ({actorId: operatorRef})});
+      const original = await baseWriter.execute({...legacy, payload, schemaVersion: 3, commandKey}, context);
+      assert.equal(original.outcome, 'committed');
+      const revised = await send({...legacy, action: 'revise', expectedRevision: 1});
+      assert.equal(revised.value?.record.revision, 2, 'legacy revise inherits predecessor pin');
+      assert.deepEqual(revised.value.record.payload.product.type, base);
+
+      const next = (await send({action: 'example'})).value;
+      next.product.type = kept;
+      const pinned = newDraft(next), key = 'pin:' + randomUUID();
+      const unmarked = await send(pinned);
+      assert.equal(unmarked.code, 'catalog_draft_payload_invalid', 'a retained keyed build requires a pinned write');
+      assert.equal(unmarked.issues?.[0].code, 'catalogue_pinned_save_required');
+      assert.match(unmarked.issues[0].message, /Use the operator Save form or a pinned draft command key/u);
+      const saved = await send(pinned, key);
+      assert.equal(saved.value?.outcome, 'committed', 'verified retained build saves');
+      const changed = {...installedDraft, payload: {...installedDraft.payload,
+        product: {...installedDraft.payload.product, type: {...base, version: 1}}}};
+      const conflict = await send(changed, pinnedBaseKey);
+      assert.equal(conflict.code, 'catalog_draft_command_key_reused', 'pinned version change is a conflict');
+      assert.equal(conflict.issues?.[0].path, 'commandKey');
+
+      const race = newDraft((await send({action: 'example'})).value);
+      const raceKey = 'pin:' + randomUUID(), bothRead = Promise.withResolvers();
+      let reads = 0;
+      const concurrent = start({async query(sql, parameters) {
+        const result = await runtime.query(sql, parameters);
+        if (sql.includes('catalog_draft_get') && parameters[0] === race.draftId) {
+          if (++reads === 2) bothRead.resolve();
+          await bothRead.promise;
+        }
+        return result;
+      }});
+      const different = structuredClone(race);
+      different.payload.skus[0].netContent.unscaled = '64';
+      const results = await Promise.all([send(race, raceKey, concurrent), send(different, raceKey, concurrent)]);
+      assert.equal(results.filter(result => result.value?.outcome === 'committed').length, 1);
+      assert.equal(results.find(result => !result.ok)?.code, 'catalog_draft_command_key_reused', 'SQL race maps to the pinned conflict');
+
+      unlinkSync(file);
+      appendFileSync('owned/catalogue-rules.cjs', '\n// New rules build\n');
+      const retry = start();
+      assert.deepEqual((await send({action: 'example', type: kept}, undefined, retry)).value?.type, kept, 'saved pin resolves to its retained build');
+      const before = await effects();
+      assert.deepEqual((await send(legacy, commandKey, retry)).value?.record, original.record, 'legacy retry uses the authorized original after build loss');
+      assert.equal((await retry(legacy, {...context, actor: {...context.actor, operatorRef: randomUUID()}})).ok, false);
+      assert.equal((await send(pinned, key, retry)).replayed, true, 'pinned replay survives rules changes');
+      assert.deepEqual(await effects(), before, 'replay writes no additional revisions or receipts');
+
+      writeFileSync(keptFile, '{');
+      const damaged = await send({action: 'example', type: kept}, undefined, start());
+      assert.equal(damaged.code, 'catalog_type_not_installed');
+      assert.deepEqual(damaged.issues, [{path: 'product.type', code: 'catalogue_build_invalid',
+        message: 'Restore the retained catalogue build for ' + kept.key + '@' + kept.version + ' from a verified copy.' }]);
+    } finally {
+      for (const binding of bindings) await binding.close();
+      await runtime.end();
+      await owner.end();
+    }
+  `;
+  writeFileSync(join(app, 'catalogue-scenario.mjs'),
+    `const fixture = ${JSON.stringify({ ownerUrl: container.connectionString, runtimeUrl: runtime.toString() })};\n${script}`);
+  execFileSync(process.execPath, ['catalogue-scenario.mjs'], { cwd: app, stdio: 'pipe', timeout: 20_000 });
+  // Reload owned registration and rule code in a fresh process after the build is lost.
+  writeFileSync(owned, readFileSync(owned, 'utf8').replace(registry,
+    `types.push({...types[0]!, version: 714101500, validateContent: () => []});
+${registry}`));
+  const recordedPin = String.raw`
+    import assert from 'node:assert/strict';
+    import {readFileSync} from 'node:fs';
+    import pg from 'pg';
+    import {configurations} from './owned/store.config.ts';
+    import {catalogDraftRegistry} from './owned/catalogue.ts';
+    import {composeOperatorCapabilities} from './host/operator-composition.ts';
+    const {operatorRef, draft} = JSON.parse(readFileSync('recorded-draft.json', 'utf8'));
+    const ref = draft.payload.product.type;
+    assert.ok(catalogDraftRegistry.resolve(ref), 'the same version is now registered inline');
+    const owner = new pg.Pool({connectionString: fixture.ownerUrl}), runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const binding = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+    const action = binding.actions['operator.catalogDrafts'];
+    const send = (input, prefix = '') => action(input, {config: configurations.supplements, actor: {customerRef: null, operatorRef},
+      commandKey: prefix + crypto.randomUUID()});
+    const counts = async () => (await owner.query('SELECT (SELECT count(*) FROM public.catalog_draft_heads) AS heads,'
+      + '(SELECT count(*) FROM public.catalog_draft_revisions) AS revisions,'
+      + '(SELECT count(*) FROM public.catalog_draft_sku_reservations) AS reservations,'
+      + '(SELECT count(*) FROM public.catalog_draft_command_receipts) AS receipts')).rows;
+    try {
+      const before = await counts(), { mode } = fixture;
+      const resolve = await send({action: 'example', type: ref, draftId: draft.draftId, expectedRevision: 1});
+      const revise = {...draft, action: 'revise', expectedRevision: 1};
+      revise.payload.product.sharedContent.title = '';
+      if (mode === 'verified') {
+        assert.deepEqual(resolve.value?.type, ref, 'verified build resolves the saved pin');
+        assert.equal((await send(revise, 'pin:')).ok, false, 'original verified rules reject the blank title');
+        revise.payload.product.sharedContent.title = 'Edited item';
+        assert.equal((await send(revise, 'pin:')).value?.outcome, 'committed', 'verified build saves the pinned revision');
+      } else {
+        const restore = /Restore the retained catalogue build for starter:item@714101500/u;
+        const refused = reply => {
+          assert.equal(reply.ok, false, mode + ' build must refuse');
+          assert.match(reply.issues?.[0]?.message ?? '', restore, mode + ' build names the pin and remedy');
+        };
+        refused(resolve);
+        refused(await send(revise, 'pin:'));
+        refused(await send({...draft, draftId: crypto.randomUUID()}, 'pin:'));
+        assert.deepEqual(await counts(), before, mode + ' build refusal writes nothing');
+      }
+    } finally {
+      await binding.close();
+      await runtime.end();
+      await owner.end();
+    }
+  `;
+  const baseBuild = join(app, '.context/catalogue-builds/714101500.json');
+  const verified = readFileSync(join(app, 'recorded-build.json'));
+  const altered = JSON.parse(verified.toString());
+  altered.installed.definitionDigest = '0'.repeat(64);
+  for (const [mode, bytes] of [['missing', null], ['truncated', '{'],
+    ['unverified', JSON.stringify(altered)], ['unreadable', null], ['verified', verified]] as const) {
+    if (mode === 'unreadable') mkdirSync(baseBuild);
+    else if (bytes !== null) writeFileSync(baseBuild, bytes);
+    writeFileSync(join(app, 'recorded-pin.mjs'),
+      `const fixture = ${JSON.stringify({ ownerUrl: container.connectionString, runtimeUrl: runtime.toString(), mode })};\n${recordedPin}`);
+    try { execFileSync(process.execPath, ['recorded-pin.mjs'], { cwd: app, stdio: 'pipe', timeout: 20_000 }); }
+    finally { rmSync(baseBuild, { recursive: true, force: true }); }
+  }
 }, 95_000);

@@ -26,7 +26,8 @@ export interface ActionFormOptions {
   fields?: FieldSpec[];
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
-  prepare?: (values: ActionInput) => Promise<ActionInput | null>;
+  prepare?: (values: ActionInput, current: () => boolean) => Promise<ActionInput | null>;
+  freezePrepared?: { when: (values: ActionInput) => boolean; key: (values: ActionInput) => string };
   onSuccess?: (value: unknown) => void;
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
@@ -76,6 +77,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   let commandKey = crypto.randomUUID();
   let priorInput: string | null = null;
   let uncertain: { input: string; prepared: ActionInput } | undefined;
+  let frozen: Readonly<{ editGeneration: number; inputSignature: string; key: string; body: string }> | undefined;
   let inFlight = false;
   let generation = 0;
   form.addEventListener('input', () => { ++generation; });
@@ -86,6 +88,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     commandKey = crypto.randomUUID();
     priorInput = null;
     uncertain = undefined;
+    frozen = undefined;
     output.replaceChildren();
   }, 'secondary');
   append(form, el('p', { class: 'muted small' }, context.t('idempotency')),
@@ -93,9 +96,9 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
   form.addEventListener('submit', event => {
     event.preventDefault();
     if (inFlight || !form.isConnected || !form.reportValidity()) return;
-    const requestGeneration = ++generation;
+    const requestGeneration = generation;
     const current = () => form.isConnected && generation === requestGeneration;
-    void (async () => {
+    const readValues = (): ActionInput | null => {
       let values: ActionInput = {};
       for (const { spec, control } of controls) {
         values[spec.name] = spec.type === 'checkbox'
@@ -104,35 +107,54 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       }
       try {
         if (options.transform) values = options.transform(values);
-        values = { ...values, ...options.input?.(), locale: context.locale };
-      } catch {
+        return { ...values, ...options.input?.(), locale: context.locale };
+      } catch { return null; }
+    };
+    void (async () => {
+      let values = readValues();
+      if (!values) {
         output.replaceChildren(refusal(context, 'starter_input_invalid'));
         return;
       }
       const input = JSON.stringify(values);
-      if (uncertain?.input === input) values = uncertain.prepared;
-      else if (options.prepare) {
+      const freeze = options.freezePrepared?.when(values) ? options.freezePrepared : undefined;
+      let pair = freeze && frozen?.editGeneration === requestGeneration && frozen.inputSignature === input ? frozen : undefined;
+      if (!pair && !freeze && uncertain?.input === input) values = uncertain.prepared;
+      else if (!pair && options.prepare) {
         uncertain = undefined;
         inFlight = true; submit.disabled = true; reset.disabled = true;
         try {
-          const prepared = await options.prepare(values);
-          if (!current() || !prepared) return;
+          const ready = () => {
+            if (!current()) return false;
+            if (!freeze || JSON.stringify(readValues()) === input) return true;
+            output.replaceChildren(el('p', {}, context.locale === 'pl' ? 'Formularz zmienił się podczas ustalania typu. Zapisz ponownie.'
+              : 'The form changed while resolving. Save again.'));
+            return false;
+          };
+          const prepared = await options.prepare(values, ready);
+          if (!ready() || !prepared) return;
           values = prepared;
         } finally { inFlight = false; submit.disabled = false; reset.disabled = false; }
       }
       if (!current()) return;
-      const serialized = JSON.stringify(values);
-      if (priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
-      priorInput = serialized;
+      if (freeze) {
+        pair ??= Object.freeze({ editGeneration: requestGeneration, inputSignature: input,
+          key: freeze.key(values), body: JSON.stringify(values) });
+        frozen = pair;
+      } else {
+        const serialized = JSON.stringify(values);
+        if (priorInput !== null && priorInput !== serialized) commandKey = crypto.randomUUID();
+        priorInput = serialized;
+      }
       inFlight = true;
       submit.disabled = true;
       reset.disabled = true;
       form.setAttribute('aria-busy', 'true');
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
-        const result = await act(options.operation, values, commandKey);
+        const result = await act(options.operation, pair?.body ?? values, pair?.key ?? commandKey);
         if (!current()) return;
-        uncertain = !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
+        uncertain = !freeze && !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
           ? { input, prepared: values } : undefined;
         output.replaceChildren(result.ok
           ? el('section', {}, el('h4', {}, context.t('response')),

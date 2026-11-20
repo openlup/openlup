@@ -125,6 +125,7 @@ is present, `./lifecycle up` installs its rules and the operator form uses
 them. Use **Load draft example**, save it, and select **Prepare saved draft**.
 Older drafts keep the rules they were saved with. Keep the local catalogue
 build volume with the demonstration database when restarting the store.
+If a saved pin cannot be verified, restore its original build before saving.
 Without a rules bundle, drafts use the existing validator in `owned/catalogue.ts`.
 The native draft writer owns the command. The host supplies the command key
 and session actor outside the JSON payload.

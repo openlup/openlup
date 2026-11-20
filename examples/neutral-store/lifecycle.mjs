@@ -11,6 +11,7 @@ const [command, ...args] = process.argv.slice(2);
 const packageNames = ['core', 'outbox', 'platform'];
 const installationHintLimit = 240;
 const knownStarterRefusal = /^(?:starter_[a-z_]+|inventory_renewal_protection_policy_invalid|checkout_recovery_reminder_schedule_invalid|saved_address_policy_invalid|starter_locale_unsupported: [A-Za-z0-9_-]{1,32}|starter_locale_copy_missing: [A-Za-z0-9_.\[\]-]{1,120} \([a-z]{2}\))$/;
+const blockedReminderInstall = /^checkout_recovery_schedule_change_blocked_open_episodes \([0-9]{1,19} blocking orders\)$/u;
 
 function run(executable, argv, input) {
   execFileSync(executable, argv, { cwd: root,
@@ -22,6 +23,22 @@ function delegate(executable, argv) {
   const result = spawnSync(executable, argv, { cwd: root, stdio: 'inherit' });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
+}
+
+function printInstallationRefusal(error) {
+  const rules = error?.name === 'CatalogPublicationError';
+  const issue = rules ? error.diagnostic ?? { code: error.code, path: '/hooks' } : error?.issue;
+  const structured = typeof issue?.code === 'string' && /^[a-z][a-z0-9_]{1,100}$/u.test(issue.code);
+  const message = error instanceof Error ? error.message : '';
+  const code = structured ? issue.code : knownStarterRefusal.test(message) || blockedReminderInstall.test(message)
+    ? message : 'starter_installation_failed';
+  process.stderr.write(`${code}\n`);
+  const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
+  const prefix = structured ? `${rules ? 'owned/catalogue-rules.cjs' : 'owned/catalogue.ts'} ${String(issue.path ?? '/').slice(0, 90)}. ` : '';
+  const fix = hint ?? (rules && structured ? issue.message ?? error.message
+    : structured ? 'Correct the indicated definition field and try again.' : '');
+  if (prefix || fix) process.stderr.write(`${(prefix + fix).trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
+  return code;
 }
 
 function configurationArgument(argv) {
@@ -67,6 +84,16 @@ if (command === 'candidate') {
   try {
     const config = selectConfiguration(configurationArgument(args));
     assertConfig(config);
+    const { assertStarterCataloguePins, prepareStarterCatalogueRules, readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
+    prepareStarterCatalogueRules(readStarterCatalogueRules());
+    const inspect = (...args) => execFileSync('docker', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const volume = JSON.parse(inspect('compose', 'config', '--format', 'json')).volumes?.['catalogue-builds']?.name;
+    if (volume && inspect('volume', 'ls', '--quiet').trim().split('\n').includes(volume)) {
+      const image = /^FROM (\S+)/u.exec(await readFile(resolve(root, 'Dockerfile'), 'utf8'))?.[1];
+      if (!image) throw new Error('starter_catalogue_build_image_missing');
+      assertStarterCataloguePins(inspect('run', '--rm', '--network', 'none', '--read-only', '--mount',
+        `type=volume,source=${volume},target=/builds,readonly,volume-nocopy`, '--entrypoint', 'ls', image, '-1', '/builds').trim().split('\n'));
+    }
     run('docker', ['compose', 'build']);
     run('docker', ['compose', 'up', '--wait', 'database']);
     run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
@@ -81,9 +108,7 @@ if (command === 'candidate') {
     if (healthcheck) override.services.application.healthcheck = healthcheck;
     run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
   } catch (error) {
-    const code = error instanceof Error && knownStarterRefusal.test(error.message)
-      ? error.message : 'starter_installation_failed';
-    process.stderr.write(`${code}\n`);
+    printInstallationRefusal(error);
     process.exitCode = 2;
   }
 } else if (command === 'serve-demo') {
@@ -111,15 +136,12 @@ if (command === 'candidate') {
   }
 } else if (command === 'install') {
   // Internal one-shot Compose entry; no install connection reaches the HTTP host.
-  const { installDemonstration, bootstrapDemonstration } = await import('./installation/install.ts');
-  const { selectConfiguration } = await import('./owned/store.config.ts');
   try {
+    const { installDemonstration, bootstrapDemonstration } = await import('./installation/install.ts');
+    const { selectConfiguration } = await import('./owned/store.config.ts');
     await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
   } catch (error) {
-    const code = error instanceof Error ? error.message : 'starter_installation_failed';
-    process.stderr.write(`${code}\n`);
-    const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
-    if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
+    const code = printInstallationRefusal(error);
     if (code === 'starter_seed_demonstration_database_required') {
       process.stderr.write('See node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
     }
