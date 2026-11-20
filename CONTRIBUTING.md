@@ -1186,11 +1186,12 @@ Unknown events, malformed metadata or unavailable Git history exclude nothing. S
 [Required checks](#required-and-raw-checks) owns the full command sequence. `install-packages`, under the required `install-proof` aggregate, builds both profiles and runs [shared package gates](scripts/packages/required-package-gates.ts): cold-pack the publishable inventory once, all API checks first, then each `ci:required` with verified manifest/commit. Keep local package preparation before root tests because generated outputs are shared. New modules extend the owning package's consumer and required batch; do not add a workspace or job without a separate need.
 
 The [catalogue installed-consumer proof](scripts/packages/platform-cold-consumer.ts)
-compares packed `CATALOG_MIGRATIONS` positions with the
-[catalogue SQL descriptor](packages/platform/src/catalog/sql.ts) read from Git
-HEAD, the same commit checked by shared package gates. Missing, extra or reordered
-positions fail. Each packed unit's SQL bytes still undergo the separate SHA-256
-check; catalogue slot additions do not require a second position list in tooling.
+evaluates the [catalogue SQL descriptor](packages/platform/src/catalog/sql.ts)
+from Git HEAD and checks its paths, positions and hashes against the committed
+[canonical manifest](config/platform-migration-manifest.json). It compares the
+packed descriptor with those tuples and verifies each packed SQL file's SHA-256.
+Importing the catalogue and composition entries must work without the packaged
+SQL manifest.
 
 Core required coverage is V8: statements/lines 80%, branches 65%, functions 75%, plus no nonempty production file with zero covered lines. Root config has percentage thresholds when explicitly running coverage; public CI does not run root coverage or its separate no-zero helper. Outbox/Platform have no separate percentage gate. Keep installed-artifact and meaningful failure assertions; percentages do not replace them.
 

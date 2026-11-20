@@ -74,7 +74,9 @@ function parsePlatformEntry(value: unknown, label: string, errors: string[]): Pl
   return typeof entry.file === "string" && isSha256(entry.sha256) ? { file: entry.file, sha256: entry.sha256 } : null;
 }
 
-function evaluatePlan(input: PlatformManifestInput, baselineFile: string, ordered: boolean): string[] {
+type ManifestValidationInput = Omit<PlatformManifestInput, "migrations"> & { migrations?: PlatformManifestInput["migrations"] };
+
+function evaluatePlan(input: ManifestValidationInput, baselineFile: string, ordered: boolean, metadataOnly = false): string[] {
   const errors: string[] = [];
   const raw = input.manifest;
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || !hasOnlyKeys(raw as Record<string, unknown>, ["schemaVersion", "baseline", "forward", "objectInventorySha256"])) return ["platform migration manifest: expected exactly { schemaVersion, baseline, forward, objectInventorySha256 }"];
@@ -92,7 +94,8 @@ function evaluatePlan(input: PlatformManifestInput, baselineFile: string, ordere
   if (uniqueFiles.size !== files.length) errors.push("platform migration manifest: duplicate migration filename");
   const forwardFiles = forward.map((entry) => entry?.file ?? "");
   if (ordered && forwardFiles.some((file, index) => index > 0 && file <= forwardFiles[index - 1])) errors.push("platform migration manifest.forward: entries must be in strict filename order");
-  const migrationByFile = new Map(input.migrations.map((migration) => [migration.file, migration.content]));
+  if (metadataOnly) return errors;
+  const migrationByFile = new Map(input.migrations!.map((migration) => [migration.file, migration.content]));
   const actualFiles = [...migrationByFile.keys()].sort();
   const expectedFiles = [...uniqueFiles].sort();
   for (const file of expectedFiles) if (!migrationByFile.has(file)) errors.push(`platform migration manifest: missing catalog file ${file}`);
@@ -104,8 +107,17 @@ function evaluatePlan(input: PlatformManifestInput, baselineFile: string, ordere
 
 /** Validate every canonical generation before selecting one for the unchanged executor. */
 export function evaluatePlatformMigrationManifest(input: PlatformManifestInput): string[] {
+  return evaluateManifest(input);
+}
+
+/** Validate the canonical metadata without loading SQL files. */
+export function evaluatePlatformMigrationManifestMetadata(manifest: unknown): string[] {
+  return evaluateManifest({ manifest }, true);
+}
+
+function evaluateManifest(input: ManifestValidationInput, metadataOnly = false): string[] {
   const raw = input.manifest;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw) || ![2, 3].includes((raw as { schemaVersion: number }).schemaVersion)) return evaluatePlan(input, PLATFORM_BASELINE_FILE, true);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || ![2, 3].includes((raw as { schemaVersion: number }).schemaVersion)) return evaluatePlan(input, PLATFORM_BASELINE_FILE, true, metadataOnly);
   const manifest = raw as Record<string, unknown>;
   const adminPresent = manifest.schemaVersion === 3;
   if (!hasOnlyKeys(manifest, ["schemaVersion", "baseline", "forward", "objectInventorySha256", "qualified", ...(adminPresent ? ["qualifiedAdmin"] : [])])) return ["platform migration manifest: expected exactly the selected generation keys"];
@@ -137,15 +149,28 @@ export function evaluatePlatformMigrationManifest(input: PlatformManifestInput):
   const entries = (value: Record<string, unknown>): string[] => [value.baseline, ...(Array.isArray(value.forward) ? value.forward : [])]
     .flatMap(entry => entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).file === "string" ? [(entry as { file: string }).file] : []);
   const legacyFiles = new Set(entries(legacy)), qFiles = new Set(entries(selected)), aFiles = new Set(selectedAdmin ? entries(selectedAdmin) : []);
+  const migrationsFor = (files: Set<string>) => metadataOnly ? undefined : input.migrations!.filter(({ file }) => files.has(file));
   const errors = [
-    ...evaluatePlan({ manifest: legacy, migrations: input.migrations.filter(({ file }) => legacyFiles.has(file)) }, PLATFORM_BASELINE_FILE, true),
-    ...evaluatePlan({ manifest: selected, migrations: input.migrations.filter(({ file }) => qFiles.has(file)) }, QUALIFIED_BASELINE_FILE, false),
-    ...(selectedAdmin ? evaluatePlan({ manifest: selectedAdmin, migrations: input.migrations.filter(({ file }) => aFiles.has(file)) }, ADMIN_BASELINE_FILE, false) : []),
+    ...evaluatePlan({ manifest: legacy, migrations: migrationsFor(legacyFiles) }, PLATFORM_BASELINE_FILE, true, metadataOnly),
+    ...evaluatePlan({ manifest: selected, migrations: migrationsFor(qFiles) }, QUALIFIED_BASELINE_FILE, false, metadataOnly),
+    ...(selectedAdmin ? evaluatePlan({ manifest: selectedAdmin, migrations: migrationsFor(aFiles) }, ADMIN_BASELINE_FILE, false, metadataOnly) : []),
   ];
-  const union = new Set([...legacyFiles, ...qFiles, ...aFiles]);
-  for (const { file } of input.migrations) if (!union.has(file)) errors.push(`platform migration manifest: unmanifested catalog file ${file}`);
+  if (!metadataOnly) {
+    const union = new Set([...legacyFiles, ...qFiles, ...aFiles]);
+    for (const { file } of input.migrations!) if (!union.has(file)) errors.push(`platform migration manifest: unmanifested catalog file ${file}`);
+  }
   if (errors.length) return errors;
   const current = raw as Exclude<PlatformMigrationManifest, PlatformMigrationPlan>;
+  if (metadataOnly) {
+    const digests = new Map<string, string>();
+    for (const plan of [current, current.qualified, ...(current.schemaVersion === 3 ? [current.qualifiedAdmin] : [])]) {
+      for (const { file, sha256 } of [plan.baseline, ...plan.forward]) {
+        const previous = digests.get(file);
+        if (previous !== undefined && previous !== sha256) errors.push(`platform migration manifest: conflicting SHA-256 digests for ${file}. Use the same digest in every plan`);
+        else digests.set(file, sha256);
+      }
+    }
+  }
   const issuedSharedLength = current.forward.findIndex(({ file }) => file === QUALIFIED_AFTER_FILE) + 1;
   function qualifiedOrder(plan: QualifiedPlan | AdminPlan, baseline: string, actor: string, acquisition: string, runtime: string, retainedImport: string, files: Set<string>, requireImport: boolean, ownerPath: boolean): number {
     const replacements = new Map([[actor, LEGACY_ACTOR_FILE], [acquisition, LEGACY_ACQUISITION_FILE]]);
