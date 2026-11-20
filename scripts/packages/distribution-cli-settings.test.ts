@@ -1,3 +1,4 @@
+import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -502,6 +503,17 @@ it("exchanges all five MCP tools and recovers from bad frames with the packed bi
     } } };
   }`);
   const { listing, results } = proveSettingsMcp(directory);
-  expect(ListToolsResultSchema.parse(listing).tools).toHaveLength(5);
-  for (const result of results) expect(CallToolResultSchema.parse(result).structuredContent).toBeDefined();
+  const { tools } = ListToolsResultSchema.parse(listing);
+  expect(tools).toHaveLength(5);
+  const clientValidator = new AjvJsonSchemaValidator();
+  for (const [index, tool] of tools.entries()) {
+    const validateInput = clientValidator.getValidator(tool.inputSchema);
+    const validateOutput = clientValidator.getValidator(tool.outputSchema!);
+    const document = CallToolResultSchema.parse(results[index]).structuredContent!;
+    expect(validateInput({}).valid, tool.name).toBe(true);
+    expect(validateInput({ databaseUrl: "ignored" }).valid, tool.name).toBe(false);
+    expect(validateOutput(document).valid, tool.name).toBe(true);
+    expect(validateOutput({ ...document, extra: true }).valid, tool.name).toBe(false);
+    expect(validateOutput({ ...document, schemaVersion: undefined }).valid, tool.name).toBe(false);
+  }
 });
