@@ -23,10 +23,6 @@ const document = (result: object) =>
   JSON.stringify("schemaVersion" in result ? result : { schemaVersion: 1, ...result }) + "\n";
 
 it.each([
-  ["unknown option", ["list", "--foo"]],
-  ["missing flag value", ["list", "--goal"]],
-  ["ambiguous value", ["preview", key, "--value", "-1"]],
-  ["boolean with value", ["list", "--help=true"]],
   ["misplaced flag", ["show", key, "--sku", "A"]],
   ["unexpected positional", ["list", "foo"]],
   ["unknown command", ["other", key]],
@@ -35,6 +31,29 @@ it.each([
   const { exit, output } = await run([...argv, "--json"]);
   expect(exit).toBe(64);
   expect(output).toBe(document(invalidSettingsCommand()));
+});
+
+it.each([
+  [[], ["--sku"], "sku", "Supply a value for --sku as shown in preview help."],
+  [["--app", "./app.ts"], ["--sku", "--json"], "sku", "Supply a value for --sku as shown in preview help."],
+  [[], ["--sku-extra=sample"], "sku-extra", "Unknown option --sku-extra. See preview help."],
+  [[], ["-x"], "x", "Unknown option -x. See preview help."],
+  [[], ["--json=1"], "json", "Supply a value for --json as shown in preview help."],
+  [[], ["--value", "-1"], "value", "Supply a value for --value as shown in preview help."],
+] as const)("names the offending preview option in %j %j", async (prefix, flags, option, hint) => {
+  const { exit, output } = await run([...prefix, "preview", key, "--value", "{}", "--json", ...flags]);
+  expect(exit).toBe(64);
+  expect(output).toBe(document(refuseSettingsPreview(refusalPrefix + "input_invalid", { path: [option], hint })));
+});
+
+it.each([
+  [["list", "--foo"], "foo", "Unknown option --foo. See settings help."],
+  [["list", "--goal"], "goal", "Supply a value for --goal as shown in settings help."],
+] as const)("names the offending settings option in %j", async (argv, option, hint) => {
+  const { exit, output } = await run(["--json", ...argv]);
+  expect(exit).toBe(64);
+  const { refusal } = invalidSettingsCommand();
+  expect(output).toBe(document({ refusal: { ...refusal, path: [option], hint } }));
 });
 
 it.each(["postgrest://sample@example.test/shop", "https://example.test/shop", "postgresql:///shop", "", "postgres://["])(
@@ -74,7 +93,7 @@ it.each([
 
 it.each([
   [[], "input_invalid", ["proposed"], 64],
-  [["{}"], "input_invalid", [], 64],
+  [["{}"], "input_invalid", ["proposed"], 64],
   [["--value", "{"], "json_invalid", ["proposed"], 64],
   [["--value", "{}", "--as-of", "yesterday"], "input_invalid", ["asOf"], 64],
   [["--value", "{}", "--sku", ""], "input_invalid", ["skus"], 64],
@@ -107,17 +126,39 @@ it("uses the same dispatcher bytes for offline results and refusals", async () =
   expect(bind).not.toHaveBeenCalled();
 });
 
-it("uses the connected reader without an app, and names --app for an absent binding", async () => {
-  const readers = { [key]: async () => ({ present: false as const }) };
-  const host = { bind: vi.fn(async () => ({ readers })) };
-  const { exit, output } = await run(["show", key, "--database-url", url, "--json"], { host });
-  expect(exit).toBe(0);
-  expect(output).toBe(document(await showSetting({ key }, readers)));
-  for (const args of [["show", "checkout_recovery_reminders"], ["preview", key, "--value", "{}"]]) {
-    const result = await run([...args, "--database-url", url, "--json"], { host });
-    expect(result.exit).toBe(1);
-    expect(JSON.parse(result.output).refusal.hint).toContain("--app");
-  }
+it.each([
+  [key, undefined, true, 0, undefined],
+  ["subscriber_winback_policy", undefined, false, 1, "Pass --app <module> that supplies a reader for this setting."],
+  ["subscriber_winback_policy", "./app.ts", false, 1, "No connected reader exists for this key. Omit --database-url for offline discovery."],
+  ["offer.freeShippingFromMinor", undefined, false, 0, undefined],
+] as const)("shows %s with database URL and app %s", async (setting, app, hasReader, expectedExit, hint) => {
+  const readers = hasReader ? { [setting]: async () => ({ present: false as const }) } : {};
+  const bind = vi.fn(async () => ({ readers }));
+  const { exit, output } = await run(["show", setting, "--database-url", url, "--json", ...(app ? ["--app", app] : [])], { host: { bind } });
+  expect(exit).toBe(expectedExit);
+  if (hint) expect(JSON.parse(output)).toMatchObject({
+    refusal: { code: "commerce_setting_read_unavailable", path: ["key"], hint },
+  });
+  else expect(output).toBe(document(await showSetting({ key: setting }, readers)));
+  expect(bind).toHaveBeenCalledTimes(setting === "offer.freeShippingFromMinor" ? 0 : 1);
+});
+
+it("names --app when connected preview lacks a stock binding", async () => {
+  const host = { bind: vi.fn(async () => ({})) };
+  const { exit, output } = await run(["preview", key, "--value", "{}", "--database-url", url, "--json"], { host });
+  expect(exit).toBe(1);
+  expect(JSON.parse(output).refusal.hint).toContain("--app");
+});
+
+it.each([
+  [["preview", "--value", "{}"], ["key"], "Pass the setting key and one proposed JSON value with --value."],
+  [["preview", key, "--value", "{}", "--goal", "stock"], ["goal"], "Use --goal with list."],
+  [["preview", key, "--value", "{}", "--database-url="], ["database-url"], "Supply a read-capable database URL."],
+  [["preview", key, "--value", "{}", "--database-url", "postgresql:///shop"], ["database-url"], "Supply a PostgreSQL URL for the intended store."],
+] as const)("names the invalid preview argument in %j", async (argv, path, hint) => {
+  const { exit, output } = await run([...argv, "--json"]);
+  expect(exit).toBe(64);
+  expect(output).toBe(document(refuseSettingsPreview(refusalPrefix + "input_invalid", { path, hint })));
 });
 
 it("uses an app-owned checkout reader without falling back to catalogue timing", async () => {
@@ -131,12 +172,13 @@ it("uses an app-owned checkout reader without falling back to catalogue timing",
   expect(host.bind).toHaveBeenCalledExactlyOnceWith({ databaseUrl: url, app, configuration: undefined });
 });
 
-it("returns configuration choices from the app", async () => {
+it.each(["unknown-store", ""])("returns configuration choices from the app for %j", async configuration => {
   const host = { bind: vi.fn(async () => ({ configurationIds: ["coffee", "supplements"] })) };
-  const { exit, output } = await run(["preview", key, "--value", "{}", "--app", "./app.ts", "--configuration", "unknown-store", "--json"], { host });
+  const { exit, output } = await run(["preview", key, "--value", "{}", "--app", "./app.ts", `--configuration=${configuration}`, "--json"], { host });
   expect(exit).toBe(64);
   expect(JSON.parse(output).refusal).toMatchObject({
-    code: refusalPrefix + "configuration_unknown", hint: expect.stringContaining("coffee, supplements"),
+    code: refusalPrefix + "configuration_unknown", path: ["configuration"],
+    hint: `Unknown configuration ${JSON.stringify(configuration)}. Use one of these IDs: coffee, supplements.`,
   });
 });
 
@@ -155,9 +197,10 @@ it.each(["open", "read", "close"])("reports an unavailable operation once when %
   expect(JSON.parse(output).refusal.code).toBe("commerce_setting_read_unavailable");
 });
 
-it("advertises --value and the exit codes", async () => {
-  const { exit, output } = await run(["--help"]);
+it.each([[["--help"]], [["preview", "--help"]]] as const)("labels settings %j experimental and advertises --value and the exit codes", async argv => {
+  const { exit, output } = await run([...argv]);
   expect(exit).toBe(0);
+  expect(output.split("\n")[0]).toContain("openlup settings (experimental)");
   expect(output).toContain("--value -");
   expect(output).toMatch(/0 completed.*1 refused.*64 invalid syntax or input.*74 operation unavailable/u);
 });
