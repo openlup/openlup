@@ -16,6 +16,9 @@ export type {
   PaymentAttemptPort,
   PaymentAdapterCapabilities,
   PaymentAdapter,
+  AdapterCaptureHandoff,
+  CoreCapabilityOverrides,
+  PaymentProviderRegistry,
 } from "./adapter.js";
 export type {
   PaymentRefundObservation,

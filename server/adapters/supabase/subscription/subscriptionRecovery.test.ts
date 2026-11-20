@@ -186,6 +186,43 @@ describe("supabase payment recovery port", () => {
       providerCustomerRef: null,
     });
   });
+
+  it("resolves provider customer refs for an explicit non-default providerKind", async () => {
+    const client = fakeClient({
+      subscription_dunning_cases: [
+        { id: "case-1", subscription_id: "sub-1", status: "open" },
+      ],
+      commerce_payment_method_refs: [
+        {
+          subscription_id: "sub-1",
+          client_id: "client-1",
+          provider_kind: "custom-psp",
+          provider_customer_ref: "custom-customer-1",
+          active: true,
+          created_at: "1999-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    const port = createSupabaseSubscriptionRecoveryPort(client);
+    const resolution = await port.resolveRecoveryCaseSubscription({
+      providerKind: "custom-psp",
+      tokenEvidence: {
+        tokenId: "token-1",
+        caseId: "case-1",
+        clientId: "client-1",
+        authUserId: "auth-user-1",
+        purpose: "repair_payment",
+        expiresAt: "1999-01-02T00:00:00.000Z",
+        usedAt: null,
+        revokedAt: null,
+      },
+    });
+    expect(resolution).toEqual({
+      caseId: "case-1",
+      subscriptionId: "sub-1",
+      providerCustomerRef: "custom-customer-1",
+    });
+  });
 });
 
 /** A port whose only stubbed behaviour is the RPC failing with `message`. */

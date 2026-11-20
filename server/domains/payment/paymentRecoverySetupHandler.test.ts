@@ -338,4 +338,59 @@ describe("createPaymentRecoverySetupHandler", () => {
     expect(hashRecoveryToken("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     expect(hashRecoveryToken("abc")).toMatch(/^[a-f0-9]{64}$/);
   });
+
+  it("accepts neutral PaymentRepairMethodPort directly and reads caseDisplayFacts AFTER setup with fail-open fallback", async () => {
+    const order: string[] = [];
+    const methodPort = {
+      setupMethod: vi.fn(async () => {
+        order.push("setupMethod");
+        return {
+          kind: "ready" as const,
+          setupRef: "setup_neutral_1",
+          handoff: { kind: "client-confirmed" as const, payload: "secret_neutral_1" as never },
+          replayed: false,
+        };
+      }),
+    };
+    const caseDisplayFacts = {
+      read: vi.fn(async () => {
+        order.push("caseDisplayFacts.read");
+        throw new Error("display_facts_unavailable");
+      }),
+    };
+    const resolveRecoveryCaseSubscription = vi.fn(async () => ({
+      caseId: CASE_ID,
+      subscriptionId: SUB_ID,
+      providerCustomerRef: CUSTOMER_REF,
+    }));
+    const handler = createPaymentRecoverySetupHandler({
+      enabled: () => true,
+      authenticateCustomer: async () => ({ ok: true, userId: CUSTOMER_USER_ID }),
+      recoveryPort: port({ resolveRecoveryCaseSubscription }),
+      methodPort,
+      providerKind: "custom-psp",
+      caseDisplayFacts,
+      ensureCustomer: ensureCustomerMock(),
+    });
+    const response = res();
+    await handler(req(), response);
+
+    expect(order).toEqual(["setupMethod", "caseDisplayFacts.read"]);
+    expect(resolveRecoveryCaseSubscription).toHaveBeenCalledWith(expect.objectContaining({ providerKind: "custom-psp" }));
+    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: true,
+        data: expect.objectContaining({
+          setup: expect.objectContaining({
+            setupIntentId: "setup_neutral_1",
+            clientSecret: "secret_neutral_1",
+            amountMinor: null,
+            currency: null,
+            failureCause: "unknown",
+          }),
+        }),
+      }),
+    );
+  });
 });
