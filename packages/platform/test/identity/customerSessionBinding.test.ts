@@ -7,7 +7,8 @@ import {
 } from "../../src/identity/customerSessionBinding.js";
 
 describe("customer session binding", () => {
-  it("reuses one lazy store across requestChallenge and verifyChallenge and closes once on binding.close()", async () => {
+  // Released ordering at c6419ad88:packages/platform/src/identity/customerSessionBinding.ts:73-98.
+  it("creates and closes one factory store per request and verification", async () => {
     const close = vi.fn(async () => {});
     const issue = vi.fn(async () => ({ deliverable: true }));
     const redeem = vi.fn(async () => ({
@@ -29,7 +30,16 @@ describe("customer session binding", () => {
     });
     if (!resolved.binding) throw new Error(resolved.error);
 
+    await resolved.binding.close?.();
+    expect(createStore).not.toHaveBeenCalled();
     await resolved.binding.requestChallenge(" Customer@Example.invalid ");
+    expect(createStore).toHaveBeenCalledExactlyOnceWith("postgres://db");
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(issue).toHaveBeenCalledBefore(deliver);
+    expect(deliver).toHaveBeenCalledBefore(close);
+
+    close.mockClear();
+    createStore.mockClear();
     await expect(resolved.binding.verifyChallenge("one-time-token")).resolves.toEqual({
       accessToken: "signed",
       expiresAt: "2030-08-14T09:00:00.000Z",
@@ -49,11 +59,44 @@ describe("customer session binding", () => {
       principalId: "11111111-1111-4111-8111-111111111111",
       email: "customer@example.invalid",
     });
-    expect(createStore).toHaveBeenCalledTimes(1);
-    expect(close).not.toHaveBeenCalled();
+    expect(createStore).toHaveBeenCalledExactlyOnceWith("postgres://db");
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(redeem).toHaveBeenCalledBefore(sign);
+    expect(sign).toHaveBeenCalledBefore(close);
 
     await Promise.all([resolved.binding.close?.(), resolved.binding.close?.()]);
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["requestChallenge", "issue", ["create", "issue", "close"]],
+    ["requestChallenge", "deliver", ["create", "issue", "deliver", "close"]],
+    ["verifyChallenge", "redeem", ["create", "redeem", "close"]],
+    ["verifyChallenge", "sign", ["create", "redeem", "sign", "close"]],
+  ] as const)("closes the factory store when %s fails at %s", async (operation, failure, expected) => {
+    const calls: string[] = [];
+    const error = new Error("fixture failure");
+    async function step<T>(name: string, result: T): Promise<T> {
+      calls.push(name);
+      if (name === failure) throw error;
+      return result;
+    }
+    const resolved = resolveCustomerSessionBinding(env(), {
+      issuer: { issue: () => step("sign", { accessToken: "signed", expiresAt: "2030-08-14T09:00:00.000Z" }) },
+      delivery: { deliver: () => step("deliver", undefined) },
+      createStore: () => {
+        calls.push("create");
+        return {
+          issue: () => step("issue", { deliverable: true }),
+          redeem: () => step("redeem", { principalId: "principal", email: "customer@example.invalid" }),
+          close: () => step("close", undefined),
+        };
+      },
+    });
+    if (!resolved.binding) throw new Error(resolved.error);
+
+    await expect(resolved.binding[operation]("customer@example.invalid")).rejects.toBe(error);
+    expect(calls).toEqual(expected);
   });
 
   it("supports env-free createPostgresCustomerSessionBinding with borrowed store, borrowed pool and owned pool", async () => {

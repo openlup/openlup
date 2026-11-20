@@ -724,7 +724,7 @@ export interface CustomerSessionBinding {
             email: string;
         };
     } | null>;
-    /** Releases an owned store/pool; guaranteed no-op for borrowed or shared stores. */
+    /** Releases a binding-owned store or pool. No-op for borrowed, shared and per-operation stores. */
     close?(): Promise<void>;
 }
 export type PostgresCustomerSessionBindingOptions = {

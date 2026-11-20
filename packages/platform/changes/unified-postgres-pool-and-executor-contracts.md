@@ -12,6 +12,8 @@ Code that reads `DataBindingDependencies.createSupabaseClient` must handle
 signature. For typed rows or readonly query values, wrap the client with
 `asPostgresSqlExecutor` from `@openlup/platform/data`.
 
+`createStore` keeps its per-operation lifecycle; pass `pool` or `store` to reuse one store per binding.
+
 Before (separate pools per store and stubbed hosted client factory):
 ```ts
 const bindings = createDataBindings({ createSupabaseClient: stubClient });

@@ -13,3 +13,5 @@ Strict readback validation is the 2.0 default. Native settlement continues
 to require durable capture evidence. Existing checkout
 compositions can use the native rail's `captureReviewRequired` attempt
 projection or the reconciliation port's equivalent read.
+
+Migration: Adopters who map invoice readback reasons should handle `provider_configured_amount_mismatch` with status `unknown` when configured money disagrees with the claim and the provider supplies no captured amount.
