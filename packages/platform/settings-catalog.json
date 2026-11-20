@@ -1799,7 +1799,7 @@
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery."
+        "reason": "The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"

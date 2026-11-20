@@ -223,7 +223,7 @@
     "defaultBasis": {"kind": "neutral"},
     "whyThisDefault": "Native stock-wait recovery fixes the hold at 15 minutes in SQL.",
     "effect": {"appliesTo": "Native stock-wait recovery fixes the hold at 15 minutes in SQL.", "frozenOn": [], "impact": "operations"},
-    "runtime": {"level": "read-only", "reason": "The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery."},
+    "runtime": {"level": "read-only", "reason": "The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused."},
     "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"},
     "rules": []
   },
