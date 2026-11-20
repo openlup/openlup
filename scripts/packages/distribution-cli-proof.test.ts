@@ -8,7 +8,8 @@ import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest,
-  reminderInstallationTest, starterLifecycle, starterOptionalCatalogueFiles, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  reminderInstallationTest, starterLifecycle, starterOptionalCatalogueFiles, starterUpgradeSnapshot,
+  starterDisplayFiles, reconcileDisplayCustomization } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -265,11 +266,21 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     expect(existsSync(join(app, marketPath))).toBe(false);
     return JSON.parse(refusal.stdout);
   }) : undefined;
+  const localDisplay = customized ? starterDisplayFiles.map(path =>
+    reconcileDisplayCustomization(app, from.files[path]!, () => {
+      const before = starterUpgradeSnapshot(app, from.version);
+      const refusal = run(); expect(refusal.status).toBe(1);
+      expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
+      expect(existsSync(join(app, marketPath))).toBe(false);
+      return JSON.parse(refusal.stdout);
+    }, path)) : [];
   const checkUpgradedFiles = () => {
     expect(read(reminderInstallationTest)).toBe(to.files[reminderInstallationTest]);
     expect(read(starterLifecycle)).toBe(to.files[starterLifecycle]);
     if (localTest) expect(read(localTest.path)).toBe(localTest.bytes);
     if (localLifecycle) expect(readFileSync(join(app, localLifecycle.path))).toEqual(localLifecycle.bytes);
+    for (const path of starterDisplayFiles) expect(read(path), path).toBe(to.files[path]);
+    for (const local of localDisplay) expect(readFileSync(join(app, local.path))).toEqual(local.bytes);
   };
   const replay = () => {
     const result = run();
@@ -278,7 +289,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     checkUpgradedFiles();
   };
   const result = run(); expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, starterSettingsHost, reminderInstallationTest, starterLifecycle]));
+  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, starterSettingsHost, reminderInstallationTest, starterLifecycle, ...starterDisplayFiles]));
   checkUpgradedFiles();
   replay();
   // Expected bytes come from the target inventory, including contracts that
@@ -388,6 +399,7 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
     "test/candidate.test.mjs": `import {readFileSync} from 'node:fs'; readFileSync(new URL('../owned/${required}', import.meta.url));`,
     [reminderInstallationTest]: "import 'node:test';",
     [starterLifecycle]: readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"),
+    ...Object.fromEntries(starterDisplayFiles.map(path => [path, readFileSync(resolve("examples/neutral-store", path), "utf8")])),
     "browser/dev-loop.proof.ts": "import 'node:assert/strict';",
     ".gitignore": "node_modules/\npackage-lock.json\n",
   };
@@ -406,10 +418,12 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   expect(existsSync(receipt), result.stderr).toBe(true); const evidence = JSON.parse(readFileSync(receipt, "utf8")); expect(result.status, result.stderr).toBe(missing ? 1 : 0);
   expect(evidence).toMatchObject({ mode: "candidate", verificationSource: "candidate, local digest-verified", result: missing ? "FAIL" : "PASS", upgrade: { result: missing ? "FAIL" : "PASS" } });
   expect(evidence.upgrade.managedConflict).toEqual({ path: "test/candidate.test.mjs", action: "create" });
-  expect(evidence.upgrade.phases).toHaveLength(missing ? 10 : 11);
+  expect(evidence.upgrade.phases).toHaveLength((missing ? 10 : 11) + starterDisplayFiles.length);
   expect(evidence.upgrade.phases).toContainEqual({ name: "reminder-test-reconciliation", result: "PASS" });
   expect(evidence.upgrade.phases).toContainEqual({ name: "lifecycle-reconciliation", result: "PASS" });
   expect(evidence.upgrade.phases).toContainEqual({ name: "settings-host-reconciliation", result: "PASS" });
+  for (const path of starterDisplayFiles)
+    expect(evidence.upgrade.phases).toContainEqual({ name: `display-reconciliation:${path}`, result: "PASS" });
   expect(evidence.upgrade.phases.filter((phase: { result: string }) => phase.result !== "PASS")).toEqual([]);
   if (!missing) for (const mode of ["candidate", "released"]) {
     const path = receipt + ".applications/1/input/package-lock.json", lock = JSON.parse(readFileSync(path, "utf8")); cpSync(join(packs, packages[0]!.filename), join(directory, "foreign.tgz"));

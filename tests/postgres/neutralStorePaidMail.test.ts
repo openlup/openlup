@@ -53,7 +53,7 @@ it('claims through the installed restricted runtime without supplementary grants
 });
 
 const now = '2026-10-20T12:00:00.000Z';
-async function fixture(status: 'paid' | 'pending_payment' | 'cancelled') {
+async function fixture(status: 'paid' | 'pending_payment' | 'cancelled', currency = config().market.currency) {
   const clientId = randomUUID(), orderId = randomUUID(), email = `${clientId}@example.test`, market = config().market;
   await owner.query(`INSERT INTO public.clients(id,email,first_name,country,created_at,updated_at)
     VALUES($1,$2,'Example',$4,$3,$3)`, [clientId, email, now, market.country]);
@@ -64,7 +64,7 @@ async function fixture(status: 'paid' | 'pending_payment' | 'cancelled') {
   try {
   await db.query('BEGIN');
   await db.query(`INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor,metadata,created_at,updated_at)
-    VALUES($1,$2,$5,2000,$3,$4,$4)`, [orderId, clientId, metadata, now, market.currency]);
+    VALUES($1,$2,$5,2000,$3,$4,$4)`, [orderId, clientId, metadata, now, currency]);
   await db.query(`INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor,created_at,
     source_line_ordinal,catalog_unit_amount_minor,catalog_line_amount_minor,promotion_discount_allocated_minor,promotion_allocation_fingerprint)
     VALUES($1,1,2,1000,2000,$2,1,1200,2400,400,repeat('a',64))`, [orderId, now]);
@@ -101,8 +101,12 @@ async function lifecycle(directory: string, owned: StoreConfig) {
 
 // Local action cases completed within the file's 4.38 s total, including installation.
 // Retain 10 s per action; the installation has its separate 60 s hook allowance.
-it('the lifecycle entry captures exactly one paid receipt with owned locale, recipient and totals; replay is inert', async () => {
-  const f = await fixture('paid'), owned = config();
+it.each([
+  ['XTS', 'XTS\u00a024.00', 'XTS\u00a04.00', 'XTS\u00a020.00'],
+  ['JPY', '¥2,400', '¥400', '¥2,000'],
+  ['KWD', 'KWD\u00a02.400', 'KWD\u00a00.400', 'KWD\u00a02.000'],
+])('the lifecycle entry captures one %s paid receipt with owned locale, recipient and totals; replay is inert', async (currency, subtotal, discount, total) => {
+  const f = await fixture('paid', currency), owned = config();
   owned.renewal.notices.countryLocales = { [owned.market.country]: 'pl' };
   await local(async directory => {
     const first = await lifecycle(directory, owned);
@@ -115,10 +119,9 @@ it('the lifecycle entry captures exactly one paid receipt with owned locale, rec
       orderId: `order_${f.orderId}`, locale: 'pl', subject: owned.renewal.notices.copy.pl.paid.subject });
     expect(artifact.body).toContain('Frozen item');
     const copy = owned.renewal.notices.copy.pl.paid;
-    const money = (major: number) => new Intl.NumberFormat('en', { style: 'currency', currency: owned.market.currency }).format(major);
-    for (const [label, value] of [[copy.subtotal, money(24)], [copy.discount, `−${money(4)}`], [copy.total, money(20)]]) {
-      expect(artifact.body).toContain(`${label}: ${value}`);
-    }
+    expect(artifact.body.split('\n')).toEqual(expect.arrayContaining([
+      `${copy.subtotal}: ${subtotal}`, `${copy.discount}: −${discount}`, `${copy.total}: ${total}`,
+    ]));
     expect((await stat(mailbox)).mode & 0o777).toBe(0o700);
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     const replay = await lifecycle(directory, owned);

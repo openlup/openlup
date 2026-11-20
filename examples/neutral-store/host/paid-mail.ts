@@ -4,6 +4,7 @@ import type { OrderPaymentLifecyclePort } from '@openlup/platform/commerce';
 import { createPostgresPlatformJobRunLedger } from '@openlup/platform/job-ledger';
 import { createCheckoutRecoveryWaveJob } from '@openlup/platform/composition';
 import { withCheckoutRecoverySendEvidence } from '@openlup/platform/communications';
+import { formatCurrencyMinor } from '@openlup/platform/market-packs';
 import { sandboxRecoveryPolicy, checkoutRecoverySchedule, checkoutWavePolicy } from '../owned/acquisition-policy.ts';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
@@ -103,7 +104,7 @@ export function createPaidMailHost(input: { executor: SqlExecutor; config: Store
   };
   const runtime: Parameters<typeof createOutboxOrderPaidEmailHandler<Locale>>[0]['runtime'] = {
     resolveLocale, genericItemLabel: locale => notices.copy[locale].paid.item,
-    formatMoney: (amountMinor, currency) => new Intl.NumberFormat(resolveLocale(null), { style: 'currency', currency }).format(amountMinor / 100),
+    formatMoney: (amountMinor, currency) => formatCurrencyMinor(amountMinor, { currency, locale: resolveLocale(null) }),
     presentPaidOrder: () => null,
     parseOutboxPayload: (schema, payload) => {
       const parsed = schema.safeParse(payload);
