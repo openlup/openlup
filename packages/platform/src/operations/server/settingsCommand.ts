@@ -287,42 +287,37 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
 
 function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; hint: string } {
   const path = ["database-url"];
-  if (!input) return { path, hint: "Supply a read-capable database URL." };
-  const target = "Supply a postgres:// or postgresql:// URL with a TCP host, username and database.";
-  if (input !== input.trim() || /[\p{Cc}#]/u.test(input)) {
-    return { path, hint: "Remove surrounding whitespace, control characters and the fragment from the PostgreSQL URL." };
-  }
-  const [, authority, databasePath] = /^postgres(?:ql)?:\/\/([^/?#]*)(\/[^?#]*)?/iu.exec(input) ?? [];
-  const hostPort = authority?.split("@").at(-1) ?? "";
-  const portAt = hostPort.lastIndexOf(":");
-  const specifiedPort = portAt > hostPort.lastIndexOf("]") ? hostPort.slice(portAt + 1) : undefined;
-  const port = specifiedPort === undefined ? 5432 : Number(specifiedPort);
-  if (specifiedPort !== undefined && (!/^\d+$/u.test(specifiedPort) || port < 1 || port > 65535)) {
-    return { path, hint: "Omit the PostgreSQL URL port or use a port from 1 to 65535." };
-  }
   const url = URL.parse(input);
-  if (!url?.hostname || url.hostname.includes("%") || !url.username || !databasePath?.slice(1)) return { path, hint: target };
-  const sslmode = url.searchParams.get("sslmode");
-  if (input.includes("?") && (!url.search || url.search.includes("&") || url.searchParams.size !== 1
-    || (sslmode !== "disable" && sslmode !== "require" && sslmode !== "verify-full"))) {
-    return { path, hint: "Remove PostgreSQL URL query options or use one sslmode set to disable, require or verify-full." };
+  if (!url || url.href !== input) return { path,
+    hint: "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and omit the port or use a port from 1 to 65535. Remove whitespace and dot segments." };
+  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return { path, hint: "Use the postgres:// or postgresql:// scheme." };
+  if (!url.hostname.startsWith("[") && !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.?$/u.test(url.hostname)) {
+    return { path, hint: "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host." };
   }
+  const port = Number(url.port || 5432);
+  if (port < 1 || port > 65535) return { path, hint: "Omit the PostgreSQL URL port or use a port from 1 to 65535." };
+  if (!url.username) return { path, hint: "Name the PostgreSQL username before @ in the URL." };
+  if (!/^\/[^/]+$/u.test(url.pathname)) return { path, hint: "Use one non-empty database path segment after the host and port." };
+  const encoding = { path, hint: "Encode the PostgreSQL username, password and database as valid UTF-8 URL components without control characters." };
+  let user: string, password: string, database: string;
   try {
-    const user = decodeURIComponent(url.username);
-    const password = decodeURIComponent(url.password);
-    const database = decodeURIComponent(databasePath.slice(1));
-    if (![user, password, database].some(value => /\p{Cc}/u.test(value))) {
-      const host = url.hostname.replace(/^\[|\]$/gu, "");
-      return {
-        host, port, user, password: password || (() => ""), database,
-        ssl: sslmode === "require" || sslmode === "verify-full" ? { rejectUnauthorized: true, host } : false,
-        // Truthy no-op startup values prevent pg from inheriting process connection defaults.
-        sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
-        application_name: "openlup settings", connectionTimeoutMillis: 0,
-      };
-    }
-  } catch { /* Malformed credential or database escapes are refused without echoing input. */ }
-  return { path, hint: "Encode the PostgreSQL username, password and database as valid URL components without control characters." };
+    user = decodeURIComponent(url.username);
+    password = decodeURIComponent(url.password);
+    database = decodeURIComponent(url.pathname.slice(1));
+  } catch { return encoding; }
+  if ([user, password, database].some(value => /\p{Cc}/u.test(value))) return encoding;
+  if (url.href.includes("#")) return { path, hint: "Remove the fragment from the PostgreSQL URL." };
+  if (url.href.includes("?") && !["?sslmode=disable", "?sslmode=require", "?sslmode=verify-full"].includes(url.search)) {
+    return { path, hint: "Use no query or a single sslmode set to disable, require or verify-full. If your provider needs another option, use a provider URL that works with verified TLS under Node's trust store." };
+  }
+  const host = url.hostname.replace(/^\[|\]$/gu, "");
+  return {
+    host, port, user, password: password || (() => ""), database,
+    ssl: url.search === "?sslmode=require" || url.search === "?sslmode=verify-full" ? { rejectUnauthorized: true, host } : false,
+    // Truthy no-op startup values prevent pg from inheriting process connection defaults.
+    sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
+    application_name: "openlup settings", connectionTimeoutMillis: 0,
+  };
 }
 
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
@@ -521,8 +516,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   }
   let outcome: [Result, number?];
   try { outcome = await dispatch(); }
-  catch {
-    const hint = "Check the read-capable database connection and that --app exports createSettingsBindings.";
+  catch (error) {
+    const hint = error instanceof Error && error.message === "NODE_PG_FORCE_NATIVE"
+      ? "Unset NODE_PG_FORCE_NATIVE for this command to use the JavaScript PostgreSQL client, then retry."
+      : "Check the read-capable database connection and that --app exports createSettingsBindings.";
     outcome = [preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint }) : unavailable(hint), 74];
   }
   return emit(...outcome);

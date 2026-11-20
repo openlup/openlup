@@ -344,6 +344,43 @@ it.each([
   expect(text.stdout).toContain(result.uncertainty);
 });
 
+it("refuses the native PostgreSQL client before using a connected settings binder", () => {
+  const { directory, write } = fixture();
+  const key = "inventory_renewal_protection";
+  write(starterSettingsHost, `export function createSettingsBindings() {
+    return { readers: { ${key}: () => ({ present: false }) }, previewers: { ${key}: () => ({ schemaVersion: 1 }) } };
+  }`);
+  const cli = resolve("packages/platform/src/lifecycle/openlup.mjs");
+  for (const [command, flags, refusal] of [
+    ["show", [], "commerce_setting_read_unavailable"],
+    ["preview", ["--value", "{}"], "commerce_setting_preview_unexpected"],
+  ] as const) {
+    const result = spawnSync(process.execPath, [cli, "settings", command, key, ...flags, "--app", starterSettingsHost,
+      "--database-url", "postgresql://sample:fake@unused.invalid/shop?sslmode=verify-full", "--json"],
+    { cwd: directory, encoding: "utf8", env: { ...process.env, NODE_PG_FORCE_NATIVE: "1" } });
+    expect(result.status, result.stderr).toBe(74);
+    expect(JSON.parse(result.stdout).refusal).toMatchObject({ code: refusal, hint: expect.stringContaining("Unset NODE_PG_FORCE_NATIVE") });
+    expect(result.stderr).toBe("");
+    expect(result.stdout).not.toMatch(/sample|fake|unused\.invalid/u);
+  }
+});
+
+it("consumes an idle Pool error without printing its message", () => {
+  const { directory, write } = fixture();
+  const key = "inventory_renewal_protection";
+  const app = "settings-idle-fixture.mjs";
+  write(app, `export function createSettingsBindings({ db }) {
+    db.emit("error", new Error("private role fake_idle_role"));
+    return { readers: { ${key}: () => ({ present: false }) } };
+  }`);
+  const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", key,
+    "--app", app, "--database-url", "postgresql://sample@unused.invalid/shop", "--json"],
+  { cwd: directory, encoding: "utf8" });
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(result.stdout).not.toContain("fake_idle_role");
+});
+
 it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const editor = starterEditorPorts;
