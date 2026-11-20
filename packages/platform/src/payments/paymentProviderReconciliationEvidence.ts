@@ -41,18 +41,16 @@ export function terminalAmountMismatch(
   attempt: ClaimedPaymentAttempt,
   status: ProviderReconciliationStatus,
 ): string | null {
-  // Until 2.0, a readback without capture basis uses the released 1.2.0 checks.
-  const strictSuccess = status.status === "succeeded" && status.capturedAmountBasis !== undefined;
-  if (strictSuccess && status.amountMinor === null) {
+  if (status.status === "succeeded" && status.amountMinor === null) {
     return "provider_amount_missing";
   }
   if (status.amountMinor !== null && status.amountMinor !== attempt.amountMinor) {
     return "provider_amount_mismatch";
   }
-  if (strictSuccess && status.capturedAmountBasis !== "provider_capture_v1") {
+  if (status.status === "succeeded" && status.capturedAmountBasis !== "provider_capture_v1") {
     return "provider_capture_amount_unconfirmed";
   }
-  if (strictSuccess && !status.currency?.trim()) {
+  if (status.status === "succeeded" && !status.currency?.trim()) {
     return "provider_currency_missing";
   }
   if (status.currency && status.currency.toUpperCase() !== attempt.currency.toUpperCase()) {
