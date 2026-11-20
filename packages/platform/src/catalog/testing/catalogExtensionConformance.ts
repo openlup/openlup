@@ -27,7 +27,7 @@ type Validator = CatalogPackInput["types"][number]["validateContent"];
 export function projectCatalogExtensionConformance(source: unknown): {
   subject: string; check: (jsonText: string) => Promise<CatalogConformanceReport>;
 } {
-  if (!object(source) || !Object.hasOwn(source, "packs")) throw new TypeError("Missing catalogue registration");
+  if (!object(source)) throw new TypeError("Missing catalogue registration");
   const validators = new Map<string, Validator>();
   const ancestors = new Set<object>();
   function encode(value: unknown, path: readonly (string | number)[]): string {
@@ -39,8 +39,9 @@ export function projectCatalogExtensionConformance(source: unknown): {
         : [Object.prototype, null].includes(Object.getPrototypeOf(value)))) throw new TypeError("Invalid catalogue JSON value");
     ancestors.add(value);
     const descriptors = Object.getOwnPropertyDescriptors(value);
-    const keys = Reflect.ownKeys(value).filter(key => !array || key !== "length");
-    if (array && (keys.length !== value.length || keys.some((key, index) => key !== String(index))))
+    if (!path.length && !Object.hasOwn(descriptors, "packs")) throw new TypeError("Missing catalogue registration");
+    const keys = Reflect.ownKeys(descriptors).filter(key => !array || key !== "length");
+    if (array && (keys.length !== descriptors.length?.value || keys.some((key, index) => key !== String(index))))
       throw new TypeError("Invalid catalogue array");
     const fields: string[] = [];
     for (const key of array ? keys : keys.sort((a, b) => compare(String(a), String(b)))) {
@@ -159,7 +160,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
         add("definition_unknown_field", `${at}/pack/types/${i}/validateContent`); executableField = true;
       }
       const callback = validators?.get(`${at}/pack/types/${i}/validateContent`);
-      return { ...type, validateContent: validators ? callback : () => [{ code: "conformance_owner_unavailable", path: "" }] };
+      return { ...type, validateContent: validators ? callback : () => [] };
     }) } as CatalogPackInput : entry.pack as CatalogPackInput;
     if (executableField) continue;
     const issues = await owner(`${at}/pack`, () => catalogPackIssues(pack));
@@ -170,14 +171,6 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
     pack.types.forEach((type, i) => { allTypes.push(type); typePaths.push(`${at}/pack/types/${i}`); });
     const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(pack.types));
     if (!registry) continue;
-    const draftRegistry = validators ? { resolve: (ref: Parameters<typeof registry.resolve>[0]) => {
-      const definition = registry.resolve(ref);
-      return definition && { ...definition, validateContent: (content: unknown) => {
-        const result = definition.validateContent(content);
-        contentChecked = true;
-        return result;
-      } };
-    } } : registry;
     for (const [i, draft] of (drafts ?? []).entries()) {
       const path = `${at}/drafts/${i}`, version = object(draft) ? draft.schemaVersion : undefined;
       const schema = version === 3 ? catalogDraftPayloadV3Schema : version === 2 ? catalogDraftPayloadV2Schema : catalogDraftPayloadSchema;
@@ -185,12 +178,29 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       if (!admitted) continue;
       if (!admitted.success) { admitted.error.issues.forEach(issue => add("draft_input_invalid", `${path}${pointer(issue.path)}`)); continue; }
       const payload = admitted.data;
+      const draftRegistry = { resolve: (ref: Parameters<typeof registry.resolve>[0]) => {
+        const definition = registry.resolve(ref);
+        return definition && { ...definition, validateContent: (content: unknown) => {
+          if (!validators) {
+            add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
+            return [];
+          }
+          const result = definition.validateContent(content);
+          if (typeof (result as unknown as PromiseLike<unknown> | undefined)?.then === "function") {
+            void Promise.resolve(result).catch(() => undefined);
+            throw new TypeError("Catalogue validateContent must return synchronously");
+          }
+          contentChecked = true;
+          return result;
+        } };
+      } };
       const validate = () => payload.schemaVersion === 1 ? validateCatalogDraft(payload, draftRegistry)
         : validateCatalogDraftV2(payload.schemaVersion === 2 ? payload : catalogDraftV3ValidationPayload(payload), draftRegistry);
       const validation = validators ? await validate() : await owner(path, validate);
       if (!validation) continue;
       if (!validation.valid) for (const issue of validation.issues) {
-        const suffix = issue.path.startsWith("/") ? issue.path : pointer(issue.path.split("."));
+        const suffix = issue.path.startsWith("/") ? issue.path.replace(/^\/productAttributes(?=\/|$)/u, "/product/attributes")
+          : issue.path ? pointer(issue.path.split(".")) : "";
         add(issue.code, path + suffix, "", ["conformance_owner_unavailable", "attribute_reference_unresolved"].includes(issue.code));
       }
     }

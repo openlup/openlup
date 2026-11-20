@@ -243,7 +243,7 @@ export function proveStarterCatalogueWrappers(app: string, scratch: string): voi
     ["catalogue:check:source", "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json"],
   ] as const) {
     const command = scripts?.[script];
-    assert(command === expected, `unexpected starter catalogue script: ${script}`);
+    assert(typeof command === "string" && command === expected, `unexpected starter catalogue script: ${script}`);
     const [, ...args] = command.split(" ");
     const report = JSON.parse(execFileSync(process.execPath, [realpathSync(join(app, "node_modules/.bin/openlup")), ...args], {
       cwd: app, encoding: "utf8", env: { ...isolatedConsumerEnv(), TMPDIR: scratch, TMP: scratch, TEMP: scratch },

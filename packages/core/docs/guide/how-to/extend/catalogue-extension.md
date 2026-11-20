@@ -8,17 +8,19 @@ authoring registry lazily from the same packs. The module and its imports run
 with the operator's process permissions, so use this command only with trusted code.
 
 The CLI writes deterministic UTF-8 JSON, with sorted keys and original array
-order, to a private scratch directory outside the application. It reads the file
-back and checks those bytes once with the registered content validators. The
-report gives the file, SHA-256, timings, checker invocation count, recheck and
-inert replay commands. The scratch file can be deleted after replay.
+order, to a private scratch directory outside the application and working
+directories. The application root is the nearest ancestor of the trusted
+module's resolved file with a `package.json`. The CLI reads the file back and
+checks those bytes once. Registered content validators must return
+synchronously. The report gives the file, SHA-256, timings, checker invocation
+count, recheck and inert replay commands. The scratch file can be deleted after replay.
 
 `catalogue check --packs` reads inert JSON regardless of the file suffix.
 The Node entry `runCatalogExtensionConformance(jsonText: string)` returns a Promise
 and refuses non-string arguments without inspection or coercion. JSON definitions
-omit `validateContent`. A draft that needs it on replay reports unavailable
-evidence. `requiredChecks: ["draft-content"]` requires at least one admitted
-fixture per pack that calls its content validator.
+omit `validateContent`. Replay reports unavailable content evidence and still
+runs the other draft owner checks. `requiredChecks: ["draft-content"]` requires
+at least one admitted fixture per pack that calls its content validator.
 
 Each pack accepts `drafts`, `quantities`, `attributes`, `combinations` and
 `refusals`. Drafts use the v1–v3 schemas and draft owners. Version 3 checks

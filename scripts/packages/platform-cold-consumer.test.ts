@@ -1427,9 +1427,9 @@ function packedCatalogue() {
     return target;
   };
   write("package.json", '{"type":"module","dependencies":{"@openlup/core":"1.2.0","@openlup/platform":"1.2.0"}}');
-  function call(args: string[], exit: number, preload: string[] = [], scratchRoot = temp) {
+  function call(args: string[], exit: number, preload: string[] = [], scratchRoot = temp, cwd = app) {
     const result = spawnSync(process.execPath, [...preload, bin, ...args, "--json"], {
-      cwd: app, encoding: "utf8", env: { ...environment, TMPDIR: scratchRoot, TMP: scratchRoot, TEMP: scratchRoot },
+      cwd, encoding: "utf8", env: { ...environment, TMPDIR: scratchRoot, TMP: scratchRoot, TEMP: scratchRoot },
     });
     expect(result.error).toBeUndefined();
     expect(result.stderr).toBe("");
@@ -1495,6 +1495,88 @@ it("RP2 admits trust flags before loading and classifies failures", () => {
   ]);
   expect(report.transport.recheck).toContain("'\"'\"'");
   expect(report.findings.every(({ recheck }: { recheck: string }) => recheck === report.transport.recheck)).toBe(true);
+});
+
+it("RP2 confines scratch from a nested working directory", () => {
+  const { app, temp, write, call } = packedCatalogue();
+  const owned = join(app, "owned"), cache = join(app, "cache");
+  mkdirSync(owned); mkdirSync(cache);
+  write("owned/catalogue.mjs", sourceModule({ packs: [{ pack: fixturePack }] }));
+  const before = readdirSync(app, { recursive: true }).sort();
+  for (const scratch of [app, cache]) {
+    call(sourceArgs("./owned/catalogue.mjs"), 74, [], scratch);
+    call(sourceArgs("./catalogue.mjs"), 74, [], scratch, owned);
+    expect(readdirSync(app, { recursive: true }).sort()).toEqual(before);
+  }
+  // The working directory also needs protection when the app is elsewhere.
+  call(sourceArgs(join(owned, "catalogue.mjs")), 74, [], temp, temp);
+  expect(readdirSync(temp)).toEqual([]);
+  expect(call(sourceArgs("./catalogue.mjs"), 0, [], temp, owned).command).toBe("catalogue project");
+});
+
+it("RP2 replays v2 owner violations and points to saved attribute values", () => {
+  const { write, call } = packedCatalogue();
+  const pack = { ...fixturePack, types: [{ ...fixturePack.types[0], attributes: [{
+    key: "flag", scope: "product", valueType: { kind: "boolean" }, required: false,
+    cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {},
+  }] }] };
+  const draft = { ...contentDraft, schemaVersion: 2, product: {
+    ...contentDraft.product, attributes: { flag: "invalid boolean", "finish/~": "undeclared" },
+  } };
+  const projected = call(sourceArgs(write("attributes.mjs", sourceModule({ packs: [{ pack, drafts: [draft] }] }))), 1);
+  const subject = JSON.parse(readFileSync(projected.transport.subjectPath, "utf8"));
+  const replay = call(replayArgs(projected.transport.subjectPath), 1);
+  expect(replay.findings).toContainEqual(expect.objectContaining({
+    code: "conformance_owner_unavailable", path: "/packs/0/drafts/0/product/sharedContent",
+  }));
+  for (const { findings } of [projected, replay]) {
+    for (const [code, key, value] of [
+      ["attribute_value_invalid", "flag", "invalid boolean"],
+      ["attribute_unknown_key", "finish~1~0", "undeclared"],
+    ]) {
+      const finding = findings.find((entry: { code: string }) => entry.code === code);
+      expect(finding?.path, code).toBe("/packs/0/drafts/0/product/attributes/" + key);
+      const saved = finding.path.split("/").slice(1).reduce((data: unknown, part: string) =>
+        data && typeof data === "object" ? (data as Record<string, unknown>)[part.replaceAll("~1", "/").replaceAll("~0", "~")] : undefined, subject);
+      expect(saved, finding.path).toBe(value);
+    }
+  }
+});
+
+it("RP2 refuses async validators with one sanitized report and matching exit", () => {
+  const { write, call } = packedCatalogue();
+  const source = sourceModule({ packs: [{ pack: fixturePack, drafts: [contentDraft] }] },
+    'async () => { throw new Error("SYNTHETIC_PRIVATE_DETAIL"); }');
+  expect(call(sourceArgs(write("async.mjs", source)), 74).findings[0]).toMatchObject({
+    code: "OPENLUP_E_CLI_FAILURE", fix: expect.stringContaining("return synchronously"),
+  });
+});
+
+it("RP2 snapshots registration descriptors once and refuses getters", () => {
+  const { app, write, call } = packedCatalogue();
+  const registration = sourceModule({ packs: [{ pack: fixturePack }], requiredChecks: ["draft-content"] })
+    .replace("export const catalogueConformance", "const catalogueConformance");
+  const proxy = write("proxy.mjs", registration + `
+    let enumerations = 0;
+    const registration = new Proxy(catalogueConformance, {
+      ownKeys(target) {
+        return ++enumerations === 1 ? Reflect.ownKeys(target) : ["packs"];
+      },
+    });
+    export { registration as catalogueConformance };
+  `);
+  const projected = call(sourceArgs(proxy), 2);
+  expect(JSON.parse(readFileSync(projected.transport.subjectPath, "utf8")).requiredChecks).toEqual(["draft-content"]);
+  const accessor = write("getter.mjs", registration + `
+    import { writeFileSync } from "node:fs";
+    Object.defineProperty(catalogueConformance, "requiredChecks", {
+      enumerable: true,
+      get() { writeFileSync("getter-effect", "unexpected"); return []; },
+    });
+    export { catalogueConformance };
+  `);
+  call(sourceArgs(accessor), 74);
+  expect(existsSync(join(app, "getter-effect"))).toBe(false);
 });
 
 it("RP2 projects deterministic bytes and replays the quoted command", () => {

@@ -1,11 +1,30 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const shellCommand = args => "npx --no -- openlup " + args.map(value => /^[A-Za-z0-9_./=-]+$/u.test(value)
   ? value : "'" + value.replaceAll("'", "'\"'\"'") + "'").join(" ");
+
+async function applicationRoot(source) {
+  let directory = dirname(source);
+  for (;;) {
+    try {
+      if ((await fs.stat(join(directory, "package.json"))).isFile()) return directory;
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) throw new Error("Catalogue application package.json not found");
+    directory = parent;
+  }
+}
+
+function contains(root, path) {
+  const inside = relative(root, path);
+  return !isAbsolute(inside) && inside !== ".." && !inside.startsWith(`..${sep}`);
+}
 
 export async function runCatalogue(command, args, path, json, { emit, refuse, renderFinding }) {
   const projecting = command === "catalogue project";
@@ -16,16 +35,19 @@ export async function runCatalogue(command, args, path, json, { emit, refuse, re
   try {
     if (projecting) {
       const started = performance.now();
-      const root = await fs.realpath(process.cwd());
+      fix = "Point --trusted-packs at a readable module within an application with a package.json.";
+      const cwd = await fs.realpath(process.cwd());
+      const sourcePath = await fs.realpath(resolve(cwd, path));
+      const root = await applicationRoot(sourcePath);
+      fix = "Choose a writable OS temporary directory outside the application and working directories.";
+      const scratch = await fs.realpath(tmpdir());
+      if (contains(root, scratch) || contains(cwd, scratch)) throw new Error("Scratch is inside the application or working directory");
       fix = "Check that --trusted-packs resolves to a module exporting catalogueConformance with JSON fixture data and registered content validators.";
-      const { catalogueConformance } = await import(pathToFileURL(resolve(path)).href);
+      const { catalogueConformance } = await import(pathToFileURL(sourcePath).href);
       // eslint-disable-next-line no-restricted-syntax -- the installed bin alone uses the internal compiled projector
       const { projectCatalogExtensionConformance } = await import("../../dist/catalog/testing/catalogExtensionConformance.js");
       const projection = projectCatalogExtensionConformance(catalogueConformance);
-      fix = "Choose a writable OS temporary directory outside the application and rerun projection.";
-      const scratch = await fs.realpath(tmpdir());
-      const inside = relative(root, scratch);
-      if (!inside || (!isAbsolute(inside) && inside !== ".." && !inside.startsWith(`..${sep}`))) throw new Error("Scratch is inside the application");
+      fix = "Check that the OS temporary directory is writable and the scratch subject stays intact.";
       const subjectPath = join(await fs.mkdtemp(join(scratch, "openlup-catalogue-")), "subject.json");
       const expected = Buffer.from(projection.subject);
       await fs.writeFile(subjectPath, expected, { mode: 0o600, flag: "wx" });
@@ -35,7 +57,7 @@ export async function runCatalogue(command, args, path, json, { emit, refuse, re
         checkerInvocations: 0, projectionMilliseconds: performance.now() - started, recheck,
         replay: shellCommand(["catalogue", "check", "--packs", subjectPath, ...(json ? ["--json"] : [])]) };
       const checking = performance.now();
-      fix = "Check the installed rule bindings and registered validators, then rerun projection.";
+      fix = "Check the installed rule bindings and ensure registered content validators return synchronously.";
       transport.checkerInvocations++;
       report = await projection.check(bytes.toString("utf8"));
       transport.checkMilliseconds = performance.now() - checking;
