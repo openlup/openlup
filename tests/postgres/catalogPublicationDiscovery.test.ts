@@ -154,6 +154,37 @@ it("filters before limit for each mode and resolves evidence only for emitted ro
   });
 });
 
+it.each([
+  { change: "cleared", live: [] },
+  { change: "denial", live: [{ offerVersion: "test:projection-denial", admitted: false }] },
+  { change: "admission", live: [{ offerVersion: "test:projection-admission", admitted: true }] },
+])("refuses a committed $change membership that differs from the seal", async ({ change, live }) => {
+  const sealedOffer = `test:sealed-${change}`;
+  const offer = live[0]?.offerVersion ?? sealedOffer;
+  const input = byOffer(offer, change === "admission" ? "one_time" : null);
+  const issue = await transaction(pool, db => seed(db, { offer: sealedOffer, oneTime: change !== "admission" }));
+  const consistent = await page(byOffer(sealedOffer));
+  expect(consistent.items.map(item => item.skuId)).toEqual([issue.skuId]);
+  const update = (memberships: typeof live) => pool.query(
+    "UPDATE public.catalog_skus SET publication_facts=jsonb_set(publication_facts,'{memberships}',$2::jsonb) WHERE id=$1",
+    [issue.skuId, json(memberships)],
+  );
+  await update(live);
+  try {
+    const drift = "catalog_publication_live_drift";
+    expect(await readPostgresCatalogMembershipPage(pool, input))
+      .toEqual({ outcome: "dependency_unavailable", reason: drift });
+    await transaction(pool, async db => {
+      expect((await db.query(membershipSql, [offer, null, 1, input.mode])).rows[0]?.result)
+        .toEqual({ kind: "refusal", reason: "inconsistent_evidence", detail: drift });
+      expect((await db.query("SELECT 1 AS ok")).rows).toEqual([{ ok: 1 }]);
+    });
+  } finally {
+    await update([{ offerVersion: sealedOffer, admitted: true }]);
+  }
+  expect(await page(byOffer(sealedOffer))).toEqual(consistent);
+});
+
 it("rejects cross-offer and cross-mode cursors in adapter and SQL before authority", async () => {
   const cursorOffer = "test:cursor";
   const otherOffer = "test:cursor-other";

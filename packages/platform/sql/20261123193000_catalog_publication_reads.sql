@@ -72,7 +72,16 @@ BEGIN
  body := public.catalog_publication_read_json(retained.full_facts,retained.digest,3);
  IF body->'id' IS DISTINCT FROM to_jsonb(retained.sku_id) OR body->'productId' IS DISTINCT FROM to_jsonb(p_product)
   OR body->'code' IS DISTINCT FROM to_jsonb(retained.sku_code) OR retained.sku_code COLLATE "C" !~ '^[A-Za-z0-9._:-]{1,160}$'
-  THEN RETURN NULL; END IF;
+  OR (body->>'status' IN ('draft','active','archived') AND jsonb_typeof(body->'sellableStandalone')='boolean'
+   AND jsonb_typeof(body->'sellableInSubscription')='boolean' AND jsonb_typeof(body->'memberships')='array') IS DISTINCT FROM true
+ THEN RETURN NULL; END IF;
+ IF EXISTS (SELECT 1 FROM (
+   SELECT m,lag(m->>'offerVersion') OVER (ORDER BY position) AS previous
+   FROM jsonb_array_elements(body->'memberships') WITH ORDINALITY AS entry(m,position)
+  ) memberships WHERE (CASE WHEN jsonb_typeof(m)='object' THEN m - ARRAY['offerVersion','admitted']='{}'::jsonb
+   AND public.catalog_publication_text_valid(m->'offerVersion',240,true) AND jsonb_typeof(m->'admitted')='boolean'
+   AND (previous IS NULL OR previous COLLATE "C"<m->>'offerVersion' COLLATE "C") END) IS DISTINCT FROM true)
+ THEN RETURN NULL; END IF;
  RETURN body;
 END;
 $$;
@@ -179,9 +188,7 @@ BEGIN
  IF (jsonb_typeof(product->'slug')='string' AND product->>'slug'<>''
    AND product->>'status' IN ('draft','active','archived') AND jsonb_typeof(product->'primarySkuId')='string'
    AND (product->'presentation'='null'::jsonb OR public.catalog_publication_presentation_valid(product->'presentation'))
-   AND sku->>'status' IN ('draft','active','archived') AND jsonb_typeof(sku->'sellableStandalone')='boolean'
-   AND jsonb_typeof(sku->'sellableInSubscription')='boolean' AND jsonb_typeof(sku->'identifiers')='array'
-   AND jsonb_typeof(sku->'memberships')='array'
+   AND jsonb_typeof(sku->'identifiers')='array'
    AND (sku->'logisticsRef'='null'::jsonb OR public.catalog_publication_text_valid(sku->'logisticsRef',500,true))
    AND CASE WHEN jsonb_typeof(sku->'netContent')='object' THEN public.catalog_publication_quantity_valid(sku->'netContent')
     AND sku #> '{netContent,dimension}'='"mass"'::jsonb AND sku #> '{netContent,unit}'='"openlup:g"'::jsonb
@@ -189,13 +196,7 @@ BEGIN
    AND (sku->'grossMass'='null'::jsonb OR CASE WHEN jsonb_typeof(sku->'grossMass')='object'
     THEN public.catalog_publication_quantity_valid(sku->'grossMass') END)
  ) IS DISTINCT FROM true THEN RETURN invalid; END IF;
- IF EXISTS (SELECT 1 FROM (
-   SELECT m,lag(m->>'offerVersion') OVER (ORDER BY position) AS previous
-   FROM jsonb_array_elements(sku->'memberships') WITH ORDINALITY AS entry(m,position)
-  ) memberships WHERE (CASE WHEN jsonb_typeof(m)='object' THEN m - ARRAY['offerVersion','admitted']='{}'::jsonb
-   AND public.catalog_publication_text_valid(m->'offerVersion',240,true) AND jsonb_typeof(m->'admitted')='boolean'
-   AND (previous IS NULL OR previous COLLATE "C"<m->>'offerVersion' COLLATE "C") END) IS DISTINCT FROM true)
-  OR EXISTS (SELECT 1 FROM jsonb_array_elements(sku->'identifiers') i WHERE jsonb_typeof(i->'isPrimary') IS DISTINCT FROM 'boolean')
+ IF EXISTS (SELECT 1 FROM jsonb_array_elements(sku->'identifiers') i WHERE jsonb_typeof(i->'isPrimary') IS DISTINCT FROM 'boolean')
   OR (SELECT count(*) FROM jsonb_array_elements(sku->'identifiers') i WHERE i->'isPrimary'='true'::jsonb)>1
   OR EXISTS (SELECT 1 FROM jsonb_array_elements(sku->'identifiers') i WHERE i->'isPrimary'='true'::jsonb
    AND (i->'scheme'='"gs1:gtin"'::jsonb AND i->'packagingLevel'='"unit"'::jsonb AND i->'quantity'='1'::jsonb
@@ -224,6 +225,7 @@ $$;
 CREATE FUNCTION public.catalog_offer_memberships_page(p_offer_version text,p_cursor jsonb,p_limit integer,p_mode text)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE authority jsonb; head_digest text; items jsonb; failed jsonb; next_id uuid; after_id uuid;
+ invalid_projection boolean; live_drift boolean; offer_known boolean;
  admitted jsonb := jsonb_build_array(jsonb_build_object('offerVersion',p_offer_version,'admitted',true));
  denied jsonb := jsonb_build_array(jsonb_build_object('offerVersion',p_offer_version,'admitted',false));
  invalid CONSTANT jsonb := '{"kind":"refusal","reason":"invalid_request"}';
@@ -248,8 +250,33 @@ BEGIN
  IF authority->>'kind'='legacy' THEN
   RETURN '{"kind":"page","value":{"protocol":"legacy","headDigest":null,"items":[],"nextCursor":null}}'::jsonb;
  END IF;
- IF NOT EXISTS (SELECT 1 FROM public.catalog_skus s JOIN public.catalog_publication_heads h ON h.product_id=s.product_id
-  WHERE s.publication_facts->'memberships' @> admitted OR s.publication_facts->'memberships' @> denied) THEN
+ -- The head reader authenticated these manifests in the same statement snapshot.
+ -- Check both directions before trusting live offer existence or page filters.
+ WITH sealed AS MATERIALIZED (
+  SELECT h.product_id,(r->>'skuId')::uuid AS sku_id,m.body #> '{product,status}' AS product_status,
+   f.memberships,f.status AS sku_status,f."sellableStandalone" AS standalone,f."sellableInSubscription" AS subscription
+  FROM public.catalog_publication_heads h JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
+  CROSS JOIN LATERAL (SELECT p.canonical_state::jsonb AS body) m
+  CROSS JOIN LATERAL jsonb_array_elements(m.body->'skus') r
+  LEFT JOIN LATERAL jsonb_to_record(public.catalog_publication_read_sku_revision(h.product_id,r))
+   AS f(memberships jsonb,status jsonb,"sellableStandalone" jsonb,"sellableInSubscription" jsonb) ON true
+ ), live AS (
+  SELECT s.product_id,s.id AS sku_id,s.publication_facts->'memberships' AS memberships,to_jsonb(p.status) AS product_status,
+   to_jsonb(s.status) AS sku_status,to_jsonb(s.sellable_standalone) AS standalone,to_jsonb(s.sellable_in_subscription) AS subscription
+  FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id
+  JOIN public.catalog_publication_heads h ON h.product_id=s.product_id
+  WHERE s.publication_facts->'memberships' @> admitted OR s.publication_facts->'memberships' @> denied
+ )
+ SELECT bool_or(s.sku_id IS NOT NULL AND (s.memberships IS NULL OR
+   (s.product_status IN ('"draft"'::jsonb,'"active"'::jsonb,'"archived"'::jsonb)) IS DISTINCT FROM true)),
+  bool_or(coalesce(s.memberships @> admitted OR s.memberships @> denied,false) IS DISTINCT FROM (l.sku_id IS NOT NULL)
+   OR (l.sku_id IS NOT NULL AND (l.memberships,l.product_status,l.sku_status,l.standalone,l.subscription)
+    IS DISTINCT FROM (s.memberships,s.product_status,s.sku_status,s.standalone,s.subscription))),
+  count(l.sku_id)>0
+ INTO invalid_projection,live_drift,offer_known FROM sealed s FULL JOIN live l USING (product_id,sku_id);
+ IF invalid_projection THEN RETURN '{"kind":"refusal","reason":"inconsistent_evidence"}'::jsonb; END IF;
+ IF live_drift THEN RETURN '{"kind":"refusal","reason":"inconsistent_evidence","detail":"catalog_publication_live_drift"}'::jsonb; END IF;
+ IF NOT offer_known THEN
   RETURN '{"kind":"refusal","reason":"unknown_offer"}'::jsonb;
  END IF;
  WITH eligible AS MATERIALIZED (
