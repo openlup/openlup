@@ -321,7 +321,9 @@ The default factory wires `createQuoteShippingPromotions` to the host's promotio
 ports and the shipping policy from `offer.shippingMinor`,
 `offer.freeShippingFromMinor` and `quote.policy.effectiveFrom`. The free threshold
 uses the product amount after discounts. The quote retains shipping terms for
-acceptance and later delivery pricing.
+acceptance and later delivery pricing. To retain the threshold when reusing the
+quote helper in a replacement resolver, supply the `commerceSettingsPort` with
+the threshold in its shipping policy.
 
 Keep carrier configuration and clients in the owned server file or its
 application-owned adapters. Read credentials from private runtime inputs there;
@@ -596,6 +598,57 @@ save. To make a different save, read the current revision first and choose
 **Start a new action**. Preserve the catalogue builds with the database so
 older revisions can still resolve their saved type. Provision and deactivate
 support access through the [operator roster](#provision-operator-rosters).
+
+### Change a product rule
+
+In a fresh starter candidate extracted from OpenLup main, edit
+`owned/catalogue-rules.cjs` and add an accepted and a refused example to
+`owned/catalogue-rules.test.cjs`. If your upgraded application still uses
+`owned/catalogue.ts` to validate drafts, copy both rule files from a fresh
+extraction of your target version and move your content checks into the
+bundle's `validateContent` hook.
+
+The test loads your rule bytes with `loadCatalogRules` under the same execution
+limits as installation. Keep hooks pure and bundle dependencies ahead of time. Use the
+supplied evaluation context for time, locale or time zone and pass locale and
+time zone explicitly when formatting. Tests can pass a fixed evaluation context
+as the second argument to `loadCatalogRules`. Hooks have no access to
+`require`, Node process or filesystem APIs, `Date`, `Math.random`, or runtime
+code generation.
+
+From the extracted application root, run the rule test:
+
+```sh
+node --test owned/catalogue-rules.test.cjs
+```
+
+Run the extracted application's `typecheck` npm script from the same directory.
+The bundled test accepts a draft with a title such as `Fictional item` and
+expects `title_required` for a blank title. In the publication-shaped example,
+the hook reports `presentation.title` within the shared content.
+
+Run `./lifecycle up` from the same directory to install the updated rule
+version in the demonstration database and start the host. Sign in as an
+operator, open **Catalogue drafts**, and choose **Load draft example**. To
+check the bundled title rule, clear `product.sharedContent.presentation.title`
+in the JSON and choose **Save**. Expect `title_required` at that field. Restore
+the title, save, and choose **Prepare saved draft** with the saved draft ID and
+revision. Preparation can report that publication evidence is unavailable.
+Earlier saved drafts keep their installed rule version.
+
+### Correct a price-list refusal
+
+When your application supplies a price validator for catalogue preparation,
+`price_list_not_found` in the `pricing` phase identifies a missing target
+list. A path such as `skus.0.priceOperations.0` identifies the first price
+operation on the first SKU. The issue's `subject` is that operation's
+`priceListId`.
+
+The demonstration seed in `owned/demo-seed.ts` derives one list ID from the
+selected configuration ID and its market currency. Use the list installed for
+that configuration and currency. Set the affected operation's `priceListId`
+to the installed ID, save the correction, and prepare the new draft revision.
+The supplied starter's **Prepare saved draft** action has no price validator.
 
 ## Replace acquisition location choices
 

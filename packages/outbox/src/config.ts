@@ -79,10 +79,13 @@ export function validateScheduledConfig(config: OutboxDispatchConfig, hostLimitS
   const fail = (key: string, fix: string): never => { throw new Error(`@openlup/outbox: ${key}: ${fix}`); };
   if (!Number.isFinite(hostLimitSeconds) || hostLimitSeconds < 20 || hostLimitSeconds > 720) fail("hostLimitSeconds", "use 20–720 seconds");
   for (const [key, bound] of Object.entries(CONFIG_BOUNDS)) {
-    const value = config[key as keyof OutboxDispatchConfig];
+    const value = config[key as keyof typeof CONFIG_BOUNDS];
     const min = key === "visibilitySeconds" ? Math.min(5 * hostLimitSeconds, 3600) : bound.min;
     const max = key === "softBudgetMs" ? hostLimitSeconds * 1000 - 15000 : bound.max;
     if (!Number.isInteger(value) || value < min || value > max) fail(key, `use an integer in ${min}–${max}`);
+  }
+  if (config.snoozeScope !== undefined && config.snoozeScope !== "all" && config.snoozeScope !== "event_type") {
+    fail("snoozeScope", 'use "all" or "event_type"');
   }
   if (config.backoffCapSeconds < config.backoffBaseSeconds) fail("backoffCapSeconds", "keep cap at least the base delay");
   for (const timeout of timeouts) if (!Number.isFinite(timeout) || timeout <= 0 || timeout + 2000 > config.softBudgetMs) fail("handler.timeoutMs", "fit the effective timeout plus 2000 ms mark margin in the budget");

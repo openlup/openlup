@@ -7,7 +7,7 @@ export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentS
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 export type { DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort } from "./store.js";
 export type { DeliveryAlignmentPort } from "./alignment.js";
-export type { FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence } from "./conformance.js";
+export type { FulfillmentProviderAdapter, FulfillmentProviderRegistry, FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence } from "./conformance.js";
 export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
 export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
 export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from './operator.js';

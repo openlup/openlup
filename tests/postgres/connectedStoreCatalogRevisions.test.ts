@@ -305,22 +305,28 @@ it("restores reordered sealed history and recovers the original publication afte
   } };
   const storeHeadText = (value: string) => transaction(source.owner, async db => {
     await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_issued");
-    await db.query("UPDATE public.catalog_publications SET canonical_state=$2 WHERE id=$1", [second.issueId, value]);
+    await db.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
+      [second.issueId, value, createHash("sha256").update(value).digest("hex")]);
     await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_issued");
   });
-  for (const value of ["invalid JSON text", json({ ...JSON.parse(savedHead.canonical_state), skus: {} })]) {
+  const invalidRoster = JSON.parse(savedHead.canonical_state);
+  invalidRoster.skus[0].revisionId = "not-a-uuid";
+  const invalidRevision = json(invalidRoster);
+  for (const value of ["invalid JSON text", json({ ...JSON.parse(savedHead.canonical_state), skus: {} }), invalidRevision]) {
+    const refusal = value === invalidRevision
+      ? { ...manifestRefusal, cause: { ...manifestRefusal.cause, path: "skus.0.revisionId" } } : manifestRefusal;
     await storeHeadText(value);
     try {
-      await expect(captureStoreJourney(source.owner, "catalog-malformed-manifest")).rejects.toMatchObject(manifestRefusal);
+      await expect(captureStoreJourney(source.owner, "catalog-malformed-manifest")).rejects.toMatchObject(refusal);
     } finally {
       await storeHeadText(savedHead.canonical_state);
     }
     const edited = structuredClone(captured);
     const issues = edited.owned.find(table => table.table === "catalog_publications")!;
     issues.rows = issues.rows.map(text => JSON.parse(text).id === second.issueId
-      ? JSON.stringify({ ...JSON.parse(text), canonical_state: value }) : text);
+      ? JSON.stringify({ ...JSON.parse(text), canonical_state: value, digest: createHash("sha256").update(value).digest("hex") }) : text);
     rehash(edited);
-    await expect(restore(target.owner, edited)).rejects.toMatchObject(manifestRefusal);
+    await expect(restore(target.owner, edited)).rejects.toMatchObject(refusal);
     expect(await journeyCensus(target.owner)).toEqual(pristine);
   }
 

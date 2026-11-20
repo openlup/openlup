@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NativeRenewalCadenceError } from "../../src/subscriptions/nativeRenewalCadence.js";
 import { createPostgresRenewalStore } from "../../src/subscriptions/postgresRenewalStore.js";
+import { withNativeDeliveryAlignmentRenewalAdmission } from "../../src/subscriptions/postgresDeliveryAlignmentStore.js";
+import { createNativeRetryDriver } from "../../src/subscriptions/nativeRetryDriver.js";
 import { createNativeRenewalCodec } from "../../src/subscriptions/nativeRenewalCodec.js";
 import { graduateNativeRenewal, nativeRenewalPrice, nativeRenewalTermsSchema } from "../../src/subscriptions/nativeRenewalTerms.js";
 import { resolveThresholdShipping, summarizeThresholdShipping } from "../../src/shipping/thresholdPolicy.js";
@@ -178,5 +180,114 @@ describe("retained renewal pricing characterization", () => {
     const bound = codec.withDestination!(snapshot, "abcdef04-2345-4678-9abc-def012345678");
     expect(bound.orderSnapshot.shippingQuoteRef).toEqual({ kind: "zero_shipping", shippingAmountMinor: 0 });
     expect(codec.decode(codec.encode(bound))).toEqual(bound);
+  });
+
+  it("uses lightweight SQL for mandate/delivery admission, single snapshot load in buildCycleSnapshots, and skips alignment query when statically blocked", async () => {
+    const codec = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
+    const queries: string[] = [];
+    const executor = {
+      query: vi.fn(async (sql: string) => {
+        queries.push(sql);
+        if (sql.includes("FROM public.subscription_renewal_operations")) return { rows: [] };
+        if (sql.includes("FOR UPDATE")) return { rows: [{ id: sub }] };
+        if (sql.includes("subscription_renewal_purchase_terms")) return { rows: [row(terms())] };
+        if (sql.includes("t.authorization_ref") && !sql.includes("subscription_renewal_purchase_terms")) {
+          return { rows: [{ authorization_ref: "auth-1", unattended_charge_authorized_at: at, method_authorized: true }] };
+        }
+        if (sql.includes("t.delivery_admission")) {
+          return { rows: [{ delivery_admission: "blocked", delivery_block_reason: "manual_hold" }] };
+        }
+        throw new Error(`unexpected SQL: ${sql}`);
+      }),
+    };
+    const withTransaction = vi.fn(async <T>(work: (db: typeof executor) => Promise<T>) => work(executor));
+    const store = createPostgresRenewalStore(executor, codec, withTransaction);
+
+    // buildCycleSnapshots with withTransaction enters tx directly and reads SNAPSHOT_SQL once (not twice)
+    const frozen = await store.buildCycleSnapshots(schedule);
+    expect(frozen.frozenRevision).toBe("native.purchase-renewal.v2");
+    expect(queries.filter(q => q.includes("subscription_renewal_purchase_terms"))).toHaveLength(1);
+
+    // readMandateEvidence uses lightweight query without SNAPSHOT_SQL
+    queries.length = 0;
+    expect(await store.readMandateEvidence(schedule)).toEqual({ authorized: true, authorizationRef: "auth-1", authorizedAt: at });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).not.toContain("subscription_renewal_purchase_terms");
+
+    // admitDeliveryAlignment on raw store uses lightweight 2-column SQL
+    queries.length = 0;
+    expect(await store.admitDeliveryAlignment(schedule)).toEqual({ allowed: false, state: "static", reason: "manual_hold", deferred: false });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).not.toContain("subscription_renewal_purchase_terms");
+
+    // withNativeDeliveryAlignmentRenewalAdmission short-circuits static block before existing_cycle query
+    queries.length = 0;
+    const aligned = withNativeDeliveryAlignmentRenewalAdmission(store, executor, () => at);
+    expect(await aligned.admitDeliveryAlignment(schedule)).toEqual({ allowed: false, state: "static", reason: "manual_hold", deferred: false });
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).not.toContain("existing_cycle");
+  });
+
+  it("preserves canonical fingerprint and wire parity even when string fields contain key-like markers", () => {
+    const codec = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
+    const tricky = { ...row(terms()), authorization_ref: 'auth,"frozenRevision":"spoof"' };
+    const snapshot = codec.freeze(tricky, schedule);
+    const wire = codec.encode(snapshot);
+    expect(wire.authorizationRef).toBe('auth,"frozenRevision":"spoof"');
+    expect(wire.frozenRevision).toBe("native.purchase-renewal.v2");
+    expect(codec.decode(wire)).toEqual(snapshot);
+    const bound = codec.withDestination!(snapshot, "abcdef04-2345-4678-9abc-def012345678");
+    expect(codec.decode(codec.encode(bound))).toEqual(bound);
+  });
+
+  it("skips propagateFailure transaction in retry driver when failure_propagation_pending is false and runs it when true", async () => {
+    const codec = createNativeRenewalCodec(), schedule = { subscriptionId: sub, scheduledAt: at, scheduledInstant: Date.parse(at) };
+    const snapshot = codec.freeze(row(), schedule);
+    const wire = codec.encode(snapshot);
+    const makeDriver = (pending: boolean) => {
+      const withTransaction = vi.fn(async <T>(work: (db: { query: (sql: string) => Promise<{ rows: Record<string, unknown>[] }> }) => Promise<T>) => work({
+        query: async sql => {
+          if (sql.includes("subscription_retry_read")) return { rows: [{ response: null }] };
+          if (sql.includes("subscription_retry_apply_failure")) return { rows: [{ response: { state: "recovered", cycle_snapshot: wire } }] };
+          if (sql.includes("case_advanced")) return { rows: [{ replayed: true, case_advanced: true }] };
+          return { rows: [] };
+        },
+      }));
+      const driver = createNativeRetryDriver({
+        executor: {
+          query: vi.fn(async (sql: string) => {
+            if (sql.includes("FROM public.subscription_retry_obligations")) {
+              return { rows: [{
+                renewal_operation_id: "op-1",
+                cycle_snapshot: wire,
+                failure_key: "f-1",
+                failure_input: { attemptSequence: 1, logicalCycleNumber: 2, occurredAt: at, failureClass: "temporary", reason: "declined", externalRef: "ext-1", evidenceKey: "ev-1", firstRecordedAt: at },
+                failure_propagation_pending: pending,
+              }] };
+            }
+            if (sql.includes("subscription_retry_read")) return { rows: [{ response: null }] };
+            throw new Error(`unexpected SQL: ${sql}`);
+          }),
+        },
+        withTransaction,
+        decode: codec.decode,
+        readFrozenMandate: async () => ({ authorized: true, authorizationRef: "synthetic-authorization", paymentMethodRef: "pm-1" }),
+        retryInput: () => { throw new Error("not expected"); },
+        validateInput: () => {},
+        payments: { execute: async () => { throw new Error("not expected"); }, readOutcome: async () => { throw new Error("not expected"); } },
+        failureTemplate: "dunning",
+        recoveredTemplate: "recovered",
+        recoveryPath: null,
+        classifyFailure: () => "temporary",
+      });
+      return { driver, withTransaction };
+    };
+    const skipped = makeDriver(false);
+    expect(await skipped.driver.run(at, 10)).toEqual([]);
+    expect(skipped.withTransaction).not.toHaveBeenCalled();
+
+    const propagated = makeDriver(true);
+    expect(await propagated.driver.run(at, 10)).toEqual([]);
+    expect(propagated.withTransaction).toHaveBeenCalledOnce();
   });
 });

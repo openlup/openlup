@@ -13,16 +13,17 @@ import { isValidGtin } from "./foundationSchemas.js";
 import { readPublicationDraftRecord } from "./publicationIntent.js";
 import type { parseCatalogCandidateReference } from "./candidateService.js";
 import type { compileCatalogPublication } from "./publicationValidation.js";
-import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationIssue, publicationRefuse } from "./publicationError.js";
+import { CatalogPublicationError, publicationIssue, publicationPriceRefusalReason, refusePublicationCommand, publicationRemedy,
+  type AdmissionDiagnostic } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 import { canonicalCatalogPriceSetupCommand, catalogPriceSetupApplyResultSchema } from "../pricing/index.js";
 
 type Plan = Awaited<ReturnType<typeof compileCatalogPublication>>;
 type Reference = NonNullable<ReturnType<typeof parseCatalogCandidateReference>>;
 
-function requireProjection(condition: unknown, code: string,
+function requireProjection(condition: unknown, code: AdmissionDiagnostic,
   outcome: CatalogPublicationError["outcome"] = "conflict"): asserts condition {
-  if (!condition) publicationRefuse(code, outcome);
+  if (!condition) refusePublicationCommand(code, outcome);
 }
 const same = (a: unknown, b: unknown) => publicationJson(a) === publicationJson(b);
 
@@ -79,8 +80,7 @@ export async function publicationRelationFence(db: PgQueryExecutor, productId: s
   await db.query("SELECT id FROM public.catalog_skus WHERE product_id=$1 ORDER BY id FOR NO KEY UPDATE NOWAIT", [productId]);
 }
 
-export async function readPreviousPublication(db: PgQueryExecutor, productId: string,
-  expected: ExpectedPublicationHead | null, checkLive: boolean) {
+async function readPublicationHead(db: PgQueryExecutor, productId: string) {
   // READ COMMITTED gives this statement a fresh view after the fence.
   const { rows: [row] } = await db.query(`SELECT p.canonical_state,p.digest,
     public.catalog_publication_head_ref($1,p.id) AS head,
@@ -88,6 +88,12 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
     FROM (SELECT $1::uuid AS product_id) scope
     LEFT JOIN public.catalog_publication_heads h USING(product_id)
     LEFT JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)`, [productId]);
+  return row;
+}
+
+export async function readPreviousPublication(db: PgQueryExecutor, productId: string,
+  expected: ExpectedPublicationHead | null, checkLive: boolean) {
+  const row = await readPublicationHead(db, productId);
   const head = publicationHeadSchema.nullable().parse(row?.head);
   requireProjection(matchesPublicationHead(expected, head), "head_conflict");
   requireProjection(head || row?.live === false, "catalog_publication_lineage_unknown", "unsupported");
@@ -141,10 +147,26 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
   return { head, manifest, evidence };
 }
 
+export async function assertCurrentPublicationRoster(db: PgQueryExecutor, productId: string) {
+  const row = await readPublicationHead(db, productId);
+  if (row?.head) decodeStoredPublicationManifest(row.canonical_state);
+}
+
 const effectivePriceList = `SELECT id,region_code,currency FROM public.price_lists
   WHERE region_code=public.catalog_price_setup_region_code() AND currency=public.catalog_price_setup_settlement_currency()
     AND status='active' AND valid_from<=statement_timestamp() AND (valid_to IS NULL OR valid_to>statement_timestamp())
   ORDER BY created_at DESC,id DESC LIMIT 1`;
+
+function refusePriceOperation(operation: Plan["priceOperations"][number], reason: unknown, outcome: CatalogPublicationError["outcome"]): never {
+  const parsed = publicationPriceRefusalReason.safeParse(reason);
+  if (!parsed.success) return refusePublicationCommand("catalog_publication_price_unavailable", "dependency_unavailable");
+  const code = parsed.data;
+  if (code !== "command_key_reused") return refusePublicationCommand(code, outcome);
+  throw new CatalogPublicationError(code, outcome, {
+    ...publicationIssue(code, "pricing", "skus.priceOperations", operation.commandKey),
+    message: `Price command "${operation.commandKey}". ${publicationRemedy(code)}`,
+  });
+}
 
 async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperations"], priced: CatalogPublishedSku[]) {
   const claims = new Map<string, unknown>();
@@ -156,7 +178,7 @@ async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperation
     const result = rows[0]?.result as { outcome?: string; reason?: string } | undefined;
     if (result?.outcome !== "claimed" && result?.outcome !== "replayed") {
       const outcome = result?.outcome;
-      publicationRefuse(result?.reason ?? "catalog_publication_price_unavailable",
+      refusePriceOperation(operation, result?.reason,
         outcome === "conflict" || outcome === "unauthorized" || outcome === "validation_issue" ? outcome : "dependency_unavailable");
     }
     claims.set(operation.commandKey, result);
@@ -229,7 +251,7 @@ async function applyPrices(db: PgQueryExecutor, operations: Plan["priceOperation
       "SELECT public.catalog_price_setup_apply_claimed($1::jsonb,statement_timestamp()) AS result", [JSON.stringify(claim)])).rows[0]?.result;
     const result = catalogPriceSetupApplyResultSchema.safeParse(raw);
     requireProjection(result.success, "catalog_publication_price_unavailable", "dependency_unavailable");
-    if (!("receipt" in result.data)) return publicationRefuse(result.data.reason, result.data.outcome);
+    if (!("receipt" in result.data)) refusePriceOperation(operation, result.data.reason, result.data.outcome);
     const { receipt } = result.data;
     requireProjection(receipt.actorId === actor && receipt.commandKey === operation.commandKey && receipt.variantId === operation.variantId
       && receipt.priceListId === operation.priceListId && (receipt.previous?.entryId ?? null) === operation.expected.entryId
@@ -340,9 +362,19 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     const issue = attributeRows.issues[0];
     throw new CatalogPublicationError(issue?.code ?? "catalog_publication_attributes_invalid", "validation_issue", issue);
   }
-  const pricedCodes = new Set(plan.pricedSkuCodes);
-  const sellable = (sku?: CatalogPublishedSku) => sku?.status === "active" && (sku.sellableStandalone || sku.sellableInSubscription);
-  const priced = skus.filter(sku => pricedCodes.has(sku.code) || sellable(sku) && !sellable(prior.get(sku.id)));
+  // The relation fence holds through issuance. Compare final effects with the
+  // actual row even when compensation projects an unchanged sealed SKU.
+  const { rows } = await db.query(`SELECT s.id,s.status,s.sellable_standalone,s.sellable_in_subscription,p.status AS product_status
+    FROM public.catalog_skus s JOIN public.catalog_products p ON p.id=s.product_id WHERE s.product_id=$1`, [product.id]);
+  const live = new Map(rows.map(row => [row.id, row]));
+  const authoredPriceChecks = new Set(plan.pricedSkuCodes);
+  const priced = skus.filter(sku => {
+    if (authoredPriceChecks.has(sku.code)) return true;
+    const before = live.get(sku.id);
+    const active = before?.status === "active" && (product.status !== "active" || before.product_status === "active");
+    return sku.status === "active" && (sku.sellableStandalone && !(active && before?.sellable_standalone)
+      || sku.sellableInSubscription && !(active && before?.sellable_in_subscription));
+  });
   const { claims, listId } = await claimPrices(db, plan.priceOperations, priced);
   const currentDocuments = new Map(plan.documents.map(doc => [doc.reference.id, doc]));
   const allDocuments = new Map([...previous.evidence.documents, ...plan.documents].map(doc => [doc.reference.revisionNo, doc.reference.id]));
@@ -393,10 +425,10 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     SELECT * FROM jsonb_populate_recordset(NULL::public.catalog_attribute_projection,$1::jsonb)`, [JSON.stringify(attributeRows.rows)]);
   try { await applyPrices(db, plan.priceOperations, claims, actor); }
   catch (error) {
-    if (catalogPublicationAdmissionRefusal(error) || error instanceof CatalogPublicationError) throw error;
+    if (error instanceof CatalogPublicationError) throw error;
     const sql = error as { message?: string } | null;
-    if (sql?.message === "catalog_price_setup_expected_state_mismatch") publicationRefuse("catalog_publication_price_changed", "conflict");
-    if (sql?.message === "catalog_price_setup_readiness_would_fail") publicationRefuse("catalog_publication_price_readiness", "validation_issue");
+    if (sql?.message === "catalog_price_setup_expected_state_mismatch") refusePublicationCommand("catalog_publication_price_changed", "conflict");
+    if (sql?.message === "catalog_price_setup_readiness_would_fail") refusePublicationCommand("catalog_publication_price_readiness", "validation_issue");
     throw error;
   }
   await assertSkuPrices(db, priced, listId);

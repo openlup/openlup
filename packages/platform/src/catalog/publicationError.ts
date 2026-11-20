@@ -1,5 +1,14 @@
 import type { CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogCandidateIssue } from "./contracts/candidate.js";
+import { z } from "./validation.js";
+
+// Refusal reasons returned by the LC3 claim and apply routines.
+export const publicationPriceRefusalReason = z.enum([
+  "command_fingerprint_invalid", "command_invalid", "command_key_reused", "operator_mismatch",
+  "command_in_progress", "sku_not_found", "sku_archived", "price_list_not_found",
+  "price_list_not_active", "base_price_ambiguous",
+]);
+const reviewDraft = "Review the selected draft and prepare it again.";
 
 const rulesMismatch = "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying.";
 const fixes = new Map([
@@ -116,15 +125,28 @@ export const publicationRefusals = {
   catalog_publication_sku_price_shape_invalid: ["publication_sku_price_shape_invalid", "Use gross one-time or subscription pricing at minimum quantity one for this SKU in the effective price list."],
   price_list_not_active: ["price_list_not_active", "Activate the intended price list or select an effective list for the settlement region and currency."],
   price_list_not_found: ["price_list_not_found", "Select an installed, effective price list for the settlement region and currency, then prepare the draft again."],
+  command_key_reused: ["command_key_reused", "Give the changed price operation a fresh command key and prepare the draft again."],
+  command_fingerprint_invalid: ["command_fingerprint_invalid", reviewDraft],
+  command_invalid: ["command_invalid", reviewDraft],
+  operator_mismatch: ["operator_mismatch", reviewDraft],
+  command_in_progress: ["command_in_progress", "Retry the publication with the same command keys after the price change finishes."],
+  sku_not_found: ["sku_not_found", "Select an existing SKU for the price change or create it in this publication."],
+  sku_archived: ["sku_archived", "Restore the SKU before changing its price or remove the price change."],
+  base_price_ambiguous: ["base_price_ambiguous", "Resolve overlapping base price entries for this SKU and price list, then prepare the draft again."],
+  catalog_definition_drift: ["catalog_definition_drift", rulesMismatch],
+  publication_preparation_unavailable: ["publication_preparation_unavailable", reviewDraft],
+  publication_evaluation_refused: ["publication_evaluation_refused", reviewDraft],
   catalog_publication_identity_conflict: ["publication_identity_conflict", "A product slug or SKU code is already in use. Choose an available identity and prepare the draft again."],
   duplicate_combination: ["duplicate_combination", "A SKU already has this combination of options. Use distinct options for the new SKU."],
-} as const;
+} as const satisfies Record<string, readonly [string, string]>
+  & Record<z.infer<typeof publicationPriceRefusalReason>, readonly [string, string]>;
 
 export type AdmissionDiagnostic = keyof typeof publicationRefusals;
+export const refusePublicationCommand: (code: AdmissionDiagnostic, outcome?: CatalogPublicationError["outcome"]) => never = publicationRefuse;
 export function publicationRemedy(code: AdmissionDiagnostic): string {
   return publicationRefusals[code][1];
 }
-type AdmissionRefusal = { outcome: "validation_issue"; reason: (typeof publicationRefusals)[AdmissionDiagnostic][0]; message: string };
+type AdmissionRefusal = { outcome: "validation_issue"; reason: (typeof publicationRefusals)[AdmissionDiagnostic][0]; message: string; path?: string };
 
 const deferredForeignKeys = new Map([
   ["catalog_publications_previous_fk", "catalog_publication_lineage_invalid"],
@@ -161,7 +183,8 @@ export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRef
   const field = error && typeof error === "object" && "column" in error && typeof error.column === "string" ? error.column : "";
   const message = name === "catalog_publication_content_invalid" && Object.hasOwn(contentFixes, field)
     ? contentFixes[field as keyof typeof contentFixes] : refusal[1];
-  return { outcome: "validation_issue", reason: refusal[0], message };
+  const path = error instanceof CatalogPublicationError ? error.diagnostic?.path : undefined;
+  return { outcome: "validation_issue", reason: refusal[0], message, ...(path ? { path } : {}) };
 }
 
 export function publicationReadFailure(error: unknown): CatalogPublicationFailure & { message: string } {

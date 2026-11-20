@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { publicTrackingUrl } from "../observationProjection.js";
 import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest,
-  FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "../contracts/index.js";
+  FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentProviderAdapter, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "../contracts/index.js";
 import { createOmnipackClient, OmnipackProviderError } from "./client.js";
 import { omnipackFulfillmentCapabilities } from "./capabilities.js";
 import { buildOmnipackDispatchCommand, serializeOmnipackDispatchPayload, stableDispatchHash, providerOrderNumberFor } from "./omnipackDispatchPayload.js";
@@ -68,10 +68,8 @@ export interface OmnipackFulfillmentAdapterConfig {
 }
 
 /** No route, schedule, environment reader or default binding is installed. */
-export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): {
-  capabilities: FulfillmentCapabilityDescriptor;
+export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdapterConfig): FulfillmentProviderAdapter & {
   orderIdentity: typeof omnipackIntakeOrderIdentity;
-  dispatch: FulfillmentDispatchPort;
   label: FulfillmentLabelPort;
   observation: FulfillmentObservationPort;
   readback: FulfillmentReadbackPort;

@@ -24,16 +24,16 @@ function stubPool(opts: { failRpc?: string; pendingEvent?: boolean } = {}) {
         return {
           async query(text: string, values?: unknown[]) {
             record.queries.push({ text, values });
-            if (opts.failRpc && text.includes(`"${opts.failRpc}"`)) {
+            if (opts.failRpc && text.includes(opts.failRpc)) {
               const error = new Error("rail down") as Error & { code?: string };
               error.code = "P0001";
               throw error;
             }
-            if (text.includes("SELECT EXISTS")) return { rows: [{ present: opts.pendingEvent === true }] };
+            if (text.toLowerCase().includes("select exists")) return { rows: [{ value: opts.pendingEvent === true }] };
             if (text.includes("outbox_claim_batch")) return { rows: claimCount++ === 0 ? [eventRow()] : [] };
-            if (text.includes("outbox_mark_processed")) return { rows: [{ outbox_mark_processed: true }] };
-            if (text.includes("outbox_mark_failed")) return { rows: [{ outbox_mark_failed: "snoozed" }] };
-            if (text.includes("outbox_release_unprocessed")) return { rows: [{ outbox_release_unprocessed: 2 }] };
+            if (text.includes("outbox_mark_processed")) return { rows: [{ value: true }] };
+            if (text.includes("outbox_mark_failed")) return { rows: [{ value: "snoozed" }] };
+            if (text.includes("outbox_release_unprocessed")) return { rows: [{ value: 2 }] };
             return { rows: [] };
           },
           release() {
@@ -73,11 +73,11 @@ describe("Postgres outbox store adapter", () => {
 
     await expect(store.hasPendingEventType?.("tester.feedback.reward_confirmation")).resolves.toBe(true);
     expect(clients[0]?.queries[1]).toMatchObject({
-      text: expect.stringContaining("SELECT EXISTS"),
+      text: expect.stringMatching(/select exists/i),
       values: ["tester.feedback.reward_confirmation"],
     });
-    expect(clients[0]?.queries[1]?.text).toContain("status IN ('pending', 'failed', 'processing')");
-    expect(clients[0]?.queries[1]?.text).not.toContain("processed_at IS NULL");
+    expect(clients[0]?.queries[1]?.text.toLowerCase()).toContain("status in ('pending','failed','processing')");
+    expect(clients[0]?.queries[1]?.text.toLowerCase()).not.toContain("processed_at is null");
   });
 
   it("confines the role-free lane to this concrete adapter", () => {
@@ -128,10 +128,10 @@ describe("Postgres outbox store adapter", () => {
       expect(client.released).toBe(true);
     }
     expect(clients.map((client) => client.queries[1]?.text)).toEqual([
-      expect.stringContaining('"outbox_claim_batch"'),
-      expect.stringContaining('"outbox_mark_processed"'),
-      expect.stringContaining('"outbox_mark_failed"'),
-      expect.stringContaining('"outbox_release_unprocessed"'),
+      expect.stringContaining("outbox_claim_batch"),
+      expect.stringContaining("outbox_mark_processed"),
+      expect.stringContaining("outbox_mark_failed"),
+      expect.stringContaining("outbox_release_unprocessed"),
     ]);
   });
 
@@ -148,7 +148,7 @@ describe("Postgres outbox store adapter", () => {
 
     expect(clients[0]?.queries.map((query) => query.text)).toEqual([
       "BEGIN",
-      expect.stringContaining('"outbox_claim_batch"'),
+      expect.stringContaining("outbox_claim_batch"),
       "ROLLBACK",
     ]);
     expect(clients[0]?.released).toBe(true);

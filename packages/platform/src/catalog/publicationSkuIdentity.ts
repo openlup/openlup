@@ -11,7 +11,7 @@ export async function assertPublishedSkuIdentity(db: PgQueryExecutor, productId?
   )
     SELECT 1 FROM manifests p
     CROSS JOIN LATERAL jsonb_array_elements(p.state->'skus') member
-    JOIN public.catalog_sku_revisions r ON r.id=(member->>'revisionId')::uuid AND r.product_id=p.product_id
+    JOIN public.catalog_sku_revisions r ON r.id::text=member->>'revisionId' AND r.product_id=p.product_id
     JOIN public.catalog_skus s ON (s.product_id,s.id)=(r.product_id,r.sku_id)
     WHERE s.sku IS DISTINCT FROM r.sku_code LIMIT 1`, [productId ?? null]);
   if (rows.length) publicationRefuse("catalog_publication_sku_identity_changed", "conflict");

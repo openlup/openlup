@@ -6,9 +6,11 @@ import {
   type CompatiblePostgresPacket, type CompatiblePostgresSnapshot, type CompatiblePostgresTable,
 } from "@openlup/platform/portability";
 
-const { catalogPublicationAdmissionRefusal, assertPublishedSkuIdentity } = nativeCatalogPublication;
+const { catalogPublicationAdmissionRefusal, assertPublishedSkuIdentity, decodeStoredPublicationManifest } = nativeCatalogPublication;
 
 export async function assertConnectedCatalogPublications(db: PgQueryExecutor) {
+  const { rows } = await db.query("SELECT canonical_state FROM public.catalog_publications");
+  for (const row of rows) decodeStoredPublicationManifest(row.canonical_state);
   await assertPublishedSkuIdentity(db);
   // Evaluate both decoders in PostgreSQL without returning the projections.
   await db.query(`SELECT count(public.catalog_publication_product_facts(id,publication_facts,true))

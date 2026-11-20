@@ -391,6 +391,8 @@ export async function restoreConnectedNativeStore(input: {
       for (const table of connectedNativeStoreTables) {
         if (!settings.includes(table as SettingsTable) && baseline.get(table)!.rows.length) fail("target_conflict", table);
       }
+      for (const row of source.get("catalog_publications")!.rows)
+        nativeCatalogPublication.decodeStoredPublicationManifest(JSON.parse(row).canonical_state);
       if (!await equalCensus(client, baseline)) fail("target_conflict");
       const control = await client.query("SELECT mode FROM public.subscription_delivery_alignment_control WHERE singleton=true");
       if (control.rows.length !== 1 || control.rows[0].mode !== "off") fail("target_conflict", "subscription_delivery_alignment_control");

@@ -146,14 +146,16 @@ export interface PaymentExecutionInput extends PaymentExecutionBaseInput {
    * normalizer leaves `reusableMethod` null.
    */
   clientId?: string;
-  /** Account checkout pet scope carried through provider return URLs. */
+  /** Neutral account checkout subject scope carried through provider return URLs. */
+  subjectId?: string | null;
+  /** @deprecated Use `subjectId` instead. Retained for 1.x backwards compatibility. */
   petId?: string | null;
+  /** Optional host-configured return path for redirect-based payment adapters. */
+  returnPath?: string;
   /**
-   * Where a redirect-based provider (Tpay BLIK / PBL) returns the buyer after
-   * payment. `"account"` makes the Tpay adapter build an in-shell
-   * `/konto/zamowienie/status` return URL instead of the public
-   * `/skomponuj-pakiet/platnosc` terminal. Defaults to `"public"` so existing
-   * callers (and the whole Stripe path, which has no provider return_url) stay
+   * Where a redirect-based provider returns the buyer after payment.
+   * `"account"` selects the in-shell account status return URL instead of the
+   * public checkout return URL. Defaults to `"public"` so existing callers stay
    * byte-identical.
    */
   returnContext?: "public" | "account";
