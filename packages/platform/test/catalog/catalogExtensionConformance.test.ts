@@ -45,6 +45,24 @@ describe("offline catalogue conformance", () => {
     p.types[0].attributes = [{ ...attribute, key: "recycled_cover" }];
     expect((await check(p)).exitCode).toBe(0);
   });
+  it("explains how to fix a required locale missing from the declared locales", async () => {
+    const p = pack();
+    const valueType = { kind: "localized_text" as const, maxLength: 100, locales: ["en"], requiredLocales: ["pl"] };
+    const attribute: AttributeDefinition = { key: "description", scope: "product", valueType,
+      required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} };
+    p.types[0].attributes = [attribute];
+
+    const report = await check(p);
+    expect(report.exitCode).toBe(1);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: "definition_attribute_invalid",
+      path: "/packs/0/pack/types/0/attributes/0/valueType/requiredLocales",
+      fix: expect.stringMatching(/^Correct the attribute definition at the reported path to match the attribute grammar\b/u),
+    }));
+
+    p.types[0].attributes = [{ ...attribute, valueType: { ...valueType, locales: ["en", "pl"] } }];
+    expect((await check(p)).exitCode).toBe(0);
+  });
   it("conformance_reuses_row_validators", async () => {
     const cases: [string, (p: CatalogPackInput) => void][] = [
       ["definition_duplicate_identity", p => { p.types = [...p.types, p.types[0]]; }],
