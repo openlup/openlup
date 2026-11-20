@@ -29,10 +29,13 @@ describe("fast preflight", () => {
     { name: "clean", dirty: false, offline: false, warnings: false, failures: [], exit: 0 },
     { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
     { name: "dirty with a failed fetch", dirty: true, offline: true, warnings: false, failures: ["clean"], exit: 1 },
-    { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "dco"], exit: 1 },
+    { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "publication-inventory", "dco"], exit: 1 },
   ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit }) => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const increase = '"scripts/example.ts": brand increased 0 -> 1';
+    const conflict = "CONFLICT (content): Merge conflict in example.ts";
+    const mismatch = "example.ts: missing from the publication inventory";
+    const closing = "the tree is not the inventory the manifest describes.";
     const expected = [
       "git rev-parse --show-toplevel",
       "git rev-parse HEAD",
@@ -50,15 +53,16 @@ describe("fast preflight", () => {
     const calls: string[] = [];
     const outputs = new Map([
       [expected[0], process.cwd()], [expected[1], head], [expected[3], dirty ? "?? local.txt\n" : ""],
-      [expected[4], "CONFLICT (content): Merge conflict in example.ts"], [expected[5], fork],
-      [expected[6], increase], [expected[11], upstream],
+      [expected[4], conflict], [expected[5], fork], [expected[6], increase],
+      [expected[10], `${mismatch}\n${closing}`], [expected[11], upstream],
     ]);
     vi.mocked(spawnSync).mockImplementation(((bin, args) => {
       const call = `${bin} ${(args ?? []).join(" ")}`;
       calls.push(call);
       const status = Number((call === expected[2] && offline)
         || (call === expected[4] && failures.includes("merge-clean"))
-        || (call === expected[6] && failures.includes("neutrality")));
+        || (call === expected[6] && failures.includes("neutrality"))
+        || (call === expected[10] && failures.includes("publication-inventory")));
       const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[11]].includes(call)
         ? "warning: fixture Git warning\n" : "";
       return { status, stdout: outputs.get(call) ?? "", stderr };
@@ -75,14 +79,17 @@ describe("fast preflight", () => {
     expect(JSON.parse(lines.pop()!)).toEqual({ preflight: "fast", result: exit === 0 ? "pass" : "fail", head, failed: failures });
     const reasons: Record<string, string> = {
       clean: "worktree has uncommitted changes. Commit or remove them.",
-      "merge-clean": "CONFLICT (content): Merge conflict in example.ts",
+      "merge-clean": conflict,
       neutrality: "1 neutrality count increase(s) against the fork point; the required self-check job refuses them",
+      "publication-inventory": closing,
       dco: `missing Signed-off-by on ${head.slice(0, 12)}`,
     };
     expect(lines.filter((line) => !line.startsWith("    ")).map((line) => line.replace(/ \(\d+ s\)$/u, "")))
       .toEqual(["clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "publication-policy", "publication-inventory", "dco"]
         .map((name) => `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
-    expect(lines.filter((line) => line.startsWith("    "))).toEqual(failures.includes("neutrality") ? [`    ${increase}`] : []);
+    expect(lines.filter((line) => line.startsWith("    "))).toEqual(
+      failures.includes("publication-inventory") ? [conflict, increase, mismatch, closing].map((line) => `    ${line}`) : [],
+    );
     expect(stderr.mock.calls).toEqual(offline ? [["preflight: git fetch origin main failed. Using local origin/main."]] : []);
   });
 });

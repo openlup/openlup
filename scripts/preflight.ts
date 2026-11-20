@@ -346,7 +346,8 @@ function fastPreflight(): number {
   const offlineNpm = { env: { ...processEnvironment, npm_config_offline: "true", npm_config_update_notifier: "false" } };
   const command = (check: string, bin: string, args: string[], options?: SpawnSyncOptions): CheckResult => {
     const { code, output } = execute(bin, args, options);
-    return { check, status: code === 0 ? "PASS" : "FAIL", detail: lastLine(output) || `${bin} did not complete successfully` };
+    return { check, status: code === 0 ? "PASS" : "FAIL", detail: lastLine(output) || `${bin} did not complete successfully`,
+      notes: code === 0 ? undefined : tail(output) };
   };
   const checks: Array<[string, () => CheckResult]> = [
     ["clean", () => ({
@@ -374,17 +375,19 @@ function fastPreflight(): number {
     try {
       result = check();
     } catch (error) {
-      result = { check: name, status: "FAIL", detail: (error as Error).message };
+      const detail = (error as Error).message;
+      result = { check: name, status: "FAIL", detail, notes: tail(detail) };
     }
     if (result.status === "PASS") {
       console.log(`${name}: ok`);
       continue;
     }
     failed.push(name);
-    const increases = name === "neutrality" ? (result.notes ?? []).filter((line) => NEUTRALITY_INCREASE.test(line)) : [];
-    const detail = increases.length ? result.detail : result.notes?.[0] ?? result.detail;
+    const notes = result.notes ?? [];
+    const increases = name === "neutrality" ? notes.filter((line) => NEUTRALITY_INCREASE.test(line)) : [];
+    const detail = name === "neutrality" && !increases.length ? notes[0] ?? result.detail : result.detail;
     console.log(`${name}: FAIL ${lastLine(detail)}`);
-    for (const line of increases) console.log(`    ${line}`);
+    for (const line of increases.length ? increases : notes.slice(-15)) console.log(`    ${line}`);
   }
   console.log(JSON.stringify({ preflight: "fast", result: failed.length ? "fail" : "pass", head, failed }));
   return failed.length ? 1 : 0;
