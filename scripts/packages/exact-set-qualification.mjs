@@ -116,9 +116,8 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
     }
     assertInstalledPackages(extracted, released?.packages ?? ["@openlup/core", "@openlup/outbox", "@openlup/platform"]);
     released?.verifyInstalled();
-    // Historical releases may predate discovery. For the current checkout or a
-    // release that includes discovery at source, require it in the extraction.
-    if (!released || released.settingsDiscovery) proveSettingsDiscovery(extracted);
+    // Only a historical release without the settings files can skip the check.
+    if (released?.mode !== "released" || released.settingsDiscovery) proveSettingsDiscovery(extracted, execute);
     for (const args of [["test"], ["run", "typecheck"], ["run", "build"]]) run("npm", args);
     run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
     if (released) assert.equal(lockHash(), released.lockfileSha256, "starter proof changed committed lock");

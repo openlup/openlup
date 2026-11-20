@@ -208,6 +208,16 @@ function reconcileManagedCustomization(
   return { path, bytes };
 }
 
+export const starterDisplayFiles = ["host/paid-mail.ts", "client/pages/account.ts", "browser/acquisition.spec.ts"] as const;
+
+export function reconcileDisplayCustomization(
+  app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],
+  path: typeof starterDisplayFiles[number],
+) {
+  return reconcileManagedCustomization(app, predecessor, applyRefused, path,
+    `owned/upgrade-notes/${path.split("/").at(-1)}`, "\n// Adopter display customization.\n");
+}
+
 export const starterLifecycle = "lifecycle.mjs";
 
 export function reconcileLifecycleCustomization(app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0]) {
@@ -268,6 +278,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     file.path === starterEditorPorts && file.action === "replace");
   const lifecycleReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === starterLifecycle && file.action === "replace");
+  const displayReplacements = starterDisplayFiles.filter(path =>
+    changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
   const { path: conflict, action } = editorReplacement ?? changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
   const paths = new Set<string>([...Object.keys(from.files), ...Object.keys(to.files), ...ownership.owned]);
   const readFiles = () => [...paths].map(path => existsSync(join(app, path)) ? readFileSync(join(app, path)) : null);
@@ -294,6 +306,12 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   });
   if (lifecycleReplaced) phase("lifecycle-reconciliation", () => {
     const local = reconcileLifecycleCustomization(app, from.files[starterLifecycle]!, applyRefused);
+    owned[local.path] = local.bytes;
+    pair.evidence.customizations![local.path] = hash(local.bytes);
+    assert.deepEqual(run("plan"), plan);
+  });
+  for (const path of displayReplacements) phase(`display-reconciliation:${path}`, () => {
+    const local = reconcileDisplayCustomization(app, from.files[path]!, applyRefused, path);
     owned[local.path] = local.bytes;
     pair.evidence.customizations![local.path] = hash(local.bytes);
     assert.deepEqual(run("plan"), plan);
@@ -337,6 +355,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert.equal(readFileSync(join(app, starterEditorPorts), "utf8"), to.files[starterEditorPorts]);
     if (lifecycleReplaced)
       assert.equal(readFileSync(join(app, starterLifecycle), "utf8"), to.files[starterLifecycle]);
+    for (const path of displayReplacements)
+      assert.equal(readFileSync(join(app, path), "utf8"), to.files[path]);
   };
   phase("resume", () => {
     const resumed = run("apply");
@@ -521,17 +541,22 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
 }
 
 /** Smoke the installed starter script; command semantics belong to package unit tests. */
-export function proveSettingsDiscovery(app: string): void {
+export function proveSettingsDiscovery(app: string, execute = (command: string, args: string[], cwd: string) =>
+  execFileSync(command, args, { cwd, env: isolatedConsumerEnv(), encoding: "utf8" })): void {
   const manifest = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
   assert.equal(manifest.scripts?.settings, "openlup settings --app ./owned/settings-host.ts", "extracted starter settings script missing");
   assert(existsSync(join(app, starterSettingsHost)), "extracted starter settings host missing");
   // Run the script's own command line through the installed binary's absolute path.
   const [binary, ...scriptArgs] = String(manifest.scripts.settings).split(" ");
-  const result = JSON.parse(execFileSync(join(app, "node_modules/.bin", binary!), [...scriptArgs, "show", "inventory_renewal_protection", "--json"],
-    { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8" }));
-  assert.equal(result.schemaVersion, 1);
-  assert.equal(result.setting.key, "inventory_renewal_protection");
-  assert.equal(result.observation.state, "offline");
+  const checked = JSON.parse(execute(join(app, "node_modules/.bin", binary!), [...scriptArgs, "check", "--json"], app));
+  assert.equal(checked.schemaVersion, 1);
+  assert.equal(checked.state, "checked");
+  assert.equal(checked.appValidation.state, "passed");
+  const stock = checked.rows.find((row: { key: string }) => row.key === "inventory_renewal_protection");
+  assert.equal(stock?.file.state, "present");
+  assert.deepEqual(stock?.file.location, { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" });
+  assert.deepEqual(stock?.validation, { state: "valid" });
+  assert.deepEqual(stock?.store, { state: "not-checked" });
 }
 
 /** Uses the cold consumer's existing owned database; SQL repair is harness work. */

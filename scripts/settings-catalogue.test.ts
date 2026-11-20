@@ -23,7 +23,7 @@ it("represents every domain data key and executable descriptor in the catalogue"
   expect(entries.filter(({ kind }) => kind === "installed").map(({ key }) => key)).toEqual(expect.arrayContaining([
     "inventory_renewal_protection", "checkout_recovery_reminders", "subscriber_winback_policy",
   ]));
-  expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(42);
+  expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(40);
   expect(entries.find(({ key }) => key === "subscriptions.lifecycleNoticeRetryBudget")).toMatchObject({
     kind: "code", fallback: 6, change: { file: "owned/renewal.config.ts", symbol: "subscriptionCare.dispatch.maxAttempts" },
   });
@@ -109,12 +109,10 @@ it("uses one reason and no value metadata for caps and invariants", () => {
   }
 });
 
-it("keeps the three combined compact reasons verbatim", () => {
+it("keeps the combined stock-wait reason verbatim", () => {
   const files = renderSettingsCatalogue();
   const { entries } = JSON.parse(files["packages/platform/settings-catalog.json"]!);
   const reasons = {
-    "communications.messageDateFormatting": "The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone.",
-    "pricing.currencyExponent": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.",
     "subscriptions.stockWaitHoldLifetime": "Native stock-wait recovery fixes the hold at 15 minutes in SQL. The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused.",
   };
   expect(entries).toEqual(expect.arrayContaining(Object.entries(reasons).map(([key, reason]) =>

@@ -1186,11 +1186,12 @@ Unknown events, malformed metadata or unavailable Git history exclude nothing. S
 [Required checks](#required-and-raw-checks) owns the full command sequence. `install-packages`, under the required `install-proof` aggregate, builds both profiles and runs [shared package gates](scripts/packages/required-package-gates.ts): cold-pack the publishable inventory once, all API checks first, then each `ci:required` with verified manifest/commit. Keep local package preparation before root tests because generated outputs are shared. New modules extend the owning package's consumer and required batch; do not add a workspace or job without a separate need.
 
 The [catalogue installed-consumer proof](scripts/packages/platform-cold-consumer.ts)
-compares packed `CATALOG_MIGRATIONS` paths, positions and hashes with the
-[canonical manifest](config/platform-migration-manifest.json) read from Git HEAD.
-The committed [catalogue SQL descriptor](packages/platform/src/catalog/sql.ts)
-supplies the selected paths. The proof checks that importing the package leaves
-the manifest unread, and verifies each packed SQL file's SHA-256.
+evaluates the [catalogue SQL descriptor](packages/platform/src/catalog/sql.ts)
+from Git HEAD and checks its paths, positions and hashes against the committed
+[canonical manifest](config/platform-migration-manifest.json). It compares the
+packed descriptor with those tuples and verifies each packed SQL file's SHA-256.
+Importing the catalogue and composition entries must work without the packaged
+SQL manifest.
 
 Core required coverage is V8: statements/lines 80%, branches 65%, functions 75%, plus no nonempty production file with zero covered lines. Root config has percentage thresholds when explicitly running coverage; public CI does not run root coverage or its separate no-zero helper. Outbox/Platform have no separate percentage gate. Keep installed-artifact and meaningful failure assertions; percentages do not replace them.
 
@@ -1793,9 +1794,11 @@ prints the comment body; posting it is an authorized GitHub write. A new head ne
 receipt. Hosted admission accepts the newest valid receipt from a user with
 write, maintain or admin permission and binds it to the PR head and tree.
 Existing receipt formats retain their identities; recorded expiry is not enforced.
-A v3 receipt over 65,536 characters is printed as gzip-compressed, base64-encoded
-text under a dedicated marker, and admission decodes and verifies it like any
-receipt. The command refuses a compressed body over 200,000 characters.
+A v3 receipt is printed as gzip-compressed, base64-encoded text under a dedicated
+marker, below a readable summary, so API clients that rewrite control-character
+escapes cannot change it; admission decodes and verifies it like any receipt.
+The command refuses a compressed body over 200,000 characters.
+A v2 receipt, from a session prepared on a base without the v3 review rules, keeps the raw JSON form, which such clients can rewrite; prepare on current main to get a v3 session.
 The summary table is a convenience; admission verifies only the machine block.
 
 ### Merge queue

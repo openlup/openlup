@@ -1,25 +1,45 @@
 import { parseArgs } from "node:util";
-import { loadSettingsCatalogue } from "./settingsCatalog.js";
+import { z, type ZodType } from "zod";
+import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
+import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
+import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
   explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
   type SettingPreviewer, type SettingReader,
 } from "./settingsRead.js";
 
 type PreviewDocument = { schemaVersion: 1 };
+type ValueDescriptor = Extract<SettingDescriptor, { effect: unknown }>;
+type Location = Extract<ValueDescriptor["change"], { file: string }>;
+/** @experimental A file value reported by an application settings binding. */
+export type SettingsFileEntry = { value: unknown; location?: Location; descriptor?: never } | {
+  value: unknown;
+  location: Location;
+  descriptor: Pick<ValueDescriptor, "domain" | "goal" | "effect">
+    & Partial<Pick<ValueDescriptor, "rules" | "examples" | "fallback" | "defaultBasis" | "whyThisDefault">>
+    & { schema?: ZodType };
+};
 /** @experimental Read-only bindings supplied by an explicitly loaded settings app. */
 export type SettingsAppBindings = {
   readers?: Readonly<Record<string, SettingReader>>;
   previewers?: Readonly<Record<string, SettingPreviewer<PreviewDocument>>>;
   stockSourceKey?: string;
+  file?: {
+    configuration: string;
+    entries: Readonly<Record<string, SettingsFileEntry>>;
+    validate?: () => void | Promise<void>;
+  };
 } | { configurationIds: readonly string[] };
 
 type SettingsHost = {
   bind(input: { databaseUrl?: string; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
+  loadCheck?(input: { app: string; configuration?: string }): Promise<SettingsAppBindings | undefined>;
   formatPreview?(result: PreviewDocument): string;
 };
-type SettingsIo = { write(text: string): void; readStdin(): Promise<string> };
+type SettingsIo = { write(text: string): void; warn?(text: string): void; readStdin(): Promise<string> };
 type Result = Awaited<ReturnType<typeof previewSetting<PreviewDocument>>>
-  | ReturnType<typeof listSettings> | Awaited<ReturnType<typeof showSetting>> | ReturnType<typeof explainSetting>;
+  | ReturnType<typeof listSettings> | Awaited<ReturnType<typeof showSetting>> | ReturnType<typeof explainSetting>
+  | z.infer<ReturnType<typeof catalogueWithAppSettings>["appShowResult"]>;
 
 const help = `openlup settings (experimental) list [--goal <text>] | show <key> | preview <key> --value <json-or-> | explain <refusal-code-or-key>
 Use --json for a versioned settings document. Preview before any change.
@@ -62,6 +82,196 @@ function text(result: Result, host?: SettingsHost): string {
     `Change: ${Object.values(setting.change).join(" ")}`, `Observation: ${JSON.stringify(observation)}`].join("\n");
 }
 
+const checkHelp = `openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
+Check reported file values against packaged schemas and run the application's optional startup validation.
+Exit codes: 0 checked, 1 invalid, 2 no file member, 64 invalid syntax or configuration, 74 app module or factory not found.`;
+
+type JsonValue = z.infer<ReturnType<typeof z.json>>;
+type FileBinding = NonNullable<Extract<SettingsAppBindings, { file?: unknown }>["file"]>;
+type FileSource = { location?: Location; catalogueReference?: Location };
+type FileValue = { state: "not-reported" }
+  | (FileSource & ({ state: "present"; value: JsonValue } | { state: "unreportable"; message: string }));
+type Validation = { state: "valid" | "not-validated" } | { state: "invalid"; paths: string[][] };
+type AppValidation = { state: "passed" } | { state: "not-provided"; hint?: string }
+  | { state: "failed"; message: string; phase?: "load" };
+
+type DeclaredFileEntry = Extract<SettingsFileEntry, { descriptor: unknown }>;
+type AppSetting = { setting: z.infer<typeof settingDescriptorSchema>; entry: DeclaredFileEntry; schema?: ZodType };
+
+function appRefusal(code: string, path: string[], rule: string, hint: string, action: string, command: string): { refusal: SettingRefusal } {
+  return { refusal: { code, path, rule, hint, remediation: { retry: true, action, command } } };
+}
+
+function appUnavailable(path: string[], hint: string, command: string) {
+  return appRefusal("commerce_setting_read_unavailable", path, "The application setting could not be read.",
+    hint, "Correct the application binding and retry.", command);
+}
+
+function inMemberOrder<T extends object>(ordered: T, original: Readonly<Record<string, unknown>>): T {
+  return Object.fromEntries(Object.keys(ordered).map(key => [key, original[key]])) as T;
+}
+
+function declaredSettings(file?: FileBinding) {
+  const declarations = new Map<string, AppSetting>();
+  for (const [key, entry] of Object.entries(file?.entries ?? {})) {
+    if (entry?.descriptor === undefined) continue;
+    const refuse = (hint: string) => appRefusal("commerce_setting_read_input_invalid", ["file", "entries", key, "descriptor"],
+      "The application setting declaration is invalid.", hint, "Correct the named declaration and retry.",
+      "openlup settings list --app <module>");
+    if (loadSettingsCatalogue().entries.some(setting => setting.key === key)) {
+      return refuse(`${key} is a packaged setting. Choose another key or report the installed file value and location without a descriptor.`);
+    }
+    if (typeof entry.location?.file !== "string" || typeof entry.location.symbol !== "string") {
+      return refuse(`Supply a file and symbol for ${key}.`);
+    }
+    const { schema, ...metadata } = entry.descriptor;
+    let displaySchema;
+    // The Zod projection also carries non-enumerable Standard Schema metadata.
+    try { displaySchema = schema === undefined ? null : { ...toolInputSchema(schema) }; }
+    catch {
+      return refuse(`The schema for ${key} cannot be displayed. Use a convertible Zod input schema or move the check to the app startup validator.`);
+    }
+    const setting = {
+      rules: [], examples: [], fallback: null, defaultBasis: { kind: "neutral" },
+      whyThisDefault: "The application config supplies the value.",
+      ...metadata,
+      key, kind: "code", schemaVersion: 1, schema: displaySchema, previewSchema: null,
+      runtime: { level: "read-only", reason: "Edit the application configuration and deploy." }, change: entry.location,
+    };
+    const [valueDescriptor] = settingDescriptorSchema.options;
+    const admitted = isJsonValue(setting) ? valueDescriptor.safeParse(setting) : undefined;
+    if (!admitted?.success) return refuse(`Check the descriptor and file location for ${key}.`);
+    // Use the parser's member order and retain the original authored JSON values.
+    const { file, symbol } = entry.location;
+    const ordered = inMemberOrder(admitted.data, {
+      ...setting,
+      runtime: admitted.data.runtime,
+      change: { file, symbol },
+      effect: inMemberOrder(admitted.data.effect, setting.effect),
+    });
+    declarations.set(key, { setting: ordered, entry, schema });
+  }
+  return { declarations };
+}
+
+function isJsonValue(value: unknown, ancestors = new Set<object>()): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object" || ancestors.has(value)) return false;
+
+  // Check the original data. JSON encoding would otherwise omit or replace some values.
+  const array = Array.isArray(value);
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null) return false;
+  const keys = Reflect.ownKeys(value);
+  if (array && keys.length !== value.length + 1) return false;
+  ancestors.add(value);
+  const valid = keys.every((key, index) => {
+    if (array && key === "length") return true;
+    if (typeof key !== "string" || (array && key !== String(index))) return false;
+    const property = Object.getOwnPropertyDescriptor(value, key);
+    return property?.enumerable && Object.hasOwn(property, "value") && isJsonValue(property.value, ancestors);
+  });
+  ancestors.delete(value);
+  return valid;
+}
+
+function errorMessage(error: unknown): string {
+  try {
+    const message = typeof error === "string" ? error
+      : error && typeof error === "object" && "message" in error ? error.message : undefined;
+    if (typeof message === "string") return message.replace(/\s+/gu, " ").trim().slice(0, 180) || "Application validation failed.";
+  } catch { /* A thrown value need not have a readable message. */ }
+  return "Application validation failed.";
+}
+
+async function checkApp(file?: FileBinding): Promise<AppValidation> {
+  if (!file) return { state: "not-provided", hint: "Add file: { configuration, entries } to your existing createSettingsBindings return value, then rerun settings check." };
+  if (!file.validate) return { state: "not-provided" };
+  try {
+    await file.validate();
+    return { state: "passed" };
+  } catch (error) {
+    return { state: "failed", message: errorMessage(error) };
+  }
+}
+
+function reportedFileValue(entry: FileBinding["entries"][string] | undefined, reference?: Location): FileValue {
+  if (!entry) return { state: "not-reported" };
+  const { location, value } = entry;
+  const source = typeof location?.file === "string" && typeof location.symbol === "string"
+    ? { location: { file: location.file, symbol: location.symbol } } : reference ? { catalogueReference: reference } : {};
+  try {
+    if (isJsonValue(value)) return { state: "present", ...source, value };
+  } catch { /* The value cannot be inspected as JSON. */ }
+  return { state: "unreportable", ...source, message: "Value cannot be reported as JSON." };
+}
+
+function appFileValue(entry: DeclaredFileEntry): FileValue {
+  try { return reportedFileValue(entry); }
+  catch {
+    const { file, symbol } = entry.location;
+    return { state: "unreportable", location: { file, symbol }, message: "Value cannot be reported as JSON." };
+  }
+}
+
+async function validateFileValue(file: FileValue, schema: Record<string, JsonValue> | null, appSchema?: ZodType): Promise<Validation> {
+  if (file.state !== "present" || (!appSchema && !schema)) return { state: "not-validated" };
+  try {
+    const parsed = appSchema ? await appSchema.safeParseAsync(file.value) : z.fromJSONSchema(schema!).safeParse(file.value);
+    return parsed.success ? { state: "valid" }
+      : { state: "invalid", paths: parsed.error.issues.map(issue => issue.path.map(String)) };
+  } catch { return appSchema ? { state: "invalid", paths: [[]] } : { state: "not-validated" }; }
+}
+
+async function checkDocument(file: FileBinding | undefined, appValidation: AppValidation, declarations?: ReadonlyMap<string, AppSetting>) {
+  const entries = settingsEntriesWithAppSettings(declarations && [...declarations.values()].map(({ setting }) => setting));
+  const rows = await Promise.all(entries.flatMap(entry => {
+    if (entry.kind !== "code" && entry.kind !== "installed") return [];
+    const reported = file && Object.hasOwn(file.entries, entry.key) ? file.entries[entry.key] : undefined;
+    const declaration = declarations?.get(entry.key);
+    const value = declaration ? appFileValue(declaration.entry) : reportedFileValue(reported, "file" in entry.change ? entry.change : undefined);
+    const location = declaration?.entry.location;
+    const takesEffect = location ? `${location.file} ${location.symbol}` : Object.values(entry.change).join(" ");
+    return [validateFileValue(value, entry.schema ?? null, declaration?.schema).then(validation => ({
+      key: entry.key, file: value, validation,
+      effect: entry.effect.appliesTo, takesEffect, kind: entry.kind,
+      ...(entry.kind === "installed" ? {
+        store: { state: "not-checked" },
+        note: "The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.",
+      } : {}),
+    }))];
+  }));
+  const state = appValidation.state === "failed" || rows.some(row => row.file.state === "unreportable" || row.validation.state === "invalid")
+    ? "invalid" : file ? "checked" : "unknown";
+  return { schemaVersion: 1 as const, configuration: file?.configuration ?? null, state, appValidation, rows };
+}
+
+function checkText({ appValidation, configuration, rows, state }: Awaited<ReturnType<typeof checkDocument>>): string {
+  return [
+    `Settings check (${configuration ?? "configuration unreported"}): ${state}`,
+    appValidation.state === "failed" && appValidation.phase === "load"
+      ? `Application configuration rejected while loading — ${appValidation.message}`
+      : `App startup validation: ${appValidation.state}${appValidation.state === "failed" ? ` — ${appValidation.message}` : ""}`,
+    ...("hint" in appValidation && appValidation.hint ? [appValidation.hint] : []),
+    "Catalogue checks cover reported JSON values with an executable schema.",
+    ...rows.flatMap(row => {
+      const file = row.file;
+      const source = file.state === "not-reported" ? undefined : file.location;
+      const reference = file.state === "not-reported" ? undefined : file.catalogueReference;
+      return [
+        `${row.key}: file ${file.state}, schema ${row.validation.state}${row.validation.state === "invalid"
+          ? ` at ${row.validation.paths.map(path => path.join(".") || "<value>").join(", ")}` : ""}`,
+        ...(source ? [`  ${source.file} · ${source.symbol}`] : reference
+          ? [`  Starter catalogue reference — ${reference.file} · ${reference.symbol}`] : []),
+        ...(file.state === "present" ? [`  Value: ${JSON.stringify(file.value)}`] : file.state === "unreportable" ? [`  ${file.message}`] : []),
+        `  Effect: ${row.effect} Change: ${row.takesEffect}`,
+        ...(row.store ? [`  Store: not checked. ${row.note}`] : []),
+      ];
+    }),
+  ].join("\n");
+}
+
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export async function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number> {
   let json = argv.includes("--json");
@@ -97,8 +307,42 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   const { values, positionals: [command, key, ...extra] } = parsed;
   json = values.json === true;
   if (values.help) {
-    io.write((json ? JSON.stringify({ schemaVersion: 1, help }) : help) + "\n");
+    const usage = command === "check" ? checkHelp : help;
+    io.write((json ? JSON.stringify({ schemaVersion: 1, help: usage }) : usage) + "\n");
     return 0;
+  }
+  const loadApp = () => host?.loadCheck?.({ app: values.app!, configuration: values.configuration });
+  if (command === "check") {
+    if (values["database-url"] !== undefined) return invalid("database-url", "Settings check is offline. Use settings preview with --database-url for connected effects.");
+    if (!values.app) return invalid("app", "Pass --app <module> that exports createSettingsBindings.");
+    if (key !== undefined) return invalid("key", "Settings check reports all catalogue keys. Omit the key.");
+    const unsupported = (["goal", "value", "sku", "as-of"] as const).find(flag => values[flag] !== undefined);
+    if (unsupported) return invalid(unsupported, `Omit --${unsupported} when running settings check.`);
+    const report = async (file: FileBinding | undefined, validation: AppValidation, declarations?: ReadonlyMap<string, AppSetting>) => {
+      const result = await checkDocument(file, validation, declarations);
+      io.write((json ? JSON.stringify(result) : checkText(result)) + "\n");
+      return result.state === "checked" ? 0 : result.state === "invalid" ? 1 : 2;
+    };
+    let bindings;
+    try {
+      bindings = await loadApp();
+    } catch (error) {
+      return report(undefined, { state: "failed", phase: "load", message: errorMessage(error) });
+    }
+    if (!bindings) {
+      const refusal = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
+      return emit({ refusal: { ...refusal, path: ["app"], rule: "The settings app must supply a binding factory.",
+        hint: "Check the --app path and the createSettingsBindings export.",
+        remediation: { retry: true, action: "Fix the module path or export and rerun.", command: "openlup settings check --help" },
+      } }, 74);
+    }
+    if ("configurationIds" in bindings) {
+      const id = values.configuration ?? "";
+      return invalid("configuration", `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`);
+    }
+    const admitted = declaredSettings(bindings.file);
+    if ("refusal" in admitted) return emit(admitted, 64);
+    return report(bindings.file, await checkApp(bindings.file), admitted.declarations);
   }
   preview = command === "preview";
   const databaseUrl = values["database-url"];
@@ -115,9 +359,56 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     || (!preview && (values.value !== undefined || values.sku || values.configuration !== undefined || values["as-of"] !== undefined))
     || values.app === "") return invalid();
   if (!preview && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
-  if (command === "list") return emit(listSettings({ goal: values.goal }), values.goal?.trim() === "" ? 64 : undefined);
-  if (command === "explain") return emit(explainSetting(key!));
-  if (command !== "show" && !preview) return invalid();
+  if (command !== "list" && command !== "explain" && command !== "show" && !preview) return invalid();
+
+  const listInput = { goal: values.goal };
+  const offline = command === "list" ? listSettings(listInput)
+    : command === "explain" ? explainSetting(key!)
+    : command === "show" ? await showSetting({ key }) : undefined;
+  if (offline && (command !== "show" || !databaseUrl || "refusal" in offline
+    || !("setting" in offline) || offline.setting.kind !== "installed")) {
+    const exit = command === "list" && "refusal" in offline ? 64 : undefined;
+    if (!values.app || !host?.loadCheck || (command === "list" ? "refusal" in offline : !("refusal" in offline))) {
+      return emit(offline, exit);
+    }
+    const missing = "Check the --app path and the createSettingsBindings export.";
+    const loadFailure = (hint: string, status: number) => {
+      if (command === "list") {
+        io.warn?.(`Settings app: ${hint}\n`);
+        return emit(offline, exit);
+      }
+      return emit(appUnavailable(["app"], hint, `openlup settings ${command} <key> --app <module>`), status);
+    };
+    let bindings;
+    try { bindings = await loadApp(); }
+    catch (error) { return loadFailure(errorMessage(error), 1); }
+    if (!bindings) return loadFailure(missing, 74);
+    const file = "configurationIds" in bindings ? undefined : bindings.file;
+    const admitted = declaredSettings(file);
+    if ("refusal" in admitted) return emit(admitted, 64);
+    const declarations = admitted.declarations;
+    if (command === "list") {
+      return emit(declarations.size ? listCatalogueSettings(listInput,
+        catalogueWithAppSettings([...declarations.values()].map(({ setting }) => setting))) : offline);
+    }
+    const declaration = declarations.get(key!);
+    if (!file || !declaration) return emit(offline);
+    let observation: z.infer<ReturnType<typeof catalogueWithAppSettings>["appShowResult"]>["observation"] = { state: "offline" };
+    if (command === "show") {
+      const reported = appFileValue(declaration.entry);
+      if (reported.state !== "present") {
+        const { location } = declaration.entry;
+        return emit(appUnavailable(["file", "entries", key!, "value"], `Could not read ${key} at ${location.file}.`,
+          "openlup settings show <key> --app <module>"), 74);
+      }
+      observation = { state: "file", configuration: file.configuration, value: reported.value };
+    }
+    const { appShowResult } = catalogueWithAppSettings([declaration.setting]);
+    const result = { schemaVersion: 1 as const, setting: declaration.setting, observation };
+    // Validate the envelope without replacing the application's original JSON value.
+    appShowResult.parse(result);
+    return emit(result);
+  }
 
   let proposed: unknown;
   if (preview) {
@@ -138,10 +429,6 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     path: [field], hint: "Pass --app <module> for the shop's stock source and configuration.",
   });
   async function dispatch(): Promise<[Result, number?]> {
-    if (command === "show") {
-      const offline = await showSetting({ key });
-      if (!databaseUrl || "refusal" in offline || offline.setting.kind !== "installed") return [offline];
-    }
     const resolveConfiguration = preview && values.configuration !== undefined;
     if (preview && !resolveConfiguration && !invalidDatabase) {
       const offline = await previewSetting(input);

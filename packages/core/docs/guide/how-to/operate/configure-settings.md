@@ -22,8 +22,8 @@ run `./node_modules/.bin/openlup-context search "renewal stock protection horizo
 
 ## Read the effective behavior
 
-An offline result reports catalogue defaults. For inventory and reminders, a
-connected `show <key> --database-url <read-capable-url>` also reports the
+Offline results for package keys show catalogue metadata. For inventory and
+reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
 inventory row uses the platform fallback. For unpinned reminder episodes, an
@@ -35,6 +35,103 @@ supplies a valid policy. If the effective host policy fails native
 validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, pass
 `explain checkout_recovery_reminders` to the settings script.
+
+## Check owned configuration before proposing a change
+
+1. Use `list --goal <words>` to find the key.
+2. Run `check --configuration <id>` with the starter's settings script to read
+   values from the selected owned configuration and find their locations.
+3. Edit the owned configuration and rerun `check`.
+4. For an installed setting with preview support, run a separate connected
+   `preview` if you need to estimate the effect on a store. Open a pull request
+   with the file change and the check results.
+
+Check uses the settings app binding offline. It opens no database connection
+and performs no writes. Installed rows say “Store: not checked.” The starter
+checks installed policies for drift at boot. Check prints an app-supplied
+location or labels the available starter catalogue reference separately.
+
+Check reports the application's startup validation when supplied. It uses the
+packaged schema for known package values and the supplied Zod schema for an
+app declaration. A value without an executable schema is marked
+`not-validated` for that row.
+The starter checks its reported configuration ID against the registry and runs
+`assertConfig`. The actual launch and install check their command-line
+arguments and installer package availability. Seed preparation runs after
+database bootstrap.
+A file value that cannot be represented as JSON is reported as unreportable
+and fails check without a schema verdict. Value-only entries for unknown keys
+are ignored. Declared app rows use the effect and location from the declaration.
+
+With `--json`, check emits one version-1 document. Exit 0 means checked and
+exit 1 means invalid. If importing the selected module or calling its binding
+factory throws, check exits 1 with the configuration rejection and a bounded
+single-line cause. A missing module or binding factory exits 74 with a hint
+to check the path and export. Invalid arguments and unknown configurations
+exit 64.
+
+Exit 2 means the binding has no `file` member. Add
+`file: { configuration, entries }` to the return value of your existing
+`createSettingsBindings` and rerun. Use `validate` on that member to call the
+same assertion the app runs at startup. For connected effects, use
+`preview` with `--database-url`.
+
+## Declare a setting of your own
+
+Keep the value and its business rule in your application's owned code. For a
+gift wrapping fee, put this in `owned/gift.config.ts` and call
+`quoteGiftOrderMinor` from your gift quote code.
+
+```ts
+const wrapFeeMinor = 150;
+if (!Number.isSafeInteger(wrapFeeMinor) || wrapFeeMinor < 0) {
+  throw Error("gift.wrapFeeMinor requires whole nonnegative minor units.");
+}
+export const gift = { wrapFeeMinor };
+export const quoteGiftOrderMinor = (subtotal: number, wrap: boolean) =>
+  subtotal + (wrap ? gift.wrapFeeMinor : 0);
+```
+
+In `owned/settings-host.ts`, import `gift` and add one entry to the
+`file.entries` returned by your existing `createSettingsBindings`. Keep its
+configuration selection, installed readers and startup validation. Use
+`satisfies SettingsFileEntry` to typecheck the entry as you write it. Choose an
+unused key and give its file and symbol so an agent knows where to edit.
+
+```ts nocheck
+// The relative import resolves after you create the application file above.
+import type { SettingsFileEntry } from "@openlup/platform/operations/server";
+import { gift } from "./gift.config.ts";
+
+const entries = {
+  "gift.wrapFeeMinor": {
+    value: gift.wrapFeeMinor,
+    location: { file: "owned/gift.config.ts", symbol: "gift.wrapFeeMinor" },
+    descriptor: {
+      domain: "gift", goal: "Set the gift wrapping fee in minor units.",
+      effect: { appliesTo: "New gift quotes use this fee after deployment.", impact: "money", frozenOn: [] },
+    },
+  } satisfies SettingsFileEntry,
+};
+```
+
+From the application root, pass the owned binding to the installed command.
+
+```sh
+./node_modules/.bin/openlup settings --app ./owned/settings-host.ts list --goal "gift wrapping fee"
+./node_modules/.bin/openlup settings --app ./owned/settings-host.ts show gift.wrapFeeMinor --json
+./node_modules/.bin/openlup settings --app ./owned/settings-host.ts check
+```
+
+List finds the new key by goal. Show reports the configured value and where to
+edit it. Check reports the app row and runs the existing app validation.
+In this example, change 150 to -1 to exercise the assertion. Check exits 1 and
+includes this line. Restore a valid amount and rerun check before opening your
+pull request.
+
+```text
+Application configuration rejected while loading — gift.wrapFeeMinor requires whole nonnegative minor units.
+```
 
 ## Preview before changing a setting
 

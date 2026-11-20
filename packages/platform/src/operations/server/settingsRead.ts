@@ -1,5 +1,5 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
-import { loadSettingsCatalogue, settingsListRequest, settingsVersion } from "./settingsCatalog.js";
+import { listCatalogueSettings, loadSettingsCatalogue, settingsListRequest, settingsVersion } from "./settingsCatalog.js";
 import { settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 import { z } from "zod";
 
@@ -30,18 +30,7 @@ function refuse(code: string): { refusal: SettingRefusal } {
 
 /** @experimental List matching entries from the installed package, offline. */
 export function listSettings(input: unknown): ListResult | { refusal: SettingRefusal } {
-  const parsed = settingsListRequest.safeParse(input);
-  if (!parsed.success) return refuse("commerce_setting_read_input_invalid");
-  const words = parsed.data.goal?.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
-  const { entries, listResult, searchTerms } = loadSettingsCatalogue();
-  const matches = entries.filter(entry => {
-    const text = `${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`.toLowerCase();
-    return words.every(word => text.includes(word));
-  });
-  return listResult.parse({
-    schemaVersion: settingsVersion,
-    entries: matches.map(({ key, goal, kind, runtime, change }) => ({ key, goal, kind, runtime, change })),
-  });
+  return listCatalogueSettings(input);
 }
 
 type ValueEntry = Extract<ReturnType<typeof loadSettingsCatalogue>["entries"][number], { rules: unknown }>;

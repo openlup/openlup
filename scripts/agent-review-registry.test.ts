@@ -551,23 +551,19 @@ describe('fixture dependency evidence', () => {
 
 
 describe('v3 source admission from real Git objects', () => {
-  it.each(['raw', 'compressed'])('admits a %s receipt through the full queue reader', async format => {
+  it.each(['newly compressed', 'historical framed raw v3'])('admits a %s receipt through the full queue reader', async format => {
     const f = await fixture(); await f.review();
-    if (format === 'compressed') {
-      const findings = Array.from({ length: 20 }, (_, index) => ({ id: `advice-${index}`, summary: 'x'.repeat(3_500), material: false }));
-      await f.report({ findings });
-    }
     const main = await f.mainMove(() => f.write('other.ts', 'main\n'));
     f.git('merge', '--no-ff', '-qm', 'integrate', main); await f.cli('prepare', f.request); const session = await f.state();
     const summary = receiptSummary(session, 12, Date.now());
     await expect(f.cli('receipt', '12')).resolves.toBe(0);
-    const body = vi.mocked(console.log).mock.lastCall?.[0];
-    const json = JSON.stringify(summary);
-    expect(body.split('\n')[0]).toBe(format === 'compressed' ? COMPRESSED_RECEIPT_MARKER : ECONOMY_RECEIPT_MARKER);
-    expect(body).toBe(receiptBody(summary));
+    const emitted = vi.mocked(console.log).mock.lastCall?.[0];
+    expect(emitted.split('\n')[0]).toBe(COMPRESSED_RECEIPT_MARKER);
+    expect(emitted).toBe(receiptBody(summary));
+    const body = format === 'newly compressed' ? emitted : emitted
+      .replace(COMPRESSED_RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER)
+      .replace(/```text\n[^\n]+/u, () => '```json\n' + JSON.stringify(summary));
     expect(body).toContain('Reviewer floor 0 · Scope git');
-    if (format === 'compressed') expect(json.length).toBeGreaterThan(65_536);
-    else expect(body).toContain(`\n\`\`\`json\n${json}\n\`\`\`\n`);
     expect(parseReceipt(body)).toEqual(summary);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: session.candidate.head } };
     const api = { get: async (path: string) => path.includes('/pulls/') ? pr : path.includes('/issues/')

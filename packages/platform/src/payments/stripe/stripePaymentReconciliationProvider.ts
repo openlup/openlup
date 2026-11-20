@@ -73,18 +73,7 @@ export function createStripePaymentReconciliationProvider(
     },
     async readPayment(input) {
       const intent = await client.retrievePaymentIntent(input.providerPaymentId);
-      const status = normalizeStripeIntent(intent);
-      if (status.status === "succeeded" && intent.id !== input.providerPaymentId) {
-        throw new Error("stripe_readback_payment_identity_mismatch");
-      }
-      // Same rule as the recovery read above, on the rail the buyer's own
-      // "check it now" travels: an intent no issuer has been asked about is
-      // unsettled, not refused. Only `active_checkout` gets this reading, so
-      // the reconciliation worker — which names no purpose — goes on
-      // terminalizing abandonment exactly as before.
-      return input.purpose === "active_checkout" && noIssuerWasAsked(intent)
-        ? { ...status, status: "pending" }
-        : status;
+      return readStripeIntentStatus(intent, input.providerPaymentId, input.purpose);
     },
     ...(cancel
       ? {
@@ -106,6 +95,25 @@ export function createStripePaymentReconciliationProvider(
       }
       : {}),
   };
+}
+
+export function readStripeIntentStatus(
+  intent: StripeIntentLike,
+  providerPaymentId: string,
+  purpose?: string,
+): ProviderReconciliationStatus {
+  const status = normalizeStripeIntent(intent);
+  if (status.status === "succeeded" && intent.id !== providerPaymentId) {
+    throw new Error("stripe_readback_payment_identity_mismatch");
+  }
+  // Same rule as the recovery read above, on the rail the buyer's own
+  // "check it now" travels: an intent no issuer has been asked about is
+  // unsettled, not refused. Only `active_checkout` gets this reading, so
+  // the reconciliation worker — which names no purpose — goes on
+  // terminalizing abandonment exactly as before.
+  return purpose === "active_checkout" && noIssuerWasAsked(intent)
+    ? { ...status, status: "pending" }
+    : status;
 }
 
 export function normalizeStripeIntent(intent: StripeIntentLike): ProviderReconciliationStatus {

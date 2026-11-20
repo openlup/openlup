@@ -1,5 +1,5 @@
 import { tpayPaymentProviderProfile } from "./providerProfile.js";
-import { createHash, X509Certificate } from "node:crypto";
+import { createHash, type X509Certificate } from "node:crypto";
 import { classifyPaymentFailure, isPaymentRetryAdviceCode } from "@openlup/core/payment";
 import type { PaymentAdapter, PaymentAttemptPort, PaymentExecutionEnvelope,
   PaymentReadbackEnvelope, PaymentRefusalEnvelope, PaymentVerifyNormalizePort,
@@ -11,7 +11,7 @@ import { createTpayHttpClient } from "./tpayHttpClient.js";
 import { createTpayPaymentExecutionAdapter } from "./tpayPaymentExecutionAdapter.js";
 import { ProviderAttemptPreDispatchError } from "./preparedProviderAttempt.js";
 import { createTpayPaymentReconciliationProvider } from "./tpayPaymentReconciliationProvider.js";
-import { verifyTpayJwsSignature, type TpayJwsCertificateResolver } from "./webhookJwsVerifier.js";
+import { parseX509Certificate, verifyTpayJwsSignature, type TpayJwsCertificateResolver } from "./webhookJwsVerifier.js";
 import { normalizeTpayWebhook, toNormalizedProviderTpayWebhook } from "./webhookNormalizer.js";
 
 /** Explicit host configuration. clock returns UTC seconds; imports perform no I/O. */
@@ -49,7 +49,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
   const prefix = new URL(notification.allowedCertificateUrlPrefix);
   if (prefix.protocol !== "https:" || prefix.username || prefix.password || prefix.search || prefix.hash
     || !notification.allowedCertificateUrlPrefix.endsWith("/")) throw new Error("Invalid certificate URL prefix");
-  const root = new X509Certificate(notification.rootCertificatePem);
+  const root = parseX509Certificate(notification.rootCertificatePem);
   const maxAge = notification.maxNotificationAgeSeconds ?? 7 * 24 * 60 * 60;
   const maxClockSkew = notification.maxClockSkewSeconds ?? 300;
   if (!Number.isFinite(maxAge) || maxAge < 0 || !Number.isFinite(maxClockSkew) || maxClockSkew < 0 || !["test", "live"].includes(config.mode)
@@ -158,7 +158,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
             rootCertificatePem: notification.rootCertificatePem, allowedX5uPrefix: notification.allowedCertificateUrlPrefix,
             resolveCertificate: async url => {
               const pem = await notification.resolveCertificate(url);
-              if (!validAt(new X509Certificate(pem), current)) throw new Error("Certificate outside validity window");
+              if (!validAt(parseX509Certificate(pem), current)) throw new Error("Certificate outside validity window");
               return pem;
             } });
           if (!verified) return refusal("signature");

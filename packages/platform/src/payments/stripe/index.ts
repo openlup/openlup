@@ -7,7 +7,7 @@ import type {
   VerifiedMethodEvidence, VerifiedPaymentEvidence,
 } from "../contracts/index.js";
 import { createStripeSandboxPaymentExecutionAdapter, type StripeSandboxClient } from "./stripeSandboxPaymentExecutionAdapter.js";
-import { createStripePaymentReconciliationProvider, type StripePaymentIntentReader } from "./stripePaymentReconciliationProvider.js";
+import { createStripePaymentReconciliationProvider, readStripeIntentStatus, type StripePaymentIntentReader } from "./stripePaymentReconciliationProvider.js";
 import { normalizeStripeWebhookEvent } from "./stripeWebhookNormalizer.js";
 import { parseStripeSignatureHeader, verifyStripeSignature } from "./webhookSignature.js";
 import { declineCodeHints } from "./declineFailureHints.js";
@@ -88,8 +88,7 @@ export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): 
         || intent.currency?.toUpperCase() !== input.expectedMoney.currency.toUpperCase()) {
         return { ...base, kind: "unknown", reason: "indeterminate" };
       }
-      const status = await createStripePaymentReconciliationProvider({ retrievePaymentIntent: async () => intent })
-        .readPayment({ providerPaymentId: input.identity.providerPaymentRef, purpose: input.purpose });
+      const status = readStripeIntentStatus(intent, input.identity.providerPaymentRef, input.purpose);
       return readback(base, status);
     } catch { return { ...base, kind: "unknown", reason: "indeterminate" }; }
   };

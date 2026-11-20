@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
-import { runSettingsCommand } from "../../src/operations/server/settingsCommand.js";
+import { z, type ZodType } from "zod";
+import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
 const key = "inventory_renewal_protection";
@@ -13,10 +16,11 @@ async function run(
 ) {
   const write = vi.fn<(line: string) => void>();
   const readStdin = vi.fn(async () => options.stdin ?? "");
-  const exit = await runSettingsCommand(argv, { write, readStdin }, options.host);
+  const warn = vi.fn<(line: string) => void>();
+  const exit = await runSettingsCommand(argv, { write, warn, readStdin }, options.host);
   expect(write).toHaveBeenCalledTimes(1);
   const output = write.mock.calls[0]![0];
-  return { exit, output, readStdin };
+  return { exit, output, readStdin, warnings: warn.mock.calls.flat() };
 }
 
 const document = (result: object) =>
@@ -363,4 +367,441 @@ it("shows versioned JSON help before checking required arguments", async () => {
   expect(exit).toBe(0);
   expect(JSON.parse(output)).toEqual({ schemaVersion: 1, help: expect.stringContaining("openlup settings (experimental)") });
   expect(bind).not.toHaveBeenCalled();
+});
+
+const checkArgs = ["check", "--app", "./app.ts", "--configuration", "sample", "--json"];
+const minimumFile = { configuration: "sample", entries: {} };
+const checks = (loadCheck: NonNullable<NonNullable<Parameters<typeof runSettingsCommand>[2]>["loadCheck"]>) =>
+  ({ bind: vi.fn(), loadCheck });
+
+it.each([
+  ["sync pass", () => {}, 0, { state: "passed" }],
+  ["async resolve", () => Promise.resolve(), 0, { state: "passed" }],
+  ["sync throw", () => { throw new Error("  invalid\n config " + "x".repeat(200)); }, 1,
+    { state: "failed", message: "invalid config " + "x".repeat(165) }],
+  ["async reject", () => Promise.reject(new Error("async refusal")), 1, { state: "failed", message: "async refusal" }],
+  ["thrown string", () => { throw "invalid string"; }, 1, { state: "failed", message: "invalid string" }],
+  ["message object", () => { throw { message: "invalid object" }; }, 1, { state: "failed", message: "invalid object" }],
+  ["unreadable message", () => { throw { get message() { throw new Error("getter failed"); } }; }, 1,
+    { state: "failed", message: "Application validation failed." }],
+  ["generic thrown value", () => { throw 42; }, 1, { state: "failed", message: "Application validation failed." }],
+  ["no validator", undefined, 0, { state: "not-provided" }],
+] as const)("checks %s", async (_, validate, status, appValidation) => {
+  const load = vi.fn(async () => ({ file: { ...minimumFile, validate } }));
+  const host = checks(load);
+  const result = await run(checkArgs, { host });
+  expect(result.exit).toBe(status);
+  expect(JSON.parse(result.output)).toMatchObject({
+    schemaVersion: 1, configuration: "sample", state: status === 0 ? "checked" : "invalid", appValidation,
+  });
+  expect(load).toHaveBeenCalledExactlyOnceWith({ app: "./app.ts", configuration: "sample" });
+  expect(host.bind).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["missing binding", async () => ({}), 2, { state: "unknown", configuration: null }],
+  ["unknown configuration", async () => ({ configurationIds: ["coffee"] }), 64,
+    { refusal: { path: ["configuration"], hint: expect.stringContaining("coffee") } }],
+  ["factory unavailable", async () => undefined, 74, { refusal: { path: ["app"], hint: expect.stringContaining("createSettingsBindings") } }],
+  ["factory throws", async () => { throw new Error("  rejected\n edit "); }, 1,
+    { state: "invalid", appValidation: { state: "failed", phase: "load", message: "rejected edit" } }],
+] as const)("reports %s in the versioned check", async (_, load, status, expected) => {
+  const { exit, output } = await run(checkArgs, { host: checks(load) });
+  expect(exit).toBe(status);
+  expect(JSON.parse(output)).toMatchObject({ schemaVersion: 1, ...expected });
+});
+
+it.each([
+  [["check"], "app"], [["check", "--database-url", url], "database-url"],
+  [[...checkArgs, "--database-url", url], "database-url"],
+  [[...checkArgs, "--database-url="], "database-url"], [[...checkArgs, "--value", "{}"], "value"],
+  [[...checkArgs, "--sku", "A"], "sku"], [[...checkArgs, "--as-of", asOf], "as-of"],
+  [[...checkArgs, "--goal", "stock"], "goal"], [[...checkArgs, key], "key"],
+  [[...checkArgs, "--unknown"], "unknown"], [[...checkArgs, "--app"], "app"],
+] as const)("refuses invalid check arguments %j without a load", async (args, field) => {
+  const load = vi.fn();
+  const { exit, output } = await run([...args, "--json"], { host: checks(load) });
+  expect(exit).toBe(64);
+  const { refusal } = JSON.parse(output);
+  expect(refusal.path).toEqual([field]);
+  if (field === "database-url") expect(refusal.hint).toContain("Use settings preview");
+  expect(load).not.toHaveBeenCalled();
+});
+
+const cyclic: { self?: unknown } = {};
+cyclic.self = cyclic;
+it.each([
+  [key, cyclic], [key, undefined], [key, () => {}], [key, NaN],
+  [key, { nested: undefined }], [key, Array(1)], ["checkout_recovery_reminders", 1n],
+] as const)("locates an unreportable value for %s without a schema failure", async (setting, value) => {
+  const host = checks(async () => ({ file: { ...minimumFile, entries: { [setting]: { value } } } }));
+  const { exit, output } = await run(checkArgs, { host });
+  expect(exit).toBe(1);
+  const row = JSON.parse(output).rows.find((item: { key: string }) => item.key === setting);
+  expect(row).toMatchObject({ file: { state: "unreportable", message: "Value cannot be reported as JSON." }, validation: { state: "not-validated" } });
+  expect(row.file).not.toHaveProperty("value");
+  const text = await run(checkArgs.filter(arg => arg !== "--json"), { host });
+  expect(text.output).toContain(`${setting}: file unreportable, schema not-validated`);
+});
+
+it.each([
+  ['{"revision":"local","renewalProtectionDays":14,"__proto__":{"custom":true}}', []],
+  ['{"revision":"local","renewalProtectionDays":{"__proto__":{"custom":true}}}', ["renewalProtectionDays"]],
+] as const)("validates and emits the original value %s", async (raw, path) => {
+  const { exit, output } = await run(checkArgs, { host: checks(async () => ({
+    file: { ...minimumFile, entries: { [key]: { value: JSON.parse(raw) } } },
+  })) });
+  expect(exit).toBe(1);
+  expect(output).toContain(`"file":{"state":"present","value":${raw}},"validation":{"state":"invalid","paths":${JSON.stringify([path])}}`);
+});
+
+const discountKey = "offer.subscriptionDiscountBps";
+const catalogueReference = { catalogueReference: { file: "owned/store.config.ts", symbol: discountKey } };
+it.each([
+  [{ file: "policy.ts", symbol: "discount", line: 42 }, { location: { file: "policy.ts", symbol: "discount" } }],
+  [{ file: "policy.ts" }, catalogueReference],
+  [{ file: 42, symbol: "discount" }, catalogueReference],
+] as const)("projects a binding location %j and ignores non-catalogue keys", async (raw, source) => {
+  const host = checks(async () => ({ file: { ...minimumFile, entries: {
+    [discountKey]: { value: 500, location: raw as { file: string; symbol: string } }, typo: { value: 1n },
+  } } }));
+  const { exit, output } = await run(checkArgs, { host });
+  expect(exit).toBe(0);
+  const row = JSON.parse(output).rows.find((item: { key: string }) => item.key === discountKey);
+  expect(row).toMatchObject({
+    file: { state: "present", ...source, value: 500 }, validation: { state: "valid" },
+    effect: "The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.",
+    takesEffect: "owned/store.config.ts offer.subscriptionDiscountBps",
+  });
+  expect(output).not.toContain('"key":"typo"');
+  const text = await run(checkArgs.filter(arg => arg !== "--json"), { host });
+  expect(text.output).toContain("Initial installation seeds the native price policy from this value.");
+  if ("catalogueReference" in source) expect(text.output).toContain("Starter catalogue reference — owned/store.config.ts");
+});
+
+it("checks every packaged schema against its default and valid examples", async () => {
+  const { loadSettingsCatalogue } = await import("../../src/operations/server/settingsCatalog.js");
+  const entries = loadSettingsCatalogue().entries.filter(entry => "fallback" in entry).filter(entry =>
+    (entry.kind === "code" || entry.kind === "installed") && entry.schema);
+  expect(entries).toHaveLength(7);
+  for (const entry of entries) {
+    for (const value of [entry.fallback, ...entry.examples.filter(example => !example.code).map(example => example.value)]) {
+      const host = checks(async () => ({ file: { ...minimumFile, entries: { [entry.key]: { value } } } }));
+      const { exit, output } = await run(checkArgs, { host });
+      expect(exit, entry.key).toBe(0);
+      expect(JSON.parse(output).rows.find((row: { key: string }) => row.key === entry.key).validation).toEqual({ state: "valid" });
+    }
+  }
+});
+
+it("keeps the guide's app declaration identical to the typechecked binding", () => {
+  const guide = readFileSync(new URL("../../../core/docs/guide/how-to/operate/configure-settings.md", import.meta.url), "utf8");
+  const section = guide.split("## Declare a setting of your own\n")[1]!.split("\n## ")[0]!;
+  const snippets = [...section.matchAll(/^```ts[^\n]*\n([\s\S]+?)^```/gmu)].map(([, code]) => code);
+  const fixture = new URL("./fixtures/settings-guide/owned/", import.meta.url);
+  const gift = readFileSync(new URL("gift.config.ts", fixture), "utf8");
+  const binding = readFileSync(new URL("settings-host.ts", fixture), "utf8");
+  expect(snippets).toEqual([gift, binding.split("\nexport function createSettingsBindings")[0]]);
+});
+
+const feeKey = "gift.wrapFeeMinor";
+const giftKey = "gift.enabled";
+const giftPath = "owned/gift.config.ts";
+const feeEffect = "New gift quotes use this fee after deployment.";
+const missingApp = "Check the --app path and the createSettingsBindings export.";
+const appArgs = ["--app", "./app.ts"];
+
+function appFixture(readFee: () => unknown = () => "150", schema: ZodType = z.coerce.number().int().refine(n => n !== 151)) {
+  return {
+    file: {
+      configuration: "sample",
+      validate() {},
+      entries: {
+        [feeKey]: {
+          get value() { return readFee(); },
+          location: { file: giftPath, symbol: feeKey },
+          descriptor: {
+            domain: "gift", goal: "Set the gift wrapping fee in minor units.",
+            effect: { appliesTo: feeEffect, impact: "money", frozenOn: [] }, schema,
+          },
+        },
+        [giftKey]: {
+          value: true,
+          location: { file: giftPath, symbol: giftKey },
+          descriptor: {
+            domain: "gift", goal: "Offer gift wrapping.",
+            effect: { appliesTo: "New gift quotes offer wrapping after deployment.", impact: "operations", frozenOn: [] },
+          },
+        },
+        [key]: {
+          value: { revision: "local", renewalProtectionDays: 14 },
+          location: { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" },
+        },
+      },
+    },
+  } satisfies SettingsAppBindings;
+}
+
+const parityModes = ["no app", "healthy app", "throwing app"] as const;
+const parityValue = { revision: "local", renewalProtectionDays: 14 };
+const parityArgs = ["--database-url", url];
+const parityPreviewArgs = ["--value", JSON.stringify(parityValue), "--as-of", asOf, ...parityArgs];
+
+function boundParityHost(mode: typeof parityModes[number]): NonNullable<Parameters<typeof runSettingsCommand>[2]> {
+  const load = async () => {
+    if (mode === "throwing app") throw new Error("rejected edit");
+    return { file: { configuration: "sample", entries: { [key]: { value: parityValue } }, validate() {} } };
+  };
+  return {
+    loadCheck: load,
+    async bind({ app }) {
+      if (app) await load();
+      return {
+        readers: {
+          [key]: async () => ({ present: true, value: parityValue, revision: "local" }),
+          ...(app ? { checkout_recovery_reminders: async () => ({ present: false as const, effective: { checkoutRecovery: [] } }) } : {}),
+        },
+        previewers: app ? { [key]: async () => ({ schemaVersion: 1, key, proposed: parityValue }) } : {},
+      };
+    },
+  };
+}
+
+it("keeps N3a package invocations bytes and exits in both modes with no app, a healthy app or a throwing app", async () => {
+  const catalogue = listSettings({});
+  if (!("entries" in catalogue)) throw new Error("Unable to read the package catalogue");
+  const cases = [
+    ["list"], ["list", "--goal", " "], ["list", "--goal", "qzxunique"], ["explain", "commerce_setting_unknown"],
+    ...catalogue.entries.flatMap(({ key }) => [["list", "--goal", key], ["show", key], ["explain", key]]),
+  ];
+  const bytes = [];
+  const loadHealthy = vi.fn(async () => appFixture(() => { throw new Error("unexpected value read"); }));
+  const loadBroken = vi.fn(async () => { throw new Error("rejected\nedit"); });
+  for (const json of [false, true]) for (const args of cases) {
+    const argv = json ? [...args, "--json"] : args;
+    const { exit, output } = await run(argv);
+    bytes.push([exit, output]);
+    for (const load of [loadHealthy, loadBroken]) {
+      load.mockClear();
+      const app = await run([...argv, ...appArgs], { host: checks(load) });
+      const list = args[0] === "list" && exit === 0;
+      expect(load).toHaveBeenCalledTimes(list ? 1 : 0);
+      expect(app.exit, argv.join(" ")).toBe(exit);
+      let projected = app.output;
+      if (list && load === loadHealthy) {
+        if (json) {
+          const result = JSON.parse(projected);
+          result.entries = result.entries.filter((entry: { key: string }) => entry.key !== feeKey && entry.key !== giftKey);
+          projected = document(result);
+        } else {
+          projected = projected.split(/(?=^[^\s])/mu)
+            .filter(line => !line.startsWith(feeKey + " ") && !line.startsWith(giftKey + " ")).join("");
+        }
+      }
+      expect(projected, argv.join(" ")).toBe(output);
+      expect(app.warnings).toEqual(list && load === loadBroken ? ["Settings app: rejected edit\n"] : []);
+    }
+  }
+  // Captured by running these same no-app arguments on N3a f7e7c2c5f.
+  expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
+    .toBe("22ee39aed18fb32215ad406145a20da6f2b20e34873a2fed22735370956e24d4");
+
+  // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
+  type Expected = {
+    outputs: [number, string][];
+    rows: Record<string, Record<"text" | "json", Record<typeof parityModes[number], number>>>;
+  };
+  const expected: Expected = JSON.parse(readFileSync(new URL("./settingsBoundParity.main.json", import.meta.url), "utf8"));
+  const bound = [
+    ...catalogue.entries.map(entry => ({
+      args: ["show", entry.key, ...parityArgs],
+      fixture: entry.kind === "installed" ? `show ${entry.key}` : undefined,
+    })),
+    ...catalogue.entries.map(entry => ({
+      args: ["preview", entry.key, ...parityPreviewArgs],
+      fixture: entry.key === key ? "preview inventory" : "preview unsupported",
+    })),
+    { args: ["check"], fixture: "check" },
+  ];
+  for (const format of ["text", "json"] as const) for (const { args, fixture } of bound) {
+    const outputArgs = format === "json" ? ["--json"] : [];
+    // Non-installed show returns the offline document already pinned above.
+    const offline = fixture ? undefined : bytes[(format === "json" ? cases.length : 0)
+      + cases.findIndex(row => row[0] === "show" && row[1] === args[1])]!;
+    for (const mode of parityModes) {
+      const argv = [...args, ...(mode === "no app" ? [] : appArgs), ...outputArgs];
+      const { exit, output, warnings } = await run(argv, { host: boundParityHost(mode) });
+      expect([exit, output], `${mode}: ${argv.join(" ")}`).toEqual(fixture ? expected.outputs[expected.rows[fixture]![format][mode]] : offline);
+      expect(warnings).toEqual([]);
+    }
+  }
+});
+
+it.each([
+  [["list"], [giftKey, feeKey], undefined, 0],
+  [["list", "--goal", "gift wrapping fee"], [feeKey], undefined, 0],
+  [["list", "--goal", "qzxunique"], [], undefined, 0],
+  [["show", feeKey], undefined, { state: "file", configuration: "sample", value: "150" }, 1],
+  [["explain", feeKey], undefined, { state: "offline" }, 0],
+] as const)("discovers declarations with %j and reads only a requested value", async (args, keys, observation, calls) => {
+  const readFee = vi.fn(() => "150");
+  const { exit, output } = await run([...args, ...appArgs, "--json"], { host: checks(async () => appFixture(readFee)) });
+  expect(exit).toBe(0);
+  const result = JSON.parse(output);
+  expect(result.schemaVersion).toBe(1);
+  if (keys) expect(result.entries.map((entry: { key: string }) => entry.key).filter((key: string) => key.startsWith("gift."))).toEqual(keys);
+  else expect(result).toMatchObject({
+    setting: { key: feeKey, kind: "code", schema: { type: "integer" }, change: { file: giftPath, symbol: feeKey } }, observation,
+  });
+  expect(readFee).toHaveBeenCalledTimes(calls);
+});
+
+it.each([["150", "valid"], ["151", "invalid"]] as const)("checks the original fee %s against the app schema and preserves packaged rows", async (value, state) => {
+  const readFee = vi.fn(() => value);
+  const app = appFixture(readFee);
+  const valueOnly = { ...app.file, entries: { [key]: app.file.entries[key] } };
+  const baseline = JSON.parse((await run(checkArgs, { host: checks(async () => ({ file: valueOnly })) })).output);
+  const { exit, output } = await run(checkArgs, { host: checks(async () => app) });
+  expect(exit).toBe(state === "valid" ? 0 : 1);
+  const { rows, ...report } = JSON.parse(output);
+  const { rows: packagedRows, ...packagedReport } = baseline;
+  expect(report).toEqual({ ...packagedReport, state: state === "valid" ? "checked" : "invalid" });
+  expect(rows.filter((row: { key: string }) => !row.key.startsWith("gift."))).toEqual(packagedRows);
+  expect(rows.find((row: { key: string }) => row.key === feeKey)).toEqual({
+    key: feeKey, file: { state: "present", location: { file: giftPath, symbol: feeKey }, value },
+    validation: state === "valid" ? { state } : { state, paths: [[]] },
+    effect: feeEffect, takesEffect: `${giftPath} ${feeKey}`, kind: "code",
+  });
+  expect(rows.find((row: { key: string }) => row.key === giftKey).validation).toEqual({ state: "not-validated" });
+  expect(readFee).toHaveBeenCalledOnce();
+});
+
+it.each([
+  ["list"], ["show", feeKey], ["explain", feeKey], ["check"],
+])("canonicalizes shuffled declaration members for %s", async (...args) => {
+  const shuffled = appFixture();
+  const fee = shuffled.file.entries[feeKey];
+  const effect = Object.fromEntries(Object.entries(fee.descriptor.effect).reverse());
+  Object.defineProperties(fee, {
+    descriptor: { value: Object.fromEntries(Object.entries({ ...fee.descriptor, effect }).reverse()) },
+    location: { value: { symbol: feeKey, file: giftPath } },
+  });
+  for (const json of [false, true]) {
+    const argv = [...args, ...appArgs, ...(json ? ["--json"] : [])];
+    const expected = await run(argv, { host: checks(async () => appFixture()) });
+    const actual = await run(argv, { host: checks(async () => shuffled) });
+    expect(expected.exit).toBe(0);
+    expect([actual.exit, actual.output]).toEqual([expected.exit, expected.output]);
+    if (args[0] === "check" && json) {
+      const { rows } = JSON.parse(actual.output);
+      expect(rows.find((row: { key: string }) => row.key === feeKey).takesEffect).toBe(`${giftPath} ${feeKey}`);
+    }
+  }
+});
+
+it("uses the packaged code descriptor member order for declared show JSON", async () => {
+  const app = await run(["show", feeKey, ...appArgs, "--json"], { host: checks(async () => appFixture()) });
+  const pkg = await run(["show", "offer.freeShippingFromMinor", "--json"]);
+  expect([app.exit, pkg.exit]).toEqual([0, 0]);
+  const { setting: declared } = JSON.parse(app.output);
+  const { setting: packaged } = JSON.parse(pkg.output);
+  expect(Object.keys(declared)).toEqual(Object.keys(packaged));
+  for (const field of ["effect", "runtime", "change"]) {
+    expect(Object.keys(declared[field])).toEqual(Object.keys(packaged[field]));
+  }
+});
+
+it("reports original JSON with own special keys", async () => {
+  const original = '{"__proto__":{"flag":true}}';
+  const raw = JSON.parse(original);
+  const host = checks(async () => appFixture(() => raw, z.unknown()));
+  const { output, exit } = await run(["show", feeKey, ...appArgs, "--json"], { host });
+  expect(exit).toBe(0);
+  expect(output).toContain(`"value":${original}`);
+});
+
+it.each(["show", "explain"])("preserves own metadata and projected properties in %s", async command => {
+  const raw = '{"__proto__":{"flag":true}}';
+  const authored = JSON.parse(raw);
+  const bindings = appFixture(() => "150", z.object({ ["__proto__"]: z.number() }));
+  Object.assign(bindings.file.entries[feeKey].descriptor, { fallback: authored, examples: [{ value: authored }] });
+  const { exit, output } = await run([command, feeKey, ...appArgs, "--json"], { host: checks(async () => bindings) });
+  expect(exit).toBe(0);
+  const { setting } = JSON.parse(output);
+  expect(JSON.stringify(setting.fallback)).toBe(raw);
+  expect(JSON.stringify(setting.examples)).toBe(`[{"value":${raw}}]`);
+  expect(Object.hasOwn(setting.schema.properties, "__proto__")).toBe(true);
+  expect(setting.schema.properties["__proto__"]).toEqual({ type: "number" });
+  expect(setting.schema.required).toEqual(["__proto__"]);
+});
+
+it.each([
+  ["a throwing getter", () => { throw new Error("private accessor detail"); }],
+  ["a non-JSON value", () => Number.POSITIVE_INFINITY],
+])("reports %s in show and check", async (_, readFee) => {
+  const read = vi.fn(readFee);
+  const host = checks(async () => appFixture(read));
+  const show = await run(["show", feeKey, ...appArgs, "--json"], { host });
+  expect(show.exit).toBe(74);
+  expect(JSON.parse(show.output)).toMatchObject({
+    schemaVersion: 1, refusal: { code: "commerce_setting_read_unavailable", path: ["file", "entries", feeKey, "value"] },
+  });
+  expect(show.output).not.toContain("private accessor detail");
+  const check = await run(checkArgs, { host });
+  expect(check.exit).toBe(1);
+  expect(JSON.parse(check.output)).toMatchObject({
+    state: "invalid", rows: expect.arrayContaining([expect.objectContaining({
+      key: feeKey, file: { state: "unreportable", location: { file: giftPath, symbol: feeKey }, message: "Value cannot be reported as JSON." },
+      validation: { state: "not-validated" },
+    })]),
+  });
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  ["a collision", key, z.number(), "is a packaged setting"],
+  ["a schema conversion failure", feeKey, z.date(), "cannot be displayed"],
+  ["a reference location", feeKey, z.number(), `Supply a file and symbol for ${feeKey}`, { reference: "docs/gift.md" }],
+  ["an operation location", feeKey, z.number(), `Supply a file and symbol for ${feeKey}`, { operation: "setGiftFee" }],
+] as const)("refuses %s before reading any value", async (_, declarationKey, schema, hint, location?) => {
+  const read = vi.fn();
+  const { file } = appFixture(read, schema);
+  const entry = file.entries[feeKey];
+  if (location) Object.defineProperty(entry, "location", { value: location });
+  const bindings = { file: { ...file, entries: { [declarationKey]: entry } } };
+  for (const args of [["list"], ["show", feeKey], ["explain", feeKey], ["check"]]) {
+    const { exit, output } = await run([...args, ...appArgs, "--json"], { host: checks(async () => bindings) });
+    expect(exit).toBe(64);
+    expect(JSON.parse(output)).toMatchObject({ schemaVersion: 1, refusal: {
+      code: "commerce_setting_read_input_invalid", path: ["file", "entries", declarationKey, "descriptor"],
+      hint: expect.stringContaining(hint),
+    } });
+  }
+  expect(read).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["missing factory or module", async () => undefined, 74, missingApp],
+  ["throwing app", async () => { throw new Error("  rejected\nedit " + "x".repeat(200)); }, 1, "rejected edit " + "x".repeat(166)],
+] as const)("reports a %s on the channels defined by P3 and P4", async (_, load, status, hint) => {
+  const host = checks(load);
+  for (const command of ["show", "explain"]) {
+    const { exit, output, warnings } = await run([command, feeKey, ...appArgs, "--json"], { host });
+    expect(exit).toBe(status);
+    expect(JSON.parse(output)).toMatchObject({ schemaVersion: 1, refusal: { code: "commerce_setting_read_unavailable", path: ["app"], hint } });
+    expect(warnings).toEqual([]);
+  }
+  const app = await run(["list", ...appArgs, "--json"], { host });
+  const baseline = await run(["list", "--json"]);
+  expect({ exit: app.exit, output: app.output }).toEqual({ exit: baseline.exit, output: baseline.output });
+  expect(app.warnings).toEqual([`Settings app: ${hint}\n`]);
+});
+
+it.each([{}, appFixture()])("keeps unknown-key refusals for a healthy module without a matching declaration", async binding => {
+  for (const command of ["show", "explain"]) {
+    const args = [command, "gift.unknown", "--json"];
+    const { exit, output } = await run([...args, ...appArgs], { host: checks(async () => binding) });
+    const baseline = await run(args);
+    expect({ exit, output }).toEqual({ exit: baseline.exit, output: baseline.output });
+  }
 });
