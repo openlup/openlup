@@ -1,10 +1,10 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", async (original) => {
   const actual = await original<typeof import("node:child_process")>();
-  return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync), spawnSync: vi.fn(actual.spawnSync) };
 });
 
 import {
@@ -13,12 +13,86 @@ import {
   testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
 
-afterEach(() => { vi.mocked(spawnSync).mockReset(); vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.mocked(execFileSync).mockReset();
+  vi.mocked(spawnSync).mockReset();
+  vi.restoreAllMocks();
+});
 
 const changed = (...paths: string[]): Change[] => paths.map((path) => ({ path, deleted: false }));
 const line = (text: string): AddedLine[] => [{ path: "scripts/example.test.ts", line: 7, text }];
 // An injected clock; the window is measured from it, never from the real clock.
 const now = new Date("2040-01-01T00:00:00Z");
+
+describe("fast preflight", () => {
+  it.each([
+    { name: "clean", dirty: false, offline: false, warnings: false, failures: [], exit: 0 },
+    { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
+    { name: "dirty with a failed fetch", dirty: true, offline: true, warnings: false, failures: ["clean"], exit: 1 },
+    { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "publication-inventory", "dco"], exit: 1 },
+  ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit }) => {
+    const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
+    const increase = '"scripts/example.ts": brand increased 0 -> 1';
+    const conflict = "CONFLICT (content): Merge conflict in example.ts";
+    const mismatch = "example.ts: missing from the publication inventory";
+    const closing = "the tree is not the inventory the manifest describes.";
+    const expected = [
+      "git rev-parse --show-toplevel",
+      "git rev-parse HEAD",
+      "git fetch origin main",
+      "git status --porcelain --untracked-files=all",
+      "git merge-tree --write-tree origin/main HEAD",
+      "git merge-base HEAD origin/main",
+      `${process.execPath} scripts/public-ci-neutrality.mjs --base-commit ${fork}`,
+      `${process.execPath} --experimental-strip-types packages/ui/smoke/neutrality.ts`,
+      "npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression",
+      "npm run oss:published-tree -- --policy",
+      "npm run oss:published-tree -- --inventory",
+      "git rev-parse origin/main",
+    ];
+    const calls: string[] = [];
+    const outputs = new Map([
+      [expected[0], process.cwd()], [expected[1], head], [expected[3], dirty ? "?? local.txt\n" : ""],
+      [expected[4], conflict], [expected[5], fork], [expected[6], increase],
+      [expected[10], `${mismatch}\n${closing}`], [expected[11], upstream],
+    ]);
+    vi.mocked(spawnSync).mockImplementation(((bin, args) => {
+      const call = `${bin} ${(args ?? []).join(" ")}`;
+      calls.push(call);
+      const status = Number((call === expected[2] && offline)
+        || (call === expected[4] && failures.includes("merge-clean"))
+        || (call === expected[6] && failures.includes("neutrality"))
+        || (call === expected[10] && failures.includes("publication-inventory")));
+      const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[11]].includes(call)
+        ? "warning: fixture Git warning\n" : "";
+      return { status, stdout: outputs.get(call) ?? "", stderr };
+    }) as typeof spawnSync);
+    const message = failures.includes("dco") ? "unsigned commit" : "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
+    vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1f${message}\0${upstream}\x1f${head} ${fork}\x1funsigned merge\0`);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(main(now, ["--fast"])).toBe(exit);
+    expect(calls).toEqual(expected);
+    expect(execFileSync).toHaveBeenCalledWith("git", expect.arrayContaining([`${upstream}..${head}`]), expect.anything());
+    const lines = log.mock.calls.map(([value]) => String(value));
+    expect(JSON.parse(lines.pop()!)).toEqual({ preflight: "fast", result: exit === 0 ? "pass" : "fail", head, failed: failures });
+    const reasons: Record<string, string> = {
+      clean: "worktree has uncommitted changes. Commit or remove them.",
+      "merge-clean": conflict,
+      neutrality: "1 neutrality count increase(s) against the fork point; the required self-check job refuses them",
+      "publication-inventory": closing,
+      dco: `missing Signed-off-by on ${head.slice(0, 12)}`,
+    };
+    expect(lines.filter((line) => !line.startsWith("    ")).map((line) => line.replace(/ \(\d+ s\)$/u, "")))
+      .toEqual(["clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "publication-policy", "publication-inventory", "dco"]
+        .map((name) => `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
+    expect(lines.filter((line) => line.startsWith("    "))).toEqual(
+      failures.includes("publication-inventory") ? [conflict, increase, mismatch, closing].map((line) => `    ${line}`) : [],
+    );
+    expect(stderr.mock.calls).toEqual(offline ? [["preflight: git fetch origin main failed. Using local origin/main."]] : []);
+  });
+});
 
 describe("preflight report", () => {
   it("confirms a real root test while leaving a wrong suffix undiscovered", async () => {

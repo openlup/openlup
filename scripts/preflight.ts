@@ -1,6 +1,5 @@
-// Advisory self-checks over the change set since the fork point with origin/main,
-// plus uncommitted and untracked files. Not wired into CI or native review; it
-// exits non-zero only when a check FAILs. See CONTRIBUTING.md#deliver-a-change.
+// Local checks before review. The default checks the change since the fork
+// point plus working-tree edits; --fast runs the cheap readiness gate.
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +8,7 @@ import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { INVENTORY_PATH } from "./agent-review-derived.mjs";
+import { readCommits, signOffVerdict } from "./dco-signoff-check.ts";
 import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
 
 export type Status = "PASS" | "WARN" | "SKIP" | "FAIL";
@@ -132,23 +132,24 @@ export function shortExpiries(lines: readonly AddedLine[]): Finding[] {
   });
 }
 
-type Outcome = { code: number | null; output: string; missing: boolean; seconds: number };
+type Outcome = { code: number | null; stdout: string; output: string; missing: boolean; seconds: number };
 
 function execute(command: string, args: readonly string[], options: SpawnSyncOptions = {}): Outcome {
   const started = Date.now();
   const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, shell: process.platform === "win32", ...options });
   return {
     code: result.status,
+    stdout: result.stdout?.toString() ?? "",
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
     missing: (result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
     seconds: Math.round((Date.now() - started) / 1000),
   };
 }
 
-function git(args: readonly string[]): string {
+function git(args: readonly string[], output: "output" | "stdout" = "output"): string {
   const result = execute("git", args);
   if (result.code !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.output.trim()}`);
-  return result.output;
+  return result[output];
 }
 
 const tail = (output: string, count = 30): string[] => output.split("\n").filter((line) => line.trim()).slice(-count);
@@ -176,8 +177,8 @@ function typecheck(): CheckResult {
   return result.code === 0 ? { check: "typecheck", status: "PASS", detail } : { check: "typecheck", status: "FAIL", detail, notes: tail(result.output) };
 }
 
-function astGrep(): CheckResult {
-  const result = execute("npx", ["--no", "--", "ast-grep", "scan", "--error=no-suppress-all", "--error=unused-suppression"]);
+function astGrep(options?: SpawnSyncOptions): CheckResult {
+  const result = execute("npx", ["--no", "--", "ast-grep", "scan", "--error=no-suppress-all", "--error=unused-suppression"], options);
   return result.code === 0
     ? { check: "ast-grep", status: "PASS", detail: `no structural rule errors (${result.seconds} s)` }
     : { check: "ast-grep", status: "FAIL", detail: "structural rule errors", notes: tail(result.output) };
@@ -337,9 +338,66 @@ function print(result: CheckResult): void {
   if (notes.length > 40) console.log(`    ... ${notes.length - 40} more`);
 }
 
-export function main(now: Date): number {
+function fastPreflight(): number {
+  const head = git(["rev-parse", "HEAD"], "stdout").trim();
+  if (execute("git", ["fetch", "origin", "main"], { timeout: 5_000 }).code !== 0) {
+    console.error("preflight: git fetch origin main failed. Using local origin/main.");
+  }
+  const offlineNpm = { env: { ...processEnvironment, npm_config_offline: "true", npm_config_update_notifier: "false" } };
+  const command = (check: string, bin: string, args: string[], options?: SpawnSyncOptions): CheckResult => {
+    const { code, output } = execute(bin, args, options);
+    return { check, status: code === 0 ? "PASS" : "FAIL", detail: lastLine(output) || `${bin} did not complete successfully`,
+      notes: code === 0 ? undefined : tail(output) };
+  };
+  const checks: Array<[string, () => CheckResult]> = [
+    ["clean", () => ({
+      check: "clean",
+      status: git(["status", "--porcelain", "--untracked-files=all"], "stdout").trim() ? "FAIL" : "PASS",
+      detail: "worktree has uncommitted changes. Commit or remove them.",
+    })],
+    ["merge-clean", () => command("merge-clean", "git", ["merge-tree", "--write-tree", "origin/main", "HEAD"])],
+    ["neutrality", () => neutrality(git(["merge-base", "HEAD", "origin/main"], "stdout").trim())],
+    ["ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])],
+    ["ast-grep", () => astGrep(offlineNpm)],
+    ["publication-policy", () => command("publication-policy", "npm", ["run", "oss:published-tree", "--", "--policy"], offlineNpm)],
+    ["publication-inventory", () => command("publication-inventory", "npm", ["run", "oss:published-tree", "--", "--inventory"], offlineNpm)],
+    ["dco", () => {
+      const upstream = git(["rev-parse", "origin/main"], "stdout").trim();
+      const commits = readCommits(process.cwd(), upstream, head).filter(({ parents }) => parents.length < 2);
+      const { missing } = signOffVerdict(commits);
+      return { check: "dco", status: missing.length ? "FAIL" : "PASS",
+        detail: `missing Signed-off-by on ${missing.map(({ sha }) => sha.slice(0, 12)).join(", ")}` };
+    }],
+  ];
+  const failed: string[] = [];
+  for (const [name, check] of checks) {
+    let result: CheckResult;
+    try {
+      result = check();
+    } catch (error) {
+      const detail = (error as Error).message;
+      result = { check: name, status: "FAIL", detail, notes: tail(detail) };
+    }
+    if (result.status === "PASS") {
+      console.log(`${name}: ok`);
+      continue;
+    }
+    failed.push(name);
+    const notes = result.notes ?? [];
+    const increases = name === "neutrality" ? notes.filter((line) => NEUTRALITY_INCREASE.test(line)) : [];
+    const detail = name === "neutrality" && !increases.length ? notes[0] ?? result.detail : result.detail;
+    console.log(`${name}: FAIL ${lastLine(detail)}`);
+    for (const line of increases.length ? increases : notes.slice(-15)) console.log(`    ${line}`);
+  }
+  console.log(JSON.stringify({ preflight: "fast", result: failed.length ? "fail" : "pass", head, failed }));
+  return failed.length ? 1 : 0;
+}
+
+export function main(now: Date, args: readonly string[] = []): number {
+  const fast = args.includes("--fast");
+  process.chdir(git(["rev-parse", "--show-toplevel"], fast ? "stdout" : "output").trim());
+  if (fast) return fastPreflight();
   const started = Date.now();
-  process.chdir(git(["rev-parse", "--show-toplevel"]).trim());
   let base: string;
   try {
     base = git(["merge-base", "HEAD", "origin/main"]).trim();
@@ -379,4 +437,4 @@ export function main(now: Date): number {
   return count("FAIL") > 0 ? 1 : 0;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main(new Date());
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main(new Date(), process.argv.slice(2));

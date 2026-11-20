@@ -957,7 +957,12 @@ the hosted runner's CPU speed; size bounds for hosted runners as described below
 Locale overrides (`LC_*`), a system gitconfig and `OPENLUP_STACK_BASE` are also
 removed; other local environment variables pass through unchanged.
 
-`preflight` is advisory: no CI job or review step runs it, and it exits non-zero
+Run `npm run preflight -- --fast` before reporting a change ready and before starting reviewers.
+It checks worktree cleanliness, mergeability against `origin/main`, both neutrality gates,
+ast-grep, publication policy and inventory, and DCO. If fetch fails, it uses the local `origin/main`.
+The fast tier does not replace full preflight or hosted CI.
+
+Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
 `git merge-base HEAD origin/main`, plus uncommitted and untracked files, and prints
 one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
