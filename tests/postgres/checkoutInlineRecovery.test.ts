@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, createCheckoutPaymentContinuationCodec,
  createPostgresPaymentRecoveryGuidancePort, createPostgresCheckoutRecoveryOrderPort, hashCheckoutRecoveryToken,
@@ -122,13 +123,14 @@ process.stdout.write(JSON.stringify(await service.retry(input.request)));}finall
  });
  it.each(['cancel','capture','predecessor'] as const)('refuses a %s winner between the snapshot and locked dispatch',async race=>{
   const f=await fixture(),blocker=await env.owner.connect(),starter=await env.runtime.connect();
-  let retrySettled: Promise<unknown> | undefined;
+  let retrySettled: Promise<void> | undefined;
   try {
    await blocker.query('BEGIN');
    await blocker.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE',[f.orderId]);
    const { rows: [{ pid }] } = await starter.query('SELECT pg_backend_pid() AS pid');
    const port = createPostgresSandboxInlineRecoveryAttemptPort(starter,options);
    let dispatchRequested = false;
+   let dispatchError: unknown;
    const { codec, request } = setup(f);
    const service = createCheckoutInlineRecovery({
     codec,
@@ -136,39 +138,85 @@ process.stdout.write(JSON.stringify(await service.retry(input.request)));}finall
     orderPort: reader(),
     attemptPort: {
      ...port,
-     begin(input) {
+     async begin(input: Parameters<typeof port.begin>[0]) {
       dispatchRequested = true;
-      return port.begin(input);
+      try {
+       return await port.begin(input);
+      } catch (error) {
+       // The service maps PostgreSQL failures to a shared admission error.
+       dispatchError = error;
+       throw error;
+      }
      },
     },
     executionAllowed: () => true,
    });
-   const pending = service.retry(request);
-   retrySettled = Promise.allSettled([pending]);
-   await expect.poll(async () => {
-    if (!dispatchRequested) return false;
+   const isBlocked = async () => {
     const result = await blocker.query('SELECT pg_backend_pid()=ANY(pg_blocking_pids($1)) AS blocked',[pid]);
     return result.rows[0].blocked;
-   }, {
-    timeout: 15_000,
-    message: `Retry did not wait on the ${race} transaction's order lock within 15 s`,
-   }).toBe(true);
-   if(race==='cancel')await blocker.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1",[f.orderId]);
-   if(race==='capture')await createPostgresSandboxPaymentSimulator(blocker,options).recordObservation({attemptId:f.attemptId,idempotencyKey:`late:${f.attemptId}`,outcome:'captured',occurredAt:at()});
-   if(race==='predecessor')await createPostgresSandboxPaymentSimulator(blocker,options).beginAttempt({settlementIntentId:f.paymentIntentId,idempotencyKey:`competing:${randomUUID()}`,requestFingerprint:'b'.repeat(64),methodFacts:facts('primary'),at:at()});
+   };
+   const deadline = performance.now() + 15_000;
+   const pending = service.retry(request);
+   let retryFinished = false;
+   const markRetryFinished = () => { retryFinished = true; };
+   retrySettled = pending.then(markRetryFinished, markRetryFinished);
+   let blocked = false;
+   while (performance.now() < deadline) {
+    if (dispatchRequested && await isBlocked()) {
+     blocked = performance.now() <= deadline;
+     break;
+    }
+    const remaining = deadline - performance.now();
+    if (remaining > 0) await delay(Math.min(50, remaining));
+   }
+   expect(blocked, `Retry did not wait on the ${race} transaction's order lock within 15 s`).toBe(true);
+
+   let activeAttempt = { id: f.attemptId, state: 'refused' };
+   switch (race) {
+    case 'cancel':
+     await blocker.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1",[f.orderId]);
+     break;
+    case 'capture':
+     await createPostgresSandboxPaymentSimulator(blocker,options).recordObservation({
+      attemptId:f.attemptId,idempotencyKey:`late:${f.attemptId}`,outcome:'captured',occurredAt:at(),
+     });
+     activeAttempt.state = 'captured';
+     break;
+    case 'predecessor': {
+     const winner = await createPostgresSandboxPaymentSimulator(blocker,options).beginAttempt({
+      settlementIntentId:f.paymentIntentId,idempotencyKey:`competing:${randomUUID()}`,
+      requestFingerprint:'b'.repeat(64),methodFacts:facts('primary'),at:at(),
+     });
+     activeAttempt = { id: winner.id, state: 'dispatched' };
+     break;
+    }
+   }
+   expect(await isBlocked(), `Retry stopped waiting before the ${race} transaction committed`).toBe(true);
+   expect(retryFinished, `Retry settled before the ${race} transaction committed`).toBe(false);
    await blocker.query('COMMIT');
-   await expect(pending).rejects.toMatchObject({kind:'conflict'});
-   expect(await attempts(f)).toHaveLength(race==='predecessor'?2:1);
+
+   await expect(pending).rejects.toMatchObject({kind:'conflict',code:'payment_admission_refused'});
+   expect(dispatchError).toMatchObject({code:'22023',message:'checkout_inline_retry_refused'});
+   const rows = await attempts(f);
+   expect(rows).toHaveLength(race==='predecessor'?2:1);
+   expect(rows.filter(row => row.is_active)).toEqual([expect.objectContaining(activeAttempt)]);
+   if (race === 'cancel') {
+    const { rows: [order] } = await env.owner.query('SELECT status FROM public.commerce_orders WHERE id=$1',[f.orderId]);
+    expect(order.status).toBe('cancelled');
+   }
   } finally {
    try {
-    await blocker.query('ROLLBACK');
-    await retrySettled;
+    try {
+     await blocker.query('ROLLBACK');
+    } finally {
+     await retrySettled;
+    }
    } finally {
     blocker.release();
     starter.release();
    }
   }
- },30_000);
+ });
  it('replays a failed replacement without another dispatch and preserves its action or safe polling',async()=>{
   const f=await fixture(),d=setup(f,{action:{kind:'redirect',url:'/synthetic-handoff'}}),first=await d.make().retry(d.request);
   const live=await d.make().retry(d.request);expect(live.result.clientAction).toEqual({kind:'redirect',url:'/synthetic-handoff'});
