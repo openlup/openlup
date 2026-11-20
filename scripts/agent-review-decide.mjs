@@ -380,11 +380,8 @@ function receiptDisplay(summary) {
 export function receiptBody(summary) {
   const json = JSON.stringify(summary);
   if (summary.version !== 3) return `${RECEIPT_MARKER}\n\`\`\`json\n${json}\n\`\`\``;
-  const display = receiptDisplay(summary);
-  const wrap = (marker, type, payload) => `${marker}\n\n${display}\n\n${RECEIPT_DETAILS_HEADER}\n\n\`\`\`${type}\n${payload}\n\`\`\`\n\n</details>`;
-  const raw = wrap(ECONOMY_RECEIPT_MARKER, 'json', json);
-  if (raw.length <= 65_536) return raw;
-  const compressed = wrap(COMPRESSED_RECEIPT_MARKER, 'text', gzipSync(json).toString('base64'));
+  const payload = gzipSync(json).toString('base64');
+  const compressed = `${COMPRESSED_RECEIPT_MARKER}\n\n${receiptDisplay(summary)}\n\n${RECEIPT_DETAILS_HEADER}\n\n\`\`\`text\n${payload}\n\`\`\`\n\n</details>`;
   const limit = 200_000;
   demand(compressed.length <= limit, `compressed receipt is ${compressed.length} characters (limit ${limit}). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   return compressed;
