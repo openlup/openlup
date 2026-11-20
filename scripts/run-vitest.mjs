@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { sweep } from "./disposable-docker.mjs";
+import { clearDisposableRunActivity, hasDisposableRunActivity, hasTargetedTestArgs, sweep } from "./disposable-docker.mjs";
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism, cpus, loadavg, tmpdir } from "node:os";
@@ -153,7 +153,11 @@ function interrupt(signal) {
 }
 const onInt = () => interrupt("SIGINT"), onTerm = () => interrupt("SIGTERM");
 process.on("SIGINT", onInt); process.on("SIGTERM", onTerm);
+const targetedRun = hasTargetedTestArgs(vitestArgs);
 async function reapRun() {
+  // Targeted runs that never labeled a disposable container cannot own any
+  // container under this run ID; skip the Docker CLI round-trip.
+  if (targetedRun && !hasDisposableRunActivity(disposableRun)) return;
   // Every owner in this run has exited by now (interrupted workers too), so the
   // age floor would only retain fresh dead-owner containers; liveness still keeps
   // a surviving descendant's container.
@@ -170,6 +174,7 @@ await dispatchSignals();
 await reapRun();
 await dispatchSignals();
 if (interrupted) await reapRun();
+clearDisposableRunActivity(disposableRun);
 clearTimeout(stopTimer);
 process.removeListener("SIGINT", onInt); process.removeListener("SIGTERM", onTerm);
 if (interrupted) status = interrupted === "SIGINT" ? 130 : 143;
