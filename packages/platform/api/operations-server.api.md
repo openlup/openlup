@@ -115,7 +115,7 @@ export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
 export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
-export { runSettingsCommand, type SettingsAppBindings } from "./settingsCommand.js";
+export { runSettingsCommand, type SettingsAppBindings, type SettingsFileEntry } from "./settingsCommand.js";
 ```
 ## dist/operations/server/migrations.d.ts
 
@@ -258,9 +258,29 @@ export declare function runPlatformWatchdog<Snapshot extends WatchdogSnapshot, C
 ## dist/operations/server/settingsCommand.d.ts
 
 ```ts
+import { type ZodType } from "zod";
+import type { SettingDescriptor } from "../contracts/settings.js";
 import { type SettingPreviewer, type SettingReader } from "./settingsRead.js";
 type PreviewDocument = {
     schemaVersion: 1;
+};
+type ValueDescriptor = Extract<SettingDescriptor, {
+    effect: unknown;
+}>;
+type Location = Extract<ValueDescriptor["change"], {
+    file: string;
+}>;
+/** @experimental A file value reported by an application settings binding. */
+export type SettingsFileEntry = {
+    value: unknown;
+    location?: Location;
+    descriptor?: never;
+} | {
+    value: unknown;
+    location: Location;
+    descriptor: Pick<ValueDescriptor, "domain" | "goal" | "effect"> & Partial<Pick<ValueDescriptor, "rules" | "examples" | "fallback" | "defaultBasis" | "whyThisDefault">> & {
+        schema?: ZodType;
+    };
 };
 /** @experimental Read-only bindings supplied by an explicitly loaded settings app. */
 export type SettingsAppBindings = {
@@ -269,13 +289,7 @@ export type SettingsAppBindings = {
     stockSourceKey?: string;
     file?: {
         configuration: string;
-        entries: Readonly<Record<string, {
-            value: unknown;
-            location?: {
-                file: string;
-                symbol: string;
-            };
-        }>>;
+        entries: Readonly<Record<string, SettingsFileEntry>>;
         validate?: () => void | Promise<void>;
     };
 } | {
@@ -297,6 +311,7 @@ type SettingsHost = {
 };
 type SettingsIo = {
     write(text: string): void;
+    warn?(text: string): void;
     readStdin(): Promise<string>;
 };
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
