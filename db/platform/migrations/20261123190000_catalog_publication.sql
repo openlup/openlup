@@ -413,10 +413,12 @@ BEGIN
    OR p_value ? 'accent' AND (jsonb_typeof(p_value->'accent')<>'string' OR p_value->>'accent' !~ '^#[0-9a-fA-F]{6}$') THEN RETURN false; END IF;
  IF p_value ? 'advertisedWeightsG' THEN
   IF jsonb_typeof(p_value->'advertisedWeightsG')<>'array' THEN RETURN false; END IF;
+  -- The publication codec admits ascending whole grams up to 9,999,999.
   IF jsonb_array_length(p_value->'advertisedWeightsG')>500 OR EXISTS (
-    SELECT 1 FROM jsonb_array_elements(p_value->'advertisedWeightsG') item(value)
-     WHERE (CASE WHEN jsonb_typeof(value)='number' AND value::text ~ '^[1-9][0-9]*$'
-       THEN value::numeric<=9007199254740991 ELSE false END) IS DISTINCT FROM true) THEN RETURN false; END IF;
+    SELECT 1 FROM (SELECT value, lag(value) OVER (ORDER BY position) AS previous
+     FROM jsonb_array_elements(p_value->'advertisedWeightsG') WITH ORDINALITY item(value,position)) weight
+     WHERE (CASE WHEN jsonb_typeof(value)='number' AND value::text ~ '^[1-9][0-9]{0,6}$'
+       THEN previous IS NULL OR (jsonb_typeof(previous)='number' AND previous::numeric<value::numeric) ELSE false END) IS DISTINCT FROM true) THEN RETURN false; END IF;
  END IF;
  IF EXISTS (SELECT 1 FROM jsonb_each(p_value) field WHERE field.key IN ('shortName','routePath')
    AND CASE WHEN jsonb_typeof(field.value)<>'object' THEN true ELSE EXISTS (

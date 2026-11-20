@@ -638,6 +638,8 @@ it.each([
   ["duplicate SKU intents", { offerMemberships: Array(2).fill({ skuCode: "item", offerVersion: "example:offer", admitted: true }) }, "once per SKU"],
   ["unknown SKU intent field", { publicationSkus: [{ skuCode: "item", title: "Item", minQuantity: 1, isAddon: false, facts: {}, extra: true }] }, "title, order minimum"],
   ["nested document in presentation", { presentation: { document: { title: "Sample" } } }, "presentation fields"],
+  ["descending advertised weights", { presentation: { advertisedWeightsG: [200, 100] } }, "presentation fields"],
+  ["an advertised weight above 9,999,999 grams", { presentation: { advertisedWeightsG: [10_000_000] } }, "presentation fields"],
   ["nested facts in an intent", { publicationSkus: [{ skuCode: "item", title: "Item", minQuantity: 1, isAddon: false, facts: { document: {} } }] }, "valid facts"],
 ] as const)("refuses %s at the shared content decoder", async (_label, change, repair) => {
   const error = await transaction(pool, async db => {
@@ -672,7 +674,7 @@ it("admits the same typed presentation, valid GTIN, axes and SKU intents the rea
     const issue = await graph(db, fixture());
     issue.product.axes = ["size"];
     issue.product.attributes = { capacity: [true, "medium"], name: { en: "Item" } };
-    issue.product.content.presentation = { title: "🎈".repeat(250), routePath: { "en-US": "/item" }, advertisedWeightsG: [100] };
+    issue.product.content.presentation = { title: "🎈".repeat(250), routePath: { "en-US": "/item" }, advertisedWeightsG: [100, 9_999_999] };
     issue.product.content.requestedModes = [{ skuCode: issue.facts.code, modes: ["one_time", "subscription"] }];
     issue.facts.facts = { sizes: [{ quantity: 3 }] };
     issue.facts.identifiers = [{ scheme: "gs1:gtin", issuer: "example:issuer", value: "96385074", packagingLevel: "unit",
