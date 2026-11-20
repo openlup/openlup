@@ -267,6 +267,17 @@ export type SettingsAppBindings = {
     readers?: Readonly<Record<string, SettingReader>>;
     previewers?: Readonly<Record<string, SettingPreviewer<PreviewDocument>>>;
     stockSourceKey?: string;
+    file?: {
+        configuration: string;
+        entries: Readonly<Record<string, {
+            value: unknown;
+            location?: {
+                file: string;
+                symbol: string;
+            };
+        }>>;
+        validate?: () => void | Promise<void>;
+    };
 } | {
     configurationIds: readonly string[];
 };
@@ -278,6 +289,10 @@ type SettingsHost = {
     }): Promise<SettingsAppBindings & {
         close?(): Promise<void>;
     }>;
+    loadCheck?(input: {
+        app: string;
+        configuration?: string;
+    }): Promise<SettingsAppBindings | undefined>;
     formatPreview?(result: PreviewDocument): string;
 };
 type SettingsIo = {

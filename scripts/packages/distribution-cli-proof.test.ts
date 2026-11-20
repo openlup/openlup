@@ -432,7 +432,12 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
     "owned/fragments.ts": "export default 'offer-intro';",
     "owned/new.mjs": "export default true;",
     "AGENTS.md": "# App guide\n\n## Change a business setting\n\nRun the settings script.\n",
-    [starterSettingsHost]: "export function createSettingsBindings() { return {}; }",
+    [starterSettingsHost]: `export function createSettingsBindings() {
+      return { file: { configuration: "sample", validate() {}, entries: {
+        inventory_renewal_protection: { value: { revision: "sample", renewalProtectionDays: 14 },
+          location: { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" } },
+      } } };
+    }`,
     "test/candidate.test.mjs": `import {readFileSync} from 'node:fs'; readFileSync(new URL('../owned/${required}', import.meta.url));`,
     [reminderInstallationTest]: "import 'node:test';",
     [starterLifecycle]: readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"),
@@ -454,6 +459,9 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   const result = spawnSync(process.execPath, [join(source, "scripts/packages/exact-set-qualification.mjs"), "openlup-core-v" + version, commit, receipt, "--candidate", manifest], { cwd: source, env: { ...env, PATH: join(directory, "bin") + ":" + env.PATH }, encoding: "utf8", timeout: 180_000 });
   expect(existsSync(receipt), result.stderr).toBe(true); const evidence = JSON.parse(readFileSync(receipt, "utf8")); expect(result.status, result.stderr).toBe(missing ? 1 : 0);
   expect(evidence).toMatchObject({ mode: "candidate", verificationSource: "candidate, local digest-verified", result: missing ? "FAIL" : "PASS", upgrade: { result: missing ? "FAIL" : "PASS" } });
+  const smokes = evidence.upgrade.checks.filter(({ command }: { command: string[] }) =>
+    command[0]?.endsWith("/node_modules/.bin/openlup") && command.includes("check") && command[1] === "settings");
+  expect(smokes.map(({ result }: { result: string }) => result)).toEqual(["PASS", "PASS"]);
   expect(evidence.upgrade.managedConflict).toEqual({ path: "test/candidate.test.mjs", action: "create" });
   expect(evidence.upgrade.phases).toHaveLength((missing ? 10 : 11) + starterDisplayFiles.length);
   expect(evidence.upgrade.phases).toContainEqual({ name: "reminder-test-reconciliation", result: "PASS" });
