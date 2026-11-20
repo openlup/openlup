@@ -477,7 +477,7 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
         expect(JSON.parse(json.stdout)).toEqual(result);
         const readable = spawnSync("npm", args, options);
         expect(readable.status, readable.stderr).toBe(0);
-        expect(readable.stdout).toContain(`${sku}: 61 currently available`);
+        expect(readable.stdout).toContain(`${sku}: 61 currently available, 25 estimated under the proposal (provider)\n`);
         expect(readable.stdout).toContain("New purchase availability: equal-or-lower");
       }
     }
