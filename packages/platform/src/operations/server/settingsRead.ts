@@ -1,5 +1,6 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
 import { listCatalogueSettings, loadSettingsCatalogue, settingsVersion } from "./settingsCatalog.js";
+import { hasNonfiniteNumber } from "./settingsCommandSupport.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
@@ -104,20 +105,6 @@ export const settingsPreviewRequest = z.strictObject({
 export type SettingPreviewer<Result extends { schemaVersion: 1 }> = (proposed: JsonValue, input: {
   asOf: string; skus: readonly string[]; refuse: typeof refuseSettingsPreview;
 }) => Promise<Result | PreviewRefusal>;
-
-function hasNonfiniteNumber(proposed: unknown): boolean {
-  const pending = [proposed];
-  const seen = new WeakSet<object>();
-  while (pending.length) {
-    const value = pending.pop();
-    if (typeof value === "number" && !Number.isFinite(value)) return true;
-    if (value && typeof value === "object" && !seen.has(value)) {
-      seen.add(value);
-      for (const child of Object.values(value)) pending.push(child);
-    }
-  }
-  return false;
-}
 
 /** @experimental Dispatch a preview to the selected domain previewer. */
 export async function previewSetting<Result extends { schemaVersion: 1 } = never>(

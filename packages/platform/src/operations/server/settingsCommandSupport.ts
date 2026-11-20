@@ -70,3 +70,17 @@ export const checkResultSchema = z.strictObject({
 export type FileValue = z.infer<typeof fileSchema>;
 export type Validation = z.infer<typeof validationSchema>;
 export type AppValidation = z.infer<typeof appValidationSchema>;
+
+export function hasNonfiniteNumber(proposed: unknown): boolean {
+  const pending = [proposed];
+  const seen = new WeakSet<object>();
+  while (pending.length) {
+    const value = pending.pop();
+    if (typeof value === "number" && !Number.isFinite(value)) return true;
+    if (value && typeof value === "object" && !seen.has(value)) {
+      seen.add(value);
+      for (const child of Object.values(value)) pending.push(child);
+    }
+  }
+  return false;
+}

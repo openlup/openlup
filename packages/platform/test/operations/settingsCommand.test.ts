@@ -1031,3 +1031,24 @@ it("refuses a non-canonical MCP launch URL before reading or writing protocol fr
   expect(input[Symbol.asyncIterator]).not.toHaveBeenCalled();
   expect(bind).not.toHaveBeenCalled();
 });
+
+it.each([
+  ["at the top level", "1e400"],
+  ["nested in an array", '{"nested":[{"amount":1e400}]}'],
+  ["under an own __proto__ member", '{"__proto__":{"amount":1e400}}'],
+])("refuses a non-finite preview frame %s before dispatch", async (_, value) => {
+  const input = (async function* () {
+    yield Buffer.from(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"settings_preview","arguments":{"key":"${key}","value":${value}}}}\n`);
+    yield Buffer.from('{"jsonrpc":"2.0","id":2,"method":"ping"}\n');
+  })();
+  const write = vi.fn<(line: string) => void>();
+  const bind = vi.fn(async () => ({ previewers: { [key]: async () => validPreview } }));
+  expect(await runSettingsCommand(["mcp", "--app=./app.ts", `--database-url=${url}`], { write, input, readStdin: async () => "" }, {
+    bind, previewResultSchema: renewalStockProtectionPreviewResult,
+  })).toBe(0);
+  expect(write.mock.calls.map(([line]) => JSON.parse(line))).toEqual([
+    { jsonrpc: "2.0", id: 1, error: { code: -32602, message: "Invalid tool or arguments. See tools/list." } },
+    { jsonrpc: "2.0", id: 2, result: {} },
+  ]);
+  expect(bind).not.toHaveBeenCalled();
+});

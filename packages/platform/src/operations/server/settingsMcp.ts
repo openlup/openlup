@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand } from "./settingsCommand.js";
-import { admitDatabaseUrl, checkResultSchema } from "./settingsCommandSupport.js";
+import { admitDatabaseUrl, checkResultSchema, hasNonfiniteNumber } from "./settingsCommandSupport.js";
 import { fileObservationSchema, loadSettingsCatalogue, settingsDocuments } from "./settingsCatalog.js";
 import { settingRefusalSchema, toolInputSchema } from "./toolSchema.js";
 
@@ -121,7 +121,7 @@ export async function runSettingsMcp(input: AsyncIterable<Buffer>, write: (line:
         const selected = call.safeParse(params);
         const tool = selected.success ? tools.find(item => item.definition.name === selected.data.name) : undefined;
         const args = selected.success && selected.data.arguments !== undefined ? selected.data.arguments : {};
-        const valid = tool && tool.input.safeParse(args).success;
+        const valid = tool && !hasNonfiniteNumber(args) && tool.input.safeParse(args).success;
         validatingArguments = false;
         if (!valid) error(id, -32602, invalidTool);
         else reply(id, { result: await callSettingsTool(tool, args as ToolArguments, context, host) });
