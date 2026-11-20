@@ -307,47 +307,59 @@ const INVISIBLE_CONTROL = /[\p{Cc}--[\t\n\r]]/v;
 const INVISIBLE_CONTROLS = new RegExp(INVISIBLE_CONTROL.source, 'gv');
 const controlCode = character => character.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
 
-function mapJsonText(value, map) {
-  if (typeof value === 'string') return map(value);
-  if (Array.isArray(value)) {
-    const items = [];
-    for (const item of value) items.push(mapJsonText(item, map));
-    return items;
-  }
-  if (value && typeof value === 'object') {
-    const entries = [];
-    for (const [key, item] of Object.entries(value)) entries.push([map(key), mapJsonText(item, map)]);
-    return Object.fromEntries(entries);
-  }
-  return value;
-}
 async function readReviewInput(path, verb, kind) {
   let removed = 0;
-  const value = mapJsonText(await boundedJson(path), text => text.replace(INVISIBLE_CONTROLS, () => {
+  const strip = text => text.replace(INVISIBLE_CONTROLS, () => {
     removed += 1;
     return '';
-  }));
+  });
+  const input = await boundedJson(path);
+  const value = typeof input === 'string' ? strip(input) : input;
+  const stack = [value];
+  while (stack.length) {
+    const object = stack.pop();
+    if (object === null || typeof object !== 'object') continue;
+    for (const [key, item] of Object.entries(object)) {
+      if (typeof item === 'string') {
+        const stripped = strip(item);
+        if (stripped !== item) Object.defineProperty(object, key, { value: stripped });
+      } else if (item && typeof item === 'object') stack.push(item);
+    }
+  }
   if (removed) console.error(`${verb}: removed ${removed} invisible control character${removed === 1 ? '' : 's'} from the ${kind}`);
   return value;
 }
-function assertControlFreeText(text, path) {
-  const control = INVISIBLE_CONTROL.exec(text)?.[0];
-  if (control) demand(false, `${path} contains a control character (U+${controlCode(control)}); rename the file or remove the character, then prepare again`);
+function stateFieldPath(field) {
+  const parts = [];
+  for (let node = field; node.parent; node = node.parent) {
+    const { key, parent } = node;
+    if (Array.isArray(parent.value)) parts.push(`[${key}]`);
+    else if (/^[a-zA-Z_$][\w$]*$/u.test(key)) parts.push(`.${key}`);
+    else parts.push(`[${JSON.stringify(key).replace(INVISIBLE_CONTROLS, character => '\\u' + controlCode(character))}]`);
+  }
+  return parts.reverse().join('').replace(/^\./u, '') || '$';
 }
-function assertControlFreeState(value, path = '') {
-  if (typeof value === 'string') assertControlFreeText(value, path);
-  else if (value && typeof value === 'object') {
-    for (const [key, item] of Object.entries(value)) {
-      const field = Array.isArray(value) ? `${path}[${key}]`
-        : /^[a-zA-Z_$][\w$]*$/u.test(key) ? `${path ? path + '.' : ''}${key}`
-          : `${path}[${JSON.stringify(key).replace(INVISIBLE_CONTROLS, character => '\\u' + controlCode(character))}]`;
-      assertControlFreeText(key, field);
-      assertControlFreeState(item, field);
+function assertControlFreeState(state, path) {
+  const stack = [{ value: state }];
+  while (stack.length) {
+    const field = stack.pop();
+    const { key, value } = field;
+    const keyControl = key === undefined ? undefined : INVISIBLE_CONTROL.exec(key)?.[0];
+    const control = keyControl ?? (typeof value === 'string' ? INVISIBLE_CONTROL.exec(value)?.[0] : undefined);
+    if (control) {
+      demand(false, `${stateFieldPath(field)} contains a control character (U+${controlCode(control)}). If it is a file name, rename the file and prepare again; otherwise move ${path} aside, then prepare and record the reports again.`);
+    }
+    if (value && typeof value === 'object') {
+      const entries = Object.entries(value);
+      for (let index = entries.length - 1; index >= 0; index--) {
+        const [key, value] = entries[index];
+        stack.push({ key, value, parent: field });
+      }
     }
   }
 }
 async function saveState(path, state) {
-  assertControlFreeState(state);
+  assertControlFreeState(state, path);
   const bytes = `${JSON.stringify(state, null, 2)}\n`; demand(Buffer.byteLength(bytes) <= 8 * 1024 * 1024, 'session exceeds 8 MiB; previous state preserved');
   const temporary = `${path}.${randomUUID()}.tmp`;
   try { await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 }); await rename(temporary, path); }
@@ -461,6 +473,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       demand(args.shift() === '--' && args[0], 'verify-command [--resource PROFILE] -- CMD ARGS...');
       return verifyCandidateCommand({ cwd, session, command: args[0], args: args.slice(1), resource, env });
     }
+    if (verb === 'receipt') assertControlFreeState(session, path);
     const observed = await captureSessionCandidate(cwd, session.candidate.base, { env });
     demand(observed.clean, 'commit source changes before review', 'dirty');
     demand(['base', 'head', 'tree'].every(key => observed[key] === session.candidate[key]), 'candidate changed; prepare again', 'stale');

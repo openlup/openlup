@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
 import { admit, digest, coverageState, protectedCoveragePath, receiptBody, receiptSummary, recordReport, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
@@ -58,6 +58,8 @@ function addRegistry(path: string, source: string, entry: string) {
 describe('review input transport', () => {
   const invisible = '\u0010\u001b\u007f\u0085';
   const whitespace = '\tline\nnext\rreturn';
+  const nestedArray = (leaf: string, depth: number) => '['.repeat(depth) + leaf + ']'.repeat(depth);
+  const recovery = (path: string) => `If it is a file name, rename the file and prepare again; otherwise move ${path} aside, then prepare and record the reports again.`;
 
   it('strips report controls before storage and admits the unchanged receipt after caret rewriting', async () => {
     const f = await fixture();
@@ -66,7 +68,8 @@ describe('review input transport', () => {
     await f.report({
       documentation: 'Documentation' + invisible + whitespace,
       findings: [{ id: 'advice', summary: 'Finding' + invisible + whitespace, material: false }],
-      ['extra\u0010']: ['nested\u0085'],
+      extra: ['nested\u0085'],
+      ['__proto__']: 'own data\u0010',
     });
     expect(notice.mock.calls).toEqual([['record: removed 10 invisible control characters from the report']]);
     const { report } = (await f.state()).history.at(-1);
@@ -75,7 +78,7 @@ describe('review input transport', () => {
       findings: [{ id: 'advice', summary: 'Finding' + whitespace, material: false }],
       extra: ['nested'],
     });
-    expect(report).not.toHaveProperty('extra\u0010');
+    expect(Object.getOwnPropertyDescriptor(report, '__proto__')?.value).toBe('own data');
     await f.report();
     await f.cli('receipt', '12');
     const body = vi.mocked(console.log).mock.lastCall![0];
@@ -107,7 +110,7 @@ describe('review input transport', () => {
 
   it('normalises intent before preparing and on a later read for the coverage digest', async () => {
     const f = await fixture();
-    const input = JSON.stringify({ authorSessionId: 'author', intent: { risk: 'behavior', criteria: 'Criteria' + invisible + whitespace, ['extra\u0010']: ['metadata'] } });
+    const input = JSON.stringify({ authorSessionId: 'author', intent: { risk: 'behavior', criteria: 'Criteria' + invisible + whitespace, extra: ['metadata\u0010'] } });
     await writeFile(f.request, input);
     const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
     const previous = await f.review();
@@ -137,7 +140,94 @@ describe('review input transport', () => {
     f.commit();
     const outcome = await f.cli('prepare', f.request).catch(error => error.message);
     expect(await readFile(path, 'utf8')).toBe(previous);
-    expect(outcome).toBe('invalid: history[2].candidate.changedPaths[1] contains a control character (U+0010); rename the file or remove the character, then prepare again');
+    expect(outcome).toBe('invalid: history[2].candidate.changedPaths[1] contains a control character (U+0010). ' + recovery(path));
+  });
+
+  it.each([
+    ['report findings', 'history[2].report["findings\\u0010"]'],
+    ['intent risk', 'history[2].intent["risk\\u0010"]'],
+  ])('refuses a control key that collides with %s and preserves the previous session', async (caseName, field) => {
+    const f = await fixture();
+    await f.cli('prepare', f.request);
+    const path = join(f.scratch, 'agent-review/session.json');
+    const before = await readFile(path, 'utf8');
+    let operation;
+    if (caseName === 'report findings') {
+      operation = f.report({
+        findings: [{ id: 'blocker', summary: 'Review is blocked.', material: true }],
+        ['findings\u0010']: [],
+      });
+    } else {
+      const request = JSON.parse(await readFile(f.request, 'utf8'));
+      request.intent['risk\u0010'] = 'routine';
+      await writeFile(f.request, JSON.stringify(request));
+      operation = f.cli('prepare', '--new', f.request);
+    }
+    await expect(operation).rejects.toThrow(field + ' contains a control character (U+0010). ' + recovery(path));
+    expect(await readFile(path, 'utf8')).toBe(before);
+  });
+
+  it.each([3_500, 20_000])('ignores a clean unused intent array nested %i levels', async depth => {
+    const f = await fixture();
+    await f.cli('prepare', f.request);
+    const path = join(f.scratch, 'agent-review/session.json');
+    const before = await readFile(path, 'utf8');
+    const clean = await readFile(f.request, 'utf8');
+    await writeFile(f.request, clean.slice(0, -1) + ',"unused":' + nestedArray('null', depth) + '}');
+    const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
+    expect(await readFile(path, 'utf8')).toBe(before);
+    expect(notice).not.toHaveBeenCalled();
+  });
+
+  it('reaches the existing serializer limit for a report array nested 20,000 levels', async () => {
+    const f = await fixture();
+    await f.review();
+    const path = join(f.scratch, 'agent-review/session.json');
+    const before = await readFile(path, 'utf8');
+    const input = join(f.scratch, 'report.json');
+    const report = JSON.parse(await readFile(input, 'utf8'));
+    report.reviewer = 'deep-report';
+    await writeFile(input, JSON.stringify(report).slice(0, -1) + ',"extra":' + nestedArray('null', 20_000) + '}');
+    await expect(f.cli('record', input)).rejects.toMatchObject({
+      name: 'RangeError', stack: expect.stringContaining('at JSON.stringify'),
+    });
+    expect(await readFile(path, 'utf8')).toBe(before);
+  });
+
+  it('finds a control value deep in legacy state and builds its full path', async () => {
+    const f = await fixture();
+    await f.review();
+    const path = join(f.scratch, 'agent-review/session.json');
+    const state = JSON.stringify(await f.state());
+    await writeFile(path, state.slice(0, -1) + ',"extra":' + nestedArray(JSON.stringify('\u0010'), 20_000) + '}');
+    await expect(f.cli('receipt', '12')).rejects.toThrow(
+      'extra' + '[0]'.repeat(20_000) + ' contains a control character (U+0010). ' + recovery(path),
+    );
+  });
+
+  it('refuses to print a legacy receipt and recovers after moving the session aside', async () => {
+    const f = await fixture();
+    const reviewed = await f.review();
+    const path = join(f.scratch, 'agent-review/session.json');
+    // Use the legacy recorder's unchanged state transition and disk format.
+    const legacy = recordReport(reviewed, { ...reviewed.history.at(-1).report, reviewer: 'legacy', documentation: 'Before\u0010after' }, Date.now());
+    const oldBytes = JSON.stringify(legacy, null, 2) + '\n';
+    await writeFile(path, oldBytes);
+    const receipt = () => spawnSync(process.execPath, [resolve('scripts/agent-review-session.mjs'), 'receipt', '12'], { cwd: f.cwd, env: f.env, encoding: 'utf8' });
+    const refused = receipt();
+    expect.soft(refused.status).toBe(1);
+    expect(refused.stdout).toBe('');
+    expect(refused.stderr).toBe('invalid: history[4].report.documentation contains a control character (U+0010). ' + recovery(path) + '\n');
+    expect(await readFile(path, 'utf8')).toBe(oldBytes);
+    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(recovery(path));
+    await rename(path, path + '.legacy');
+    const clean = await f.review();
+    const regenerated = receipt();
+    expect(regenerated.status).toBe(0);
+    expect(regenerated.stdout).not.toContain('\\u0010');
+    expect(parseReceipt(regenerated.stdout)?.session).toEqual(clean);
+    expect(await readFile(path + '.legacy', 'utf8')).toBe(oldBytes);
   });
 });
 

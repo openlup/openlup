@@ -17,6 +17,7 @@ export { carryOverSourceReview } from './agent-review-session.mjs';
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
 const RECEIPT_LIMIT = 1024 * 1024;
+const MARKER_MISMATCH = 'machine block does not match the receipt marker';
 /**
  * The queue applies the co-located forward guard only when a PR changes the registry or a reviewed-class migration.
  * @param {readonly string[]} changedPaths
@@ -25,7 +26,7 @@ const RECEIPT_LIMIT = 1024 * 1024;
 export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = () => false) {
   return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
-function decodeGzipReceipt(encoded) {
+function decodeGzipReceipt(encoded, wrongVersion = null) {
   try {
     const payload = Buffer.from(encoded, 'base64');
     if (payload.toString('base64') !== encoded) return null;
@@ -36,7 +37,7 @@ function decodeGzipReceipt(encoded) {
     const deflate = payload.subarray(10, -8);
     if (inflateRawSync(deflate, { ...options, info: true }).engine.bytesWritten !== deflate.length) return null;
     const receipt = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer));
-    return receipt?.version === 3 ? receipt : null;
+    return receipt?.version === 3 ? receipt : wrongVersion;
   } catch { return null; }
 }
 function decodeRawReceipt(marker, json) {
@@ -79,17 +80,21 @@ export function parseReceipt(body) {
 }
 // Only describe comments parseReceipt already refused. Never expose parser text that quotes the payload.
 export function diagnoseReceipt(body) {
+  if (typeof body !== 'string') return 'comment body is not text';
   if (body.length > RECEIPT_LIMIT) return 'receipt body exceeds the size limit';
   const block = bareReceiptBlock(body) ?? framedReceiptBlock(body);
   if (!block) return 'no machine block in the expected form';
-  if (block.marker === COMPRESSED_RECEIPT_MARKER) return 'compressed block does not decode';
+  if (block.marker === COMPRESSED_RECEIPT_MARKER) {
+    return decodeGzipReceipt(block.payload, MARKER_MISMATCH) === MARKER_MISMATCH
+      ? MARKER_MISMATCH : 'compressed block does not decode';
+  }
   try { JSON.parse(block.payload); }
   catch (error) {
     const offset = /\bposition (\d+) \(line \d+ column \d+\)$/u.exec(error.message)?.[1];
     return offset === undefined ? 'machine block is not valid JSON'
       : 'machine block is not valid JSON at offset ' + offset + '; a client may have rewritten control characters';
   }
-  return 'machine block does not match the receipt marker';
+  return MARKER_MISMATCH;
 }
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments) {
   const comments = [];

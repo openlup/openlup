@@ -36,6 +36,32 @@ describe('native receipt transport', () => {
     expect(receiptBody(large)).toBe(rawBody(RECEIPT_MARKER, large));
   });
 
+  const literalReport = recordReport(prepare({ rules: { version: 3 } }), report({
+    documentation: 'Literal \\u0010 and \\\\u0010, mixed with \\"\t\n\r and a trailing \\',
+    ['literal\\u0010']: '\\u0010',
+  }), time);
+  const literalSummary = receiptSummary(literalReport, 12, time);
+
+  it('hides literal C0 escape text from the API JSON while preserving one equivalent machine line', () => {
+    const body = receiptBody(literalSummary);
+    expect(body.split('\n')[0]).toBe(ECONOMY_RECEIPT_MARKER);
+    expect(JSON.stringify(body)).not.toMatch(/\\u00[01][0-9a-fA-F]/u);
+    const machineLine = body.split('\n')[body.split('\n').indexOf('```json') + 1];
+    expect(JSON.parse(machineLine)).toEqual(literalSummary);
+  });
+
+  it('preserves the receipt digest and admission across a parity-aware caret rewrite', () => {
+    // Match the final backslash of each run. The sanitizer adds a backslash
+    // back when an odd number preceded it, keeping the API-level JSON valid.
+    const rewrite = (json: string) => json.replace(/(\\+)u0010/gu, (_match, run: string) =>
+      '\\'.repeat(run.length - (run.length % 2)) + '^P');
+    expect(JSON.parse(rewrite(JSON.stringify('\\u0010')))).toBe('\\^P');
+    const transported = JSON.parse(rewrite(JSON.stringify(receiptBody(literalSummary))));
+    const receipt = parseReceipt(transported);
+    expect.soft(receipt).toEqual(literalSummary);
+    expect(admit({ receipt, observed: { ...observed, pr: 12, baseValid: true }, now: time })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+  });
+
   const bareCases: [string, { prefix?: string; markerEnd?: string; open?: string; before?: string; close?: string; after?: string }, boolean, boolean][] = [
     // Expected raw and gzip acceptance observed by running the parser at d4c3786f5.
     ['exact', {}, true, true],

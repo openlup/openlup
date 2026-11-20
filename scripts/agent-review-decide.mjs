@@ -377,12 +377,25 @@ function receiptDisplay(summary) {
     `Open cards: ${open || 'none'}`,
   ].join('\n');
 }
+function encodeReceiptBackslashes(json) {
+  const parts = [];
+  let start = 0;
+  // Skip the second character of every escape, even when it is not a backslash.
+  for (let index = 0; index < json.length; index++) {
+    if (json[index] !== '\\') continue;
+    index++;
+    if (json[index] !== '\\') continue;
+    parts.push(json.slice(start, index - 1), '\\u005c');
+    start = index + 1;
+  }
+  return parts.length ? parts.join('') + json.slice(start) : json;
+}
 export function receiptBody(summary) {
   const json = JSON.stringify(summary);
   if (summary.version !== 3) return `${RECEIPT_MARKER}\n\`\`\`json\n${json}\n\`\`\``;
   const display = receiptDisplay(summary);
   const wrap = (marker, type, payload) => `${marker}\n\n${display}\n\n${RECEIPT_DETAILS_HEADER}\n\n\`\`\`${type}\n${payload}\n\`\`\`\n\n</details>`;
-  const raw = wrap(ECONOMY_RECEIPT_MARKER, 'json', json);
+  const raw = wrap(ECONOMY_RECEIPT_MARKER, 'json', encodeReceiptBackslashes(json));
   if (raw.length <= 65_536) return raw;
   const compressed = wrap(COMPRESSED_RECEIPT_MARKER, 'text', gzipSync(json).toString('base64'));
   const limit = 200_000;

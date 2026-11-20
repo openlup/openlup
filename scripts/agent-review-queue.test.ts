@@ -1,7 +1,7 @@
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
-import { carryOverSourceReview, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { carryOverSourceReview, diagnoseReceipt, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
 const time = 1000;
@@ -172,6 +172,19 @@ describe('hosted receipt comments', () => {
     expect(parseReceipt(malformed)).toBeNull();
     await expect(waitFor(malformed)).rejects.toThrow(
       'receipt comment 42: compressed block does not decode; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
+    );
+  });
+
+  it.each([null, undefined, 42, {}, []].map(body => [body]))('diagnoses a non-string body %j', body => {
+    expect(diagnoseReceipt(body)).toBe('comment body is not text');
+  });
+
+  it('reports a marker mismatch for valid gzip JSON with the wrong version', async () => {
+    const payload = gzipSync(JSON.stringify({ ...receipt, version: 2 })).toString('base64');
+    const malformed = `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${payload}\n\`\`\``;
+    expect(parseReceipt(malformed)).toBeNull();
+    await expect(waitFor(malformed)).rejects.toThrow(
+      'receipt comment 42: machine block does not match the receipt marker; post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
     );
   });
 
