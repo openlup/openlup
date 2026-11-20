@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
-  canonicalCatalogDraftJson, evaluateBundleComposition, type CatalogDraftPayloadV3, type CatalogOptionValue, type CatalogProductTypeInput, type CatalogProductTypeRef } from '@openlup/platform/catalog';
+  canonicalCatalogDraftJson, evaluateBundleComposition, type CatalogDraftPayloadV3, type CatalogProductTypeInput, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
 import { isPinnedCatalogDraftKey } from '../shared/api.ts';
@@ -27,11 +27,7 @@ function productTypeRef(ref: unknown): CatalogProductTypeRef | undefined {
 const sameType = (ref: CatalogProductTypeRef, saved: CatalogProductTypeRef | undefined) =>
   ref.key === saved?.key && ref.version === saved.version;
 
-function publicationExample(type: CatalogProductTypeInput, legacy: boolean): CatalogDraftPayloadV3 | null {
-  const netAxis = type.dimensions.find(dimension => dimension.kind === 'quantity' && dimension.role === 'net_content');
-  const selected = netAxis?.kind === 'quantity' ? netAxis.units[0] : legacy ? 'openlup:g' : type.netContentUnits[0];
-  const unit = type.units.find(candidate => candidate.code === selected);
-  if (!unit) return null;
+function publicationExample(type: CatalogProductTypeInput): CatalogDraftPayloadV3 {
   const id = randomUUID(), skuId = randomUUID(), revisionId = randomUUID(), slug = 'fictional-item';
   const title = 'Fictional item', skuCode = `STARTER-${skuId}`;
   const document = { schemaId: 'starter:document', documentRef: `starter:${revisionId}`, productSlug: slug, revisionNo: 1, name: title };
@@ -41,15 +37,10 @@ function publicationExample(type: CatalogProductTypeInput, legacy: boolean): Cat
     sourceRef: 'starter:example', digest };
   const presentation = { title }, sku = { skuCode, title, minQuantity: 1, isAddon: false, facts: {} };
   const identifier = { scheme: 'gs1:gtin', issuer: 'starter:example', value: '5901234123457', packagingLevel: 'unit' as const };
-  const netContent = { dimension: unit.dimension, unit: unit.code, unscaled: '100', scale: 0 };
-  const options = Object.fromEntries<CatalogOptionValue>(type.dimensions.map(axis => [axis.key,
-    axis.kind === 'choice' ? { kind: 'choice', value: axis.values[0]! } : axis.kind === 'boolean'
-      ? { kind: 'boolean', value: false } : { kind: 'quantity', value: axis.role === 'net_content' ? netContent
-        : { dimension: axis.dimension, unit: axis.units[0]!, unscaled: '100', scale: 0 } }]));
   return { schemaVersion: 3, product: { id, type: { key: type.key, version: type.version }, slug,
-    dimensions: type.dimensions.map(axis => axis.key), primarySkuId: skuId, documentRevision,
+    dimensions: [], primarySkuId: skuId, documentRevision,
     sharedContent: { schemaVersion: 1, catalogAction: 'create', document, presentation, publicationSkus: [sku], requestedModes: [], offerMemberships: [] } },
-  skus: [{ id: skuId, productId: id, code: skuCode, options, netContent, identifiers: [identifier] }],
+  skus: [{ id: skuId, productId: id, code: skuCode, options: {}, netContent: { dimension: 'mass', unit: 'openlup:g', unscaled: '100', scale: 0 }, identifiers: [identifier] }],
   publication: { kind: 'release', evidence: {}, operations: [
     { op: 'create_product', productId: id, productSlug: slug, name: title },
     { op: 'register_document_revision', productSlug: slug, revisionId, revisionNo: 1, documentRef: document.documentRef,
@@ -203,9 +194,8 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         return { ...refused('catalog_type_not_installed'), issues: [rulesVersionIssue(pin, unchanged)] };
       }
       if ('draftId' in payload || 'expectedRevision' in payload) return refused('starter_input_invalid');
-      const installed = catalogue.firstInstalled();
-      const example = installed && publicationExample(installed.type, installed.legacy);
-      if (example) return success(example);
+      const installed = catalogue.current && catalogue.readInstalled(catalogue.current);
+      if (installed) return success(publicationExample(installed.type));
       return { ...refused('starter_catalogue_rules_required'), ...(catalogue.current ? { issues: [rulesVersionIssue(catalogue.current)] } : {}) };
     }
     if (payload.action === 'prepare') {

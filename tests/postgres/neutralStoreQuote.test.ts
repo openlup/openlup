@@ -386,7 +386,7 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
   console.info(JSON.stringify({ configuration, caseMs: performance.now() - caseStarted, childMs: performance.now() - childStarted }));
 }, 95_000);
 
-it('installs exact catalogue versions and preserves base command receipts after build loss', async () => {
+it('preserves base and legacy catalogue receipts and reads retained builds', async () => {
   const { container, runtime } = await starterDatabase('catalogue');
   const app = join(consumer, 'catalogue-app');
   cpSync(join(consumer, 'application'), app, { recursive: true });
@@ -395,22 +395,18 @@ it('installs exact catalogue versions and preserves base command receipts after 
   const source = readFileSync(owned, 'utf8');
   expect(source).toContain(registry);
   writeFileSync(owned, source.replace(registry, `
-    const volume = { ...types[0]!, version: 2, dimensions: [{key: 'format', kind: 'choice' as const, values: ['standard']}],
-      axes: [{key: 'format', attributeKey: 'format'}], attributes: [{key: 'format', scope: 'variant' as const,
-        valueType: {kind: 'enum' as const, values: [{id: 'standard'}]}, required: false, cardinality: {min: 0, max: 1},
-        filterable: false, facetable: false, public: true, displayOrder: 0, labels: {}}], units: [{ code: 'example:ml', dimension: 'volume' as const, integral: true,
-      factor: { canonicalUnit: 'openlup:ml', unscaled: '1', scale: 0 } }], netContentUnits: ['example:ml'] };
-    types.push(volume, { ...volume, key: 'example:article', version: 1 });
+    types.push({...types[0]!, version: 2});
     ${registry}`));
   const script = String.raw`
     import assert from 'node:assert/strict';
     import {createHash, randomUUID} from 'node:crypto';
     import {appendFileSync, readFileSync, unlinkSync, writeFileSync} from 'node:fs';
     import pg from 'pg';
-    import {createCatalogDraftHandlerV3, createPostgresCatalogDraftStoreV3} from '@openlup/platform/catalog';
+    import {createCatalogDraftHandlerV3, createPostgresCatalogDraftStoreV3, canonicalCatalogDraftJson,
+      installCatalogDefinitions, withCatalogPublicationRules} from '@openlup/platform/catalog';
     import {configurations} from './owned/store.config.ts';
     import {applyDemoSeed} from './installation/install.ts';
-    import {readStarterCatalogueRules, starterCatalogue} from './host/editor-catalogue.ts';
+    import {readStarterCatalogueRules, starterCatalogue, starterCataloguePack} from './host/editor-catalogue.ts';
     import {composeOperatorCapabilities} from './host/operator-composition.ts';
     const config = configurations.supplements;
     const owner = new pg.Pool({connectionString: fixture.ownerUrl}), runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
@@ -451,16 +447,19 @@ it('installs exact catalogue versions and preserves base command receipts after 
       assert.deepEqual((await send(baseEdit, 'pin:' + randomUUID())).value?.record.payload.product.type, ref, 'pinned revise preserves the saved inline type');
       const localEdit = await send(revise(inlineLocal));
       assert.equal(localEdit.value?.record.payload.product.type.version, 2, 'unmarked revise still accepts the registered inline type');
-      const resolve = async (key, version) => (await send({action: 'example', type: {key, version}})).value?.type;
-      const base = await resolve('starter:item', 1), volume = await resolve('starter:item', 2), other = await resolve('example:article', 1);
-      assert.deepEqual(base, {key: 'starter:item', version: 714101500}, 'exact base selection');
-      assert.equal(volume?.key, base.key, 'same key selects its second version');
-      assert.notEqual(volume.version, base.version, 'same key has independent pins');
-      assert.deepEqual((await send({action: 'example', type: inlineLocal.payload.product.type,
-        draftId: baseEdit.draftId, expectedRevision: 2})).value?.type, volume, 'a selected new version resolves to its installed pin');
-      assert.equal(other?.key, 'example:article', 'second registered key resolves');
+      const base = (await send({action: 'example', type: ref})).value?.type;
+      assert.deepEqual(base, {key: 'starter:item', version: 714101500}, 'base authoring type resolves to its installed pin');
       const payload = (await send({action: 'example'})).value;
-      assert.deepEqual(payload.product.type, base, 'first declared example');
+      const kept = {key: 'example:article', version: 42};
+      const artifact = install.catalogueRules;
+      const oldPack = withCatalogPublicationRules({ ...starterCataloguePack(artifact), id: 'example:local-rules',
+        namespace: 'example', version: kept.version, types: [{ ...starterCataloguePack(artifact).types[0], ...kept }] }, () => artifact);
+      const installed = (await installCatalogDefinitions(owner, oldPack)).types[0];
+      const {validateContent, ...type} = oldPack.types[0];
+      const keptFile = '.context/catalogue-builds/' + encodeURIComponent(kept.key) + '@' + kept.version + '.json';
+      writeFileSync(keptFile, canonicalCatalogDraftJson({type, asset: artifact.toString('base64'), installed}));
+      assert.deepEqual((await send({action: 'example', type: kept, draftId: baseEdit.draftId, expectedRevision: 2})).value?.type,
+        kept, 'an explicitly selected retained version keeps its exact pin');
       const file = '.context/catalogue-builds/714101500.json';
       assert.equal(createHash('sha256').update(readFileSync(file)).digest('hex'),
         'cd36418dee1de7afbe9a5bf5748ef3aaad3a962990cd7ff617208bd1593eb5bb', 'golden base receipt bytes');
@@ -474,26 +473,21 @@ it('installs exact catalogue versions and preserves base command receipts after 
       assert.equal(revised.value?.record.revision, 2, 'legacy revise inherits predecessor pin');
       assert.deepEqual(revised.value.record.payload.product.type, base);
 
-      unlinkSync(file);
-      const restarted = start();
-      const next = (await send({action: 'example'}, undefined, restarted)).value;
-      assert.deepEqual(next.product.type, volume, 'missing first build falls back in declaration order');
-      assert.deepEqual(next.skus[0].netContent, {dimension: 'volume', unit: 'example:ml', unscaled: '100', scale: 0});
+      const next = (await send({action: 'example'})).value;
+      next.product.type = kept;
       const pinned = newDraft(next), key = 'pin:' + randomUUID();
-      const unmarked = await send(pinned, undefined, restarted);
-      assert.equal(unmarked.code, 'catalog_draft_payload_invalid', 'derived type requires a pinned write');
+      const unmarked = await send(pinned);
+      assert.equal(unmarked.code, 'catalog_draft_payload_invalid', 'a retained keyed build requires a pinned write');
       assert.equal(unmarked.issues?.[0].code, 'catalogue_pinned_save_required');
       assert.match(unmarked.issues[0].message, /Use the operator Save form or a pinned draft command key/u);
-      const saved = await send(pinned, key, restarted);
-      assert.equal(saved.value?.outcome, 'committed', 'declared example saves: ' + (saved.issues?.[0]?.code ?? saved.code));
-      assert.deepEqual(saved.value.record.payload.product.dimensions, ['format'], 'example saves declared dimensions');
-      assert.deepEqual(saved.value.record.payload.skus[0].options, {format: {kind: 'choice', value: 'standard'}}, 'example saves one option per axis');
+      const saved = await send(pinned, key);
+      assert.equal(saved.value?.outcome, 'committed', 'verified retained build saves');
       const changed = {...pinned, payload: {...next, product: {...next.product, type: {...base, version: 1}}}};
-      const conflict = await send(changed, key, restarted);
+      const conflict = await send(changed, key);
       assert.equal(conflict.code, 'catalog_draft_command_key_reused', 'pinned version change is a conflict');
       assert.equal(conflict.issues?.[0].path, 'commandKey');
 
-      const race = newDraft((await send({action: 'example'}, undefined, restarted)).value);
+      const race = newDraft((await send({action: 'example'})).value);
       const raceKey = 'pin:' + randomUUID(), bothRead = Promise.withResolvers();
       let reads = 0;
       const concurrent = start({async query(sql, parameters) {
@@ -510,20 +504,21 @@ it('installs exact catalogue versions and preserves base command receipts after 
       assert.equal(results.filter(result => result.value?.outcome === 'committed').length, 1);
       assert.equal(results.find(result => !result.ok)?.code, 'catalog_draft_command_key_reused', 'SQL race maps to the pinned conflict');
 
+      unlinkSync(file);
       appendFileSync('owned/catalogue-rules.cjs', '\n// New rules build\n');
       const retry = start();
-      assert.deepEqual((await send({action: 'example', type: volume}, undefined, retry)).value?.type, volume, 'saved pin resolves to its retained build');
+      assert.deepEqual((await send({action: 'example', type: kept}, undefined, retry)).value?.type, kept, 'saved pin resolves to its retained build');
       const before = await effects();
       assert.deepEqual((await send(legacy, commandKey, retry)).value?.record, original.record, 'legacy retry uses the authorized original after build loss');
       assert.equal((await retry(legacy, {...context, actor: {...context.actor, operatorRef: randomUUID()}})).ok, false);
       assert.equal((await send(pinned, key, retry)).replayed, true, 'pinned replay survives rules changes');
       assert.deepEqual(await effects(), before, 'replay writes no additional revisions or receipts');
 
-      writeFileSync('.context/catalogue-builds/' + encodeURIComponent(volume.key) + '@' + volume.version + '.json', '{');
-      const damaged = await send({action: 'example', type: volume}, undefined, start());
+      writeFileSync(keptFile, '{');
+      const damaged = await send({action: 'example', type: kept}, undefined, start());
       assert.equal(damaged.code, 'catalog_type_not_installed');
       assert.deepEqual(damaged.issues, [{path: 'product.type', code: 'catalogue_build_invalid',
-        message: 'Restore the retained catalogue build for ' + volume.key + '@' + volume.version + ' from a verified copy.' }]);
+        message: 'Restore the retained catalogue build for ' + kept.key + '@' + kept.version + ' from a verified copy.' }]);
     } finally {
       for (const binding of bindings) await binding.close();
       await runtime.end();

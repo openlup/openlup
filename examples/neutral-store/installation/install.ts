@@ -87,12 +87,10 @@ export async function applyDemoSeed(config: StoreConfig, installation: Demonstra
     }
     if (target.marker !== demonstrationMarker) throw new Error('starter_seed_demonstration_database_required');
     if (plan) {
-      const { artifact, builds } = plan;
-      for (const { authoring, pack } of builds) {
-        const receipt = await installCatalogDefinitions(connection, pack);
-        const staged = stageStarterCatalogueBuild(artifact, pack, authoring, receipt, installation.catalogueBuildDirectory);
-        if (staged) stagedBuilds.push(staged);
-      }
+      const { artifact, pack } = plan;
+      const receipt = await installCatalogDefinitions(connection, pack);
+      const staged = stageStarterCatalogueBuild(artifact, pack, receipt, installation.catalogueBuildDirectory);
+      if (staged) stagedBuilds.push(staged);
     }
     for (const row of seed.products) await connection.query(`INSERT INTO public.catalog_products
       (id, slug, status, name, description) VALUES ($1,$2,$3,$4,$5)

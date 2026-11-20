@@ -120,19 +120,14 @@ marker and preserved only across restarts of the same container.
 
 ## Catalogue authoring and storefront
 
-Register each type and authoring version in `owned/catalogue.ts` with
-`createCatalogProductTypeRegistry`. With `owned/catalogue-rules.cjs` present,
-`./lifecycle up` installs an immutable rules version for each entry. The
-starter refuses tax-class and subscription-profile references during preflight.
-Without the rules file, drafts use the inline registry and validator.
-
-Use **Load draft example** to load the first installed example. Save resolves
-the exact type version and shows the installed pin. A revision keeps its saved
-pin until you select another version. Keep the catalogue build volume with the
-database so saved drafts can still resolve their rules after a restart.
-
-After a lost response, retry Save with the original form untouched. To submit a
-different change, read the current revision and choose **Start a new action**.
+`owned/catalogue.ts` supplies the draft type. If `owned/catalogue-rules.cjs`
+is present, `./lifecycle up` installs its rules and the operator form uses
+them. Use **Load draft example**, save it, and select **Prepare saved draft**.
+Older drafts keep the rules they were saved with. Keep the local catalogue
+build volume with the demonstration database when restarting the store.
+Without a rules bundle, drafts use the existing validator in `owned/catalogue.ts`.
+The native draft writer owns the command. The host supplies the command key
+and session actor outside the JSON payload.
 
 Evidence (historical record, 2026-11-13):
 Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.
