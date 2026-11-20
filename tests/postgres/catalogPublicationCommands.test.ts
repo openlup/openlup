@@ -136,7 +136,7 @@ async function prepare(data: ReturnType<typeof authored>, draftRevision: number,
   } satisfies Record<string, CatalogPublicationCommand>;
 }
 
-it("commits the sealed plan, returns D3 and replays exact bytes without fresh reads or effect calls", async () => {
+it("commits the sealed plan, refuses revocation after issuance and replays without fresh reads or effects", async () => {
   const data = authored(1);
   await save(data, 1);
   const command = await prepare(data, 1, null);
