@@ -23,6 +23,23 @@ function check(value: CatalogPackInput) { return checkSubject({ packs: [{ pack: 
 const draft = () => ({ schemaVersion: 1 as const, product: { id: "00000000-0000-4000-8000-000000000001", type: { key: "stationery:item", version: 1 }, dimensions: [] }, skus: [] });
 
 describe("offline catalogue conformance", () => {
+  it("explains how to fix a camelCase attribute key", async () => {
+    const p = pack();
+    const attribute: AttributeDefinition = { key: "recycledCover", scope: "product", valueType: { kind: "boolean" },
+      required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} };
+    p.types[0].attributes = [attribute];
+
+    const report = await check(p);
+    expect(report.exitCode).toBe(1);
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      code: "definition_attribute_invalid",
+      path: "/packs/0/pack/types/0/attributes/0/key",
+      fix: expect.stringMatching(/start with a lowercase letter, then use only lowercase letters, digits, underscores or hyphens, such as recycled_cover/u),
+    }));
+
+    p.types[0].attributes = [{ ...attribute, key: "recycled_cover" }];
+    expect((await check(p)).exitCode).toBe(0);
+  });
   it("conformance_reuses_row_validators", async () => {
     const cases: [string, (p: CatalogPackInput) => void][] = [
       ["definition_duplicate_identity", p => { p.types = [...p.types, p.types[0]]; }],
