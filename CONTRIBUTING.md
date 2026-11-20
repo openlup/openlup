@@ -1629,14 +1629,14 @@ authority. Review evidence grants no merge, release, settings or credential righ
    than the criteria is advice unless it refuses a released or documented valid
    input. A finding against a document outside the tree (brief, specification, PR
    body, criteria wording) is advice to the lead; the reviewed tree keeps its
-   reviews. Material means wrong published effects or persisted data, a
-   released-API change, a security defect, or an unactionable or wrong-fix error;
-   these stay blockers in every round.
+   reviews. Material findings include wrong published effects or persisted data,
+   a released-API change, a security defect, and an unactionable or wrong-fix
+   error; these stay blockers in every round.
 
-   For findings about unjustified adopter-visible concepts or steps or leaked
-   internals, state the concrete cost and identify any material effect. Style or
-   wording alone is advice. Reading the wrong store or reporting success for a
-   refused input in a read-only command is a wrong published effect.
+   Treat unjustified adopter-visible concepts or steps, leaked internals and
+   unactionable errors as material findings that block. State the concrete cost.
+   Style or wording alone is advice. Reading the wrong store or reporting success
+   for a refused input in a read-only command is a wrong published effect.
    By default, counted reviews use a fresh local CLI
    reviewer (for example Codex) through the qualified route below; the lead
    coordinates, checks results and decides. The lead chooses reasoning effort by
