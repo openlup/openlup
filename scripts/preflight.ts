@@ -184,6 +184,39 @@ function astGrep(options?: SpawnSyncOptions): CheckResult {
     : { check: "ast-grep", status: "FAIL", detail: "structural rule errors", notes: tail(result.output) };
 }
 
+function astGrepHygiene(): CheckResult {
+  const filewide = execute(process.execPath, ["scripts/ast-grep/check-filewide-ignore.mjs"]);
+  if (filewide.code !== 0) {
+    return { check: "ast-grep hygiene", status: "FAIL", detail: `file-wide ast-grep-ignore check failed (${filewide.seconds} s)`, notes: tail(filewide.output) };
+  }
+  const tests = execute("npx", ["--no", "--", "ast-grep", "test", "--skip-snapshot-tests"]);
+  const seconds = filewide.seconds + tests.seconds;
+  return tests.code === 0
+    ? { check: "ast-grep hygiene", status: "PASS", detail: `no file-wide ignores and rule tests pass (${seconds} s)` }
+    : { check: "ast-grep hygiene", status: "FAIL", detail: `ast-grep rule tests failed (${seconds} s)`, notes: tail(tests.output) };
+}
+
+function eslintChanged(changes: readonly Change[]): CheckResult {
+  const files = changes.filter(({ path, deleted }) => !deleted && SCRIPT.test(path)).map(({ path }) => path);
+  if (files.length === 0) return { check: "eslint changed", status: "SKIP", detail: "no changed JS/TS files" };
+  const result = execute("npx", ["--no", "--", "eslint", "--", ...files]);
+  return result.code === 0
+    ? { check: "eslint changed", status: "PASS", detail: `${files.length} changed file(s) passed eslint (${result.seconds} s)` }
+    : { check: "eslint changed", status: "FAIL", detail: `eslint failed on ${files.length} changed file(s)`, notes: tail(result.output) };
+}
+
+function sqlAdmit(changes: readonly Change[]): CheckResult {
+  const triggers = sqlTreeChanges(changes);
+  if (triggers.length === 0) return { check: "sql admit", status: "SKIP", detail: "no SQL under db/ or packages/*/sql/ changed" };
+  if (git(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"], "stdout") !== "") {
+    return { check: "sql admit", status: "WARN", detail: "commit or stash uncommitted changes to run npm run sql:admit" };
+  }
+  const result = execute("npm", ["run", "sql:admit"]);
+  return result.code === 0
+    ? { check: "sql admit", status: "PASS", detail: `SQL admission passed (${result.seconds} s)` }
+    : { check: "sql admit", status: "FAIL", detail: `npm run sql:admit exited ${result.code ?? "on a signal"}`, notes: tail(result.output) };
+}
+
 function inventory(changes: readonly Change[]): CheckResult {
   const triggers = sqlTreeChanges(changes);
   if (triggers.length === 0) return { check: "inventory", status: "SKIP", detail: "no SQL under db/ or packages/*/sql/ changed" };
@@ -349,6 +382,8 @@ function fastPreflight(): number {
     return { check, status: code === 0 ? "PASS" : "FAIL", detail: lastLine(output) || `${bin} did not complete successfully`,
       notes: code === 0 ? undefined : tail(output) };
   };
+  let fork: string | undefined;
+  const forkPoint = (): string => (fork ??= git(["merge-base", "HEAD", "origin/main"], "stdout").trim());
   const checks: Array<[string, () => CheckResult]> = [
     ["clean", () => ({
       check: "clean",
@@ -356,10 +391,13 @@ function fastPreflight(): number {
       detail: "worktree has uncommitted changes. Commit or remove them.",
     })],
     ["merge-clean", () => command("merge-clean", "git", ["merge-tree", "--write-tree", "origin/main", "HEAD"])],
-    ["neutrality", () => neutrality(git(["merge-base", "HEAD", "origin/main"], "stdout").trim())],
+    ["neutrality", () => neutrality(forkPoint())],
     ["ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])],
     ["ast-grep", () => astGrep(offlineNpm)],
-    ["publication-policy", () => command("publication-policy", "npm", ["run", "oss:published-tree", "--", "--policy"], offlineNpm)],
+    ["publication-policy", () => command("publication-policy", "npm", [
+      "run", "oss:published-tree", "--", "--policy",
+      ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
+    ], offlineNpm)],
     ["publication-inventory", () => command("publication-inventory", "npm", ["run", "oss:published-tree", "--", "--inventory"], offlineNpm)],
     ["dco", () => {
       const upstream = git(["rev-parse", "origin/main"], "stdout").trim();
@@ -411,11 +449,14 @@ export function main(now: Date, args: readonly string[] = []): number {
   let selection: TestSelection | undefined;
   const checks: Array<[string, () => CheckResult | CheckResult[]]> = [
     ["ast-grep", astGrep],
+    ["ast-grep hygiene", astGrepHygiene],
     ["neutrality", () => neutrality(base)],
     ["fragments", () => fragments(changes)],
     ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
     ["gitleaks", () => gitleaks(base, untrackedPaths)],
     ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
+    ["eslint changed", () => eslintChanged(changes)],
+    ["sql admit", () => sqlAdmit(changes)],
     ["typecheck", typecheck],
     ["inventory", () => inventory(changes)],
     ["hosted tests", () => hostedTests(selection)],

@@ -662,8 +662,10 @@ next step and remains missing execution proof. Every applicable check still runs
 For optional local feedback after committing and recording the required native
 reviews, run the full local command set with `node scripts/verify-local.mjs` from
 the task worktree root.
-Add `--pgtap` when the change reaches database inputs (including runtime, fixture,
-configuration or harness changes), or when requesting that raw diagnostic.
+pgTAP is auto-selected when SQL changes under `db/` or `packages/*/sql/`; add
+`--pgtap` to force explicit selection when the change reaches other database
+inputs (including runtime, fixture, configuration or harness changes), or when
+requesting that raw diagnostic.
 The runner uses the commands below once: a single locked install, lint's package
 prerequisites, both reference builds, shared package/API/coverage gates and one
 `test:scoped`. Hosted shards, event-bound dependency comparison and receipt
@@ -678,7 +680,8 @@ the first root-worker observation; later synthetic fixture output cannot stand
 in for it. Machine resource policy and explicit worker settings remain effective.
 Tree-wide and UI neutrality run before installation and heavy phases: their
 Node/Git checks need no dependencies. All thirteen mandatory phases remain;
-pgTAP is still explicitly selected. The runner consumes the explained plan;
+pgTAP is auto-selected when SQL changes under `db/` or `packages/*/sql/` and
+`--pgtap` still forces explicit selection. The runner consumes the explained plan;
 execution still checks the current candidate and review before/after commands.
 Build/package/root phases stay serial because they share generated outputs.
 SSR output stays in a unique ignored worktree scratch directory so external npm
@@ -969,6 +972,12 @@ one `PASS`, `WARN`, `SKIP` or `FAIL` line per check:
 
 - the published-tree typecheck of the required `typecheck` job, after the package build;
 - the ast-grep scan from [lint rules](#commands-and-lint-rules);
+- `ast-grep hygiene`: the first-line file-wide `ast-grep-ignore` check and
+  `ast-grep` rule tests (`ast-grep test --skip-snapshot-tests`);
+- `eslint changed`: ESLint on changed non-deleted JS/TS files before package builds;
+- `sql admit`: `npm run sql:admit` when SQL under `db/` or `packages/*/sql/`
+  changed; reports `WARN` when the working tree has uncommitted or untracked
+  changes;
 - `npm run inventory:refresh` when SQL under `db/` or `packages/*/sql/` changed;
   it has no check mode, so a rewritten inventory stays in the working tree and
   is reported for commit. It needs Docker and reports `WARN` without it; because
