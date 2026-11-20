@@ -60,10 +60,14 @@ export function createNativeSubscriptionBinding(input: {
     workerId: input.workerId, now: input.now,
     inventory: { expireReservations: input.inventory.expireReservations,
       async reserve(request) {
-        const raw = (await input.executor.query("SELECT identity_key FROM public.subscription_renewal_operations WHERE id=$1::uuid", [request.operationId])).rows[0];
-        const operation = raw && await store.readRenewal(String(raw.identity_key));
-        if (!operation) throw new Error("subscription_renewal_missing");
-        const result = await stock.admit({ ...request, snapshot: operation.cycleSnapshot });
+        let snapshot = request.snapshot;
+        if (!snapshot) {
+          const raw = (await input.executor.query("SELECT identity_key FROM public.subscription_renewal_operations WHERE id=$1::uuid", [request.operationId])).rows[0];
+          const operation = raw && await store.readRenewal(String(raw.identity_key));
+          if (!operation) throw new Error("subscription_renewal_missing");
+          snapshot = operation.cycleSnapshot;
+        }
+        const result = await stock.admit({ operationId: request.operationId, claimToken: request.claimToken, now: request.now, snapshot });
         return { reserved: !result.waiting, replayed: result.response.replayed === true,
           reservationId: result.response.reservationId == null ? null : String(result.response.reservationId),
           status: result.waiting ? "refused" : "held", reason: result.waiting ? "inventory_unavailable" : null };
@@ -105,10 +109,27 @@ export function createNativeSubscriptionBinding(input: {
             }
             const claimed = input.codec.readback(admissionResult.response);
             if (!claimed.acquired) return { subscriptionId: snapshot.subscriptionId, operationId: claimed.operationId, identityKey: claimed.identityKey, replayed: claimed.replayed, status: "lease_active", reason: claimed.reason };
-            // Stock admission already acquired this exact generation. Do not acquire a second lease.
-            return runOneAutomaticSubscriptionRenewal({ ...deps, store: { ...store,
-              claimDue: async () => claimed,
-            } }, due(snapshot), now);
+            // Stock admission already acquired this exact generation and secured inventory.
+            // Reuse the claimed snapshot, delivery admission and reservation without re-querying.
+            return runOneAutomaticSubscriptionRenewal({
+              ...deps,
+              store: {
+                ...store,
+                buildCycleSnapshots: async () => claimed.cycleSnapshot,
+                claimDue: async () => claimed,
+                admitDeliveryAlignment: async () => admission,
+              },
+              inventory: {
+                ...deps.inventory,
+                reserve: async () => ({
+                  reserved: true,
+                  replayed: admissionResult.response.replayed === true,
+                  reservationId: admissionResult.response.reservationId == null ? null : String(admissionResult.response.reservationId),
+                  status: "held",
+                  reason: null,
+                }),
+              },
+            }, due(snapshot), now);
           }, deps.policy));
         }
         const normalDue = (await stock.listNormalDue({ limit, asOf: now })).filter(row => !seen.has(row.subscriptionId));

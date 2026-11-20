@@ -547,4 +547,126 @@ describe("installed agent context", () => {
       join(dist, "z.d.ts"),
     ]);
   });
+
+  it("resolves directly exported symbols to their declared public subpath when exports declare types entrypoints", () => {
+    const root = fixture();
+    const platform = join(root, "node_modules/@openlup/platform");
+    mkdirSync(join(platform, "dist/subscriptions"), { recursive: true });
+    mkdirSync(join(platform, "dist/data"), { recursive: true });
+    writeFileSync(join(root, "package.json"), JSON.stringify({
+      name: "fixture-app",
+      private: true,
+      dependencies: { "@openlup/core": "0.31.0", "@openlup/platform": "0.31.0" },
+    }));
+    writeFileSync(join(platform, "package.json"), JSON.stringify({
+      name: "@openlup/platform",
+      version: "0.31.0",
+      exports: {
+        "./subscriptions": {
+          types: "./dist/subscriptions/index.d.ts",
+          import: "./dist/subscriptions/index.js",
+          default: "./dist/subscriptions/index.js",
+        },
+        "./data": {
+          types: "./dist/data/index.d.ts",
+          import: "./dist/data/index.js",
+          default: "./dist/data/index.js",
+        },
+      },
+    }, null, 2));
+    writeFileSync(
+      join(platform, "dist/subscriptions/index.d.ts"),
+      "export { createPostgresRenewalStore } from './store.js';\nexport { internalHelper as PublicHelper } from './internal.js';\n",
+    );
+    writeFileSync(join(platform, "dist/data/index.d.ts"), "export * from './sql.js';\n");
+    writeFileSync(join(platform, "dist/data/sql.d.ts"), "export interface SqlExecutor { query(sql: string): Promise<unknown>; }\n");
+
+    const renewal = searchContext(root, "createPostgresRenewalStore");
+    expect(renewal.hits[0]).toMatchObject({
+      title: "@openlup/platform/subscriptions (createPostgresRenewalStore)",
+      file: join(platform, "package.json"),
+      packageName: "@openlup/platform",
+      reason: "declared public export",
+    });
+
+    const starExport = searchContext(root, "SqlExecutor");
+    expect(starExport.hits[0]).toMatchObject({
+      title: "@openlup/platform/data (SqlExecutor)",
+      file: join(platform, "package.json"),
+      packageName: "@openlup/platform",
+      reason: "declared public export",
+    });
+
+    const aliasedOut = searchContext(root, "internalHelper");
+    expect(aliasedOut.hits.some((hit) => hit.reason === "declared public export")).toBe(false);
+    const aliasedIn = searchContext(root, "PublicHelper");
+    expect(aliasedIn.hits[0]).toMatchObject({
+      title: "@openlup/platform/subscriptions (PublicHelper)",
+      reason: "declared public export",
+    });
+  });
+
+  it("handles export type *, comment/string edge cases, and refuses symlinked declaration parents or files", () => {
+    const root = fixture();
+    const outside = join(root, "outside");
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, "escaped.d.ts"), "export interface EscapedSecretType { x: string; }\n");
+
+    const platform = join(root, "node_modules/@openlup/platform");
+    mkdirSync(join(platform, "dist/contracts"), { recursive: true });
+    symlinkSync(outside, join(platform, "dist/linked"));
+    symlinkSync(join(outside, "escaped.d.ts"), join(platform, "dist/contracts/leafLink.d.ts"));
+    writeFileSync(join(root, "package.json"), JSON.stringify({
+      name: "fixture-app",
+      private: true,
+      dependencies: { "@openlup/core": "0.31.0", "@openlup/platform": "0.31.0" },
+    }));
+    writeFileSync(join(platform, "package.json"), JSON.stringify({
+      name: "@openlup/platform",
+      version: "0.31.0",
+      exports: {
+        "./contracts": {
+          types: "./dist/contracts/index.d.ts",
+          import: "./dist/contracts/index.js",
+          default: "./dist/contracts/index.js",
+        },
+        "./linked": {
+          types: "./dist/linked/escaped.d.ts",
+          import: "./dist/linked/escaped.js",
+          default: "./dist/linked/escaped.js",
+        },
+      },
+    }, null, 2));
+    writeFileSync(
+      join(platform, "dist/contracts/index.d.ts"),
+      [
+        "// line comment with /* should not swallow next export",
+        'export declare const EndpointUrl = "https://example.invalid/*not-a-comment*/";',
+        "export/*inline*/declare interface InlineCommentType { ok: true; }",
+        "export type * from './types.js';",
+        "export type * as TypeNamespace from './types.js';",
+        "export * from '../linked/escaped.js';",
+        "export * from './leafLink.js';",
+      ].join("\n"),
+    );
+    writeFileSync(join(platform, "dist/contracts/types.d.ts"), "export interface StarTypeExport { id: string; }\n");
+
+    expect(searchContext(root, "StarTypeExport").hits[0]).toMatchObject({
+      title: "@openlup/platform/contracts (StarTypeExport)",
+      reason: "declared public export",
+    });
+    expect(searchContext(root, "TypeNamespace").hits[0]).toMatchObject({
+      title: "@openlup/platform/contracts (TypeNamespace)",
+      reason: "declared public export",
+    });
+    expect(searchContext(root, "EndpointUrl").hits[0]).toMatchObject({
+      title: "@openlup/platform/contracts (EndpointUrl)",
+      reason: "declared public export",
+    });
+    expect(searchContext(root, "InlineCommentType").hits[0]).toMatchObject({
+      title: "@openlup/platform/contracts (InlineCommentType)",
+      reason: "declared public export",
+    });
+    expect(searchContext(root, "EscapedSecretType").hits.some((hit) => hit.reason === "declared public export")).toBe(false);
+  });
 });

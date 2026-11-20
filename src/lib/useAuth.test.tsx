@@ -72,11 +72,12 @@ it.each(['older check first', 'newer redemption first'])('an older authorization
 });
 
 it.each(['pasted token', 'callback link'])('delayed authorization reaches the protected admin shell through the real %s journey', async journey => {
+  const firstCheck = deferred<Awaited<ReturnType<typeof getAdminPlatformMe>>>();
+  const secondCheck = deferred<Awaited<ReturnType<typeof getAdminPlatformMe>>>();
   vi.mocked(requestBff).mockResolvedValue(session('signed'));
-  vi.mocked(getAdminPlatformMe).mockImplementation(async () => {
-    await new Promise(resolve => setTimeout(resolve, 50));
-    return allowed;
-  });
+  vi.mocked(getAdminPlatformMe)
+    .mockReturnValueOnce(firstCheck.promise)
+    .mockReturnValueOnce(secondCheck.promise);
   const callback = journey === 'callback link';
   window.history.replaceState(null, '', callback ? '/admin/auth/callback#operator_token=' + 'a'.repeat(43) : '/admin/login');
   const view = render(<StrictMode><MemoryRouter initialEntries={[callback ? '/admin/auth/callback' : '/admin/login']}>
@@ -93,6 +94,10 @@ it.each(['pasted token', 'callback link'])('delayed authorization reaches the pr
     fireEvent.change(await screen.findByLabelText('Email link token'), { target: { value: 'a'.repeat(43) } });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in with token' }));
   }
+  await waitFor(() => expect(getAdminPlatformMe).toHaveBeenCalledTimes(1));
+  await act(async () => { firstCheck.resolve(allowed); });
+  await waitFor(() => expect(getAdminPlatformMe).toHaveBeenCalledTimes(2));
+  await act(async () => { secondCheck.resolve(allowed); });
   await screen.findByText('Protected operator shell');
   expect(getAdminPlatformMe).toHaveBeenCalledTimes(2);
   expect(window.location.hash).toBe('');

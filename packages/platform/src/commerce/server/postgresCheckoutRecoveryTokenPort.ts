@@ -12,6 +12,7 @@ export interface PostgresCheckoutRecoveryTokenInspection extends CheckoutRecover
 
 export interface PostgresCheckoutRecoveryTokenPort extends CheckoutRecoveryTokenPort {
   inspect(rawToken: string, now?: Date): Promise<PostgresCheckoutRecoveryTokenInspection | null>;
+  readExpiry?(tokenId: string): Promise<string | null>;
 }
 
 /**
@@ -114,6 +115,16 @@ export function createPostgresCheckoutRecoveryTokenPort(
       const value = await inspect(rawToken, now);
       if (!value || value.tokenState !== "active" || value.status !== "pending_payment" || !value.mode) return null;
       return { tokenId: value.tokenId, orderId: value.orderId, clientId: value.clientId, mode: value.mode, status: value.status };
+    },
+    async readExpiry(tokenId) {
+      return run(async db => {
+        const row = (await db.query(
+          "SELECT expires_at FROM public.commerce_checkout_recovery_tokens WHERE id = $1::uuid",
+          [tokenId],
+        )).rows[0];
+        if (!row?.expires_at) return null;
+        return row.expires_at instanceof Date ? row.expires_at.toISOString() : new Date(String(row.expires_at)).toISOString();
+      });
     },
   };
 }

@@ -1,21 +1,5 @@
 [
   {
-    "key": "subscriptionOffers.deliveryCycles",
-    "domain": "subscriptions",
-    "kind": "code",
-    "goal": "Choose the allowed delivery interval and default cadence for subscriptions.",
-    "schemaVersion": 1,
-    "examples": [],
-    "fallback": {"days": {"kind": "set", "values": [28, 56]}, "defaultDays": 28},
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The samples default to 28 days; one also allows 56 days and the other allows 14 and 56 days.",
-    "effect": {"appliesTo": "A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.", "frozenOn": ["A saved starter-pack quote records the graduation cadence captured at checkout."], "impact": "customer-promise"},
-    "runtime": {"level": "read-only", "reason": "The starter composes its offers from the owned store config."},
-    "change": {"file": "owned/store.config.ts", "symbol": "subscriptionOffers"},
-    "schema": {"type": "object", "description": "assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence."},
-    "rules": []
-  },
-  {
     "key": "subscriber_winback_policy",
     "domain": "subscriptions",
     "kind": "installed",
@@ -28,22 +12,6 @@
     "effect": {"appliesTo": "Candidates for new winback messages.", "frozenOn": ["Existing winback delivery receipts retain their deduplication identity."], "impact": "customer-promise"},
     "runtime": {"level": "read-only", "reason": "Discovery documents the age window and send gate. The full policy and episode changes need separate qualification."},
     "change": {"operation": "No settings write operation is available for this key."},
-    "rules": []
-  },
-  {
-    "key": "subscriptionCreation.editWindowHours",
-    "domain": "subscriptions",
-    "kind": "code",
-    "goal": "Set how many hours before a renewal customers can edit a newly created subscription.",
-    "schemaVersion": 1,
-    "examples": [{"value": 48}],
-    "fallback": 72,
-    "defaultBasis": {"kind": "reference-code"},
-    "whyThisDefault": "The starter sets a 72-hour edit window.",
-    "effect": {"appliesTo": "The starter supplies the deployed edit window at native subscription activation.", "frozenOn": ["The activation writes the window on the new subscription row."], "impact": "customer-promise"},
-    "runtime": {"level": "read-only", "reason": "The starter reads the window from the owned store config."},
-    "change": {"file": "owned/store.config.ts", "symbol": "subscriptionCreation.editWindowHours"},
-    "schema": {"type": "integer", "minimum": 1, "maximum": 720},
     "rules": []
   },
   {
@@ -90,22 +58,6 @@
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native terms support one introductory phase before the retained terms take over."},
     "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsintroductoryphases"}
-  },
-  {
-    "key": "subscriptions.lifecycleNoticeRetryBudget",
-    "domain": "subscriptions",
-    "kind": "code",
-    "goal": "Set the retry budget for dunning and event or reminder dispatch.",
-    "schemaVersion": 1,
-    "examples": [],
-    "fallback": 6,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The starter sets six attempts.",
-    "effect": {"appliesTo": "On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.", "frozenOn": [], "impact": "operations"},
-    "runtime": {"level": "read-only", "reason": "The starter passes its dispatch policy to the lifecycle notice dispatcher."},
-    "change": {"file": "owned/renewal.config.ts", "symbol": "subscriptionCare.dispatch.maxAttempts"},
-    "schema": {"type": "integer", "minimum": 1, "maximum": 2147483647, "description": "assertSubscriptionCare checks the budget as an integer from 1 through 2147483647."},
-    "rules": []
   },
   {
     "key": "subscriptions.prepaidCycles",

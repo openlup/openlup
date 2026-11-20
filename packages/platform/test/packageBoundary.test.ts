@@ -251,7 +251,8 @@ describe("package source boundary", () => {
       expect(source).toContain('import type { PgQueryExecutor } from "../data/index.js"');
       expect(specifiers(source)).not.toContain("pg");
     }
-    expect(specifiers(files.find(file => file.path === "composition/catalogContribution.ts")!.source)).toEqual(["@openlup/core/readiness"]);
+    expect(specifiers(files.find(file => file.path === "composition/catalogContribution.ts")!.source)).toEqual(["@openlup/core/readiness", "./buildCapabilityContribution.js"]);
+    expect(specifiers(files.find(file => file.path === "composition/buildCapabilityContribution.ts")!.source)).toEqual(["@openlup/core/readiness"]);
     expect(specifiers(files.find(file => file.path === "payments/bindings.ts")!.source)).toEqual(["./contracts/repair.js"]);
     expect(specifiers(files.find(file => file.path === "composition/composeBundle.ts")!.source)
       .filter((specifier) => /(?:^|\/)payments(?:\/|$)/u.test(specifier))).toEqual([]);
@@ -501,4 +502,38 @@ describe("package source boundary", () => {
       .toEqual(["provider-sdk", "side-sdk", "other-sdk", "third-sdk"]);
     expect(specifiers('// import("commented-sdk")\nclient.from("table_name");')).toEqual([]);
   });
+});
+
+it("keeps the settings tool registry private and serves MCP through the command with an input stream", async () => {
+  const operations = await import("@openlup/platform/operations/server");
+  for (const name of ["settingsReadTools", "listSettings", "showSetting", "explainSetting", "previewSetting",
+    "invalidSettingsCommand", "refuseSettingsPreview", "settingsMcpTools", "callSettingsTool", "runSettingsMcp", "settingsMcpContext"]) {
+    expect(operations).not.toHaveProperty(name);
+  }
+  for (const name of ["runSettingsCommand", "settingDescriptorSchema", "settingRefusalSchema", "toolInputSchema", "settingsToolOutputSchema"]) {
+    expect(operations).toHaveProperty(name);
+  }
+  const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
+  const host = {
+    bind: async () => { throw new Error("unexpected store connection"); },
+    previewResultSchema: renewalStockProtectionPreviewResult,
+  };
+  const output: string[] = [];
+  const io = {
+    write: (line: string) => output.push(line),
+    readStdin: async () => { throw new Error("unexpected proposal input"); },
+  };
+  expect(await operations.runSettingsCommand(["mcp", "--json"], io, host)).toBe(64);
+  const invalidUsage = output.join("");
+  expect(JSON.parse(invalidUsage)).toMatchObject({ refusal: { code: "commerce_setting_read_input_invalid" } });
+  output.length = 0;
+  const input = (async function* () { yield Buffer.from('{"jsonrpc":"2.0","id":1,"method":"ping"}\n'); })();
+  expect(await operations.runSettingsCommand(["mcp", "--json"], { ...io, input })).toBe(64);
+  expect(output.join("")).toBe(invalidUsage);
+  output.length = 0;
+  expect(await operations.runSettingsCommand(["mcp", "--json"], { ...io, input }, { bind: host.bind })).toBe(64);
+  expect(output.join("")).toBe(invalidUsage);
+  output.length = 0;
+  expect(await operations.runSettingsCommand(["mcp"], { ...io, input }, host)).toBe(0);
+  expect(output.map(line => JSON.parse(line))).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }]);
 });

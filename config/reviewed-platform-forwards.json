@@ -6005,6 +6005,37 @@
         ]
       },
       {
+        "row": "catalogue-publication-commands",
+        "path": "db/platform/migrations/20261123191000_catalog_publication_commands.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_price_setup_apply(text,text)",
+            "searchPath": "pg_catalog, pg_temp",
+            "beforeSha256": "49e8cce6b3212d7200be5d57abb3a6e602affcf79f47e5a4c2cc6c1dd16048be"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_publication_record_command(jsonb)",
+            "searchPath": "pg_catalog, public"
+          },
+          {
+            "signature": "public.catalog_price_setup_claim(text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_price_setup_lock_context(uuid,uuid)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "subscription-price-policy-close-provenance",
         "path": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",
         "replacedFunctions": [],
@@ -8629,6 +8660,37 @@
           "signature": "public.catalog_publication_admit()",
           "beforeSha256": null,
           "afterSha256": "2fbf383706bd48a87b2921fec1f8823cbef21ba43878edb9f712e3dd1dfe7358"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123191000_catalog_publication_commands.sql",
+      "sha256": "2a83d6f21a923669dcab4230569dcb7c1e4218d87b6c8e99589f857854725907",
+      "functions": [
+        {
+          "signature": "public.catalog_price_setup_apply(text,text)",
+          "beforeSha256": "49e8cce6b3212d7200be5d57abb3a6e602affcf79f47e5a4c2cc6c1dd16048be",
+          "afterSha256": "e1065bff31fcac95287cda85d522c1faf2a317c7334c97b18404821ccf16ff20"
+        },
+        {
+          "signature": "public.catalog_publication_record_command(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "a826a00b99a20aef6b31443498676b41543c3cb73c709dd123689b22995f8445"
+        },
+        {
+          "signature": "public.catalog_price_setup_claim(text,text)",
+          "beforeSha256": null,
+          "afterSha256": "5a595869204bdb43ec368391a56514da5f10d0c54ffa131ba49e53967d17dd5e"
+        },
+        {
+          "signature": "public.catalog_price_setup_lock_context(uuid,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "83091e439b56f944e233b4d33c8ce116175dc0e4c4a2f28eead19b442fe3776c"
+        },
+        {
+          "signature": "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "3e1e509db061a9a32fa96f8173cee517b0f3ac246f6d19b021c0f2382d41573c"
         }
       ]
     },

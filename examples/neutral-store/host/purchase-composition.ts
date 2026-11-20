@@ -11,6 +11,8 @@ import { createNativeQuoteService, quoteFailure } from './quote-composition.ts';
 import { createAcquisitionFinancialPolicy } from '../owned/acquisition-policy.ts';
 import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import { createPostgresDestinationPort } from '@openlup/platform/commerce/server/destinations';
+import { createPostgresNativeCheckoutHostPort } from '@openlup/platform/commerce/server/native-checkout';
+import { createPostgresNativeCheckoutSubscriptionPort } from '@openlup/platform/subscriptions';
 import { createPostgresPurchaseReservationPort, createPostgresAbandonedCheckoutCompensationPort } from '@openlup/platform/inventory';
 import { createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { createPostgresSandboxPaymentSimulator } from '@openlup/platform/payments';
@@ -30,7 +32,7 @@ const only = (payload: Record<string, unknown>, fields: string[]) => Object.keys
 const text = (value: unknown, max: number): value is string => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= max;
 const command = (context: ActionContext, operation: string) => `${operation}:${hash([context.actor.principalRef, context.commandKey])}`;
 const source = (context: ActionContext) => `starter-demo:${context.config.id}`;
-const present = (order: Record<string, unknown>) => ({ orderRef: order.id, status: order.status,
+const present = (order: { id: string; status: string; total_amount_minor: number | string; currency_code: string }) => ({ orderRef: order.id, status: order.status,
   total: { amountMinor: Number(order.total_amount_minor), currency: order.currency_code } });
 
 /** Existing request admission precedes each action; ownership is derived here. */
@@ -42,12 +44,13 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
   const activation = createInitialPurchaseActivation(db, renewal);
   const quotes = createNativeQuoteService(db, predecessors, quoteOptions.keyring);
   const destinations = createPostgresDestinationPort(db);
+  const checkoutHost = createPostgresNativeCheckoutHostPort(db);
+  const subscriptionHost = createPostgresNativeCheckoutSubscriptionPort(db);
   const reservations = createPostgresPurchaseReservationPort(db);
   const compensation = createPostgresAbandonedCheckoutCompensationPort(db);
   const readOrder = async (id: unknown) => {
     if (!uuid(id)) return null;
-    return (await db.query(`SELECT id,client_id,status,total_amount_minor,currency_code,metadata,created_at,recreated_from_order_id
-      FROM public.commerce_orders WHERE id=$1`, [id])).rows[0] ?? null;
+    return checkoutHost.readOrder(id);
   };
   const token = (value: unknown): value is string => typeof value === 'string' && /^rcv_(?:[A-Za-z0-9_-]{43}|[a-f0-9]{64})$/.test(value);
   const authorizedOrder = async (payload: Record<string, unknown>, context: ActionContext) => {
@@ -97,15 +100,16 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (payload.termsAccepted !== true) return refused('starter_terms_required');
     if (!isConfiguredLocale(payload.locale, context.config.market)) return refused('starter_input_invalid');
     const email = context.actor.customerRef
-      ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef, context.actor.principalRef])).rows[0]?.email
+      ? await checkoutHost.readClientEmail({ clientId: context.actor.customerRef, principalId: context.actor.principalRef! })
       : typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
     if (!text(email, context.config.purchase.inputLimits.email) || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return refused('starter_email_invalid');
     const key = command(context, 'checkout');
-    const priorOrder = (await db.query(`SELECT o.id,o.status,o.total_amount_minor,o.currency_code,o.metadata->'quoteSnapshot' AS snapshot,
-      EXISTS(SELECT 1 FROM public.commerce_settlement_intents i WHERE i.order_id=o.id AND i.channel_key='sandbox') AS completed FROM public.commerce_order_draft_receipts r
-      JOIN public.commerce_orders o ON o.id=r.order_id JOIN public.clients c ON c.id=o.client_id
-      WHERE r.idempotency_key=$1 AND ($2::uuid IS NOT NULL AND c.id=$2 OR $2::uuid IS NULL AND lower(btrim(c.email))=$3)`,
-    [key,context.actor.customerRef,email])).rows[0];
+    const priorOrder = await checkoutHost.readPriorDraftOrder({
+      idempotencyKey: key,
+      clientId: context.actor.customerRef,
+      email,
+      channelKey: 'sandbox',
+    });
     const prior = priorOrder?.snapshot as CreateQuoteResponse | undefined;
     let observed;
     try {
@@ -155,21 +159,22 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         revisionSource: 'collection', quantityKind: 'snapshot', skuRef: line.sku,
         totalQuantity: context.config.purchase.stock.quantities[line.sku]!, forSaleQuantity: context.config.purchase.stock.quantities[line.sku]!, reservedOrUnavailableQuantity: 0, syncRunId: context.config.purchase.stock.syncRunId,
       }, inventoryClass: 'sellable', lastSyncedAt: context.config.purchase.stock.collectedAt, staleAfter: context.config.purchase.stock.staleAfter });
-      const items = (await db.query('SELECT id,sku_id,quantity FROM public.commerce_order_items WHERE order_id=$1 ORDER BY line_ordinal', [orderId])).rows;
+      const items = await checkoutHost.readOrderItems(orderId);
       await reservations.reserveOrderItems({ idempotencyKey: `${key}:hold`, orderId, stockSourceKey: source(context),
         items: items.map(item => ({ orderItemId: item.id, skuId: item.sku_id, quantity: item.quantity })),
         paymentStatus: 'created', expiresAt: new Date(new Date(current.created_at).getTime() + context.config.purchase.reservationMinutes * 60 * 1000).toISOString(), now: new Date().toISOString() });
-      if (quote.mode === 'subscription') await db.query('SELECT public.subscription_declare_provisional_activation($1,$2::uuid,$3::integer,$4::timestamptz)',
-        [`${key}:declare`, orderId, quote.cadenceDays, new Date().toISOString()]);
-      await db.query('SELECT public.commerce_open_settlement_intent($1,$2::uuid,$3,$4::bigint,$5,$6::jsonb,$7::timestamptz)',
-        [`${key}:intent`, orderId, 'sandbox', quote.totalMinor, quote.currency, '{}', new Date().toISOString()]);
+      if (quote.mode === 'subscription') await subscriptionHost.declareProvisionalActivation({
+        idempotencyKey: `${key}:declare`, orderId, cadenceDays: quote.cadenceDays!, now: new Date().toISOString() });
+      await checkoutHost.openSettlementIntent({
+        idempotencyKey: `${key}:intent`, orderId, channelKey: 'sandbox', amountMinor: quote.totalMinor, currency: quote.currency, now: new Date().toISOString() });
       let recoveryToken: string | undefined;
       if (created.fresh && current.status === 'pending_payment') {
         recoveryToken = generateCheckoutRecoveryToken();
         const tokenId = await recovery.tokens.issue({ orderId, rawToken: recoveryToken, expiresAt: '' });
-        const expiry = (await db.query('SELECT expires_at FROM public.commerce_checkout_recovery_tokens WHERE id=$1', [tokenId])).rows[0];
+        const expiresAt = recovery.tokens.readExpiry ? await recovery.tokens.readExpiry(tokenId) : null;
+        if (!expiresAt) throw new Error('checkout_recovery_storage_failed');
         await recovery.deliver({ email, rawToken: recoveryToken, orderRef: orderId,
-          expiresAt: new Date(expiry.expires_at).toISOString(), context, locale: payload.locale });
+          expiresAt, context, locale: payload.locale });
       }
       return { ...success({ ...present(current), ...(recoveryToken ? { token: recoveryToken } : {}) }),
         replayed: result.orderDraft.replayed };
@@ -216,7 +221,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     if (!order) return refused('starter_order_not_found');
     // Replacement payments belong exclusively to the recovery transition and its durable attempt receipt.
     if (order.recreated_from_order_id) return refused('starter_recovery_unavailable');
-    const intent = (await db.query('SELECT id,status,external_ref FROM public.commerce_settlement_intents WHERE order_id=$1 AND channel_key=$2', [order.id, 'sandbox'])).rows[0];
+    const intent = await checkoutHost.readSettlementIntent({ orderId: order.id, channelKey: 'sandbox' });
     if (!intent) return refused('starter_sandbox_intent_unavailable');
     try {
       const key = command(context, 'payment');
@@ -250,14 +255,13 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         : key === 'phone' ? context.config.purchase.inputLimits.phone : context.config.purchase.inputLimits.text))
       || (payload.line2 !== undefined && (typeof payload.line2 !== 'string' || payload.line2.length > context.config.purchase.inputLimits.text))
       || payload.countryCode !== context.config.market.country) return refused('starter_input_invalid');
-    const subscription = (await db.query('SELECT template_version FROM public.subscriptions WHERE id=$1 AND client_id=$2', [payload.subscriptionRef, context.actor.customerRef])).rows[0];
-    if (!subscription) return refused('starter_subscription_not_found');
+    const templateVersion = await subscriptionHost.readTemplateVersion({ subscriptionId: payload.subscriptionRef, clientId: context.actor.customerRef });
+    if (templateVersion === null) return refused('starter_subscription_not_found');
     const key = command(context, 'address');
-    const prior = (await db.query(`SELECT command->>'expectedVersion' AS version FROM public.subscription_command_receipts
-      WHERE actor_id=$1 AND idempotency_key=$2`, [context.actor.principalRef, key])).rows[0];
+    const priorVersion = await subscriptionHost.readCommandReceiptExpectedVersion({ actorId: context.actor.principalRef, idempotencyKey: key });
     try {
       const result = await destinations.changeShippingAddress({ actorId: context.actor.principalRef, clientId: context.actor.customerRef,
-        subscriptionId: payload.subscriptionRef, idempotencyKey: key, expectedVersion: prior ? Number(prior.version) : subscription.template_version,
+        subscriptionId: payload.subscriptionRef, idempotencyKey: key, expectedVersion: priorVersion ?? templateVersion,
         newAddress: { recipientName: String(payload.recipientName), line1: String(payload.line1), city: String(payload.city),
           postalCode: String(payload.postalCode), country: context.config.market.country, contactPhone: String(payload.phone),
           ...(payload.line2 ? { line2: String(payload.line2) } : {}) }, now: new Date().toISOString() });

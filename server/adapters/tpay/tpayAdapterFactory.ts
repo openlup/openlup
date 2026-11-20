@@ -5,6 +5,7 @@ import {
   isTpaySandboxOpenApiBaseUrl,
 } from "../../infra/tpay/tpayEnvironment.js";
 import { createTpaySimulatorClient } from "../../infra/tpay/tpaySimulatorClient.js";
+import { toCorePaymentProviderCapability } from "@openlup/platform/payments";
 import {
   createTpayHttpClient,
   createTpayPaymentExecutionAdapter,
@@ -13,17 +14,13 @@ import {
 import type { PaymentProviderCapabilityDescriptor } from "@openlup/core/payment";
 
 /** Package protocol facts plus this host's existing repair and payer fallback policy. */
-export const unattendedChargeCapability: PaymentProviderCapabilityDescriptor = {
-  providerKind: tpayPaymentCapabilities.providerKind,
-  requiresStoredMandateEvidence: tpayPaymentCapabilities.requiresStoredMandateEvidence,
-  assessMandate: tpayPaymentCapabilities.assessMandate,
-  unattendedChargeFlow: tpayPaymentCapabilities.unattendedChargeFlow,
-  methodHealth: tpayPaymentCapabilities.methodHealth,
-  terminalOutcomeReporting: tpayPaymentCapabilities.terminalOutcomeReporting,
-  mandateUpsertIsSubscriptionScoped: tpayPaymentCapabilities.mandateUpsertIsSubscriptionScoped,
-  captureFlows: [{ kind: "scheme_alias_registration", handoff: "payer_supplied_code" }],
-  payerContext: { ...tpayPaymentCapabilities.payerContext, customerRefFallsBackToContactEmail: true },
-};
+export const unattendedChargeCapability: PaymentProviderCapabilityDescriptor = toCorePaymentProviderCapability(
+  tpayPaymentCapabilities,
+  {
+    captureFlows: [{ kind: "scheme_alias_registration", handoff: "payer_supplied_code" }],
+    payerContext: { ...tpayPaymentCapabilities.payerContext, customerRefFallsBackToContactEmail: true },
+  },
+);
 
 export interface TpayAdapterFactoryResult {
   adapter: PaymentExecutionPort;
@@ -129,24 +126,28 @@ function previewOrigin(env: Record<string, string | undefined>): string | null {
 
 /** Keep localized reference presentation outside the contributed protocol implementation. */
 function createReferenceTpayAdapter(options: Parameters<typeof createTpayPaymentExecutionAdapter>[0]): PaymentExecutionPort {
-  const bind = (input: Parameters<PaymentExecutionPort["execute"]>[0]) => createTpayPaymentExecutionAdapter({
+  const resolvePayer: Parameters<typeof createTpayPaymentExecutionAdapter>[0]["resolvePayer"] = (input) =>
+    input.payer ?? (input.customerRef ? { email: input.customerRef, name: "openlup customer" } : null);
+  const baseAdapter = createTpayPaymentExecutionAdapter({ ...options, resolvePayer });
+  const bindAccount = (input: Parameters<PaymentExecutionPort["execute"]>[0]) => createTpayPaymentExecutionAdapter({
     ...options,
-    resolvePayer: input => input.payer ?? (input.customerRef ? { email: input.customerRef, name: "openlup customer" } : null),
+    resolvePayer,
     client: {
       ...options.client,
       createTransaction: transaction => options.client.createTransaction({
         ...transaction,
         successUrl: referenceReturnUrl(transaction.successUrl, options.successUrl, input),
         errorUrl: referenceReturnUrl(transaction.errorUrl, options.errorUrl, input),
-        simulatorContext: input.returnContext === "account" && transaction.simulatorContext
-          ? { ...transaction.simulatorContext, returnPath: "/konto/zamowienie/status" } : transaction.simulatorContext,
+        simulatorContext: transaction.simulatorContext
+          ? { ...transaction.simulatorContext, returnPath: input.returnPath ?? "/konto/zamowienie/status" } : transaction.simulatorContext,
       }),
     },
   });
   return {
-    validateInput: input => bind(input).validateInput?.({ ...input, subjectId: input.petId }),
+    validateInput: input => baseAdapter.validateInput?.({ ...input, subjectId: input.subjectId ?? input.petId }),
     async execute(input) {
-      return await bind(input).execute({ ...input, subjectId: input.petId }) as Awaited<ReturnType<PaymentExecutionPort["execute"]>>;
+      const adapter = input.returnContext === "account" ? bindAccount(input) : baseAdapter;
+      return await adapter.execute({ ...input, subjectId: input.subjectId ?? input.petId }) as Awaited<ReturnType<PaymentExecutionPort["execute"]>>;
     },
   };
 }
@@ -154,14 +155,15 @@ function createReferenceTpayAdapter(options: Parameters<typeof createTpayPayment
 function referenceReturnUrl(value: string, baseUrl: string, input: Parameters<PaymentExecutionPort["execute"]>[0]): string {
   if (input.returnContext !== "account") return value;
   const url = new URL(value);
-  url.pathname = "/konto/zamowienie/status";
+  url.pathname = input.returnPath ?? "/konto/zamowienie/status";
   // Preserve the host's original query and insertion order, including any
-  // pre-existing subject/order keys; only the host owns localized pet scope.
+  // pre-existing subject/order keys; only the host owns localized subject scope.
   url.search = new URL(baseUrl).search;
   if (input.orderId) url.searchParams.set("orderId", input.orderId);
   url.searchParams.set("paymentIntentId", input.paymentIntentId);
   if (input.clientId) url.searchParams.set("clientId", input.clientId);
-  if (input.petId) url.searchParams.set("pet", input.petId);
+  const subjectRef = input.subjectId ?? input.petId;
+  if (subjectRef) url.searchParams.set("pet", subjectRef);
   url.searchParams.set("order", input.orderRef);
   return url.toString();
 }

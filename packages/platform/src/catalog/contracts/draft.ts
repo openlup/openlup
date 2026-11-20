@@ -37,10 +37,6 @@ export interface CatalogDraftListQuery { afterDraftId?: string; limit: number }
 export function canonicalCatalogDraftJson(input: unknown): string {
   return canonicalCatalogJson(input, CATALOG_DRAFT_MAX_BYTES);
 }
-/** @internal Shared scalar and JSON rules for publication envelopes. */
-export function canonicalCatalogPublicationJson(input: unknown): string {
-  return canonicalCatalogJson(input, 16_777_216);
-}
 function canonicalCatalogJson(input: unknown, maxBytes: number): string {
   const ancestors = new Set<object>();
   function visit(value: unknown, depth: number): unknown {

@@ -6201,6 +6201,7 @@ export interface PostgresCheckoutRecoveryTokenInspection extends CheckoutRecover
 }
 export interface PostgresCheckoutRecoveryTokenPort extends CheckoutRecoveryTokenPort {
     inspect(rawToken: string, now?: Date): Promise<PostgresCheckoutRecoveryTokenInspection | null>;
+    readExpiry?(tokenId: string): Promise<string | null>;
 }
 /**
  * Trusted-host service capability for an order the host has already admitted.
@@ -6711,7 +6712,9 @@ export declare function authorize<Response>(req: FulfillmentHandlerRequest, res:
 ## dist/fulfillment/index.d.ts
 
 ```ts
-export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export { FULFILLMENT_STATUS_MAP, FULFILLMENT_STATUS_EFFECTS, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export type { FulfillmentStatusEffect } from "./statusMap.js";
+export { createFulfillmentProviderRegistry } from "./providerRegistry.js";
 export { parseFulfillmentFact, parseFulfillmentTransitionConflict } from "./normalizedFulfillmentFacts.js";
 export { readFulfillmentCapabilities } from "./providerCapabilities.js";
 export { createOutboxOrderPaidFulfillmentHandler, outboxOrderPaidFulfillmentDescriptor, parseOutboxPayload } from "./paidHandoff.js";
@@ -7443,7 +7446,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     skipped: boolean;
     checked: number;
     updated: number;
-    mode: "stage" | "shadow" | "live";
+    mode: "stage" | "live" | "shadow";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -7461,7 +7464,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     skipped: boolean;
     checked: number;
     updated: number;
-    mode: "stage" | "shadow" | "live";
+    mode: "stage" | "live" | "shadow";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -7472,7 +7475,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     checked: number;
     updated: number;
     failures: number;
-    mode: "stage" | "shadow" | "live";
+    mode: "stage" | "live" | "shadow";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -7484,7 +7487,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     checked: number;
     updated: number;
     failures: number;
-    mode: "stage" | "shadow" | "live";
+    mode: "stage" | "live" | "shadow";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -7628,6 +7631,12 @@ export declare function runFulfillmentReconciliationPage(input: Omit<Parameters<
 }>;
 export {};
 ```
+## dist/fulfillment/providerRegistry.d.ts
+
+```ts
+import type { FulfillmentProviderAdapter, FulfillmentProviderRegistry } from "./contracts/conformance.js";
+export declare function createFulfillmentProviderRegistry(adapters: readonly FulfillmentProviderAdapter[]): FulfillmentProviderRegistry;
+```
 ## dist/fulfillment/providerStockSyncWorker.d.ts
 
 ```ts
@@ -7733,8 +7742,8 @@ export declare function createFulfillmentShipmentsOverviewHandler<Response>({ re
 ## dist/fulfillment/statusMap.d.ts
 
 ```ts
-export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "@openlup/core/fulfillment";
-export type { FulfillmentStatusStage, FulfillmentStatusMap } from "@openlup/core/fulfillment";
+export { FULFILLMENT_STATUS_MAP, FULFILLMENT_STATUS_EFFECTS, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "@openlup/core/fulfillment";
+export type { FulfillmentStatusStage, FulfillmentStatusMap, FulfillmentStatusEffect } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/trackingProgress.d.ts
 

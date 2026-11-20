@@ -17,7 +17,7 @@ export interface AutomaticRenewalRunDeps {
   store: RenewalStorePort;
   inventory: {
     expireReservations(input: { now: string; limit?: number }): Promise<number>;
-    reserve(input: { operationId: string; claimToken: string; now: string }): Promise<RenewalReservationResult>;
+    reserve(input: { operationId: string; claimToken: string; now: string; snapshot?: RenewalFrozenSnapshot }): Promise<RenewalReservationResult>;
   };
   settlement: RenewalSettlementPort;
   paymentRails: { resolve(channelKey: string): RenewalPaymentRail | null };
@@ -47,7 +47,7 @@ export async function runOneAutomaticSubscriptionRenewal(deps: AutomaticRenewalR
     if (delivery.deferred) return { ...automaticRenewalResult(claim, "deferred", delivery.reason), ...(delivery.caseRef ? { caseRef: delivery.caseRef } : {}) };
     return refuseRenewalBeforePayment({ store: deps.store, operation: claim, reason: delivery.reason, occurredAt });
   }
-  const reservation = await deps.inventory.reserve({ operationId: claim.operationId, claimToken: claim.claimToken, now: occurredAt });
+  const reservation = await deps.inventory.reserve({ operationId: claim.operationId, claimToken: claim.claimToken, now: occurredAt, snapshot: claim.cycleSnapshot });
   if (!reservation.reserved) return automaticRenewalResult(claim, "refused", reservation.reason ?? "insufficient_atp");
   const prepared = await deps.settlement.prepareRenewal({ operationId: claim.operationId, claimToken: claim.claimToken, now: occurredAt });
   if (prepared.replayed) {

@@ -16,7 +16,7 @@ describe('local obligation contract', () => {
   it.each([false, true])('preserves every existing command, env and resource, pgtap=%s', pgtap => {
     // Pinned to the pre-extraction contributor commands, independently of the new catalogue.
     const expected = [
-      ['policy', ['npm', 'run', 'oss:published-tree', '--', '--policy'], {}, null],
+      ['policy', ['npm', 'run', 'oss:published-tree', '--', '--policy', '--docs-base', candidate.base], {}, null],
       ['inventory', ['npm', 'run', 'oss:published-tree', '--', '--inventory'], {}, null],
       ['dco', ['npm', 'run', 'check:dco-signoff', '--', candidate.base, candidate.head], {}, null],
       ['gitleaks', ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner'], {}, null],
@@ -42,6 +42,18 @@ describe('local obligation contract', () => {
   ])('does not narrow mandatory obligations for %s inputs', (_label, changedPaths) => {
     expect(verificationPlan({ ...candidate, changedPaths }, '/run', '/packs').phases.map(step => step.name)).toEqual(expectedNames);
   });
+  it('scopes gitleaks to the commit range unless gitleaks config or ignore rules changed', () => {
+    const baseCommand = ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner'];
+    const rangeCommand = [...baseCommand, `--log-opts=${candidate.base}..${candidate.head}`];
+    const gitleaksFor = (cand: typeof candidate & { changedPaths?: string[] }) =>
+      verificationPlan(cand, '/run', '/packs').phases.find(step => step.name === 'gitleaks')?.command;
+    expect(gitleaksFor({ ...candidate, changedPaths: ['scripts/verify-local.mjs'] })).toEqual(rangeCommand);
+    expect(gitleaksFor({ ...candidate, changedPaths: ['config/gitleaks.toml'] })).toEqual(baseCommand);
+    expect(gitleaksFor({ ...candidate, changedPaths: ['.gitleaksignore'] })).toEqual(baseCommand);
+    expect(gitleaksFor({ ...candidate, changedPaths: ['src/app.ts', 'config/gitleaks.toml'] })).toEqual(baseCommand);
+    expect(gitleaksFor(candidate)).toEqual(baseCommand);
+    expect(gitleaksFor({ base: candidate.base, head: candidate.base, changedPaths: ['src/app.ts'] })).toEqual(baseCommand);
+  });
   it('refuses unknown, duplicate, missing and wrongly ordered obligations', () => {
     const steps = plan().phases;
     expect(() => validateVerificationSteps([...steps, { name: 'typo' }])).toThrow('unknown verification phase: typo');
@@ -57,18 +69,21 @@ describe('local obligation contract', () => {
     const phases = plan().phases;
     expect([...new Set(phases.map(step => step.context))].sort()).toEqual(['dco', 'gitleaks', 'install-proof', 'self-check', 'test', 'typecheck']);
     for (const context of ['dco', 'gitleaks', 'install-proof', 'self-check', 'test', 'typecheck']) expect(job(context)).not.toBe('');
-    for (const name of ['policy', 'inventory', 'lint', 'typecheck', 'build', 'subscription']) {
+    for (const name of ['inventory', 'lint', 'typecheck', 'build', 'subscription']) {
       const phase = phases.find(step => step.name === name)!;
       const worker = phase.context === 'install-proof' ? 'install-packages' : phase.context;
       expect(job(worker)).toContain(`run: ${phase.command.join(' ')}`);
       expect(phase.owner).not.toBe(''); expect(phase.reason).not.toBe('');
     }
+    const policy = phases.find(step => step.name === 'policy')!;
+    expect(job('self-check')).toContain('run: npm run oss:published-tree -- --policy');
+    expect(policy.owner).not.toBe(''); expect(policy.reason).not.toBe('');
     expect(job('self-check')).toContain('run: node --experimental-strip-types packages/ui/smoke/neutrality.ts');
     expect(job('self-check')).toContain('github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before');
     expect(job('self-check')).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
     expect(job('install-packages')).toContain('scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
     expect(job('install-proof')).toContain('needs: [install-packages, install-browser]');
-    expect(job('test-full-shard')).toContain('npm test -- --shard=${{ matrix.shard }}/8');
+    expect(job('test-full-shard')).toContain('node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8');
     expect(job('test')).toContain('test "$SHARD_RESULT" = "success"');
     expect(plan().hostedOnly.map(item => item.context)).toEqual(['test', 'install-proof', 'native-review']);
   });

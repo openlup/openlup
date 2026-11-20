@@ -2,9 +2,28 @@ import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
 import type { FulfillmentLabelPort } from "./label.js";
 import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
-import type { FulfillmentReadbackPort } from "./readback.js";
+import type { FulfillmentObservationPagePort, FulfillmentReadbackPort } from "./readback.js";
 import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
 import type { FulfillmentStorePort } from "./store.js";
+
+/** Named composable fulfillment provider adapter contract; optional ports match declared capabilities. */
+export interface FulfillmentProviderAdapter {
+  capabilities: FulfillmentCapabilityDescriptor;
+  dispatch: FulfillmentDispatchPort;
+  label?: FulfillmentLabelPort;
+  observation?: FulfillmentObservationPort;
+  readback?: FulfillmentReadbackPort;
+  reconciliation?: FulfillmentObservationPagePort;
+  stockSync?: FulfillmentStockSyncProvider;
+  productSync?: FulfillmentProductSyncProvider;
+}
+
+/** Single-source registry over composed fulfillment provider adapters keyed by providerRef. */
+export interface FulfillmentProviderRegistry {
+  get(providerRef: string): FulfillmentProviderAdapter | null;
+  requireAdapter(providerRef: string): FulfillmentProviderAdapter;
+  refs(): readonly string[];
+}
 
 type Fixture<Method extends (...args: never[]) => unknown> = {
   input: Parameters<Method>; expected: Awaited<ReturnType<Method>>;
@@ -17,11 +36,7 @@ export interface FulfillmentAdapterConformanceSubject {
   approveTrackingUrl?(url: string): boolean;
   observationCodecs?: FulfillmentObservationCodecs;
   subjectId: string;
-  adapter: {
-    capabilities: FulfillmentCapabilityDescriptor; dispatch: FulfillmentDispatchPort;
-    label?: FulfillmentLabelPort; observation?: FulfillmentObservationPort; readback?: FulfillmentReadbackPort;
-    stockSync?: FulfillmentStockSyncProvider; productSync?: FulfillmentProductSyncProvider;
-  };
+  adapter: FulfillmentProviderAdapter;
   /** Count external submission I/O, including attempted calls. Preparation/refusals must not increase it. */
   readIoCount(): number;
   sensitiveValues: readonly string[];

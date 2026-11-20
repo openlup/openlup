@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpRequest, HttpResponse } from "../../../_lib/types/http.js";
 
 const { binding, resolveBinding, authorize } = vi.hoisted(() => ({
@@ -25,7 +25,12 @@ const EVIDENCE = { evidenceReference: "acquisition-survey:33333333-3333-4333-833
 
 describe("direct acquisition evidence BFF handlers", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
     vi.clearAllMocks(); resolveBinding.mockResolvedValue(binding); authorize.mockResolvedValue("9f576216-011a-4f67-8404-3f28f7f624d5");
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
   it("refuses survey and consent commands before resolving target-key ports during drain", async () => {
     const configured = { ...env(), OPENLUP_ACQUISITION_DRAIN_STARTED_AT: new Date(Date.now() - 1000).toISOString(),

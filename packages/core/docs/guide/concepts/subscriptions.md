@@ -27,8 +27,9 @@ below, owns arrival and persisted schedule alignment.
 
 ## Freeze the edit window at activation
 
-See [the activation edit-window setting](../how-to/operate/settings-catalogue.md#subscriptioncreationeditwindowhours)
-and [the subscriber winback policy](../how-to/operate/settings-catalogue.md#subscriber_winback_policy).
+In an extracted starter, pass `show subscriptionCreation.editWindowHours --json`
+to its settings script to find the owned edit window. For the installed policy,
+see [the subscriber winback policy](../how-to/operate/settings-catalogue.md#subscriber_winback_policy).
 
 In 1.2.0,
 `activateNativePurchaseWithRenewal` accepts the optional trusted host input

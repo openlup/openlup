@@ -66,9 +66,9 @@ it("keeps injected capabilities default-off with independent selection, readines
   expect(fulfillment.parseFulfillmentFact).toBe(coreFulfillment.parseFulfillmentFact);
   expect(Object.keys(fulfillment).sort()).toEqual([
     "createCapturedFulfillmentAdapter",
-    "CANONICAL_LOCAL_FULFILLMENT_STATUSES", "CUSTOMER_STEP_SEQUENCE", "FULFILLMENT_STATUS_MAP",
+    "CANONICAL_LOCAL_FULFILLMENT_STATUSES", "CUSTOMER_STEP_SEQUENCE", "FULFILLMENT_STATUS_EFFECTS", "FULFILLMENT_STATUS_MAP",
     "buildCommerceFulfillmentOrdersListResponse", "buildCommerceFulfillmentOrderDetailResponse", "createFulfillmentShipmentsOverviewHandler", "fulfillmentProgressPresentation",
-    "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentServices", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",
+    "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentProviderRegistry", "createFulfillmentServices", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",
     "verifyAndNormalizeFulfillmentObservation", "fulfillmentIngressHttpResult", "applyFulfillmentObservationEffects", "reconcileFulfillmentObservations", "runFulfillmentReconciliationPage", "runFulfillmentStockSyncWorker", "runFulfillmentProductSyncWorker", "createFulfillmentLowStockEvidenceHandler", "createProductReconciliationEvidenceHandler", "runFulfillmentAdapterConformance",
     "createPostgresFulfillmentShipmentSpinePort", "createPostgresFulfillmentLowStockEvidencePort", "createPostgresFulfillmentStockSyncPort", "createPostgresPaidFulfillmentRecoveryOpsPort", "createPostgresFulfillmentDispatchStore", "createPostgresPaidFulfillmentHandoffStore", "createPostgresDeliveryAlignmentPort", "readDeliveryAlignment", "FULFILLMENT_MIGRATIONS", "FULFILLMENT_NATIVE_CAPABILITIES",
     "canonicalStatusToken", "customerStepFromSignals", "outboxOrderPaidFulfillmentDescriptor", "parseFulfillmentFact", "parseFulfillmentTransitionConflict", "parseOutboxPayload",

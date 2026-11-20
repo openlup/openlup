@@ -5,7 +5,6 @@ import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.j
 import { sendBffError } from "../../../_lib/bff/response.js";
 import {
   createPaymentRecoverySetupHandler,
-  type StripeSetupIntentCallback,
 } from "../../../domains/payment/paymentRecoverySetupHandler.js";
 import {
   createSupabaseSubscriptionRecoveryPort,
@@ -26,7 +25,7 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
       enabled: paymentRecoveryEnabled,
       authenticateCustomer: async () => ({ ok: false }),
       recoveryPort: emptyPort(),
-      createSetupIntent: emptyCreateSetupIntent,
+      methodPort: emptyMethodPort,
       ensureCustomer: emptyEnsureCustomer,
     })(req, res);
   }
@@ -52,24 +51,20 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
 
   const methodPort: PaymentRepairMethodPort = {
     async setupMethod({ customer, metadata, idempotencyKey }) {
-    const intent = await stripeClient.createSetupIntent(
-      { customer, usage: "off_session", metadata },
-      { idempotencyKey },
-    );
-    if (!intent.client_secret) {
-      throw new Error("Stripe SetupIntent missing client_secret");
-    }
-      return { kind: "ready", setupRef: intent.id,
+      const intent = await stripeClient.createSetupIntent(
+        { customer, usage: "off_session", metadata },
+        { idempotencyKey },
+      );
+      if (!intent.client_secret) {
+        throw new Error("Stripe SetupIntent missing client_secret");
+      }
+      return {
+        kind: "ready",
+        setupRef: intent.id,
         handoff: { kind: "client-confirmed", payload: intent.client_secret as TransientSecret },
-        replayed: false };
+        replayed: false,
+      };
     },
-  };
-  const createSetupIntent: StripeSetupIntentCallback = async (input) => {
-    const result = await methodPort.setupMethod(input);
-    if (result.kind === "unsupported" || result.handoff.kind !== "client-confirmed") {
-      throw new Error("payment_repair_method_setup_unsupported");
-    }
-    return { setupIntentId: result.setupRef, clientSecret: result.handoff.payload, replayed: result.replayed };
   };
 
   return createPaymentRecoverySetupHandler({
@@ -77,7 +72,7 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     authenticateCustomer: () => authenticateCustomerUser(clients.customerClient, accessToken),
     recoveryPort: createSupabaseSubscriptionRecoveryPort(clients.serviceClient as unknown as PaymentRecoverySupabaseClient),
     caseDisplayFacts: createDunningCaseDisplayFactsPort(clients.serviceClient as never),
-    createSetupIntent,
+    methodPort,
     ensureCustomer: ({ clientId, metadata, idempotencyKey }) => {
       if (!stripeClient.ensureCustomer) throw new Error("Stripe ensureCustomer unavailable");
       return stripeClient.ensureCustomer({ clientId, metadata }, { idempotencyKey });
@@ -105,8 +100,10 @@ function emptyPort() {
   };
 }
 
-const emptyCreateSetupIntent: StripeSetupIntentCallback = async () => {
-  throw new Error("Stripe SetupIntent callback unavailable");
+const emptyMethodPort: PaymentRepairMethodPort = {
+  async setupMethod() {
+    throw new Error("Payment repair method port unavailable");
+  },
 };
 
 const emptyEnsureCustomer = async (): Promise<string> => {

@@ -390,12 +390,25 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
     return { name: metadata.name, version, filename: pack.filename, integrity: pack.integrity, sha256: createHash("sha256").update(bytes).digest("hex") };
   });
   const required = missing ? "new.mjs" : "fragments.ts", starter = "source/examples/neutral-store/";
+  const starterKeys = JSON.parse(readFileSync(new URL("./fixtures/starter-settings.main.json", import.meta.url), "utf8"))
+    .settings.map(({ key }: { key: string }) => key);
   const files = {
     "owned/store.config.ts": "export default '#3d6657';",
     "owned/fragments.ts": "export default 'offer-intro';",
     "owned/new.mjs": "export default true;",
     "AGENTS.md": "# App guide\n\n## Change a business setting\n\nRun the settings script.\n",
-    [starterSettingsHost]: "export function createSettingsBindings() { return {}; }",
+    [starterSettingsHost]: `import { z } from "zod";
+    export function createSettingsBindings() {
+      return { file: { configuration: "sample", validate() {}, entries: {
+        ...Object.fromEntries(${JSON.stringify(starterKeys)}.map(key => [key, {
+          value: 1, location: { file: "owned/store.config.ts", symbol: key },
+          descriptor: { domain: "shipping", goal: "Free shipping", schema: z.number(),
+            effect: { appliesTo: "Estimates", impact: "money", frozenOn: [] } },
+        }])),
+        inventory_renewal_protection: { value: { revision: "sample", renewalProtectionDays: 14 },
+          location: { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" } },
+      } } };
+    }`,
     "test/candidate.test.mjs": `import {readFileSync} from 'node:fs'; readFileSync(new URL('../owned/${required}', import.meta.url));`,
     [reminderInstallationTest]: "import 'node:test';",
     [starterLifecycle]: readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"),
@@ -406,7 +419,7 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   for (const [path, bytes] of Object.entries(files)) write(starter + path, bytes);
   const ownership = { owned: Object.keys(files).filter(path => path.startsWith("owned/") || path === "AGENTS.md"), managed: ["ownership.json", "package.json", ...Object.keys(files).filter(path => !path.startsWith("owned/") && path !== "AGENTS.md")], generated: [], sourceOnly: [] };
   write(starter + "ownership.json", ownership); write(starter + "starter-release.json", {});
-  write(starter + "package.json", { name: "candidate-fixture", version: "0.0.0", private: true, type: "module", dependencies, scripts: { settings: "openlup settings --app ./owned/settings-host.ts", test: "node --experimental-strip-types --test test/candidate.test.mjs", typecheck: `node --check owned/${required}`, build: "node --version" } });
+  write(starter + "package.json", { name: "candidate-fixture", version: "0.0.0", private: true, type: "module", dependencies: { ...dependencies, zod: "4.6.6" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts", test: "node --experimental-strip-types --test test/candidate.test.mjs", typecheck: `node --check owned/${required}`, build: "node --version" } });
   run("git", ["init", "--initial-branch=main"]); run("git", ["add", "."]);
   run("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@localhost", "-c", "commit.gpgsign=false", "commit", "-m", "Candidate fixture"]);
   run("git", ["remote", "add", "origin", "https://github.com/openlup/openlup.git"]);
@@ -417,6 +430,9 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   const result = spawnSync(process.execPath, [join(source, "scripts/packages/exact-set-qualification.mjs"), "openlup-core-v" + version, commit, receipt, "--candidate", manifest], { cwd: source, env: { ...env, PATH: join(directory, "bin") + ":" + env.PATH }, encoding: "utf8", timeout: 180_000 });
   expect(existsSync(receipt), result.stderr).toBe(true); const evidence = JSON.parse(readFileSync(receipt, "utf8")); expect(result.status, result.stderr).toBe(missing ? 1 : 0);
   expect(evidence).toMatchObject({ mode: "candidate", verificationSource: "candidate, local digest-verified", result: missing ? "FAIL" : "PASS", upgrade: { result: missing ? "FAIL" : "PASS" } });
+  const smokes = evidence.upgrade.checks.filter(({ command }: { command: string[] }) =>
+    command[0]?.endsWith("/node_modules/.bin/openlup") && command.includes("check") && command[1] === "settings");
+  expect(smokes.map(({ result }: { result: string }) => result)).toEqual(["PASS", "PASS"]);
   expect(evidence.upgrade.managedConflict).toEqual({ path: "test/candidate.test.mjs", action: "create" });
   expect(evidence.upgrade.phases).toHaveLength((missing ? 10 : 11) + starterDisplayFiles.length);
   expect(evidence.upgrade.phases).toContainEqual({ name: "reminder-test-reconciliation", result: "PASS" });

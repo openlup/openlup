@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
-import { settingDescriptorSchema, settingRefusalSchema, toolInputSchema } from "../../src/operations/server/toolSchema.js";
+import { settingDescriptorSchema } from "../../src/operations/server/toolSchema.js";
 import { describe, expect, it, vi } from "vitest";
 import { previewRenewalStockProtection, renewalStockProtectionPreviewResult, describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
-import { explainSetting, listSettings, previewSetting, refuseSettingsPreview, settingsPreviewRequest, settingsReadTools, showSetting } from "../../src/operations/server/settingsRead.js";
-import { loadSettingsCatalogue, settingsListRequest } from "../../src/operations/server/settingsCatalog.js";
-import { z } from "zod";
+import { explainSetting, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
+import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue } from "../../src/operations/server/settingsCatalog.js";
+import { settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
 
 describe("renewal stock policy descriptor", () => {
   it("matches the previous validator's acceptance, normalized value and refusal code", () => {
@@ -83,8 +83,8 @@ describe("settings show", () => {
 
   it("rejects the same unsupported descriptor version as the catalogue schema", () => {
     const { entries, showResult } = loadSettingsCatalogue();
-    const value = entries.find(entry => entry.kind === "code");
-    if (!value) throw new Error("Expected a code descriptor");
+    const value = entries.find(entry => entry.kind === "installed");
+    if (!value) throw new Error("Expected an installed descriptor");
     const setting = { ...value, schemaVersion: 2 };
     expect(settingDescriptorSchema.safeParse(setting).success).toBe(false);
     expect(showResult.safeParse({ schemaVersion: 1, setting, observation: { state: "offline" } }).success).toBe(false);
@@ -163,16 +163,81 @@ describe("settings show", () => {
   });
 });
 
-it.each([
-  ["inventory buffer", "inventory_renewal_protection"],
-  ["free shipping", "offer.freeShippingFromMinor"],
-  ["subscription discount", "offer.subscriptionDiscountBps"],
-  ["delivery interval", "subscriptionOffers.deliveryCycles"],
-  ["checkout reservation", "purchase.reservationMinutes"],
-])("finds %s in the settings list", (goal, key) => {
+it("finds inventory buffer in the packaged settings list", () => {
   const { listResult } = loadSettingsCatalogue();
-  const entries = listResult.parse(listSettings({ goal })).entries;
-  expect(entries[0]?.key).toBe(key);
+  const entries = listResult.parse(listSettings({ goal: "inventory buffer" })).entries;
+  expect(entries[0]?.key).toBe("inventory_renewal_protection");
+});
+
+describe("settings goal search", () => {
+  const catalogue = loadSettingsCatalogue();
+
+  it.each(["配送", "!!!", "vat"])("returns no entries without a matching token for %s", goal => {
+    expect(catalogue.listResult.parse(listSettings({ goal })).entries).toEqual([]);
+  });
+
+  it.each([
+    ["renewal stock", "inventory_renewal_protection"],
+    ["inventory buffer", "inventory_renewal_protection"],
+    ["renewal retry policy", "subscriptions.retrySchedule"],
+    ["skus", "catalog.optionalGtin"],
+  ])("includes %s matches such as %s", (goal, key) => {
+    const { entries } = catalogue.listResult.parse(listSettings({ goal }));
+    expect(entries.map(entry => entry.key)).toContain(key);
+  });
+
+  it("ignores a nondecimal numeric character in a goal", () => {
+    expect(listSettings({ goal: "renewal ⅕" })).toEqual(listSettings({ goal: "renewal" }));
+  });
+
+  it("puts the matching camelCase key first", () => {
+    const { entries } = catalogue.listResult.parse(listSettings({ goal: "shipping.addressRegions" }));
+    expect(entries[0]?.key).toBe("shipping.addressRegions");
+  });
+
+  const appKey = "offer.freeShippingFromMinor";
+  const skuKey = "offer.maxSKUCount";
+  const deliveryKey = "offer.deliveryWindow";
+  const appCatalogue = catalogueWithAppSettings([
+    [appKey, "Set the free shipping threshold in currency minor units."],
+    [skuKey, "Set the maximum number of items per offer."],
+    [deliveryKey, "配送の時間帯を設定する。"],
+  ].map(([key, goal]) => settingDescriptorSchema.parse({
+    schemaVersion: 1,
+    key,
+    domain: "offer",
+    kind: "code",
+    goal,
+    runtime: { level: "read-only", reason: "Edit the application configuration and deploy." },
+    change: { file: "offer.ts", symbol: key },
+    rules: [],
+    examples: [],
+    fallback: null,
+    defaultBasis: { kind: "neutral" },
+    whyThisDefault: "The application config supplies the value.",
+    effect: { appliesTo: "Future orders", frozenOn: [], impact: "money" },
+  })));
+
+  it.each([
+    ["free shiping threshold", appKey, 0],
+    ["shipping", appKey, undefined],
+    ["count", skuKey, undefined],
+    ["sku", skuKey, undefined],
+    ["maxskucount", skuKey, undefined],
+    ["配送", deliveryKey, undefined],
+  ] as const)("finds the app declaration for %s", (goal, key, first) => {
+    const { entries } = appCatalogue.listResult.parse(listCatalogueSettings({ goal }, appCatalogue));
+    const keys = entries.map(entry => entry.key);
+    expect(keys).toContain(key);
+    if (first !== undefined) expect(keys[first]).toBe(key);
+  });
+
+  it("limits partial matches to ten and preserves catalogue order for ties", () => {
+    const full = catalogue.listResult.parse(listSettings({ goal: "a" })).entries;
+    expect(full.length).toBeGreaterThan(10);
+    const partial = catalogue.listResult.parse(listSettings({ goal: "a qzxunique" })).entries;
+    expect(partial).toEqual(full.slice(0, 10));
+  });
 });
 
 it("accepts every catalogue list summary and enforces the compact branch", () => {
@@ -185,28 +250,9 @@ it("accepts every catalogue list summary and enforces the compact branch", () =>
   expect(listResult.safeParse({ ...listed, entries: [{ ...cap, change: { operation: "apply" } }] }).success).toBe(false);
 });
 
-it("projects read-only MCP inputs and results from the settings read contracts", async () => {
-  const [list, show, preview] = settingsReadTools;
-  const { showRequest, showResult } = loadSettingsCatalogue();
-  expect(settingsReadTools.map(({ name }) => name)).toEqual(["settings__list", "settings__show", "settings__preview"]);
-  for (const [tool, request] of [
-    [list, settingsListRequest], [show, showRequest], [preview, settingsPreviewRequest],
-  ] as const) {
-    const { inputSchema, outputSchema } = tool;
-    expect(tool.inputSchema).toBe(inputSchema);
-    expect(tool.outputSchema).toBe(outputSchema);
-    expect(tool.annotations).toEqual({ readOnlyHint: true });
-    expect(tool.inputSchema).toEqual(z.toJSONSchema(request, { target: "draft-07", io: "input", reused: "inline" }));
-  }
-  const { byCode } = loadSettingsCatalogue();
-  expect(preview.outputSchema).toEqual({
-    type: "object",
-    ...toolInputSchema(z.union([renewalStockProtectionPreviewResult, z.strictObject({
-      schemaVersion: z.literal(1), refusal: settingRefusalSchema([...byCode.keys()]),
-    })]), "output"),
-  });
+it("keeps direct reads on the catalogue contract", async () => {
+  const { showResult } = loadSettingsCatalogue();
   const key = "inventory_renewal_protection";
-  expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
   expect(showResult.parse(await showSetting({ key })).setting).toHaveProperty("schema.properties.renewalProtectionDays", expect.objectContaining({ minimum: 1, maximum: 3660 }));
   expect(await showSetting({ key: "unknown" })).toEqual({ refusal: expect.objectContaining({
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
@@ -316,10 +362,19 @@ it("passes exact SKU identifiers through and deduplicates only exact matches", a
   expect(run).toHaveBeenCalledExactlyOnceWith(proposed, expect.objectContaining({ skus: ["SKU-1", " SKU-1 "] }));
 });
 
-it("matches the pinned serialized schemas of the list and show settings tools", () => {
+it("pins strict read-only schemas for the five binary tools", () => {
   const expected = readFileSync(new URL("./settingsReadToolSchemas.main.json", import.meta.url), "utf8");
-  const schemas = settingsReadTools
-    .filter(({ name }) => name === "settings__list" || name === "settings__show")
-    .map(({ name, inputSchema, outputSchema }) => ({ name, inputSchema, outputSchema }));
-  expect(JSON.stringify(schemas) + "\n").toBe(expected);
+  const tools = settingsMcpTools(renewalStockProtectionPreviewResult);
+  expect(JSON.stringify(tools.map(({ definition }) => definition)) + "\n").toBe(expected);
+  const refusal = refuseSettingsPreview("commerce_setting_unknown");
+  for (const { input, output, definition } of tools) {
+    expect(definition.annotations).toEqual({ readOnlyHint: true });
+    expect(definition.inputSchema).toMatchObject({ type: "object", additionalProperties: false });
+    expect(input.safeParse({ databaseUrl: "ignored" }).success).toBe(false);
+    expect(input.safeParse([]).success).toBe(false);
+    expect(output.safeParse(refusal).success).toBe(true);
+    expect(output.safeParse({ ...refusal, extra: true }).success).toBe(false);
+    expect(output.safeParse({ ...refusal, refusal: { ...refusal.refusal, extra: true } }).success).toBe(false);
+    expect(output.safeParse({ schemaVersion: 1 }).success).toBe(false);
+  }
 });

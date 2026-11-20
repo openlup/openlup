@@ -40,7 +40,11 @@ function readSettingsCatalogue() {
   const refusalSchema = settingRefusalSchema(refusals.map(({ code }) => code)
     .filter(code => !code.startsWith("commerce_setting_preview_")));
 
-  const key = z.enum(entries.map(entry => entry.key));
+  return { entries, searchTerms, previewOutputSchema, byCode, refusalSchema, ...settingsDocuments(entries) };
+}
+
+export function settingsDocuments(entries?: readonly z.infer<typeof descriptor>[]) {
+  const key = entries ? z.enum(entries.map(entry => entry.key)) : z.string().min(1);
   const [value, ...facts] = descriptor.options;
   const summaryFields = Object.fromEntries(
     settingDescriptorSummary.keyof().options.map(field => [field, true]),
@@ -55,5 +59,52 @@ function readSettingsCatalogue() {
   const showRequest = z.strictObject({ key });
   const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema });
   const listResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), entries: z.array(summary) });
-  return { entries, searchTerms, previewOutputSchema, byCode, refusalSchema, showRequest, showResult, listResult };
+  return { showRequest, showResult, listResult };
+}
+
+export const fileObservationSchema = z.discriminatedUnion("state", [
+  ...observationSchema.options,
+  z.strictObject({ state: z.literal("file"), configuration: z.string(), value: z.json() }),
+]);
+
+export function settingsEntriesWithAppSettings(additions: readonly z.infer<typeof descriptor>[] = []) {
+  const { entries } = loadSettingsCatalogue();
+  return additions.length ? [...entries, ...additions].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0) : entries;
+}
+
+export function catalogueWithAppSettings(additions: readonly z.infer<typeof descriptor>[]) {
+  const catalogue = loadSettingsCatalogue();
+  const entries = settingsEntriesWithAppSettings(additions);
+  const documents = additions.length ? settingsDocuments(entries) : catalogue;
+  return { ...catalogue, ...documents, entries, appShowResult: documents.showResult.extend({ observation: fileObservationSchema }) };
+}
+
+function searchTokens(text: string) {
+  return text.toLowerCase().match(/[\p{L}\p{Nd}]+/gu) ?? [];
+}
+
+export function listCatalogueSettings(input: unknown, catalogue?: ReturnType<typeof loadSettingsCatalogue>) {
+  const parsed = settingsListRequest.safeParse(input);
+  if (!parsed.success) return { refusal: loadSettingsCatalogue().byCode.get("commerce_setting_read_input_invalid")! };
+  const { entries, listResult, searchTerms } = catalogue ?? loadSettingsCatalogue();
+  const { goal } = parsed.data;
+  let matches = entries;
+  if (goal !== undefined) {
+    const words = searchTokens(goal);
+    const scored = entries.map(entry => {
+      const text = `${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`;
+      const splitText = text.replace(/([\p{Ll}\p{Nd}])(\p{Lu})/gu, "$1 $2")
+        .replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu, "$1 $2");
+      const tokens = [...new Set([...searchTokens(text), ...searchTokens(splitText)])];
+      const count = words.filter(word => tokens.some(token => token.startsWith(word))).length;
+      return { entry, count };
+    }).filter(({ count }) => count > 0);
+    const complete = scored.filter(({ count }) => count === words.length);
+    matches = (complete.length > 0 ? complete : scored.sort((a, b) => b.count - a.count).slice(0, 10))
+      .map(({ entry }) => entry);
+  }
+  return listResult.parse({
+    schemaVersion: settingsVersion,
+    entries: matches.map(({ key, goal, kind, runtime, change }) => ({ key, goal, kind, runtime, change })),
+  });
 }

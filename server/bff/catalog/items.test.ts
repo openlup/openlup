@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import handler from "./items.js";
 import type { HttpRequest, HttpResponse } from "../../_lib/types/http.js";
@@ -12,7 +12,11 @@ function response(): HttpResponse {
 
 describe("local reference catalog BFF", () => {
   beforeEach(() => {
-    delete process.env.OSS_REFERENCE_STORE_PROFILE;
+    vi.stubEnv("OSS_REFERENCE_STORE_PROFILE", undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("returns 404 while the local profile is inactive", async () => {

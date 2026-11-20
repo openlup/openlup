@@ -192,3 +192,88 @@ it("refuses invalid settling money through the existing amount mismatch response
     }
   }
 });
+
+it("attaches host-resolved reusable method owner for method and money evidence without losing audit payload", async () => {
+  const ingestedMethod: unknown[] = [];
+  const methodIngress = createVerifiedPaymentIngress({
+    provider: "provider-a",
+    verifyPort: {
+      verifyAndNormalize: async () => ({
+        kind: "method",
+        provider: "provider-a",
+        providerEventId: "evt-method-owner",
+        providerOccurredAt: AT,
+        fingerprint: "fp-method-owner",
+        outcome: "registered",
+        methodRef: "pm_owner_1",
+        setupRef: "seti_owner_1",
+        intentRef: "intent-1",
+        reusableMethod: {
+          providerCustomerRef: "cus_owner_1",
+          providerMethodRef: "pm_owner_1",
+          providerMandateRef: null,
+          methodKind: "card",
+          status: "active",
+          consentSnapshot: { source: "webhook" },
+          expiresAt: null,
+        },
+      }),
+    },
+    paymentControlPort: {
+      ingestPaymentEvent: async (ev) => {
+        ingestedMethod.push(ev);
+        return { paymentEventId: "ev-1", paymentIntentId: null, paymentAttemptId: null, replayed: false, occurredAt: AT };
+      },
+    },
+    resolveMethodOwner: async () => ({ clientId: "client-1", subscriptionId: "sub-1" }),
+  });
+  expect((await methodIngress.receive(input)).status).toBe(200);
+  expect(ingestedMethod[0]).toMatchObject({
+    providerPaymentId: "seti_owner_1",
+    reusableMethod: {
+      clientId: "client-1",
+      subscriptionId: "sub-1",
+      providerCustomerRef: "cus_owner_1",
+      providerMethodRef: "pm_owner_1",
+      methodKind: "card",
+      status: "active",
+    },
+  });
+
+  const ingestedMoney: unknown[] = [];
+  const moneyIngress = createVerifiedPaymentIngress({
+    provider: "provider-a",
+    verifyPort: {
+      verifyAndNormalize: async () => ({
+        ...evidence,
+        providerEventId: "evt-money-owner",
+        capturedAmountBasis: "provider_capture_v1",
+        reusableMethod: {
+          providerCustomerRef: "cus_owner_2",
+          providerMethodRef: "pm_owner_2",
+          providerMandateRef: null,
+          methodKind: "card",
+          status: "active",
+        },
+      }),
+    },
+    paymentControlPort: {
+      ingestPaymentEvent: async (ev) => {
+        ingestedMoney.push(ev);
+        return { paymentEventId: "ev-2", paymentIntentId: "intent-original", paymentAttemptId: "attempt-original", replayed: false, occurredAt: AT };
+      },
+      applyPaymentResult: async () => ({ replayed: false }),
+    },
+    resolveSavedMethodOwner: async () => ({ clientId: "client-2", subscriptionId: null }),
+  });
+  expect((await moneyIngress.receive(input)).status).toBe(200);
+  expect(ingestedMoney[0]).toMatchObject({
+    capturedAmountBasis: "provider_capture_v1",
+    reusableMethod: {
+      clientId: "client-2",
+      subscriptionId: null,
+      providerCustomerRef: "cus_owner_2",
+      providerMethodRef: "pm_owner_2",
+    },
+  });
+});

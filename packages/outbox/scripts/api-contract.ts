@@ -21,12 +21,36 @@ for (const [subpath, target] of Object.entries(codeExports)) {
   assert(target.types === `./${contract.entrypoint}` && target.import === target.default && target.import === target.types.replace(/\.d\.ts$/, ".js"), "declarations and runtime exports differ");
 }
 
+const maturityRank = { testing: 0, experimental: 1, stable: 2 };
 for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
+  assert(Object.hasOwn(maturityRank, contract.maturity), `unknown maturity ${contract.maturity} for ${subpath}`);
+}
+const entrypoints = new Map(Object.entries(gates.packageSurface).map(([subpath, contract]) => {
   const entrypoint = resolveInsidePackage(contract.entrypoint);
-  const snapshotPath = resolveInsidePackage(contract.snapshot);
   assert(existsSync(entrypoint), `missing declaration entrypoint ${contract.entrypoint}; run npm run build`);
+  return [subpath, entrypoint];
+}));
 
-  const snapshot = renderSnapshot(subpath, contract, entrypoint);
+const ownerByFile = new Map();
+const sortedSubpaths = [...entrypoints.keys()].sort((left, right) => {
+  const rankDiff = maturityRank[gates.packageSurface[right].maturity] - maturityRank[gates.packageSurface[left].maturity];
+  return rankDiff !== 0 ? rankDiff : left.localeCompare(right);
+});
+for (const subpath of sortedSubpaths) {
+  for (const file of collectReexportedFiles(entrypoints.get(subpath))) {
+    if (!ownerByFile.has(file)) ownerByFile.set(file, subpath);
+  }
+}
+
+const declarationsBySubpath = new Map([...entrypoints].map(([subpath, entrypoint]) => [subpath, collectDeclarationGraph(subpath, [entrypoint])]));
+const scopedFiles = new Set([...declarationsBySubpath.values()].flat());
+const missingFiles = collectDeclarationGraph(null, [...entrypoints.values()])
+  .filter((file) => !scopedFiles.has(file)).map((file) => toPosix(relative(packageRoot, file)));
+assert(missingFiles.length === 0, `API snapshots omit declarations: ${missingFiles.join(", ")}; make each missing declaration reachable from its owning subpath entrypoint`);
+
+for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
+  const snapshotPath = resolveInsidePackage(contract.snapshot);
+  const snapshot = renderSnapshot(subpath, contract, declarationsBySubpath.get(subpath));
   if (update) {
     const previous = existsSync(snapshotPath) ? readFileSync(snapshotPath, "utf8") : undefined;
     snapshotsChanged ||= previous !== snapshot;
@@ -47,8 +71,7 @@ for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
 
 if (update && snapshotsChanged) assertChangelogChanged();
 
-function renderSnapshot(subpath, contract, entrypoint) {
-  const declarations = collectDeclarationGraph(entrypoint);
+function renderSnapshot(subpath, contract, declarations) {
   const sections = declarations.map((file) => {
     const path = toPosix(relative(packageRoot, file));
     const source = readFileSync(file, "utf8").replace(/^\/\/# sourceMappingURL=.*$/gm, "").trimEnd();
@@ -69,9 +92,31 @@ function renderSnapshot(subpath, contract, entrypoint) {
   ].join("\n");
 }
 
-function collectDeclarationGraph(entrypoint) {
+function collectReexportedFiles(entrypoint) {
   const found = new Set();
   const pending = [entrypoint];
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (found.has(file)) continue;
+    assert(file.startsWith(`${distRoot}${sep}`), `declaration escaped dist: ${file}`);
+    assert(existsSync(file), `missing referenced declaration ${toPosix(relative(packageRoot, file))}`);
+    found.add(file);
+    const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const localReexports = collectLocalReexportedNames(source);
+    visit(source, localReexports, ({ specifier, reexport }) => {
+      if (!reexport || !specifier.startsWith(".")) return;
+      const target = resolveDeclaration(file, specifier);
+      assert(target, `cannot resolve ${specifier} from ${toPosix(relative(packageRoot, file))}`);
+      assert(target.startsWith(`${distRoot}${sep}`), `declaration escaped dist: ${target}`);
+      pending.push(target);
+    });
+  }
+  return found;
+}
+
+function collectDeclarationGraph(subpath, entrypointsList) {
+  const found = new Set();
+  const pending = [...entrypointsList];
 
   while (pending.length > 0) {
     const file = pending.pop();
@@ -87,32 +132,64 @@ function collectDeclarationGraph(entrypoint) {
       true,
       ts.ScriptKind.TS,
     );
+    const localReexports = collectLocalReexportedNames(source);
 
-    visit(source, (specifier) => {
+    visit(source, localReexports, ({ specifier, reexport }) => {
       if (!specifier.startsWith(".")) return;
       const target = resolveDeclaration(file, specifier);
       assert(target, `cannot resolve ${specifier} from ${toPosix(relative(packageRoot, file))}`);
-      pending.push(target);
+      assert(target.startsWith(`${distRoot}${sep}`), `declaration escaped dist: ${target}`);
+      if (subpath === null || reexport) {
+        pending.push(target);
+        return;
+      }
+      const targetOwner = ownerByFile.get(target) ?? null;
+      if (targetOwner === null || targetOwner === subpath ||
+          maturityRank[gates.packageSurface[targetOwner].maturity] < maturityRank[gates.packageSurface[subpath].maturity]) {
+        pending.push(target);
+      }
     });
   }
 
   return [...found].sort((left, right) => left.localeCompare(right));
 }
 
-function visit(node, onModuleSpecifier) {
-  if (
-    (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-    node.moduleSpecifier &&
-    ts.isStringLiteral(node.moduleSpecifier)
-  ) {
-    onModuleSpecifier(node.moduleSpecifier.text);
+function collectLocalReexportedNames(source) {
+  const names = new Set();
+  for (const statement of source.statements) {
+    if (ts.isExportDeclaration(statement) && !statement.moduleSpecifier && statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+      for (const element of statement.exportClause.elements) {
+        names.add((element.propertyName ?? element.name).text);
+      }
+    } else if (ts.isExportAssignment(statement) && !statement.isExportEquals && ts.isIdentifier(statement.expression)) {
+      names.add(statement.expression.text);
+    }
+  }
+  return names;
+}
+
+function importReexportsLocalName(node, localReexports) {
+  const clause = node.importClause;
+  if (!clause || localReexports.size === 0) return false;
+  if (clause.name && localReexports.has(clause.name.text)) return true;
+  const bindings = clause.namedBindings;
+  if (!bindings) return false;
+  if (ts.isNamespaceImport(bindings)) return localReexports.has(bindings.name.text);
+  return bindings.elements.some((element) => localReexports.has(element.name.text));
+}
+
+function visit(node, localReexports, onModuleSpecifier) {
+  if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    onModuleSpecifier({ specifier: node.moduleSpecifier.text, reexport: true });
+  } else if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    onModuleSpecifier({ specifier: node.moduleSpecifier.text, reexport: importReexportsLocalName(node, localReexports) });
   } else if (ts.isImportTypeNode(node)) {
     const argument = node.argument;
     if (ts.isLiteralTypeNode(argument) && ts.isStringLiteral(argument.literal)) {
-      onModuleSpecifier(argument.literal.text);
+      onModuleSpecifier({ specifier: argument.literal.text, reexport: false });
     }
   }
-  ts.forEachChild(node, (child) => visit(child, onModuleSpecifier));
+  ts.forEachChild(node, (child) => visit(child, localReexports, onModuleSpecifier));
 }
 
 function resolveDeclaration(fromFile, specifier) {

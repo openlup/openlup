@@ -1,10 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { previewSetting, settingsReadTools } from "@openlup/platform/operations/server";
+// eslint-disable-next-line no-restricted-imports -- exercise the binary-private adapter with the recording PostgreSQL binder
+import { callSettingsTool, settingsMcpTools } from "../../packages/platform/src/operations/server/settingsMcp.js";
+// eslint-disable-next-line no-restricted-imports -- preserve the direct dispatcher witness without exporting a mountable dispatcher
+import { previewSetting } from "../../packages/platform/src/operations/server/settingsRead.js";
 import { installCheckoutRecoveryReminderSchedule } from "@openlup/platform/commerce/server";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -405,48 +404,38 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
   const url = new URL(resource!.connectionString);
   url.username = installation.runtimeLogin;
   url.password = "synthetic-runtime";
-  url.searchParams.set("options", "-c default_transaction_read_only=on");
-  const runtime = new Pool({ connectionString: url.toString() });
+  const runtime = new Pool({ connectionString: url.toString(), options: "-c default_transaction_read_only=on" });
   const instant = new Date(asOf).toISOString();
   const calls: string[] = [];
-  const tool = settingsReadTools.find(candidate => candidate.name === "settings__preview")!;
-  const server = new Server({ name: "settings-preview-fixture", version: "1" }, { capabilities: { tools: {} } });
-  const mcp = new Client({ name: "settings-preview-witness", version: "1" });
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: [tool] }));
-  server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
-    expect(params.name).toBe(tool.name);
-    const result = await previewSetting(params.arguments, {
-      [key]: (candidate, input) => previewRenewalStockProtection(key, candidate, {
-        ...input, sourceKey: source,
-        db: { async connect() {
-          const client = await runtime.connect();
-          return {
-            query(sql, params) { calls.push(sql); return client.query(sql, params); },
-            release: error => client.release(error),
-          };
-        } },
-      }),
-    });
-    return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };
-  });
-  const preview = async (selected: string[], value = proposed) => {
-    const result = await mcp.callTool({ name: tool.name, arguments: { key, proposed: value, skus: selected, asOf: instant } });
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(candidate => candidate.command === "preview")!;
+  const preview = async (skus: string[], value: unknown = proposed, selectedKey = key) => {
+    const result = await callSettingsTool(tool, { key: selectedKey, value, skus, asOf: instant },
+      { "database-url": url.toString() }, { bind: async () => ({
+        previewers: {
+          [key]: (candidate, input) => previewRenewalStockProtection(key, candidate, {
+            ...input, sourceKey: source,
+            db: { async connect() {
+              const client = await runtime.connect();
+              return {
+                query(sql, params) { calls.push(sql); return client.query(sql, params); },
+                release: error => client.release(error),
+              };
+            } },
+          }),
+        },
+      }) });
     return result.structuredContent;
   };
   try {
     expect((await runtime.query("SELECT session_user AS role")).rows).toEqual([{ role: installation.runtimeLogin }]);
-    await server.connect(serverTransport);
-    await mcp.connect(clientTransport);
-    expect((await mcp.listTools()).tools[0]?.annotations?.readOnlyHint).toBe(true);
     const options = { cwd: fileURLToPath(new URL("../../examples/neutral-store/", import.meta.url)), encoding: "utf8" } as const;
     const unknownKey = "unknown_setting";
-    const refused = await mcp.callTool({ name: tool.name, arguments: { key: unknownKey, proposed } });
-    expect(refused.structuredContent).toMatchObject({ schemaVersion: 1, refusal: { code: "commerce_setting_unknown" } });
+    const refused = await preview([], proposed, unknownKey);
+    expect(refused).toMatchObject({ schemaVersion: 1, refusal: { code: "commerce_setting_unknown" } });
     const cliRefused = spawnSync("npm", ["--silent", "run", "settings", "--", "preview",
       unknownKey, "--value", JSON.stringify(proposed), "--json"], options);
     expect(cliRefused.status, cliRefused.stderr).toBe(1);
-    expect(JSON.parse(cliRefused.stdout)).toEqual(refused.structuredContent);
+    expect(JSON.parse(cliRefused.stdout)).toEqual(refused);
 
     for (const selected of [[sku], fixtureSkus]) {
       const result = await preview(selected);
@@ -498,7 +487,7 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
     for (const entry of corpus) {
       const decoded = JSON.parse(entry.input);
       const expected = entry.decodedNormalized ?? entry.normalized;
-      const { structuredContent } = await mcp.callTool({ name: tool.name, arguments: { key, proposed: decoded, asOf: instant } });
+      const structuredContent = await preview([], decoded);
       expect(structuredContent, entry.name).toMatchObject({
         schemaVersion: 1, validation: expected ? { state: "valid", value: expected } : { state: "invalid", code: entry.code },
       });
@@ -511,12 +500,7 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
       }
     }
   } finally {
-    try {
-      await mcp.close();
-      await server.close();
-    } finally {
-      await runtime.end();
-    }
+    await runtime.end();
   }
   expect(await state()).toEqual(before);
 });
