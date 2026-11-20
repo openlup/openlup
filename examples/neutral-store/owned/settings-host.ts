@@ -28,7 +28,10 @@ export function createSettingsBindings({ db, configuration }: {
     stockSourceKey: `starter-demo:${config.id}`,
     file: {
       configuration: config.id,
-      validate: () => assertConfig(config),
+      validate() {
+        assertConfig(config);
+        selectConfiguration(config.id);
+      },
       entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.value !== undefined)),
     },
     readers: db ? {

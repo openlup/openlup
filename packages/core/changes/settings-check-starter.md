@@ -8,14 +8,14 @@ configuration. An owned file is never overwritten.
 
 ```diff
 diff --git a/owned/settings-host.ts b/owned/settings-host.ts
-index 00b9518e0..c5229ef05 100644
+index 00b9518e0..7c7c4d95d 100644
 --- a/owned/settings-host.ts
 +++ b/owned/settings-host.ts
 @@ -4,2 +4,3 @@ import type { SettingsAppBindings } from '@openlup/platform/operations/server';
  import { checkoutWavePolicy } from './acquisition-policy.ts';
 +import { assertConfig } from '../shared/config.ts';
  import { configurations, selectConfiguration } from './store.config.ts';
-@@ -12,4 +13,22 @@ export function createSettingsBindings({ db, configuration }: {
+@@ -12,4 +13,25 @@ export function createSettingsBindings({ db, configuration }: {
    }
 +  const config = selectConfiguration(configuration);
 +  const file = 'owned/store.config.ts';
@@ -35,7 +35,10 @@ index 00b9518e0..c5229ef05 100644
 +    stockSourceKey: `starter-demo:${config.id}`,
 +    file: {
 +      configuration: config.id,
-+      validate: () => assertConfig(config),
++      validate() {
++        assertConfig(config);
++        selectConfiguration(config.id);
++      },
 +      entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.value !== undefined)),
 +    },
      readers: db ? {

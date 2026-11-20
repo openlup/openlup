@@ -92,13 +92,15 @@ it("refuses an extracted starter without the settings script", () => {
 it.each([
   ["subscriptionCreation", "starter_subscription_creation_invalid", "subscriptionCreation.editWindowHours"],
   ["inventory", "inventory_renewal_protection_policy_invalid", "inventory_renewal_protection"],
-])("reports startup validation when the starter config omits %s", (field, message, key) => {
+  ["id", "starter_configuration_unknown", undefined],
+])("reports startup validation for an invalid starter %s", (field, message, key) => {
   const { directory, write } = fixture();
   const starter = resolve("examples/neutral-store/owned");
   const load = (name: string) => JSON.stringify(pathToFileURL(join(starter, name)).href);
+  const id = field === "id" ? "unregistered" : "supplements";
   write("missing-config.mjs", `
     const { configurations } = await import(${load("store.config.ts")});
-    delete configurations.supplements[${JSON.stringify(field)}];
+    ${key ? `delete configurations.supplements[${JSON.stringify(field)}];` : `configurations.supplements.id = ${JSON.stringify(id)};`}
     const { createSettingsBindings } = await import(${load("settings-host.ts")});
     export { createSettingsBindings };
   `);
@@ -106,8 +108,8 @@ it.each([
     "check", "--app", "./missing-config.mjs", "--configuration", "supplements", "--json"], { cwd: directory, encoding: "utf8" });
   expect(run.status, run.stderr || run.stdout).toBe(1);
   expect(JSON.parse(run.stdout)).toMatchObject({
-    configuration: "supplements", state: "invalid", appValidation: { state: "failed", message },
-    rows: expect.arrayContaining([expect.objectContaining({ key, file: { state: "not-reported" } })]),
+    configuration: id, state: "invalid", appValidation: { state: "failed", message },
+    ...(key ? { rows: expect.arrayContaining([expect.objectContaining({ key, file: { state: "not-reported" } })]) } : {}),
   });
 });
 

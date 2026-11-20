@@ -229,12 +229,11 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     return 0;
   }
   if (command === "check") {
+    if (values["database-url"] !== undefined) return invalid("database-url", "Settings check is offline. Use settings preview with --database-url for connected effects.");
     if (!values.app) return invalid("app", "Pass --app <module> that exports createSettingsBindings.");
     if (key !== undefined) return invalid("key", "Settings check reports all catalogue keys. Omit the key.");
-    const unsupported = (["database-url", "goal", "value", "sku", "as-of"] as const).find(flag => values[flag] !== undefined);
-    if (unsupported) return invalid(unsupported, unsupported === "database-url"
-      ? "Settings check is offline. Use settings preview with --database-url for connected effects."
-      : `Omit --${unsupported} when running settings check.`);
+    const unsupported = (["goal", "value", "sku", "as-of"] as const).find(flag => values[flag] !== undefined);
+    if (unsupported) return invalid(unsupported, `Omit --${unsupported} when running settings check.`);
     const report = (file: FileBinding | undefined, validation: AppValidation) => {
       const result = checkDocument(file, validation);
       io.write((json ? JSON.stringify(result) : checkText(result)) + "\n");

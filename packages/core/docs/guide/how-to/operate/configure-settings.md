@@ -53,6 +53,10 @@ location or labels the available starter catalogue reference separately.
 
 Check reports the application's startup validation when supplied and the
 packaged schema result for each reported JSON value with an executable schema.
+The starter checks its reported configuration ID against the registry and runs
+`assertConfig`. The actual launch and install check their command-line
+arguments and installer package availability. Seed preparation runs after
+database bootstrap.
 A file value that cannot be represented as JSON is reported as unreportable
 and fails check without a schema verdict. Bindings for keys outside the
 catalogue are ignored. Each row uses the catalogue's effect and change text.

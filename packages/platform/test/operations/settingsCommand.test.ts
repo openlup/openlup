@@ -408,7 +408,8 @@ it.each([
 });
 
 it.each([
-  [["check"], "app"], [[...checkArgs, "--database-url", url], "database-url"],
+  [["check"], "app"], [["check", "--database-url", url], "database-url"],
+  [[...checkArgs, "--database-url", url], "database-url"],
   [[...checkArgs, "--database-url="], "database-url"], [[...checkArgs, "--value", "{}"], "value"],
   [[...checkArgs, "--sku", "A"], "sku"], [[...checkArgs, "--as-of", asOf], "as-of"],
   [[...checkArgs, "--goal", "stock"], "goal"], [[...checkArgs, key], "key"],
@@ -417,7 +418,9 @@ it.each([
   const load = vi.fn();
   const { exit, output } = await run([...args, "--json"], { host: checks(load) });
   expect(exit).toBe(64);
-  expect(JSON.parse(output).refusal.path).toEqual([field]);
+  const { refusal } = JSON.parse(output);
+  expect(refusal.path).toEqual([field]);
+  if (field === "database-url") expect(refusal.hint).toContain("Use settings preview");
   expect(load).not.toHaveBeenCalled();
 });
 
