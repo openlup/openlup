@@ -255,13 +255,14 @@ describe("upgrade page assembly", () => {
     f.write(peer, declarationFile("shared", "export type Value = number;\n")); f.commit();
     const assemble = () => assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
     expect(assemble).toThrow(
-      `packages/core: ${api} and ${peer} have conflicting bodies for dist/shared.d.ts at HEAD; regenerate the API snapshots (npm run api:update) and rerun`,
+      `packages/core: ${api} and ${peer} have conflicting bodies for dist/shared.d.ts at HEAD; regenerate the API snapshots: run \`npm run api:update -w packages/core\`, commit the snapshot changes, then rerun release:bump.`,
     );
     f.write(gates, JSON.stringify({ packageSurface: peerSurface }));
     f.write(stale, first); f.commit();
     expect(assemble).toThrow(
       `packages/core: ${api} and ${peer} and ${stale} have conflicting bodies for dist/shared.d.ts at HEAD; ` +
-      `${api} is not a configured snapshot; delete it. ${stale} is not a configured snapshot; delete it, then run npm run api:update and rerun`,
+      `${api} is not a configured snapshot of @openlup/core: delete it, run \`npm run api:update -w packages/core\`, commit the snapshot changes, then rerun release:bump. ` +
+      `${stale} is not a configured snapshot of @openlup/core: delete it, run \`npm run api:update -w packages/core\`, commit the snapshot changes, then rerun release:bump.`,
     );
   });
 
@@ -269,7 +270,7 @@ describe("upgrade page assembly", () => {
     const f = fixture({ [api]: report("") });
     f.write(api, declarationFile("shared", "export interface Item { value: string; }\n".repeat(2))); f.commit();
     expect(() => assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] })).toThrow(
-      `packages/core: indistinguishable declaration rows in ${api} for dist/shared.d.ts; regenerate the API snapshots (npm run api:update) and rerun`,
+      `packages/core: indistinguishable declaration rows in ${api} for dist/shared.d.ts; regenerate the API snapshots: run \`npm run api:update -w packages/core\`, commit the snapshot changes, then rerun release:bump.`,
     );
   });
 

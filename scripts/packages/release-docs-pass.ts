@@ -202,7 +202,8 @@ export function summarizeApiDiff(before: string, after: string) {
 
 const GATES = /^packages\/[^/]+\/release-gates\.json$/u;
 const bytewise = (a: string, b: string) => Buffer.compare(Buffer.from(a), Buffer.from(b));
-const regenerateSnapshots = "regenerate the API snapshots (npm run api:update) and rerun";
+const snapshotRecovery = (directory: string) =>
+  `run \`npm run api:update -w ${directory}\`, commit the snapshot changes, then rerun release:bump.`;
 
 function snapshotSections(source: string) {
   const unheaded: string[] = [], files: Array<{ path: string; lines: string[] }> = [];
@@ -246,8 +247,8 @@ function readApiSurface(root: string, ref: string, directory: string) {
     const reports = [...carriers];
     const stale = reports.filter((report) => !configured.has(report));
     const remedy = stale.length
-      ? `${stale.map((report) => `${report} is not a configured snapshot; delete it`).join(". ")}, then run npm run api:update and rerun`
-      : regenerateSnapshots;
+      ? stale.map((report) => `${report} is not a configured snapshot of @openlup/${posix.basename(directory)}: delete it, ${snapshotRecovery(directory)}`).join(" ")
+      : `regenerate the API snapshots: ${snapshotRecovery(directory)}`;
     throw new Error(`${directory}: ${reports.join(" and ")} have conflicting bodies for ${path} at ${ref}; ${remedy}`);
   }
   return { files, unheaded, subpaths };
@@ -302,7 +303,7 @@ function apiSections(root: string, since: string): string[] {
         let previousFile: string | undefined;
         for (const { file, text } of rows.filter((row) => row.category === category)) {
           const key = `${file}\0${text}`;
-          if (seen.has(key)) throw new Error(`${directory}: indistinguishable declaration rows in ${report} for ${file || "unheaded declarations"}; ${regenerateSnapshots}`);
+          if (seen.has(key)) throw new Error(`${directory}: indistinguishable declaration rows in ${report} for ${file || "unheaded declarations"}; regenerate the API snapshots: ${snapshotRecovery(directory)}`);
           seen.add(key);
           if (qualify && file !== previousFile) excerpts.push(`// ${file || "Unheaded declarations"}`);
           excerpts.push(text);
