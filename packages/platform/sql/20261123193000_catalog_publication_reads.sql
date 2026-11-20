@@ -127,7 +127,7 @@ $$;
 CREATE FUNCTION public.catalog_publication_selected_evidence(p_product uuid,p_sku uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE issue public.catalog_publications; manifest jsonb; product jsonb; sku jsonb; reference jsonb;
- receipt jsonb; head jsonb; previous_head jsonb; document jsonb; document_valid boolean; live_product public.catalog_products; live_sku public.catalog_skus;
+ receipt jsonb; expected_changes jsonb; head jsonb; previous_head jsonb; document jsonb; document_valid boolean; live_product public.catalog_products; live_sku public.catalog_skus;
  invalid CONSTANT jsonb := '{"kind":"refusal","reason":"inconsistent_evidence"}';
 BEGIN
  SELECT p.* INTO issue FROM public.catalog_publication_heads h JOIN public.catalog_publications p
@@ -147,13 +147,30 @@ BEGIN
  IF head IS NULL OR jsonb_typeof(receipt) IS DISTINCT FROM 'object' THEN RETURN invalid; END IF;
  IF receipt - ARRAY['schemaVersion','productId','commandKey','fingerprint','actorId','head','previousHead','publicationDigest','committedAt','changes']
    IS DISTINCT FROM '{}'::jsonb OR jsonb_typeof(receipt->'changes') IS DISTINCT FROM 'array'
-  OR jsonb_array_length(CASE WHEN jsonb_typeof(receipt->'changes')='array' THEN receipt->'changes' END)<>issue.issued_count
   OR receipt - 'changes' IS DISTINCT FROM jsonb_build_object('schemaVersion',2,'productId',p_product,'head',head,
    'previousHead',previous_head,'publicationDigest',issue.digest,'commandKey',issue.command_key,
    'fingerprint',issue.command_fingerprint,'actorId',issue.actor_id,
    'committedAt',to_char(issue.committed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))
   OR EXISTS (SELECT 1 FROM public.catalog_publication_decisions a WHERE (a.product_id,a.command_key)=(p_product,issue.command_key))
  THEN RETURN invalid; END IF;
+
+ -- Rebuild the ordered receipt changes from the issue's authenticated SKU references.
+ WITH issued AS MATERIALIZED (
+  SELECT r.sku_id,r.revision,public.catalog_publication_read_sku_revision(p_product,ref) AS facts
+  FROM public.catalog_sku_revisions r
+  LEFT JOIN jsonb_array_elements(manifest->'skus') ref ON ref->'revisionId'=to_jsonb(r.id)
+  WHERE (r.product_id,r.publication_id)=(p_product,issue.id)
+ )
+ SELECT coalesce(jsonb_agg(jsonb_build_object('productId',p_product,'variantId',sku_id,'sku',facts->'code',
+  'state',CASE WHEN facts->>'status'='archived' THEN 'withdrawn' ELSE facts->>'status' END,
+  'variantRevision',revision,'publicationHead',head,'draftRef',jsonb_build_object('draftId',issue.draft_id,'revision',issue.draft_revision))
+  ORDER BY sku_id),'[]'::jsonb) INTO expected_changes
+ FROM issued
+ HAVING count(*)=issue.issued_count AND coalesce(bool_and((
+  facts->'source'=product->'source' AND facts #> '{source,draftId}'=to_jsonb(issue.draft_id)
+  AND facts #> '{source,revision}'=to_jsonb(issue.draft_revision)
+ ) IS TRUE),true);
+ IF expected_changes IS NULL OR receipt->'changes' IS DISTINCT FROM expected_changes THEN RETURN invalid; END IF;
 
  SELECT jsonb_build_object('id',d.id,'productId',d.product_id,'revisionNo',d.revision_no,'schemaId',d.schema_id,
   'documentRef',d.document_ref,'sourceRef',d.source_ref,'digest',d.digest), (

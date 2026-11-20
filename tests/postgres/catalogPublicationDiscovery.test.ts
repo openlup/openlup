@@ -270,6 +270,35 @@ it("binds the new issue and document to the inherited SKU revision and refuses e
   ]));
 });
 
+it.each(["null", "wrong identity", "extra field"] as const)(
+  "refuses a %s receipt change before deferred admission and leaves the transaction usable", async damage => {
+    const offer = `test:pending-receipt-${damage}`;
+    await transaction(pool, async db => {
+      const issue = await seed(db, { offer });
+      const { rows: [row] } = await db.query<{ result: string }>(
+        "SELECT result FROM public.catalog_operator_receipts WHERE publication_id=$1", [issue.issueId]);
+      const receipt = JSON.parse(row!.result);
+      expect(receipt.changes).toHaveLength(1);
+      const [change] = receipt.changes;
+      const bad = damage === "null" ? null : damage === "wrong identity"
+        ? { ...change, variantId: randomUUID() } : { ...change, extra: true };
+      await db.query("SAVEPOINT damaged_receipt");
+      // Keep the issue's pending checks and restore its receipt before commit.
+      await db.query("SET LOCAL session_replication_role=replica");
+      await db.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE publication_id=$1",
+        [issue.issueId, json({ ...receipt, changes: [bad] })]);
+      await db.query("SET LOCAL session_replication_role=origin");
+      expect((await db.query(membershipSql, [offer, null, 1, null])).rows[0]?.result)
+        .toEqual({ kind: "refusal", reason: "inconsistent_evidence" });
+      expect(await readPostgresCatalogMembershipPage(db, byOffer(offer)))
+        .toMatchObject({ outcome: "dependency_unavailable" });
+      expect((await db.query("SELECT 1 AS ok")).rows).toEqual([{ ok: 1 }]);
+      await db.query("ROLLBACK TO SAVEPOINT damaged_receipt");
+      expect((await page({ ...byOffer(offer), limit: 100 }, db)).items.map(item => item.skuId)).toContain(issue.skuId);
+    });
+  },
+);
+
 it("refuses malformed registration bytes before deferred admission and leaves the transaction usable", async () => {
   const offer = "test:pending-document";
   await transaction(pool, async db => {
