@@ -721,7 +721,7 @@ node --experimental-strip-types scripts/packages/required-package-gates.ts \
 npm run test:scoped
 # Hosted test-full-shard runs eight parallel independent installations, each with:
 # node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE points to runner temp)
-# npm test -- --shard=N/8 (N = 1, 2, 3, 4, 5, 6, 7, 8)
+# node scripts/ci-vitest-shard.mjs --shard N --total 8 (N = 1, 2, 3, 4, 5, 6, 7, 8)
 # pgtap (Docker required; no Supabase CLI or npm install)
 node scripts/public-ci-pgtap.mjs
 ```
@@ -1021,7 +1021,7 @@ only after the original callback drains. Missing Docker or PostgreSQL fails the
 witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
-Hosted `test-full-shard` jobs run `npm test -- --shard=N/8` in eight independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+Hosted `test-full-shard` jobs run `node scripts/ci-vitest-shard.mjs --shard N --total 8` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`) in eight independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard
