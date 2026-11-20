@@ -3,7 +3,7 @@ import type { CatalogDraftPayload } from "./draftSchemas.js";
 import {
   type CatalogDraftIssue, type CatalogProductTypeRegistry,
 } from "./productTypeSchemas.js";
-import type { Issue } from "./publicationError.js";
+import { type Issue } from "./publicationError.js";
 
 export interface CatalogDraftReadiness {
   publication: { status: "incomplete" | "not_assessed"; issues: CatalogDraftIssue[] };

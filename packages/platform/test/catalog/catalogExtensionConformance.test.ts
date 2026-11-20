@@ -10,7 +10,8 @@ import { runCatalogExtensionConformance } from "../../src/catalog/testing/index.
 import { projectCatalogExtensionConformance } from "../../src/catalog/testing/catalogExtensionConformance.js";
 import { catalogPackIssues, catalogProductTypeRefIssues, catalogDraftPayloadSchema, validateCatalogDraft, createCatalogProductTypeRegistry,
   validateCatalogAttributes, prepareCatalogAttributeProjection, validateCatalogCombinationChangesV2, canonicalizeCatalogCombinationV2, CatalogCombinationError,
-  catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler } from "../../src/catalog/index.js";
+  catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler, withCatalogPublicationRules } from "../../src/catalog/index.js";
+import { artifact } from "./fixtures/publicationInput.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
 import type { CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
 import type { CatalogPackInput, CatalogProductTypeRef, AttributeDefinition, CatalogAttributeInput, CatalogAttributeReferenceResolution } from "../../src/catalog/index.js";
@@ -62,6 +63,24 @@ describe("trusted catalogue projection", () => {
       expect(findings.map(({ code, path }) => ({ code, path }))).toEqual(owner.error.issues.map(issue =>
         ({ code: "draft_input_invalid", path: "/packs/0/drafts/0/" + issue.path.join("/") })).sort((a, b) => a.path.localeCompare(b.path)));
     }
+  });
+
+  it("keeps the application remedy when a content rule reuses a reference code", async () => {
+    const code = "attribute_reference_unresolved";
+    const rules = Buffer.from(artifact + `
+module.exports.validateContent = content => content.presentation.label === "Invalid label"
+  ? [{ code: "${code}", path: "presentation.label" }] : [];
+`);
+    const bound = withCatalogPublicationRules(pack(), () => rules);
+    const base = draft();
+    const subject = { ...base, product: { ...base.product, sharedContent: { presentation: { label: "Invalid label" } } } };
+    const report = await project({ packs: [{ pack: bound, drafts: [subject] }] });
+    const path = "/packs/0/drafts/0/product/sharedContent/presentation/label";
+    expect(report.exitCode).toBe(1);
+    expect(report.findings).toEqual([expect.objectContaining({
+      code, path, fix: `Fix the rule violation ${code} reported by validateContent at ${path}.`,
+      recipe: "how-to/extend/catalogue-extension.md#new-vertical",
+    })]);
   });
 
   it("requires executed content per pack and keeps the draft cap per draft", async () => {
@@ -271,6 +290,11 @@ describe("offline catalogue conformance", () => {
     const mixed = await checkSubject({ packs: [{ pack: p, attributes: [{ type, publicationRevision: "7",
       input: { productAttributes: { required: true, reference: ref, list: [{ ...ref, id: "other" }] }, skus: [{ id }] }, references: [{ ...ref, status: "private" }] }] }] });
     expect(mixed.exitCode).toBe(1); expect(mixed.findings).toHaveLength(2);
+    expect(mixed.findings).toContainEqual(expect.objectContaining({
+      code: "attribute_reference_unresolved", path: "/packs/0/attributes/0/input/productAttributes/reference",
+      fix: "Resolve the allowlisted batch and remove dangling, private or unavailable references.",
+      recipe: "how-to/extend/catalogue-extension.md#add-attribute",
+    }));
     const prepared = await compareOwner("projection exactness", { productAttributes: { required: false, text: "é", localized: { en: "Name" } }, skus: [{ id }] }, "7", [], 0);
     expect(prepared).toMatchObject({ prepared: true, rows: expect.arrayContaining([expect.objectContaining({ text_value: "é", publication_revision: "7", sku_id: id }), expect.objectContaining({ text_value: '{"en":"Name"}' })]) });
     const original = p.types[0].attributes;

@@ -11,6 +11,7 @@ import { validateDraftFacts } from "../draftFacts.js";
 import { validateDraftAttributes } from "../attributeValues.js";
 import { combinationFindingPointer as pointer, validateDraftCombinations } from "../combinationOptions.js";
 import { verifyCatalogRulesAtInstall } from "../publicationRules.js";
+import { renderPublicationIssue, type Issue } from "../publicationError.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
 
 const boundary = "Offline definitions, exact quantities, supplied v1–v3 drafts, attribute validation/projection preparation and V2 combination fixtures. Draft admission checks operation and price shape. Reference evidence, retained options and refusal records are fixture observations. Category graphs, tax intervals, cadence, promotion grammar, price execution and publication require other evidence. Installed versions, database references, listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied by the checker.";
@@ -89,11 +90,15 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
 async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, Validator>): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;
-  function add(code: string, path: string, fixture = "", requiredEvidence = false): void {
-    const rule = Object.hasOwn(CATALOG_CONFORMANCE_RULES, code) ? CATALOG_CONFORMANCE_RULES[code as CatalogConformanceCode] : CATALOG_CONFORMANCE_RULES.draft_payload_invalid;
+  function add(issue: string | Issue, path: string, fixture = "", requiredEvidence = false): void {
+    const code = typeof issue === "string" ? issue : issue.code;
+    const adopterIssue = typeof issue !== "string" && issue.kind === "adopterRule" ? issue : undefined;
+    const rule = !adopterIssue && Object.hasOwn(CATALOG_CONFORMANCE_RULES, code)
+      ? CATALOG_CONFORMANCE_RULES[code as CatalogConformanceCode] : CATALOG_CONFORMANCE_RULES.draft_payload_invalid;
+    const fix = adopterIssue ? renderPublicationIssue({ ...adopterIssue, path }).message : rule.fix;
     if (requiredEvidence) unavailable = true; else violated = true;
     findings.push({ code, severity: rule.severity, path, fixture, observed: `Owner check reported ${code}.`,
-      cause: rule.rule, fix: rule.fix, recipe: rule.recipe, recheck,
+      cause: rule.rule, fix, recipe: rule.recipe, recheck,
       evidence: { declared: "JSON fixture observations", bound: validators ? "Offline owners and registered content validators" : "Offline owner validators only", checked: path,
         unknown: ["Installed and runtime state; see boundary"] } });
   }
@@ -196,7 +201,7 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
         contentChecked = true;
         return result;
       } } }, true);
-      if (!validation.valid) for (const issue of validation.issues) add(issue.code, path + issue.path);
+      if (!validation.valid) for (const issue of validation.issues) add(issue, path + issue.path);
       if (payload.schemaVersion === 1 || !definition) continue;
 
       const attributeIssues = await owner(path, () => validateDraftAttributes(definition, payload));
