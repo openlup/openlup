@@ -1,6 +1,7 @@
 import {
   buildTpayTransactionPayload,
-  rawConfiguredTransactionAmount,
+  malformedConfiguredTransactionAmount,
+  readNullableTransactionAmount,
   type TpayPaymentError,
   type TpayTransactionCreateInput,
   type TpayTransactionCreated,
@@ -211,6 +212,7 @@ export function createTpayHttpClient({
         {},
         requestDeadline(),
       );
+      const amount = readNullableTransactionAmount(json.amount);
       const transaction = {
         // Keep provider fields that recovery normalizes later (notably nested
         // dates and paidAmount). Explicit canonical fields below remain the
@@ -220,14 +222,15 @@ export function createTpayHttpClient({
         title: readNullableString(json, "title"),
         status: readString(json, "status"),
         transactionPaymentUrl: readNullableString(json, "transactionPaymentUrl"),
-        amount: readNullableTransactionAmount(json, "amount"),
+        amount,
         currency: readNullableString(json, "currency"),
         requestId: readNullableString(json, "requestId"),
         payments: asRecord(json.payments),
       };
-      return Object.defineProperty(transaction, rawConfiguredTransactionAmount, {
-        value: Object.hasOwn(json, "amount") ? { amount: json.amount } : {},
-      });
+      // The public DTO represents an unparseable amount as null.
+      return json.amount != null && amount === null
+        ? Object.defineProperty(transaction, malformedConfiguredTransactionAmount, { value: true })
+        : transaction;
     },
 
     async listPaymentChannels() {
@@ -348,14 +351,4 @@ function readNumber(value: Record<string, unknown>, key: string): number {
   const raw = value[key];
   if (typeof raw !== "number" || !Number.isFinite(raw)) throw new TpayHttpError("tpay_invalid_response", 200);
   return raw;
-}
-
-function readNullableTransactionAmount(value: Record<string, unknown>, key: string): number | null {
-  const raw = value[key];
-  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  if (!/^\d+(?:\.\d+)?$/.test(trimmed)) return null;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
 }

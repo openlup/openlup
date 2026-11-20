@@ -58,15 +58,17 @@ export function normalizeStripeWebhookEvent(
 
   const canonicalEventType = mapStripeEventType(eventType);
   const providerPaymentId = resolveLinkagePaymentId(eventType, object);
-  const configuredAmountMinor = readOptionalNumber(object, "amount");
-  const paidAmountMinor = readOptionalNumber(object, "amount_received");
-  const amountConflict = canonicalEventType === "payment.succeeded"
-    && paidAmountMinor !== undefined && Number.isSafeInteger(paidAmountMinor) && paidAmountMinor >= 0
-    && configuredAmountMinor !== undefined && Number.isSafeInteger(configuredAmountMinor)
-    && configuredAmountMinor !== paidAmountMinor;
+  const requested = readSuccessAmount(object.amount);
+  const received = readSuccessAmount(object.amount_received);
+  const malformedAmounts = [
+    ...(requested === null ? [{ field: "amount", malformed: true }] : []),
+    ...(received === null ? [{ field: "amount_received", malformed: true }] : []),
+  ];
+  const amountConflict = canonicalEventType === "payment.succeeded" && (malformedAmounts.length > 0
+    || (requested !== undefined && received !== undefined && requested !== received));
   const amountMinor = canonicalEventType === "payment.succeeded"
-    ? (amountConflict ? null : capturedAmountMinor(paidAmountMinor))
-    : configuredAmountMinor ?? readOptionalNumber(object, "amount_received") ?? null;
+    ? (amountConflict ? null : capturedAmountMinor(received))
+    : readOptionalNumber(object, "amount") ?? readOptionalNumber(object, "amount_received") ?? null;
   const currency = readOptionalString(object, "currency")?.toUpperCase() ?? null;
   const occurredAt = readOccurredAt(rawPayload);
   const reusableMethod = extractReusableMethod(canonicalEventType, object);
@@ -85,7 +87,11 @@ export function normalizeStripeWebhookEvent(
     refundKind: refund.refundKind,
     rawPayload: {
       ...stripeWebhookPayload({ eventId: providerEventId, eventType, providerPaymentId, amountMinor, currency }, object),
-      ...(amountConflict ? { configuredAmountMinor, paidAmountMinor } : {}),
+      ...(amountConflict ? {
+        ...(typeof requested === "number" ? { configuredAmountMinor: requested } : {}),
+        ...(typeof received === "number" ? { paidAmountMinor: received } : {}),
+        ...(malformedAmounts.length ? { malformedAmounts } : {}),
+      } : {}),
       ...(refund.snapshot ? { stripeRefundSnapshot: refund.snapshot } : {}),
     },
     reusableMethod,
@@ -267,6 +273,12 @@ function readString(value: Record<string, unknown>, key: string): string {
 function readOptionalString(value: Record<string, unknown>, key: string): string | undefined {
   const raw = value[key];
   return typeof raw === "string" && raw.length > 0 ? raw : undefined;
+}
+
+// Undefined is absent, null is malformed, and a number is valid evidence.
+function readSuccessAmount(value: unknown): number | null | undefined {
+  if (value == null) return undefined;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 function readOptionalNumber(value: Record<string, unknown>, key: string): number | undefined {

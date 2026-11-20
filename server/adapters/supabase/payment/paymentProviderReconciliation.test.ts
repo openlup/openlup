@@ -103,9 +103,9 @@ describe("createSupabasePaymentProviderReconciliationPort", () => {
   });
 
   it.each([
-    ["configured amount", { amount: 13.99 }, 1399, []],
-    ["paid fields", { amount: 12.99, paidAmount: "13.99" }, 1299, [1399]],
-  ] as const)("retains a success with conflicting %s for review across the managed payment paths", async (_, fields, configuredAmountMinor, conflictingPaidAmountsMinor) => {
+    ["configured amount", { amount: 13.99 }, 1399],
+    ["paid fields", { amount: 12.99, paidAmount: "13.99" }, 1299],
+  ] as const)("retains a success with conflicting %s for review across the managed payment paths", async (_, fields, configuredAmountMinor) => {
     const remote = "01HX";
     const row = claimedRow({ provider: transactionProvider, amount_cents: 1299,
       provider_payment_id: remote, provider_attempt_id: remote, provider_session_id: remote });
@@ -122,7 +122,11 @@ describe("createSupabasePaymentProviderReconciliationPort", () => {
     expect(client.rpc).toHaveBeenCalledWith("commerce_payment_control_record_reconciliation", expect.objectContaining({
       p_correction_status: "failed",
       p_payload: expect.objectContaining({ failureReason: "provider_amount_mismatch",
-        providerPayload: expect.objectContaining({ configuredAmountMinor, paidAmountMinor: 1299, conflictingPaidAmountsMinor }) }),
+        providerPayload: expect.objectContaining({ amountEvidence: [
+          { field: "amount", amountMinor: configuredAmountMinor },
+          { field: "payments.amountPaid", amountMinor: 1299 },
+          ...("paidAmount" in fields ? [{ field: "paidAmount", amountMinor: 1399 }] : []),
+        ] }) }),
     }));
     const snapshot: VerifiableAttemptSnapshot = {
       orderId: row.order_id, orderClientId: "client-1", orderMode: "one_time_order",

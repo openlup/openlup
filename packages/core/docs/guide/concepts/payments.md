@@ -85,22 +85,20 @@ authenticated success readback to report the provider-collected amount and
 currency with `capturedAmountBasis: "provider_capture_v1"`. Set this field
 on verified success webhooks only when they report the provider-collected
 amount. Keep this attestation outside the webhook fingerprint and deploy the
-updated adapter with the migration. Receipts completed under released versions
-acknowledge as before. A verified delivery whose normalized money changed can acknowledge
-the original completed webhook receipt when its
-historical fingerprint matches. This lookup leaves payment and fulfillment state
-untouched. Hosts with an operational event recorder receive a diagnostic for
-review. Reconcile pending historical events through an authenticated readback
-before applying a new settlement.
+updated adapter with the migration. Reconcile pending historical events through
+an authenticated readback before applying a new settlement.
 
-For a verified success webhook with conflicting requested and collected amounts,
-the 409 response carries both amounts, the currency and
-`provider_amount_mismatch`. The host's operational-event recorder receives
-these fields with the provider, event and payment identifiers. The native
-binding defaults to a no-op. The managed binding uses the configured recorder.
-The provider retains and redelivers its original event. OpenLup keeps no
-durable review record for a refused webhook. Version 1.2.0 likewise kept no
-durable record when it refused a webhook for an amount mismatch.
+- Version 1.2.0 settled a `payment_intent.succeeded` webhook on the requested
+  `amount` when it differed from `amount_received`. Version 1.3.0 routes those
+  successes to review.
+- On the native rail, receipts completed under released versions are
+  acknowledged as before. The managed binding has no completed-receipt lookup.
+  Redelivery of a conflicting success returns 409 and changes no payment state.
+- Evidence is available in the 409 response and the original event the provider
+  retains and redelivers. The host's operational-event recorder also receives
+  the evidence. The native binding defaults to a no-op and the managed binding
+  uses the configured recorder. OpenLup keeps no durable review record for a
+  refused webhook.
 
 When the order is cancelled or expired, the same owner retains a verified late
 capture for manual review. Authorized verification and recovery report

@@ -43,7 +43,8 @@ it.each(statuses)("projects donor $label readback for both purposes and all paid
         const recovery = await donor.readRecoveryPayment({ providerPaymentId: identity.providerPaymentRef, attempt, purpose });
         expect(normalized, label).toEqual(recovery.status);
         const amountMinor = Math.round(Number(amount.paidAmount) * 100);
-        expect(normalized, label).toMatchObject({ status: row.kind, amountMinor,
+        expect(normalized, label).toMatchObject({ status: row.kind,
+          amountMinor: row.kind === "succeeded" && amountMinor === 0 ? null : amountMinor,
           occurredAt: row.occurredAt });
         expect(recovery, label).toMatchObject({ identityMatches: true, configuredMoneyMatches: true,
           manualReviewRequired: row.label === "chargeback"

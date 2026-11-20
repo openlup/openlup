@@ -208,9 +208,9 @@ it("settles two simultaneous verified webhook deliveries once and replays the hi
 });
 
 it.each([
-  ["configured amount", { amount: 130.99, payments: { amountPaid: "129.99" } }, 13099, []],
-  ["paid fields", { amount: 129.99, paidAmount: "130.99", payments: { amountPaid: "129.99" } }, 12999, [13099]],
-] as const)("records a provider success with conflicting %s without settling native payment", async (_, fields, configuredAmountMinor, conflictingPaidAmountsMinor) => {
+  ["configured amount", { amount: 130.99, payments: { amountPaid: "129.99" } }, 13099],
+  ["paid fields", { amount: 129.99, paidAmount: "130.99", payments: { amountPaid: "129.99" } }, 12999],
+] as const)("records a provider success with conflicting %s without settling native payment", async (_, fields, configuredAmountMinor) => {
   const f = await fixture("delta");
   await age(f);
   const reconciliation = port();
@@ -234,10 +234,11 @@ it.each([
   expect((await db.query(`SELECT payload FROM public.payment_provider_reconciliation_runs
     WHERE payment_intent_id=$1 AND correction_status='failed'`, [f.intent])).rows)
     .toMatchObject([{ payload: { failureReason: "provider_amount_mismatch",
-      providerPayload: { configuredAmountMinor, paidAmountMinor: 12999, conflictingPaidAmountsMinor,
-        configuredAmountFields: { amount: fields.amount }, paidAmountFields: {
-          ...("paidAmount" in fields ? { paidAmount: fields.paidAmount } : {}), payments: fields.payments,
-        } } } }]);
+      providerPayload: { amountEvidence: [
+        { field: "amount", amountMinor: configuredAmountMinor },
+        { field: "payments.amountPaid", amountMinor: 12999 },
+        ...("paidAmount" in fields ? [{ field: "paidAmount", amountMinor: 13099 }] : []),
+      ] } } }]);
 });
 
 it.each(["worker", "renewal"] as const)("records the exact amount and provenance of a %s readback before settling", async carrier => {

@@ -99,17 +99,20 @@ export function normalizeTpayTransaction(
     : null;
   const status = refusal ? "failed" as const : statusFromField;
   const evidence = status === "succeeded" ? readTransactionAmountEvidence(transaction, payments) : null;
-  const paidAmountMinor = evidence?.paid.amounts.find(amount => amount !== null) ?? null;
-  const configuredAmountMinor = status === "succeeded" ? readConfiguredAmountMinor(transaction) : null;
-  const amountMismatch = evidence && paidAmountMinor !== null
-    && (evidence.configured.amounts.length === 0
-      || evidence.configured.amounts.some(amount => amount !== paidAmountMinor)
-      || evidence.paid.amounts.some(amount => amount !== paidAmountMinor));
-  const amountMinor = status === "succeeded" ? paidAmountMinor : readAmountMinor(transaction);
+  const amountEvidence = evidence ? [...evidence.configured, ...evidence.paid] : [];
+  const validPaid = evidence?.paid.filter(field => "amountMinor" in field) ?? [];
+  const firstPaid = validPaid[0]?.amountMinor ?? 0;
+  const agreedPaid = firstPaid > 0 && validPaid.every(field => field.amountMinor === firstPaid) ? firstPaid : null;
+  const amountMismatch = amountEvidence.some(field => "malformed" in field)
+    || (validPaid.length > 0 && (agreedPaid === null
+      || evidence?.configured.some(field => "amountMinor" in field && field.amountMinor !== agreedPaid)));
+  const amountMinor = status === "succeeded" ? agreedPaid : readAmountMinor(transaction);
+  const configuredAmountMinor = status === "succeeded" && amountMinor === null && !amountMismatch
+    ? readConfiguredAmountMinor(transaction) : null;
   return {
     status,
-    ...(configuredAmountMinor !== null && paidAmountMinor === null ? { configuredAmountMinor } : {}),
-    ...(paidAmountMinor !== null && paidAmountMinor > 0 && !amountMismatch ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
+    ...(configuredAmountMinor !== null ? { configuredAmountMinor } : {}),
+    ...(status === "succeeded" && amountMinor !== null && !amountMismatch ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     providerStatus,
     occurredAt: refusal?.occurredAt ?? readDate(transaction),
     failureReason: amountMismatch ? "provider_amount_mismatch" : refusal
@@ -119,13 +122,7 @@ export function normalizeTpayTransaction(
     currency: readCurrency(transaction),
     rawPayload: {
       ...sanitizedTpayTransaction(transaction, providerStatus, amountMinor, refusal),
-      ...(amountMismatch ? {
-        configuredAmountMinor,
-        paidAmountMinor,
-        conflictingPaidAmountsMinor: [...new Set(evidence.paid.amounts.filter(amount => amount !== null && amount !== paidAmountMinor))],
-        configuredAmountFields: evidence.configured.fields,
-        paidAmountFields: evidence.paid.fields,
-      } : {}),
+      ...(amountMismatch ? { amountEvidence } : {}),
     },
   };
 }
