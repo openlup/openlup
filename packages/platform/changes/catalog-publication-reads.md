@@ -1,2 +1,2 @@
-- Add experimental PostgreSQL reads for governed offer membership and ordered activation readiness. Readiness waits for publication and evaluates installed checks on the same executor.
-- Migration: Apply the complete catalogue through `20261123193000_catalog_publication_reads.sql` before calling the new reads. Supply an owner transaction lane and an installed binding for readiness.
+- Added the experimental `readPostgresCatalogMembershipPage` catalogue export. It reads governed offer memberships and their sealed evidence using one caller-owned statement.
+- Apply the complete catalogue through `20261123193000_catalog_publication_reads.sql` before calling the reader.

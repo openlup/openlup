@@ -92,6 +92,6 @@ export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCo
 export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt,
   PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
 
-export { readPostgresCatalogMembershipPage, readPostgresCatalogActivationReadiness } from "./postgresPublicationDiscovery.js";
-export type { CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult, CatalogActivationReadinessInput,
-  CatalogActivationReadinessResult, CatalogDiscoveryEvidence, CatalogInstalledReadiness, CatalogDiscoveryRefusal } from "./postgresPublicationDiscovery.js";
+export { readPostgresCatalogMembershipPage } from "./postgresPublicationDiscovery.js";
+export type { CatalogDiscoveryEvidence, CatalogDiscoveryRefusal, CatalogMembershipCursor, CatalogMembershipItem,
+  CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";

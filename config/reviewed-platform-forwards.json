@@ -6036,10 +6036,22 @@
         "dataStatements": []
       },
       {
-        "row": "catalogue-lc2r",
+        "row": "catalog-membership-reads",
         "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
         "replacedFunctions": [],
         "createdFunctions": [
+          {
+            "signature": "public.catalog_publication_read_json(text,text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_read_manifest(uuid,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_read_sku_revision(uuid,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
           {
             "signature": "public.catalog_publication_read_head()",
             "searchPath": "pg_catalog, pg_temp"
@@ -6050,10 +6062,6 @@
           },
           {
             "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.catalog_publication_activation_readiness(text[],text)",
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
@@ -8701,27 +8709,37 @@
     },
     {
       "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-      "sha256": "f0a1804c8eff5cf0e45cf936c143cd804c394eaf9acebfe47689fd07e37d30ed",
+      "sha256": "5b5140d57a1b667a27d01fad56d0aebbfc6c26b534f99ea904e2c5bbb0a27de0",
       "functions": [
+        {
+          "signature": "public.catalog_publication_read_json(text,text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "af836bb01cb39237a0f7567f2bbdf2c03430b58cd00c9423539bcc5aeaf91e9a"
+        },
+        {
+          "signature": "public.catalog_publication_read_manifest(uuid,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "590a607fe3c2e78bfa0fe49612b0abd5948ef5c93c79fbcee8536867b626f272"
+        },
+        {
+          "signature": "public.catalog_publication_read_sku_revision(uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "9204fd13ea1c830721f9c642adbd49f30f72d1f41f3b123e982685aa512c4a3f"
+        },
         {
           "signature": "public.catalog_publication_read_head()",
           "beforeSha256": null,
-          "afterSha256": "9cd8583c96860582dff92cde9ce510907c2fbb7b9dd97b1767ba530ccfb21b11"
+          "afterSha256": "55fb2a9f9b892acb7c4ffa77ea004281964f8604fdc90395212758f0fbe551d7"
         },
         {
           "signature": "public.catalog_publication_selected_evidence(uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "d8f570c7df9b88504627e7e9b7a2e59391f803a9e4eebbb9a6139ec20b3b84bf"
+          "afterSha256": "e943c5cf42785322cd40abaa1cf45dd350a403d86fc5636ccb1158d7f1628c9b"
         },
         {
           "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
           "beforeSha256": null,
-          "afterSha256": "cf564f5c76abbb39b8814eb1eaf13d8491143fa46ec57af707dd93c3995208ef"
-        },
-        {
-          "signature": "public.catalog_publication_activation_readiness(text[],text)",
-          "beforeSha256": null,
-          "afterSha256": "54d84ca556b215cee16d5258b4ba6176bda6adbf0c591c69f35ab2bbca1587ec"
+          "afterSha256": "8b633a5f48f60df3cb85304ff202a8242f9829020758d6b57875b534b6ac2746"
         }
       ]
     }

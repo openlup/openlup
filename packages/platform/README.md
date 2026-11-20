@@ -1316,21 +1316,17 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
-### Read governed offers and activation readiness
+### Read governed offer memberships
 
-Install the complete PostgreSQL catalogue through `20261123193000_catalog_publication_reads.sql`.
-Call the experimental `readPostgresCatalogMembershipPage(executor, input)`
-on a commerce executor. On a transaction executor, await the read before issuing
-more commands so its savepoint can preserve earlier work on refusal. Pass back
-the cursor with the same offer and mode. If the head moved, restart at the first page.
-
-Call `readPostgresCatalogActivationReadiness(ownerLane, bind, input)` with the
-observed head digest and 1–100 SKU codes. The installed binding receives the
-transaction executor. Supply the product-type registry, price channel, strict
-`CommercePriceAuthorityPort` built on that executor and the installed subject
-predicate. Every assessment uses the same snapshot and price evaluation instant.
-An unavailable observation rolls back the batch, and a serialization conflict is retryable.
-A busy or moved head returns a conflict. Reload before retrying a moved head.
+Install the complete PostgreSQL catalogue through
+`20261123193000_catalog_publication_reads.sql`. Call the experimental
+`readPostgresCatalogMembershipPage(executor, input)` from `@openlup/platform/catalog`.
+It reads one page with one SELECT. The caller owns the transaction and savepoints.
+An expected refusal is returned as a value and leaves the transaction usable.
+A confirmed legacy catalogue returns an empty first page. A governed page
+returns evidence for each emitted SKU and a cursor when more entries match.
+Pass back that cursor with the same offer and mode. Start again at the first
+page when the head moves. A PostgreSQL serialization failure is retryable.
 
 Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
 `runCatalogExtensionConformance`. The existing bin runs
