@@ -681,6 +681,23 @@ it.each([
   expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason });
 });
 
+it.each([
+  ["100.0 grams at scale 1", { dimension: "mass", unit: "openlup:g", unscaled: "1000", scale: 1 }],
+  ["100 millilitres", { dimension: "volume", unit: "openlup:ml", unscaled: "100", scale: 0 }],
+] as const)("refuses %s of net content with the whole-gram publication remedy", async (_label, netContent) => {
+  const error = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    issue.facts.netContent = { ...netContent };
+    await insertGraph(db, issue);
+    // The live quantity agrees with the approved one; only the unit or scale is unsupported.
+    await db.query(`UPDATE public.catalog_skus SET net_content_dimension=$2,net_content_unit=$3,
+      net_content_unscaled=$4,net_content_scale=$5 WHERE id=$1`,
+    [issue.skuId, netContent.dimension, netContent.unit, netContent.unscaled, netContent.scale]);
+  }).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toEqual({ outcome: "validation_issue", reason: "publication_net_weight_unsupported",
+    message: "Net content must be expressed in whole grams at scale 0 to publish. Other units cannot be published yet." });
+});
+
 it("admits the same typed presentation, valid GTIN, axes and SKU intents the reader decodes", async () => {
   const head = await transaction(pool, async db => {
     const issue = await graph(db, fixture());
@@ -775,14 +792,21 @@ it("refuses an issue backdated between a committed approval and its later revoca
     .toEqual([{ id: null }]);
 });
 
-it("refuses a backdated revocation that would change a saved publication's approval", async () => {
+it.each(["at the approval instant", "one second later"] as const)("refuses revoking an issued candidate %s and says no action is needed", async when => {
   const issue = await transaction(pool, async db => {
     const value = await graph(db, fixture());
     await insertGraph(db, value);
     return value;
   });
-  const revoke = changeDecision(issue, "revoke", "revoke:1", randomUUID());
-  await expect(transaction(pool, db => insertDecision(db, revoke))).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_approval_missing" });
+  // The highest identifier orders the revocation after the approval at the same instant.
+  const revoke = changeDecision(issue, "revoke", "revoke:1", "ffffffff-ffff-4fff-bfff-ffffffffffff");
+  if (when === "one second later") revoke.time = (await pool.query(`SELECT to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '1 second',
+    'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS value`, [issue.time])).rows[0].value;
+  const error = await transaction(pool, db => insertDecision(db, revoke)).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toEqual({ outcome: "validation_issue", reason: "publication_candidate_already_issued",
+    message: "This candidate is already issued; revoking it has no effect. No action is needed." });
+  expect((await pool.query("SELECT action FROM public.catalog_publication_decisions WHERE product_id=$1 ORDER BY action", [issue.productId])).rows)
+    .toEqual([{ action: "approve" }]);
   expect((await publicationReader().readbackV2(issue.head)).outcome).toBe("page");
 });
 

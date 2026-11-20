@@ -946,8 +946,9 @@ candidate's current approval, the immediate predecessor, the resolved SKU
 roster, response size and the original command result. Approval records the
 expected product and SKU facts. An issue must match those facts, and the latest
 issue must also match the live product and SKU projections, including the legacy
-whole-gram net weight that quote readers serve. A candidate with an issue keeps its
-approval, so a later revocation refuses. Decision transitions
+whole-gram net weight that quote readers serve, so it publishes net content in whole
+grams at scale 0. A candidate with an issue keeps its approval, so a later
+revocation refuses and needs no action. Decision transitions
 use the existing draft head to serialize with issuance, including before the
 product exists. Capture and exact restore replay apply the same read-only
 admission checks. Live product and SKU facts use the retained projection decoders.

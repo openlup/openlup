@@ -307,7 +307,7 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.catalog_publication_assert_receipt(uuid,text) FROM PUBLIC;
 
--- The candidate index supplies neighbors and the as-of decision. Mutation
+-- The candidate index supplies neighbors and the current decision. Mutation
 -- callers serialize on the draft head before entering this read-only proof.
 CREATE FUNCTION public.catalog_publication_assert_candidate(
  p_decision public.catalog_publication_decisions, p_issue public.catalog_publications, p_state jsonb
@@ -341,6 +341,10 @@ BEGIN
   SELECT * INTO issue FROM public.catalog_publications
    WHERE candidate_ref=p_decision.candidate_ref AND product_id=p_decision.product_id
     AND candidate_digest=p_decision.candidate_digest;
+  -- Revoking after the candidate's issue changes nothing that was published.
+  IF issue.id IS NOT NULL AND p_decision.action='revoke' AND issue.committed_at<=p_decision.decided_at THEN
+   RAISE EXCEPTION 'catalog_publication_candidate_already_issued' USING ERRCODE='23514', CONSTRAINT='catalog_publication_candidate_already_issued';
+  END IF;
  END IF;
  IF issue.id IS NULL THEN RETURN; END IF;
 
@@ -898,6 +902,15 @@ BEGIN
  END IF;
  IF EXISTS (SELECT 1 FROM public.catalog_publication_heads WHERE product_id=p_product AND publication_id=p_issue) THEN
   PERFORM public.catalog_publication_assert_head(p_product,true);
+  -- Legacy quote readers serve whole grams, as the donor's live check compares them.
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(roster) AS member
+    JOIN public.catalog_sku_revisions r ON r.id=(member->>'revisionId')::uuid AND r.product_id=p_product
+    -- Parse only this roster member's revision; a filter on the revision scan must not read others.
+    CROSS JOIN LATERAL (SELECT CASE WHEN r.id=(member->>'revisionId')::uuid THEN r.full_facts::jsonb->'netContent' END AS quantity) net
+    WHERE (net.quantity->>'dimension'='mass' AND net.quantity->>'unit'='openlup:g' AND net.quantity->'scale'='0'::jsonb
+      AND (net.quantity->>'unscaled')::numeric<=2147483647) IS DISTINCT FROM true) THEN
+   RAISE EXCEPTION 'catalog_publication_net_weight_unsupported' USING ERRCODE='23514', CONSTRAINT='catalog_publication_net_weight_unsupported';
+  END IF;
   IF NOT public.catalog_publication_live_matches(p_product,product,roster) THEN
    RAISE EXCEPTION 'catalog_publication_live_drift' USING ERRCODE='23514', CONSTRAINT='catalog_publication_live_drift';
   END IF;
@@ -967,9 +980,8 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
       AND s.net_content_unit=f.facts #>> '{netContent,unit}'
       AND s.net_content_scale=(f.facts #>> '{netContent,scale}')::integer
       AND s.net_content_unscaled=(f.facts #>> '{netContent,unscaled}')::numeric
-      -- Legacy quote readers serve whole grams, as the donor's live check compares them.
-      AND f.facts #>> '{netContent,dimension}'='mass' AND f.facts #>> '{netContent,unit}'='openlup:g'
-      AND f.facts #> '{netContent,scale}'='0'::jsonb AND s.net_weight_g::text=f.facts #>> '{netContent,unscaled}'
+      -- The latest issue publishes whole grams, which legacy quote readers serve.
+      AND s.net_weight_g::text=f.facts #>> '{netContent,unscaled}'
       AND s.gross_mass_dimension IS NOT DISTINCT FROM f.facts #>> '{grossMass,dimension}'
       AND s.gross_mass_unit IS NOT DISTINCT FROM f.facts #>> '{grossMass,unit}'
       AND s.gross_mass_scale IS NOT DISTINCT FROM (f.facts #>> '{grossMass,scale}')::integer
