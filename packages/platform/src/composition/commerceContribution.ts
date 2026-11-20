@@ -1,4 +1,5 @@
 import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+import { buildCapabilityContribution } from "./buildCapabilityContribution.js";
 
 /** Describe existing selected commerce callables; never install another executor. */
 export function createCommerceContribution(input: {
@@ -9,27 +10,23 @@ export function createCommerceContribution(input: {
   schedules: Contribution["schedules"];
   routes: Contribution["routes"];
 }) {
-  for (const [kind, names] of [
-    ["handler", input.handlers.map(handler => handler.eventType)],
-    ["schedule", input.schedules.map(schedule => schedule.id)],
-    ["route", input.routes.map(route => route.id)],
-  ] as const) {
-    if (new Set(names).size !== names.length) throw new Error(`commerce_duplicate_${kind}`);
-  }
-  const contribution: Contribution = {
-    manifest: {
-      name: "@openlup/platform", version: input.version, kind: "rail",
-      module: { id: "commerce", kind: "capability", provides: ["./commerce", "./commerce/contracts", "./commerce/server"], dependsOn: [] },
-      emits: [], handles: input.handlers.map(handler => handler.eventType),
-      schedules: input.schedules.map(({ id, cadenceSeconds }) => ({ id, cadenceSeconds })), env: [],
-      requiredPorts: Object.keys(input.commerce), routes: input.routes.map(route => route.id), requiredSchema: input.requiredSchema,
-    },
-    handlers: input.handlers.map(({ eventType, timeoutMs }) => Object.freeze({ eventType, timeoutMs })), schedules: input.schedules, routes: input.routes,
-  };
+  const built = buildCapabilityContribution({
+    id: "commerce",
+    version: input.version,
+    provides: ["./commerce", "./commerce/contracts", "./commerce/server"],
+    dependsOn: [],
+    requiredSchema: input.requiredSchema,
+    ports: input.commerce,
+    handlers: input.handlers,
+    freezeHandlerDescriptors: true,
+    schedules: input.schedules,
+    routes: input.routes,
+    duplicateErrorPrefix: "commerce",
+  });
   return {
-    contributions: [contribution],
-    ports: Object.fromEntries(Object.entries(input.commerce).filter(([, fn]) => typeof fn === "function").map(([name, fn]) => [`@openlup/platform/commerce:${name}`, fn])),
-    routes: Object.fromEntries(input.routes.map(route => [`@openlup/platform/commerce:${route.id}`, route.handle])),
-    triggers: Object.fromEntries(input.schedules.map(schedule => [`@openlup/platform/commerce:${schedule.id}`, schedule.run])),
+    contributions: [built.contribution],
+    ports: built.ports as { [k: string]: ((...args: never[]) => unknown) | null },
+    routes: built.routes,
+    triggers: built.triggers,
   };
 }

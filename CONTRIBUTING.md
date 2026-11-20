@@ -117,22 +117,24 @@ its users or operators can observe.
 
 ## Add a setting
 
-### Kind `code`
+Place a row in the packaged catalogue when OpenLup owns the installed policy,
+the host callback contract, the capability gap or the invariant. Keep the
+package's per-kind recipe for its domain data or executable descriptor and
+regenerate the carriers. When the application owns a configurable value in its
+code, [declare it in its settings binding](packages/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own)
+with the owned file, symbol, goal and effect. Report that file value through the
+binding, run the app's startup check, and use its settings script to verify
+discovery. Application declarations require no package catalogue edit.
 
-Use [the subscription edit window](packages/core/docs/guide/how-to/operate/settings-catalogue.md#subscriptioncreationeditwindowhours)
-for settings changed by editing the owned configuration and validated in TypeScript.
-
-1. Add a JSON entry in `packages/platform/src/<domain>/settings-data.json`. Name
-   the owned file and symbol, the existing validation, when the value takes
-   effect and which records keep their original terms.
-2. Build the workspaces and run `node scripts/settings-catalogue.ts --write`.
-   Descriptive entries need no generator edit.
-3. Run `node scripts/settings-catalogue.ts` to check that the reader-guide page
-   and packaged catalogue reproduce byte for byte.
-
-For `cap` or `invariant`, use the same data file and regeneration steps. Include
+For `cap` or `invariant`, add an entry to `packages/platform/src/<domain>/settings-data.json`
+and run the same regeneration steps as for installed settings. Include
 `key`, `domain`, `kind`, `goal`, `schemaVersion: 1`, a read-only `runtime` with one
 `reason`, and `change.reference` for where to act. Omit value fields.
+
+For `callback`, add a value descriptor to the owning domain's `settings-data.json`.
+Use `kind: "callback"` and the read-only runtime level. Describe the default,
+effect and records that keep existing values. Set `change.reference` to the guide
+for the platform callback contract, then regenerate the catalogue as below.
 
 ### Kind `installed`
 
@@ -1811,14 +1813,17 @@ on that tree cover interaction with main.
 
 Before each external write, recheck actual authority, the live head and the
 applicable receipt. A known failed required check needs diagnosis. Conflicting
-mergeability stops enqueue attempts; `UNKNOWN` permits one fresh read, then
-diagnosis. Leave `BEHIND` to the queue. Never use `--admin` for this route.
+mergeability stops enqueue attempts. If mergeability is `UNKNOWN` while checking
+manually, take one fresh read, then diagnose. Leave `BEHIND` to the queue. Never
+use `--admin` for this route.
 A non-null `autoMergeRequest` means armed; only `mergeQueueEntry` confirms queue
 entry. Observe an existing request instead of repeatedly arming it.
 
 Where activated, trusted `Queue Handoff` can insert a still-armed exact head once
-after the required source successes and current native proof. It does not arm
-an unarmed PR, poll or automatically requeue an evicted head. Its App is scoped
+after the required source successes and current native proof. At each of its two
+mergeability checks, it re-reads `UNKNOWN` up to six times, 10 seconds apart.
+Persistent `UNKNOWN` requires re-running the job. It does not arm an unarmed PR
+or automatically requeue an evicted head. Its App is scoped
 to this repository with no bypass; its private key stays in the main-only
 `openlup-merge-queue` environment, separate from release credentials. Queue
 Handoff's built-in workflow token is read-only. Activation and settings remain

@@ -24,8 +24,9 @@ it("represents every domain data key and executable descriptor in the catalogue"
     "inventory_renewal_protection", "checkout_recovery_reminders", "subscriber_winback_policy",
   ]));
   expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(40);
-  expect(entries.find(({ key }) => key === "subscriptions.lifecycleNoticeRetryBudget")).toMatchObject({
-    kind: "code", fallback: 6, change: { file: "owned/renewal.config.ts", symbol: "subscriptionCare.dispatch.maxAttempts" },
+  expect(entries.filter(({ kind }) => kind === "code")).toEqual([]);
+  expect(entries.find(({ key }) => key === "savedAddressValidation")).toMatchObject({
+    kind: "callback", change: { reference: "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences" },
   });
   expect(entries.filter(({ kind }) => kind === "invariant").length).toBeGreaterThanOrEqual(7);
 });

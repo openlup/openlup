@@ -111,3 +111,22 @@ export interface PaymentAdapter {
   absencePort?: PaymentAbsencePort;
   methodPort?: import("./repair.js").PaymentRepairMethodPort;
 }
+
+export type AdapterCaptureHandoff = PaymentMethodHandoff["kind"] | "customer-authorization";
+
+export type CoreCapabilityOverrides = Partial<
+  Pick<PaymentProviderCapabilityDescriptor, "captureFlows" | "payerContext">
+>;
+
+/** Single-source registry over composed payment adapters, projecting capabilities, handoffs, method repair and readback ports. */
+export interface PaymentProviderRegistry {
+  get(providerKind: string): PaymentAdapter | null;
+  requireAdapter(providerKind: string): PaymentAdapter;
+  kinds(): readonly string[];
+  asCapabilityRegistry(
+    overrides?: Readonly<Record<string, CoreCapabilityOverrides>>,
+  ): import("@openlup/core/payment").PaymentProviderCapabilityRegistry;
+  railHandoffKinds(providerKind: string): readonly PaymentMethodHandoff["kind"][];
+  methodPort(providerKind: string): import("./repair.js").PaymentRepairMethodPort | null;
+  readbackPorts(): Readonly<Record<string, PaymentReadbackPort>>;
+}

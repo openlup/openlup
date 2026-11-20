@@ -46,7 +46,7 @@ may arrive first. Only when both exist may subscription advance the existing
 the snapshot-aware resume RPC has no runtime caller.
 
 ## Public surface (import cross-domain ONLY these)
-- `ports.ts` — `PaymentPort`, `PaymentExecutionPort`.
+- `ports.ts` — `PaymentExecutionPort`, `PaymentWebhookPort`.
 - `types.ts`, `paymentControlTypes.ts`, `methodRefs.ts` — sessions, method refs,
   attempt/intent/event statuses, `PaymentExecution*`.
 - `recoveryContracts.ts` — hidden payment recovery redeem/resend contracts.

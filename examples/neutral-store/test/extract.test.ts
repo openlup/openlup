@@ -7,12 +7,47 @@ import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { setTimeout } from 'node:timers/promises';
+import { z, type ZodType } from 'zod';
+import { createSettingsBindings } from '../owned/settings-host.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createHash } from 'node:crypto';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // Source-release tests keep scratch inside this application.
 const scratch = resolve(root, '.context', 'extract-');
+
+test('native starter declaration schemas accept and reject the same values as the former catalogue schemas', () => {
+  const int32Max = 2147483647;
+  const safeMax = Number.MAX_SAFE_INTEGER;
+  const cases = [
+    ['offer.freeShippingFromMinor', { type: 'integer', minimum: 0, maximum: int32Max },
+      [0, 1000, int32Max], [-1, int32Max + 1, '1000']],
+    ['offer.subscriptionDiscountBps', { type: 'integer', minimum: 0 },
+      [0, 500, 10000, safeMax], [-1, safeMax + 1, '500']],
+    ['purchase.reservationMinutes', { type: 'integer', minimum: 1, maximum: safeMax },
+      [1, 30, safeMax], [0, safeMax + 1, '30']],
+    ['subscriptionCreation.editWindowHours', { type: 'integer', minimum: 1, maximum: 720 },
+      [1, 72, 720], [0, 721, '72']],
+    ['subscriptionOffers.deliveryCycles', { type: 'object' },
+      [{ classic: {}, sized: {} }], [[]]],
+    ['subscriptions.lifecycleNoticeRetryBudget', { type: 'integer', minimum: 1, maximum: int32Max },
+      [1, 6, int32Max], [0, int32Max + 1, '6']],
+  ] as const;
+  const binding = createSettingsBindings({});
+  assert.ok('file' in binding && binding.file);
+  for (const [key, oldSchema, accepted, rejected] of cases) {
+    const old = z.fromJSONSchema(oldSchema);
+    const current: ZodType | undefined = binding.file.entries[key]?.descriptor?.schema;
+    assert.ok(current, key);
+    for (const [values, expected] of [[accepted, true], [rejected, false]] as const) {
+      for (const value of values) {
+        const message = key + ': ' + JSON.stringify(value);
+        assert.equal(old.safeParse(value).success, expected, message);
+        assert.equal(current.safeParse(value).success, expected, message);
+      }
+    }
+  }
+});
 
 test('extract creates an independent repository and refuses to overwrite an existing one', async () => {
   const { mkdir } = await import('node:fs/promises');

@@ -138,6 +138,18 @@ export interface PaymentAdapter {
     absencePort?: PaymentAbsencePort;
     methodPort?: import("./repair.js").PaymentRepairMethodPort;
 }
+export type AdapterCaptureHandoff = PaymentMethodHandoff["kind"] | "customer-authorization";
+export type CoreCapabilityOverrides = Partial<Pick<PaymentProviderCapabilityDescriptor, "captureFlows" | "payerContext">>;
+/** Single-source registry over composed payment adapters, projecting capabilities, handoffs, method repair and readback ports. */
+export interface PaymentProviderRegistry {
+    get(providerKind: string): PaymentAdapter | null;
+    requireAdapter(providerKind: string): PaymentAdapter;
+    kinds(): readonly string[];
+    asCapabilityRegistry(overrides?: Readonly<Record<string, CoreCapabilityOverrides>>): import("@openlup/core/payment").PaymentProviderCapabilityRegistry;
+    railHandoffKinds(providerKind: string): readonly PaymentMethodHandoff["kind"][];
+    methodPort(providerKind: string): import("./repair.js").PaymentRepairMethodPort | null;
+    readbackPorts(): Readonly<Record<string, PaymentReadbackPort>>;
+}
 export {};
 ```
 ## dist/payments/contracts/conformance.d.ts
@@ -473,9 +485,9 @@ export {};
 
 ```ts
 export type { PreparedAttemptPrepareInput, PreparedAttemptPersistenceResult, PreparedAttemptFinalizeInput, PreparedAttemptPersistencePort, PreparedAttemptExecutionPort, PreparedAttemptExecutionInput, PreparedAttemptFailurePolicy, PreparedAttemptExecutionResult, } from "./preparedAttempt.js";
-export type { TransientSecret, PaymentMethodHandoff, PaymentRefusalEnvelope, PaymentExecutionEnvelope, PaymentAttemptPort, PaymentAdapterCapabilities, PaymentAdapter, } from "./adapter.js";
+export type { TransientSecret, PaymentMethodHandoff, PaymentRefusalEnvelope, PaymentExecutionEnvelope, PaymentAttemptPort, PaymentAdapterCapabilities, PaymentAdapter, AdapterCaptureHandoff, CoreCapabilityOverrides, PaymentProviderRegistry, } from "./adapter.js";
 export type { PaymentRefundObservation, RefundEvidencePolicy, VerifiedPaymentEvidence, VerifiedMethodEvidence, VerifiedReusableMethod, PaymentVerifyNormalizePort, ProviderReadPurpose, PaymentAbsenceEnvelope, PaymentReadbackEnvelope, PaymentMoney, PaymentAttemptIdentity, PaymentReadbackPort, PaymentAbsencePort, } from "./evidence.js";
-export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidence } from "./conformance.js";
+export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidence, ExecutionCapability, ExecutionSubject, ExecutionProviderIdentity, ExecutionEvidence, DurableEventCounts, DurableEventAggregate, DurableEventFixtureCardinality, DurableEventWriteCardinality, DurableEventCardinalityExpectations, DurableEventSnapshot, EventReceipt, DurableEventCapability, DurableEventEvidence, } from "./conformance.js";
 export type { PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource, } from "./truth.js";
 export type { PaymentIngressPort } from "./evidence.js";
 export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";

@@ -38,19 +38,42 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       throw error;
     })).rows[0]?.response;
   }
-  async function deficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]> {
+  function buildDeficits(value: unknown, catalogBySku: ReadonlyMap<string, Record<string, unknown>>): StockWaitDeficit[] {
     const rows = array(value).map(subscriptionRecord);
-    if (rows.length === 0) return [];
-    const catalog = (await db.query("SELECT id,sku,title FROM public.catalog_skus WHERE sku=ANY($1::text[])", [rows.map(r => String(r.sku))])).rows;
-    return rows.map(value => {
-      const r = subscriptionRecord(value);
+    return rows.map(r => {
       // Catalogue labels enrich the projection; quantities still come only from N3.
-      const item = catalog.find(item => item.sku === r.sku);
+      const item = catalogBySku.get(String(r.sku));
       if (!item) throw new Error("stock_wait_catalog_sku_missing");
       return { skuId: String(item.id), sku: String(r.sku), displayName: String(item.title), size: null,
         required: Number(r.requiredUnits), reserved: Number(r.reservedUnits),
         available: Number(r.availableUnits), missing: Number(r.missingUnits) };
     });
+  }
+  async function loadCatalogBySku(db: SubscriptionQueryExecutor, skus: readonly string[]): Promise<Map<string, Record<string, unknown>>> {
+    if (skus.length === 0) return new Map();
+    const catalog = (await db.query("SELECT id,sku,title FROM public.catalog_skus WHERE sku=ANY($1::text[])", [skus])).rows;
+    return new Map(catalog.map(item => [String(item.sku), item]));
+  }
+  async function deficits(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitDeficit[]> {
+    const rows = array(value).map(subscriptionRecord);
+    if (rows.length === 0) return [];
+    const catalogBySku = await loadCatalogBySku(db, [...new Set(rows.map(r => String(r.sku)))]);
+    return buildDeficits(rows, catalogBySku);
+  }
+  function projectCaseRow(row: Record<string, unknown>, catalogBySku: ReadonlyMap<string, Record<string, unknown>>): StockWaitCase {
+    const r = subscriptionRecord(row.projection), snapshot = codec.decode(subscriptionRecord(row.cycle_snapshot));
+    const canonicalCaseId = String(r.id);
+    if (!["waiting", "stock_secured", "resumed", "closed"].includes(String(r.state))) throw new Error("stock_wait_state_invalid");
+    return { subscriptionId: String(r.subscription_id), scheduledAt: snapshot.scheduledAt, scheduledInstant: snapshot.scheduledInstant,
+      caseId: canonicalCaseId, clientId: String(r.client_id), state: r.state as StockWaitCase["state"],
+      frozenSnapshot: snapshot, frozenFingerprint: String(r.fingerprint),
+      binding: { caseId: canonicalCaseId, cycleId: nullable(row.bound_cycle_id), orderId: nullable(row.bound_order_id),
+        paymentId: nullable(row.payment_id), engineIdempotencyKey: String(row.identity_key) },
+      deficits: buildDeficits(r.deficits, catalogBySku), fulfillmentRef: nullable(r.fulfillment_id), blockReason: nullable(r.block_reason),
+      openedAt: String(r.opened_at), checkedAt: nullable(r.last_checked_at), selectedAt: nullable(r.last_selected_at),
+      securedAt: nullable(r.stock_secured_at), resumedAt: nullable(r.resumed_at), closedAt: nullable(r.closed_at),
+      startedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:started`, resumedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:resumed`,
+      noticeEligible: r.waitingNoticeRelevant === true };
   }
   async function readCase(db: SubscriptionQueryExecutor, caseId: string): Promise<StockWaitCase | null> {
     const rows = (await db.query(`SELECT public.subscription_stock_wait_read(c.id) AS projection,
@@ -60,19 +83,10 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
       LEFT JOIN public.commerce_orders ord ON ord.renewal_operation_id=op.id
       LEFT JOIN public.commerce_settlement_intents intent ON intent.renewal_operation_id=op.id WHERE c.id=$1::uuid`, [caseId])).rows;
     if (!rows[0]) return null;
-    const r = subscriptionRecord(rows[0].projection), snapshot = codec.decode(subscriptionRecord(rows[0].cycle_snapshot));
-    const canonicalCaseId = String(r.id);
-    if (!["waiting", "stock_secured", "resumed", "closed"].includes(String(r.state))) throw new Error("stock_wait_state_invalid");
-    return { subscriptionId: String(r.subscription_id), scheduledAt: snapshot.scheduledAt, scheduledInstant: snapshot.scheduledInstant,
-      caseId: canonicalCaseId, clientId: String(r.client_id), state: r.state as StockWaitCase["state"],
-      frozenSnapshot: snapshot, frozenFingerprint: String(r.fingerprint),
-      binding: { caseId: canonicalCaseId, cycleId: nullable(rows[0].bound_cycle_id), orderId: nullable(rows[0].bound_order_id),
-        paymentId: nullable(rows[0].payment_id), engineIdempotencyKey: String(rows[0].identity_key) },
-      deficits: await deficits(db, r.deficits), fulfillmentRef: nullable(r.fulfillment_id), blockReason: nullable(r.block_reason),
-      openedAt: String(r.opened_at), checkedAt: nullable(r.last_checked_at), selectedAt: nullable(r.last_selected_at),
-      securedAt: nullable(r.stock_secured_at), resumedAt: nullable(r.resumed_at), closedAt: nullable(r.closed_at),
-      startedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:started`, resumedNoticeKey: `subscription_stock_wait:${canonicalCaseId}:resumed`,
-      noticeEligible: r.waitingNoticeRelevant === true };
+    const r = subscriptionRecord(rows[0].projection);
+    const deficitRows = array(r.deficits).map(subscriptionRecord);
+    const catalogBySku = await loadCatalogBySku(db, [...new Set(deficitRows.map(item => String(item.sku)))]);
+    return projectCaseRow(rows[0], catalogBySku);
   }
   async function frozen(db: SubscriptionQueryExecutor, value: unknown): Promise<StockWaitFrozenCase> {
     const r = subscriptionRecord(value), b = binding(r.binding), snapshot = codec.decode(subscriptionRecord(r.snapshot));
@@ -116,9 +130,44 @@ export function createPostgresStockWaitStore(options: NativeStockWaitBinding) {
     async listCandidates(input) {
       return options.withTransaction(async db => {
         const values = array(await invoke(db, "subscription_stock_wait_candidates", [input.limit, input.asOf]));
-        const result: StockWaitFrozenCase[] = [];
-        for (const value of values) result.push(await frozen(db, value));
-        return result;
+        const parsed = values.map(value => {
+          const r = subscriptionRecord(value);
+          return { r, b: binding(r.binding), snapshot: codec.decode(subscriptionRecord(r.snapshot)) };
+        });
+        const caseIds = [...new Set(parsed.map(item => item.b.caseId).filter((id): id is string => id !== null))];
+        const caseById = new Map<string, StockWaitCase>();
+        if (caseIds.length > 0) {
+          const caseRows = (await db.query(`SELECT c.id AS case_id, public.subscription_stock_wait_read(c.id) AS projection,
+            c.cycle_snapshot,op.identity_key,cycle.id AS bound_cycle_id,ord.id AS bound_order_id,intent.id AS payment_id
+            FROM public.subscription_stock_wait_cases c JOIN public.subscription_renewal_operations op ON op.id=c.renewal_operation_id
+            LEFT JOIN public.subscription_cycles cycle ON cycle.renewal_operation_id=op.id
+            LEFT JOIN public.commerce_orders ord ON ord.renewal_operation_id=op.id
+            LEFT JOIN public.commerce_settlement_intents intent ON intent.renewal_operation_id=op.id
+            WHERE c.id=ANY($1::uuid[])`, [caseIds])).rows;
+          const allSkus = new Set<string>();
+          for (const row of caseRows) {
+            const projection = subscriptionRecord(row.projection);
+            for (const deficit of array(projection.deficits)) {
+              allSkus.add(String(subscriptionRecord(deficit).sku));
+            }
+          }
+          const catalogBySku = await loadCatalogBySku(db, [...allSkus]);
+          for (const row of caseRows) {
+            const projected = projectCaseRow(row, catalogBySku);
+            const key = String(row.case_id ?? projected.caseId);
+            caseById.set(canonicalUuid(key) ?? key, projected);
+          }
+        }
+        return parsed.map(({ r, b, snapshot }) => ({
+          subscriptionId: snapshot.subscriptionId,
+          scheduledAt: snapshot.scheduledAt,
+          scheduledInstant: snapshot.scheduledInstant,
+          operationId: String(r.operationId),
+          case: b.caseId === null ? null : (caseById.get(canonicalUuid(b.caseId) ?? b.caseId) ?? null),
+          frozenSnapshot: snapshot,
+          frozenFingerprint: String(r.operationFingerprint),
+          binding: b,
+        }));
       });
     },
     async readFrozenCase(input) {

@@ -83,8 +83,8 @@ describe("settings show", () => {
 
   it("rejects the same unsupported descriptor version as the catalogue schema", () => {
     const { entries, showResult } = loadSettingsCatalogue();
-    const value = entries.find(entry => entry.kind === "code");
-    if (!value) throw new Error("Expected a code descriptor");
+    const value = entries.find(entry => entry.kind === "installed");
+    if (!value) throw new Error("Expected an installed descriptor");
     const setting = { ...value, schemaVersion: 2 };
     expect(settingDescriptorSchema.safeParse(setting).success).toBe(false);
     expect(showResult.safeParse({ schemaVersion: 1, setting, observation: { state: "offline" } }).success).toBe(false);
@@ -163,16 +163,10 @@ describe("settings show", () => {
   });
 });
 
-it.each([
-  ["inventory buffer", "inventory_renewal_protection"],
-  ["free shipping", "offer.freeShippingFromMinor"],
-  ["subscription discount", "offer.subscriptionDiscountBps"],
-  ["delivery interval", "subscriptionOffers.deliveryCycles"],
-  ["checkout reservation", "purchase.reservationMinutes"],
-])("finds %s in the settings list", (goal, key) => {
+it("finds inventory buffer in the packaged settings list", () => {
   const { listResult } = loadSettingsCatalogue();
-  const entries = listResult.parse(listSettings({ goal })).entries;
-  expect(entries[0]?.key).toBe(key);
+  const entries = listResult.parse(listSettings({ goal: "inventory buffer" })).entries;
+  expect(entries[0]?.key).toBe("inventory_renewal_protection");
 });
 
 it("accepts every catalogue list summary and enforces the compact branch", () => {

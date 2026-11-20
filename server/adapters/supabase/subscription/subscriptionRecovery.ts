@@ -75,7 +75,13 @@ export function createSupabaseSubscriptionRecoveryPort(
       return parsed.data;
     },
 
-    async resolveRecoveryCaseSubscription({ tokenEvidence }: { tokenEvidence: PaymentRecoveryTokenEvidence }) {
+    async resolveRecoveryCaseSubscription({
+      tokenEvidence,
+      providerKind = "stripe",
+    }: {
+      tokenEvidence: PaymentRecoveryTokenEvidence;
+      providerKind?: string;
+    }) {
       // Look up the dunning case to find the subscription_id.
       const { data: caseRow, error: caseError } = await client
         .from("subscription_dunning_cases")
@@ -87,11 +93,16 @@ export function createSupabaseSubscriptionRecoveryPort(
       const caseRecord = caseRow as Record<string, unknown>;
       const subscriptionId = readString(caseRecord, "subscription_id");
 
-      // Resolve the Stripe customer ref. The subscription's existing
-      // payment-method ref (active or otherwise) is the canonical source —
-      // recovery needs to attach the new card to the same Stripe customer
-      // so the customer's invoice history stays intact.
-      const customerRef = await readSubscriptionCustomerRef(client, subscriptionId, tokenEvidence.clientId);
+      // Resolve the provider customer ref. The subscription's existing
+      // payment-method ref (active or otherwise) for this providerKind is the
+      // canonical source so recovery attaches the new method to the same
+      // provider customer without mixing refs across providers.
+      const customerRef = await readSubscriptionCustomerRef(
+        client,
+        subscriptionId,
+        tokenEvidence.clientId,
+        providerKind,
+      );
       return {
         caseId: readString(caseRecord, "id"),
         subscriptionId,
@@ -131,6 +142,7 @@ async function readSubscriptionCustomerRef(
   client: PaymentRecoverySupabaseClient,
   subscriptionId: string,
   clientId: string,
+  providerKind: string,
 ): Promise<string | null> {
   // A subscription (or a client) legitimately has MORE THAN ONE method ref — one
   // active plus any it previously replaced (a card update, or the declined card
@@ -138,14 +150,11 @@ async function readSubscriptionCustomerRef(
   // `client_id`-only filter errors ("multiple rows") for those customers, which
   // used to null out the resolution and make the recovery page permanently "not
   // actionable" (CJ01-O). Order the active + most-recent ref first and cap to one
-  // row so the lookup is deterministic regardless of how many refs exist. Stripe
-  // refs for a client share the same customer, so any one Stripe row is safe.
-  // Never pass a Tpay PAYID as a Stripe customer id; BLIK-only resolves to null
-  // and the handler uses the existing Stripe ensure-customer boundary.
+  // row so the lookup is deterministic regardless of how many refs exist.
   const bySub = await client
     .from("commerce_payment_method_refs")
     .select("provider_customer_ref")
-    .eq("provider_kind", "stripe")
+    .eq("provider_kind", providerKind)
     .eq("subscription_id", subscriptionId)
     .order("active", { ascending: false })
     .order("created_at", { ascending: false })
@@ -155,11 +164,11 @@ async function readSubscriptionCustomerRef(
     const ref = readNullableString(bySub.data as Record<string, unknown>, "provider_customer_ref");
     if (ref) return ref;
   }
-  // Fallback: client-bound method ref from the initial save-card flow.
+  // Fallback: client-bound method ref for this provider from the initial save flow.
   const byClient = await client
     .from("commerce_payment_method_refs")
     .select("provider_customer_ref")
-    .eq("provider_kind", "stripe")
+    .eq("provider_kind", providerKind)
     .eq("client_id", clientId)
     .order("active", { ascending: false })
     .order("created_at", { ascending: false })
