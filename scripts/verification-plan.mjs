@@ -21,7 +21,17 @@ const definitions = {
     reason: 'Human sign-off on the exact comparison range.',
   },
   gitleaks: {
-    command: () => ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner'], resource: null, requires: [],
+    command: ({ candidate }) => {
+      const base = ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner'];
+      const fullHistoryPaths = new Set(['config/gitleaks.toml', '.gitleaksignore']);
+      const canScanRange = Array.isArray(candidate.changedPaths)
+        && !candidate.changedPaths.some(path => fullHistoryPaths.has(path))
+        && /^[0-9a-f]{40}$/u.test(candidate.base)
+        && /^[0-9a-f]{40}$/u.test(candidate.head)
+        && candidate.base !== candidate.head;
+      return canScanRange ? [...base, `--log-opts=${candidate.base}..${candidate.head}`] : base;
+    },
+    resource: null, requires: [],
     owner: 'config/gitleaks.toml', context: 'gitleaks',
     reason: 'Secret scanning of Git history with the pinned scanner.',
   },

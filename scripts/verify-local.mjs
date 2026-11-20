@@ -119,7 +119,24 @@ export function runLogged(command, args, cwd, env, logPath) {
     });
   });
 }
-export async function verifyLocal({ cwd = process.cwd(), env = processEnvironment, pgtap = false, run = runLogged } = {}) {
+const DEFAULT_READ_ONLY_CONCURRENCY = 4;
+
+async function assertCandidateUnchanged(cwd, candidate, env) {
+  const current = await captureSessionCandidate(cwd, candidate.base, { env });
+  if (!current.clean || current.head !== candidate.head || current.tree !== candidate.tree) {
+    throw new Error('candidate changed during local verification');
+  }
+}
+
+async function executePhase(step, { cwd, env, directory, broker, run }) {
+  const argv = [fileURLToPath(new URL('./agent-review-session.mjs', import.meta.url)), 'verify-command', ...(broker && step.resource ? ['--resource', step.resource] : []), '--', ...step.command];
+  const started = Date.now(); const log = join(directory, `${step.name}.log`);
+  console.log(`Local verification: ${step.name}; resource=${broker && step.resource ? step.resource : 'direct'}; log=${log}`);
+  const phase = await run(process.execPath, argv, cwd, { ...env, ...step.env }, log);
+  return { name: step.name, argv, env: step.env, resource: broker && step.resource ? step.resource : null, log, seconds: (Date.now() - started) / 1000, ...phase };
+}
+
+export async function verifyLocal({ cwd = process.cwd(), env = processEnvironment, pgtap = false, run = runLogged, concurrency = DEFAULT_READ_ONLY_CONCURRENCY } = {}) {
   env = { ...env, PATH: `${dirname(process.execPath)}${delimiter}${env.PATH ?? ''}` };
   const scratch = join(cwd, '.context', 'scratch'); await mkdir(scratch, { recursive: true });
   const directory = await mkdtemp(join(scratch, 'verify-local-'));
@@ -149,18 +166,53 @@ export async function verifyLocal({ cwd = process.cwd(), env = processEnvironmen
       console.log('Local verification: auto-selected pgTAP due to SQL changes');
     }
     result.pgtap = plan.pgtap;
-    for (const step of plan.phases) {
-      const current = await captureSessionCandidate(cwd, candidate.base, { env });
-      if (!current.clean || current.head !== candidate.head || current.tree !== candidate.tree) throw new Error('candidate changed during local verification');
-      const argv = [fileURLToPath(new URL('./agent-review-session.mjs', import.meta.url)), 'verify-command', ...(broker && step.resource ? ['--resource', step.resource] : []), '--', ...step.command];
-      const started = Date.now(); const log = join(directory, `${step.name}.log`);
-      console.log(`Local verification: ${step.name}; resource=${broker && step.resource ? step.resource : 'direct'}; log=${log}`);
-      const phase = await run(process.execPath, argv, cwd, { ...env, ...step.env }, log);
-      result.phases.push({ name: step.name, argv, env: step.env, resource: broker && step.resource ? step.resource : null, log, seconds: (Date.now() - started) / 1000, ...phase });
-      if (phase.code !== 0) { result.code = phase.code; return result.code; }
+    const limit = Math.max(1, Math.floor(concurrency));
+    const stepContext = { cwd, env, directory, broker, run };
+    const completed = new Set();
+    let pending = [...plan.phases];
+    while (pending.length > 0) {
+      await assertCandidateUnchanged(cwd, candidate, env);
+      const ready = pending.filter(step => step.requires.every(requirement => completed.has(requirement)));
+      if (ready.length === 0) throw new Error('verification plan has unsatisfied dependencies');
+      const readyReadOnly = ready.filter(step => step.resource === null);
+      if (readyReadOnly.length > 0) {
+        const waveRecorded = new Map();
+        const waveErrors = new Map();
+        let stopLaunching = false;
+        let cursor = 0;
+        await Promise.all(Array.from({ length: Math.min(limit, readyReadOnly.length) }, async () => {
+          while (!stopLaunching && cursor < readyReadOnly.length) {
+            const step = readyReadOnly[cursor++];
+            try {
+              const recorded = await executePhase(step, stepContext);
+              waveRecorded.set(step.name, recorded);
+              if (recorded.code !== 0) stopLaunching = true;
+            } catch (error) {
+              waveErrors.set(step.name, error);
+              stopLaunching = true;
+            }
+          }
+        }));
+        for (const step of readyReadOnly) {
+          if (waveRecorded.has(step.name)) result.phases.push(waveRecorded.get(step.name));
+        }
+        for (const step of readyReadOnly) {
+          if (waveErrors.has(step.name)) throw waveErrors.get(step.name);
+        }
+        const firstFailure = readyReadOnly.map(step => waveRecorded.get(step.name)).find(phase => phase && phase.code !== 0);
+        if (firstFailure) { result.code = firstFailure.code; return result.code; }
+        for (const step of readyReadOnly) completed.add(step.name);
+        pending = pending.filter(step => !completed.has(step.name));
+        continue;
+      }
+      const step = ready[0];
+      const recorded = await executePhase(step, stepContext);
+      result.phases.push(recorded);
+      if (recorded.code !== 0) { result.code = recorded.code; return result.code; }
+      completed.add(step.name);
+      pending = pending.filter(item => item.name !== step.name);
     }
-    const final = await captureSessionCandidate(cwd, candidate.base, { env });
-    if (!final.clean || final.head !== candidate.head || final.tree !== candidate.tree) throw new Error('candidate changed during local verification');
+    await assertCandidateUnchanged(cwd, candidate, env);
     await sessionMain(['verify'], { cwd, env }); result.code = 0; return 0;
   } catch (error) { result.error = error.message; console.error(error.message); return 1; }
   finally {
