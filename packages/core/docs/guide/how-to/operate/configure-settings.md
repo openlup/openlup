@@ -113,12 +113,12 @@ const entries = {
 };
 ```
 
-Use the settings script that passes `--app ./owned/settings-host.ts`.
+From the application root, pass the owned binding to the installed command.
 
 ```sh
-npm --silent run settings -- list --goal "gift wrapping fee"
-npm --silent run settings -- show gift.wrapFeeMinor --json
-npm --silent run settings -- check
+./node_modules/.bin/openlup settings --app ./owned/settings-host.ts list --goal "gift wrapping fee"
+./node_modules/.bin/openlup settings --app ./owned/settings-host.ts show gift.wrapFeeMinor --json
+./node_modules/.bin/openlup settings --app ./owned/settings-host.ts check
 ```
 
 List finds the new key by goal. Show reports the configured value and where to
