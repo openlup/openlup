@@ -8,11 +8,11 @@
     "examples": [],
     "fallback": 30,
     "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Both sample configurations use a 30-minute checkout hold.",
-    "effect": {"appliesTo": "After deployment, the starter uses the duration to calculate expiry for new checkout reservations and holds created by checkout recovery.", "frozenOn": ["Existing reservations keep their recorded expiry; an interrupted checkout that already wrote a hold can refuse on retry if the duration changed."], "impact": "customer-promise"},
-    "runtime": {"level": "read-only", "reason": "The starter's checkout and recovery composition read this value from the owned store config."},
+    "whyThisDefault": "Both samples set a 30-minute duration.",
+    "effect": {"appliesTo": "The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.", "frozenOn": ["The reservation row records the expiry assigned at creation."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The starter reads the duration from the owned store config."},
     "change": {"file": "owned/store.config.ts", "symbol": "purchase.reservationMinutes"},
-    "schema": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "Checked by shared/config.ts (assertConfig)."},
+    "schema": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "assertConfig checks that the duration is a positive safe integer."},
     "rules": []
   },
   {

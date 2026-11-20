@@ -395,7 +395,7 @@
     {
       "key": "communications.messageDateFormatting",
       "domain": "communications",
-      "goal": "Use consistent date formatting and time zones in UI and mail.",
+      "goal": "Format the next-cycle date on the starter account page.",
       "schemaVersion": 1,
       "kind": "cap",
       "examples": [],
@@ -403,15 +403,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "The starter account page prints the recorded next-cycle timestamp directly; format it in the starter using the configured market time zone.",
+      "whyThisDefault": "The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone.",
       "effect": {
-        "appliesTo": "The starter account page prints the recorded next-cycle timestamp directly; format it in the starter using the configured market time zone.",
+        "appliesTo": "The starter account page displays the next-cycle timestamp directly.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The starter account page prints the recorded next-cycle timestamp directly; format it in the starter using the configured market time zone."
+        "reason": "Format it in the starter using the market time zone."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsmessagedateformatting"
@@ -770,17 +770,17 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Both sample configurations use 1000 minor units as an example threshold.",
+      "whyThisDefault": "Both samples set the threshold to 1000 minor units.",
       "effect": {
-        "appliesTo": "After deployment, the starter uses the threshold in new estimates and in new quotes once the shipping policy is effective.",
+        "appliesTo": "The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.",
         "frozenOn": [
-          "Matching checkout replays reuse the saved quote's shipping terms."
+          "The order draft saves the quote's shipping terms when present."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Starter composition passes the threshold to its owned shipping resolver, which the application can replace."
+        "reason": "The starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -790,7 +790,7 @@
         "type": "integer",
         "minimum": 0,
         "maximum": 2147483647,
-        "description": "Checked by shared/config.ts (assertConfig)."
+        "description": "assertConfig checks whole minor units from 0 through 2147483647."
       },
       "previewSchema": null,
       "rules": []
@@ -806,17 +806,17 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Both sample configurations illustrate a 5% discount.",
+      "whyThisDefault": "Both samples set a 500-basis-point discount.",
       "effect": {
-        "appliesTo": "The starter uses the discount for new estimates after deployment and seeds the native price policy at initial installation. Editing the config does not update the installed price policy.",
+        "appliesTo": "The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.",
         "frozenOn": [
-          "Matching checkout replays reuse the saved quote. Existing subscription renewals price from recorded subscription terms."
+          "The saved checkout quote includes the quoted unit price."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The starter's estimate calculation and owned installation seed both read this value."
+        "reason": "The starter reads the discount from the owned store config."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -825,7 +825,7 @@
       "schema": {
         "type": "integer",
         "minimum": 0,
-        "description": "assertConfig in shared/config.ts checks basis points against an upper bound of 10000, then checks each resulting unit price. Startup and the owned install seed require every subscription unit price after rounding to be between 1 and 2147483647 minor units, so 10000 basis points fails for any subscription product."
+        "description": "assertConfig first checks whole basis points from 0 through 10000. Startup and the install seed require a rounded subscription unit price of 1 through 2147483647 minor units. A 10000-basis-point discount produces zero."
       },
       "previewSchema": null,
       "rules": []
@@ -981,15 +981,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there.",
+      "whyThisDefault": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.",
       "effect": {
-        "appliesTo": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there.",
+        "appliesTo": "The starter paid-order email divides minor units by 100.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The starter paid-order email divides minor units by 100; use the platform's currency-aware formatCurrencyMinor formatter there."
+        "reason": "Use formatCurrencyMinor in the starter formatter."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"
@@ -1233,17 +1233,17 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Both sample configurations use a 30-minute checkout hold.",
+      "whyThisDefault": "Both samples set a 30-minute duration.",
       "effect": {
-        "appliesTo": "After deployment, the starter uses the duration to calculate expiry for new checkout reservations and holds created by checkout recovery.",
+        "appliesTo": "The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.",
         "frozenOn": [
-          "Existing reservations keep their recorded expiry; an interrupted checkout that already wrote a hold can refuse on retry if the duration changed."
+          "The reservation row records the expiry assigned at creation."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The starter's checkout and recovery composition read this value from the owned store config."
+        "reason": "The starter reads the duration from the owned store config."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -1253,7 +1253,7 @@
         "type": "integer",
         "minimum": 1,
         "maximum": 9007199254740991,
-        "description": "Checked by shared/config.ts (assertConfig)."
+        "description": "assertConfig checks that the duration is a positive safe integer."
       },
       "previewSchema": null,
       "rules": []
@@ -1399,17 +1399,17 @@
       "defaultBasis": {
         "kind": "reference-code"
       },
-      "whyThisDefault": "A three-day cutoff preserves the established edit window and gives operations notice before renewal.",
+      "whyThisDefault": "The starter sets a 72-hour edit window.",
       "effect": {
-        "appliesTo": "New native subscription activations after deploying the host configuration.",
+        "appliesTo": "The starter supplies the deployed edit window at native subscription activation.",
         "frozenOn": [
-          "Existing subscriptions keep their stored edit window."
+          "The activation writes the window on the new subscription row."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The host supplies the value at subscription activation."
+        "reason": "The starter reads the window from the owned store config."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -1443,18 +1443,17 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "The samples default to 28 days; one allows 28 and 56 days, and the other also allows 14 days.",
+      "whyThisDefault": "The samples default to 28 days; one also allows 56 days and the other allows 14 and 56 days.",
       "effect": {
-        "appliesTo": "After deployment, the starter uses the configured intervals to check fresh subscription checkouts and terms edits, including the graduation terms captured at checkout for a new starter pack.",
+        "appliesTo": "A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.",
         "frozenOn": [
-          "A config edit leaves existing subscriptions on their recorded terms. Starter packs can switch cadence at renewal using the graduation terms saved at checkout.",
-          "Matching completed checkout and terms-edit commands replay their recorded results."
+          "A saved starter-pack quote records the graduation cadence captured at checkout."
         ],
         "impact": "customer-promise"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Starter composition reads these choices from the owned store config."
+        "reason": "The starter composes its offers from the owned store config."
       },
       "change": {
         "file": "owned/store.config.ts",
@@ -1462,7 +1461,7 @@
       },
       "schema": {
         "type": "object",
-        "description": "In shared/config.ts, assertConfig calls assertSubscriptionOffer: days is a nonempty set of distinct integers from 1 through 3660, or a range within those bounds with an integer step from 1 through 2147483647; defaultDays must belong to the offer and its checkout choices. assertQuoteConfiguration in shared/quote-config.ts also requires the configured graduation cadence to be among the classic offer's days."
+        "description": "assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence."
       },
       "previewSchema": null,
       "rules": []
@@ -1611,24 +1610,22 @@
       "key": "subscriptions.lifecycleNoticeRetryBudget",
       "domain": "subscriptions",
       "kind": "code",
-      "goal": "Set the retry budget for subscription lifecycle notices.",
+      "goal": "Set the retry budget for dunning and event or reminder dispatch.",
       "schemaVersion": 1,
       "examples": [],
       "fallback": 6,
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "The starter uses the native dispatch default of six attempts.",
+      "whyThisDefault": "The starter sets six attempts.",
       "effect": {
-        "appliesTo": "After deployment, this cap applies to customer lifecycle notices. Raising it can make a previously capped failed notice eligible for another attempt under the same receipt key. Operator notices use a separate budget.",
-        "frozenOn": [
-          "Accepted receipts stay accepted and are excluded from retries."
-        ],
+        "appliesTo": "On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.",
+        "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Starter composition supplies the budget when it creates the lifecycle notice dispatcher."
+        "reason": "The starter passes its dispatch policy to the lifecycle notice dispatcher."
       },
       "change": {
         "file": "owned/renewal.config.ts",
@@ -1638,7 +1635,7 @@
         "type": "integer",
         "minimum": 1,
         "maximum": 2147483647,
-        "description": "Checked by shared/config.ts via assertSubscriptionCare in shared/renewal-config.ts."
+        "description": "assertSubscriptionCare checks the budget as an integer from 1 through 2147483647."
       },
       "previewSchema": null,
       "rules": []
@@ -1794,15 +1791,15 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Native stock-wait recovery holds stock for 15 minutes, set in SQL with no host override.",
+      "whyThisDefault": "Native stock-wait recovery fixes the hold at 15 minutes in SQL.",
       "effect": {
-        "appliesTo": "Native stock-wait recovery holds stock for 15 minutes, set in SQL with no host override.",
+        "appliesTo": "Native stock-wait recovery fixes the hold at 15 minutes in SQL.",
         "frozenOn": [],
         "impact": "operations"
       },
       "runtime": {
         "level": "read-only",
-        "reason": "Native stock-wait recovery holds stock for 15 minutes, set in SQL with no host override."
+        "reason": "The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"

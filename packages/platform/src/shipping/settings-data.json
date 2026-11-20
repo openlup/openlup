@@ -8,11 +8,11 @@
     "examples": [],
     "fallback": 1000,
     "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Both sample configurations use 1000 minor units as an example threshold.",
-    "effect": {"appliesTo": "After deployment, the starter uses the threshold in new estimates and in new quotes once the shipping policy is effective.", "frozenOn": ["Matching checkout replays reuse the saved quote's shipping terms."], "impact": "customer-promise"},
-    "runtime": {"level": "read-only", "reason": "Starter composition passes the threshold to its owned shipping resolver, which the application can replace."},
+    "whyThisDefault": "Both samples set the threshold to 1000 minor units.",
+    "effect": {"appliesTo": "The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.", "frozenOn": ["The order draft saves the quote's shipping terms when present."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver."},
     "change": {"file": "owned/store.config.ts", "symbol": "offer.freeShippingFromMinor"},
-    "schema": {"type": "integer", "minimum": 0, "maximum": 2147483647, "description": "Checked by shared/config.ts (assertConfig)."},
+    "schema": {"type": "integer", "minimum": 0, "maximum": 2147483647, "description": "assertConfig checks whole minor units from 0 through 2147483647."},
     "rules": []
   },
   {

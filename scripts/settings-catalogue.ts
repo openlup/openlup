@@ -209,7 +209,7 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
       ...(entry.kind === "code" && "file" in entry.change ? [
         `- Edit \`${entry.change.file}\` (${entry.change.symbol}).`,
         `- ${entry.effect.appliesTo}`,
-        `- Frozen on: ${entry.effect.frozenOn.join(" ")}`,
+        ...(entry.effect.frozenOn.length ? [`- Frozen on: ${entry.effect.frozenOn.join(" ")}`] : []),
       ] : []),
       ...(entry.absentMeans ? [`- When absent, ${entry.absentMeans.description.charAt(0).toLowerCase()}${entry.absentMeans.description.slice(1)}`] : []),
       "",
