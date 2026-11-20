@@ -266,7 +266,9 @@ it("refuses a malformed stored roster before a decision or publication uses it",
         issues: [{ code: "catalog_publication_manifest_invalid", path, message: sealedPublicationRemedy }] } } });
       expect(preview).not.toHaveProperty("preparation.postStateDigest");
       expect(await readers.readbackV2(head)).toMatchObject(refusal(path));
-      expect(await readers.reads.readback(head)).toMatchObject({ ...refusal(path), reason: "candidate_invalid" });
+      expect(await readers.reads.readback(head)).toEqual({
+        ...refusal(path), outcome: "dependency_unavailable", reason: "publication_authority_unavailable",
+      });
       expect(await readers.resolveRetained(binding, readers.authorizeReadScope("owner"))).toMatchObject(refusal(path));
     }
     await store(row!.canonical_state);

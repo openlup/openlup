@@ -318,7 +318,7 @@ const publicationRefusals = {
   catalog_publication_v3_document_not_canonical: { fix: "Use the canonical document bytes and their matching digest." },
   catalog_publication_v3_document_reference_stale: { fix: "Reload the document revisions and select the current revision or register the next one." },
   catalog_publication_v3_presentation_required: { fix: "Supply the product presentation or its document revision." },
-  catalog_publication_v3_structural_readiness_failed: { fix: "Supply the required SKU facts and options before publication." },
+  catalog_publication_v3_structural_readiness_failed: { fix: "A new product needs its presentation. Add a set_product_presentation operation that matches the draft presentation." },
   channel_identity_not_assessed: { fix: "Verify trade identifiers and commercial readiness before selling this SKU." },
   commerce_product_slug_unsupported: { fix: "Use a lowercase product slug with letters, digits, hyphens or underscores." },
   commercial_activation_not_assessed: { fix: "Verify trade identifiers and commercial readiness before selling this SKU." },

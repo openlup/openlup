@@ -801,6 +801,11 @@ const cases: Case[] = [
   { id: "D-052 create must materialize every authored identifier", arrange: data => {
     data.payload.publication.operations = data.payload.publication.operations.filter(value => value.op !== "create_identifier");
   }, expected: reason("catalog_publication_identifier_effect_missing") },
+  { id: "a created product needs a presentation operation", arrange: data => {
+    data.payload.publication.operations = data.payload.publication.operations.filter(value => value.op !== "set_product_presentation");
+  }, expected: reason("catalog_publication_v3_structural_readiness_failed"), outcome: "blocked-input",
+    diagnostic: { phase: "structural", path: "product" },
+    message: "A new product needs its presentation. Add a set_product_presentation operation that matches the draft presentation." },
   { id: "D-061 authored gross below net is a hard dark refusal", arrange: data => {
     data.payload.skus[0]!.grossMass = { dimension: "mass", unit: "openlup:kg", unscaled: "99", scale: 3 };
   }, expected: reason("catalog_publication_gross_below_net") },

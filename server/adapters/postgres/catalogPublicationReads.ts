@@ -39,11 +39,14 @@ function requireCondition(condition: unknown, reason: AdmissionDiagnostic = "cat
 
 /** Released ports narrow the reason by outcome and keep the same remedy. */
 function legacyFailure(result: CatalogPublicationFailure): CatalogPublicationRefusal {
+  // Only stored data decoding attaches a field path to validation failures in this adapter.
+  const outcome = result.outcome === "validation_issue" && result.path !== undefined
+    ? "dependency_unavailable" : result.outcome;
   const reasons = {
     unauthorized: "publisher_not_authorized", conflict: "head_conflict", dependency_unavailable: "publication_authority_unavailable",
     unsupported: "publication_not_supported", validation_issue: "candidate_invalid",
   } as const;
-  return { ...result, reason: reasons[result.outcome] };
+  return { ...result, outcome, reason: reasons[outcome] };
 }
 function legacyReceipt(receipt: CatalogPublicationReceiptV2): CatalogPublicationReceipt {
   return { commandKey: receipt.commandKey, fingerprint: receipt.fingerprint, actorId: receipt.actorId,
