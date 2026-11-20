@@ -1627,9 +1627,10 @@ authority. Review evidence grants no merge, release, settings or credential righ
    rules or acceptance criteria. Behaviour unchanged from the base is not a
    finding of this change; record it as advice and a follow-up. A refusal stricter
    than the criteria is advice unless it refuses a released or documented valid
-   input. A finding against a document outside the tree (brief, specification, PR
-   body, criteria wording) is advice to the lead; the reviewed tree keeps its
-   reviews. Material findings include wrong published effects or persisted data,
+   input or has another material effect, such as a wrong-fix error. A finding
+   against a document outside the tree (brief, specification, PR body, criteria
+   wording) is advice to the lead; the reviewed tree keeps its reviews. Material
+   findings include wrong published effects or persisted data,
    a released-API change, a security defect, and an unactionable or wrong-fix
    error; these stay blockers in every round.
 
@@ -1756,7 +1757,8 @@ Use this template for the approved criteria:
 This change covers <one sentence describing the scope>.
 In-scope behaviours: <complete list>. In-scope paths: <complete list>.
 Out of scope: <one sentence>.
-Proofs: <complete list of checks, each failing when the behaviour it proves is reverted>.
+Proofs: <complete list of behaviour proofs, each failing when its behaviour is
+reverted>; required checks: <the repository checks that must pass>.
 ```
 
 Codex may omit `authorSessionId` to use `CODEX_THREAD_ID`. Refresh the local main
