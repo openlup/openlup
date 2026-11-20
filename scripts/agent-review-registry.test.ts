@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
-import { admit, digest, coverageState, protectedCoveragePath, receiptBody, receiptSummary, recordReport, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, digest, coverageState, prepareCandidate, protectedCoveragePath, receiptBody, receiptSummary, recordReport, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
@@ -59,7 +59,10 @@ describe('review input transport', () => {
   const invisible = '\u0010\u001b\u007f\u0085';
   const whitespace = '\tline\nnext\rreturn';
   const nestedArray = (leaf: string, depth: number) => '['.repeat(depth) + leaf + ']'.repeat(depth);
-  const recovery = (path: string) => `If it is a file name, rename the file and prepare again; otherwise move ${path} aside, then prepare and record the reports again.`;
+  const prepareRefusal = (field: string, input: string) =>
+    `${field} contains a control character (U+0010); if it is a file name, rename the file and prepare again; otherwise remove it from ${input} and prepare again.`;
+  const legacyRefusal = (field: string, path: string) =>
+    `${field} in ${path} holds a control character (U+0010) recorded before control characters were removed; move that file aside, then prepare and record the reports again.`;
 
   it('strips report controls before storage and admits the unchanged receipt after caret rewriting', async () => {
     const f = await fixture();
@@ -131,16 +134,24 @@ describe('review input transport', () => {
     expect(await readFile(f.request, 'utf8')).toBe(input);
   });
 
-  it('refuses a Git path containing a control character and preserves the previous session bytes', async () => {
+  it('refuses a new Git path containing a control character and prepares after renaming it', async () => {
     const f = await fixture();
     await f.cli('prepare', f.request);
     const path = join(f.scratch, 'agent-review/session.json');
     const previous = await readFile(path, 'utf8');
-    await f.write('before\u0010after.txt', 'fixture\n');
+    const input = join(f.scratch, 'agent-review/intent.json');
+    await writeFile(input, await readFile(f.request, 'utf8'));
+    const badPath = 'before\u0010after.txt';
+    await f.write(badPath, 'fixture\n');
     f.commit();
-    const outcome = await f.cli('prepare', f.request).catch(error => error.message);
+    await expect(f.cli('prepare')).rejects.toThrow(prepareRefusal('history[2].candidate.changedPaths[1]', input));
     expect(await readFile(path, 'utf8')).toBe(previous);
-    expect(outcome).toBe('invalid: history[2].candidate.changedPaths[1] contains a control character (U+0010). ' + recovery(path));
+    f.git('mv', '--', badPath, 'clean.txt');
+    f.commit();
+    await expect(f.cli('prepare')).resolves.toBe(0);
+    const session = await f.state();
+    expect(session.candidate.changedPaths).toEqual(['app.ts', 'clean.txt']);
+    expect(session.history.slice(0, -1)).toEqual(JSON.parse(previous).history);
   });
 
   it.each([
@@ -151,20 +162,65 @@ describe('review input transport', () => {
     await f.cli('prepare', f.request);
     const path = join(f.scratch, 'agent-review/session.json');
     const before = await readFile(path, 'utf8');
-    let operation;
+    let operation, input, refusal;
     if (caseName === 'report findings') {
+      input = join(f.scratch, 'report.json');
+      refusal = `${field} contains a control character (U+0010); remove it from ${input} and record again.`;
       operation = f.report({
         findings: [{ id: 'blocker', summary: 'Review is blocked.', material: true }],
         ['findings\u0010']: [],
       });
     } else {
+      input = f.request;
+      refusal = prepareRefusal(field, input);
       const request = JSON.parse(await readFile(f.request, 'utf8'));
       request.intent['risk\u0010'] = 'routine';
       await writeFile(f.request, JSON.stringify(request));
       operation = f.cli('prepare', '--new', f.request);
     }
-    await expect(operation).rejects.toThrow(field + ' contains a control character (U+0010). ' + recovery(path));
+    await expect(operation).rejects.toThrow(refusal);
     expect(await readFile(path, 'utf8')).toBe(before);
+    const json = JSON.parse(await readFile(input, 'utf8'));
+    if (caseName === 'report findings') {
+      delete json['findings\u0010'];
+      await writeFile(input, JSON.stringify(json));
+      await expect(f.cli('record', input)).resolves.toBe(0);
+      expect((await f.state()).history.at(-1).report.findings).toEqual(json.findings);
+    } else {
+      delete json.intent['risk\u0010'];
+      await writeFile(input, JSON.stringify(json));
+      await expect(f.cli('prepare', '--new', input)).resolves.toBe(0);
+      expect((await f.state()).history.at(-1).intent.risk).toBe('behavior');
+    }
+    expect((await f.state()).history.slice(0, -1)).toEqual(JSON.parse(before).history);
+  });
+
+  it('refuses a historical Git path at load and prepares after moving the session aside', async () => {
+    const f = await fixture();
+    const badPath = 'before\u0010after.txt';
+    await f.write(badPath, 'fixture\n');
+    f.commit();
+    const observed = await captureSessionCandidate(f.cwd, undefined, { env: f.env });
+    const rules = await captureReviewRules(f.cwd, observed);
+    const intent = JSON.parse(await readFile(f.request, 'utf8'));
+    // Recreate the session main prepared from the original Git paths.
+    const legacy = prepareCandidate(null, { ...observed, rules, ...intent }, Date.now());
+    const directory = join(f.scratch, 'agent-review');
+    const path = join(directory, 'session.json');
+    const oldBytes = JSON.stringify(legacy, null, 2) + '\n';
+    await mkdir(directory);
+    await writeFile(path, oldBytes);
+    f.git('mv', '--', badPath, 'clean.txt');
+    f.commit();
+
+    for (const args of [['prepare', f.request], ['prepare', '--new', f.request], ['record', join(f.scratch, 'report.json')], ['receipt', '12']]) {
+      await expect.soft(f.cli(...args), args.join(' ')).rejects.toThrow(legacyRefusal('history[1].candidate.changedPaths[1]', path));
+      expect(await readFile(path, 'utf8')).toBe(oldBytes);
+    }
+    await rename(path, path + '.legacy');
+    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
+    expect((await f.state()).candidate.changedPaths).toEqual(['app.ts', 'clean.txt']);
+    expect(await readFile(path + '.legacy', 'utf8')).toBe(oldBytes);
   });
 
   it.each([3_500, 20_000])('ignores a clean unused intent array nested %i levels', async depth => {
@@ -202,7 +258,7 @@ describe('review input transport', () => {
     const state = JSON.stringify(await f.state());
     await writeFile(path, state.slice(0, -1) + ',"extra":' + nestedArray(JSON.stringify('\u0010'), 20_000) + '}');
     await expect(f.cli('receipt', '12')).rejects.toThrow(
-      'extra' + '[0]'.repeat(20_000) + ' contains a control character (U+0010). ' + recovery(path),
+      legacyRefusal('extra' + '[0]'.repeat(20_000), path),
     );
   });
 
@@ -218,9 +274,13 @@ describe('review input transport', () => {
     const refused = receipt();
     expect.soft(refused.status).toBe(1);
     expect(refused.stdout).toBe('');
-    expect(refused.stderr).toBe('invalid: history[4].report.documentation contains a control character (U+0010). ' + recovery(path) + '\n');
+    const refusal = legacyRefusal('history[4].report.documentation', path);
+    expect(refused.stderr).toBe('invalid: ' + refusal + '\n');
     expect(await readFile(path, 'utf8')).toBe(oldBytes);
-    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(recovery(path));
+    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(refusal);
+    await expect(f.cli('status')).resolves.toBe(0);
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('verify-command', '--', process.execPath, '-e', 'process.exit(0)')).resolves.toBe(0);
     await rename(path, path + '.legacy');
     const clean = await f.review();
     const regenerated = receipt();

@@ -339,7 +339,7 @@ function stateFieldPath(field) {
   }
   return parts.reverse().join('').replace(/^\./u, '') || '$';
 }
-function assertControlFreeState(state, path) {
+function assertControlFreeState(state, remedy) {
   const stack = [{ value: state }];
   while (stack.length) {
     const field = stack.pop();
@@ -347,7 +347,7 @@ function assertControlFreeState(state, path) {
     const keyControl = key === undefined ? undefined : INVISIBLE_CONTROL.exec(key)?.[0];
     const control = keyControl ?? (typeof value === 'string' ? INVISIBLE_CONTROL.exec(value)?.[0] : undefined);
     if (control) {
-      demand(false, `${stateFieldPath(field)} contains a control character (U+${controlCode(control)}). If it is a file name, rename the file and prepare again; otherwise move ${path} aside, then prepare and record the reports again.`);
+      demand(false, remedy(stateFieldPath(field), `U+${controlCode(control)}`));
     }
     if (value && typeof value === 'object') {
       const entries = Object.entries(value);
@@ -358,8 +358,8 @@ function assertControlFreeState(state, path) {
     }
   }
 }
-async function saveState(path, state) {
-  assertControlFreeState(state, path);
+async function saveState(path, state, remedy) {
+  assertControlFreeState(state, remedy);
   const bytes = `${JSON.stringify(state, null, 2)}\n`; demand(Buffer.byteLength(bytes) <= 8 * 1024 * 1024, 'session exceeds 8 MiB; previous state preserved');
   const temporary = `${path}.${randomUUID()}.tmp`;
   try { await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 }); await rename(temporary, path); }
@@ -422,9 +422,14 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
   }
   try {
     let session; try { session = await boundedJson(path, 8 * 1024 * 1024); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (['prepare', 'record', 'receipt'].includes(verb)) {
+      assertControlFreeState(session, (field, code) =>
+        `${field} in ${path} holds a control character (${code}) recorded before control characters were removed; move that file aside, then prepare and record the reports again.`);
+    }
     if (verb === 'prepare') {
       const fresh = args[0] === '--new'; if (fresh) args.shift();
-      const spec = await readReviewInput(args[0] ?? join(directory, 'intent.json'), verb, 'intent');
+      const input = args[0] ?? join(directory, 'intent.json');
+      const spec = await readReviewInput(input, verb, 'intent');
       const observed = { ...await captureSessionCandidate(cwd, undefined, { env }), intent: spec.intent, authorSessionId: spec.authorSessionId ?? env.CODEX_THREAD_ID };
       if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
         try { await git(cwd, 'merge-base', '--is-ancestor', session.candidate.head, observed.head); }
@@ -452,7 +457,8 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
         const coverage = await captureCoverageEdge(cwd, session, observed, now); if (coverage) observed.coverage = coverage;
       }
       const next = prepareCandidate(session, observed, now, fresh);
-      await saveState(path, next);
+      await saveState(path, next, (field, code) =>
+        `${field} contains a control character (${code}); if it is a file name, rename the file and prepare again; otherwise remove it from ${resolve(input)} and prepare again.`);
       console.log(JSON.stringify(next, null, 2)); return 0;
     }
     demand([2, 3].includes(session?.version), 'prepare a version-2 session before review');
@@ -473,11 +479,16 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
       demand(args.shift() === '--' && args[0], 'verify-command [--resource PROFILE] -- CMD ARGS...');
       return verifyCandidateCommand({ cwd, session, command: args[0], args: args.slice(1), resource, env });
     }
-    if (verb === 'receipt') assertControlFreeState(session, path);
     const observed = await captureSessionCandidate(cwd, session.candidate.base, { env });
     demand(observed.clean, 'commit source changes before review', 'dirty');
     demand(['base', 'head', 'tree'].every(key => observed[key] === session.candidate[key]), 'candidate changed; prepare again', 'stale');
-    if (verb === 'record') { session = recordReport(session, await readReviewInput(args[0], verb, 'report'), Date.now()); await saveState(path, session); return 0; }
+    if (verb === 'record') {
+      const input = args[0];
+      session = recordReport(session, await readReviewInput(input, verb, 'report'), Date.now());
+      await saveState(path, session, (field, code) =>
+        `${field} contains a control character (${code}); remove it from ${resolve(input)} and record again.`);
+      return 0;
+    }
     await validateEconomySession(cwd, session);
     const decision = verdict(session, observed, Date.now()); demand(decision.ok, decision.reason, decision.code);
     if (verb === 'receipt') await assertMergePreflight(cwd, observed, { env });
