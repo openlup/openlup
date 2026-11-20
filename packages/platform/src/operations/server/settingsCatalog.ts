@@ -80,9 +80,7 @@ export function catalogueWithAppSettings(additions: readonly z.infer<typeof desc
 }
 
 function searchTokens(text: string) {
-  return text.replace(/([\p{Ll}\p{Nd}])(\p{Lu})/gu, "$1 $2")
-    .replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu, "$1 $2")
-    .toLowerCase().match(/[\p{L}\p{Nd}]+/gu) ?? [];
+  return text.toLowerCase().match(/[\p{L}\p{Nd}]+/gu) ?? [];
 }
 
 export function listCatalogueSettings(input: unknown, catalogue?: ReturnType<typeof loadSettingsCatalogue>) {
@@ -94,7 +92,10 @@ export function listCatalogueSettings(input: unknown, catalogue?: ReturnType<typ
   if (goal !== undefined) {
     const words = searchTokens(goal);
     const scored = entries.map(entry => {
-      const tokens = searchTokens(`${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`);
+      const text = `${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`;
+      const splitText = text.replace(/([\p{Ll}\p{Nd}])(\p{Lu})/gu, "$1 $2")
+        .replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu, "$1 $2");
+      const tokens = [...new Set([...searchTokens(text), ...searchTokens(splitText)])];
       const count = words.filter(word => tokens.some(token => token.startsWith(word))).length;
       return { entry, count };
     }).filter(({ count }) => count > 0);

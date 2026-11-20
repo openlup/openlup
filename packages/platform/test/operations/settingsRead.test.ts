@@ -180,6 +180,7 @@ describe("settings goal search", () => {
     ["renewal stock", "inventory_renewal_protection"],
     ["inventory buffer", "inventory_renewal_protection"],
     ["renewal retry policy", "subscriptions.retrySchedule"],
+    ["skus", "catalog.optionalGtin"],
   ])("includes %s matches such as %s", (goal, key) => {
     const { entries } = catalogue.listResult.parse(listSettings({ goal }));
     expect(entries.map(entry => entry.key)).toContain(key);
@@ -222,6 +223,7 @@ describe("settings goal search", () => {
     ["shipping", appKey, undefined],
     ["count", skuKey, undefined],
     ["sku", skuKey, undefined],
+    ["maxskucount", skuKey, undefined],
     ["配送", deliveryKey, undefined],
   ] as const)("finds the app declaration for %s", (goal, key, first) => {
     const { entries } = appCatalogue.listResult.parse(listCatalogueSettings({ goal }, appCatalogue));
