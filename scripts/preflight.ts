@@ -132,23 +132,24 @@ export function shortExpiries(lines: readonly AddedLine[]): Finding[] {
   });
 }
 
-type Outcome = { code: number | null; output: string; missing: boolean; seconds: number };
+type Outcome = { code: number | null; stdout: string; output: string; missing: boolean; seconds: number };
 
 function execute(command: string, args: readonly string[], options: SpawnSyncOptions = {}): Outcome {
   const started = Date.now();
   const result = spawnSync(command, args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, shell: process.platform === "win32", ...options });
   return {
     code: result.status,
+    stdout: result.stdout?.toString() ?? "",
     output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
     missing: (result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT",
     seconds: Math.round((Date.now() - started) / 1000),
   };
 }
 
-function git(args: readonly string[]): string {
+function git(args: readonly string[], output: "output" | "stdout" = "output"): string {
   const result = execute("git", args);
   if (result.code !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.output.trim()}`);
-  return result.output;
+  return result[output];
 }
 
 const tail = (output: string, count = 30): string[] => output.split("\n").filter((line) => line.trim()).slice(-count);
@@ -338,7 +339,7 @@ function print(result: CheckResult): void {
 }
 
 function fastPreflight(): number {
-  const head = git(["rev-parse", "HEAD"]).trim();
+  const head = git(["rev-parse", "HEAD"], "stdout").trim();
   if (execute("git", ["fetch", "origin", "main"], { timeout: 5_000 }).code !== 0) {
     console.error("preflight: git fetch origin main failed. Using local origin/main.");
   }
@@ -350,7 +351,7 @@ function fastPreflight(): number {
   const checks: Array<[string, () => CheckResult]> = [
     ["clean", () => ({
       check: "clean",
-      status: git(["status", "--porcelain", "--untracked-files=all"]).trim() ? "FAIL" : "PASS",
+      status: git(["status", "--porcelain", "--untracked-files=all"], "stdout").trim() ? "FAIL" : "PASS",
       detail: "worktree has uncommitted changes. Commit or remove them.",
     })],
     ["merge-clean", () => command("merge-clean", "git", ["merge-tree", "--write-tree", "origin/main", "HEAD"])],

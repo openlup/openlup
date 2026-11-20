@@ -26,10 +26,11 @@ const now = new Date("2040-01-01T00:00:00Z");
 
 describe("fast preflight", () => {
   it.each([
-    { name: "clean", dirty: false, offline: false, failures: [], exit: 0 },
-    { name: "dirty with a failed fetch", dirty: true, offline: true, failures: ["clean"], exit: 1 },
-    { name: "multiple failures", dirty: false, offline: false, failures: ["merge-clean", "neutrality", "dco"], exit: 1 },
-  ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, failures, exit }) => {
+    { name: "clean", dirty: false, offline: false, warnings: false, failures: [], exit: 0 },
+    { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
+    { name: "dirty with a failed fetch", dirty: true, offline: true, warnings: false, failures: ["clean"], exit: 1 },
+    { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "dco"], exit: 1 },
+  ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit }) => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const increase = '"scripts/example.ts": brand increased 0 -> 1';
     const expected = [
@@ -58,7 +59,8 @@ describe("fast preflight", () => {
       const status = Number((call === expected[2] && offline)
         || (call === expected[4] && failures.includes("merge-clean"))
         || (call === expected[6] && failures.includes("neutrality")));
-      return { status, stdout: outputs.get(call) ?? "", stderr: "" };
+      const stderr = warnings && (call === expected[1] || call === expected[3]) ? "warning: fixture Git warning\n" : "";
+      return { status, stdout: outputs.get(call) ?? "", stderr };
     }) as typeof spawnSync);
     const message = failures.includes("dco") ? "unsigned commit" : "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
     vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1f${message}\0${upstream}\x1f${head} ${fork}\x1funsigned merge\0`);
