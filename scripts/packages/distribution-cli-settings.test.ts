@@ -344,6 +344,49 @@ it.each([
   expect(text.stdout).toContain(result.uncertainty);
 });
 
+it.each([
+  ["plaintext by default", "postgresql://sample@unused.invalid/shop", "", false],
+  ["explicit plaintext", "postgresql://sample@unused.invalid/shop?sslmode=disable", "", false],
+  ["verified TLS", "postgresql://sample:fake-secret@unused.invalid:5433/shop?sslmode=verify-full", "fake-secret",
+    { rejectUnauthorized: true, host: "unused.invalid" }],
+] as const)("preserves the driver's startup parameters for %s with hostile PG variables", (_, url, password, ssl) => {
+  const { directory, write } = fixture();
+  const key = "inventory_renewal_protection";
+  const app = "settings-startup-fixture.mjs";
+  const pgModule = JSON.stringify(import.meta.resolve("pg"));
+  write("preload.mjs", `import pg from ${pgModule};
+    pg.Client.prototype.connect = () => { throw new Error("settings fixture must not connect"); };`);
+  write(app, `import assert from "node:assert/strict";
+    import pg from ${pgModule};
+    export function createSettingsBindings({ db }) {
+      assert.equal(Object.keys(process.env).some(name => /^PG/i.test(name)), false);
+      // defaults.js captured an OS user before the launcher ran.
+      assert.equal(pg.defaults.user, "fake-cached-os-user");
+      const base = new pg.Client({ connectionString: ${JSON.stringify(url)} });
+      const admitted = new pg.Client(db.options);
+      assert.deepEqual(admitted.getStartupConf(), base.getStartupConf());
+      assert.deepEqual(admitted.getStartupConf(), { user: "sample", database: "shop" });
+      const { host, port, user, database, ssl, binary, password } = admitted;
+      assert.deepEqual({ host, port, user, database, ssl, binary }, {
+        host: "unused.invalid", port: ${password ? 5433 : 5432}, user: "sample", database: "shop",
+        ssl: ${JSON.stringify(ssl)}, binary: false,
+      });
+      assert.equal(typeof password, ${JSON.stringify(password ? "string" : "function")});
+      assert.equal(typeof password === "function" ? password() : password, ${JSON.stringify(password)});
+      return { readers: { ${key}: () => ({ present: false }) } };
+    }`);
+  const result = spawnSync(process.execPath, ["--import", join(directory, "preload.mjs"),
+    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", key, "--app", app, "--database-url", url, "--json"],
+  { cwd: directory, encoding: "utf8", env: {
+    ...process.env, USER: "fake-cached-os-user", USERNAME: "fake-cached-os-user",
+    PGHOST: "elsewhere.invalid", PGPORT: "5999", PGUSER: "fake-user", PGPASSWORD: "fake-password", PGDATABASE: "fake-db",
+    PGSSLMODE: "require", PGOPTIONS: "-c application_name=fake", PGSERVICE: "fake-service", PGAPPNAME: "fake-app", PGBINARY: "1",
+    PGPASSFILE: "fake-password-file",
+  } });
+  expect(result.status, result.stderr || result.stdout).toBe(0);
+  expect(result.stderr).toBe("");
+});
+
 it("refuses the native PostgreSQL client before using a connected settings binder", () => {
   const { directory, write } = fixture();
   const key = "inventory_renewal_protection";

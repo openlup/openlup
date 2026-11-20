@@ -305,12 +305,6 @@ type SettingsDatabase = {
         rejectUnauthorized: true;
         host: string;
     };
-    sslnegotiation: "postgres";
-    options: string;
-    replication: "false";
-    client_encoding: "utf8";
-    application_name: string;
-    connectionTimeoutMillis: 0;
 };
 type SettingsHost = {
     bind(input: {

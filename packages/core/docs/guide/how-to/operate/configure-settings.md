@@ -44,18 +44,21 @@ with remediation. To explain the absent-row behavior offline, pass
 
 For connected `show` and `preview`, use a canonical `postgres://` or
 `postgresql://` URL with one TCP host, a username and a single database path
-segment. Write IPv4 octets in decimal without leading zeros and enclose the
-shortest IPv6 spelling in brackets. A DNS name cannot end in a label made only
-of digits or starting with `0x`. Percent-encode reserved characters and
-keep the decoded username and database name to 63 UTF-8 bytes each. Omit the
-colon for an empty password, and omit whitespace, dot segments and fragments.
-An omitted port uses 5432. The only query option is `sslmode`, with
-`disable`, `require` or `verify-full` as its value. `require` and `verify-full`
-verify the server certificate against the named host using Node's trust store.
-`disable` or an omitted mode uses plaintext. PostgreSQL host, port, user,
-database, password, TLS, startup, service, encoding and binary-mode environment
-defaults cannot override these options. A nonempty `NODE_PG_FORCE_NATIVE` makes the command refuse. Unset it
-for this command to use the JavaScript driver.
+segment. Use DNS labels of at most 63 characters, with a final label that is
+not all digits, or write IPv4 octets in decimal without leading zeros. Use
+brackets and lowercase hexadecimal without leading zeros for IPv6, compress
+the first longest run of two or more zero fields to ::, and write a single
+zero field as 0. Percent-encode reserved characters and keep the decoded
+username and database name to 63 UTF-8 bytes each. Leave out the colon for an
+empty password, and omit whitespace, dot segments and fragments. An omitted
+port uses 5432. Write an explicit port without leading zeros. The only query
+option is `sslmode`, with `disable`, `require` or `verify-full` as its value.
+`require` and `verify-full` verify the server certificate against the named
+host using Node's trust store. `disable` or an omitted mode uses plaintext.
+For a connected read, the launcher removes `PG`-prefixed environment variables
+before using the driver. It uses an empty password if the URL omits one, so
+password files are skipped. A nonempty `NODE_PG_FORCE_NATIVE` makes the
+command refuse. Unset it for this command to use the JavaScript driver.
 
 ## Check owned configuration before proposing a change
 

@@ -34,8 +34,7 @@ export type SettingsAppBindings = {
 
 type SettingsDatabase = {
   host: string; port: number; user: string; password: string | (() => string); database: string;
-  ssl: false | { rejectUnauthorized: true; host: string }; sslnegotiation: "postgres";
-  options: string; replication: "false"; client_encoding: "utf8"; application_name: string; connectionTimeoutMillis: 0;
+  ssl: false | { rejectUnauthorized: true; host: string };
 };
 type SettingsHost = {
   bind(input: { database?: SettingsDatabase; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
@@ -290,12 +289,12 @@ function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; h
   const path = ["database-url"];
   const url = URL.parse(input);
   if (!url || url.href !== input) return { path,
-    hint: "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and write IPv6 in its shortest form. Omit the port or use a port from 1 to 65535, and write an empty password without the colon. Remove whitespace and dot segments." };
+    hint: "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use brackets and lowercase hexadecimal without leading zeros for IPv6, compress the first longest run of two or more zero fields to ::, and write a single zero field as 0. Omit the port or use a port from 1 to 65535 without leading zeros, and write an empty password without the colon. Remove whitespace and dot segments." };
   if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return { path, hint: "Use the postgres:// or postgresql:// scheme." };
-  const dnsName = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.?$/u.test(url.hostname);
-  const ipv4Like = /(?:^|\.)(?:[0-9]+|0x[^.]*)\.?$/u.test(url.hostname);
+  const dnsName = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.?$/u.test(url.hostname);
+  const ipv4Like = /(?:^|\.)[0-9]+\.?$|^(?:(?:[0-9]+|0x[0-9a-f]+)\.)*0x[0-9a-f]+\.?$/u.test(url.hostname);
   if (!url.hostname.startsWith("[") && !(dnsName && (!ipv4Like || isIPv4(url.hostname)))) {
-    return { path, hint: "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. A DNS name cannot end in a label made only of digits or starting with 0x. For IPv4, write IPv4 octets in decimal without leading zeros." };
+    return { path, hint: "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. Keep each DNS label to 63 characters and end the DNS name with a label that is not all digits. For IPv4, write IPv4 octets in decimal without leading zeros." };
   }
   const port = Number(url.port || 5432);
   if (port < 1 || port > 65535) return { path, hint: "Omit the PostgreSQL URL port or use a port from 1 to 65535." };
@@ -317,14 +316,10 @@ function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; h
     return { path, hint: "Use no query or a single sslmode set to disable, require or verify-full. If your provider needs another option, use a provider URL that works with verified TLS under Node's trust store." };
   }
   const host = url.hostname.replace(/^\[|\]$/gu, "");
-  const options: SettingsDatabase & { binary: false } = {
-    host, port, user, password: password || (() => ""), database, binary: false,
+  return {
+    host, port, user, password: password || (() => ""), database,
     ssl: url.search === "?sslmode=require" || url.search === "?sslmode=verify-full" ? { rejectUnauthorized: true, host } : false,
-    // Truthy no-op startup values prevent pg from inheriting process connection defaults.
-    sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
-    application_name: "openlup settings", connectionTimeoutMillis: 0,
   };
-  return options;
 }
 
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
