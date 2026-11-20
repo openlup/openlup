@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { expect, it, vi } from "vitest";
-import { runSettingsCommand } from "../../src/operations/server/settingsCommand.js";
+import { z, type ZodType } from "zod";
+import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
 const key = "inventory_renewal_protection";
@@ -13,10 +15,11 @@ async function run(
 ) {
   const write = vi.fn<(line: string) => void>();
   const readStdin = vi.fn(async () => options.stdin ?? "");
-  const exit = await runSettingsCommand(argv, { write, readStdin }, options.host);
+  const warn = vi.fn<(line: string) => void>();
+  const exit = await runSettingsCommand(argv, { write, warn, readStdin }, options.host);
   expect(write).toHaveBeenCalledTimes(1);
   const output = write.mock.calls[0]![0];
-  return { exit, output, readStdin };
+  return { exit, output, readStdin, warnings: warn.mock.calls.flat() };
 }
 
 const document = (result: object) =>
@@ -487,5 +490,199 @@ it("checks every packaged schema against its default and valid examples", async 
       expect(exit, entry.key).toBe(0);
       expect(JSON.parse(output).rows.find((row: { key: string }) => row.key === entry.key).validation).toEqual({ state: "valid" });
     }
+  }
+});
+
+const feeKey = "gift.wrapFeeMinor";
+const giftKey = "gift.enabled";
+const giftPath = "owned/gift.config.ts";
+const feeEffect = "New gift quotes use this fee after deployment.";
+const missingApp = "Check the --app path and the createSettingsBindings export.";
+const appArgs = ["--app", "./app.ts"];
+
+function appFixture(readFee: () => unknown = () => "150", schema: ZodType = z.coerce.number().int().refine(n => n !== 151)) {
+  return {
+    file: {
+      configuration: "sample",
+      validate() {},
+      entries: {
+        [feeKey]: {
+          get value() { return readFee(); },
+          location: { file: giftPath, symbol: feeKey },
+          descriptor: {
+            domain: "gift", goal: "Set the gift wrapping fee in minor units.",
+            effect: { appliesTo: feeEffect, impact: "money", frozenOn: [] }, schema,
+          },
+        },
+        [giftKey]: {
+          value: true,
+          location: { file: giftPath, symbol: giftKey },
+          descriptor: {
+            domain: "gift", goal: "Offer gift wrapping.",
+            effect: { appliesTo: "New gift quotes offer wrapping after deployment.", impact: "operations", frozenOn: [] },
+          },
+        },
+        [key]: {
+          value: { revision: "local", renewalProtectionDays: 14 },
+          location: { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" },
+        },
+      },
+    },
+  } satisfies SettingsAppBindings;
+}
+
+it("keeps N3a package discovery bytes and exits in both modes with no app, a healthy app or a throwing app", async () => {
+  const catalogue = listSettings({});
+  if (!("entries" in catalogue)) throw new Error("Unable to read the package catalogue");
+  const cases = [
+    ["list"], ["list", "--goal", " "], ["list", "--goal", "qzxunique"], ["explain", "commerce_setting_unknown"],
+    ...catalogue.entries.flatMap(({ key }) => [["list", "--goal", key], ["show", key], ["explain", key]]),
+  ];
+  const bytes = [];
+  const loadHealthy = vi.fn(async () => appFixture(() => { throw new Error("unexpected value read"); }));
+  const loadBroken = vi.fn(async () => { throw new Error("rejected\nedit"); });
+  for (const json of [false, true]) for (const args of cases) {
+    const argv = json ? [...args, "--json"] : args;
+    const { exit, output } = await run(argv);
+    bytes.push([exit, output]);
+    for (const load of [loadHealthy, loadBroken]) {
+      load.mockClear();
+      const app = await run([...argv, ...appArgs], { host: checks(load) });
+      const list = args[0] === "list" && exit === 0;
+      expect(load).toHaveBeenCalledTimes(list ? 1 : 0);
+      expect(app.exit, argv.join(" ")).toBe(exit);
+      let projected = app.output;
+      if (list && load === loadHealthy) {
+        if (json) {
+          const result = JSON.parse(projected);
+          result.entries = result.entries.filter((entry: { key: string }) => entry.key !== feeKey && entry.key !== giftKey);
+          projected = document(result);
+        } else {
+          projected = projected.split(/(?=^[^\s])/mu)
+            .filter(line => !line.startsWith(feeKey + " ") && !line.startsWith(giftKey + " ")).join("");
+        }
+      }
+      expect(projected, argv.join(" ")).toBe(output);
+      expect(app.warnings).toEqual(list && load === loadBroken ? ["Settings app: rejected edit\n"] : []);
+    }
+  }
+  // Captured by running these same no-app arguments on N3a f7e7c2c5f.
+  expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
+    .toBe("22ee39aed18fb32215ad406145a20da6f2b20e34873a2fed22735370956e24d4");
+});
+
+it.each([
+  [["list"], [giftKey, feeKey], undefined, 0],
+  [["list", "--goal", "gift wrapping fee"], [feeKey], undefined, 0],
+  [["list", "--goal", "qzxunique"], [], undefined, 0],
+  [["show", feeKey], undefined, { state: "file", configuration: "sample", value: "150" }, 1],
+  [["explain", feeKey], undefined, { state: "offline" }, 0],
+] as const)("discovers declarations with %j and reads only a requested value", async (args, keys, observation, calls) => {
+  const readFee = vi.fn(() => "150");
+  const { exit, output } = await run([...args, ...appArgs, "--json"], { host: checks(async () => appFixture(readFee)) });
+  expect(exit).toBe(0);
+  const result = JSON.parse(output);
+  expect(result.schemaVersion).toBe(1);
+  if (keys) expect(result.entries.map((entry: { key: string }) => entry.key).filter((key: string) => key.startsWith("gift."))).toEqual(keys);
+  else expect(result).toMatchObject({
+    setting: { key: feeKey, kind: "code", schema: { type: "integer" }, change: { file: giftPath, symbol: feeKey } }, observation,
+  });
+  expect(readFee).toHaveBeenCalledTimes(calls);
+});
+
+it.each([["150", "valid"], ["151", "invalid"]] as const)("checks the original fee %s against the app schema and preserves packaged rows", async (value, state) => {
+  const readFee = vi.fn(() => value);
+  const app = appFixture(readFee);
+  const valueOnly = { ...app.file, entries: { [key]: app.file.entries[key] } };
+  const baseline = JSON.parse((await run(checkArgs, { host: checks(async () => ({ file: valueOnly })) })).output);
+  const { exit, output } = await run(checkArgs, { host: checks(async () => app) });
+  expect(exit).toBe(state === "valid" ? 0 : 1);
+  const { rows, ...report } = JSON.parse(output);
+  const { rows: packagedRows, ...packagedReport } = baseline;
+  expect(report).toEqual({ ...packagedReport, state: state === "valid" ? "checked" : "invalid" });
+  expect(rows.filter((row: { key: string }) => !row.key.startsWith("gift."))).toEqual(packagedRows);
+  expect(rows.find((row: { key: string }) => row.key === feeKey)).toEqual({
+    key: feeKey, file: { state: "present", location: { file: giftPath, symbol: feeKey }, value },
+    validation: state === "valid" ? { state } : { state, paths: [[]] },
+    effect: feeEffect, takesEffect: `${giftPath} ${feeKey}`, kind: "code",
+  });
+  expect(rows.find((row: { key: string }) => row.key === giftKey).validation).toEqual({ state: "not-validated" });
+  expect(readFee).toHaveBeenCalledOnce();
+});
+
+it("reports original JSON with own special keys", async () => {
+  const original = '{"__proto__":{"flag":true}}';
+  const raw = JSON.parse(original);
+  const host = checks(async () => appFixture(() => raw, z.unknown()));
+  const { output, exit } = await run(["show", feeKey, ...appArgs, "--json"], { host });
+  expect(exit).toBe(0);
+  expect(output).toContain(`"value":${original}`);
+});
+
+it.each([
+  ["a throwing getter", () => { throw new Error("private accessor detail"); }],
+  ["a non-JSON value", () => Number.POSITIVE_INFINITY],
+])("reports %s in show and check", async (_, readFee) => {
+  const read = vi.fn(readFee);
+  const host = checks(async () => appFixture(read));
+  const show = await run(["show", feeKey, ...appArgs, "--json"], { host });
+  expect(show.exit).toBe(74);
+  expect(JSON.parse(show.output)).toMatchObject({
+    schemaVersion: 1, refusal: { code: "commerce_setting_read_unavailable", path: ["file", "entries", feeKey, "value"] },
+  });
+  expect(show.output).not.toContain("private accessor detail");
+  const check = await run(checkArgs, { host });
+  expect(check.exit).toBe(1);
+  expect(JSON.parse(check.output)).toMatchObject({
+    state: "invalid", rows: expect.arrayContaining([expect.objectContaining({
+      key: feeKey, file: { state: "unreportable", location: { file: giftPath, symbol: feeKey }, message: "Value cannot be reported as JSON." },
+      validation: { state: "not-validated" },
+    })]),
+  });
+  expect(read).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  ["a collision", key, z.number(), "is a packaged setting"],
+  ["a schema conversion failure", feeKey, z.date(), "cannot be displayed"],
+] as const)("refuses %s before reading any value", async (_, declarationKey, schema, hint) => {
+  const read = vi.fn();
+  const { file } = appFixture(read, schema);
+  const entry = file.entries[feeKey];
+  const bindings = { file: { ...file, entries: { [declarationKey]: entry } } };
+  for (const args of [["list"], ["show", feeKey], ["explain", feeKey], ["check"]]) {
+    const { exit, output } = await run([...args, ...appArgs, "--json"], { host: checks(async () => bindings) });
+    expect(exit).toBe(64);
+    expect(JSON.parse(output)).toMatchObject({ schemaVersion: 1, refusal: {
+      code: "commerce_setting_read_input_invalid", path: ["file", "entries", declarationKey, "descriptor"],
+      hint: expect.stringContaining(hint),
+    } });
+  }
+  expect(read).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["missing factory or module", async () => undefined, 74, missingApp],
+  ["throwing app", async () => { throw new Error("  rejected\nedit " + "x".repeat(200)); }, 1, "rejected edit " + "x".repeat(166)],
+] as const)("reports a %s on the channels defined by P3 and P4", async (_, load, status, hint) => {
+  const host = checks(load);
+  for (const command of ["show", "explain"]) {
+    const { exit, output, warnings } = await run([command, feeKey, ...appArgs, "--json"], { host });
+    expect(exit).toBe(status);
+    expect(JSON.parse(output)).toMatchObject({ schemaVersion: 1, refusal: { code: "commerce_setting_read_unavailable", path: ["app"], hint } });
+    expect(warnings).toEqual([]);
+  }
+  const app = await run(["list", ...appArgs, "--json"], { host });
+  const baseline = await run(["list", "--json"]);
+  expect({ exit: app.exit, output: app.output }).toEqual({ exit: baseline.exit, output: baseline.output });
+  expect(app.warnings).toEqual([`Settings app: ${hint}\n`]);
+});
+
+it.each([{}, appFixture()])("keeps unknown-key refusals for a healthy module without a matching declaration", async binding => {
+  for (const command of ["show", "explain"]) {
+    const args = [command, "gift.unknown", "--json"];
+    const { exit, output } = await run([...args, ...appArgs], { host: checks(async () => binding) });
+    const baseline = await run(args);
+    expect({ exit, output }).toEqual({ exit: baseline.exit, output: baseline.output });
   }
 });
