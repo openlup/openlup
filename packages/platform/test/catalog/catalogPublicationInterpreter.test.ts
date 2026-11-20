@@ -251,6 +251,23 @@ const cases: Case[] = [
   }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
   diagnostic: { phase: "structural", path: "publication.operations.3", subject: "example:article" },
   message: "move the identifier after its SKU creation" },
+  ...([
+    ["a whitespace-only value", ["example:serial"], " \t ", "catalog_publication_identifier_blank", "Enter a nonblank value"],
+    ["an issuer/value pair repeated across schemes", ["example:serial", "example:alternate"], "ABC", "catalog_publication_identifier_key_reused", "Use a distinct issuer and value pair"],
+  ] as const).map(([id, schemes, value, code, remedy]): Case => ({
+    id: `identifier admission refuses ${id}`,
+    arrange(data) {
+      const sku = data.payload.skus[0]!;
+      const identifiers = schemes.map(scheme => ({ scheme, issuer: "example", value, packagingLevel: "unit" as const }));
+      sku.identifiers!.push(...identifiers);
+      data.payload.publication.operations.splice(5, 0, ...identifiers.map(identifier => ({
+        op: "create_identifier" as const, skuCode: sku.code!, ...identifier, quantity: 1, isPrimary: false, label: null, sourceRef: null,
+      })));
+    },
+    expected: reason(code),
+    diagnostic: { phase: "structural", path: `publication.operations.${4 + schemes.length}`, subject: "ARTICLE" },
+    message: `SKU ARTICLE. ${remedy}`,
+  })),
   { id: "a repeated requested mode keeps its indexed field and fix", arrange(data) {
     data.payload.product.sharedContent.requestedModes[0]!.modes = ["one_time", "one_time"];
   }, expected: reason("candidate_invalid"), evidenceCalls: 0, ...beforeRoute,
@@ -883,7 +900,7 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
   expect(canonicalCatalogDraftJson(record.payload)).toBe(before);
   if (priceListRefusal) expect(preview?.preparation?.structural.issues).toContainEqual({ code: "price_list_not_found", phase: "pricing",
     path: "skus.0.priceOperations.0", subject: priceList,
-    message: "Select an installed price list for this price change, then prepare the draft again." });
+    message: "Select an installed, effective price list for the settlement region and currency, then prepare the draft again." });
   if (activationReady) {
     expect(preview?.preparation?.activation.outcome).toBe("ready");
     expect(assessActivation).toHaveBeenCalledTimes(4);

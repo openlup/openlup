@@ -6,7 +6,8 @@ import { nativeCatalogPublication, type VerifiedCatalogPublisher, type CatalogPu
 import type { CatalogHeadRef, CatalogPublicationReceipt, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
 
 const { limits, decodeStoredPublicationManifest, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
-  publicationJson, publicationDigest, SKU_PAGE_DEPTH, publicationReadFailure, publicationRefuse, publicationRemedy } = nativeCatalogPublication;
+  publicationJson, publicationDigest, SKU_PAGE_DEPTH, publicationReadFailure, publicationRefuse, publicationRemedy,
+  assertPublishedSkuIdentity } = nativeCatalogPublication;
 
 declare const verifiedReadScope: unique symbol;
 /** @experimental */
@@ -115,19 +116,6 @@ async function currentIssue(db: PgQueryExecutor, productId: string) {
   const issue = await verifiedIssue(db, row.id as string, productId);
   requireCondition(issue);
   return issue;
-}
-
-/** Detect a code rename directly because the issued projection folds it into a generic facts error. */
-export async function assertPublishedSkuIdentity(db: PgQueryExecutor, productId?: string): Promise<void> {
-  const { rows } = await db.query(`SELECT 1
-    FROM public.catalog_publication_heads h
-    JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
-    CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') member
-    JOIN public.catalog_sku_revisions r ON r.id=(member->>'revisionId')::uuid AND r.product_id=p.product_id
-    JOIN public.catalog_skus s ON (s.product_id,s.id)=(r.product_id,r.sku_id)
-    WHERE s.sku IS DISTINCT FROM r.sku_code${productId ? " AND h.product_id=$1::uuid" : ""} LIMIT 1`,
-    productId ? [productId] : []);
-  requireCondition(rows.length === 0, "catalog_publication_sku_identity_changed", "conflict");
 }
 
 async function assertCurrentProjection(db: PgQueryExecutor, issue: Issue) {

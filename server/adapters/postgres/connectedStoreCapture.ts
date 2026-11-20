@@ -1,5 +1,4 @@
 import { nativeCatalogPublication } from "@openlup/platform/catalog";
-import { assertPublishedSkuIdentity } from "./catalogPublicationReads.js";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { createHash } from "node:crypto";
 import {
@@ -7,7 +6,7 @@ import {
   type CompatiblePostgresPacket, type CompatiblePostgresSnapshot, type CompatiblePostgresTable,
 } from "@openlup/platform/portability";
 
-const { catalogPublicationAdmissionRefusal } = nativeCatalogPublication;
+const { catalogPublicationAdmissionRefusal, assertPublishedSkuIdentity } = nativeCatalogPublication;
 
 export async function assertConnectedCatalogPublications(db: PgQueryExecutor) {
   await assertPublishedSkuIdentity(db);
