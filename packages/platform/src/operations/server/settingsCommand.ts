@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
-import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue } from "./settingsCatalog.js";
+import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
   explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
@@ -116,21 +116,28 @@ function declaredSettings(file?: FileBinding) {
     if (loadSettingsCatalogue().entries.some(setting => setting.key === key)) {
       return refuse(`${key} is a packaged setting. Choose another key or report the installed file value and location without a descriptor.`);
     }
+    if (typeof entry.location?.file !== "string" || typeof entry.location.symbol !== "string") {
+      return refuse(`Supply a file and symbol for ${key}.`);
+    }
     const { schema, ...metadata } = entry.descriptor;
     let displaySchema;
-    try { displaySchema = schema === undefined ? null : toolInputSchema(schema); }
+    // The Zod projection also carries non-enumerable Standard Schema metadata.
+    try { displaySchema = schema === undefined ? null : { ...toolInputSchema(schema) }; }
     catch {
       return refuse(`The schema for ${key} cannot be displayed. Use a convertible Zod input schema or move the check to the app startup validator.`);
     }
-    const setting = settingDescriptorSchema.safeParse({
+    const setting = {
       rules: [], examples: [], fallback: null, defaultBasis: { kind: "neutral" },
       whyThisDefault: "The application config supplies the value.",
       ...metadata,
       key, kind: "code", schemaVersion: 1, schema: displaySchema, previewSchema: null,
       runtime: { level: "read-only", reason: "Edit the application configuration and deploy." }, change: entry.location,
-    });
-    if (!setting.success) return refuse(`Check the descriptor and file location for ${key}.`);
-    declarations.set(key, { setting: setting.data, entry, schema });
+    };
+    if (!isJsonValue(setting) || !settingDescriptorSchema.safeParse(setting).success) {
+      return refuse(`Check the descriptor and file location for ${key}.`);
+    }
+    // The parser admits the descriptor. The original JSON retains own keys in metadata and schema properties.
+    declarations.set(key, { setting: setting as AppSetting["setting"], entry, schema });
   }
   return { declarations };
 }
@@ -203,9 +210,7 @@ async function validateFileValue(file: FileValue, schema: Record<string, JsonVal
 }
 
 async function checkDocument(file: FileBinding | undefined, appValidation: AppValidation, declarations?: ReadonlyMap<string, AppSetting>) {
-  const entries = declarations?.size
-    ? catalogueWithAppSettings([...declarations.values()].map(({ setting }) => setting)).entries
-    : loadSettingsCatalogue().entries;
+  const entries = settingsEntriesWithAppSettings(declarations && [...declarations.values()].map(({ setting }) => setting));
   const rows = await Promise.all(entries.flatMap(entry => {
     if (entry.kind !== "code" && entry.kind !== "installed") return [];
     const reported = file && Object.hasOwn(file.entries, entry.key) ? file.entries[entry.key] : undefined;

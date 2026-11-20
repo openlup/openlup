@@ -11354,6 +11354,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/operations/settingsBoundParity.main.json",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/operations/settingsCommand.test.ts",
       "class": "public-output"
     },

@@ -67,9 +67,14 @@ const fileObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("file"), configuration: z.string(), value: z.json() }),
 ]);
 
+export function settingsEntriesWithAppSettings(additions: readonly z.infer<typeof descriptor>[] = []) {
+  const { entries } = loadSettingsCatalogue();
+  return additions.length ? [...entries, ...additions].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0) : entries;
+}
+
 export function catalogueWithAppSettings(additions: readonly z.infer<typeof descriptor>[]) {
   const catalogue = loadSettingsCatalogue();
-  const entries = additions.length ? [...catalogue.entries, ...additions].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0) : catalogue.entries;
+  const entries = settingsEntriesWithAppSettings(additions);
   const documents = additions.length ? settingsDocuments(entries) : catalogue;
   return { ...catalogue, ...documents, entries, appShowResult: documents.showResult.extend({ observation: fileObservationSchema }) };
 }

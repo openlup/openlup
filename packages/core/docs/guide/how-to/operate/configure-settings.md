@@ -22,8 +22,8 @@ run `./node_modules/.bin/openlup-context search "renewal stock protection horizo
 
 ## Read the effective behavior
 
-An offline result reports catalogue defaults. For inventory and reminders, a
-connected `show <key> --database-url <read-capable-url>` also reports the
+Offline results for package keys show catalogue metadata. For inventory and
+reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
 inventory row uses the platform fallback. For unpinned reminder episodes, an
@@ -51,15 +51,17 @@ and performs no writes. Installed rows say “Store: not checked.” The starter
 checks installed policies for drift at boot. Check prints an app-supplied
 location or labels the available starter catalogue reference separately.
 
-Check reports the application's startup validation when supplied and the
-packaged schema result for each reported JSON value with an executable schema.
+Check reports the application's startup validation when supplied. It uses the
+packaged schema for known package values and the supplied Zod schema for an
+app declaration. A value without an executable schema is marked
+`not-validated` for that row.
 The starter checks its reported configuration ID against the registry and runs
 `assertConfig`. The actual launch and install check their command-line
 arguments and installer package availability. Seed preparation runs after
 database bootstrap.
 A file value that cannot be represented as JSON is reported as unreportable
-and fails check without a schema verdict. Bindings for keys outside the
-catalogue are ignored. Each row uses the catalogue's effect and change text.
+and fails check without a schema verdict. Value-only entries for unknown keys
+are ignored. Declared app rows use the effect and location from the declaration.
 
 With `--json`, check emits one version-1 document. Exit 0 means checked and
 exit 1 means invalid. If importing the selected module or calling its binding
@@ -73,6 +75,61 @@ Exit 2 means the binding has no `file` member. Add
 `createSettingsBindings` and rerun. Use `validate` on that member to call the
 same assertion the app runs at startup. For connected effects, use
 `preview` with `--database-url`.
+
+## Declare a setting of your own
+
+Keep the value and its business rule in your application's owned code. For a
+gift wrapping fee, put this in `owned/gift.config.ts` and call
+`quoteGiftOrderMinor` from your gift quote code.
+
+```ts
+const wrapFeeMinor = 150;
+if (!Number.isSafeInteger(wrapFeeMinor) || wrapFeeMinor < 0) {
+  throw Error("gift.wrapFeeMinor requires whole nonnegative minor units.");
+}
+export const gift = { wrapFeeMinor };
+export const quoteGiftOrderMinor = (subtotal: number, wrap: boolean) =>
+  subtotal + (wrap ? gift.wrapFeeMinor : 0);
+```
+
+In `owned/settings-host.ts`, import `gift` and add one entry to the
+`file.entries` returned by your existing `createSettingsBindings`. Keep its
+configuration selection, installed readers and startup validation. Choose an
+unused key and give its file and symbol so an agent knows where to edit.
+
+```ts nocheck
+// The relative import resolves after you create the application file above.
+import { gift } from "./gift.config.ts";
+
+const entries = {
+  "gift.wrapFeeMinor": {
+    value: gift.wrapFeeMinor,
+    location: { file: "owned/gift.config.ts", symbol: "gift.wrapFeeMinor" },
+    descriptor: {
+      domain: "gift", goal: "Set the gift wrapping fee in minor units.",
+      effect: { appliesTo: "New gift quotes use this fee after deployment.", impact: "money", frozenOn: [] },
+    },
+  },
+};
+```
+
+Use the settings script that passes `--app ./owned/settings-host.ts`.
+
+```sh
+npm --silent run settings -- list --goal "gift wrapping fee"
+npm --silent run settings -- show gift.wrapFeeMinor --json
+npm --silent run settings -- check
+```
+
+List finds the new key by goal. Show reports the configured value and where to
+edit it. Check reports the app row and runs the existing app validation.
+In this example, change 150 to -1 to exercise the assertion. Check exits 1 and
+includes this line. Restore a valid amount and rerun check before opening your
+pull request.
+
+```text
+Application configuration rejected while loading — gift.wrapFeeMinor requires whole nonnegative minor units.
+```
 
 ## Preview before changing a setting
 

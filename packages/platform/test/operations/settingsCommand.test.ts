@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
@@ -531,7 +532,32 @@ function appFixture(readFee: () => unknown = () => "150", schema: ZodType = z.co
   } satisfies SettingsAppBindings;
 }
 
-it("keeps N3a package discovery bytes and exits in both modes with no app, a healthy app or a throwing app", async () => {
+const parityModes = ["no app", "healthy app", "throwing app"] as const;
+const parityValue = { revision: "local", renewalProtectionDays: 14 };
+const parityArgs = ["--database-url", url];
+const parityPreviewArgs = ["--value", JSON.stringify(parityValue), "--as-of", asOf, ...parityArgs];
+
+function boundParityHost(mode: typeof parityModes[number]): NonNullable<Parameters<typeof runSettingsCommand>[2]> {
+  const load = async () => {
+    if (mode === "throwing app") throw new Error("rejected edit");
+    return { file: { configuration: "sample", entries: { [key]: { value: parityValue } }, validate() {} } };
+  };
+  return {
+    loadCheck: load,
+    async bind({ app }) {
+      if (app) await load();
+      return {
+        readers: {
+          [key]: async () => ({ present: true, value: parityValue, revision: "local" }),
+          ...(app ? { checkout_recovery_reminders: async () => ({ present: false as const, effective: { checkoutRecovery: [] } }) } : {}),
+        },
+        previewers: app ? { [key]: async () => ({ schemaVersion: 1, key, proposed: parityValue }) } : {},
+      };
+    },
+  };
+}
+
+it("keeps N3a package invocations bytes and exits in both modes with no app, a healthy app or a throwing app", async () => {
   const catalogue = listSettings({});
   if (!("entries" in catalogue)) throw new Error("Unable to read the package catalogue");
   const cases = [
@@ -569,6 +595,36 @@ it("keeps N3a package discovery bytes and exits in both modes with no app, a hea
   // Captured by running these same no-app arguments on N3a f7e7c2c5f.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
     .toBe("22ee39aed18fb32215ad406145a20da6f2b20e34873a2fed22735370956e24d4");
+
+  // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
+  type Expected = {
+    outputs: [number, string][];
+    rows: Record<string, Record<"text" | "json", Record<typeof parityModes[number], number>>>;
+  };
+  const expected: Expected = JSON.parse(readFileSync(new URL("./settingsBoundParity.main.json", import.meta.url), "utf8"));
+  const bound = [
+    ...catalogue.entries.map(entry => ({
+      args: ["show", entry.key, ...parityArgs],
+      fixture: entry.kind === "installed" ? `show ${entry.key}` : undefined,
+    })),
+    ...catalogue.entries.map(entry => ({
+      args: ["preview", entry.key, ...parityPreviewArgs],
+      fixture: entry.key === key ? "preview inventory" : "preview unsupported",
+    })),
+    { args: ["check"], fixture: "check" },
+  ];
+  for (const format of ["text", "json"] as const) for (const { args, fixture } of bound) {
+    const outputArgs = format === "json" ? ["--json"] : [];
+    // Non-installed show returns the offline document already pinned above.
+    const offline = fixture ? undefined : bytes[(format === "json" ? cases.length : 0)
+      + cases.findIndex(row => row[0] === "show" && row[1] === args[1])]!;
+    for (const mode of parityModes) {
+      const argv = [...args, ...(mode === "no app" ? [] : appArgs), ...outputArgs];
+      const { exit, output, warnings } = await run(argv, { host: boundParityHost(mode) });
+      expect([exit, output], `${mode}: ${argv.join(" ")}`).toEqual(fixture ? expected.outputs[expected.rows[fixture]![format][mode]] : offline);
+      expect(warnings).toEqual([]);
+    }
+  }
 });
 
 it.each([
@@ -619,6 +675,21 @@ it("reports original JSON with own special keys", async () => {
   expect(output).toContain(`"value":${original}`);
 });
 
+it.each(["show", "explain"])("preserves own metadata and projected properties in %s", async command => {
+  const raw = '{"__proto__":{"flag":true}}';
+  const authored = JSON.parse(raw);
+  const bindings = appFixture(() => "150", z.object({ ["__proto__"]: z.number() }));
+  Object.assign(bindings.file.entries[feeKey].descriptor, { fallback: authored, examples: [{ value: authored }] });
+  const { exit, output } = await run([command, feeKey, ...appArgs, "--json"], { host: checks(async () => bindings) });
+  expect(exit).toBe(0);
+  const { setting } = JSON.parse(output);
+  expect(JSON.stringify(setting.fallback)).toBe(raw);
+  expect(JSON.stringify(setting.examples)).toBe(`[{"value":${raw}}]`);
+  expect(Object.hasOwn(setting.schema.properties, "__proto__")).toBe(true);
+  expect(setting.schema.properties["__proto__"]).toEqual({ type: "number" });
+  expect(setting.schema.required).toEqual(["__proto__"]);
+});
+
 it.each([
   ["a throwing getter", () => { throw new Error("private accessor detail"); }],
   ["a non-JSON value", () => Number.POSITIVE_INFINITY],
@@ -645,10 +716,13 @@ it.each([
 it.each([
   ["a collision", key, z.number(), "is a packaged setting"],
   ["a schema conversion failure", feeKey, z.date(), "cannot be displayed"],
-] as const)("refuses %s before reading any value", async (_, declarationKey, schema, hint) => {
+  ["a reference location", feeKey, z.number(), `Supply a file and symbol for ${feeKey}`, { reference: "docs/gift.md" }],
+  ["an operation location", feeKey, z.number(), `Supply a file and symbol for ${feeKey}`, { operation: "setGiftFee" }],
+] as const)("refuses %s before reading any value", async (_, declarationKey, schema, hint, location?) => {
   const read = vi.fn();
   const { file } = appFixture(read, schema);
   const entry = file.entries[feeKey];
+  if (location) Object.defineProperty(entry, "location", { value: location });
   const bindings = { file: { ...file, entries: { [declarationKey]: entry } } };
   for (const args of [["list"], ["show", feeKey], ["explain", feeKey], ["check"]]) {
     const { exit, output } = await run([...args, ...appArgs, "--json"], { host: checks(async () => bindings) });

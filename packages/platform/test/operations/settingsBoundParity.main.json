@@ -1,0 +1,174 @@
+{
+  "outputs": [
+    [
+      0,
+      "inventory_renewal_protection — Set the renewal stock protection horizon used to calculate stock available to new purchases.\nOwner: inventory\nKind: installed (preview)\nPreview estimates availability for named SKUs. Apply changes with the installer at deployment.\nDefault: {\"revision\":\"default\",\"renewalProtectionDays\":14}\nBasis: reference-code (matches the reference deployment’s code)\nTwo weeks cover a typical replenishment cycle and preserve the established stock priority.\nSchema: {\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"properties\":{\"revision\":{\"type\":\"string\"},\"renewalProtectionDays\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":3660}},\"required\":[\"revision\",\"renewalProtectionDays\"],\"additionalProperties\":false}\nEffect: Future available-to-promise calculations and new purchase allocations.\nFrozen on: Existing reservations keep their quantities and expiry times.\nChange: installRenewalStockProtectionPolicy\nObservation: {\"state\":\"override\",\"value\":{\"revision\":\"local\",\"renewalProtectionDays\":14},\"revision\":\"local\"}\n"
+    ],
+    [
+      74,
+      "commerce_setting_read_unavailable\nA connected read requires an accessible, valid settings row or confirmed absence.\nCheck the read-capable database connection and that --app exports createSettingsBindings.\nCheck the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\nnpm --silent run settings -- show <key> --database-url <read-capable-url> --json\n"
+    ],
+    [
+      0,
+      "{\"schemaVersion\":1,\"setting\":{\"key\":\"inventory_renewal_protection\",\"goal\":\"Set the renewal stock protection horizon used to calculate stock available to new purchases.\",\"kind\":\"installed\",\"runtime\":{\"level\":\"preview\",\"reason\":\"Preview estimates availability for named SKUs. Apply changes with the installer at deployment.\"},\"change\":{\"operation\":\"installRenewalStockProtectionPolicy\"},\"domain\":\"inventory\",\"schemaVersion\":1,\"schema\":{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"properties\":{\"revision\":{\"type\":\"string\"},\"renewalProtectionDays\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":3660}},\"required\":[\"revision\",\"renewalProtectionDays\"],\"additionalProperties\":false},\"previewSchema\":{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"properties\":{\"existingReservations\":{\"type\":\"string\",\"const\":\"unchanged\"},\"newPurchaseAvailability\":{\"type\":\"string\",\"enum\":[\"equal-or-lower\",\"equal-or-higher\",\"unchanged\",\"undetermined\"]},\"skus\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"sku\":{\"type\":\"string\"},\"source\":{\"type\":\"string\",\"enum\":[\"provider\",\"missing\"]},\"stale\":{\"type\":\"boolean\"},\"currentAvailableForNewPurchases\":{\"type\":[\"number\",\"null\"]},\"proposedAvailableForNewPurchases\":{\"type\":[\"number\",\"null\"]}},\"required\":[\"sku\",\"source\",\"stale\",\"currentAvailableForNewPurchases\",\"proposedAvailableForNewPurchases\"],\"additionalProperties\":false}}},\"required\":[\"existingReservations\",\"newPurchaseAvailability\",\"skus\"],\"additionalProperties\":false},\"rules\":[{\"code\":\"inventory_renewal_protection_policy_invalid\",\"path\":[],\"description\":\"Supply exactly revision and renewalProtectionDays. Revision must be a nonblank string and renewalProtectionDays an integer from 1 through 3660.\"}],\"examples\":[{\"value\":{\"revision\":\"store-1\",\"renewalProtectionDays\":21}},{\"value\":{\"revision\":\" \",\"renewalProtectionDays\":21},\"code\":\"inventory_renewal_protection_policy_invalid\"},{\"value\":{\"revision\":\"store-1\",\"renewalProtectionDays\":0},\"code\":\"inventory_renewal_protection_policy_invalid\"}],\"fallback\":{\"revision\":\"default\",\"renewalProtectionDays\":14},\"defaultBasis\":{\"kind\":\"reference-code\"},\"whyThisDefault\":\"Two weeks cover a typical replenishment cycle and preserve the established stock priority.\",\"effect\":{\"appliesTo\":\"Future available-to-promise calculations and new purchase allocations.\",\"frozenOn\":[\"Existing reservations keep their quantities and expiry times.\"],\"impact\":\"operations\"}},\"observation\":{\"state\":\"override\",\"value\":{\"revision\":\"local\",\"renewalProtectionDays\":14},\"revision\":\"local\"}}\n"
+    ],
+    [
+      74,
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"key\"],\"rule\":\"A connected read requires an accessible, valid settings row or confirmed absence.\",\"hint\":\"Check the read-capable database connection and that --app exports createSettingsBindings.\",\"remediation\":{\"retry\":true,\"action\":\"Check the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\",\"command\":\"npm --silent run settings -- show <key> --database-url <read-capable-url> --json\"}}}\n"
+    ],
+    [
+      1,
+      "commerce_setting_read_unavailable\nA connected read requires an accessible, valid settings row or confirmed absence.\nPass --app <module> that supplies a reader for this setting.\nCheck the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\nnpm --silent run settings -- show <key> --database-url <read-capable-url> --json\n"
+    ],
+    [
+      0,
+      "checkout_recovery_reminders — Find when checkout recovery and abandoned cart reminders are sent.\nOwner: commerce\nKind: installed (read-only)\nRuntime editing needs episode lineage and delivery replay evidence.\nDefault: {\"revision\":\"default\",\"abandonedCart\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"gentle\",\"afterHours\":24},{\"stage\":\"last\",\"afterHours\":72}],\"checkoutRecovery\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"last\",\"afterHours\":20}]}\nBasis: reference-code (matches the reference deployment’s code)\nThe last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.\nUnpinned checkout recovery episodes use host call parameters, with SQL defaults for omitted offsets. Unpinned abandoned cart episodes use 1, 24 and 72 hours. An existing pin supplies that episode's timing.\nSchema: null\nEffect: A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.\nFrozen on: Enqueued messages and send receipts retain their recorded identity.\nChange: installCheckoutRecoveryReminderSchedule\nObservation: {\"state\":\"absent\",\"absentMeans\":\"Unpinned checkout recovery episodes use host call parameters, with SQL defaults for omitted offsets. Unpinned abandoned cart episodes use 1, 24 and 72 hours. An existing pin supplies that episode's timing.\",\"source\":\"host call parameters, with SQL defaults for omitted offsets\",\"value\":{\"checkoutRecovery\":[]}}\n"
+    ],
+    [
+      1,
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"key\"],\"rule\":\"A connected read requires an accessible, valid settings row or confirmed absence.\",\"hint\":\"Pass --app <module> that supplies a reader for this setting.\",\"remediation\":{\"retry\":true,\"action\":\"Check the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\",\"command\":\"npm --silent run settings -- show <key> --database-url <read-capable-url> --json\"}}}\n"
+    ],
+    [
+      0,
+      "{\"schemaVersion\":1,\"setting\":{\"key\":\"checkout_recovery_reminders\",\"goal\":\"Find when checkout recovery and abandoned cart reminders are sent.\",\"kind\":\"installed\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"Runtime editing needs episode lineage and delivery replay evidence.\"},\"change\":{\"operation\":\"installCheckoutRecoveryReminderSchedule\"},\"domain\":\"commerce\",\"schemaVersion\":1,\"schema\":null,\"previewSchema\":null,\"rules\":[{\"code\":\"checkout_recovery_policy_invalid\",\"path\":[],\"description\":\"The host checkout recovery policy accepts only firstOffsetSeconds, finalOffsetSeconds, checkoutSeconds, recoverySeconds, activitySeconds and profile. Supply seconds as integers from 1 to 2147483647 and keep firstOffsetSeconds below finalOffsetSeconds, which must be below checkoutSeconds after defaults. A supplied profile starts with a lowercase letter and has up to 48 lowercase letters, digits, underscores or hyphens.\"}],\"examples\":[],\"fallback\":{\"revision\":\"default\",\"abandonedCart\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"gentle\",\"afterHours\":24},{\"stage\":\"last\",\"afterHours\":72}],\"checkoutRecovery\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"last\",\"afterHours\":20}]},\"absentMeans\":{\"description\":\"Unpinned checkout recovery episodes use host call parameters, with SQL defaults for omitted offsets. Unpinned abandoned cart episodes use 1, 24 and 72 hours. An existing pin supplies that episode's timing.\",\"source\":\"host call parameters, with SQL defaults for omitted offsets\",\"value\":{\"abandonedCart\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"gentle\",\"afterHours\":24},{\"stage\":\"last\",\"afterHours\":72}],\"checkoutRecovery\":null}},\"defaultBasis\":{\"kind\":\"reference-code\"},\"whyThisDefault\":\"The last checkout wave fits inside the 24-hour checkout window and the cart waves retain the established delivery timing.\",\"effect\":{\"appliesTo\":\"A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.\",\"frozenOn\":[\"Enqueued messages and send receipts retain their recorded identity.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"absent\",\"absentMeans\":\"Unpinned checkout recovery episodes use host call parameters, with SQL defaults for omitted offsets. Unpinned abandoned cart episodes use 1, 24 and 72 hours. An existing pin supplies that episode's timing.\",\"source\":\"host call parameters, with SQL defaults for omitted offsets\",\"value\":{\"checkoutRecovery\":[]}}}\n"
+    ],
+    [
+      1,
+      "commerce_setting_read_unavailable\nA connected read requires an accessible, valid settings row or confirmed absence.\nNo connected reader exists for this key. Omit --database-url for offline discovery.\nCheck the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\nnpm --silent run settings -- show <key> --database-url <read-capable-url> --json\n"
+    ],
+    [
+      1,
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"key\"],\"rule\":\"A connected read requires an accessible, valid settings row or confirmed absence.\",\"hint\":\"No connected reader exists for this key. Omit --database-url for offline discovery.\",\"remediation\":{\"retry\":true,\"action\":\"Check the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\",\"command\":\"npm --silent run settings -- show <key> --database-url <read-capable-url> --json\"}}}\n"
+    ],
+    [
+      1,
+      "commerce_setting_preview_connection_required\nPreview needs a connection to the intended store.\nPass --app <module> for the shop's stock source and configuration.\nSupply a read-capable connection and run preview again.\nnpm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json\n"
+    ],
+    [
+      0,
+      "{\n  \"schemaVersion\": 1,\n  \"key\": \"inventory_renewal_protection\",\n  \"proposed\": {\n    \"revision\": \"local\",\n    \"renewalProtectionDays\": 14\n  }\n}\n"
+    ],
+    [
+      74,
+      "commerce_setting_preview_unexpected\nThe preview could not be completed.\nCheck the read-capable database connection and that --app exports createSettingsBindings.\nRetry once. If preview still fails, contact your store administrator.\nnpm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json\n"
+    ],
+    [
+      1,
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_preview_connection_required\",\"path\":[\"app\"],\"rule\":\"Preview needs a connection to the intended store.\",\"hint\":\"Pass --app <module> for the shop's stock source and configuration.\",\"remediation\":{\"retry\":true,\"action\":\"Supply a read-capable connection and run preview again.\",\"command\":\"npm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json\"}}}\n"
+    ],
+    [
+      0,
+      "{\"schemaVersion\":1,\"key\":\"inventory_renewal_protection\",\"proposed\":{\"revision\":\"local\",\"renewalProtectionDays\":14}}\n"
+    ],
+    [
+      74,
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_preview_unexpected\",\"path\":[],\"rule\":\"The preview could not be completed.\",\"hint\":\"Check the read-capable database connection and that --app exports createSettingsBindings.\",\"remediation\":{\"retry\":true,\"action\":\"Retry once. If preview still fails, contact your store administrator.\",\"command\":\"npm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json\"}}}\n"
+    ],
+    [
+      1,
+      "commerce_setting_preview_unsupported\nThis setting has no connected preview.\nUse show for value details or a reason and reference.\nChoose a setting that supports preview.\nnpm --silent run settings -- show <key> --json\n"
+    ],
+    [
+      1,
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_preview_unsupported\",\"path\":[\"key\"],\"rule\":\"This setting has no connected preview.\",\"hint\":\"Use show for value details or a reason and reference.\",\"remediation\":{\"retry\":true,\"action\":\"Choose a setting that supports preview.\",\"command\":\"npm --silent run settings -- show <key> --json\"}}}\n"
+    ],
+    [
+      64,
+      "commerce_setting_read_input_invalid\nSupply a supported settings command and its required arguments.\nPass --app <module> that exports createSettingsBindings.\nReview command syntax and correct the arguments.\nnpm --silent run settings -- --help\n"
+    ],
+    [
+      0,
+      "Settings check (sample): checked\nApp startup validation: passed\nCatalogue checks cover reported JSON values with an executable schema.\ncheckout_recovery_reminders: file not-reported, schema not-validated\n  Effect: A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing. Change: installCheckoutRecoveryReminderSchedule\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\ninventory_renewal_protection: file present, schema valid\n  Value: {\"revision\":\"local\",\"renewalProtectionDays\":14}\n  Effect: Future available-to-promise calculations and new purchase allocations. Change: installRenewalStockProtectionPolicy\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\noffer.freeShippingFromMinor: file not-reported, schema not-validated\n  Effect: The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect. Change: owned/store.config.ts offer.freeShippingFromMinor\noffer.subscriptionDiscountBps: file not-reported, schema not-validated\n  Effect: The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value. Change: owned/store.config.ts offer.subscriptionDiscountBps\npurchase.reservationMinutes: file not-reported, schema not-validated\n  Effect: The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation. Change: owned/store.config.ts purchase.reservationMinutes\nsubscriber_winback_policy: file not-reported, schema not-validated\n  Effect: Candidates for new winback messages. Change: No settings write operation is available for this key.\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\nsubscriptionCreation.editWindowHours: file not-reported, schema not-validated\n  Effect: The starter supplies the deployed edit window at native subscription activation. Change: owned/store.config.ts subscriptionCreation.editWindowHours\nsubscriptionOffers.deliveryCycles: file not-reported, schema not-validated\n  Effect: A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode. Change: owned/store.config.ts subscriptionOffers\nsubscriptions.lifecycleNoticeRetryBudget: file not-reported, schema not-validated\n  Effect: On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap. Change: owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\n"
+    ],
+    [
+      1,
+      "Settings check (configuration unreported): invalid\nApplication configuration rejected while loading — rejected edit\nCatalogue checks cover reported JSON values with an executable schema.\ncheckout_recovery_reminders: file not-reported, schema not-validated\n  Effect: A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing. Change: installCheckoutRecoveryReminderSchedule\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\ninventory_renewal_protection: file not-reported, schema not-validated\n  Effect: Future available-to-promise calculations and new purchase allocations. Change: installRenewalStockProtectionPolicy\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\noffer.freeShippingFromMinor: file not-reported, schema not-validated\n  Effect: The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect. Change: owned/store.config.ts offer.freeShippingFromMinor\noffer.subscriptionDiscountBps: file not-reported, schema not-validated\n  Effect: The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value. Change: owned/store.config.ts offer.subscriptionDiscountBps\npurchase.reservationMinutes: file not-reported, schema not-validated\n  Effect: The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation. Change: owned/store.config.ts purchase.reservationMinutes\nsubscriber_winback_policy: file not-reported, schema not-validated\n  Effect: Candidates for new winback messages. Change: No settings write operation is available for this key.\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\nsubscriptionCreation.editWindowHours: file not-reported, schema not-validated\n  Effect: The starter supplies the deployed edit window at native subscription activation. Change: owned/store.config.ts subscriptionCreation.editWindowHours\nsubscriptionOffers.deliveryCycles: file not-reported, schema not-validated\n  Effect: A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode. Change: owned/store.config.ts subscriptionOffers\nsubscriptions.lifecycleNoticeRetryBudget: file not-reported, schema not-validated\n  Effect: On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap. Change: owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\n"
+    ],
+    [
+      64,
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_input_invalid\",\"path\":[\"app\"],\"rule\":\"Supply a supported settings command and its required arguments.\",\"hint\":\"Pass --app <module> that exports createSettingsBindings.\",\"remediation\":{\"retry\":true,\"action\":\"Review command syntax and correct the arguments.\",\"command\":\"npm --silent run settings -- --help\"}}}\n"
+    ],
+    [
+      0,
+      "{\"schemaVersion\":1,\"configuration\":\"sample\",\"state\":\"checked\",\"appValidation\":{\"state\":\"passed\"},\"rows\":[{\"key\":\"checkout_recovery_reminders\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.\",\"takesEffect\":\"installCheckoutRecoveryReminderSchedule\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"inventory_renewal_protection\",\"file\":{\"state\":\"present\",\"value\":{\"revision\":\"local\",\"renewalProtectionDays\":14}},\"validation\":{\"state\":\"valid\"},\"effect\":\"Future available-to-promise calculations and new purchase allocations.\",\"takesEffect\":\"installRenewalStockProtectionPolicy\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"offer.freeShippingFromMinor\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.\",\"takesEffect\":\"owned/store.config.ts offer.freeShippingFromMinor\",\"kind\":\"code\"},{\"key\":\"offer.subscriptionDiscountBps\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.\",\"takesEffect\":\"owned/store.config.ts offer.subscriptionDiscountBps\",\"kind\":\"code\"},{\"key\":\"purchase.reservationMinutes\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.\",\"takesEffect\":\"owned/store.config.ts purchase.reservationMinutes\",\"kind\":\"code\"},{\"key\":\"subscriber_winback_policy\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"Candidates for new winback messages.\",\"takesEffect\":\"No settings write operation is available for this key.\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"subscriptionCreation.editWindowHours\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"The starter supplies the deployed edit window at native subscription activation.\",\"takesEffect\":\"owned/store.config.ts subscriptionCreation.editWindowHours\",\"kind\":\"code\"},{\"key\":\"subscriptionOffers.deliveryCycles\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.\",\"takesEffect\":\"owned/store.config.ts subscriptionOffers\",\"kind\":\"code\"},{\"key\":\"subscriptions.lifecycleNoticeRetryBudget\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.\",\"takesEffect\":\"owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\",\"kind\":\"code\"}]}\n"
+    ],
+    [
+      1,
+      "{\"schemaVersion\":1,\"configuration\":null,\"state\":\"invalid\",\"appValidation\":{\"state\":\"failed\",\"phase\":\"load\",\"message\":\"rejected edit\"},\"rows\":[{\"key\":\"checkout_recovery_reminders\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.\",\"takesEffect\":\"installCheckoutRecoveryReminderSchedule\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"inventory_renewal_protection\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"Future available-to-promise calculations and new purchase allocations.\",\"takesEffect\":\"installRenewalStockProtectionPolicy\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"offer.freeShippingFromMinor\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.\",\"takesEffect\":\"owned/store.config.ts offer.freeShippingFromMinor\",\"kind\":\"code\"},{\"key\":\"offer.subscriptionDiscountBps\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.\",\"takesEffect\":\"owned/store.config.ts offer.subscriptionDiscountBps\",\"kind\":\"code\"},{\"key\":\"purchase.reservationMinutes\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.\",\"takesEffect\":\"owned/store.config.ts purchase.reservationMinutes\",\"kind\":\"code\"},{\"key\":\"subscriber_winback_policy\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"Candidates for new winback messages.\",\"takesEffect\":\"No settings write operation is available for this key.\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"subscriptionCreation.editWindowHours\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"The starter supplies the deployed edit window at native subscription activation.\",\"takesEffect\":\"owned/store.config.ts subscriptionCreation.editWindowHours\",\"kind\":\"code\"},{\"key\":\"subscriptionOffers.deliveryCycles\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.\",\"takesEffect\":\"owned/store.config.ts subscriptionOffers\",\"kind\":\"code\"},{\"key\":\"subscriptions.lifecycleNoticeRetryBudget\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.\",\"takesEffect\":\"owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\",\"kind\":\"code\"}]}\n"
+    ]
+  ],
+  "rows": {
+    "show inventory_renewal_protection": {
+      "text": {
+        "no app": 0,
+        "healthy app": 0,
+        "throwing app": 1
+      },
+      "json": {
+        "no app": 2,
+        "healthy app": 2,
+        "throwing app": 3
+      }
+    },
+    "show checkout_recovery_reminders": {
+      "text": {
+        "no app": 4,
+        "healthy app": 5,
+        "throwing app": 1
+      },
+      "json": {
+        "no app": 6,
+        "healthy app": 7,
+        "throwing app": 3
+      }
+    },
+    "show subscriber_winback_policy": {
+      "text": {
+        "no app": 4,
+        "healthy app": 8,
+        "throwing app": 1
+      },
+      "json": {
+        "no app": 6,
+        "healthy app": 9,
+        "throwing app": 3
+      }
+    },
+    "preview inventory": {
+      "text": {
+        "no app": 10,
+        "healthy app": 11,
+        "throwing app": 12
+      },
+      "json": {
+        "no app": 13,
+        "healthy app": 14,
+        "throwing app": 15
+      }
+    },
+    "preview unsupported": {
+      "text": {
+        "no app": 16,
+        "healthy app": 16,
+        "throwing app": 16
+      },
+      "json": {
+        "no app": 17,
+        "healthy app": 17,
+        "throwing app": 17
+      }
+    },
+    "check": {
+      "text": {
+        "no app": 18,
+        "healthy app": 19,
+        "throwing app": 20
+      },
+      "json": {
+        "no app": 21,
+        "healthy app": 22,
+        "throwing app": 23
+      }
+    }
+  }
+}
