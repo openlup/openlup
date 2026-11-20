@@ -1056,6 +1056,7 @@ it.each([
 it.each([
   ["settings_show", {}, "key"],
   ["settings_explain", {}, "keyOrCode"],
+  ["settings_preview", { value: null }, "key"],
   ["settings_preview", { key }, "value"],
   ["settings_preview", {}, undefined],
   ["settings_preview", { value: null, skus: 1 }, undefined],
