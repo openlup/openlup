@@ -34,8 +34,7 @@ export type SettingsAppBindings = {
 
 type SettingsDatabase = {
   host: string; port: number; user: string; password: string | (() => string); database: string;
-  ssl: false | { rejectUnauthorized: true; host: string }; sslnegotiation: "postgres";
-  options: string; replication: "false"; client_encoding: "utf8"; application_name: string; connectionTimeoutMillis: 0;
+  ssl: false | { rejectUnauthorized: true; host: string };
 };
 type SettingsHost = {
   bind(input: { database?: SettingsDatabase; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;

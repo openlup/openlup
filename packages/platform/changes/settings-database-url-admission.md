@@ -1,5 +1,5 @@
 ### Connected settings require an explicit PostgreSQL target
 
-- For `openlup settings show` and `preview`, supply a canonical PostgreSQL URL with one TCP host, a username and a single database path segment. The only supported query option is `sslmode` with `disable`, `require` or `verify-full`. Omitting it selects plaintext.
-- PostgreSQL host, port, user, database, password, TLS and startup environment defaults cannot override these options. Connected settings commands refuse when `NODE_PG_FORCE_NATIVE` is nonempty. Unset it to use the JavaScript driver.
-- The experimental `runSettingsCommand` host binding receives admitted connection options in `bind({ database })` in place of `bind({ databaseUrl })`.
+- For connected `openlup settings show` and `preview`, supply a canonical PostgreSQL URL with one TCP host, a username and one non-empty database path segment. For the exact URL rules, see the reader guide, Configure settings, section “Read the effective behavior”.
+- Set the target and TLS mode in the URL. An omitted `sslmode` selects plaintext. The launcher's pool ignores `PG`-prefixed environment variables and skips password files. Connected `show` and `preview` refuse when `NODE_PG_FORCE_NATIVE` selects the native client.
+- The experimental settings host's `bind` input now carries the admitted connection options in `database`, replacing the raw `databaseUrl` string.
