@@ -68,6 +68,8 @@ export interface OutboxDispatchRunResult {
   queue?: Record<string, unknown>;
 }
 
+export type OutboxSnoozeScope = "all" | "event_type";
+
 export interface OutboxDispatchConfig {
   batchSize: number;
   maxAttempts: number;
@@ -77,6 +79,8 @@ export interface OutboxDispatchConfig {
   snoozeSeconds: number;
   maxSnoozes: number;
   softBudgetMs: number;
+  /** Scope of circuit-breaking on `{ kind: "snooze" }`: `"all"` (default) halts all types; `"event_type"` isolates only the snoozed event type and affected aggregates. */
+  snoozeScope?: OutboxSnoozeScope;
 }
 
 

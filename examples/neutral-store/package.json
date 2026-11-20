@@ -21,7 +21,8 @@
     "@openlup/core": "file:artifacts/openlup-core.tgz",
     "@openlup/outbox": "file:artifacts/openlup-outbox.tgz",
     "@openlup/platform": "file:artifacts/openlup-platform.tgz",
-    "pg": "8.22.0"
+    "pg": "8.22.0",
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -45,6 +46,7 @@ import {
   proveNativeCommunicationsOperations,
   proveResendConsumer,
   proveMarketingSyncConsumer,
+  catalogMigrationExpectations,
   proveCatalogCompositionConsumer,
   proveCatalogConformanceConsumer,
   runPlatformColdConsumer
@@ -554,20 +556,155 @@ function pristinePackedA1Fixture() {
 it("guide_skeleton_pack_passes_checker", () => {
   proveCatalogConformanceConsumer(pristinePackedA1Fixture());
 });
+
+const descriptorPath = "packages/platform/src/catalog/sql.ts";
+const selectedPath = "db/platform/migrations/20260102000000_selected.sql";
+const selectedDigest = "a".repeat(64);
+const descriptorManifest = {
+  baseline: { file: "db/platform/migrations/00000000000000_platform_baseline.sql", sha256: "b".repeat(64) },
+  forward: [{ file: selectedPath, sha256: selectedDigest }],
+};
+const descriptorEntry = JSON.stringify({ catalogPath: selectedPath, position: 1, sha256: selectedDigest });
+const descriptorSelection = `export const CATALOG_MIGRATIONS = [${descriptorEntry}] as const;`;
+
+it.each([
+  ["position disagrees", descriptorSelection.replace('"position":1', '"position":9'), `${selectedPath} position differs from the canonical manifest. Set position to 1`],
+  ["digest disagrees", descriptorSelection.replace(selectedDigest, "0".repeat(64)), `${selectedPath} sha256 differs from the canonical manifest. Set sha256 to ${selectedDigest}`],
+  ["invalid syntax", descriptorSelection + " const = ;", "does not evaluate:"],
+  ["missing array", "export const CATALOG_MIGRATIONS = {};", "does not evaluate: export CATALOG_MIGRATIONS as an array"],
+  ["extra comma", `export const CATALOG_MIGRATIONS = [${descriptorEntry},,];`, "does not evaluate: CATALOG_MIGRATIONS[1] must be an object with a string catalogPath, a numeric position and a string sha256. To fix it, remove the extra comma or restore the entry"],
+  ["commented-out selection", `export const CATALOG_MIGRATIONS = [/* ${descriptorEntry} */];`, "empty CATALOG_MIGRATIONS selection. Restore at least one migration entry"],
+  ["duplicate path", `export const CATALOG_MIGRATIONS = [${descriptorEntry},${descriptorEntry}];`, `duplicate path ${selectedPath}. Remove the repeated entry`],
+  ["unmanifested path", descriptorSelection.replace("selected.sql", "unknown.sql"), `${selectedPath.replace("selected.sql", "unknown.sql")} is absent from the canonical manifest. Select a path from config/platform-migration-manifest.json`],
+  ["unsupported import", 'import "node:path";\n' + descriptorSelection, "does not evaluate: unsupported import node:path. Extend the catalogue descriptor stub map"],
+])("refuses the committed catalogue descriptor when %s", (_name, descriptor, diagnostic) => {
+  const separator = diagnostic.startsWith("does not evaluate:") ? " " : ": ";
+  expect(() => catalogMigrationExpectations(descriptor, descriptorManifest))
+    .toThrow(`committed ${descriptorPath}${separator}${diagnostic}`);
+});
+
+it("evaluates the selected getter against the exact manifest tuple and ignores commented entries", () => {
+  const descriptor = `import { packagedPlatformMigrationPosition } from "../migrations/index.js";
+export const CATALOG_MIGRATIONS = [
+  // ${descriptorEntry},
+  { catalogPath: "${selectedPath}", sha256: "${selectedDigest}", get position() { return packagedPlatformMigrationPosition(this.catalogPath, this.sha256); } },
+] as const;`;
+  expect(catalogMigrationExpectations(descriptor, descriptorManifest)).toEqual([
+    { catalogPath: selectedPath, position: 1, sha256: selectedDigest },
+  ]);
+  expect(() => catalogMigrationExpectations(descriptor.replaceAll(selectedDigest, "0".repeat(64)), descriptorManifest))
+    .toThrow(`committed ${descriptorPath} does not evaluate: no canonical path and SHA-256 match for ${selectedPath}`);
+});
+
 it.each([
   ["missing", "CATALOG_MIGRATIONS.pop();"],
-  ["extra", "CATALOG_MIGRATIONS.push({ ...CATALOG_MIGRATIONS.at(-1), position: Number.MAX_SAFE_INTEGER });"],
+  // The added descriptor must leave the import-time manifest probe untouched.
+  ["extra", "CATALOG_MIGRATIONS.push({ ...CATALOG_MIGRATIONS[0], position: Number.MAX_SAFE_INTEGER });"],
   ["reordered", "CATALOG_MIGRATIONS.reverse();"],
-])("refuses packed catalogue positions differing from the committed descriptor: %s", (_name, mutation) => {
+  ["catalogPath getter masks wrong position", `
+const unit = CATALOG_MIGRATIONS[0];
+const { catalogPath, position } = unit;
+unit.position = 999;
+Object.defineProperty(unit, "catalogPath", { get() { unit.position = position; return catalogPath; } });
+`],
+])("refuses packed catalogue migrations differing from the committed canonical manifest: %s", (_name, mutation) => {
   const consumer = pristinePackedA1Fixture();
   const path = join(consumer, "node_modules/@openlup/platform/dist/catalog/sql.js");
   const original = readFileSync(path, "utf8");
   proveCatalogCompositionConsumer(consumer);
   try {
     writeFileSync(path, original + "\n" + mutation);
-    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/installed catalogue migration positions differ from the committed descriptor/);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/installed catalogue migrations differ from the committed canonical manifest/);
   } finally { writeFileSync(path, original); }
 });
+
+it.each([
+  ["sync", 'import { readFileSync } from "node:fs"; readFileSync(new URL("../../sql/manifest.json", import.meta.url));'],
+  ["promises", 'import { readFile } from "node:fs/promises"; await readFile(new URL("../../sql/manifest.json", import.meta.url));'],
+])("refuses an import-time packaged SQL manifest read via %s", (_name, mutation) => {
+  const consumer = pristinePackedA1Fixture();
+  const path = join(consumer, "node_modules/@openlup/platform/dist/catalog/index.js");
+  const manifestPath = join(consumer, "node_modules/@openlup/platform/sql/manifest.json");
+  const original = readFileSync(path, "utf8");
+  const manifest = readFileSync(manifestPath);
+  try {
+    writeFileSync(path, original + "\n" + mutation);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/presence-only import failed without the packaged SQL manifest/);
+    expect(readFileSync(manifestPath)).toEqual(manifest);
+  } finally { writeFileSync(path, original); }
+});
+
+it.each([
+  ["wrong position only with manifest present", "if (manifestPresent) migrations[0].position = 999;", /installed catalogue migrations differ from the committed canonical manifest[\s\S]*\+ +999,/u],
+  ["different wrong positions with and without manifest", "migrations[0].position = manifestPresent ? 999 : 998;", /installed catalogue migrations differ from the committed canonical manifest[\s\S]*\+ +999,/u],
+  ["initialization throws only with manifest present", 'if (manifestPresent) throw new Error("synthetic present-manifest initialization failed");', /Error: synthetic present-manifest initialization failed/u],
+])("checks normal packed catalogue initialization in a fresh process: %s", (_name, mutation, diagnostic) => {
+  const consumer = pristinePackedA1Fixture();
+  const path = join(consumer, "node_modules/@openlup/platform/dist/catalog/index.js");
+  const original = readFileSync(path, "utf8");
+  try {
+    writeFileSync(path, original + `
+import { existsSync } from "node:fs";
+import { CATALOG_MIGRATIONS as migrations } from "./sql.js";
+const manifestPresent = existsSync(new URL("../../sql/manifest.json", import.meta.url));
+${mutation}
+`);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(diagnostic);
+  } finally { writeFileSync(path, original); }
+});
+
+it.each(["literal", "getter"] as const)("refuses stale packed SQL with a matching SHA-256 %s", digestKind => {
+  const consumer = pristinePackedA1Fixture();
+  const platform = join(consumer, "node_modules/@openlup/platform");
+  const descriptor = join(platform, "dist/catalog/sql.js");
+  const sql = join(platform, "sql/20260807140000_read_parity_catalog.sql");
+  const originalDescriptor = readFileSync(descriptor, "utf8");
+  const originalSql = readFileSync(sql, "utf8");
+  const staleSql = originalSql + "\n-- Different packed bytes\n";
+  const staleDigest = createHash("sha256").update(staleSql).digest("hex");
+  const mutation = digestKind === "literal" ? `CATALOG_MIGRATIONS[0].sha256 = "${staleDigest}";` : `
+const unit = CATALOG_MIGRATIONS[0];
+const canonicalDigest = unit.sha256;
+let reads = 0;
+Object.defineProperty(unit, "sha256", { get() { return reads++ === 0 ? canonicalDigest : "${staleDigest}"; } });
+`;
+  const diagnostic = digestKind === "literal"
+    ? /installed catalogue migrations differ from the committed canonical manifest/u
+    : /Expected values to be strictly equal:/u;
+  try {
+    writeFileSync(sql, staleSql);
+    writeFileSync(descriptor, originalDescriptor + "\n" + mutation);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(diagnostic);
+  } finally {
+    writeFileSync(descriptor, originalDescriptor);
+    writeFileSync(sql, originalSql);
+  }
+});
+
+it("refuses a missing catalogue read port before a lazy catalogPath getter fills the cache", () => {
+  const consumer = pristinePackedA1Fixture();
+  const dist = join(consumer, "node_modules/@openlup/platform/dist");
+  const descriptor = join(dist, "catalog/sql.js");
+  const composer = join(dist, "composition/catalogContribution.js");
+  const originalDescriptor = readFileSync(descriptor, "utf8");
+  const originalComposer = readFileSync(composer, "utf8");
+  const mutant = originalComposer.replace("return { contributions, ports, routes };",
+    'if (cachedCatalogPath === undefined) delete ports["@openlup/platform/catalog:read"];\n    return { contributions, ports, routes };');
+  expect(mutant).not.toBe(originalComposer);
+  try {
+    writeFileSync(descriptor, originalDescriptor + `
+export let cachedCatalogPath;
+const unit = CATALOG_MIGRATIONS[0], catalogPath = unit.catalogPath;
+Object.defineProperty(unit, "catalogPath", { get() { return cachedCatalogPath ??= catalogPath; } });
+`);
+    writeFileSync(composer, 'import { cachedCatalogPath } from "../catalog/sql.js";\n' + mutant);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/Expected values to be strictly equal:[\s\S]*\+ undefined\s*\n- \[AsyncFunction: getSkuEnvelope\]/u);
+  } finally {
+    writeFileSync(descriptor, originalDescriptor);
+    writeFileSync(composer, originalComposer);
+  }
+});
+
 it("proves installed portability copy/resume and rejects a copy that skips byte publication", () => {
   const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
   provePortabilityConsumer(consumer);

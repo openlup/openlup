@@ -5,14 +5,16 @@ import { dirname, join, resolve } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sessionMain } from './agent-review-session.mjs';
-import { hasBroker, runLogged, verificationSteps, verifyLocal } from './verify-local.mjs';
+import { explainVerification, hasBroker, runLogged, verificationSteps, verifyLocal } from './verify-local.mjs';
+
+const npmPin = `npm@${execFileSync('npm', ['--version'], { env: { ...processEnvironment, PATH: `${dirname(process.execPath)}:/usr/bin:/bin` }, encoding: 'utf8' }).trim()}`;
 
 const directories: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
-async function fixture(reviewed = true, nodePin = process.versions.node, uiViolation = false) {
+async function fixture(reviewed = true, nodePin = process.versions.node, uiViolation = false, extraFiles: string[] = []) {
   const cwd = await mkdtemp(join(tmpdir(), 'verify-local-')); directories.push(cwd);
   const git = (...args: string[]) => execFileSync('/usr/bin/git', ['-C', cwd, '-c', 'user.name=Fixture',
     '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null',
@@ -20,7 +22,7 @@ async function fixture(reviewed = true, nodePin = process.versions.node, uiViola
   git('init', '-q', '-b', 'main');
   await writeFile(join(cwd, '.gitignore'), '.context/scratch/\n');
   await writeFile(join(cwd, '.nvmrc'), nodePin);
-  await writeFile(join(cwd, 'package.json'), JSON.stringify({ packageManager: 'npm@11.19.0' }));
+  await writeFile(join(cwd, 'package.json'), JSON.stringify({ packageManager: npmPin }));
   if (uiViolation) {
     await mkdir(join(cwd, 'packages/ui/smoke'), { recursive: true });
     await mkdir(join(cwd, 'packages/ui/src'));
@@ -30,6 +32,10 @@ async function fixture(reviewed = true, nodePin = process.versions.node, uiViola
   const base = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', base);
   await writeFile(join(cwd, 'source.txt'), 'candidate\n');
   if (uiViolation) await writeFile(join(cwd, 'packages/ui/src/example.ts'), 'export const example = "process' + '.env";\n');
+  for (const file of extraFiles) {
+    await mkdir(join(cwd, dirname(file)), { recursive: true });
+    await writeFile(join(cwd, file), '-- sql\n');
+  }
   git('add', '.'); git('commit', '-qm', 'candidate');
   const scratch = join(cwd, '.context', 'scratch'); await mkdir(scratch, { recursive: true });
   const env = { PATH: `${scratch}:${dirname(process.execPath)}:/usr/bin:/bin`, CODEX_THREAD_ID: 'author' };
@@ -43,6 +49,12 @@ async function fixture(reviewed = true, nodePin = process.versions.node, uiViola
     await writeFile(report, JSON.stringify({ reviewer: 'cold-reviewer', cold: true, tree: state.candidate.tree,
       verdict: 'PASS', findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
     await sessionMain(['record', report], { cwd, env });
+    if (extraFiles.length > 0) {
+      const secondReport = join(scratch, 'report-2.json');
+      await writeFile(secondReport, JSON.stringify({ reviewer: 'second-reviewer', cold: true, tree: state.candidate.tree,
+        verdict: 'PASS', findings: [], closes: [], documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.' }));
+      await sessionMain(['record', secondReport], { cwd, env });
+    }
   }
   const result = async () => {
     const name = (await readdir(scratch)).find(value => value.startsWith('verify-local-'))!;
@@ -59,6 +71,7 @@ describe('full local verification command ownership', () => {
       'install', 'lint', 'typecheck', 'build', 'subscription', 'packages', 'tests']);
     expect(steps.filter(step => step.command.includes('ci'))).toHaveLength(1);
     expect(steps.flatMap(step => step.command).join(' ')).not.toMatch(/--shard|pretest|test:required|public-ci-dependencies|public-ci-reuse/);
+    expect(steps.find(step => step.name === 'policy')?.command).toEqual(['npm', 'run', 'oss:published-tree', '--', '--policy', '--docs-base', candidate.base]);
     expect(steps.find(step => step.name === 'tests')?.command).toEqual(['env', '-u', 'OPENLUP_STACK_BASE', 'npm', 'run', 'test:scoped']);
     expect(steps.find(step => step.name === 'dco')?.command.slice(-2)).toEqual([candidate.base, candidate.head]);
     expect(steps.find(step => step.name === 'neutrality')?.command.slice(-2)).toEqual(['--base-commit', candidate.base]);
@@ -142,7 +155,11 @@ describe('real Git and subprocess refusals', () => {
     const f = await fixture(); const run = vi.fn(async () => ({ code: 124 }));
     expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(124);
     const result = await f.result(); directories.push(result.packs);
-    expect(run).toHaveBeenCalledTimes(1); expect(result.phases).toHaveLength(1); expect(result.code).toBe(124);
+    expect(run.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(run.mock.calls.length).toBeLessThanOrEqual(4);
+    expect(result.phases).toHaveLength(run.mock.calls.length);
+    expect(result.phases.every(phase => phase.resource === null)).toBe(true);
+    expect(result.code).toBe(124);
   });
   it('retains a broken package build and stops before dependent diagnostics', async () => {
     const f = await fixture();
@@ -156,7 +173,47 @@ describe('real Git and subprocess refusals', () => {
     const f = await fixture(); const run = vi.fn(async () => { await writeFile(join(f.cwd, 'source.txt'), 'changed\n'); return { code: 0 }; });
     expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(1);
     const result = await f.result(); directories.push(result.packs);
-    expect(run).toHaveBeenCalledTimes(1); expect(result.error).toContain('candidate changed');
+    expect(result.phases.some(phase => phase.name === 'install')).toBe(false);
+    expect(result.error).toContain('candidate changed');
+  });
+  it('runs independent read-only phases concurrently while strictly enforcing requires and heavy-phase serialization', async () => {
+    const f = await fixture();
+    const expectedOrder = ['policy', 'inventory', 'dco', 'gitleaks', 'neutrality', 'ui-neutrality', 'install', 'lint', 'typecheck', 'build', 'subscription', 'packages', 'tests'];
+    const readOnly = new Set(['policy', 'inventory', 'dco', 'gitleaks', 'neutrality', 'ui-neutrality']);
+    const delays: Record<string, number> = { policy: 40, inventory: 10, dco: 30, gitleaks: 5, neutrality: 20, 'ui-neutrality': 15 };
+    const phaseNameFromLog = (logPath: string) => logPath.split('/').at(-1)!.replace(/\.log$/u, '');
+    let activeReadOnly = 0; let maxReadOnly = 0;
+    let activeHeavy = 0; let maxHeavy = 0;
+    const finished = new Set<string>();
+    const startedAfter = new Map<string, Set<string>>();
+    const run = vi.fn(async (_command, _args, _cwd, _env, logPath) => {
+      const name = phaseNameFromLog(logPath);
+      startedAfter.set(name, new Set(finished));
+      if (readOnly.has(name)) {
+        activeReadOnly++; maxReadOnly = Math.max(maxReadOnly, activeReadOnly);
+        await new Promise(resolveTimer => setTimeout(resolveTimer, delays[name] ?? 10));
+        activeReadOnly--;
+      } else {
+        expect(activeReadOnly).toBe(0);
+        activeHeavy++; maxHeavy = Math.max(maxHeavy, activeHeavy);
+        await new Promise(resolveTimer => setTimeout(resolveTimer, 5));
+        activeHeavy--;
+      }
+      finished.add(name);
+      return { code: 0 };
+    });
+    expect(await verifyLocal({ cwd: f.cwd, env: f.env, run, concurrency: 4 })).toBe(0);
+    const result = await f.result(); directories.push(result.packs);
+    expect(maxReadOnly).toBeGreaterThan(1);
+    expect(maxReadOnly).toBeLessThanOrEqual(4);
+    expect(maxHeavy).toBe(1);
+    expect(result.phases.map(phase => phase.name)).toEqual(expectedOrder);
+    for (const step of verificationSteps({ base: f.base, head: f.git('rev-parse', 'HEAD'), changedPaths: ['source.txt'] }, '/run', '/packs')) {
+      for (const req of step.requires) {
+        expect(startedAfter.get(step.name)?.has(req), `${step.name} must start after ${req}`).toBe(true);
+      }
+    }
+    for (const ro of readOnly) expect(startedAfter.get('install')?.has(ro)).toBe(true);
   });
   it.each(['1', '40%'])('retains the first actual worker observation %s and subprocess failure', async workers => {
     const cwd = await mkdtemp(join(tmpdir(), 'verify-log-')); directories.push(cwd);
@@ -178,5 +235,39 @@ describe('real Git and subprocess refusals', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'verify-interrupt-')); directories.push(cwd);
     const result = await runLogged(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM")'], cwd, processEnvironment, join(cwd, 'interrupted.log'));
     expect(result).toMatchObject({ code: 1, signal: 'SIGTERM' });
+  });
+  it('passes --docs-base in --plan for known and unknown scope', async () => {
+    const f = await fixture(false);
+    const known = spawnSync(process.execPath, [resolve('scripts/verify-local.mjs'), '--plan', '--json'], { cwd: f.cwd, env: f.env, encoding: 'utf8' });
+    expect(known.status).toBe(0);
+    expect(JSON.parse(known.stdout).phases.find((phase: { name: string }) => phase.name === 'policy').command.slice(-2)).toEqual(['--docs-base', f.base]);
+    f.git('update-ref', '-d', 'refs/remotes/origin/main');
+    const unknown = spawnSync(process.execPath, [resolve('scripts/verify-local.mjs'), '--plan', '--json'], { cwd: f.cwd, env: f.env, encoding: 'utf8' });
+    expect(unknown.status).toBe(2);
+    expect(JSON.parse(unknown.stdout).phases.find((phase: { name: string }) => phase.name === 'policy').command.slice(-2)).toEqual(['--docs-base', '<comparison-base>']);
+  });
+  it.each(['db/platform/migrations/20400101000000_example.sql', 'packages/platform/sql/subscriptions/example.sql'])('auto-enables pgtap when %s changes in candidate diff', async sqlPath => {
+    const f = await fixture(true, process.versions.node, false, [sqlPath]);
+    const planned = await explainVerification({ cwd: f.cwd, env: f.env });
+    expect(planned.pgtap).toContain('auto-selected due to SQL changes');
+    expect(planned.phases.map(phase => phase.name)).toContain('pgtap');
+    const explicit = await explainVerification({ cwd: f.cwd, env: f.env, pgtap: true });
+    expect(explicit.pgtap).toBe('selected');
+    expect(explicit.phases.map(phase => phase.name)).toContain('pgtap');
+    const calls: string[][] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const run = vi.fn(async (_command, args) => { calls.push(args); return { code: 0 }; });
+    expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(0);
+    const result = await f.result(); directories.push(result.packs);
+    expect(calls).toHaveLength(14);
+    expect(result.phases.map((phase: { name: string }) => phase.name)).toContain('pgtap');
+    expect(result.pgtap).toContain('auto-selected due to SQL changes');
+    expect(log.mock.calls.flat().join('\n')).toContain('auto-selected pgTAP due to SQL changes');
+  });
+  it('does not auto-enable pgtap for SQL outside db/ and packages/*/sql/', async () => {
+    const f = await fixture(false, process.versions.node, false, ['supabase/tests/example_test.sql']);
+    const planned = await explainVerification({ cwd: f.cwd, env: f.env });
+    expect(planned.pgtap).toContain('not selected');
+    expect(planned.phases.map(phase => phase.name)).not.toContain('pgtap');
   });
 });

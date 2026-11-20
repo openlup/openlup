@@ -1,14 +1,17 @@
+import { nativeCatalogPublication } from "@openlup/platform/catalog";
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
-import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction } from "./catalogPublicationFixture.js";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+
+const { catalogPublicationAdmissionRefusal } = nativeCatalogPublication;
 
 const resources = storeJourneyResources();
 const at = "2026-09-15T00:00:00Z";
@@ -293,6 +296,48 @@ it("restores reordered sealed history and recovers the original publication afte
   });
   await source.owner.query("UPDATE public.catalog_skus SET net_weight_g=100 WHERE id=$1", [data.skuId]);
   const captured = await captureStoreJourney(source.owner, "catalog-publication-source");
+  const pristine = await journeyCensus(target.owner);
+  const savedHead = captured.owned.find(table => table.table === "catalog_publications")!.rows
+    .map(text => JSON.parse(text) as { id: string; canonical_state: string }).find(row => row.id === second.issueId)!;
+  const manifestRefusal = { code: "target_conflict", cause: {
+    reason: "publication_details_invalid",
+    message: sealedPublicationRemedy,
+  } };
+  const storeHeadText = (value: string) => transaction(source.owner, async db => {
+    await db.query("ALTER TABLE public.catalog_publications DISABLE TRIGGER catalog_publications_issued");
+    await db.query("UPDATE public.catalog_publications SET canonical_state=$2,digest=$3 WHERE id=$1",
+      [second.issueId, value, createHash("sha256").update(value).digest("hex")]);
+    await db.query("ALTER TABLE public.catalog_publications ENABLE TRIGGER catalog_publications_issued");
+  });
+  const connect = vi.fn(async () => { throw new Error("An invalid packet must never connect"); });
+  const disconnectedOwner = { connect } as unknown as Pool;
+  for (const { text: value, path, digest } of malformedPublicationPackets(savedHead.canonical_state)) {
+    const refusal = { ...manifestRefusal, cause: { ...manifestRefusal.cause, path } };
+    await storeHeadText(value);
+    try {
+      await expect(captureStoreJourney(source.owner, "catalog-malformed-manifest")).rejects.toMatchObject(refusal);
+    } finally {
+      await storeHeadText(savedHead.canonical_state);
+    }
+    const edited = structuredClone(captured);
+    const issues = edited.owned.find(table => table.table === "catalog_publications")!;
+    issues.rows = issues.rows.map(text => JSON.parse(text).id === second.issueId
+      ? JSON.stringify({ ...JSON.parse(text), canonical_state: value, digest }) : text);
+    rehash(edited);
+    await expect(restore(disconnectedOwner, edited)).rejects.toMatchObject(refusal);
+    expect(await journeyCensus(target.owner)).toEqual(pristine);
+  }
+
+  const malformedId = structuredClone(captured);
+  const revisionsWithMalformedId = malformedId.owned.find(table => table.table === "catalog_sku_revisions")!;
+  revisionsWithMalformedId.rows[0] = JSON.stringify({ ...JSON.parse(revisionsWithMalformedId.rows[0]!), id: "not-a-uuid" });
+  rehash(malformedId);
+  await expect(restore(disconnectedOwner, malformedId)).rejects.toMatchObject({
+    code: "target_conflict", cause: { reason: "publication_revision_invalid",
+      path: "catalog_sku_revisions.0.id", message: sealedPublicationRemedy },
+  });
+  expect(connect).not.toHaveBeenCalled();
+
   const tampered = structuredClone(captured);
   const revisions = tampered.owned.find(table => table.table === "catalog_publications")!;
   const originalRow = revisions.rows[0]!;
@@ -306,7 +351,6 @@ it("restores reordered sealed history and recovers the original publication afte
     (SELECT set_config('TimeZone','UTC',true)) zone,
     jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb) x`, [JSON.stringify(row)])).rows[0]!.value;
   rehash(tampered);
-  const pristine = await journeyCensus(target.owner);
   await expect(restore(target.owner, tampered)).rejects.toMatchObject({
     code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_content_changed" },
   });
@@ -354,7 +398,7 @@ it("restores reordered sealed history and recovers the original publication afte
     const owner = observedOwner(async () => undefined, sql => { failedStatements.push(sql); });
     await expect(restore(owner, invalidResult), kind).rejects.toMatchObject({
       code: "target_conflict", cause: { reason: "publication_receipt_input_invalid",
-        message: "The saved command result contains invalid text or structure. Re-export the original result and retry the restore." },
+        message: "The saved command result contains invalid text or structure. Restore the original result from a verified copy or ask the store operator to recover it." },
     });
     expect(failedStatements, kind).toEqual(["SET CONSTRAINTS ALL IMMEDIATE"]);
     expect(await journeyCensus(target.owner), kind).toEqual(pristine);
@@ -446,3 +490,48 @@ function rehash(value: ConnectedNativeStoreCapture) {
   const { sha256: _previous, ...body } = value;
   value.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
 }
+
+async function captureTradeIdentifier(issuer: string, marker: string | null) {
+  const sku = randomUUID();
+  await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Legacy trade item')",
+    [sku, products[2], sku]);
+  const identifier = randomUUID();
+  await source.owner.query(`INSERT INTO public.catalog_sku_identifiers
+    (id,catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,scheme)
+    VALUES($1,$2,$3,'gtin','05901234123457','unit',1,$4)`, [identifier, sku, issuer, marker]);
+  const capture = await captureStoreJourney(source.owner, "catalog-identifier-source");
+  await source.owner.query("DELETE FROM public.catalog_sku_identifiers WHERE id=$1", [identifier]);
+  await source.owner.query("DELETE FROM public.catalog_skus WHERE id=$1", [sku]);
+  return { capture, identifier };
+}
+
+it("restores marked GTINs, and removes the marker only when the target explicitly changes it", async () => {
+  const { capture, identifier } = await captureTradeIdentifier("modern", "gs1:gtin");
+  expect(await restore(target.owner, capture)).toMatchObject({ replayed: false });
+  expect((await target.owner.query("SELECT scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
+    .toEqual([{ scheme: "gs1:gtin" }]);
+  await target.owner.query("UPDATE public.catalog_sku_identifiers SET scheme=NULL WHERE id=$1", [identifier]);
+  expect((await target.owner.query("SELECT normalized_value,scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
+    .toEqual([{ normalized_value: "05901234123457", scheme: null }]);
+}, 105_000);
+
+it("accepts the pinned predecessor packet shape and refuses a packet with an unknown inventory", async () => {
+  const { capture, identifier } = await captureTradeIdentifier("historic", null);
+  const table = capture.owned.find(entry => entry.table === "catalog_sku_identifiers")!;
+  const historic = "c19175002e39e2b4100841e7138759a4dd07fe3158ebd3ce5f7283a5e8d538a9";
+  table.columns = table.columns.filter(column => column.name !== "scheme");
+  table.rows = (await source.owner.query(`SELECT (value::jsonb-'scheme')::text AS row
+    FROM unnest($1::text[]) AS rows(value)`, [table.rows])).rows.map(row => row.row);
+  function repin(catalogueId: string) {
+    const { sha256: _captureDigest, compatible, ...body } = capture;
+    const { sha256: _compatDigest, ...fields } = compatible;
+    const encoded = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    const projected = { ...fields, catalogueId };
+    const result = { ...body, compatible: { ...projected, sha256: encoded(projected) } };
+    return { ...result, sha256: encoded(result) };
+  }
+  await expect(restore(target.owner, repin("a".repeat(64)))).rejects.toMatchObject({ code: "schema_conflict" });
+  expect(await restore(target.owner, repin(historic))).toMatchObject({ replayed: false });
+  expect((await target.owner.query("SELECT scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
+    .toEqual([{ scheme: null }]);
+}, 105_000);

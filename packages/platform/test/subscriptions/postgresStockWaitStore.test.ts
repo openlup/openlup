@@ -85,3 +85,34 @@ it("preserves exact recovery binding JSON including invalid values and engine ke
   await f.store.admit({ operationId: "op", claimToken: "token", snapshot: f.snapshot, recovery: { ...f.binding, caseId: "invalid-uuid" }, now: f.at });
   expect(f.query.mock.calls[1][1]?.[1]).toEqual({ stockWaitRecovery: { ...f.binding, caseId: "invalid-uuid" } });
 });
+
+it("batches listCandidates case and catalogue reads into 3 queries regardless of candidate count", async () => {
+  const f = fixture();
+  const caseA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const caseB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  f.query
+    .mockResolvedValueOnce({ rows: [{ response: [
+      { operationId: "op-a", operationFingerprint: f.snapshot.frozenFingerprint, snapshot: f.wire, binding: { ...f.binding, caseId: caseA.toUpperCase() } },
+      { operationId: "op-b", operationFingerprint: f.snapshot.frozenFingerprint, snapshot: f.wire, binding: { ...f.binding, caseId: caseB } },
+    ] }] })
+    .mockResolvedValueOnce({ rows: [
+      { case_id: caseA, projection: { id: caseA, subscription_id: f.snapshot.subscriptionId, client_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", state: "waiting",
+        fingerprint: f.snapshot.frozenFingerprint, opened_at: f.at, deficits: [{ sku: "SKU-1", requiredUnits: 2, reservedUnits: 0, availableUnits: 1, missingUnits: 1 }] },
+        cycle_snapshot: f.wire, identity_key: "key-a", bound_cycle_id: null, bound_order_id: null, payment_id: null },
+      { case_id: caseB, projection: { id: caseB, subscription_id: f.snapshot.subscriptionId, client_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", state: "waiting",
+        fingerprint: f.snapshot.frozenFingerprint, opened_at: f.at, deficits: [{ sku: "SKU-2", requiredUnits: 3, reservedUnits: 1, availableUnits: 0, missingUnits: 2 }] },
+        cycle_snapshot: f.wire, identity_key: "key-b", bound_cycle_id: null, bound_order_id: null, payment_id: null },
+    ] })
+    .mockResolvedValueOnce({ rows: [
+      { id: "sku-id-1", sku: "SKU-1", title: "Item 1" },
+      { id: "sku-id-2", sku: "SKU-2", title: "Item 2" },
+    ] });
+
+  const candidates = await f.store.listCandidates({ limit: 50, asOf: f.at });
+  expect(f.query).toHaveBeenCalledTimes(3);
+  expect(candidates).toHaveLength(2);
+  expect(candidates[0].case?.caseId).toBe(caseA);
+  expect(candidates[0].case?.deficits[0]).toMatchObject({ skuId: "sku-id-1", sku: "SKU-1", missing: 1 });
+  expect(candidates[1].case?.caseId).toBe(caseB);
+  expect(candidates[1].case?.deficits[0]).toMatchObject({ skuId: "sku-id-2", sku: "SKU-2", missing: 2 });
+});

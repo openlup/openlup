@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Tool-only Node entry; importing platform engine entries never starts this CLI.
+import { Console } from "node:console";
 import { promises as fs } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,12 +10,14 @@ const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SN
 openlup verify [--app ./application-observations.mjs] [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
 openlup settings list|show|preview|explain [--help] [--json] (experimental)
+openlup settings mcp [--app <module>] [--configuration <id>] [--database-url <url>] (experimental, read-only stdio)
+openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
 Verify loads no app implicitly. --app explicitly trusts and imports application code exporting createVerificationInput(); that module must only assemble observations and read-only probes, must not write stdout, and must close its own resources before returning/report completion. The CLI does not sandbox that module. Only the supplied schema observer is invoked by diagnosis; routes and jobs never run.
 Catalogue reads JSON text only; the supplied file is never imported. Reference and refusal records are fixture evidence. Application content validation is unavailable offline. PASS grants no install, migration, publication or activation authority.
-Settings reads the catalogue offline by default. Connected show and preview use --database-url and explicit --app bindings where needed. Preview takes --value <json> or --value - for stdin. Settings JSON uses schemaVersion=1. A completed preview with an invalid policy exits 0, refusals exit 1, invalid syntax/input exits 64, and operation or app loading failures exit 74.
-Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid invocation/JSON, 74 operation or application loading failure. JSON uses formatVersion=1, one object on stdout.
+Settings reads the catalogue offline by default. Connected show and preview use --database-url and explicit --app bindings where needed. Preview takes --value <json> or --value - for stdin. Settings JSON uses schemaVersion=1. A completed preview with an invalid policy exits 0, refusals exit 1, invalid syntax/input exits 64, and unavailable operations exit 74. For settings check, a missing app module or factory export exits 74, while a module that throws during loading or binding exits 1 with the cause.
+Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid invocation/JSON, 74 unavailable operation. JSON uses formatVersion=1, one object on stdout.
 `;
 let json = process.argv.slice(2).includes("--json");
 let validatingInput = true;
@@ -35,8 +38,14 @@ function refuse(exitCode, code, observed, fix, cause = exitCode === 64 ? "Invali
   emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding] }, `${renderFinding(finding)}\n${help}`);
 }
 
-async function bindSettings({ databaseUrl, app, configuration }) {
-  const db = databaseUrl ? new (await import("pg")).Pool({ connectionString: databaseUrl }) : undefined;
+async function bindSettings({ database, app, configuration }) {
+  let db;
+  if (database) {
+    const { Pool, Client } = await import("pg");
+    if (typeof Client.prototype.getStartupConf !== "function") throw new Error("NODE_PG_FORCE_NATIVE");
+    db = new Pool(database);
+  }
+  db?.on("error", () => {});
   const close = async () => { await db?.end(); };
   try {
     let overrides = {};
@@ -68,6 +77,18 @@ async function bindSettings({ databaseUrl, app, configuration }) {
   } catch (error) { await close(); throw error; }
 }
 
+async function loadSettingsCheck({ app, configuration }) {
+  const path = resolve(app);
+  try { await fs.access(path); }
+  catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined;
+    throw error;
+  }
+  const { createSettingsBindings } = await import(pathToFileURL(path).href);
+  if (typeof createSettingsBindings !== "function") return undefined;
+  return { ...await createSettingsBindings({ db: undefined, configuration }) };
+}
+
 function formatSettingsPreview(result) {
   if (!inventorySettingKey || result.key !== inventorySettingKey) return JSON.stringify(result, null, 2);
   const { key, asOf, current, proposed, difference, validation, effect, uncertainty } = result;
@@ -89,6 +110,7 @@ function formatSettingsPreview(result) {
 async function main(args) {
   if (args[0] === "settings") {
     validatingInput = false;
+    const host = { bind: bindSettings, loadCheck: loadSettingsCheck, formatPreview: formatSettingsPreview };
     // eslint-disable-next-line no-restricted-syntax -- tool entry loads the existing installed server subpath only for settings
     const { runSettingsCommand } = await import("@openlup/platform/operations/server");
     const readStdin = async () => {
@@ -97,9 +119,26 @@ async function main(args) {
       for await (const chunk of process.stdin) text += chunk;
       return text;
     };
-    process.exitCode = await runSettingsCommand(args.slice(1), {
-      write: text => process.stdout.write(text), readStdin,
-    }, { bind: bindSettings, formatPreview: formatSettingsPreview });
+    const io = { write: text => process.stdout.write(text), warn: text => process.stderr.write(text), readStdin };
+    const settingsArgs = args.slice(1);
+    let commandIndex = 0;
+    while (/^--(?:app|configuration|database-url)(?:=|$)/u.test(settingsArgs[commandIndex] ?? "")) {
+      const inline = settingsArgs[commandIndex].includes("=");
+      if (!inline && /^-./u.test(settingsArgs[commandIndex + 1] ?? "")) break;
+      commandIndex += inline ? 1 : 2;
+    }
+    if (settingsArgs[commandIndex] === "mcp") {
+      const mcpArgs = ["mcp", ...settingsArgs.slice(0, commandIndex), ...settingsArgs.slice(commandIndex + 1)];
+      const write = process.stdout.write.bind(process.stdout);
+      process.stdout.write = process.stderr.write.bind(process.stderr);
+      globalThis.console = new Console(process.stderr);
+      // eslint-disable-next-line no-restricted-syntax -- tool entry uses the same public preview contract as the catalogue generator
+      const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
+      process.exitCode = await runSettingsCommand(mcpArgs, { ...io, write, input: process.stdin },
+        { ...host, previewResultSchema: renewalStockProtectionPreviewResult });
+    } else {
+      process.exitCode = await runSettingsCommand(settingsArgs, io, host);
+    }
     return;
   }
   const { values, positionals } = parseArgs({

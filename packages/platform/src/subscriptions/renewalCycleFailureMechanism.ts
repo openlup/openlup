@@ -17,6 +17,24 @@ export interface RenewalFailurePolicy {
   logUnavailable(fields: { cycleId: string; subscriptionId: string; retryAttempt: number; rowOutcomeKey: string; reason: string }): void;
 }
 
+/** Build a RenewalFailurePolicy with canonical key suffixes and overridable hooks. */
+export function createDefaultRenewalFailurePolicy(
+  overrides: Pick<RenewalFailurePolicy, "resolveClassification"> & Partial<RenewalFailurePolicy>,
+): RenewalFailurePolicy {
+  return {
+    recordKey: (key) => `${key}:record-attempt`,
+    applyKey: (key) => `${key}:apply-result`,
+    dunningKey: (key, attempt) => `${key}:dunning:${attempt}`,
+    preparedSuffix: ":prepare-attempt",
+    blockedSuffix: ":record-attempt",
+    dunningFailureKey: "renewal_dunning_propagation_failed",
+    logBelowRetry: () => {},
+    logRejected: () => {},
+    logUnavailable: () => {},
+    ...overrides,
+  };
+}
+
 /** Complete durable refusal ladder; unexpected port throws remain raw. */
 export async function propagateRenewalFailure(
   port: CycleChargeFailurePropagationPort,

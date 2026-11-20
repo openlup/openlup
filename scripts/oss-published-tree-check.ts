@@ -262,11 +262,11 @@ export function validatePublicPolicyState(root: string, policySource: string, ca
  * measure edges that leave the published set, and in a tree that IS the published set there is no
  * such edge to find. Reporting them as zero against an enabled pin would read as debt paid.
  */
-export function typecheckVerdict(root: string, contractSource: string, log: (line: string) => void): boolean {
+export async function typecheckVerdict(root: string, contractSource: string, log: (line: string) => void): Promise<boolean> {
   const typecheck = readPublicTypecheckCompatibility(contractSource).typecheck;
   const projects = typecheck.projects;
   const pin = typecheck.signedPreviewDebt;
-  const { positioned, unpositioned } = runPublicTypecheckProjects(root, projects);
+  const { positioned, unpositioned } = await runPublicTypecheckProjects(root, projects);
   // A project that could not start reports errors with no file position; treating that as "no
   // diagnostics" is how this check would go green while compiling nothing.
   if (unpositioned.length > 0) throw new Error(`a project reported an error with no file position, so nothing was measured:\n  ${unpositioned.join("\n  ")}`);
@@ -300,12 +300,16 @@ export function reportSourceReleaseSnapshot(root: string, log: (line: string) =>
   log(`- computed bindings ok; committed snapshot ${derived.contents === current ? "fresh" : "stale (refreshed at release prep)"}`);
 }
 
-export function publicInventoryVerdict(root: string, log: (line: string) => void): boolean {
+function evaluateSharedTreeChecks(root: string, log: (line: string) => void) {
   const catalogSource = readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8");
   const tracked = trackedFiles(root);
-  validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource, liveCatalogPaths(root, catalogSource, tracked).map((row) => row.path));
+  const state = validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource, liveCatalogPaths(root, catalogSource, tracked).map((row) => row.path));
   assertMaterializedPublicationCatalog(root, catalogSource, tracked);
   reportSourceReleaseSnapshot(root, log);
+  return { tracked, state };
+}
+
+function evaluateInventoryChecks(root: string, tracked: readonly string[], log: (line: string) => void): boolean {
   const digest = (contents: string | Buffer) => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
   const failures: string[] = [];
   failures.push(...runPlatformMigrationManifestCheck(root));
@@ -317,57 +321,70 @@ export function publicInventoryVerdict(root: string, log: (line: string) => void
   return failures.length === 0;
 }
 
+export function publicInventoryVerdict(root: string, log: (line: string) => void): boolean {
+  const { tracked } = evaluateSharedTreeChecks(root, log);
+  return evaluateInventoryChecks(root, tracked, log);
+}
+
 /**
  * Public-only policy proof.  Do not move either private catalogue constant into this function:
  * an exported checkout may delete all private programme/readiness inputs and still execute this
  * mode using only the two public authorities and files named by them.
  */
 export function policyVerdict(root: string, log: (line: string) => void): boolean {
-  const catalogSource = readFileSync(join(root, PUBLICATION_CATALOG_PATH), "utf8");
-  const tracked = trackedFiles(root);
-  const state = validatePublicPolicyState(root, readFileSync(join(root, PUBLIC_POLICY_REGISTRY_PATH), "utf8"), catalogSource, liveCatalogPaths(root, catalogSource, tracked).map((row) => row.path));
-  assertMaterializedPublicationCatalog(root, catalogSource, tracked);
+  const { tracked, state } = evaluateSharedTreeChecks(root, log);
   assertAgentGuidancePlacement(root, tracked);
   assertNoAbsoluteFilesystemPaths(root, tracked);
-  reportSourceReleaseSnapshot(root, log);
   log(`- public policy paths: ${state.policy.activePaths.length}`);
   log(`- public policy contracts: ${state.policy.contracts.length}`);
   log(`- guard viability entries: ${state.catalog.guardViability.length}`);
   return true;
 }
 
-function main(root: string, argv: string[]): number {
-  const modes = ["--typecheck", "--inventory", "--policy"].filter((mode) => argv.includes(mode));
+export function selfCheckVerdict(root: string, log: (line: string) => void): boolean {
+  const { tracked, state } = evaluateSharedTreeChecks(root, log);
+  assertAgentGuidancePlacement(root, tracked);
+  assertNoAbsoluteFilesystemPaths(root, tracked);
+  log(`- public policy paths: ${state.policy.activePaths.length}`);
+  log(`- public policy contracts: ${state.policy.contracts.length}`);
+  log(`- guard viability entries: ${state.catalog.guardViability.length}`);
+  return evaluateInventoryChecks(root, tracked, log);
+}
+
+async function main(root: string, argv: string[]): Promise<number> {
+  const modes = ["--typecheck", "--inventory", "--policy", "--self-check"].filter((mode) => argv.includes(mode));
   if (modes.length !== 1) {
-    process.stderr.write("usage: oss-published-tree-check.ts --typecheck | --inventory | --policy\n  run inside a checkout of the published tree\n");
+    process.stderr.write("usage: oss-published-tree-check.ts --typecheck | --inventory | --policy | --self-check\n  run inside a checkout of the published tree\n");
     return 2;
   }
   const log = (line: string) => process.stdout.write(`${line}\n`);
   const documentationArgs = argv.filter((arg) => arg.startsWith("--docs-"));
-  if (documentationArgs.length > 0 && modes[0] !== "--policy") throw new Error("documentation options require --policy");
+  if (documentationArgs.length > 0 && modes[0] !== "--policy" && modes[0] !== "--self-check") throw new Error("documentation options require --policy or --self-check");
   if (modes[0] === "--policy") return documentationPolicyCommand(root, argv, log);
+  if (modes[0] === "--self-check") return selfCheckCommand(root, argv, log);
   const ok = modes[0] === "--typecheck"
-    ? typecheckVerdict(root, readFileSync(join(root, SOURCE_RELEASE_CONTRACT_PATH), "utf8"), log)
-    : modes[0] === "--inventory"
-      ? publicInventoryVerdict(root, log)
-      : policyVerdict(root, log);
+    ? await typecheckVerdict(root, readFileSync(join(root, SOURCE_RELEASE_CONTRACT_PATH), "utf8"), log)
+    : publicInventoryVerdict(root, log);
   log(ok
-    ? `${modes[0] === "--typecheck" ? "the tree compiles to its signed debt" : modes[0] === "--inventory" ? "the tree is the inventory the manifest describes" : "the tree satisfies its public policy catalogue"}.`
-    : `${modes[0] === "--typecheck" ? "the tree does not compile to its signed debt" : modes[0] === "--inventory" ? "the tree is not the inventory the manifest describes" : "the tree does not satisfy its public policy catalogue"}.`);
+    ? `${modes[0] === "--typecheck" ? "the tree compiles to its signed debt" : "the tree is the inventory the manifest describes"}.`
+    : `${modes[0] === "--typecheck" ? "the tree does not compile to its signed debt" : "the tree is not the inventory the manifest describes"}.`);
   return ok ? 0 : 1;
 }
 
-export function documentationPolicyCommand(root: string, argv: string[], log: (line: string) => void): number {
+function parseDocumentationOptions(argv: string[], flags: ReadonlySet<string>): Map<string, string> {
   const valued = new Set(["--docs-base"]);
-  const flags = new Set(["--policy", "--docs-update"]);
   const options = new Map<string, string>();
   for (let index = 0; index < argv.length; index++) {
-    const arg = argv[index];
+    const arg = argv[index]!;
     if ((!valued.has(arg) && !flags.has(arg)) || options.has(arg)) throw new Error(`unknown or repeated documentation option ${arg}`);
     const value = valued.has(arg) ? argv[++index] : "true";
     if (!value || value.startsWith("--")) throw new Error(`missing value for ${arg}`);
     options.set(arg, value);
   }
+  return options;
+}
+
+function assertDocumentationAndMigrations(root: string, options: ReadonlyMap<string, string>, log: (line: string) => void, runVerdict: () => boolean): boolean {
   let state = readDocumentationState(root);
   const agentGuide = renderAgentGuide();
   if (options.has("--docs-update")) {
@@ -379,7 +396,7 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
   if (!existsSync(join(root, AGENT_GUIDE_PATH)) || readFileSync(join(root, AGENT_GUIDE_PATH), "utf8") !== agentGuide)
     throw new Error(`${AGENT_GUIDE_PATH} differs from its generated form; run --policy --docs-update to restore the pointer page`);
   assertDocumentationNavigation(state);
-  policyVerdict(root, log);
+  const ok = runVerdict();
   const base = resolveDocumentationBase(root, { base: options.get("--docs-base") });
   log(`- documentation comparison: ${base.base} (${base.provenance})`);
   if (base.provenance === "pull-request" || base.provenance === "merge-group") {
@@ -389,11 +406,27 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
     assertMigrationBlocks(root, base.base, head);
     log(`- package API changes carry Migration blocks: ${base.base}..${head}`);
   }
+  return ok;
+}
+
+export function documentationPolicyCommand(root: string, argv: string[], log: (line: string) => void): number {
+  const options = parseDocumentationOptions(argv, new Set(["--policy", "--docs-update"]));
+  assertDocumentationAndMigrations(root, options, log, () => policyVerdict(root, log));
   log("the tree satisfies its public policy catalogue and documentation navigation checks.");
   return 0;
 }
 
+export function selfCheckCommand(root: string, argv: string[], log: (line: string) => void): number {
+  const options = parseDocumentationOptions(argv, new Set(["--self-check"]));
+  const ok = assertDocumentationAndMigrations(root, options, log, () => selfCheckVerdict(root, log));
+  log(ok
+    ? "the tree satisfies its public policy catalogue, documentation navigation, and inventory checks."
+    : "the tree is not the inventory the manifest describes.");
+  return ok ? 0 : 1;
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  try { process.exit(main(process.cwd(), process.argv.slice(2))); }
-  catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exit(1); }
+  main(process.cwd(), process.argv.slice(2))
+    .then((code) => process.exit(code))
+    .catch((error) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exit(1); });
 }

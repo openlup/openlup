@@ -1,7 +1,7 @@
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
-import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
-import { carryOverSourceReview, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
+import { carryOverSourceReview, diagnoseReceipt, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
 const time = 1000;
@@ -47,11 +47,14 @@ function handoffFixture() {
     return '';
   });
   const enqueue = vi.fn(async () => { f.queuePr.mergeQueueEntry = { id: 'QUEUE_1' }; return { id: 'QUEUE_1' }; });
-  return { ...f, api, runGit, enqueue, execute: () => enqueueAfterChecks({ event: f.event, env: f.env, api, runGit, enqueue, now: () => f.clock }), state: f };
+  const pauseMergeability = vi.fn(async (_ms: number) => {});
+  const liveReads = () => api.get.mock.calls.filter(([path]) => path.startsWith('/graphql?')).length;
+  return { ...f, api, runGit, enqueue, pauseMergeability, liveReads, state: f,
+    execute: () => enqueueAfterChecks({ event: f.event, env: f.env, api, runGit, enqueue, pauseMergeability, now: () => f.clock }) };
 }
 
 describe('hosted receipt comments', () => {
-  const modernReceipt = (reviewer = 'reviewer-1', card = 'receipt-card', padding = '') => {
+  const modernReceipt = (reviewer = 'reviewer-1', card = 'receipt-card') => {
     const rules = { version: 3, base: digest([]), head: digest([]) };
     const candidate = { base: receipt.base, head: receipt.head, tree: receipt.tree, changedPaths: observed.changedPaths, modeChanged: false, clean: true, rules };
     const prepared = prepareCandidate(null, { ...candidate, authorSessionId: 'author', intent: { risk: 'behavior', criteria: 'Verify the receipt' } }, time);
@@ -60,8 +63,11 @@ describe('hosted receipt comments', () => {
     const first = recordReport(failed, { ...report, reviewer, closes: [card] }, time);
     const second = recordReport(first, { ...report, reviewer: 'reviewer-2' }, time);
     const completed = recordReport(second, { ...report, reviewer: 'delta-only', ordinary: true }, time);
-    return receiptSummary({ ...completed, padding }, receipt.pr, time);
+    return receiptSummary(completed, receipt.pr, time);
   };
+  const historicalRawReceipt = (summary: ReturnType<typeof modernReceipt>) => receiptBody(summary)
+    .replace(COMPRESSED_RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER)
+    .replace(/```text\n[^\n]+/u, () => '```json\n' + JSON.stringify(summary));
 
   const wait = (f: ReturnType<typeof handoffFixture>) => waitNativeAdmission({
     event: { number: receipt.pr, repository: { private: false }, pull_request: { head: { sha: receipt.head } } },
@@ -80,27 +86,33 @@ describe('hosted receipt comments', () => {
     } finally { log.mockRestore(); }
   };
 
-  it.each([false, true])('renders and admits the counted reports with gzip=%s', async gzip => {
-    const summary = modernReceipt(undefined, undefined, gzip ? 'x'.repeat(65_536) : '');
+  it('renders and admits the counted reports above one gzip machine block', async () => {
+    const summary = modernReceipt();
     const rendered = receiptBody(summary);
-    const json = JSON.stringify(summary);
-    const type = gzip ? 'text' : 'json';
-    const payload = gzip ? gzipSync(json).toString('base64') : json;
+    const payload = gzipSync(JSON.stringify(summary)).toString('base64');
     expect(rendered.split('\n')).toEqual([
-      gzip ? COMPRESSED_RECEIPT_MARKER : ECONOMY_RECEIPT_MARKER, '',
+      COMPRESSED_RECEIPT_MARKER, '',
       'PR #12 · Head bbbbbbb · Tree ccccccc · Verdict PASS · Reviewer floor 2 · Scope full', '',
       '| Reviewer | Verdict | Scope | Cards closed |', '| --- | --- | --- | --- |',
       '| reviewer-1 | PASS | full | receipt-card |', '| reviewer-2 | PASS | full | none |', '',
       'Open cards: none', '', '<details><summary>Machine-readable receipt (verified by admission)</summary>', '',
-      `\`\`\`${type}`, payload, '```', '', '</details>',
+      '```text', payload, '```', '', '</details>',
     ]);
     expect(parseReceipt(rendered)).toEqual(summary);
     await expect(waitFor(rendered)).resolves.toEqual(summary);
   });
 
+  it('parses and admits a historical framed raw v3 receipt', async () => {
+    const summary = modernReceipt();
+    const rendered = historicalRawReceipt(summary);
+    expect(rendered).toContain(`\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\`\n`);
+    expect(parseReceipt(rendered)).toEqual(summary);
+    await expect(waitFor(rendered)).resolves.toEqual(summary);
+  });
+
   it.each([false, true])('ignores a changed verdict cell, a deleted row and a fake row with gzip=%s', async gzip => {
-    const summary = modernReceipt(undefined, undefined, gzip ? 'x'.repeat(65_536) : '');
-    const rendered = receiptBody(summary);
+    const summary = modernReceipt();
+    const rendered = gzip ? receiptBody(summary) : historicalRawReceipt(summary);
     const edited = rendered.replace('| reviewer-1 | PASS |', '| reviewer-1 | FAIL |')
       .replace('| reviewer-2 | PASS | full | none |\n', '')
       .replace('\n\nOpen cards:', '\n| fake-reviewer_2.1 | PASS | delta | made-up-card, second? |\n\nOpen cards:');
@@ -115,7 +127,8 @@ describe('hosted receipt comments', () => {
   });
 
   describe.each(['raw', 'gzip'])('framed %s refusals', format => {
-    const rendered = receiptBody(modernReceipt(undefined, undefined, format === 'gzip' ? 'x'.repeat(65_536) : ''));
+    const summary = modernReceipt();
+    const rendered = format === 'gzip' ? receiptBody(summary) : historicalRawReceipt(summary);
     const section = rendered.slice(rendered.indexOf('\n<details>'));
     const machine = section.split('\n').slice(-5, -2).join('\n');
     const fence = machine.split('\n')[0];
@@ -142,16 +155,76 @@ describe('hosted receipt comments', () => {
     });
   });
 
+  const notice = (reason: string) =>
+    `receipt comment 42: Review receipt machine block could not be parsed: ${reason}. Re-run \`node scripts/agent-review-session.mjs receipt 12\` and post its exact output.`;
+  const v2Remedy = ' A v2 receipt needs a session prepared on current main.';
+
   it.each([false, true])('refuses a duplicate machine block with gzip=%s and names the comment and remedy', async gzip => {
-    const summary = modernReceipt(undefined, undefined, gzip ? 'x'.repeat(65_536) : '');
-    const rendered = receiptBody(summary);
+    const summary = modernReceipt();
+    const rendered = gzip ? receiptBody(summary) : historicalRawReceipt(summary);
     const machine = rendered.split('\n').slice(-5, -2).join('\n');
     const duplicate = `${rendered}\n\n${machine}`;
     expect(parseReceipt(duplicate)).toBeNull();
-    await expect(waitFor(duplicate)).rejects.toThrow(
-      'receipt comment 42 is not a valid receipt (for example an edited or duplicated machine block); post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`',
-    );
+    await expect(waitFor(duplicate)).rejects.toThrow(notice('no machine block in the form the receipt command prints'));
     await expect(waitFor(rendered, duplicate)).resolves.toEqual(summary);
+  });
+
+  it.each([null, undefined, 42, {}, []].map(body => [body]))('diagnoses a non-string body %j', body => {
+    expect(diagnoseReceipt(body)).toBe('comment body is not text');
+  });
+
+  describe.each(['bare', 'framed'])('%s receipt diagnostics', placement => {
+    const fence = (type: string, payload: string) => `\`\`\`${type}\n${payload}\n\`\`\``;
+    const raw = (payload: string) => fence('json', payload);
+    const gzip = (payload: string) => fence('text', payload);
+    const compress = (payload: string | Buffer) => gzipSync(payload).toString('base64');
+    const noBlock = 'no machine block in the form the receipt command prints';
+    const version = 'receipt version does not match its marker';
+    const badEscape = '{"version":3,"note":"\\^P"}';
+    const badEscapeNotice = 'Bad escaped character in JSON at position 22 (line 1 column 23) at offset 22';
+    const members = Buffer.concat([gzipSync('{"version":3}'), gzipSync('')]).toString('base64');
+    it.each([
+      ['size limit', ECONOMY_RECEIPT_MARKER, 'x'.repeat(1024 * 1024), 'receipt body exceeds the size limit'],
+      ['block extraction', ECONOMY_RECEIPT_MARKER, 'unfenced JSON', noBlock],
+      ['mismatched fence', COMPRESSED_RECEIPT_MARKER, raw('{"version":3}'), noBlock],
+      ['noncanonical base64', COMPRESSED_RECEIPT_MARKER, gzip('AAAA='), 'base64 is not canonical'],
+      ['gzip header flags', COMPRESSED_RECEIPT_MARKER, gzip('AAAA'), 'gzip header is missing or has unsupported flags'],
+      ['zlib failure', COMPRESSED_RECEIPT_MARKER, gzip('AAAAAA=='), 'incorrect header check'],
+      ['trailing gzip data', COMPRESSED_RECEIPT_MARKER, gzip(members), 'gzip stream has trailing data'],
+      ['strict UTF-8', COMPRESSED_RECEIPT_MARKER, gzip(compress(Buffer.from([0xff]))), 'The encoded data was not valid for encoding utf-8'],
+      ['gzip version mismatch', COMPRESSED_RECEIPT_MARKER, gzip(compress('{"version":2}')), version],
+      ['raw version mismatch', ECONOMY_RECEIPT_MARKER, raw('{"version":2}'), version],
+      ['null v2 receipt', RECEIPT_MARKER, raw('null'), 'receipt JSON is null'],
+      ['unexpected end', ECONOMY_RECEIPT_MARKER, raw('{"version":'), 'Unexpected end of JSON input'],
+      ['position-bearing JSON error', ECONOMY_RECEIPT_MARKER, raw(badEscape), badEscapeNotice],
+      ['gzip JSON error', COMPRESSED_RECEIPT_MARKER, gzip(compress(badEscape)), badEscapeNotice],
+      ['position text in an excerpt', ECONOMY_RECEIPT_MARKER, raw('x at position 987'), "Unexpected token 'x'"],
+      ['quoted input excerpt', ECONOMY_RECEIPT_MARKER, raw('undefined'), 'input is not valid JSON'],
+      ['multiline untrusted excerpt', COMPRESSED_RECEIPT_MARKER, gzip(compress('é\n::字')), "Unexpected token '?'"],
+    ])('reports the parser error for %s', async (_label, marker, block, reason) => {
+      const rendered = placement === 'bare' ? marker + '\n' + block
+        : `${marker}\n\nSummary\n\n${RECEIPT_DETAILS_HEADER}\n\n${block}\n\n</details>`;
+      expect(parseReceipt(rendered)).toBeNull();
+      expect(diagnoseReceipt(rendered)).toBe(reason);
+      await expect(waitFor(rendered)).rejects.toThrow(notice(reason) + (marker === RECEIPT_MARKER ? v2Remedy : ''));
+    });
+  });
+
+  it('caps the parser message and keeps it on one printable ASCII line', () => {
+    const rendered = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n{}\n\`\`\``;
+    const parse = vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
+      throw new SyntaxError('message\né' + 'x'.repeat(160));
+    });
+    try {
+      expect(diagnoseReceipt(rendered)).toBe('message??' + 'x'.repeat(151));
+    } finally { parse.mockRestore(); }
+  });
+
+  it('tells an author to prepare on current main when a rewritten v2 receipt is refused', async () => {
+    const rendered = body({ ...receipt, reviewers: ['old\u0010-reviewer'] }).replaceAll('\\u0010', '\\^P');
+    const reason = diagnoseReceipt(rendered);
+    expect(reason).toMatch(/^Bad escaped character in JSON at position \d+/u);
+    await expect(waitFor(rendered)).rejects.toThrow(notice(reason!) + v2Remedy);
   });
 
   it.each(['raw v2', 'raw v3', 'gzip v3'])('parses and admits the bare %s format', async format => {
@@ -168,7 +241,8 @@ describe('hosted receipt comments', () => {
     const f = handoffFixture();
     f.state.comments = [comment(), comment({ id: 42, body: `${RECEIPT_MARKER}\ninvalid` })];
     f.runGit.mockRejectedValueOnce(new Error('unknown base'));
-    const reason = 'receipt objects could not be verified: unknown base; post a corrected receipt; receipt comment 42 is not a valid receipt (for example an edited or duplicated machine block); post the unchanged output of `node scripts/agent-review-session.mjs receipt 12`';
+    const reason = 'receipt objects could not be verified: unknown base; post a corrected receipt; ' +
+      notice('no machine block in the form the receipt command prints') + v2Remedy;
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
       await expect(wait(f)).rejects.toThrow(reason);
@@ -184,7 +258,7 @@ describe('hosted receipt comments', () => {
     const reviewer = 'reviewer:???json???details?'.padEnd(80, 'x');
     const card = 'card:???json???details?'.padEnd(80, 'x');
     expect(lines).toContain(`| ${reviewer} | PASS | full | ${card} |`);
-    expect(lines.filter(line => line.startsWith('```'))).toEqual(['```json', '```']);
+    expect(lines.filter(line => line.startsWith('```'))).toEqual(['```text', '```']);
     expect(parseReceipt(rendered)).toEqual(summary);
     await expect(waitFor(rendered)).resolves.toEqual(summary);
   });
@@ -234,7 +308,7 @@ describe('CI completion queue handoff', () => {
     ['wrong check run', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.run_id++; }],
     ['future check attempt', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.run_attempt++; }],
     ['truncated jobs', (f: ReturnType<typeof handoffFixture>) => { f.result.total_count++; }],
-  ])('refuses %s without a mutation or polling', async (_name, change) => {
+  ])('refuses %s without enqueueing', async (_name, change) => {
     const f = handoffFixture(); change(f);
     await expect(f.execute()).rejects.toThrow(); expect(f.enqueue).not.toHaveBeenCalled();
     expect(f.api.get.mock.calls.filter(([path]) => path.includes('/issues/')).length).toBeLessThanOrEqual(1);
@@ -261,6 +335,136 @@ describe('CI completion queue handoff', () => {
     };
     if (['head', 'disarmed', 'queued'].includes(change)) await expect(f.execute()).resolves.toMatchObject({ status: 'skipped' });
     else await expect(f.execute()).rejects.toThrow();
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each([1, 2])('queues once when UNKNOWN clears at mergeability check %i', async check => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === check ? 'UNKNOWN' : 'MERGEABLE';
+    };
+    await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+    expect(f.liveReads()).toBe(4);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
+  });
+  it('refuses persistent UNKNOWN after six re-reads', async () => {
+    const f = handoffFixture();
+    f.queuePr.mergeable = 'UNKNOWN';
+    await expect(f.execute()).rejects.toThrow('PR mergeability is still unknown after 7 reads; re-run the Queue Handoff job');
+    expect(f.liveReads()).toBe(7);
+    expect(f.pauseMergeability.mock.calls).toEqual(Array.from({ length: 6 }, () => [10_000]));
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['CONFLICTING', 'PR conflicts with main; merge main into the branch and push; auto-merge stays armed'],
+    ['INVALID', 'invalid PR mergeability response'],
+  ])('refuses %s mergeability immediately', async (mergeability, message) => {
+    const f = handoffFixture();
+    f.queuePr.mergeable = mergeability;
+    await expect(f.execute()).rejects.toThrow(message);
+    expect(f.liveReads()).toBe(1);
+    expect(f.pauseMergeability).not.toHaveBeenCalled();
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each(['head changes', 'PR is disarmed'])('skips when the %s while mergeability is UNKNOWN', async change => {
+    const f = handoffFixture();
+    f.queuePr.mergeable = 'UNKNOWN';
+    f.pauseMergeability.mockImplementationOnce(async () => {
+      if (change === 'head changes') f.queuePr.headRefOid = receipt.base;
+      else Object.assign(f.queuePr, { autoMergeRequest: null });
+    });
+    await expect(f.execute()).resolves.toEqual({ status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' });
+    expect(f.liveReads()).toBe(2);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it('refuses an intent change during the final mergeability check', async () => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?') && f.liveReads() === 2) f.queuePr.mergeable = 'UNKNOWN';
+    };
+    f.pauseMergeability.mockImplementationOnce(async () => {
+      f.queuePr.autoMergeRequest.enabledAt = '2026-10-24T12:01:00Z';
+    });
+    await expect(f.execute()).rejects.toThrow('mergeability or auto-merge authority changed before enqueue');
+    expect(f.liveReads()).toBe(3);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it('skips when the PR is disarmed during the final source run listing', async () => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 2 ? 'UNKNOWN' : 'MERGEABLE';
+      if (path.includes('/actions/workflows/published-tree-ci.yml/runs?') && f.pauseMergeability.mock.calls.length > 0) {
+        Object.assign(f.queuePr, { autoMergeRequest: null });
+      }
+    };
+    await expect(f.execute()).resolves.toEqual({ status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' });
+    expect(f.liveReads()).toBe(3);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['a newer same-head run', 'a newer source run or attempt supersedes this completion'],
+    ['a new attempt of the current run', 'source run or attempt changed'],
+  ])('refuses %s during the final pause before taking another snapshot', async (scenario, refusal) => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 2 ? 'UNKNOWN' : 'MERGEABLE';
+    };
+    f.pauseMergeability.mockImplementationOnce(async () => {
+      if (scenario === 'a newer same-head run') {
+        f.listing.workflow_runs.push({ ...f.run, id: 101, conclusion: 'failure' });
+        f.listing.total_count++;
+      } else {
+        f.run.run_attempt++;
+      }
+    });
+    await expect(f.execute()).rejects.toThrow(refusal);
+    expect(f.liveReads()).toBe(2);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each([
+    { mergeability: 'immediate MERGEABLE', pause: false },
+    { mergeability: 'UNKNOWN then MERGEABLE', pause: true },
+  ])('takes the final snapshot after the source check with $mergeability', async ({ pause }) => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = pause && f.liveReads() === 2 ? 'UNKNOWN' : 'MERGEABLE';
+    };
+    await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+    expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
+    expect(f.pauseMergeability).toHaveBeenCalledTimes(pause ? 1 : 0);
+    expect(f.liveReads()).toBe(pause ? 4 : 3);
+    const runPath = '/repos/openlup/openlup/actions/runs/100';
+    const listingPath = `/repos/openlup/openlup/actions/workflows/published-tree-ci.yml/runs?event=pull_request&head_sha=${receipt.head}&per_page=100`;
+    expect(f.api.get.mock.calls.filter(([path]) => path === runPath)).toHaveLength(pause ? 3 : 2);
+    expect(f.api.get.mock.calls.filter(([path]) => path === listingPath)).toHaveLength(pause ? 3 : 2);
+    const graphQL = expect.stringContaining('/graphql?');
+    expect(f.api.get.mock.calls.slice(-5)).toEqual([
+      [runPath],
+      [listingPath],
+      [graphQL],
+      ['/repos/openlup/openlup/collaborators/merge-owner/permission'],
+      [graphQL],
+    ]);
+    const reads = f.api.get.mock.invocationCallOrder;
+    const [enqueue] = f.enqueue.mock.invocationCallOrder;
+    expect(enqueue).toBeGreaterThan(reads.at(-2)!);
+    expect(enqueue).toBeLessThan(reads.at(-1)!);
+  });
+  it('bounds pauses independently across both mergeability checks', async () => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 7 ? 'MERGEABLE' : 'UNKNOWN';
+    };
+    const pausedAfterReads: number[] = [];
+    f.pauseMergeability.mockImplementation(async () => { pausedAfterReads.push(f.liveReads()); });
+    await expect(f.execute()).rejects.toThrow('PR mergeability is still unknown after 7 reads; re-run the Queue Handoff job');
+    expect(f.liveReads()).toBe(14);
+    expect(pausedAfterReads).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]);
+    expect(f.pauseMergeability.mock.calls).toEqual(Array.from({ length: 12 }, () => [10_000]));
     expect(f.enqueue).not.toHaveBeenCalled();
   });
   it('does not retry a GitHub enqueue refusal', async () => {

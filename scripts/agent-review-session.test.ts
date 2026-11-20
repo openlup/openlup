@@ -10,6 +10,15 @@ const prepare = (extra = {}) => prepareCandidate(null, { ...observed, intent, au
 const report = (extra = {}) => ({ reviewer: 'reviewer-1', cold: true, tree: observed.tree, verdict: 'PASS', findings: [], closes: [], documentation: 'Reviewed canonical guidance and secondary examples; no documentation impact.', ...extra });
 const passed = () => recordReport(prepare(), report(), time);
 
+it.each(['intent.criteria', 'authorSessionId'])('reports the length limit for %s and keeps the existing blank error', field => {
+  const input = (value: string | undefined) => field === 'intent.criteria' ? { intent: { ...intent, criteria: value } } : { authorSessionId: value };
+  expect(() => prepare(input('x'.repeat(4097)))).toThrow(`invalid: ${field} is 4097 characters (limit 4,096); shorten it`);
+  expect(() => prepare(input('x'.repeat(4096)))).not.toThrow();
+  for (const value of [undefined, '', ' '.repeat(4097)]) {
+    expect(() => prepare(input(value))).toThrow('invalid: author and intent.criteria are required');
+  }
+});
+
 describe('native receipt transport', () => {
   const rawBody = (marker: string, summary: unknown) => `${marker}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
   const textBody = (payload: string) => `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${payload}\n\`\`\``;
@@ -17,16 +26,26 @@ describe('native receipt transport', () => {
   const v3 = recordReport(prepare({ rules: { version: 3 } }), report(), time);
   const padded = (padding: string) => receiptSummary({ ...v3, padding }, 12, time);
 
-  it('counts the full body through 65,536 characters and compresses at 65,537', () => {
-    const padding = 'x'.repeat(65_536 - receiptBody(padded('')).length);
-    const atLimit = receiptBody(padded(padding));
-    expect(atLimit).toHaveLength(65_536);
-    expect(atLimit.split('\n')[0]).toBe(ECONOMY_RECEIPT_MARKER);
-    const above = padded(padding + 'x');
-    expect(rawBody(ECONOMY_RECEIPT_MARKER, above).length).toBeLessThan(65_536);
-    const compressed = receiptBody(above);
-    expect(compressed.split('\n')[0]).toBe(COMPRESSED_RECEIPT_MARKER);
-    expect(parseReceipt(compressed)).toEqual(above);
+  it('preserves control characters and literal escape text through a sanitising reader', () => {
+    const text = 'Before\u0010\u001b\u0000\t\n\r after \\u0010';
+    const session = recordReport(prepare({ rules: { version: 3 } }), report({
+      reviewer: 'reviewer-' + text, documentation: text,
+      findings: [{ id: 'advice', summary: text, material: false }],
+    }), time);
+    const summary = receiptSummary(session, 12, time);
+    const body = receiptBody(summary);
+    // Match the last backslash of a run and preserve the preceding parity in the API JSON.
+    const rewrite = (json: string) => json.replace(/(\\+)u00([01][\da-f])/giu, (_match, run: string, hex: string) => {
+      const caret = String.fromCharCode(0x40 + Number.parseInt(hex, 16));
+      return '\\'.repeat(run.length - (run.length % 2)) + '^' + (caret === '\\' ? '\\\\' : caret);
+    });
+    expect(JSON.parse(rewrite(JSON.stringify('\u0010 \\u0010')))).toBe('^P \\^P');
+    const transported = JSON.parse(rewrite(JSON.stringify(body)));
+    expect.soft(body.split('\n')[0]).toBe(COMPRESSED_RECEIPT_MARKER);
+    expect.soft(transported).toBe(body);
+    const receipt = parseReceipt(transported);
+    expect.soft(receipt).toEqual(summary);
+    expect(admit({ receipt, observed: { ...observed, pr: 12, baseValid: true }, now: time })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
   });
 
   it('keeps v2 receipts byte-identical at any size', () => {
@@ -69,7 +88,7 @@ describe('native receipt transport', () => {
   it('refuses an oversized compressed body with its measured size and recovery steps', () => {
     const summary = padded(Array.from({ length: 5_000 }, (_, index) => digest(index)).join(''));
     const small = padded('');
-    const size = textBody(compress(summary)).length + receiptBody(small).length - rawBody(ECONOMY_RECEIPT_MARKER, small).length;
+    const size = receiptBody(small).length - compress(small).length + compress(summary).length;
     expect(size).toBeGreaterThan(200_000);
     expect(() => receiptBody(summary)).toThrow(`compressed receipt is ${size} characters (limit 200000). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   });
@@ -95,10 +114,10 @@ describe('native receipt transport', () => {
     const framed = receiptBody(summary);
     expect(parseReceipt(framed.padEnd(1024 * 1024, ' '))).toEqual(summary);
     for (const body of [
-      framed.replace(`${ECONOMY_RECEIPT_MARKER}\n`, `${ECONOMY_RECEIPT_MARKER} \n`),
-      framed.replace('```json\n', '```json \n'),
-      framed.replace('```json\n', '```text\n'),
-      framed.replace('```json\n', '```json\n \n'),
+      framed.replace(`${COMPRESSED_RECEIPT_MARKER}\n`, `${COMPRESSED_RECEIPT_MARKER} \n`),
+      framed.replace('```text\n', '```text \n'),
+      framed.replace('```text\n', '```json\n'),
+      framed.replace('```text\n', '```text\n \n'),
       framed.replace('\n```\n', '\n  ```\n'),
       framed.replace('\n```\n', '\n``` \n'),
       framed.padEnd(1024 * 1024 + 1, ' '),

@@ -123,7 +123,7 @@ jobs:
           test "$(npm --version)" = "11.19.0"
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
-      - run: npm ci
+      - run: npm ci --prefer-offline --no-audit --fund=false
         if: steps.reused.outputs.reuse != 'true'
       # NOT `npm run typecheck`. The release contract names every compiler project and carries the
       # signed preview-debt ratchet. The source-only measurement baseline is deliberately absent.
@@ -325,7 +325,7 @@ jobs:
           test "$(npm --version)" = "11.19.0"
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
-      - run: npm ci
+      - run: npm ci --prefer-offline --no-audit --fund=false
         if: steps.reused.outputs.reuse != 'true'
       - name: Select tooling fixtures from the event diff
         if: steps.reused.outputs.reuse != 'true'
@@ -345,20 +345,20 @@ jobs:
         with:
           path: .context/scratch/cache/pgtap-debs
           key: pgtap-debs-${{ hashFiles('config/ci-postgres-packages.json') }}
-      # Every shard derives the same included set before native file sharding.
+      # Every shard derives the same included set before deterministic LPT weighted sharding.
       - name: Complete published root test shard
         if: steps.reused.outputs.reuse != 'true'
         env:
           OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
           OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
-        run: npm test -- --shard=${{ matrix.shard }}/8
+        run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8
 
   test:
     name: test
     if: ${{ always() && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [test-full-shard, pgtap]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 2
     steps:
       - name: Require all eight full-root shards and pgTAP to succeed
         env:

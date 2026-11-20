@@ -7,12 +7,183 @@ import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { setTimeout } from 'node:timers/promises';
+import { z, type ZodType } from 'zod';
+import { runSettingsCommand } from '@openlup/platform/operations/server';
+import { createSettingsBindings } from '../owned/settings-host.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createHash } from 'node:crypto';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // Source-release tests keep scratch inside this application.
 const scratch = resolve(root, '.context', 'extract-');
+
+test('native starter declaration schemas accept and reject the same values as the former catalogue schemas', () => {
+  const int32Max = 2147483647;
+  const safeMax = Number.MAX_SAFE_INTEGER;
+  const cases = [
+    ['offer.freeShippingFromMinor', { type: 'integer', minimum: 0, maximum: int32Max },
+      [0, 1000, int32Max], [-1, int32Max + 1, '1000']],
+    ['offer.subscriptionDiscountBps', { type: 'integer', minimum: 0 },
+      [0, 500, 10000, safeMax], [-1, safeMax + 1, '500']],
+    ['purchase.reservationMinutes', { type: 'integer', minimum: 1, maximum: safeMax },
+      [1, 30, safeMax], [0, safeMax + 1, '30']],
+    ['subscriptionCreation.editWindowHours', { type: 'integer', minimum: 1, maximum: 720 },
+      [1, 72, 720], [0, 721, '72']],
+    ['subscriptionOffers.deliveryCycles', { type: 'object' },
+      [{ classic: {}, sized: {} }], [[]]],
+    ['subscriptions.lifecycleNoticeRetryBudget', { type: 'integer', minimum: 1, maximum: int32Max },
+      [1, 6, int32Max], [0, int32Max + 1, '6']],
+  ] as const;
+  const binding = createSettingsBindings({});
+  assert.ok('file' in binding && binding.file);
+  for (const [key, oldSchema, accepted, rejected] of cases) {
+    const old = z.fromJSONSchema(oldSchema);
+    const current: ZodType | undefined = binding.file.entries[key]?.descriptor?.schema;
+    assert.ok(current, key);
+    for (const [values, expected] of [[accepted, true], [rejected, false]] as const) {
+      for (const value of values) {
+        const message = key + ': ' + JSON.stringify(value);
+        assert.equal(old.safeParse(value).success, expected, message);
+        assert.equal(current.safeParse(value).success, expected, message);
+      }
+    }
+  }
+});
+
+async function starterSettings(configuration: string, args: string[], expectedStatus = 0) {
+  let stdout = '';
+  const status = await runSettingsCommand([...args, '--app', './owned/settings-host.ts', '--configuration', configuration, '--json'], {
+    write: text => { stdout += text; },
+    readStdin: async () => '',
+  }, {
+    bind: async input => createSettingsBindings(input),
+    loadCheck: async input => createSettingsBindings(input),
+  });
+  assert.equal(status, expectedStatus, stdout);
+  return JSON.parse(stdout);
+}
+
+const starterSettingLocations = [
+  ['renewal.retryBackoffHours', 'owned/renewal.config.ts', 'retryBackoffHours'],
+  ['offer.shippingMinor', 'owned/store.config.ts', 'offer.shippingMinor'],
+  ['purchase.tax.vatRateBps', 'owned/store.config.ts', 'purchase.tax.vatRateBps'],
+  ['offer.minUnits', 'owned/store.config.ts', 'offer.minUnits'],
+  ['offer.maxUnits', 'owned/store.config.ts', 'offer.maxUnits'],
+  ['purchase.attemptLimits', 'owned/store.config.ts', 'purchase.attemptLimits'],
+  ['renewal.subscriptionCare.terms', 'owned/renewal.config.ts', 'subscriptionCare.terms'],
+  ['renewal.subscriptionCare.pausePresets', 'owned/renewal.config.ts', 'subscriptionCare.pausePresets'],
+  ['renewal.subscriptionCare.notices', 'owned/renewal.config.ts', 'subscriptionCare.notices'],
+  ['legal.returnsDays', 'owned/store.config.ts', 'legal.returnsDays'],
+  ['offer.subscriptionRoundingQuantumMinor', 'owned/store.config.ts', 'offer.subscriptionRoundingQuantumMinor'],
+  ['market', 'owned/store.config.ts', 'market'],
+  ['shipping.rateResolver', 'owned/quote-shipping.ts', 'createQuoteShipping'],
+] as const;
+
+test('settings check includes all new declarations and their edit locations in both configurations', async () => {
+  for (const configuration of Object.keys(configurations)) {
+    const checked = await starterSettings(configuration, ['check']);
+    assert.equal(checked.configuration, configuration);
+    assert.equal(checked.state, 'checked');
+    assert.equal(checked.appValidation.state, 'passed');
+    for (const [key, file, symbol] of starterSettingLocations) {
+      const row = checked.rows.find((entry: { key: string }) => entry.key === key);
+      assert.ok(row, key);
+      assert.equal(row.takesEffect, `${file} ${symbol}`, key);
+      if (key === 'shipping.rateResolver') {
+        assert.deepEqual(row.file, { state: 'not-reported' });
+      } else {
+        assert.equal(row.file.state, 'present', key);
+        assert.deepEqual(row.file.location, { file, symbol }, key);
+      }
+      if (key === 'market') {
+        const { country, currency, timezone } = configurations[configuration]!.market;
+        assert.deepEqual(row.file.value, { country, currency, timezone });
+      }
+      assert.equal(row.validation.state, key === 'legal.returnsDays' || key === 'shipping.rateResolver' ? 'not-validated' : 'valid', key);
+    }
+  }
+});
+
+test('settings check identifies five invalid object members in scratch configurations', async () => {
+  const configuration = 'settings-review-scratch';
+  const cases: readonly [string, string[], (config: typeof configurations[string]) => void][] = [
+    ['purchase.attemptLimits', ['maxPerEmail'], config => { config.purchase.attemptLimits.maxPerEmail = 0; }],
+    ['renewal.subscriptionCare.terms', ['pauseDays'], config => { config.renewal.subscriptionCare.terms.pauseDays = 0; }],
+    ['renewal.subscriptionCare.pausePresets', ['allowed', '0'], config => {
+      Object.assign(config.renewal.subscriptionCare.pausePresets, { allowed: ['forever'] });
+    }],
+    ['renewal.subscriptionCare.notices', ['operatorMaxAttempts'], config => {
+      config.renewal.subscriptionCare.notices.operatorMaxAttempts = 0;
+    }],
+    ['market', ['country'], config => { config.market.country = 'USA'; }],
+  ];
+  for (const [key, path, change] of cases) {
+    const config = { ...structuredClone(configurations.supplements!), id: configuration };
+    change(config);
+    configurations[configuration] = config;
+    try {
+      const checked = await starterSettings(configuration, ['check'], 1);
+      assert.equal(checked.state, 'invalid', key);
+      assert.equal(checked.appValidation.state, 'failed', key);
+      const row = checked.rows.find((entry: { key: string }) => entry.key === key);
+      assert.deepEqual(row?.validation, { state: 'invalid', paths: [path] }, key);
+    } finally {
+      delete configurations[configuration];
+    }
+  }
+});
+
+test('settings show leaves frozen values empty for admission rules and notice windows', async () => {
+  for (const key of ['offer.minUnits', 'offer.maxUnits', 'renewal.subscriptionCare.pausePresets', 'renewal.subscriptionCare.notices']) {
+    const shown = await starterSettings('supplements', ['show', key]);
+    assert.deepEqual(shown.setting.effect.frozenOn, [], key);
+  }
+});
+
+test('settings list finds starter declarations by customer and operator goals', async () => {
+  const goals = [
+    ['payment retry', 'renewal.retryBackoffHours'],
+    ['dunning schedule', 'renewal.retryBackoffHours'],
+    ['flat shipping', 'offer.shippingMinor'],
+    ['delivery fee', 'offer.shippingMinor'],
+    ['vat', 'purchase.tax.vatRateBps'],
+    ['tax rate', 'purchase.tax.vatRateBps'],
+    ['quantity limit', 'offer.minUnits', 'offer.maxUnits'],
+    ['pause duration', 'renewal.subscriptionCare.terms'],
+    ['pause presets', 'renewal.subscriptionCare.pausePresets'],
+    ['reminder window', 'renewal.subscriptionCare.notices'],
+    ['return window', 'legal.returnsDays'],
+    ['rounding', 'offer.subscriptionRoundingQuantumMinor'],
+    ['currency', 'market'],
+    ['carrier', 'shipping.rateResolver'],
+    ['shipping provider', 'shipping.rateResolver'],
+  ] as const;
+  for (const configuration of Object.keys(configurations)) {
+    for (const [goal, ...keys] of goals) {
+      const listed = await starterSettings(configuration, ['list', '--goal', goal]);
+      const matches = listed.entries.map((entry: { key: string }) => entry.key);
+      for (const key of keys) assert.ok(matches.includes(key), `${configuration}: ${goal} must find ${key}`);
+    }
+  }
+});
+
+test('settings show reports the six existing declarations from the selected file', async () => {
+  for (const [configuration, config] of Object.entries(configurations)) {
+    const settings = {
+      'offer.freeShippingFromMinor': config.offer.freeShippingFromMinor,
+      'offer.subscriptionDiscountBps': config.offer.subscriptionDiscountBps,
+      'purchase.reservationMinutes': config.purchase.reservationMinutes,
+      'subscriptionCreation.editWindowHours': config.subscriptionCreation.editWindowHours,
+      'subscriptionOffers.deliveryCycles': config.subscriptionOffers,
+      'subscriptions.lifecycleNoticeRetryBudget': config.renewal.subscriptionCare.dispatch.maxAttempts,
+    };
+    for (const [key, value] of Object.entries(settings)) {
+      const shown = await starterSettings(configuration, ['show', key]);
+      assert.equal(shown.setting.key, key);
+      assert.deepEqual(shown.observation, { state: 'file', configuration, value }, key);
+    }
+  }
+});
 
 test('extract creates an independent repository and refuses to overwrite an existing one', async () => {
   const { mkdir } = await import('node:fs/promises');

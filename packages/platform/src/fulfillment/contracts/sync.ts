@@ -52,10 +52,14 @@ export interface FulfillmentStockSyncPort {
   readActiveReservations(skus: string[], requestedAt: string): Promise<Map<string, number>>;
   recordCursor(input: SyncCursor): Promise<void>;
   recordStockSnapshot(input: { requestKey: string; snapshot: StockSnapshot; local: LocalStock; mismatchKind: "none"; inventoryClass: "sellable" | "packaging" | null }): Promise<{ replayed: boolean; readBack: boolean }>;
+  recordStockSnapshotBatch?(inputs: readonly { requestKey: string; snapshot: StockSnapshot; local: LocalStock; mismatchKind: "none"; inventoryClass: "sellable" | "packaging" | null }[]): Promise<{ replayed: boolean; readBack: boolean }[]>;
   recordProviderStockCurrent(input: { requestKey: string; snapshot: StockSnapshot; inventoryClass: "sellable" | "packaging" | null; lastSyncedAt: string; staleAfter: string }): Promise<{ replayed: boolean; readBack: boolean }>;
+  recordProviderStockCurrentBatch?(inputs: readonly { requestKey: string; snapshot: StockSnapshot; inventoryClass: "sellable" | "packaging" | null; lastSyncedAt: string; staleAfter: string }[]): Promise<{ replayed: boolean; readBack: boolean }[]>;
   recordMovement(input: { requestKey: string; movement: StockMovement }): Promise<{ replayed: boolean; readBack: boolean }>;
   recordLowStockEvidence(input: { requestKey: string; skuRef: string; thresholdKind: Exclude<Threshold, "forecast">; severity: "info" | "warning" | "critical"; providerForSaleQuantity: number; localAvailableQuantity: number; syncRunId: string }): Promise<{ replayed: boolean }>;
+  recordLowStockEvidenceBatch?(inputs: readonly { requestKey: string; skuRef: string; thresholdKind: Exclude<Threshold, "forecast">; severity: "info" | "warning" | "critical"; providerForSaleQuantity: number; localAvailableQuantity: number; syncRunId: string }[]): Promise<{ replayed: boolean }[]>;
   resolveLowStockEvidence(input: { skuRef: string; activeThresholdKinds: Threshold[]; syncRunId: string }): Promise<{ resolved: number }>;
+  resolveLowStockEvidenceBatch?(inputs: readonly { skuRef: string; activeThresholdKinds: Threshold[]; syncRunId: string }[]): Promise<{ resolved: number }[]>;
 }
 interface ProductPack { ean: string; quantity: number }
 export interface FulfillmentProductSyncProvider {

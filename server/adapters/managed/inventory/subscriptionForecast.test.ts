@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   readSubscriptionForecast,
 } from "./subscriptionForecast.js";
@@ -8,6 +8,14 @@ const SKU_ID = "11111111-1111-4111-8111-111111111111";
 const STOCK_AUTHORITY = "omnipack";
 
 describe("readSubscriptionForecast", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("builds the subscription forecast from managed read models only", async () => {
     const dueAt = new Date(Date.now() + 5 * DAY_MS).toISOString();
     const syncedAt = new Date(Date.now() - DAY_MS).toISOString();

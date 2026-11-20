@@ -1,6 +1,7 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { join, posix } from "node:path";
 
 export type PublicDiagnostic = { file: string; line: number; code: string; message: string };
@@ -84,18 +85,74 @@ export function summarizePublicDiagnostics(diagnostics: PublicDiagnostic[]): Pub
   return { pairs: [...pairs].sort(), importers: importers.size, targets: targets.size, cascades: cascades.size, cascadesByCode };
 }
 
-export function runPublicTypecheckProjects(root: string, projects: string[]): { positioned: PublicDiagnostic[]; unpositioned: string[] } {
+type ProjectRunResult = { positioned: PublicDiagnostic[]; unpositioned: string[] };
+
+function runPublicTypecheckProject(root: string, compiler: string, project: string): Promise<ProjectRunResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [compiler, "-p", project, "--noEmit", "--pretty", "false"], {
+      cwd: root,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    child.stdout?.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
+    child.stderr?.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+    child.on("error", (error) => {
+      fail(new Error(`${project}: the compiler did not run (${error.message})`));
+    });
+    child.on("close", (status) => {
+      if (settled) return;
+      settled = true;
+      if (status === null) {
+        reject(new Error(`${project}: the compiler did not run (no exit status)`));
+        return;
+      }
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+      const parsed = parsePublicDiagnostics(`${stdout}\n${stderr}`);
+      if (status !== 0 && parsed.positioned.length === 0 && parsed.unpositioned.length === 0) {
+        reject(new Error(`${project}: the compiler did not run successfully (exit ${status})`));
+        return;
+      }
+      resolve({
+        positioned: parsed.positioned,
+        unpositioned: parsed.unpositioned.map((line) => `${project}: ${line}`),
+      });
+    });
+  });
+}
+
+export async function runPublicTypecheckProjects(root: string, projects: string[]): Promise<ProjectRunResult> {
   const compiler = join(root, "node_modules", "typescript", "bin", "tsc");
   if (!existsSync(compiler)) throw new Error("the compiler did not run (node_modules/typescript/bin/tsc is absent)");
+  if (projects.length === 0) return { positioned: [], unpositioned: [] };
+  const concurrency = Math.min(4, Math.max(1, availableParallelism()), projects.length);
+  const results: ProjectRunResult[] = new Array(projects.length);
+  let nextIndex = 0;
+  let aborted = false;
+  const worker = async (): Promise<void> => {
+    while (!aborted && nextIndex < projects.length) {
+      const index = nextIndex++;
+      try {
+        results[index] = await runPublicTypecheckProject(root, compiler, projects[index]);
+      } catch (error) {
+        aborted = true;
+        throw error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
   const positioned: PublicDiagnostic[] = [];
   const unpositioned: string[] = [];
-  for (const project of projects) {
-    const run = spawnSync(process.execPath, [compiler, "-p", project, "--noEmit", "--pretty", "false"], { cwd: root, encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
-    if (run.error || run.status === null) throw new Error(`${project}: the compiler did not run (${run.error?.message ?? "no exit status"})`);
-    const parsed = parsePublicDiagnostics(`${run.stdout ?? ""}\n${run.stderr ?? ""}`);
-    if (run.status !== 0 && parsed.positioned.length === 0 && parsed.unpositioned.length === 0) throw new Error(`${project}: the compiler did not run successfully (exit ${run.status})`);
-    positioned.push(...parsed.positioned);
-    unpositioned.push(...parsed.unpositioned.map((line) => `${project}: ${line}`));
+  for (const result of results) {
+    positioned.push(...result.positioned);
+    unpositioned.push(...result.unpositioned);
   }
   return { positioned, unpositioned };
 }

@@ -1,4 +1,6 @@
-export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export { FULFILLMENT_STATUS_MAP, FULFILLMENT_STATUS_EFFECTS, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export type { FulfillmentStatusEffect } from "./statusMap.js";
+export { createFulfillmentProviderRegistry } from "./providerRegistry.js";
 export { parseFulfillmentFact, parseFulfillmentTransitionConflict } from "./normalizedFulfillmentFacts.js";
 export { readFulfillmentCapabilities } from "./providerCapabilities.js";
 export { createOutboxOrderPaidFulfillmentHandler, outboxOrderPaidFulfillmentDescriptor, parseOutboxPayload } from "./paidHandoff.js";

@@ -85,6 +85,13 @@ export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicat
 export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 
+export { nativeCatalogPublication } from "./publicationCodec.js";
+export type { CatalogFullPublicationV2, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2,
+  CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
+export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCommands.js";
+export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt,
+  PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
+
 export { readPostgresCatalogMembershipPage, readPostgresCatalogActivationReadiness } from "./postgresPublicationDiscovery.js";
 export type { CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult, CatalogActivationReadinessInput,
   CatalogActivationReadinessResult, CatalogDiscoveryEvidence, CatalogInstalledReadiness, CatalogDiscoveryRefusal } from "./postgresPublicationDiscovery.js";

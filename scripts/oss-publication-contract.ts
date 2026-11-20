@@ -1,6 +1,6 @@
 /** Every directly runnable file admitted by the bounded public command/container contract. */
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
-  "scripts/agent-review-landing.mjs", "scripts/installation-inventory-refresh.ts",
+  "scripts/agent-review-landing.mjs", "scripts/build-packages-incremental.mjs", "scripts/installation-inventory-refresh.ts",
   "scripts/preflight.ts", "scripts/settings-catalogue.ts", "scripts/sql-admit.ts", "scripts/test-hosted.mjs",
   "deploy/neutral-store/prove.mjs",
   "examples/neutral-store/browser/dev-loop.proof.ts",
@@ -45,7 +45,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "scripts/ast-grep/check-filewide-ignore.mjs",
   "scripts/ci-image-mirror.mjs",
   "scripts/starter-browser-ci.mjs",
-  "scripts/ci-receipt-rerun.mjs", "scripts/ci-test-scope.mjs", "scripts/verify-local.mjs",
+  "scripts/ci-receipt-rerun.mjs", "scripts/ci-test-scope.mjs", "scripts/ci-vitest-shard.mjs", "scripts/verify-local.mjs",
   "scripts/check-client-secret-boundary.ts", "scripts/dco-signoff-check.ts",
   "scripts/oss-published-tree-check.test.ts", "scripts/oss-published-tree-check.ts", "scripts/oss-reference-prerender.ts",
   "scripts/packages/package-release.ts", "scripts/packages/packages-check.ts", "scripts/packages/release-bump.ts",

@@ -34,8 +34,12 @@ it.each([
 });
 describe('native renewal effect ordering through the P1 port',()=>{
  it('orders admission, stock, atomic prepare, M07 dispatch, ACK and terminal settlement',async()=>{
-  const f=effectsFixture();expect(await runOneAutomaticSubscriptionRenewal(f.deps,f.due)).toMatchObject({status:'succeeded'});
+  const f=effectsFixture();
+  const claimedSnapshot={...f.snapshot,frozenFingerprint:'claimed-fp',orderSnapshot:{...f.snapshot.orderSnapshot,shippingAddressRef:'dest-claimed'}};
+  f.op.cycleSnapshot=claimedSnapshot;
+  expect(await runOneAutomaticSubscriptionRenewal(f.deps,f.due)).toMatchObject({status:'succeeded'});
   expect(f.trace).toEqual(['snapshot','claim','mandate','admit','reserve','prepare','validate','execute','ack','read','terminal']);
+  expect(f.deps.inventory.reserve).toHaveBeenCalledWith(expect.objectContaining({snapshot:claimedSnapshot}));
   expect(f.rail.execute.mock.calls[0]).toEqual([f.deps.policy.executionInput(f.due,f.op,{orderId:'order',settlementIntentId:'intent'})]);
  });
  it('revoked mandate evidence refuses before admission, stock or dispatch even with the same method reference',async()=>{

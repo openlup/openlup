@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, customerStepFromSignals, phaseIndexForStep, stepForToken, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "../src/fulfillment/index.js";
+import { FULFILLMENT_STATUS_MAP, FULFILLMENT_STATUS_EFFECTS, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, customerStepFromSignals, phaseIndexForStep, stepForToken, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "../src/fulfillment/index.js";
 
 describe("contributed status canon (W1)", () => {
   it("preserves the donor canonical projection bytes after removing private trace columns", () => {
@@ -41,4 +41,14 @@ it("prefers canonical packed while retaining every historical packing alias", ()
     expect(stepForToken(alias)).toBe(stepForToken("packed"));
   }
   for (const stage of FULFILLMENT_STATUS_MAP.stages) expect(stage).not.toHaveProperty("providers");
+});
+
+it("publishes machine-readable FULFILLMENT_STATUS_EFFECTS covering every canonical status without UI prose", () => {
+  expect(Object.keys(FULFILLMENT_STATUS_EFFECTS).sort()).toEqual([...CANONICAL_LOCAL_FULFILLMENT_STATUSES].sort());
+  expect(FULFILLMENT_STATUS_EFFECTS.picking).toMatchObject({ stockEffect: "reserved", consumesStock: false, handsOver: false, offTrack: false });
+  expect(FULFILLMENT_STATUS_EFFECTS.packed).toMatchObject({ stockEffect: "consumed", consumesStock: true, handsOver: false, offTrack: false });
+  expect(FULFILLMENT_STATUS_EFFECTS.in_transit).toMatchObject({ consumesStock: true, handsOver: true, suppressDispatchedNotification: false, trackingStatus: "in_transit", offTrack: false });
+  expect(FULFILLMENT_STATUS_EFFECTS.delivered).toMatchObject({ consumesStock: true, handsOver: true, suppressDispatchedNotification: true, trackingStatus: "delivered", offTrack: false });
+  expect(FULFILLMENT_STATUS_EFFECTS.exception).toMatchObject({ stockEffect: "held", consumesStock: false, handsOver: false, offTrack: true });
+  expect(FULFILLMENT_STATUS_EFFECTS.cancelled).toMatchObject({ stockEffect: "released", consumesStock: false, handsOver: false, offTrack: true });
 });
