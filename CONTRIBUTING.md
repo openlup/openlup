@@ -117,6 +117,21 @@ its users or operators can observe.
 
 ## Add a setting
 
+### Kind `code`
+
+Use [the subscription edit window](packages/core/docs/guide/how-to/operate/settings-catalogue.md#subscriptioncreationeditwindowhours)
+for settings changed by editing the owned configuration and validated in TypeScript.
+
+1. Add a JSON entry in `packages/platform/src/<domain>/settings-data.json`. Name
+   the owned file and symbol, the existing validation, when the value takes
+   effect and which records keep their original terms.
+2. Build the workspaces and run `node scripts/settings-catalogue.ts --write`.
+   Descriptive entries need no generator edit.
+3. Run `node scripts/settings-catalogue.ts` to check that the reader-guide page
+   and packaged catalogue reproduce byte for byte.
+
+### Kind `installed`
+
 Use [renewal stock protection](packages/core/docs/guide/how-to/operate/settings-catalogue.md#inventory_renewal_protection)
 as the discovery example. Ship the domain's setting and its evidence together
 when qualifying it for installed runtime use.
@@ -127,7 +142,10 @@ when qualifying it for installed runtime use.
    example per rule.
 2. For an installed setting, add the domain's `<key>_validate(jsonb)` forward
    and a `commerce_setting_define` record when the shared write path is available. Have the
-   SQL reader call that validator.
+   SQL reader call that validator. For a new SQL-consumed setting, give each new
+   consuming function an optional policy argument that defaults to the installed
+   read so preview can reuse the computation. Leave existing function signatures
+   unchanged.
 3. Use one corpus of inputs, normalized values and refusal codes to check TS
    and PostgreSQL together.
 4. Qualify domain preview before opening a runtime write path.
@@ -1602,7 +1620,9 @@ authority. Review evidence grants no merge, release, settings or credential righ
    rules or acceptance criteria. Treat unjustified adopter-visible concepts or
    steps, leaked internals and unactionable errors as material findings that block.
    State the concrete cost. A fail-closed edge case, style or wording alone is
-   advice. By default, counted reviews use a fresh local CLI
+   advice. Argument-parsing edge cases in a read-only command are advice unless
+   they change which store is read or report success for a refused input.
+   By default, counted reviews use a fresh local CLI
    reviewer (for example Codex) through the qualified route below; the lead
    coordinates, checks results and decides. The lead chooses reasoning effort by
    task complexity. This assignment is a default, not a fixed rule.
