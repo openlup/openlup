@@ -50,7 +50,8 @@ function text(result: Result, host?: SettingsHost): string {
     `Kind: ${setting.kind} (${setting.runtime.level})`,
     ...("reason" in setting.runtime ? [setting.runtime.reason] : []),
     ...("effect" in setting ? [
-      `Default: ${JSON.stringify(setting.fallback)}`, `Basis: ${setting.defaultBasis.kind}`,
+      `Default: ${JSON.stringify(setting.fallback)}`,
+      `Basis: ${setting.defaultBasis.kind}${setting.defaultBasis.kind === "reference-code" ? " (matches the reference deployment’s code)" : ""}`,
       setting.whyThisDefault, ...(setting.absentMeans ? [setting.absentMeans.description] : []),
       `Schema: ${JSON.stringify(setting.schema)}`, `Effect: ${setting.effect.appliesTo}`,
       `Frozen on: ${setting.effect.frozenOn.join(" ") || "No records named"}`,
@@ -74,7 +75,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     args: [...argv], allowPositionals: true,
     options: {
       goal: { type: "string" }, json: { type: "boolean" }, help: { type: "boolean" },
-      value: { type: "string" }, "database-url": { type: "string" }, app: { type: "string" },
+      value: { type: "string", multiple: true }, "database-url": { type: "string" }, app: { type: "string" },
       sku: { type: "string", multiple: true }, configuration: { type: "string" }, "as-of": { type: "string" },
     },
   } as const;
@@ -84,7 +85,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   } catch (error) {
     if (!(error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("ERR_PARSE_ARGS_"))) throw error;
     preview = parseArgs({ ...parser, strict: false }).positionals[0] === "preview";
-    const [, flag, option] = /^[^']*'(-{1,2}([\w.-]+))(?: <[^'>]+>)?'/u.exec(error.message) ?? [];
+    const [, flag, option] = /^[^']*'(-{1,2}([^']+?))(?: <[^'>]+>)?'/u.exec(error.message) ?? [];
     const helpTopic = preview ? "preview help" : "settings help";
     const hint = error.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE" ? `Supply a value for ${flag} as shown in ${helpTopic}.`
       : error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" ? `Unknown option ${flag}. See ${helpTopic}.` : undefined;
@@ -99,25 +100,28 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   preview = command === "preview";
   const databaseUrl = values["database-url"];
   if (values.goal !== undefined && command !== "list") return invalid("goal", "Use --goal with list.");
+  const url = databaseUrl === undefined ? undefined : URL.parse(databaseUrl);
+  const invalidDatabase = databaseUrl !== undefined && (!url?.hostname || !["postgres:", "postgresql:"].includes(url.protocol))
+    ? { path: ["database-url"], hint: databaseUrl ? "Supply a PostgreSQL URL for the intended store." : "Supply a read-capable database URL." }
+    : undefined;
+  if (preview && databaseUrl === "" && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (preview && !key) return invalid("key", "Pass the setting key and one proposed JSON value with --value.");
   if (preview && extra.length) return invalid("proposed", "Pass one proposed JSON value with --value.");
   if (extra.length || (command === "list" ? key !== undefined : !key)
     || (databaseUrl !== undefined && command !== "show" && !preview)
     || (!preview && (values.value !== undefined || values.sku || values.configuration !== undefined || values["as-of"] !== undefined))
     || values.app === "") return invalid();
-  if (databaseUrl !== undefined) {
-    const url = URL.parse(databaseUrl);
-    if (!url?.hostname || !["postgres:", "postgresql:"].includes(url.protocol))
-      return invalid("database-url", databaseUrl ? "Supply a PostgreSQL URL for the intended store." : "Supply a read-capable database URL.");
-  }
+  if (!preview && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (command === "list") return emit(listSettings({ goal: values.goal }), values.goal?.trim() === "" ? 64 : undefined);
   if (command === "explain") return emit(explainSetting(key!));
   if (command !== "show" && !preview) return invalid();
 
   let proposed: unknown;
   if (preview) {
-    if (values.value === undefined) return invalid("proposed", "Pass the proposed JSON with --value.");
-    try { proposed = JSON.parse(values.value === "-" ? await io.readStdin() : values.value); }
+    const [value, ...extraValues] = values.value ?? [];
+    if (value === undefined) return invalid("proposed", "Pass the proposed JSON with --value.");
+    if (extraValues.length) return invalid("value", "Pass --value exactly once.");
+    try { proposed = JSON.parse(value === "-" ? await io.readStdin() : value); }
     catch (error) {
       return emit(refuseSettingsPreview("commerce_setting_preview_json_invalid"), error instanceof SyntaxError ? 64 : 74);
     }
@@ -135,16 +139,19 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       const offline = await showSetting({ key });
       if (!databaseUrl || "refusal" in offline || offline.setting.kind !== "installed") return [offline];
     }
-    if (preview) {
+    const resolveConfiguration = preview && values.configuration !== undefined;
+    if (preview && !resolveConfiguration && !invalidDatabase) {
       const offline = await previewSetting(input);
-      if (offline.refusal.code !== "commerce_setting_preview_connection_required") {
+      if (!databaseUrl || offline.refusal.code !== "commerce_setting_preview_connection_required") {
         return [offline, offline.refusal.code === "commerce_setting_preview_input_invalid" ? 64 : undefined];
       }
-      if (values.configuration !== undefined && !values.app) return [needsApp("configuration")];
     }
-    if (preview && databaseUrl && !host) return [needsApp(), 74];
-    const bindings = (databaseUrl || (values.app && values.configuration !== undefined))
-      ? await host?.bind({ databaseUrl, app: values.app, configuration: values.configuration }) : undefined;
+    if (resolveConfiguration && !values.app) return [needsApp("configuration")];
+    const connectedUrl = invalidDatabase ? undefined : databaseUrl;
+    if (preview && connectedUrl && !host) return [needsApp(), 74];
+    // An explicit configuration can be resolved without a pool, including before a URL refusal.
+    const bindings = (connectedUrl || resolveConfiguration)
+      ? await host?.bind({ databaseUrl: connectedUrl, app: values.app, configuration: values.configuration }) : undefined;
     try {
       if (bindings && "configurationIds" in bindings) {
         const id = values.configuration ?? "";
@@ -153,8 +160,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
         }), 64];
       }
       if (preview) {
-        const result = await previewSetting(input, bindings?.previewers);
+        if (invalidDatabase) return [refuseSettingsPreview("commerce_setting_preview_input_invalid", invalidDatabase), 64];
+        const result = await previewSetting(input, connectedUrl ? bindings?.previewers : undefined);
         if ("refusal" in result) {
+          if (result.refusal.code === "commerce_setting_preview_input_invalid") return [result, 64];
           if (result.refusal.code === "commerce_setting_preview_unexpected") return [result, 74];
           if (databaseUrl && !values.app && result.refusal.code === "commerce_setting_preview_connection_required") return [needsApp()];
         }

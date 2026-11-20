@@ -525,7 +525,9 @@ export function proveSettingsDiscovery(app: string): void {
   const manifest = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
   assert.equal(manifest.scripts?.settings, "openlup settings --app ./owned/settings-host.ts", "extracted starter settings script missing");
   assert(existsSync(join(app, starterSettingsHost)), "extracted starter settings host missing");
-  const result = JSON.parse(execFileSync("npm", ["--silent", "run", "settings", "--", "show", "inventory_renewal_protection", "--json"],
+  // Run the script's own command line through the installed binary's absolute path.
+  const [binary, ...scriptArgs] = String(manifest.scripts.settings).split(" ");
+  const result = JSON.parse(execFileSync(join(app, "node_modules/.bin", binary!), [...scriptArgs, "show", "inventory_renewal_protection", "--json"],
     { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8" }));
   assert.equal(result.schemaVersion, 1);
   assert.equal(result.setting.key, "inventory_renewal_protection");
