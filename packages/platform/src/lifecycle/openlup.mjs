@@ -79,7 +79,7 @@ function formatSettingsPreview(result) {
       : [validation.code, validation.rule, validation.hint, validation.remediation.action, validation.remediation.command]),
     "Existing reservations keep their quantities and expiry times.",
     `New purchase availability: ${effect.newPurchaseAvailability}`,
-    ...effect.skus.map(row => `${row.sku}: ${row.currentAvailableForNewPurchases ?? "unavailable"} currently available (${row.source}${row.stale ? ", stale" : ""})`),
+    ...effect.skus.map(row => `${row.sku}: ${row.currentAvailableForNewPurchases ?? "unavailable"} currently available, ${row.proposedAvailableForNewPurchases ?? "unavailable"} estimated under the proposal (${row.source}${row.stale ? ", stale" : ""})`),
     uncertainty,
   ].join("\n");
 }
