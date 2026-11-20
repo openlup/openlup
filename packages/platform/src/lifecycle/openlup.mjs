@@ -117,7 +117,7 @@ async function main(args) {
       globalThis.console = new Console(process.stderr);
       // eslint-disable-next-line no-restricted-syntax -- tool entry uses the same public preview contract as the catalogue generator
       const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
-      await runSettingsMcp(process.stdin, write, context, host, renewalStockProtectionPreviewResult);
+      await runSettingsMcp(process.stdin, write, { ...context, ...(context.app && { app: resolve(context.app) }) }, host, renewalStockProtectionPreviewResult);
       return;
     }
     // eslint-disable-next-line no-restricted-syntax -- tool entry loads the existing installed server subpath only for settings
