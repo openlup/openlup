@@ -291,10 +291,12 @@ function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; h
   if (!url || url.href !== input) return { path,
     hint: "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use brackets and lowercase hexadecimal without leading zeros for IPv6, compress the first longest run of two or more zero fields to ::, and write a single zero field as 0. Omit the port or use a port from 1 to 65535 without leading zeros, and write an empty password without the colon. Remove whitespace and dot segments." };
   if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return { path, hint: "Use the postgres:// or postgresql:// scheme." };
-  const dnsName = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.?$/u.test(url.hostname);
-  const ipv4Like = /(?:^|\.)[0-9]+\.?$|^(?:(?:[0-9]+|0x[0-9a-f]+)\.)*0x[0-9a-f]+\.?$/u.test(url.hostname);
+  const dnsName = url.hostname.length <= 253 && /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.?$/u.test(url.hostname);
+  const ipv4Like = /(?:^|\.)(?:[0-9]+|0x[0-9a-f]*)\.?$/u.test(url.hostname);
   if (!url.hostname.startsWith("[") && !(dnsName && (!ipv4Like || isIPv4(url.hostname)))) {
-    return { path, hint: "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. Keep each DNS label to 63 characters and end the DNS name with a label that is not all digits. For IPv4, write IPv4 octets in decimal without leading zeros." };
+    return { path, hint: url.hostname
+      ? "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. Keep each DNS label to 63 characters and the name to 253 characters. A DNS name cannot end in an all-digit label, 0x alone, or 0x followed only by hexadecimal digits. For an IPv4 address, write IPv4 octets in decimal without leading zeros."
+      : "Name the TCP host using the postgresql://user@host/database form." };
   }
   const port = Number(url.port || 5432);
   if (port < 1 || port > 65535) return { path, hint: "Omit the PostgreSQL URL port or use a port from 1 to 65535." };

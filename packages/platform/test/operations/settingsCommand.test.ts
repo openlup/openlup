@@ -7,6 +7,7 @@ import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, r
 
 const key = "inventory_renewal_protection";
 const url = "postgresql://sample@read.invalid/shop";
+const fourDnsLabels = Array.from({ length: 4 }, () => "a".repeat(63)).join(".");
 const databaseOptions = {
   host: "read.invalid", port: 5432, user: "sample", password: expect.any(Function), database: "shop", ssl: false,
 };
@@ -101,13 +102,15 @@ it.each([
   ["postgresql scheme", url, {}],
   ["wrong scheme", url.replace("postgresql:", "https:"), "Use the postgres:// or postgresql:// scheme"],
   ["IPv4", url.replace("read.invalid", "192.0.2.1"), { host: "192.0.2.1" }],
-  ...["192.0.2.010", "192.0.010.1", "192.0.2", "192.0.2.256", "read.123", "0xc0000201", "0xc0.0.2.0x1"].map(host =>
+  ...["192.0.2.010", "192.0.010.1", "192.0.2", "192.0.2.256", "read.123", "0xc0000201", "0xc0.0.2.0x1", "0x7f.0x", "read.0xface"].map(host =>
     [`ambiguous IPv4 spelling ${host}`, url.replace("read.invalid", host), "write IPv4 octets in decimal without leading zeros"] as const),
   ["DNS label starting with 0x", url.replace("read.invalid", "read.0xcloud"), { host: "read.0xcloud" }],
   ["63-character DNS label", url.replace("read", "a".repeat(63)), { host: `${"a".repeat(63)}.invalid` }],
   ["64-character DNS label", url.replace("read", "a".repeat(64)), "Keep each DNS label to 63 characters"],
+  ["253-character DNS name", url.replace("read.invalid", fourDnsLabels.slice(2)), { host: fourDnsLabels.slice(2) }],
+  ["255-character DNS name with four 63-character labels", url.replace("read.invalid", fourDnsLabels), "the name to 253 characters"],
   ["IPv6", url.replace("read.invalid", "[2001:db8::1]"), { host: "2001:db8::1" }],
-  ["missing host", url.replace("sample@read.invalid", ""), "Use one lowercase DNS name"],
+  ["missing host", url.replace("sample@read.invalid", ""), "postgresql://user@host/database"],
   ["socket hostname", url.replace("read.invalid", "%2Ffake%2Fsocket"), "Replace an escaped, socket or comma-separated host"],
   ["escaped hostname", url.replace("read", "%72ead"), "Replace an escaped, socket or comma-separated host"],
   ["comma-separated hosts", url.replace("read.invalid", "read.invalid,backup.invalid"), "Replace an escaped, socket or comma-separated host"],
@@ -316,7 +319,7 @@ it.each([
   [["preview", key, "--value", "{}", "--goal", "stock"], ["goal"], "Use --goal with list."],
   [["preview", key, "--value", "{}", "--database-url="], ["database-url"], canonicalUrlHint],
   [["preview", "--database-url="], ["database-url"], canonicalUrlHint],
-  [["preview", key, "--value", "{}", "--database-url", "postgresql:///shop"], ["database-url"], "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. Keep each DNS label to 63 characters and end the DNS name with a label that is not all digits. For IPv4, write IPv4 octets in decimal without leading zeros."],
+  [["preview", key, "--value", "{}", "--database-url", "postgresql:///shop"], ["database-url"], "Name the TCP host using the postgresql://user@host/database form."],
 ] as const)("names the invalid preview argument in %j", async (argv, path, hint) => {
   const { exit, output } = await run([...argv, "--json"]);
   expect(exit).toBe(64);

@@ -349,7 +349,7 @@ it.each([
   ["explicit plaintext", "postgresql://sample@unused.invalid/shop?sslmode=disable", "", false],
   ["verified TLS", "postgresql://sample:fake-secret@unused.invalid:5433/shop?sslmode=verify-full", "fake-secret",
     { rejectUnauthorized: true, host: "unused.invalid" }],
-] as const)("preserves the driver's startup parameters for %s with hostile PG variables", (_, url, password, ssl) => {
+] as const)("preserves the driver's startup parameters for %s after the app sets PG variables", (_, url, password, ssl) => {
   const { directory, write } = fixture();
   const key = "inventory_renewal_protection";
   const app = "settings-startup-fixture.mjs";
@@ -358,12 +358,14 @@ it.each([
     pg.Client.prototype.connect = () => { throw new Error("settings fixture must not connect"); };`);
   write(app, `import assert from "node:assert/strict";
     import pg from ${pgModule};
+    process.env.PGSSLNEGOTIATION = "direct";
+    process.env.PGOPTIONS = "-c application_name=fake-import";
     export function createSettingsBindings({ db }) {
+      const admitted = new db.Client(db.options);
       assert.equal(Object.keys(process.env).some(name => /^PG/i.test(name)), false);
       // defaults.js captured an OS user before the launcher ran.
       assert.equal(pg.defaults.user, "fake-cached-os-user");
       const base = new pg.Client({ connectionString: ${JSON.stringify(url)} });
-      const admitted = new pg.Client(db.options);
       assert.deepEqual(admitted.getStartupConf(), base.getStartupConf());
       assert.deepEqual(admitted.getStartupConf(), { user: "sample", database: "shop" });
       const { host, port, user, database, ssl, binary, password } = admitted;
@@ -373,6 +375,8 @@ it.each([
       });
       assert.equal(typeof password, ${JSON.stringify(password ? "string" : "function")});
       assert.equal(typeof password === "function" ? password() : password, ${JSON.stringify(password)});
+      process.env.PGOPTIONS = "-c application_name=fake-later-client";
+      assert.deepEqual(new db.Client(db.options).getStartupConf(), base.getStartupConf());
       return { readers: { ${key}: () => ({ present: false }) } };
     }`);
   const result = spawnSync(process.execPath, ["--import", join(directory, "preload.mjs"),
