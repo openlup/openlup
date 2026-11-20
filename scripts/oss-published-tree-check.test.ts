@@ -567,8 +567,9 @@ describe("complete public CI", () => {
     const browser = workflowJob("install-browser"), aggregate = workflowJob("install-proof");
     const eventFence = workflowJob("dco").split("\n").find(line => line.startsWith("    if:"))!;
     const reuseFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && ");
+    const browserFence = eventFence.replace("${{ ", "${{ always() && needs.install-packages.result == 'success' && ");
     expect(workflowJob("install-packages").split("\n").find(line => line.startsWith("    if:"))).toBe(reuseFence);
-    expect(browser.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence);
+    expect(browser.split("\n").find(line => line.startsWith("    if:"))).toBe(browserFence);
     expect(aggregate.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(browser).toContain("needs: [install-packages]");
     expect(workflowJob("install-packages")).toContain("outputs:\n      reuse: ${{ needs.reuse-gate.outputs.reuse }}");
@@ -784,7 +785,9 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
     const reusePredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && ");
-    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(4);
+    const browserPredicate = predicate.replace("${{ ", "${{ always() && needs.install-packages.result == 'success' && ");
+    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(3);
+    expect(workflow.split("\n").filter((line) => line === browserPredicate)).toHaveLength(1);
     expect(workflow.split("\n").filter((line) => line === reusePredicate)).toHaveLength(3);
     for (const job of ["dco", "self-check", "gitleaks"]) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
     for (const job of ["typecheck", "install-packages", "pgtap"]) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n    needs: [reuse-gate]\n${reusePredicate}\n`);
