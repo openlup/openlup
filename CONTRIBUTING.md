@@ -1873,7 +1873,7 @@ to this repository with no bypass; its private key stays in the main-only
 Handoff's built-in workflow token is read-only. Activation and settings remain
 maintainer actions.
 
-Admission waits up to twenty minutes for a receipt after the six mechanical
+Admission waits up to three minutes for a receipt after the six mechanical
 checks pass. Where it is activated, a new receipt comment from an owner, member
 or collaborator with write, maintain or admin permission starts the trusted
 [receipt rerun](.github/workflows/native-review-receipt-rerun.yml). It reruns the

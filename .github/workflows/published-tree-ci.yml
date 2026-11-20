@@ -553,7 +553,7 @@ jobs:
     if: ${{ always() && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && github.event.repository.private == false && (github.event_name == 'merge_group' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [dco, typecheck, install-proof, test, self-check, gitleaks]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 8
     permissions:
       issues: read
       contents: read
@@ -582,6 +582,7 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24.21.0
+          package-manager-cache: false
       - name: Await exact-candidate native review
         env:
           GH_TOKEN: ${{ github.token }}
