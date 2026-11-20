@@ -308,7 +308,7 @@ describe('CI completion queue handoff', () => {
     ['wrong check run', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.run_id++; }],
     ['future check attempt', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.run_attempt++; }],
     ['truncated jobs', (f: ReturnType<typeof handoffFixture>) => { f.result.total_count++; }],
-  ])('refuses %s without a mutation or polling', async (_name, change) => {
+  ])('refuses %s without enqueueing', async (_name, change) => {
     const f = handoffFixture(); change(f);
     await expect(f.execute()).rejects.toThrow(); expect(f.enqueue).not.toHaveBeenCalled();
     expect(f.api.get.mock.calls.filter(([path]) => path.includes('/issues/')).length).toBeLessThanOrEqual(1);
@@ -390,6 +390,40 @@ describe('CI completion queue handoff', () => {
     expect(f.liveReads()).toBe(3);
     expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
     expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['a newer same-head run', 'a newer source run or attempt supersedes this completion'],
+    ['a new attempt of the current run', 'source run or attempt changed'],
+    ['the same source run and attempt', undefined],
+  ])('rechecks source currency after final UNKNOWN clears with %s', async (scenario, refusal) => {
+    const f = handoffFixture();
+    f.state.getHook = path => {
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 2 ? 'UNKNOWN' : 'MERGEABLE';
+    };
+    f.pauseMergeability.mockImplementationOnce(async () => {
+      if (scenario === 'a newer same-head run') {
+        f.listing.workflow_runs.push({ ...f.run, id: 101, conclusion: 'failure' });
+        f.listing.total_count++;
+      }
+      if (scenario === 'a new attempt of the current run') f.run.run_attempt++;
+    });
+    if (refusal) {
+      await expect(f.execute()).rejects.toThrow(refusal);
+      expect(f.liveReads()).toBe(3);
+      expect(f.enqueue).not.toHaveBeenCalled();
+    } else {
+      await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+      expect(f.enqueue).toHaveBeenCalledTimes(1);
+      const graphQL = expect.stringContaining('/graphql?');
+      expect(f.api.get.mock.calls.slice(-5)).toEqual([
+        [graphQL],
+        ['/repos/openlup/openlup/actions/runs/100'],
+        [expect.stringContaining('/actions/workflows/published-tree-ci.yml/runs?')],
+        ['/repos/openlup/openlup/collaborators/merge-owner/permission'],
+        [graphQL],
+      ]);
+    }
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
   });
   it('bounds pauses independently across both mergeability checks', async () => {
     const f = handoffFixture();

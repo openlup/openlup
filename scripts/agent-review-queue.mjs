@@ -264,6 +264,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     demand(currentIntent.enabledAt === intent.enabledAt && currentIntent.enabledBy?.login === login,
       'mergeability or auto-merge authority changed before enqueue');
   });
+  await sourceCurrent();
   if (!pr) return skipped;
   if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
   const finalAccess = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
