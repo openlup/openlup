@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { settingDescriptorSchema as descriptor, fileObservationSchema, settingDescriptorSummary, settingRefusalSchema } from "./toolSchema.js";
+import { settingDescriptorSchema as descriptor, settingDescriptorSummary, settingRefusalSchema } from "./toolSchema.js";
 
 export const settingsVersion = 1;
 const packageData = (name: string): unknown =>
@@ -20,10 +20,9 @@ const observedValue = z.strictObject({
 });
 const observationSchema = z.discriminatedUnion("state", [
   observedValue,
-  fileObservationSchema,
   z.strictObject({ state: z.literal("fallback"), value: z.json() }),
   z.strictObject({ state: z.literal("absent"), absentMeans: z.string(), source: z.string(), value: z.json() }),
-  z.strictObject({ state: z.literal("offline"), note: z.string().optional() }),
+  z.strictObject({ state: z.literal("offline") }),
 ]);
 function readSettingsCatalogue() {
   const { entries, searchTerms, previewOutputSchema } = z.strictObject({
@@ -54,7 +53,7 @@ function readSettingsCatalogue() {
     value.required({ schema: true, previewSchema: true }).extend({ key }), ...facts.map(branch => branch.extend({ key })),
   ]);
   const showRequest = z.strictObject({ key });
-  const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema, fileObservation: fileObservationSchema.optional() });
+  const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema });
   const listResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), entries: z.array(summary) });
   return { entries, searchTerms, previewOutputSchema, byCode, refusalSchema, showRequest, showResult, listResult };
 }

@@ -22,8 +22,8 @@ run `./node_modules/.bin/openlup-context search "renewal stock protection horizo
 
 ## Read the effective behavior
 
-Without a reported file value, an offline result describes the catalogue
-default. For inventory and reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
+An offline result reports catalogue defaults. For inventory and reminders, a
+connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
 inventory row uses the platform fallback. For unpinned reminder episodes, an
@@ -36,40 +36,39 @@ validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, pass
 `explain checkout_recovery_reminders` to the settings script.
 
-## Check owned configuration after an edit
+## Check owned configuration before proposing a change
 
-From the starter root, pass `check --configuration <id>` to the settings script
-documented in the application’s `AGENTS.md`.
-The command reads the selected configuration through the existing settings app
-binding. It opens no database connection, performs no writes and leaves drift
-checking to startup. For an installed key that supports preview, run `preview`
-separately to estimate what the change would do against a store.
+1. Use `list --goal <words>` to find the key.
+2. Run `check --configuration <id>` with the starter's settings script to read
+   values from the selected owned configuration and find their locations.
+3. Edit the owned configuration and rerun `check`.
+4. For an installed setting with preview support, run a separate connected
+   `preview` if you need to estimate the effect on a store. Open a pull request
+   with the file change and the check results.
 
-Use `show <key> --configuration <id>` to find a value before editing it.
-For a reported key, `show` gives the loaded file value and the location supplied
-by the app, if any. A starter catalogue reference describes where the starter
-keeps the setting. The JSON `observation.state` is `file` for an offline file value.
-A connected installed read keeps its store value in `observation` and puts
-the file value in `fileObservation`. When the app does not report the key,
-text output says “No file value reported.” If the binding fails to load offline,
-`show` still returns the catalogue result with a note about the failure.
+Check uses the settings app binding offline. It opens no database connection
+and performs no writes. Installed rows say “Store: not checked.” The starter
+checks installed policies for drift at boot. Check prints an app-supplied
+location or labels the available starter catalogue reference separately.
 
-Check runs the application's startup validation when the binding supplies it
-and shows its result separately. Each code or installed row reports whether a
-file value was supplied, the packaged schema result and how the change takes
-effect. Missing values and entries without an executable schema are not
-validated against the catalogue. A passed check covers reported values that have
-an executable schema and the application's startup validation when supplied.
-Check fails if the binding reports an unknown catalogue key. Installed rows say
-“Store: not checked.”
+Check reports the application's startup validation when supplied and the
+packaged schema result for each reported JSON value with an executable schema.
+A file value that cannot be represented as JSON is reported as unreportable
+and fails check without a schema verdict. Bindings for keys outside the
+catalogue are ignored. Each row uses the catalogue's effect and change text.
 
-With `--json`, check returns one version-1 document. It exits 0 when checked
-and 1 if startup or a reported value fails validation. Exit 2 means the binding
-loaded without file values support. Add `file: { configuration, entries }` to
-the return value of your existing `createSettingsBindings` function and rerun.
-Use `validate` on that member to call the same assertion the app runs at startup.
-Invalid usage and unknown configuration IDs exit 64. A binding that cannot be
-loaded exits 74. Use `preview` instead if you need `--database-url`.
+With `--json`, check emits one version-1 document. Exit 0 means checked and
+exit 1 means invalid. If importing the selected module or calling its binding
+factory throws, check exits 1 with the configuration rejection and a bounded
+single-line cause. A missing module or binding factory exits 74 with a hint
+to check the path and export. Invalid arguments and unknown configurations
+exit 64.
+
+Exit 2 means the binding has no `file` member. Add
+`file: { configuration, entries }` to the return value of your existing
+`createSettingsBindings` and rerun. Use `validate` on that member to call the
+same assertion the app runs at startup. For connected effects, use
+`preview` with `--database-url`.
 
 ## Preview before changing a setting
 
@@ -116,8 +115,8 @@ The starter's settings script calls the experimental package command and passes
 `--app ./owned/settings-host.ts`. Set the script to
 `openlup settings --app ./owned/settings-host.ts` in a composed app with the same
 layout. The module exports one function, `createSettingsBindings({ db, configuration })`.
-It can supply read-only readers, previewers, a stock source key and file values
-for the selected configuration. If the requested ID is unknown, return
+It supplies read-only readers, previewers or a stock source key for the selected
+configuration. If the requested ID is unknown, return
 `{ configurationIds: [...] }` with the available IDs. The CLI owns the
 database connection and calls the module without a pool when resolving
 `--configuration` offline. The module must avoid starting the application,
@@ -133,9 +132,8 @@ command requests a binding, or omit the URL to read the catalogue offline.
 
 Use `--value -` to read one JSON value from stdin. Use `--value=-1` when
 passing a negative number directly. The command exits with 0 on completion,
-including a preview that reports an invalid policy, 1 for a refusal or failed
-check, 2 when check has no file binding, 64 for invalid syntax or input, and 74
-for an unavailable operation or app module.
+including a preview that reports an invalid policy, 1 for a refusal, 64 for
+invalid syntax or input, and 74 for an unavailable operation or app module.
 Use `--json` to get one settings document with `schemaVersion: 1` on stdout.
 
 ## Modes and runtime levels
@@ -167,7 +165,7 @@ and whether retrying can help.
 | `commerce_setting_unknown` | Find the installed key with `list`. |
 | `commerce_setting_refusal_unknown` | Check the exact refusal code from this version. |
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
-| `commerce_setting_read_unavailable` | Follow the hint. Check the app module and its bindings for file reads, or the store connection and read access for a connected read. |
+| `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
 | `commerce_setting_preview_connection_required` | Use a read-capable connection to the intended store and supply the app bindings if requested. |
 | `commerce_setting_preview_unsupported` | Use `show` for value details or a reason and reference. |
 | `commerce_setting_preview_json_invalid` | Correct the proposed JSON. |

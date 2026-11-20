@@ -541,28 +541,21 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
 }
 
 /** Smoke the installed starter script; command semantics belong to package unit tests. */
-export function proveSettingsDiscovery(app: string, requireFileValues = false): void {
+export function proveSettingsDiscovery(app: string, execute = (command: string, args: string[], cwd: string) =>
+  execFileSync(command, args, { cwd, env: isolatedConsumerEnv(), encoding: "utf8" })): void {
   const manifest = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
   assert.equal(manifest.scripts?.settings, "openlup settings --app ./owned/settings-host.ts", "extracted starter settings script missing");
   assert(existsSync(join(app, starterSettingsHost)), "extracted starter settings host missing");
   // Run the script's own command line through the installed binary's absolute path.
   const [binary, ...scriptArgs] = String(manifest.scripts.settings).split(" ");
-  const settings = (...args: string[]) => JSON.parse(execFileSync(join(app, "node_modules/.bin", binary!), [...scriptArgs, ...args, "--json"],
-    { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8" }));
-  const key = "inventory_renewal_protection";
-  const result = settings("show", key);
-  assert.equal(result.schemaVersion, 1);
-  assert.equal(result.setting.key, key);
-  if (!requireFileValues && result.observation.state === "offline") return; // A retained release can predate file bindings.
-  assert.equal(result.observation.state, "file");
-  if (requireFileValues) assert.deepEqual(result.observation.location,
-    { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" });
-  const checked = settings("check", "--configuration", result.observation.configuration);
+  const checked = JSON.parse(execute(join(app, "node_modules/.bin", binary!), [...scriptArgs, "check", "--json"], app));
+  assert.equal(checked.schemaVersion, 1);
   assert.equal(checked.state, "checked");
-  if (requireFileValues) assert.equal(checked.appValidation.state, "passed");
-  const stock = checked.rows.find((row: { key: string }) => row.key === key);
-  const { state: _state, configuration: _configuration, ...reported } = result.observation;
-  assert.deepEqual(stock?.file, { state: "present", ...reported });
+  assert.equal(checked.appValidation.state, "passed");
+  const stock = checked.rows.find((row: { key: string }) => row.key === "inventory_renewal_protection");
+  assert.equal(stock?.file.state, "present");
+  assert.deepEqual(stock?.file.location, { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" });
+  assert.deepEqual(stock?.validation, { state: "valid" });
   assert.deepEqual(stock?.store, { state: "not-checked" });
 }
 

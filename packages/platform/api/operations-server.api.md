@@ -258,7 +258,7 @@ export declare function runPlatformWatchdog<Snapshot extends WatchdogSnapshot, C
 ## dist/operations/server/settingsCommand.d.ts
 
 ```ts
-import { type SettingsFileBinding, type SettingPreviewer, type SettingReader } from "./settingsRead.js";
+import { type SettingPreviewer, type SettingReader } from "./settingsRead.js";
 type PreviewDocument = {
     schemaVersion: 1;
 };
@@ -267,7 +267,17 @@ export type SettingsAppBindings = {
     readers?: Readonly<Record<string, SettingReader>>;
     previewers?: Readonly<Record<string, SettingPreviewer<PreviewDocument>>>;
     stockSourceKey?: string;
-    file?: SettingsFileBinding;
+    file?: {
+        configuration: string;
+        entries: Readonly<Record<string, {
+            value: unknown;
+            location?: {
+                file: string;
+                symbol: string;
+            };
+        }>>;
+        validate?: () => void | Promise<void>;
+    };
 } | {
     configurationIds: readonly string[];
 };
@@ -279,6 +289,10 @@ type SettingsHost = {
     }): Promise<SettingsAppBindings & {
         close?(): Promise<void>;
     }>;
+    loadCheck?(input: {
+        app: string;
+        configuration?: string;
+    }): Promise<SettingsAppBindings | undefined>;
     formatPreview?(result: PreviewDocument): string;
 };
 type SettingsIo = {
@@ -293,17 +307,14 @@ export {};
 
 ```ts
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
-import { fileObservationSchema, settingsCheckResult } from "./toolSchema.js";
 import { z } from "zod";
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
 type ListResult = {
     schemaVersion: 1;
     entries: Pick<SettingDescriptor, "key" | "goal" | "kind" | "runtime" | "change">[];
 };
-type FileObservation = z.infer<typeof fileObservationSchema>;
-type Observation = FileObservation | {
+type Observation = {
     state: "offline";
-    note?: string;
 } | {
     state: "fallback";
     value: JsonValue;
@@ -321,18 +332,6 @@ type ShowResult = {
     schemaVersion: 1;
     setting: SettingDescriptor;
     observation: Observation;
-    fileObservation?: FileObservation;
-};
-export type SettingsFileBinding = {
-    configuration: string;
-    entries: Readonly<Record<string, {
-        value: unknown;
-        location?: {
-            file: string;
-            symbol: string;
-        };
-    }>>;
-    validate?: () => void | Promise<void>;
 };
 /** @experimental The host observes an installed row using its own authorized reader. */
 export type SettingReader = () => Promise<{
@@ -349,8 +348,8 @@ export type SettingReader = () => Promise<{
 export declare function listSettings(input: unknown): ListResult | {
     refusal: SettingRefusal;
 };
-/** @experimental Describe a setting and its reported file or installed value. */
-export declare function showSetting(input: unknown, readers?: Readonly<Record<string, SettingReader>>, file?: SettingsFileBinding): Promise<ShowResult | {
+/** @experimental Describe the key and, when a reader is supplied, its observed installed value. */
+export declare function showSetting(input: unknown, readers?: Readonly<Record<string, SettingReader>>): Promise<ShowResult | {
     refusal: SettingRefusal;
 }>;
 /** @experimental Explain a refusal code or the offline behavior when a key is absent. */
@@ -387,8 +386,6 @@ export type SettingPreviewer<Result extends {
 export declare function previewSetting<Result extends {
     schemaVersion: 1;
 } = never>(input: unknown, previewers?: Readonly<Record<string, SettingPreviewer<Result>>>): Promise<Result | PreviewRefusal>;
-type CheckDocument = z.infer<typeof settingsCheckResult>;
-export declare function checkFileSettings(file?: SettingsFileBinding): Promise<CheckDocument>;
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export declare const settingsReadTools: readonly [{
     readonly name: "settings__list";
@@ -546,98 +543,4 @@ export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObj
 }, z.core.$strict>;
 /** @experimental Derive the success/refusal union and advertise the object root required by MCP. */
 export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>, schemaVersion?: 1): Record<string, unknown>;
-export declare const fileObservationSchema: z.ZodObject<{
-    value: z.ZodJSONSchema;
-    location: z.ZodOptional<z.ZodObject<{
-        file: z.ZodString;
-        symbol: z.ZodString;
-    }, z.core.$strict>>;
-    catalogueReference: z.ZodOptional<z.ZodObject<{
-        file: z.ZodString;
-        symbol: z.ZodString;
-    }, z.core.$strict>>;
-    state: z.ZodLiteral<"file">;
-    configuration: z.ZodString;
-}, z.core.$strict>;
-export declare const settingsCheckResult: z.ZodObject<{
-    schemaVersion: z.ZodLiteral<1>;
-    configuration: z.ZodNullable<z.ZodString>;
-    state: z.ZodEnum<{
-        invalid: "invalid";
-        unknown: "unknown";
-        checked: "checked";
-    }>;
-    appValidation: z.ZodDiscriminatedUnion<[z.ZodObject<{
-        state: z.ZodLiteral<"passed">;
-    }, z.core.$strict>, z.ZodObject<{
-        state: z.ZodLiteral<"failed">;
-        message: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        state: z.ZodLiteral<"not-provided">;
-        hint: z.ZodOptional<z.ZodString>;
-    }, z.core.$strict>], "state">;
-    rows: z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
-        key: z.ZodString;
-        file: z.ZodDiscriminatedUnion<[z.ZodObject<{
-            value: z.ZodOptional<z.ZodUnknown>;
-            location: z.ZodOptional<z.ZodObject<{
-                file: z.ZodString;
-                symbol: z.ZodString;
-            }, z.core.$strict>>;
-            catalogueReference: z.ZodOptional<z.ZodObject<{
-                file: z.ZodString;
-                symbol: z.ZodString;
-            }, z.core.$strict>>;
-            state: z.ZodLiteral<"present">;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"not-reported">;
-        }, z.core.$strict>], "state">;
-        validation: z.ZodDiscriminatedUnion<[z.ZodObject<{
-            state: z.ZodLiteral<"valid">;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"invalid">;
-            paths: z.ZodArray<z.ZodArray<z.ZodString>>;
-            message: z.ZodOptional<z.ZodString>;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"not-validated">;
-        }, z.core.$strict>], "state">;
-        effect: z.ZodString;
-        takesEffect: z.ZodString;
-        kind: z.ZodLiteral<"code">;
-    }, z.core.$strict>, z.ZodObject<{
-        key: z.ZodString;
-        file: z.ZodDiscriminatedUnion<[z.ZodObject<{
-            value: z.ZodOptional<z.ZodUnknown>;
-            location: z.ZodOptional<z.ZodObject<{
-                file: z.ZodString;
-                symbol: z.ZodString;
-            }, z.core.$strict>>;
-            catalogueReference: z.ZodOptional<z.ZodObject<{
-                file: z.ZodString;
-                symbol: z.ZodString;
-            }, z.core.$strict>>;
-            state: z.ZodLiteral<"present">;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"not-reported">;
-        }, z.core.$strict>], "state">;
-        validation: z.ZodDiscriminatedUnion<[z.ZodObject<{
-            state: z.ZodLiteral<"valid">;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"invalid">;
-            paths: z.ZodArray<z.ZodArray<z.ZodString>>;
-            message: z.ZodOptional<z.ZodString>;
-        }, z.core.$strict>, z.ZodObject<{
-            state: z.ZodLiteral<"not-validated">;
-        }, z.core.$strict>], "state">;
-        effect: z.ZodString;
-        takesEffect: z.ZodString;
-        kind: z.ZodLiteral<"installed">;
-        store: z.ZodObject<{
-            state: z.ZodLiteral<"not-checked">;
-        }, z.core.$strict>;
-        note: z.ZodString;
-    }, z.core.$strict>], "kind">>;
-    unknownKeys: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    unknownKeysHint: z.ZodOptional<z.ZodString>;
-}, z.core.$strict>;
 ```

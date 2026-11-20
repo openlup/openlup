@@ -1,4 +1,4 @@
-### Report the starter configuration to settings show and check
+### Report the starter configuration to settings check
 
 The target extraction includes the file binding in `owned/settings-host.ts`.
 When that path is absent, include its creation under the existing settings

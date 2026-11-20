@@ -7,23 +7,6 @@ import { explainSetting, listSettings, previewSetting, refuseSettingsPreview, se
 import { loadSettingsCatalogue, settingsListRequest } from "../../src/operations/server/settingsCatalog.js";
 import { z } from "zod";
 
-it("converts every executable packaged file schema and accepts its defaults and examples", () => {
-  const withoutSchema: string[] = [];
-  for (const entry of loadSettingsCatalogue().entries) {
-    if (entry.kind !== "code" && entry.kind !== "installed") continue;
-    if (!entry.schema) {
-      withoutSchema.push(entry.key);
-      continue;
-    }
-    const schema = z.fromJSONSchema(entry.schema);
-    expect(schema.safeParse(entry.fallback).success, entry.key).toBe(true);
-    for (const example of entry.examples) {
-      if (!example.code) expect(schema.safeParse(example.value).success, entry.key).toBe(true);
-    }
-  }
-  expect(withoutSchema).toEqual(["checkout_recovery_reminders", "subscriber_winback_policy"]);
-});
-
 describe("renewal stock policy descriptor", () => {
   it("matches the previous validator's acceptance, normalized value and refusal code", () => {
     const revision = " store-1 ";
@@ -339,21 +322,4 @@ it("matches the pinned serialized schemas of the list and show settings tools", 
     .filter(({ name }) => name === "settings__list" || name === "settings__show")
     .map(({ name, inputSchema, outputSchema }) => ({ name, inputSchema, outputSchema }));
   expect(JSON.stringify(schemas) + "\n").toBe(expected);
-});
-
-it.each([
-  ['{"__proto__":{"sample":true}}', ["__proto__"]],
-  ['{"classic":{"__proto__":{"sample":true}}}', ["classic", "__proto__"]],
-] as const)("returns the same file object with own keys from the read entry: %s", async (raw, path) => {
-  const key = "subscriptionOffers.deliveryCycles";
-  const value = JSON.parse(raw);
-  const shown = await showSetting({ key }, {}, { configuration: "sample", entries: { [key]: { value } } });
-  if ("refusal" in shown || shown.observation.state !== "file") throw new Error("Expected file observation");
-  expect(shown.observation.value).toBe(value);
-  expect(JSON.stringify(shown.observation.value)).toBe(raw);
-  let property: unknown = shown.observation.value;
-  for (const name of path) {
-    expect(Object.hasOwn(property as object, name)).toBe(true);
-    property = (property as Record<string, unknown>)[name];
-  }
 });
