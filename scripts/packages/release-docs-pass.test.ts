@@ -9,10 +9,10 @@ import { isGuidePage, validateGuidePage } from "../oss-publication-policy.ts";
 const report = (source: string) => `# API report\n\n\`\`\`ts\n${source}\`\`\`\n`;
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-const api = "packages/core/api/core.api.md", catalog = "config/openlup-publication-catalog.json";
+const api = "packages/core/api/core.api.md", peer = "packages/core/api/peer.api.md", catalog = "config/openlup-publication-catalog.json";
 const guide = "packages/core/docs/guide/how-to/change.md", routed = "packages/core/docs/guide/reference/api.md";
 
-function fixture() {
+function fixture(reports = { [api]: report("// API\nexport declare const oldName: string;\nexport declare const kept: string;\n") }) {
   const root = mkdtempSync(join(tmpdir(), "release-docs-pass-")); roots.push(root);
   const write = (path: string, source: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), source); };
   const git = (...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8" }).trim();
@@ -24,7 +24,7 @@ function fixture() {
     { id: "catalog", when: "Catalogue", paths: [catalog], doc: "docs/platform/DISTRIBUTION.md", anchor: "" },
     { id: "docs", when: "Other documentation", paths: ["**"], doc: "docs/platform/DOCUMENTATION.md", anchor: "" },
   ] }));
-  write(api, report("// API\nexport declare const oldName: string;\nexport declare const kept: string;\n"));
+  for (const [path, source] of Object.entries(reports)) write(path, source);
   write(catalog, "{}\n");
   write("docs/platform/API.md", "# API\n\n## API\n");
   write("docs/platform/old.md", "# Previous page\n");
@@ -110,7 +110,7 @@ describe("release documentation listing", () => {
     expect(formatReleaseDocumentation(listing)).toContain("The previous release could not be determined");
     const page = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
     expect(page.text).toContain("## API changes\n\nThe previous release could not be determined");
-    expect(page.text).not.toContain("No API reports changed"); expect(page.violations).toEqual([]);
+    expect(page.text).not.toContain("No API declarations changed"); expect(page.violations).toEqual([]);
   });
 });
 
@@ -149,7 +149,7 @@ describe("upgrade page assembly", () => {
     const result = assembleUpgradePage({ root: f.root, version: "0.5.0", since: "openlup-core-v0.4.0", fragments: [
       { path: "packages/core/changes/one.md", contents: "- B2B support.\n- W99 task.\n- [Owner](../../../../../../CONTRIBUTING.md).\n" },
     ] });
-    expect(result.text).not.toContain("[upgrade procedure]"); expect(result.text).toContain("No API reports changed since the previous release.");
+    expect(result.text).not.toContain("[upgrade procedure]"); expect(result.text).toContain("No API declarations changed since the previous release.");
     expect(result.violations).toEqual([expect.stringContaining("task or milestone ID): W99"), expect.stringContaining("leaves the guide")]);
   });
 
@@ -159,36 +159,47 @@ describe("upgrade page assembly", () => {
     expect(text).toContain(`### \`${api}\``); expect(text).toContain("export declare const oldName"); expect(text).toContain("export declare const send");
   });
 
-  it("omits declarations moved to another subpath snapshot or deduplicated there", () => {
-    const f = fixture(), peer = "packages/core/api/peer.api.md";
-    const moved = "## dist/moved.d.ts\n" + report("export declare const moved: string;\n");
+  it.each(["", "export declare function moved(value: number): void;"])("omits moved and deduplicated declarations but lists a removed overload (%s)", (removed) => {
+    const kept = "export declare function moved(value: string): void;";
+    const moved = (overloads: string) => "## dist/moved.d.ts\n" + report(overloads);
     const shared = "## dist/shared.d.ts\n" + report("export declare const shared: string;\n");
-    f.write(api, moved + shared);
-    f.write(peer, shared);
-    f.commit(); f.git("tag", "-f", "openlup-core-v0.4.0");
-    f.write(api, report(""));
-    f.write(peer, moved + shared);
-    f.commit();
-
+    const f = fixture({ [api]: moved(`${kept}\n${removed}\n`) + shared, [peer]: shared });
+    f.write(api, report("")); f.write(peer, moved(`${kept}\n`) + shared); f.commit();
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
-    expect(text).toContain("No API declarations changed since the previous release.");
-    expect(text).not.toMatch(/\b(?:moved|shared): string/u);
+    if (removed) expect(text).toContain(`### \`${api}\`\n\nRemoved declarations:\n\n\`\`\`ts nocheck\n// API report diff: not compiled.\n${removed}\n`);
+    else expect(text).toContain("No API declarations changed since the previous release.");
+    expect(text).not.toContain(kept); expect(text).not.toContain("shared: string"); expect(text).not.toContain(peer);
   });
 
-  it("lists a changed signature under the subpath carrying the new declaration", () => {
-    const f = fixture(), peer = "packages/core/api/peer.api.md";
-    f.write(api, "## dist/core.d.ts\n" + report("export declare const oldName: string;\n"));
+  it("lists a changed signature under the report carrying the new declaration", () => {
+    const declaration = (type: string) => "## dist/core.d.ts\n" + report(`export declare const oldName: ${type};\n`);
     const independent = "## dist/peer.d.ts\n" + report("export declare const oldName: string;\n");
-    f.write(peer, independent);
-    f.commit(); f.git("tag", "-f", "openlup-core-v0.4.0");
-    f.write(api, report(""));
-    f.write(peer, independent + "## dist/core.d.ts\n" + report("export declare const oldName: number;\n"));
-    f.commit();
-
+    const f = fixture({ [api]: declaration("string"), [peer]: independent });
+    f.write(api, report("")); f.write(peer, independent + declaration("number")); f.commit();
     const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
     expect(text).toContain(`### \`${peer}\`\n\nChanged declarations:`);
     expect(text).toContain("export declare const oldName: number;");
-    expect(text).not.toContain(api);
+    expect(text).toContain(`### \`${api}\`\n\nRemoved declarations:`);
+  });
+
+  it.each([false, true])("names a new subpath with existing declarations (rename: %s)", (rename) => {
+    const snapshot = (name: string) => `# ./${name} API declaration snapshot\n\n## dist/shared.d.ts\n` + report("export declare const shared: string;\n");
+    const f = fixture(rename ? { [api]: snapshot("old"), [peer]: snapshot("peer") } : { [peer]: snapshot("peer") });
+    f.write(api, snapshot("new")); f.commit();
+    const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
+    expect(text).toContain("Added package subpath `./new`.");
+    expect(text.includes("Removed package subpath `./old`.")).toBe(rename);
+    expect(text).toContain("No API declarations changed since the previous release.");
+    expect(text).not.toContain("shared: string");
+  });
+
+  it("lists identical headingless declarations independently in different reports", () => {
+    const declaration = report("export declare const shared: string;\n");
+    const f = fixture({ [api]: declaration, [peer]: report("") });
+    f.write(peer, declaration); f.commit();
+    const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
+    expect(text).toContain(`### \`${peer}\`\n\nAdded declarations:`);
+    expect(text).toContain("export declare const shared: string;");
   });
 
   it("compares added, removed, changed and unchanged declaration blocks across fences", () => {
@@ -210,8 +221,8 @@ describe("upgrade page assembly", () => {
     ].join("\r\n"));
     expect(summarizeApiDiff(before, after)).toEqual({
       added: ["export type Added = string;", "export { next };"],
-      removed: ["export type Removed = string;", "export { previous };"],
-      changed: ["export interface Updated {", "export declare function overload(value: string): void;", "export declare function overload(value: boolean): void;"],
+      removed: ["export interface Updated {", "export type Removed = string;", "export declare function overload(value: number): void;", "export { previous };"],
+      changed: ["export interface Updated {", "export declare function overload(value: boolean): void;"],
     });
     expect(summarizeApiDiff(before, before)).toEqual({ added: [], removed: [], changed: [] });
   });
@@ -222,8 +233,8 @@ describe("upgrade page assembly", () => {
     expect(summarizeApiDiff(source, "")).toEqual({ added: [], removed: ["export interface Repeated {"], changed: [] });
     expect(summarizeApiDiff(source, source + source)).toEqual({ added: [], removed: [], changed: [] });
     const changed = source.replaceAll("field: string", "field: number");
-    expect(summarizeApiDiff(source, changed)).toEqual({ added: [], removed: [], changed: ["export interface Repeated {"] });
-    expect(summarizeApiDiff(report("declare const internal: string;\n"), report("declare const internal: number;\n"))).toEqual({ added: [], removed: [], changed: ["declare const internal: number;"] });
+    expect(summarizeApiDiff(source, changed)).toEqual({ added: [], removed: ["export interface Repeated {"], changed: ["export interface Repeated {"] });
+    expect(summarizeApiDiff(report("declare const internal: string;\n"), report("declare const internal: number;\n"))).toEqual({ added: [], removed: ["declare const internal: string;"], changed: ["declare const internal: number;"] });
   });
 
   it.each([
@@ -242,13 +253,13 @@ describe("upgrade page assembly", () => {
     ["export default class Value { field: string; }", "export default class Value { field: number; }"],
     ["async function value(): Promise<string>;", "async function value(): Promise<number>;"],
   ])("starts a block at a top-level declaration: %s", (before, after) => {
-    expect(summarizeApiDiff(report(`${before}\n`), report(`${after}\n`))).toEqual({ added: [], removed: [], changed: [after] });
+    expect(summarizeApiDiff(report(`${before}\n`), report(`${after}\n`))).toEqual({ added: [], removed: [before], changed: [after] });
   });
 
   it("keeps comments with the following declaration and reports declaration first lines", () => {
     const before = report("// Standalone comment\n\nexport type Kept = string;\n/** Previous description.\n * More detail.\n */\n// Detail\ntype Updated = string;\n");
     const after = before.replace("Previous description", "Updated description").replace("More detail", "New detail").replace("// Detail", "// New detail");
-    expect(summarizeApiDiff(before, after)).toEqual({ added: [], removed: [], changed: ["type Updated = string;"] });
+    expect(summarizeApiDiff(before, after)).toEqual({ added: [], removed: ["type Updated = string;"], changed: ["type Updated = string;"] });
     expect(summarizeApiDiff("", report("// Comment\n/** Description */\n"))).toEqual({ added: [], removed: [], changed: [] });
   });
 
@@ -266,7 +277,8 @@ describe("upgrade page assembly", () => {
     const source = execFileSync("git", ["show", "openlup-core-v0.40.0:packages/platform/api/communications-klaviyo.api.md"], { encoding: "utf8" });
     expect(source).toContain(before);
     const result = summarizeApiDiff(source, source.replace(before, after));
-    expect(result).toEqual({ added: [], removed: [], changed: [name === "Configuration" ? "type Configuration = {" : "type Fact<K extends string, D> = Readonly<{"] });
+    const first = name === "Configuration" ? "type Configuration = {" : "type Fact<K extends string, D> = Readonly<{";
+    expect(result).toEqual({ added: [], removed: [first], changed: [first] });
   });
 
   it("ignores import-line changes in the real report and between declarations", () => {

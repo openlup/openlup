@@ -134,10 +134,10 @@ export function listReleaseDocumentation({ root, since = previousCoreTag(root), 
 
 type Declarations = Map<string, Map<string, string>>;
 
-/** Use the declaration file as identity when its contents appear in several reports. */
-function apiDeclarations(source: string): Declarations {
+/** Declarations share an identity across reports only under a declaration-file heading. */
+function apiDeclarations(source: string, reportPath = ""): Declarations {
   const blocks: Declarations = new Map();
-  let fence = false, typescript = false, block: string[] = [], leading: string[] = [], first = "", key = "", declarationFile = "";
+  let fence = false, typescript = false, block: string[] = [], leading: string[] = [], first = "", key = "", declarationFile = reportPath;
   const finish = () => {
     if (!block.length) return;
     const text = block.map((line) => line.trimEnd()).join("\n").trimEnd();
@@ -174,14 +174,13 @@ function apiDeclarations(source: string): Declarations {
 
 function compareDeclarations(before: Declarations, after: Declarations, oldSurface = before, newSurface = after) {
   const added: string[] = [], removed: string[] = [], changed: string[] = [];
-  for (const key of new Set([...after.keys(), ...before.keys()])) {
-    const old = oldSurface.get(key), current = newSurface.get(key);
-    const previousHere = before.get(key), currentHere = after.get(key);
-    const gains = currentHere && [...currentHere.keys()].some((text) => !old?.has(text));
-    const losses = old && [...old.keys()].some((text) => !current?.has(text));
-    if (!old && currentHere) added.push(...currentHere.values());
-    else if (!current && previousHere) removed.push(...previousHere.values());
-    else if (currentHere && (gains || losses)) changed.push(...currentHere.values());
+  for (const [key, blocks] of after) {
+    const old = oldSurface.get(key);
+    for (const [text, first] of blocks) if (!old?.has(text)) (old ? changed : added).push(first);
+  }
+  for (const [key, blocks] of before) {
+    const current = newSurface.get(key);
+    for (const [text, first] of blocks) if (!current?.has(text)) removed.push(first);
   }
   return { added: [...new Set(added)], removed: [...new Set(removed)], changed: [...new Set(changed)] };
 }
@@ -197,7 +196,7 @@ function readApiReports(root: string, ref: string, directory: string) {
   for (const path of paths.filter((path) => API_REPORT.test(path))) {
     const source = documentationGit(root, ["show", `${ref}:${path}`]).toString("utf8");
     const subpath = /^# (.+) API declaration snapshot\r?$/mu.exec(source)?.[1] ?? path;
-    const declarations = apiDeclarations(source);
+    const declarations = apiDeclarations(source, path);
     reports.set(subpath, { path, declarations });
     for (const [key, blocks] of declarations) {
       const existing = surface.get(key) ?? new Map<string, string>();
@@ -220,23 +219,24 @@ export function assembleUpgradePage({ root, version, since, fragments }: { root:
     if (notes.length) sections.push(`## ${entry.name}`, ...notes.map(({ contents }) => contents.trimEnd()));
   }
   sections.push("## API changes");
-  const apiStart = sections.length;
+  let listedDeclarations = false;
   const directories = new Set(since ? releaseChanges(root, since).flatMap(changedPaths).filter((path) => API_REPORT.test(path)).map(posix.dirname) : []);
   for (const directory of directories) {
     const before = readApiReports(root, since!, directory), after = readApiReports(root, "HEAD", directory);
     for (const subpath of new Set([...before.reports.keys(), ...after.reports.keys()])) {
       const old = before.reports.get(subpath), current = after.reports.get(subpath);
       const { added, removed, changed } = compareDeclarations(old?.declarations ?? new Map(), current?.declarations ?? new Map(), before.surface, after.surface);
-      const subpathChange = !subpath.startsWith(".") ? "" : !old ? "Added package subpath." : !current ? "Removed package subpath." : "";
-      if (!subpathChange && !added.length && !removed.length && !changed.length) continue;
+      const subpathChange = subpath.startsWith(".") && (!old || !current) ? `${old ? "Removed" : "Added"} package subpath \`${subpath}\`.` : "";
+      const hasDeclarations = added.length > 0 || removed.length > 0 || changed.length > 0;
+      if (!subpathChange && !hasDeclarations) continue;
+      listedDeclarations ||= hasDeclarations;
       sections.push(`### \`${(current ?? old)!.path}\``);
       if (subpathChange) sections.push(subpathChange);
       for (const [label, lines] of [["Added declarations", added], ["Removed declarations", removed], ["Changed declarations", changed]] as const) if (lines.length) sections.push(`${label}:`, ["```ts nocheck", "// API report diff: not compiled.", ...lines, "```"].join("\n"));
     }
   }
   if (!since) sections.push("The previous release could not be determined: no core release tag is an ancestor of HEAD.");
-  else if (!directories.size) sections.push("No API reports changed since the previous release.");
-  else if (apiStart === sections.length) sections.push("No API declarations changed since the previous release.");
+  else if (!listedDeclarations) sections.push("No API declarations changed since the previous release.");
   const text = `${sections.join("\n\n")}\n`;
   const planned = planReleaseGuide(root, version, { [file]: text });
   return { text, violations: [...planned.violations, ...planned.pageViolations[file]!] };
