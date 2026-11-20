@@ -2166,7 +2166,16 @@ registerHooks({
 try {
   const { CATALOG_MIGRATIONS } = await import(descriptorUrl);
   if (!Array.isArray(CATALOG_MIGRATIONS)) throw new Error("export CATALOG_MIGRATIONS as an array");
-  process.stdout.write(JSON.stringify(CATALOG_MIGRATIONS.map(({ catalogPath, position, sha256 }) => ({ catalogPath, position, sha256 }))));
+  const tuples = [];
+  for (let index = 0; index < CATALOG_MIGRATIONS.length; index++) {
+    const entry = CATALOG_MIGRATIONS[index];
+    const { catalogPath, position, sha256 } = entry && typeof entry === "object" ? entry : {};
+    if (typeof catalogPath !== "string" || typeof position !== "number" || typeof sha256 !== "string") {
+      throw new Error("CATALOG_MIGRATIONS[" + index + "] must be an object with a string catalogPath, a numeric position and a string sha256. To fix it, remove the extra comma or restore the entry");
+    }
+    tuples.push({ catalogPath, position, sha256 });
+  }
+  process.stdout.write(JSON.stringify(tuples));
 } catch (error) {
   process.stderr.write(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
@@ -2205,22 +2214,26 @@ export function proveCatalogCompositionConsumer(consumer: string) {
   const expected = catalogMigrationExpectations(descriptor, manifest);
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { readFileSync, renameSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { renameSync } from "node:fs";
 const manifest = new URL("./node_modules/@openlup/platform/sql/manifest.json", import.meta.url);
 const aside = new URL("manifest.json.presence-probe", manifest);
 renameSync(manifest, aside);
-let catalog, composition;
 try {
-  catalog = await import("@openlup/platform/catalog");
-  composition = await import("@openlup/platform/composition");
+  const catalog = await import("@openlup/platform/catalog");
+  await import("@openlup/platform/composition");
   assert.equal(typeof catalog.CATALOG_MIGRATIONS.at(-1).id, "string");
 } catch (cause) {
   throw new Error("presence-only import failed without the packaged SQL manifest", { cause });
 } finally {
   renameSync(aside, manifest);
 }
-const { createCatalogContribution } = composition;
+`);
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import * as catalog from "@openlup/platform/catalog";
+import { createCatalogContribution } from "@openlup/platform/composition";
 const statements = [];
 const executor = { query: async (sql, values) => { statements.push([sql, values]); return { rows: [] }; } };
 const native = catalog.createPostgresCatalogSkuEnvelopeReadPort(executor);

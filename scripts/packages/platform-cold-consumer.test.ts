@@ -572,6 +572,7 @@ it.each([
   ["digest disagrees", descriptorSelection.replace(selectedDigest, "0".repeat(64)), `${selectedPath} sha256 differs from the canonical manifest. Set sha256 to ${selectedDigest}`],
   ["invalid syntax", descriptorSelection + " const = ;", "does not evaluate:"],
   ["missing array", "export const CATALOG_MIGRATIONS = {};", "does not evaluate: export CATALOG_MIGRATIONS as an array"],
+  ["extra comma", `export const CATALOG_MIGRATIONS = [${descriptorEntry},,];`, "does not evaluate: CATALOG_MIGRATIONS[1] must be an object with a string catalogPath, a numeric position and a string sha256. To fix it, remove the extra comma or restore the entry"],
   ["commented-out selection", `export const CATALOG_MIGRATIONS = [/* ${descriptorEntry} */];`, "empty CATALOG_MIGRATIONS selection. Restore at least one migration entry"],
   ["duplicate path", `export const CATALOG_MIGRATIONS = [${descriptorEntry},${descriptorEntry}];`, `duplicate path ${selectedPath}. Remove the repeated entry`],
   ["unmanifested path", descriptorSelection.replace("selected.sql", "unknown.sql"), `${selectedPath.replace("selected.sql", "unknown.sql")} is absent from the canonical manifest. Select a path from config/platform-migration-manifest.json`],
@@ -624,6 +625,25 @@ it.each([
     writeFileSync(path, original + "\n" + mutation);
     expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/presence-only import failed without the packaged SQL manifest/);
     expect(readFileSync(manifestPath)).toEqual(manifest);
+  } finally { writeFileSync(path, original); }
+});
+
+it.each([
+  ["wrong position only with manifest present", "if (manifestPresent) migrations[0].position = 999;", /installed catalogue migrations differ from the committed canonical manifest[\s\S]*\+ +position: 999/u],
+  ["different wrong positions with and without manifest", "migrations[0].position = manifestPresent ? 999 : 998;", /installed catalogue migrations differ from the committed canonical manifest[\s\S]*\+ +position: 999/u],
+  ["initialization throws only with manifest present", 'if (manifestPresent) throw new Error("synthetic present-manifest initialization failed");', /Error: synthetic present-manifest initialization failed/u],
+])("checks normal packed catalogue initialization in a fresh process: %s", (_name, mutation, diagnostic) => {
+  const consumer = pristinePackedA1Fixture();
+  const path = join(consumer, "node_modules/@openlup/platform/dist/catalog/index.js");
+  const original = readFileSync(path, "utf8");
+  try {
+    writeFileSync(path, original + `
+import { existsSync } from "node:fs";
+import { CATALOG_MIGRATIONS as migrations } from "./sql.js";
+const manifestPresent = existsSync(new URL("../../sql/manifest.json", import.meta.url));
+${mutation}
+`);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(diagnostic);
   } finally { writeFileSync(path, original); }
 });
 
