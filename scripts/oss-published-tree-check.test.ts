@@ -461,7 +461,7 @@ describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
     expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/8"]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -476,7 +476,7 @@ describe("complete public CI", () => {
     expect(workflow.split("\njobs:\n")[0]).toContain("permissions:\n  contents: read\n  actions: read\n");
     expect(workflow.match(/packages: read/gu)).toHaveLength(4);
     expect(workflow.match(/docker login/gu)).toHaveLength(4);
-    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"], ["install-packages", "node --experimental-strip-types scripts/packages/required-package-gates.ts"], ["install-browser", "node --experimental-strip-types scripts/starter-browser-ci.mjs"]]) {
+    for (const [name, command] of [["test-full-shard", "node scripts/ci-vitest-shard.mjs"], ["pgtap", "node scripts/public-ci-pgtap.mjs"], ["install-packages", "node --experimental-strip-types scripts/packages/required-package-gates.ts"], ["install-browser", "node --experimental-strip-types scripts/starter-browser-ci.mjs"]]) {
       const job = workflowJob(name);
       expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
       const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
@@ -526,11 +526,11 @@ describe("complete public CI", () => {
     expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
     expect(shard).toContain("          fetch-depth: 0\n");
     expect(shard).toContain("          cache: npm\n");
-    const scopedSteps = shard.split(/(?=^ {6}- )/mu).filter(step => /run: (?:node scripts\/ci-test-scope.mjs|npm test)/u.test(step));
+    const scopedSteps = shard.split(/(?=^ {6}- )/mu).filter(step => /run: node scripts\/(?:ci-test-scope|ci-vitest-shard)\.mjs/u.test(step));
     expect(scopedSteps).toHaveLength(2);
     for (const step of scopedSteps) expect(step).toContain("        env:\n          OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt");
     expect(shard).not.toMatch(/^ {4}env:/mu);
-    expect(shard.indexOf("run: node scripts/ci-test-scope.mjs")).toBeLessThan(shard.indexOf("run: npm test -- --shard="));
+    expect(shard.indexOf("run: node scripts/ci-test-scope.mjs")).toBeLessThan(shard.indexOf("run: node scripts/ci-vitest-shard.mjs"));
     expect(workflow).not.toMatch(/^ {2}test-full:$/mu);
     const aggregate = workflowJob("test");
     expect(aggregate).toContain("    name: test\n");
@@ -979,8 +979,8 @@ describe("the workflow stays in step with what it claims to run", () => {
 
   it("scopes the test run to directories that still exist", () => {
     const scope = [...PUBLIC_TEST_SCOPE];
-    expect(workflow).toContain("run: npm test");
-    expect(workflow.match(/run: npm test[^\n]*/gu)).toEqual(["run: npm test -- --shard=${{ matrix.shard }}/8"]);
+    expect(workflow).toContain("run: node scripts/ci-vitest-shard.mjs");
+    expect(workflow.match(/run: node scripts\/ci-vitest-shard\.mjs[^\n]*/gu)).toEqual(["run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(scope).toEqual(["api", "mcp", "scripts", "server", "src", "tests"]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...scope], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);

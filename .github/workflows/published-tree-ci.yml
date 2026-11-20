@@ -345,13 +345,13 @@ jobs:
         with:
           path: .context/scratch/cache/pgtap-debs
           key: pgtap-debs-${{ hashFiles('config/ci-postgres-packages.json') }}
-      # Every shard derives the same included set before native file sharding.
+      # Every shard derives the same included set before deterministic LPT weighted sharding.
       - name: Complete published root test shard
         if: steps.reused.outputs.reuse != 'true'
         env:
           OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
           OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
-        run: npm test -- --shard=${{ matrix.shard }}/8
+        run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8
 
   test:
     name: test
