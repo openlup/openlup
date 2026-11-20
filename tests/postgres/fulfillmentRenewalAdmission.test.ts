@@ -33,7 +33,9 @@ async function seed() {
     settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES($1,1,'XXX','fixture','fixture',$2,'fixture')`, [f.subscription, AT]);
   await h.pool.query('INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor) VALUES($1,1,$2,1,900)', [f.subscription, sku]);
   await h.pool.query(
-    'INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at) VALUES($1,$2,$3,$4)',
+    `INSERT INTO public.subscription_renewal_attachments(order_id,subscription_id,purchase_facts,completed_at)
+     VALUES($1,$2,$3,$4)
+     ON CONFLICT (order_id) DO UPDATE SET purchase_facts = EXCLUDED.purchase_facts, completed_at = EXCLUDED.completed_at`,
     [f.order, f.subscription, JSON.stringify({ templateId: 'fixture', shippingAmountMinor: 0 }), AT],
   );
   await h.pool.query(`INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,
