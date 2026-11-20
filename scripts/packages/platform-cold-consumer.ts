@@ -2244,8 +2244,6 @@ const draft = catalog.createPostgresCatalogDraftStore({ query: async () => { thr
 assert.deepEqual(await draft.apply({ canonicalCommand: "{}", fingerprint: "a".repeat(64), actorId: "synthetic" }), { outcome: "unauthorized", reason: "operator_required" });
 assert.deepEqual(catalog.CATALOG_MIGRATIONS.map(unit => unit.position), ${JSON.stringify(expected.map(unit => unit.position))}, "installed catalogue migrations differ from the committed canonical manifest");
 for (const unit of catalog.CATALOG_MIGRATIONS) assert.equal(createHash("sha256").update(readFileSync(unit.url)).digest("hex"), unit.sha256);
-assert.deepEqual(catalog.CATALOG_MIGRATIONS.map(({ catalogPath, position, sha256 }) => ({ catalogPath, position, sha256 })),
-  ${JSON.stringify(expected)}, "installed catalogue migrations differ from the committed canonical manifest");
 const quote = () => { throw new Error("synthetic_quote_unavailable"); };
 const selected = createCatalogContribution({ version: JSON.parse(readFileSync(new URL("./node_modules/@openlup/platform/package.json", import.meta.url))).version, requiredSchema: { version: "complete", migration: "complete", objects: [] },
   catalog: { read: native.getSkuEnvelope, draft: draft.apply }, pricing: { quote }, promotions: {}, routes: [] });
@@ -2254,6 +2252,8 @@ assert.equal(selected.ports["@openlup/platform/catalog:draft"], draft.apply);
 assert.equal(selected.ports["@openlup/platform/pricing:quote"], quote);
 assert.throws(selected.ports["@openlup/platform/pricing:quote"], /synthetic_quote_unavailable/);
 assert.deepEqual(selected.contributions.map(item => item.manifest.module.id), ["catalog", "pricing", "promotions"]);
+assert.deepEqual(catalog.CATALOG_MIGRATIONS.map(({ catalogPath, position, sha256 }) => ({ catalogPath, position, sha256 })),
+  ${JSON.stringify(expected)}, "installed catalogue migrations differ from the committed canonical manifest");
 `);
 }
 

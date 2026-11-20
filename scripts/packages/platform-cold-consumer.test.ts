@@ -681,6 +681,30 @@ Object.defineProperty(unit, "sha256", { get() { return reads++ === 0 ? canonical
   }
 });
 
+it("refuses a missing catalogue read port before a lazy catalogPath getter fills the cache", () => {
+  const consumer = pristinePackedA1Fixture();
+  const dist = join(consumer, "node_modules/@openlup/platform/dist");
+  const descriptor = join(dist, "catalog/sql.js");
+  const composer = join(dist, "composition/catalogContribution.js");
+  const originalDescriptor = readFileSync(descriptor, "utf8");
+  const originalComposer = readFileSync(composer, "utf8");
+  const mutant = originalComposer.replace("return { contributions, ports, routes:",
+    'if (cachedCatalogPath === undefined) delete ports["@openlup/platform/catalog:read"];\n    return { contributions, ports, routes:');
+  expect(mutant).not.toBe(originalComposer);
+  try {
+    writeFileSync(descriptor, originalDescriptor + `
+export let cachedCatalogPath;
+const unit = CATALOG_MIGRATIONS[0], catalogPath = unit.catalogPath;
+Object.defineProperty(unit, "catalogPath", { get() { return cachedCatalogPath ??= catalogPath; } });
+`);
+    writeFileSync(composer, 'import { cachedCatalogPath } from "../catalog/sql.js";\n' + mutant);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/Expected values to be strictly equal:[\s\S]*\+ undefined\s*\n- \[AsyncFunction: getSkuEnvelope\]/u);
+  } finally {
+    writeFileSync(descriptor, originalDescriptor);
+    writeFileSync(composer, originalComposer);
+  }
+});
+
 it("proves installed portability copy/resume and rejects a copy that skips byte publication", () => {
   const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
   provePortabilityConsumer(consumer);
