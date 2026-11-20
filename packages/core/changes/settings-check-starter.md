@@ -7,10 +7,10 @@ changes by hand, retaining your application bindings and using your selected
 configuration. An owned file is never overwritten.
 
 ```diff
-diff --git a/examples/neutral-store/owned/settings-host.ts b/examples/neutral-store/owned/settings-host.ts
+diff --git a/owned/settings-host.ts b/owned/settings-host.ts
 index 00b9518e0..70966d23b 100644
---- a/examples/neutral-store/owned/settings-host.ts
-+++ b/examples/neutral-store/owned/settings-host.ts
+--- a/owned/settings-host.ts
++++ b/owned/settings-host.ts
 @@ -4,2 +4,3 @@ import type { SettingsAppBindings } from '@openlup/platform/operations/server';
  import { checkoutWavePolicy } from './acquisition-policy.ts';
 +import { assertConfig } from '../shared/config.ts';
