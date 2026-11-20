@@ -929,6 +929,59 @@ requires its declared migration owner. Each applied unit is recorded after a
 fresh ledger check within that unit's transaction. Individual migration
 transactions and exact-prefix/replay behavior remain.
 
+### Sealed native catalog publication history
+
+The [`catalog_publication` forward](../../db/platform/migrations/20261123190000_catalog_publication.sql)
+adds native publication history.
+The publication, SKU revisions, operator receipts, and candidate decisions are
+immutable retained history. The head holds the latest issue for each governed
+product. Native transfer carries all five tables and restores them through the
+same deferred constraints as owner inserts. It carries the existing document value through an explicit column
+projection. A document enters publication by its exact reference and the
+opaque bytes of its original draft operation. Pointer capabilities are
+transaction-local and must be empty on capture.
+
+The publication assertion checks the exact document and draft evidence, the
+candidate's current approval, the immediate predecessor, the resolved SKU
+roster, response size and the original command result. Approval records the
+expected product and SKU facts. An issue must match those facts, and the latest
+issue must also match the live product and SKU projections, including the legacy
+whole-gram net weight that quote readers serve, so it publishes net content in whole
+grams at scale 0. A candidate with an issue keeps its approval, so a later
+revocation refuses and needs no action. Decision transitions
+use the existing draft head to serialize with issuance, including before the
+product exists. Capture and exact restore replay apply the same read-only
+admission checks. Live product and SKU facts use the retained projection decoders.
+
+Runtime roles, application principals and roles they can assume cannot insert,
+update, delete or truncate any of these six relations. The schema owner,
+migration role and superuser are trusted with destructive operations. The pinned
+row constraints still protect owner inserts, changes to saved history and
+retargeting of pointer authorization at commit or when made immediate. A saved
+command result has an immediate size bound. The deferred receipt, decision and
+publication events use the same checked text before comparing the original
+result. Invalid saved result text refuses the entire transaction. Work on
+an issue scales with the predecessor roster and issued SKU facts, with a sort
+for canonical order. SKU, receipt, head and pointer events use their indexed
+keys. Deferred triggers run per affected row, including in bulk restore. The live SKU event decodes each changed facts value.
+Decision events use the candidate and event-order index to check adjacent
+transitions and the candidate's current decision.
+
+A product can retain up to 10,000 SKUs. Native transfer also limits a packet to
+10,000 rows across its retained tables, including both live and retained SKU
+rows. A product that fits the read limit can therefore exceed the transfer
+limit. Exact reads bind the stored issue,
+document and original result by key. Admission and selected reads use the same
+native product and SKU checks. Current and legacy reads select observation
+fields for the bounded roster. A full page checks at most 100 SKU sizes and
+loads only the selected SKU revisions, up to the 8 MiB response limit.
+
+Apply the complete native chain before binding native publication reads.
+A managed implementation can use the same relations, composite keys and
+deferred checks, with owner-only writes under row-level security and
+session-derived human membership. Category-specific storage remains with the
+adopter. The managed rail does not supply this feature.
+
 Managed risk keeps
 its existing frozen baseline functions, grants and RLS. Native risk uses invoker
 functions and host-provisioned permissions, with no production role/grant model
