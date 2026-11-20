@@ -205,15 +205,11 @@ function eslintChanged(changes: readonly Change[]): CheckResult {
     : { check: "eslint changed", status: "FAIL", detail: `eslint failed on ${files.length} changed file(s)`, notes: tail(result.output) };
 }
 
-function sqlAdmit(changes: readonly Change[], untracked: readonly string[]): CheckResult {
+function sqlAdmit(changes: readonly Change[]): CheckResult {
   const triggers = sqlTreeChanges(changes);
   if (triggers.length === 0) return { check: "sql admit", status: "SKIP", detail: "no SQL under db/ or packages/*/sql/ changed" };
-  const dirty = [
-    ...parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", "HEAD"])),
-    ...untracked.map((path) => ({ path, deleted: false })),
-  ];
-  if (sqlTreeChanges(dirty).length > 0) {
-    return { check: "sql admit", status: "WARN", detail: "commit SQL changes to run npm run sql:admit" };
+  if (git(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"], "stdout") !== "") {
+    return { check: "sql admit", status: "WARN", detail: "commit or stash uncommitted changes to run npm run sql:admit" };
   }
   const result = execute("npm", ["run", "sql:admit"]);
   return result.code === 0
@@ -398,7 +394,10 @@ function fastPreflight(): number {
     ["neutrality", () => neutrality(forkPoint())],
     ["ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])],
     ["ast-grep", () => astGrep(offlineNpm)],
-    ["publication-policy", () => command("publication-policy", "npm", ["run", "oss:published-tree", "--", "--policy", "--docs-base", forkPoint()], offlineNpm)],
+    ["publication-policy", () => command("publication-policy", "npm", [
+      "run", "oss:published-tree", "--", "--policy",
+      ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
+    ], offlineNpm)],
     ["publication-inventory", () => command("publication-inventory", "npm", ["run", "oss:published-tree", "--", "--inventory"], offlineNpm)],
     ["dco", () => {
       const upstream = git(["rev-parse", "origin/main"], "stdout").trim();
@@ -457,7 +456,7 @@ export function main(now: Date, args: readonly string[] = []): number {
     ["gitleaks", () => gitleaks(base, untrackedPaths)],
     ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
     ["eslint changed", () => eslintChanged(changes)],
-    ["sql admit", () => sqlAdmit(changes, untrackedPaths)],
+    ["sql admit", () => sqlAdmit(changes)],
     ["typecheck", typecheck],
     ["inventory", () => inventory(changes)],
     ["hosted tests", () => hostedTests(selection)],

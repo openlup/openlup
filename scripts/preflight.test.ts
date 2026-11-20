@@ -16,6 +16,7 @@ import {
 afterEach(() => {
   vi.mocked(execFileSync).mockReset();
   vi.mocked(spawnSync).mockReset();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -91,6 +92,28 @@ describe("fast preflight", () => {
       failures.includes("publication-inventory") ? [conflict, increase, mismatch, closing].map((line) => `    ${line}`) : [],
     );
     expect(stderr.mock.calls).toEqual(offline ? [["preflight: git fetch origin main failed. Using local origin/main."]] : []);
+  });
+
+  it("omits --docs-base for publication-policy when OPENLUP_STACK_BASE is set", () => {
+    const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40), stackBase = "d".repeat(40);
+    vi.stubEnv("OPENLUP_STACK_BASE", stackBase);
+    const calls: string[] = [];
+    vi.mocked(spawnSync).mockImplementation(((bin, args) => {
+      const call = `${bin} ${(args ?? []).join(" ")}`;
+      calls.push(call);
+      if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
+      if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
+      if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
+      if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
+      return { status: 0, stdout: "", stderr: "" };
+    }) as typeof spawnSync);
+    vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1fchange\n\nSigned-off-by: Test Fixture <fixture@example.invalid>\0`);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(main(now, ["--fast"])).toBe(0);
+    expect(calls).toContain("npm run oss:published-tree -- --policy");
+    expect(calls.some((call) => call.includes("--docs-base"))).toBe(false);
   });
 });
 
@@ -212,7 +235,7 @@ describe("preflight report", () => {
   });
 
   it("handles sql admit across dirty, untracked, passing and failing SQL changes", () => {
-    const runSql = (options: { baseDiff: string; headDiff?: string; untracked?: string; admitCode?: number }) => {
+    const runSql = (options: { baseDiff: string; status?: string; untracked?: string; admitCode?: number }) => {
       const calls: string[] = [];
       vi.mocked(spawnSync).mockImplementation(((command, args) => {
         const call = `${command} ${(args ?? []).join(" ")}`;
@@ -220,7 +243,7 @@ describe("preflight report", () => {
         if (command === "git") {
           if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
           if (args?.includes("merge-base")) return { status: 0, stdout: "a".repeat(40), stderr: "" };
-          if (args?.includes("--name-status") && args?.includes("HEAD")) return { status: 0, stdout: options.headDiff ?? "", stderr: "" };
+          if (args?.[0] === "status") return { status: 0, stdout: options.status ?? "", stderr: "" };
           if (args?.includes("--name-status")) return { status: 0, stdout: options.baseDiff, stderr: "" };
           if (args?.includes("--others")) return { status: 0, stdout: options.untracked ?? "", stderr: "" };
           return { status: 0, stdout: "", stderr: "" };
@@ -238,15 +261,20 @@ describe("preflight report", () => {
     };
 
     const sqlPath = "db/platform/migrations/20400101000000_example.sql";
-    const dirtyTracked = runSql({ baseDiff: `A\0${sqlPath}\0`, headDiff: `M\0${sqlPath}\0` });
+    const dirtyTracked = runSql({ baseDiff: `A\0${sqlPath}\0`, status: ` M ${sqlPath}\0` });
     expect(dirtyTracked.exit).toBe(0);
     expect(dirtyTracked.calls).not.toContain("npm run sql:admit");
-    expect(dirtyTracked.lines).toContainEqual("WARN sql admit: commit SQL changes to run npm run sql:admit");
+    expect(dirtyTracked.lines).toContainEqual("WARN sql admit: commit or stash uncommitted changes to run npm run sql:admit");
 
-    const dirtyUntracked = runSql({ baseDiff: "", untracked: `${sqlPath}\0` });
+    const dirtyUntracked = runSql({ baseDiff: "", untracked: `${sqlPath}\0`, status: `?? ${sqlPath}\0` });
     expect(dirtyUntracked.exit).toBe(0);
     expect(dirtyUntracked.calls).not.toContain("npm run sql:admit");
-    expect(dirtyUntracked.lines).toContainEqual("WARN sql admit: commit SQL changes to run npm run sql:admit");
+    expect(dirtyUntracked.lines).toContainEqual("WARN sql admit: commit or stash uncommitted changes to run npm run sql:admit");
+
+    const dirtyNonSql = runSql({ baseDiff: `A\0${sqlPath}\0`, status: " M README.md\0" });
+    expect(dirtyNonSql.exit).toBe(0);
+    expect(dirtyNonSql.calls).not.toContain("npm run sql:admit");
+    expect(dirtyNonSql.lines).toContainEqual("WARN sql admit: commit or stash uncommitted changes to run npm run sql:admit");
 
     const committedPass = runSql({ baseDiff: `A\0${sqlPath}\0`, admitCode: 0 });
     expect(committedPass.exit).toBe(0);
