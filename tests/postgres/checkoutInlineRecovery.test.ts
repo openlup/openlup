@@ -43,7 +43,7 @@ describe.each(lifecycleProfiles)('exact inline retry on %s',profile=>{
  }
  type Fixture=Awaited<ReturnType<typeof fixture>>;
  const reader=()=>createPostgresCheckoutRecoveryOrderPort(env.runtime);
- function setup(f:Fixture,config:{actions?:CheckoutPaymentRecoveryGuidance['actions'];restriction?:'method'|null;known?:boolean;allow?:boolean;action?:{kind:string;provider?:string;url?:string};hold?:boolean;beforeBegin?:()=>Promise<void>}={}){
+ function setup(f:Fixture,config:{actions?:CheckoutPaymentRecoveryGuidance['actions'];restriction?:'method'|null;known?:boolean;allow?:boolean;action?:{kind:string;provider?:string;url?:string};hold?:boolean}={}){
   const secret=randomUUID()+randomUUID(),codec=createCheckoutPaymentContinuationCodec(secret,{cookieName:'__Host-exact-inline',executionRails:['sandbox','external']})!;
   const journeyId=`checkout:${randomUUID()}`,authority={journeyId,orderId:f.orderId,clientId:f.clientId,paymentIntentId:f.paymentIntentId,paymentAttemptId:f.attemptId,executionRail:'sandbox' as const};
   const cookie=codec.issue(authority).setCookie.split(';')[0];
@@ -51,7 +51,7 @@ describe.each(lifecycleProfiles)('exact inline retry on %s',profile=>{
   const raw=createPostgresPaymentRecoveryGuidancePort(env.runtime,normalizeSandboxPaymentRecoveryEvidence);
   const getGuidanceSnapshot=vi.fn(raw.getGuidanceSnapshot),getRecoveryOrder=vi.fn(reader().getRecoveryOrder);
   const native=createPostgresSandboxInlineRecoveryAttemptPort(env.runtime,{...options,methodKeyFor:config.known===false?()=>null:methodKeyFor});
-  const begin=vi.fn(async(input:Parameters<typeof native.begin>[0])=>{await config.beforeBegin?.();return native.begin(input);});
+  const begin=vi.fn(native.begin);
   const readPreviousMethod=vi.fn(native.readPreviousMethod),readActiveAction=vi.fn(async()=>config.action??null);
   const make=()=>createCheckoutInlineRecovery({codec,guidance:{port:{getGuidanceSnapshot},
    ...(config.actions?{projectGuidance:(snapshot,status,projected)=>projected&&snapshot.purchaseContext?{version:1 as const,paymentAttemptId:projected.paymentAttemptId,purchaseContext:snapshot.purchaseContext,cause:projected.cause,methodKind:null,methodKey:null,operation:projected.operation,restriction:config.restriction??null,actions:config.actions!,consecutiveRefusals:projected.consecutiveRefusals,emphasis:projected.emphasis}:null}:{}),
@@ -122,22 +122,53 @@ process.stdout.write(JSON.stringify(await service.retry(input.request)));}finall
  });
  it.each(['cancel','capture','predecessor'] as const)('refuses a %s winner between the snapshot and locked dispatch',async race=>{
   const f=await fixture(),blocker=await env.owner.connect(),starter=await env.runtime.connect();
-  try{
-   await blocker.query('BEGIN');await blocker.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE',[f.orderId]);
-   const pid=Number((await starter.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
-   const port=createPostgresSandboxInlineRecoveryAttemptPort(starter,options);
-   const guarded=setup(f,{beforeBegin:async()=>{}});
-   // Keep real snapshot/authority checks, then dispatch on the dedicated blocked lane.
-   const service=createCheckoutInlineRecovery({codec:guarded.codec,guidance:{port:createPostgresPaymentRecoveryGuidancePort(env.runtime,normalizeSandboxPaymentRecoveryEvidence)},orderPort:reader(),attemptPort:port,executionAllowed:()=>true});
-   const pending=service.retry(guarded.request),rejected=expect(pending).rejects.toMatchObject({kind:'conflict'});
-   let blocked=false;for(let n=0;n<300&&!blocked;n++)blocked=(await blocker.query('SELECT cardinality(pg_blocking_pids($1))>0 AS blocked',[pid])).rows[0].blocked;
-   expect(blocked).toBe(true);
+  let retrySettled: Promise<unknown> | undefined;
+  try {
+   await blocker.query('BEGIN');
+   await blocker.query('SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE',[f.orderId]);
+   const { rows: [{ pid }] } = await starter.query('SELECT pg_backend_pid() AS pid');
+   const port = createPostgresSandboxInlineRecoveryAttemptPort(starter,options);
+   let dispatchRequested = false;
+   const { codec, request } = setup(f);
+   const service = createCheckoutInlineRecovery({
+    codec,
+    guidance: { port: createPostgresPaymentRecoveryGuidancePort(env.runtime,normalizeSandboxPaymentRecoveryEvidence) },
+    orderPort: reader(),
+    attemptPort: {
+     ...port,
+     begin(input) {
+      dispatchRequested = true;
+      return port.begin(input);
+     },
+    },
+    executionAllowed: () => true,
+   });
+   const pending = service.retry(request);
+   retrySettled = Promise.allSettled([pending]);
+   await expect.poll(async () => {
+    if (!dispatchRequested) return false;
+    const result = await blocker.query('SELECT pg_backend_pid()=ANY(pg_blocking_pids($1)) AS blocked',[pid]);
+    return result.rows[0].blocked;
+   }, {
+    timeout: 15_000,
+    message: `Retry did not wait on the ${race} transaction's order lock within 15 s`,
+   }).toBe(true);
    if(race==='cancel')await blocker.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1",[f.orderId]);
    if(race==='capture')await createPostgresSandboxPaymentSimulator(blocker,options).recordObservation({attemptId:f.attemptId,idempotencyKey:`late:${f.attemptId}`,outcome:'captured',occurredAt:at()});
    if(race==='predecessor')await createPostgresSandboxPaymentSimulator(blocker,options).beginAttempt({settlementIntentId:f.paymentIntentId,idempotencyKey:`competing:${randomUUID()}`,requestFingerprint:'b'.repeat(64),methodFacts:facts('primary'),at:at()});
-   await blocker.query('COMMIT');await rejected;expect(await attempts(f)).toHaveLength(race==='predecessor'?2:1);
-  }finally{await blocker.query('ROLLBACK');blocker.release();starter.release();}
- });
+   await blocker.query('COMMIT');
+   await expect(pending).rejects.toMatchObject({kind:'conflict'});
+   expect(await attempts(f)).toHaveLength(race==='predecessor'?2:1);
+  } finally {
+   try {
+    await blocker.query('ROLLBACK');
+    await retrySettled;
+   } finally {
+    blocker.release();
+    starter.release();
+   }
+  }
+ },30_000);
  it('replays a failed replacement without another dispatch and preserves its action or safe polling',async()=>{
   const f=await fixture(),d=setup(f,{action:{kind:'redirect',url:'/synthetic-handoff'}}),first=await d.make().retry(d.request);
   const live=await d.make().retry(d.request);expect(live.result.clientAction).toEqual({kind:'redirect',url:'/synthetic-handoff'});
