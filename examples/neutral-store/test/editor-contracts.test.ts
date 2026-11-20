@@ -104,6 +104,17 @@ exit 1
     const file = resolve(app, 'owned/catalogue.ts');
     const original = await readFile(file, 'utf8');
     assert.ok(original.includes(registration));
+    const effects = resolve(app, 'durable-effects');
+    async function refuseWithoutEffects(command: string, name: string, message: RegExp, hint?: RegExp) {
+      await writeFile(effects, '');
+      const result = spawnSync(process.execPath, ['--import', './bootstrap-probe.mjs', 'lifecycle.mjs', command, '--configuration', 'supplements'], {
+        cwd: app, env: { PATH: app }, encoding: 'utf8', timeout: 15_000,
+      });
+      assert.equal(await readFile(effects, 'utf8'), '', `${name}: ${command} must have zero durable effects`);
+      assert.equal(result.status, 2, result.stderr);
+      assert.match(result.stderr, message, name);
+      if (hint) assert.match(result.stderr, hint, name);
+    }
     for (const [name, entry, code, hint] of [
       ['resolve-only', resolveOnlyRegistry, 'starter_catalogue_rules_registry_required', /owned\/catalogue\.ts.*createCatalogProductTypeRegistry/u],
       ['tax class', "taxClass: 'example:standard'", 'starter_catalogue_rules_reference_unsupported',
@@ -115,17 +126,14 @@ exit 1
         : `types.push({ ...types[0]!, key: 'example:accessory', version: 7, ${entry} });
 ${registration}`;
       await writeFile(file, original.replace(registration, replacement));
-      const effects = resolve(app, 'durable-effects');
-      for (const command of ['up', 'install']) {
-        await writeFile(effects, '');
-        const result = spawnSync(process.execPath, ['--import', './bootstrap-probe.mjs', 'lifecycle.mjs', command, '--configuration', 'supplements'], {
-          cwd: app, env: { PATH: app }, encoding: 'utf8', timeout: 15_000,
-        });
-        assert.equal(await readFile(effects, 'utf8'), '', `${name}: ${command} must have zero durable effects`);
-        assert.equal(result.status, 2, result.stderr);
-        assert.equal(result.stderr.split('\n')[0], code, name);
-        assert.match(result.stderr, hint, name);
-      }
+      for (const command of ['up', 'install'])
+        await refuseWithoutEffects(command, name, new RegExp(`^${code}$`, 'mu'), hint);
+    });
+    await t.test('missing rules hook', async () => {
+      await writeFile(file, original);
+      await writeFile(resolve(app, 'owned/catalogue-rules.cjs'), 'module.exports = {};');
+      await refuseWithoutEffects('up', 'missing rules hook',
+        /Product rule validateContent must be a function\. Export it as a function\./u);
     });
   } finally { await rm(app, { recursive: true, force: true }); }
 });

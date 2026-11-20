@@ -81,6 +81,7 @@ function starterBuild(type: Omit<CatalogProductTypeInput, 'validateContent'>, ar
 const typeIdentity = (ref: CatalogProductTypeRef) => `${ref.key}@${ref.version}`;
 const buildFile = (ref: CatalogProductTypeRef) => `${encodeURIComponent(ref.key)}@${ref.version}.json`;
 const legacyBuildFile = (ref: CatalogProductTypeRef) => `${ref.version}.json`;
+const authoringFile = (pin: CatalogProductTypeRef) => `${encodeURIComponent(pin.key)}@${pin.version}.authoring`;
 
 /** Stage the receipt and exact rules. Only a committed install may publish their link. */
 export function stageStarterCatalogueBuild(artifact: Buffer, pack: ReturnType<typeof starterBuild>,
@@ -90,26 +91,36 @@ export function stageStarterCatalogueBuild(artifact: Buffer, pack: ReturnType<ty
   const installed = receipt.types.find(row => row.key === type.key && row.version === type.version);
   if (!installed || installed.definitionDigest !== catalogDefinitionDigest(definition)) throw new Error('starter_catalogue_install_receipt_invalid');
   const record = { type, asset: artifact.toString('base64'), installed };
-  const bytes = Buffer.from(canonicalCatalogDraftJson({ ...record, authoring }));
-  const legacyBytes = Buffer.from(canonicalCatalogDraftJson(record));
-  const sameBuild = (previous: Buffer | undefined) => previous?.equals(bytes) || previous?.equals(legacyBytes);
+  const receiptBytes = Buffer.from(canonicalCatalogDraftJson(record));
+  const files = [
+    // Publish the authoring version first so replay can identify a committed pin
+    // even when the rules receipt could not be published or was later lost.
+    { name: authoringFile(type), bytes: Buffer.from(`${authoring.version}\n`) },
+    { name: singleType ? legacyBuildFile(type) : buildFile(type), bytes: receiptBytes,
+      previousFormat: Buffer.from(canonicalCatalogDraftJson({ ...record, authoring })) },
+  ];
+  const sameBuild = (file: typeof files[number], previous: Buffer | undefined) =>
+    previous?.equals(file.bytes) || (file.previousFormat !== undefined && previous?.equals(file.previousFormat));
   mkdirSync(directory, { recursive: true });
-  // Preserve the original volume format for a one-type installation.
-  const target = join(directory, singleType ? legacyBuildFile(type) : buildFile(type));
-  const previous = readOptional(target);
-  if (previous) {
-    if (!sameBuild(previous)) throw Object.assign(new Error('starter_catalogue_build_conflict'), { code: 'EEXIST' });
-    return;
-  }
+  const pending = files.filter(file => {
+    const previous = readOptional(join(directory, file.name));
+    if (!previous) return true;
+    if (!sameBuild(file, previous)) throw Object.assign(new Error('starter_catalogue_build_conflict'), { code: 'EEXIST' });
+    return false;
+  });
+  if (!pending.length) return;
   const temp = mkdtempSync(join(directory, '.pending-'));
-  const source = join(temp, 'build.json');
   const discard = () => rmSync(temp, { recursive: true, force: true });
-  try { writeFileSync(source, bytes); }
-  catch (error) { discard(); throw error; }
+  try {
+    for (const file of pending) writeFileSync(join(temp, file.name), file.bytes);
+  } catch (error) { discard(); throw error; }
   return {
     publish() {
-      try { linkSync(source, target); }
-      catch (error) { if (!sameBuild(readOptional(target))) throw error; }
+      for (const file of pending) {
+        const target = join(directory, file.name);
+        try { linkSync(join(temp, file.name), target); }
+        catch (error) { if (!sameBuild(file, readOptional(target))) throw error; }
+      }
     },
     discard,
   };
@@ -157,8 +168,27 @@ export function starterCatalogue(directory = buildDirectory) {
     history.set(identity, build);
     return build;
   }
+  function matchesAuthoring(pin: CatalogProductTypeRef, source: CatalogProductTypeRef, replay = false) {
+    if (pin.key !== source.key) return false;
+    const recorded = readOptional(join(directory, authoringFile(pin)));
+    const authored = Buffer.from(`${source.version}\n`);
+    if (recorded && replay) return recorded.equals(authored);
+    const build = readInstalled(pin);
+    const registered = authoringRegistry.definitions?.filter(type => type.key === pin.key);
+    if (build) {
+      if (recorded) return recorded.equals(authored);
+      if (build.authoring) return typeIdentity(build.authoring) === typeIdentity(source);
+      const matches = registered?.filter(build.matchesLegacyAuthoring);
+      return matches?.length === 1 && build.matchesLegacyAuthoring(source);
+    }
+    const current = currentByAuthoring.get(typeIdentity(source));
+    if (pin.version === source.version || current?.version === pin.version) return true;
+    // The pre-enumeration starter used one version-1 authoring placeholder.
+    // Replay still requires the complete command to match the stored fingerprint.
+    return replay && source.version === 1 && registered?.length === 1 && registered[0]?.version === 1;
+  }
   return {
-    current: currentPins[0], readInstalled,
+    current: currentPins[0], readInstalled, matchesAuthoring,
     firstInstalled() {
       for (const pin of currentPins) {
         const installed = readInstalled(pin);
@@ -168,17 +198,6 @@ export function starterCatalogue(directory = buildDirectory) {
     currentFor: (ref: CatalogProductTypeRef) => currentByAuthoring.get(typeIdentity(ref)),
     derivesPin: (ref: CatalogProductTypeRef) => currentIdentities.has(typeIdentity(ref)),
     hasRegisteredKey: (ref: CatalogProductTypeRef) => registeredKeys.has(ref.key) || !!authoringRegistry.resolve(ref),
-    matchesAuthoring(pin: CatalogProductTypeRef, source: CatalogProductTypeRef) {
-      if (pin.key !== source.key) return false;
-      const build = readInstalled(pin);
-      if (build?.authoring) return typeIdentity(build.authoring) === typeIdentity(source);
-      if (build) {
-        const matches = authoringRegistry.definitions?.filter(build.matchesLegacyAuthoring);
-        return matches?.length === 1 && build.matchesLegacyAuthoring(source);
-      }
-      const current = currentByAuthoring.get(typeIdentity(source));
-      return pin.version === source.version || current?.version === pin.version;
-    },
     registry: { resolve: (ref: CatalogProductTypeRef) => readInstalled(ref)?.type ?? authoringRegistry.resolve(ref) },
   };
 }

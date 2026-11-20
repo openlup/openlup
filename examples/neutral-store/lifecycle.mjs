@@ -89,7 +89,9 @@ if (command === 'candidate') {
     if (healthcheck) override.services.application.healthcheck = healthcheck;
     run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
   } catch (error) {
-    const code = error instanceof Error && knownStarterRefusal.test(error.message)
+    const rulesRefusal = error instanceof Error && error.name === 'CatalogPublicationError'
+      && /^catalog_publication_rules?_[a-z_]+$/u.test(error.code);
+    const code = error instanceof Error && (knownStarterRefusal.test(error.message) || rulesRefusal)
       ? error.message : 'starter_installation_failed';
     printInstallationRefusal(code, error);
     process.exitCode = 2;

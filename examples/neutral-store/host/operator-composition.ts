@@ -197,7 +197,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         const original = 'record' in receipt && receipt.record?.actorId === context.actor.operatorRef ? receipt.record : null;
         const saved = !original && payload.action === 'revise' ? await drafts.get({ draftId: payload.draftId, revision: payload.expectedRevision }, context) : null;
         const pin = original?.payload.product.type ?? (saved && 'record' in saved ? saved.record?.payload.product.type : undefined);
-        const version = pin && catalogue.matchesAuthoring(pin, type) ? pin.version : currentType.version;
+        const version = pin && catalogue.matchesAuthoring(pin, type, original !== null) ? pin.version : currentType.version;
         authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version } } };
       }
     }

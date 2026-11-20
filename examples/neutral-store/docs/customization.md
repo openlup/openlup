@@ -122,7 +122,9 @@ marker and preserved only across restarts of the same container.
 
 Add product types in `owned/catalogue.ts` and update the shared rules in
 `owned/catalogue-rules.cjs`. When present, the rules file applies to every type
-in the registry returned by `createCatalogProductTypeRegistry`. Run
+in the registry returned by `createCatalogProductTypeRegistry`. For starter preview,
+omit `taxClass` and `subscriptionProfileRef` from those types. The installer
+supplies neither reference. Run
 `./lifecycle up` to install a rules version for each type. **Load draft
 example** picks the first registered type with an installed rules build. To use
 another type, enter its key and authoring version in the draft JSON. Save it

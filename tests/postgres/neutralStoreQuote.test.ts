@@ -399,12 +399,7 @@ it('installs rules and previews the second product type from a copy with only th
 ${registration}`);
   writeFileSync(path, customized);
   const fixture = { ...await startStarterDatabase('catalogue-types'), key, version };
-  const run = (check: string) => execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module'], {
-    cwd: app, input: `const fixture = ${JSON.stringify(fixture)};
-${installCatalogueScript}
-${check}`,
-    encoding: 'utf8', timeout: 20_000, stdio: 'pipe',
-  });
+  const run = (check: string) => runCatalogueCheck(app, fixture, check);
   run(String.raw`
     await install();
     await install();
@@ -459,16 +454,19 @@ ${check}`,
       assert.equal(revised.value.record.payload.product.type.version, next.version, 'same key revision uses the requested authoring version');
 
       const retainedReceipt = receipt(installed);
-      const {authoring, ...legacy} = JSON.parse(readFileSync(retainedReceipt, 'utf8'));
-      assert.equal(authoring.version, fixture.version);
-      writeFileSync(retainedReceipt, canonicalCatalogDraftJson(legacy));
+      const authoringRecord = retainedReceipt.replace(/\.json$/u, '.authoring');
+      const authoringBytes = readFileSync(authoringRecord);
+      unlinkSync(authoringRecord);
       appendFileSync(rules, '\n// Updated rules build\n');
       const retained = compose();
       assert.equal((await retained(command, context)).replayed, true, 'retained legacy receipt preserves an exact replay');
       assert.equal((await retained(changed, context)).code, 'catalog_draft_command_key_reused', 'retained legacy receipt cannot replay another version');
+      writeFileSync(authoringRecord, authoringBytes);
       unlinkSync(retainedReceipt);
       const recovery = compose();
       const before = await draftEffects();
+      assert.equal((await recovery(command, context)).replayed, true, 'detached authoring version preserves exact replay after build loss');
+      assert.equal((await recovery(changed, context)).code, 'catalog_draft_command_key_reused', 'detached authoring version refuses changed-version reuse after build loss');
       const stale = await recovery({action: 'prepare', draftId, expectedRevision: 1}, context);
       assert.equal(stale.code, 'catalog_definition_drift');
       assert.match(stale.issues?.[0]?.message ?? '', /Restore its retained catalogue build/u, 'retained preview directs restoration');
@@ -497,11 +495,85 @@ export const catalogDraftRegistry = { resolve: registry.resolve };`));
   `);
 }, 95_000);
 
+it('keeps the shipped single-type receipt bytes and replays an exact legacy create after build loss', async () => {
+  const app = join(consumer, 'single-catalogue-application');
+  cpSync(join(consumer, 'application'), app, { recursive: true });
+  const fixture = await startStarterDatabase('catalogue-single');
+  const request = JSON.parse(runCatalogueCheck(app, fixture, String.raw`
+    await install();
+    const pin = starterCatalogue().current;
+    assert.deepEqual({key: pin.key, version: pin.version}, {key: 'starter:item', version: 714101500});
+    const receipt = '.context/catalogue-builds/' + pin.version + '.json';
+    // SHA-256 of the complete receipt emitted by the shipped stager at 1125dd97f.
+    assert.equal(createHash('sha256').update(readFileSync(receipt)).digest('hex'),
+      'cd36418dee1de7afbe9a5bf5748ef3aaad3a962990cd7ff617208bd1593eb5bb', 'fresh receipt matches base bytes');
+    const runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const first = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+    let restarted;
+    try {
+      const action = first.actions['operator.catalogDrafts'];
+      const context = {config, actor: {customerRef: null, operatorRef: randomUUID()}, commandKey: randomUUID()};
+      const example = await action({action: 'example'}, context);
+      assert.equal(example.ok, true, example.code);
+      const payload = example.value;
+      payload.product.type.version = 1;
+      const command = {action: 'create', draftId: randomUUID(), expectedRevision: 0, payload};
+      const saved = await action(command, context);
+      assert.equal(saved.ok, true, saved.code);
+      const before = await draftEffects();
+      unlinkSync(receipt);
+      // Existing base installations did not write an authoring record.
+      rmSync('.context/catalogue-builds/' + encodeURIComponent(pin.key) + '@' + pin.version + '.authoring', {force: true});
+      appendFileSync('owned/catalogue-rules.cjs', '\n// Updated rules build\n');
+      assert.notEqual(starterCatalogue().current.version, pin.version);
+      restarted = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+      const retry = restarted.actions['operator.catalogDrafts'];
+      const replayed = await retry(command, context);
+      assert.equal(replayed.replayed, true, 'legacy exact replay uses the committed pin after build loss');
+      assert.equal(replayed.value.record.payload.product.type.version, pin.version);
+      const changed = structuredClone(command);
+      changed.payload.product.type.version = 2;
+      assert.equal((await retry(changed, context)).code, 'catalog_draft_command_key_reused');
+      assert.deepEqual(await draftEffects(), before, 'retry keeps the database command receipt and draft revision unchanged');
+      console.log(JSON.stringify({ command: changed, actor: context.actor, commandKey: context.commandKey }));
+    } finally {
+      await restarted?.close();
+      await first.close();
+      await runtime.end();
+    }
+  `));
+  const ownedFile = join(app, 'owned/catalogue.ts');
+  const owned = readFileSync(ownedFile, 'utf8');
+  expect(owned).toContain("key: 'starter:item', version: 1");
+  writeFileSync(ownedFile, owned.replace("key: 'starter:item', version: 1", "key: 'starter:item', version: 2"));
+  const upgraded = { ...fixture, request };
+  runCatalogueCheck(app, upgraded, String.raw`
+    const runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const binding = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+    try {
+      const {command, actor, commandKey} = fixture.request;
+      const before = await draftEffects();
+      const reply = await binding.actions['operator.catalogDrafts'](command, {config, actor, commandKey});
+      assert.equal(reply.code, 'catalog_draft_command_key_reused', 'a new sole authoring version cannot replay a lost legacy build');
+      assert.deepEqual(await draftEffects(), before);
+    } finally {
+      await binding.close();
+      await runtime.end();
+    }
+  `);
+}, 95_000);
+
+function runCatalogueCheck(app: string, fixture: Awaited<ReturnType<typeof startStarterDatabase>>, check: string) {
+  return execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module'], {
+    cwd: app, input: `const fixture = ${JSON.stringify(fixture)};\n${installCatalogueScript}\n${check}`,
+    encoding: 'utf8', timeout: 20_000, stdio: 'pipe',
+  });
+}
+
 const installCatalogueScript = String.raw`
   import assert from 'node:assert/strict';
   import {createHash, randomUUID} from 'node:crypto';
-  import {appendFileSync, readFileSync, unlinkSync, writeFileSync} from 'node:fs';
-  import {canonicalCatalogDraftJson} from '@openlup/platform/catalog';
+  import {appendFileSync, readFileSync, rmSync, unlinkSync, writeFileSync} from 'node:fs';
   import pg from 'pg';
   import {installDemonstration} from './installation/install.ts';
   import {readStarterCatalogueRules, starterCatalogue} from './host/editor-catalogue.ts';
