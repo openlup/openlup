@@ -253,3 +253,125 @@ it("runs snapshots without movement I/O and retains the prior watermark with a s
   expect(await run(f.input)).toMatchObject({ ok: false, movementRefusal, refusal: { reason: "io_failure" } });
   expect(f.cursor()).toMatchObject({ status: "failed", lastMovementOccurredAt: watermark, movementRefusal });
 });
+
+it("uses batch stock and evidence writes when supplied and preserves parity across SKU classes", async () => {
+  const f = fixture();
+  const baseStock = (await f.input.provider.getStock())[0];
+  if ("kind" in baseStock) throw new Error("expected_stock_fixture");
+  f.setCursor({ status: "succeeded", lastStockSyncedAt: at, lastMovementOccurredAt: null,
+    continuation: { nextRef: null, startLocalDate: null, endLocalDate: null }, coverageGapSkus: ["sku-a"], refusal: null });
+  f.input.provider.getStock = async () => [
+    { ...baseStock, skuRef: "sku-c", forSaleQuantity: 10 },
+    { ...baseStock, skuRef: "sku-a", forSaleQuantity: 5 },
+    { ...baseStock, skuRef: "sku-pkg", forSaleQuantity: 100 },
+    { ...baseStock, skuRef: "sku-unknown", forSaleQuantity: 2 },
+  ];
+  f.lines[0].quantity.safetyStock = 4;
+  f.input.port.readSkuInventoryClasses = async () => new Map([
+    ["sku-c", "sellable"], ["sku-a", "sellable"], ["sku-pkg", "packaging"], ["sku-unknown", null],
+  ]);
+  f.input.port.readActiveReservations = async () => new Map([["sku-a", 6], ["sku-c", 1]]);
+
+  const singleCalls: string[] = [];
+  const batchCounts = { current: 0, snapshot: 0, evidence: 0, resolve: 0 };
+  f.input.port.recordProviderStockCurrent = async () => { singleCalls.push("current"); return { replayed: false, readBack: true }; };
+  f.input.port.recordStockSnapshot = async () => { singleCalls.push("snapshot"); return { replayed: false, readBack: true }; };
+  f.input.port.recordLowStockEvidence = async () => { singleCalls.push("evidence"); return { replayed: false }; };
+  f.input.port.resolveLowStockEvidence = async value => {
+    if (value.skuRef !== "legacy-sentinel") singleCalls.push("resolve");
+    return { resolved: 0 };
+  };
+  f.input.port.recordProviderStockCurrentBatch = async inputs => {
+    batchCounts.current += 1;
+    return inputs.map((item) => ({ replayed: item.snapshot.skuRef === "sku-c", readBack: true }));
+  };
+  f.input.port.recordStockSnapshotBatch = async inputs => {
+    batchCounts.snapshot += 1;
+    return inputs.map(() => ({ replayed: false, readBack: true }));
+  };
+  f.input.port.recordLowStockEvidenceBatch = async inputs => {
+    batchCounts.evidence += 1;
+    f.evidence.push(...inputs);
+    return inputs.map(() => ({ replayed: false }));
+  };
+  f.input.port.resolveLowStockEvidenceBatch = async inputs => {
+    batchCounts.resolve += 1;
+    f.resolutions.push(...inputs);
+    return inputs.map(() => ({ resolved: 1 }));
+  };
+
+  const out = await run(f.input);
+  expect(out).toMatchObject({
+    ok: true, checked: 4, updated: 7, replayed: 1, readBacks: 8,
+    unclassified: 1, lowStock: 2, reservationCoverage: 1, failures: 0,
+  });
+  expect(batchCounts).toEqual({ current: 1, snapshot: 1, evidence: 1, resolve: 1 });
+  expect(singleCalls).toEqual([]);
+  expect(f.evidence.map((e) => `${e.skuRef}:${e.thresholdKind}`)).toEqual(["sku-a:safety_stock", "sku-a:reservation_coverage"]);
+  expect(f.resolutions).toEqual([
+    { skuRef: "sku-c", activeThresholdKinds: [], syncRunId: "legacy-stock-run" },
+    { skuRef: "sku-a", activeThresholdKinds: ["safety_stock", "reservation_coverage"], syncRunId: "legacy-stock-run" },
+    { skuRef: "sku-pkg", activeThresholdKinds: [], syncRunId: "legacy-stock-run" },
+  ]);
+  expect(f.cursor()).toMatchObject({ status: "succeeded", coverageGapSkus: ["sku-a"] });
+});
+
+it("falls back to per-item stock writes to isolate individual failures without double-writing current stock", async () => {
+  const f = fixture();
+  const baseStock = (await f.input.provider.getStock())[0];
+  if ("kind" in baseStock) throw new Error("expected_stock_fixture");
+  f.input.provider.getStock = async () => [
+    { ...baseStock, skuRef: "sku-ok" },
+    { ...baseStock, skuRef: "sku-bad" },
+  ];
+  f.input.port.readSkuInventoryClasses = async () => new Map([["sku-ok", "sellable"], ["sku-bad", "sellable"]]);
+
+  // Case 1: recordProviderStockCurrentBatch fails -> falls back to per-item current + snapshot
+  let currentSingleCalls = 0;
+  f.input.port.recordProviderStockCurrentBatch = async () => { throw Object.assign(new Error("batch-conflict"), { code: "23505" }); };
+  f.input.port.recordStockSnapshotBatch = async () => { throw new Error("should-not-be-called"); };
+  f.input.port.recordProviderStockCurrent = async ({ snapshot }) => {
+    currentSingleCalls += 1;
+    if (snapshot.skuRef === "sku-bad") throw Object.assign(new Error("conflict"), { code: "23505" });
+    return { replayed: false, readBack: true };
+  };
+  const out1 = await run(f.input);
+  expect(currentSingleCalls).toBe(2);
+  expect(out1).toMatchObject({ ok: false, checked: 1, updated: 2, failures: 1, reason: "stock_current_write_failed:23505" });
+  expect(out1.items).toEqual([
+    expect.objectContaining({ itemIndex: 0, skuRef: "sku-ok", status: "recorded" }),
+    expect.objectContaining({ itemIndex: 1, skuRef: "sku-bad", status: "failed", reason: "stock_current_write_failed:23505" }),
+  ]);
+
+  // Case 2: recordProviderStockCurrentBatch succeeds, recordStockSnapshotBatch fails -> per-item snapshot only
+  currentSingleCalls = 0;
+  let snapshotSingleCalls = 0;
+  f.input.port.recordProviderStockCurrentBatch = async inputs => inputs.map(() => ({ replayed: false, readBack: true }));
+  f.input.port.recordStockSnapshotBatch = async () => { throw Object.assign(new Error("snapshot-conflict"), { code: "23505" }); };
+  f.input.port.recordStockSnapshot = async ({ snapshot }) => {
+    snapshotSingleCalls += 1;
+    if (snapshot.skuRef === "sku-bad") throw Object.assign(new Error("conflict"), { code: "23505" });
+    return { replayed: false, readBack: true };
+  };
+  const out2 = await run(f.input);
+  expect(currentSingleCalls).toBe(0);
+  expect(snapshotSingleCalls).toBe(2);
+  expect(out2).toMatchObject({ ok: false, checked: 1, updated: 2, replayed: 0, readBacks: 2, failures: 1, reason: "snapshot_write_failed:23505" });
+  expect(out2.items).toEqual([
+    expect.objectContaining({ itemIndex: 0, skuRef: "sku-ok", status: "recorded" }),
+    expect.objectContaining({ itemIndex: 1, skuRef: "sku-bad", status: "failed", reason: "snapshot_write_failed:23505" }),
+  ]);
+});
+
+it("maps batch evidence and resolve failures to their safe stage reasons", async () => {
+  for (const [method, reason] of [
+    ["recordLowStockEvidenceBatch", "stock_evidence_write_failed"],
+    ["resolveLowStockEvidenceBatch", "stock_evidence_resolve_failed"],
+  ] as const) {
+    const f = fixture();
+    f.lines[0].quantity.safetyStock = 1;
+    f.input.port[method] = async () => { throw new Error("private-batch-error"); };
+    expect(await run(f.input), method).toMatchObject({ ok: false, failures: 1, reason });
+    expect(f.cursor(), method).toMatchObject({ status: "failed", error: { reason }, refusal: { reason: "io_failure", retryable: true } });
+  }
+});

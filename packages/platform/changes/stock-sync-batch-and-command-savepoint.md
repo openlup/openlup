@@ -1,0 +1,6 @@
+---
+bump: minor
+---
+
+- Add optional batch persistence methods (`recordStockSnapshotBatch`, `recordProviderStockCurrentBatch`, `recordLowStockEvidenceBatch`, `resolveLowStockEvidenceBatch`) to `FulfillmentStockSyncPort` and `createPostgresFulfillmentStockSyncPort`, and use them in `runFulfillmentStockSyncWorker` with deterministic lock ordering and per-item fallback on stock batch errors.
+- Skip the `SAVEPOINT` and `subscription_command_preview` no-op probe in `createPostgresSubscriptionCommandStore` for lifecycle actions whose preview path never returns `noop` (`pause`, `resume`, `cancel`, `skip_next_cycle`, `order_now`, `reactivate`).

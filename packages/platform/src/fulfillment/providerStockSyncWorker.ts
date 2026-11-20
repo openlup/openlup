@@ -152,84 +152,199 @@ export async function runFulfillmentStockSyncWorker(input: {
       ? readStringSet(previousCursor.coverageGapSkus)
       : new Set<string>();
 
-    for (const { stock, itemIndex } of stockItems) {
-      try {
-        const local = localBySku.get(stock.skuRef) ?? emptyLocal(stock.skuRef);
-        const inventoryClass = inventoryClasses.get(stock.skuRef) ?? null;
-        const activeReserved = activeReservations.get(stock.skuRef) ?? 0;
-        const staleAfter = new Date(now.getTime() + staleThresholdHours * 3_600_000).toISOString();
-        stage = "stock_current_write_failed";
-        const current = await input.port.recordProviderStockCurrent({
+    const nowIso = now.toISOString();
+    const staleAfter = new Date(now.getTime() + staleThresholdHours * 3_600_000).toISOString();
+    const preparedStockItems = stockItems.map(({ stock, itemIndex }) => {
+      const local = localBySku.get(stock.skuRef) ?? emptyLocal(stock.skuRef);
+      const inventoryClass = inventoryClasses.get(stock.skuRef) ?? null;
+      const activeReserved = activeReservations.get(stock.skuRef) ?? 0;
+      return {
+        stock,
+        itemIndex,
+        local,
+        inventoryClass,
+        activeReserved,
+        currentInput: {
           requestKey: input.compatibility.currentKey(syncRunId, stock.skuRef),
-          snapshot: stock, inventoryClass, lastSyncedAt: now.toISOString(), staleAfter,
-        });
-        stage = "snapshot_write_failed";
-        const snapshot = await input.port.recordStockSnapshot({
+          snapshot: stock,
+          inventoryClass,
+          lastSyncedAt: nowIso,
+          staleAfter,
+        },
+        snapshotInput: {
           requestKey: input.compatibility.snapshotKey(syncRunId, stock.skuRef),
-          snapshot: stock, local, mismatchKind: "none", inventoryClass,
-        });
+          snapshot: stock,
+          local,
+          mismatchKind: "none" as const,
+          inventoryClass,
+        },
+      };
+    });
 
-        result.items.push({ itemIndex, skuRef: stock.skuRef, status: "recorded", activeReserved,
-          sellableNow: inventoryClass === "sellable" ? Math.max(0, stock.forSaleQuantity - activeReserved - local.safetyStock) : null,
-          coverageGapQuantity: Math.max(0, activeReserved - stock.forSaleQuantity) });
-        result.checked += 1;
-        result.updated += (snapshot.replayed ? 0 : 1) + (current.replayed ? 0 : 1);
-        if (snapshot.replayed) result.replayed += 1;
-        if (current.replayed) result.replayed += 1;
-        if (snapshot.readBack) result.readBacks += 1;
-        if (current.readBack) result.readBacks += 1;
-        if (inventoryClass === null) result.unclassified += 1;
-        if (inventoryClass === "packaging") packagingSkus.add(stock.skuRef);
-        if (inventoryClass === "sellable") {
-          coverageCandidates.push({ stock, local, activeReserved });
-          if (activeReserved > stock.forSaleQuantity) currentCoverageGapSkus.add(stock.skuRef);
+    const recordStockOutcome = (
+      prepared: (typeof preparedStockItems)[number],
+      current: { replayed: boolean; readBack: boolean },
+      snapshot: { replayed: boolean; readBack: boolean },
+    ) => {
+      const { stock, itemIndex, local, inventoryClass, activeReserved } = prepared;
+      result.items.push({ itemIndex, skuRef: stock.skuRef, status: "recorded", activeReserved,
+        sellableNow: inventoryClass === "sellable" ? Math.max(0, stock.forSaleQuantity - activeReserved - local.safetyStock) : null,
+        coverageGapQuantity: Math.max(0, activeReserved - stock.forSaleQuantity) });
+      result.checked += 1;
+      result.updated += (snapshot.replayed ? 0 : 1) + (current.replayed ? 0 : 1);
+      if (snapshot.replayed) result.replayed += 1;
+      if (current.replayed) result.replayed += 1;
+      if (snapshot.readBack) result.readBacks += 1;
+      if (current.readBack) result.readBacks += 1;
+      if (inventoryClass === null) result.unclassified += 1;
+      if (inventoryClass === "packaging") packagingSkus.add(stock.skuRef);
+      if (inventoryClass === "sellable") {
+        coverageCandidates.push({ stock, local, activeReserved });
+        if (activeReserved > stock.forSaleQuantity) currentCoverageGapSkus.add(stock.skuRef);
+      }
+    };
+
+    let currentBatchResults: { replayed: boolean; readBack: boolean }[] | null = null;
+    let stockBatchCompleted = false;
+    if (preparedStockItems.length > 0 && input.port.recordProviderStockCurrentBatch && input.port.recordStockSnapshotBatch) {
+      try {
+        stage = "stock_current_write_failed";
+        const currentResults = await input.port.recordProviderStockCurrentBatch(preparedStockItems.map((item) => item.currentInput));
+        if (currentResults.length !== preparedStockItems.length) throw new Error("fulfillment_native_response_missing");
+        currentBatchResults = currentResults;
+        stage = "snapshot_write_failed";
+        const snapshotResults = await input.port.recordStockSnapshotBatch(preparedStockItems.map((item) => item.snapshotInput));
+        if (snapshotResults.length !== preparedStockItems.length) throw new Error("fulfillment_native_response_missing");
+        for (let i = 0; i < preparedStockItems.length; i += 1) {
+          recordStockOutcome(preparedStockItems[i]!, currentResults[i]!, snapshotResults[i]!);
         }
-      } catch (error) {
-        result.ok = false;
-        result.failures += 1;
-        const reason = safeReason(error, stage);
-        operationalReason ??= reason;
-        result.items.push({ itemIndex, skuRef: stock.skuRef, status: "failed", reason });
+        stockBatchCompleted = true;
+      } catch {
+        // Fall back to per-item writes to isolate individual SKU failures while preserving partial progress.
+      }
+    }
+
+    if (!stockBatchCompleted) {
+      for (let i = 0; i < preparedStockItems.length; i += 1) {
+        const prepared = preparedStockItems[i]!;
+        try {
+          let current: { replayed: boolean; readBack: boolean };
+          if (currentBatchResults) {
+            current = currentBatchResults[i]!;
+          } else {
+            stage = "stock_current_write_failed";
+            current = await input.port.recordProviderStockCurrent(prepared.currentInput);
+          }
+          stage = "snapshot_write_failed";
+          const snapshot = await input.port.recordStockSnapshot(prepared.snapshotInput);
+          recordStockOutcome(prepared, current, snapshot);
+        } catch (error) {
+          result.ok = false;
+          result.failures += 1;
+          const reason = safeReason(error, stage);
+          operationalReason ??= reason;
+          result.items.push({ itemIndex: prepared.itemIndex, skuRef: prepared.stock.skuRef, status: "failed", reason });
+        }
       }
     }
 
     if (result.ok) {
-      for (const { stock, local, activeReserved } of coverageCandidates) {
-        const localAvailable = availableQuantity(local);
-        const confirmedCoverageGap = currentCoverageGapSkus.has(stock.skuRef) && previousCoverageGapSkus.has(stock.skuRef);
-        const lowStockSignals = lowStockSignalsFor(stock, local, activeReserved, confirmedCoverageGap);
-        const activeThresholdKinds: Threshold[] = lowStockSignals.map((signal) => signal.thresholdKind);
-        if (currentCoverageGapSkus.has(stock.skuRef) && !activeThresholdKinds.includes("reservation_coverage")) {
-          activeThresholdKinds.push("reservation_coverage");
+      if (input.port.recordLowStockEvidenceBatch || input.port.resolveLowStockEvidenceBatch) {
+        const evidenceInputs: Parameters<FulfillmentStockSyncPort["recordLowStockEvidence"]>[0][] = [];
+        const resolveInputs: Parameters<FulfillmentStockSyncPort["resolveLowStockEvidence"]>[0][] = [];
+        for (const { stock, local, activeReserved } of coverageCandidates) {
+          const localAvailable = availableQuantity(local);
+          const confirmedCoverageGap = currentCoverageGapSkus.has(stock.skuRef) && previousCoverageGapSkus.has(stock.skuRef);
+          const lowStockSignals = lowStockSignalsFor(stock, local, activeReserved, confirmedCoverageGap);
+          const activeThresholdKinds: Threshold[] = lowStockSignals.map((signal) => signal.thresholdKind);
+          if (currentCoverageGapSkus.has(stock.skuRef) && !activeThresholdKinds.includes("reservation_coverage")) {
+            activeThresholdKinds.push("reservation_coverage");
+          }
+          for (const signal of lowStockSignals) {
+            alerts.push({ skuRef: stock.skuRef, thresholdKind: signal.thresholdKind, severity: signal.severity,
+              providerForSaleQuantity: stock.forSaleQuantity, localAvailableQuantity: localAvailable, detectedAt: nowIso,
+              activeReserved, coverageGapQuantity: Math.max(0, activeReserved - stock.forSaleQuantity) });
+            evidenceInputs.push({
+              requestKey: input.compatibility.lowStockKey(stock.skuRef, signal.thresholdKind),
+              skuRef: stock.skuRef, thresholdKind: signal.thresholdKind, severity: signal.severity,
+              providerForSaleQuantity: stock.forSaleQuantity, localAvailableQuantity: localAvailable, syncRunId,
+            });
+          }
+          resolveInputs.push({ skuRef: stock.skuRef, activeThresholdKinds, syncRunId });
         }
-        for (const signal of lowStockSignals) {
-          alerts.push({ skuRef: stock.skuRef, thresholdKind: signal.thresholdKind, severity: signal.severity,
-            providerForSaleQuantity: stock.forSaleQuantity, localAvailableQuantity: localAvailable, detectedAt: now.toISOString(),
-            activeReserved, coverageGapQuantity: Math.max(0, activeReserved - stock.forSaleQuantity) });
+        for (const sku of packagingSkus) {
+          resolveInputs.push({ skuRef: sku, activeThresholdKinds: [], syncRunId });
+        }
+
+        if (evidenceInputs.length > 0) {
           stage = "stock_evidence_write_failed";
-          const evidence = await input.port.recordLowStockEvidence({
-            requestKey: input.compatibility.lowStockKey(stock.skuRef, signal.thresholdKind),
-            skuRef: stock.skuRef, thresholdKind: signal.thresholdKind, severity: signal.severity,
-            providerForSaleQuantity: stock.forSaleQuantity, localAvailableQuantity: localAvailable, syncRunId,
-          });
-          if (evidence.replayed) result.replayed += 1;
-          result.lowStock += evidence.replayed ? 0 : 1;
-          if (signal.thresholdKind === "reservation_coverage") result.reservationCoverage += 1;
+          let evidenceResults: { replayed: boolean }[];
+          if (input.port.recordLowStockEvidenceBatch) {
+            evidenceResults = await input.port.recordLowStockEvidenceBatch(evidenceInputs);
+          } else {
+            evidenceResults = [];
+            for (const entry of evidenceInputs) {
+              evidenceResults.push(await input.port.recordLowStockEvidence(entry));
+            }
+          }
+          if (evidenceResults.length !== evidenceInputs.length) throw new Error("fulfillment_native_response_missing");
+          for (let i = 0; i < evidenceInputs.length; i += 1) {
+            const evidence = evidenceResults[i]!;
+            if (evidence.replayed) result.replayed += 1;
+            result.lowStock += evidence.replayed ? 0 : 1;
+            if (evidenceInputs[i]!.thresholdKind === "reservation_coverage") result.reservationCoverage += 1;
+          }
         }
-        stage = "stock_evidence_resolve_failed";
-        await input.port.resolveLowStockEvidence({
-          skuRef: stock.skuRef,
-          activeThresholdKinds,
-          syncRunId,
-        });
-      }
-      for (const sku of packagingSkus) {
-        stage = "stock_evidence_resolve_failed";
-        await input.port.resolveLowStockEvidence({
-          skuRef: sku,
-          activeThresholdKinds: [],
-          syncRunId,
-        });
+
+        if (resolveInputs.length > 0) {
+          stage = "stock_evidence_resolve_failed";
+          if (input.port.resolveLowStockEvidenceBatch) {
+            const resolveResults = await input.port.resolveLowStockEvidenceBatch(resolveInputs);
+            if (resolveResults.length !== resolveInputs.length) throw new Error("fulfillment_native_response_missing");
+          } else {
+            for (const entry of resolveInputs) {
+              await input.port.resolveLowStockEvidence(entry);
+            }
+          }
+        }
+      } else {
+        for (const { stock, local, activeReserved } of coverageCandidates) {
+          const localAvailable = availableQuantity(local);
+          const confirmedCoverageGap = currentCoverageGapSkus.has(stock.skuRef) && previousCoverageGapSkus.has(stock.skuRef);
+          const lowStockSignals = lowStockSignalsFor(stock, local, activeReserved, confirmedCoverageGap);
+          const activeThresholdKinds: Threshold[] = lowStockSignals.map((signal) => signal.thresholdKind);
+          if (currentCoverageGapSkus.has(stock.skuRef) && !activeThresholdKinds.includes("reservation_coverage")) {
+            activeThresholdKinds.push("reservation_coverage");
+          }
+          for (const signal of lowStockSignals) {
+            alerts.push({ skuRef: stock.skuRef, thresholdKind: signal.thresholdKind, severity: signal.severity,
+              providerForSaleQuantity: stock.forSaleQuantity, localAvailableQuantity: localAvailable, detectedAt: nowIso,
+              activeReserved, coverageGapQuantity: Math.max(0, activeReserved - stock.forSaleQuantity) });
+            stage = "stock_evidence_write_failed";
+            const evidence = await input.port.recordLowStockEvidence({
+              requestKey: input.compatibility.lowStockKey(stock.skuRef, signal.thresholdKind),
+              skuRef: stock.skuRef, thresholdKind: signal.thresholdKind, severity: signal.severity,
+              providerForSaleQuantity: stock.forSaleQuantity, localAvailableQuantity: localAvailable, syncRunId,
+            });
+            if (evidence.replayed) result.replayed += 1;
+            result.lowStock += evidence.replayed ? 0 : 1;
+            if (signal.thresholdKind === "reservation_coverage") result.reservationCoverage += 1;
+          }
+          stage = "stock_evidence_resolve_failed";
+          await input.port.resolveLowStockEvidence({
+            skuRef: stock.skuRef,
+            activeThresholdKinds,
+            syncRunId,
+          });
+        }
+        for (const sku of packagingSkus) {
+          stage = "stock_evidence_resolve_failed";
+          await input.port.resolveLowStockEvidence({
+            skuRef: sku,
+            activeThresholdKinds: [],
+            syncRunId,
+          });
+        }
       }
     }
   } catch (error) {

@@ -63,3 +63,94 @@ describe("native future-terms cadence admission", () => {
     expect(f.query).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("direct apply SAVEPOINT preview guard", () => {
+  function applyFixture(previewStatus: "noop" | "refused" = "refused") {
+    const executedSql: string[] = [];
+    const query = vi.fn<SubscriptionQueryExecutor["query"]>(async sql => {
+      executedSql.push(sql);
+      if (sql.includes("pg_advisory_xact_lock")) return { rows: [] };
+      if (sql.startsWith("WITH stored")) return { rows: [] };
+      if (sql.startsWith("SAVEPOINT") || sql.startsWith("ROLLBACK TO SAVEPOINT") || sql.startsWith("RELEASE SAVEPOINT")) return { rows: [] };
+      if (sql.includes("subscription_command_preview(")) {
+        return { rows: [{ response: previewStatus === "noop"
+          ? { status: "noop", subscriptionId: id, subscriptionStatus: "active", templateVersion: 1, nextCycleAt: null, eventId: null }
+          : { status: "refused", reason: "subscription_command_preview_unsupported" } }] };
+      }
+      if (sql.includes("subscription_command_apply(")) {
+        return { rows: [{ response: { status: "applied", subscriptionId: id, subscriptionStatus: "active", templateVersion: 1, nextCycleAt: null, eventId: null } }] };
+      }
+      if (sql.includes("SELECT command_fingerprint FROM public.subscription_command_receipts")) {
+        return { rows: [{ command_fingerprint: "fp-1" }] };
+      }
+      throw new Error(`unexpected SQL: ${sql}`);
+    });
+    const binding = {
+      withTransaction: async <T>(work: (db: SubscriptionQueryExecutor) => Promise<T>) => work({ query }),
+      futureTerms: vi.fn(async () => ({ coreLines: [{ variantId: id, qty: 1 }], addonLines: [], compositionConstraint: {} })),
+    };
+    return {
+      executedSql,
+      store: createPostgresSubscriptionCommandStore(binding),
+      commands: createPostgresSubscriptionCommands(binding),
+    };
+  }
+
+  it.each(["pause", "resume", "cancel", "skip_next_cycle", "order_now", "reactivate"])(
+    "skips SAVEPOINT and preview probe on direct apply for %s",
+    async action => {
+      const f = applyFixture();
+      const result = await f.store.apply({
+        actorId: id, clientId: id, subscriptionId: id, idempotencyKey: `lifecycle-${action}-key`,
+        now: "1999-01-01T00:00:00Z", action, payload: {},
+      });
+      expect(result).toMatchObject({ status: "applied", commandFingerprint: "fp-1" });
+      expect(f.executedSql.some(sql => sql.includes("SAVEPOINT"))).toBe(false);
+      expect(f.executedSql.some(sql => sql.includes("subscription_command_preview("))).toBe(false);
+      expect(f.executedSql.some(sql => sql.includes("subscription_command_apply("))).toBe(true);
+    },
+  );
+
+  it.each([
+    "slide_next_cycle", "update_bundle", "resize_bundle", "update_package_template",
+    "update_plan_length", "add_addon", "remove_addon", "update_addon_quantity",
+  ])(
+    "retains SAVEPOINT noop probe on direct apply without acceptedQuoteHash for %s",
+    async action => {
+      const fNoop = applyFixture("noop");
+      const noopResult = await fNoop.store.apply({
+        actorId: id, clientId: id, subscriptionId: id, idempotencyKey: `noop-${action}-key`,
+        now: "1999-01-01T00:00:00Z", action, payload: {},
+      });
+      expect(noopResult).toMatchObject({ status: "noop", commandFingerprint: "fp-1" });
+      expect(fNoop.executedSql.some(sql => sql.startsWith("SAVEPOINT"))).toBe(true);
+      expect(fNoop.executedSql.some(sql => sql.includes("subscription_command_preview("))).toBe(true);
+      expect(fNoop.executedSql.some(sql => sql.includes("subscription_command_apply("))).toBe(false);
+
+      const fApply = applyFixture("refused");
+      const applyResult = await fApply.store.apply({
+        actorId: id, clientId: id, subscriptionId: id, idempotencyKey: `apply-${action}-key`,
+        now: "1999-01-01T00:00:00Z", action, payload: {},
+      });
+      expect(applyResult).toMatchObject({ status: "applied", commandFingerprint: "fp-1" });
+      expect(fApply.executedSql.some(sql => sql.startsWith("ROLLBACK TO SAVEPOINT"))).toBe(true);
+      expect(fApply.executedSql.some(sql => sql.includes("subscription_command_apply("))).toBe(true);
+    },
+  );
+
+  it("skips SAVEPOINT for typed skip command while keeping it for typed slide command", async () => {
+    const actor = { kind: "customer" as const, actorId: id, clientId: id };
+    const skipFixture = applyFixture();
+    await expect(skipFixture.commands.apply({
+      actor, subscriptionId: id, idempotencyKey: "typed-skip-key", now: "1999-01-01T00:00:00Z", action: "skip",
+    })).resolves.toMatchObject({ outcome: "applied" });
+    expect(skipFixture.executedSql.some(sql => sql.includes("SAVEPOINT"))).toBe(false);
+
+    const slideFixture = applyFixture("noop");
+    await expect(slideFixture.commands.apply({
+      actor, subscriptionId: id, idempotencyKey: "typed-slide-key", now: "1999-01-01T00:00:00Z", action: "slide",
+      newNextCycleAt: "1999-01-15T00:00:00Z",
+    })).resolves.toMatchObject({ outcome: "noop" });
+    expect(slideFixture.executedSql.some(sql => sql.startsWith("SAVEPOINT"))).toBe(true);
+  });
+});
