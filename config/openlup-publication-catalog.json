@@ -4274,10 +4274,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/changes/payment-reconciliation-and-failure-evidence-exports.md",
-      "class": "public-doc"
-    },
-    {
       "path": "packages/platform/package.json",
       "class": "public-output"
     },
