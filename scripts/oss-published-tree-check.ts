@@ -262,11 +262,11 @@ export function validatePublicPolicyState(root: string, policySource: string, ca
  * measure edges that leave the published set, and in a tree that IS the published set there is no
  * such edge to find. Reporting them as zero against an enabled pin would read as debt paid.
  */
-export function typecheckVerdict(root: string, contractSource: string, log: (line: string) => void): boolean {
+export async function typecheckVerdict(root: string, contractSource: string, log: (line: string) => void): Promise<boolean> {
   const typecheck = readPublicTypecheckCompatibility(contractSource).typecheck;
   const projects = typecheck.projects;
   const pin = typecheck.signedPreviewDebt;
-  const { positioned, unpositioned } = runPublicTypecheckProjects(root, projects);
+  const { positioned, unpositioned } = await runPublicTypecheckProjects(root, projects);
   // A project that could not start reports errors with no file position; treating that as "no
   // diagnostics" is how this check would go green while compiling nothing.
   if (unpositioned.length > 0) throw new Error(`a project reported an error with no file position, so nothing was measured:\n  ${unpositioned.join("\n  ")}`);
@@ -336,7 +336,7 @@ export function policyVerdict(root: string, log: (line: string) => void): boolea
   return true;
 }
 
-function main(root: string, argv: string[]): number {
+async function main(root: string, argv: string[]): Promise<number> {
   const modes = ["--typecheck", "--inventory", "--policy"].filter((mode) => argv.includes(mode));
   if (modes.length !== 1) {
     process.stderr.write("usage: oss-published-tree-check.ts --typecheck | --inventory | --policy\n  run inside a checkout of the published tree\n");
@@ -347,7 +347,7 @@ function main(root: string, argv: string[]): number {
   if (documentationArgs.length > 0 && modes[0] !== "--policy") throw new Error("documentation options require --policy");
   if (modes[0] === "--policy") return documentationPolicyCommand(root, argv, log);
   const ok = modes[0] === "--typecheck"
-    ? typecheckVerdict(root, readFileSync(join(root, SOURCE_RELEASE_CONTRACT_PATH), "utf8"), log)
+    ? await typecheckVerdict(root, readFileSync(join(root, SOURCE_RELEASE_CONTRACT_PATH), "utf8"), log)
     : modes[0] === "--inventory"
       ? publicInventoryVerdict(root, log)
       : policyVerdict(root, log);
@@ -394,6 +394,7 @@ export function documentationPolicyCommand(root: string, argv: string[], log: (l
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  try { process.exit(main(process.cwd(), process.argv.slice(2))); }
-  catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exit(1); }
+  main(process.cwd(), process.argv.slice(2))
+    .then((code) => process.exit(code))
+    .catch((error) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exit(1); });
 }
