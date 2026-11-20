@@ -33,7 +33,7 @@ export type SettingsAppBindings = {
 
 type SettingsDatabase = {
   host: string; port: number; user: string; password: string | (() => string); database: string;
-  ssl: false | { rejectUnauthorized: true }; sslnegotiation: "postgres";
+  ssl: false | { rejectUnauthorized: true; host: string }; sslnegotiation: "postgres";
   options: string; replication: "false"; client_encoding: "utf8"; application_name: string; connectionTimeoutMillis: 0;
 };
 type SettingsHost = {
@@ -312,9 +312,10 @@ function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; h
     const password = decodeURIComponent(url.password);
     const database = decodeURIComponent(databasePath.slice(1));
     if (![user, password, database].some(value => /\p{Cc}/u.test(value))) {
+      const host = url.hostname.replace(/^\[|\]$/gu, "");
       return {
-        host: url.hostname.replace(/^\[|\]$/gu, ""), port, user, password: password || (() => ""), database,
-        ssl: sslmode === "require" || sslmode === "verify-full" ? { rejectUnauthorized: true } : false,
+        host, port, user, password: password || (() => ""), database,
+        ssl: sslmode === "require" || sslmode === "verify-full" ? { rejectUnauthorized: true, host } : false,
         // Truthy no-op startup values prevent pg from inheriting process connection defaults.
         sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
         application_name: "openlup settings", connectionTimeoutMillis: 0,

@@ -303,6 +303,7 @@ type SettingsDatabase = {
     database: string;
     ssl: false | {
         rejectUnauthorized: true;
+        host: string;
     };
     sslnegotiation: "postgres";
     options: string;
