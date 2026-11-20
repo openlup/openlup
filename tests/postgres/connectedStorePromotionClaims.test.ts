@@ -5,14 +5,14 @@ import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
-  type JourneyInstallation } from "../helpers/storeJourney.js";
+  type JourneyInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const resources = storeJourneyResources();
 const at = "2026-10-01T00:00:00Z", expires = "2027-01-01T00:00:00Z";
 const sku = randomUUID(), list = randomUUID(), clients = [randomUUID(), randomUUID()], orders = [randomUUID(), randomUUID()];
 const promotion = "synthetic-first-subscription";
-let source: JourneyInstallation, empty: JourneyInstallation, target: JourneyInstallation;
+let source: JourneyInstallation, empty: JourneyInstallation, target: JourneyInstallation, targets: JourneyTargetTemplate;
 let packet: ConnectedNativeStoreCapture, emptyPacket: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture;
 let targetNumber = 0;
 
@@ -35,8 +35,11 @@ async function parents(store: JourneyInstallation) {
 }
 
 beforeAll(async () => {
-  source = await resources.installation("claims-source");
-  empty = await resources.installation("claims-empty");
+  [source, empty, targets] = await Promise.all([
+    resources.installation("claims-source"),
+    resources.installation("claims-empty"),
+    resources.targetTemplate("claims-target"),
+  ]);
   await parents(source); await parents(empty);
   for (const [index, order] of orders.entries()) {
     const db = await source.owner.connect();
@@ -69,7 +72,7 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 
 beforeEach(async () => {
-  target = await resources.installation(`claims-target-${++targetNumber}`);
+  target = await targets.nextTarget(`claims-target-${++targetNumber}`);
   freshTarget = await captureStoreJourney(target.owner, "promotion-claims-target");
 }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
@@ -130,7 +133,7 @@ it("refuses a second first-subscription redemption while missing claim history p
   const before = await journeyCensus(target.owner);
   await expect(secondRedemption(target)).rejects.toMatchObject({ code: "40001", message: "commerce_promotion_customer_limit_reached" });
   expect(await journeyCensus(target.owner)).toEqual(before);
-  const control = await resources.installation("claims-missing-history");
+  const control = await targets.nextTarget("claims-missing-history");
   const fresh = await captureStoreJourney(control.owner, "promotion-claims-control");
   const missingHistory = structuredClone(packet);
   for (const rows of missingHistory.owned) if (["commerce_promotion_claims", "commerce_promotion_claim_events"].includes(rows.table)) rows.rows = [];

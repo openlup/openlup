@@ -281,8 +281,8 @@ export async function waitForPostgresTcpReady(
   connectionString: string,
   options: PostgresReadyOptions = {},
 ): Promise<boolean> {
-  const attempts = options.attempts ?? 60;
-  const intervalMs = options.intervalMs ?? 1_000;
+  const attempts = options.attempts ?? 300;
+  const intervalMs = options.intervalMs ?? 200;
   const deadline = performance.now() + (options.timeoutMs ?? 60_000);
   const pg = await import("pg");
   const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;
