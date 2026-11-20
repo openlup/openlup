@@ -59,7 +59,8 @@ describe("fast preflight", () => {
       const status = Number((call === expected[2] && offline)
         || (call === expected[4] && failures.includes("merge-clean"))
         || (call === expected[6] && failures.includes("neutrality")));
-      const stderr = warnings && (call === expected[1] || call === expected[3]) ? "warning: fixture Git warning\n" : "";
+      const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[11]].includes(call)
+        ? "warning: fixture Git warning\n" : "";
       return { status, stdout: outputs.get(call) ?? "", stderr };
     }) as typeof spawnSync);
     const message = failures.includes("dco") ? "unsigned commit" : "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";

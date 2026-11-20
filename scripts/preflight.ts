@@ -355,13 +355,13 @@ function fastPreflight(): number {
       detail: "worktree has uncommitted changes. Commit or remove them.",
     })],
     ["merge-clean", () => command("merge-clean", "git", ["merge-tree", "--write-tree", "origin/main", "HEAD"])],
-    ["neutrality", () => neutrality(git(["merge-base", "HEAD", "origin/main"]).trim())],
+    ["neutrality", () => neutrality(git(["merge-base", "HEAD", "origin/main"], "stdout").trim())],
     ["ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])],
     ["ast-grep", () => astGrep(offlineNpm)],
     ["publication-policy", () => command("publication-policy", "npm", ["run", "oss:published-tree", "--", "--policy"], offlineNpm)],
     ["publication-inventory", () => command("publication-inventory", "npm", ["run", "oss:published-tree", "--", "--inventory"], offlineNpm)],
     ["dco", () => {
-      const upstream = git(["rev-parse", "origin/main"]).trim();
+      const upstream = git(["rev-parse", "origin/main"], "stdout").trim();
       const commits = readCommits(process.cwd(), upstream, head).filter(({ parents }) => parents.length < 2);
       const { missing } = signOffVerdict(commits);
       return { check: "dco", status: missing.length ? "FAIL" : "PASS",
@@ -391,8 +391,9 @@ function fastPreflight(): number {
 }
 
 export function main(now: Date, args: readonly string[] = []): number {
-  process.chdir(git(["rev-parse", "--show-toplevel"]).trim());
-  if (args.includes("--fast")) return fastPreflight();
+  const fast = args.includes("--fast");
+  process.chdir(git(["rev-parse", "--show-toplevel"], fast ? "stdout" : "output").trim());
+  if (fast) return fastPreflight();
   const started = Date.now();
   let base: string;
   try {
