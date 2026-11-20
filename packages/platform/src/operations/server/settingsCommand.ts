@@ -1,3 +1,4 @@
+import { isIPv4 } from "node:net";
 import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
@@ -289,10 +290,12 @@ function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; h
   const path = ["database-url"];
   const url = URL.parse(input);
   if (!url || url.href !== input) return { path,
-    hint: "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and omit the port or use a port from 1 to 65535. Remove whitespace and dot segments." };
+    hint: "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and write IPv6 in its shortest form. Omit the port or use a port from 1 to 65535, and write an empty password without the colon. Remove whitespace and dot segments." };
   if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return { path, hint: "Use the postgres:// or postgresql:// scheme." };
-  if (!url.hostname.startsWith("[") && !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.?$/u.test(url.hostname)) {
-    return { path, hint: "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host." };
+  const dnsName = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.?$/u.test(url.hostname);
+  const ipv4Like = /(?:^|\.)(?:[0-9]+|0x[^.]*)\.?$/u.test(url.hostname);
+  if (!url.hostname.startsWith("[") && !(dnsName && (!ipv4Like || isIPv4(url.hostname)))) {
+    return { path, hint: "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. A DNS name cannot end in a label made only of digits or starting with 0x. For IPv4, write IPv4 octets in decimal without leading zeros." };
   }
   const port = Number(url.port || 5432);
   if (port < 1 || port > 65535) return { path, hint: "Omit the PostgreSQL URL port or use a port from 1 to 65535." };
@@ -306,18 +309,22 @@ function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; h
     database = decodeURIComponent(url.pathname.slice(1));
   } catch { return encoding; }
   if ([user, password, database].some(value => /\p{Cc}/u.test(value))) return encoding;
+  if (Buffer.byteLength(user, "utf8") > 63 || Buffer.byteLength(database, "utf8") > 63) {
+    return { path, hint: "Use a PostgreSQL username and database name of at most 63 bytes each in UTF-8." };
+  }
   if (url.href.includes("#")) return { path, hint: "Remove the fragment from the PostgreSQL URL." };
   if (url.href.includes("?") && !["?sslmode=disable", "?sslmode=require", "?sslmode=verify-full"].includes(url.search)) {
     return { path, hint: "Use no query or a single sslmode set to disable, require or verify-full. If your provider needs another option, use a provider URL that works with verified TLS under Node's trust store." };
   }
   const host = url.hostname.replace(/^\[|\]$/gu, "");
-  return {
-    host, port, user, password: password || (() => ""), database,
+  const options: SettingsDatabase & { binary: false } = {
+    host, port, user, password: password || (() => ""), database, binary: false,
     ssl: url.search === "?sslmode=require" || url.search === "?sslmode=verify-full" ? { rejectUnauthorized: true, host } : false,
     // Truthy no-op startup values prevent pg from inheriting process connection defaults.
     sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
     application_name: "openlup settings", connectionTimeoutMillis: 0,
   };
+  return options;
 }
 
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */

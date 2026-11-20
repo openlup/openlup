@@ -10,7 +10,7 @@ const url = "postgresql://sample@read.invalid/shop";
 const databaseOptions = {
   host: "read.invalid", port: 5432, user: "sample", password: expect.any(Function), database: "shop", ssl: false,
   sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
-  application_name: "openlup settings", connectionTimeoutMillis: 0,
+  application_name: "openlup settings", connectionTimeoutMillis: 0, binary: false,
 };
 const asOf = new Date(0).toISOString();
 const refusalPrefix = "commerce_setting_preview_";
@@ -93,14 +93,17 @@ it.each([
   ["surrounding whitespace", ` ${url} `, "Remove whitespace and dot segments"],
   ["raw control character", url.replace("sample", "sam\tple"), "Supply a canonical"],
   ["uppercase scheme", url.replace("postgresql:", "POSTGRESQL:"), "Supply a canonical"],
-  ["empty serialized password", url.replace("@", ":@"), "Supply a canonical"],
+  ["empty serialized password", url.replace("@", ":@"), "write an empty password without the colon"],
+  ["IPv6 spelling that can be shortened", url.replace("read.invalid", "[2001:0db8::1]"), "write IPv6 in its shortest form"],
   ["unclosed IPv6 bracket", url.replace("read.invalid", "[2001:db8::1"), "Use matching brackets for IPv6"],
   ...["", "not-a-port", "65536"].map(port => [`noncanonical or unparseable port ${port}`, url.replace("/shop", `:${port}/shop`), "port from 1 to 65535"] as const),
   ["zero-padded port", url.replace("/shop", ":0001/shop"), "Supply a canonical"],
   ["postgres scheme", url.replace("postgresql:", "postgres:"), {}],
-  ["postgresql scheme", url, {}],
+  ["postgresql scheme with binary mode disabled", url, { binary: false }],
   ["wrong scheme", url.replace("postgresql:", "https:"), "Use the postgres:// or postgresql:// scheme"],
   ["IPv4", url.replace("read.invalid", "192.0.2.1"), { host: "192.0.2.1" }],
+  ...["192.0.2.010", "192.0.010.1", "192.0.2", "192.0.2.256", "read.123", "read.0xface."].map(host =>
+    [`ambiguous IPv4 spelling ${host}`, url.replace("read.invalid", host), "write IPv4 octets in decimal without leading zeros"] as const),
   ["IPv6", url.replace("read.invalid", "[2001:db8::1]"), { host: "2001:db8::1" }],
   ["missing host", url.replace("sample@read.invalid", ""), "Use one lowercase DNS name"],
   ["socket hostname", url.replace("read.invalid", "%2Ffake%2Fsocket"), "Replace an escaped, socket or comma-separated host"],
@@ -121,6 +124,11 @@ it.each([
   ["bad password escape", url.replace("@", ":sample%Q1@"), "valid UTF-8 URL components"],
   ["bad database UTF-8", `${url}%FF`, "valid UTF-8 URL components"],
   ["escaped control character", url.replace("@", ":fake%00@"), "without control characters"],
+  ["63-byte username and database", url.replace("sample", encodeURIComponent("é".repeat(31) + "x")).replace("shop", "x".repeat(63)),
+    { user: "é".repeat(31) + "x", database: "x".repeat(63) }],
+  ["64-byte database", url.replace("shop", "x".repeat(64)), "at most 63 bytes each in UTF-8"],
+  ["64-byte multibyte username", url.replace("sample", encodeURIComponent("é".repeat(32))), "at most 63 bytes each in UTF-8"],
+  ["64-byte multibyte database", url.replace("shop", encodeURIComponent("é".repeat(32))), "at most 63 bytes each in UTF-8"],
   ["fragment", `${url}#section`, "Remove the fragment"],
   ["empty fragment", `${url}#`, "Remove the fragment"],
   ["disabled TLS", `${url}?sslmode=disable`, {}],
@@ -303,9 +311,9 @@ it("names --app when connected preview lacks a stock binding", async () => {
 it.each([
   [["preview", "--value", "{}"], ["key"], "Pass the setting key and one proposed JSON value with --value."],
   [["preview", key, "--value", "{}", "--goal", "stock"], ["goal"], "Use --goal with list."],
-  [["preview", key, "--value", "{}", "--database-url="], ["database-url"], "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and omit the port or use a port from 1 to 65535. Remove whitespace and dot segments."],
-  [["preview", "--database-url="], ["database-url"], "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and omit the port or use a port from 1 to 65535. Remove whitespace and dot segments."],
-  [["preview", key, "--value", "{}", "--database-url", "postgresql:///shop"], ["database-url"], "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host."],
+  [["preview", key, "--value", "{}", "--database-url="], ["database-url"], "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and write IPv6 in its shortest form. Omit the port or use a port from 1 to 65535, and write an empty password without the colon. Remove whitespace and dot segments."],
+  [["preview", "--database-url="], ["database-url"], "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and write IPv6 in its shortest form. Omit the port or use a port from 1 to 65535, and write an empty password without the colon. Remove whitespace and dot segments."],
+  [["preview", key, "--value", "{}", "--database-url", "postgresql:///shop"], ["database-url"], "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. A DNS name cannot end in a label made only of digits or starting with 0x. For IPv4, write IPv4 octets in decimal without leading zeros."],
 ] as const)("names the invalid preview argument in %j", async (argv, path, hint) => {
   const { exit, output } = await run([...argv, "--json"]);
   expect(exit).toBe(64);
