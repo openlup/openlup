@@ -7,16 +7,14 @@ experimental.
 
 ## Find a setting
 
-From an extracted starter with matching packages installed, run:
+From an extracted starter with matching packages installed, use the settings
+script shown in its `AGENTS.md`. Try these arguments:
 
-```sh
-node --experimental-strip-types host/settings.ts list --goal "renewal stock protection horizon"
-node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json
-node --experimental-strip-types host/settings.ts explain commerce_setting_unknown
-```
+- `list --goal "renewal stock protection horizon"`
+- `show inventory_renewal_protection --json`
+- `explain commerce_setting_unknown`
 
-The commands work offline. The extracted starter’s `AGENTS.md` also gives the
-npm invocation for pure JSON on stdout. `show` includes the value schema where available,
+The commands work offline. `show` includes the value schema where available,
 the default and its source, the effect on future decisions and the records that
 keep their current values. To discover these pages from the installed guide,
 run `./node_modules/.bin/openlup-context search "renewal stock protection horizon"`.
@@ -34,17 +32,17 @@ or fallback. For a pinned order and reminder kind, [the pin supplies timing](../
 The result names the source and includes checkout offsets when the host
 supplies a valid policy. If the effective host policy fails native
 validation after defaults, the read returns `checkout_recovery_policy_invalid`
-with remediation. To explain the absent-row behavior offline, run
-`node --experimental-strip-types host/settings.ts explain checkout_recovery_reminders`.
+with remediation. To explain the absent-row behavior offline, pass
+`explain checkout_recovery_reminders` to the settings script.
 
 ## Preview before changing a setting
 
 From the extracted starter, preview the proposed inventory policy against the
-intended store. Pass the value as JSON and repeat `--sku` for each SKU to inspect.
+intended store. Pass the value with `--value` and repeat `--sku` for each SKU to inspect.
 
-```sh
-node --experimental-strip-types host/settings.ts preview inventory_renewal_protection '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
-```
+Use `preview inventory_renewal_protection` with
+`--value '{"revision":"store-1","renewalProtectionDays":21}'`,
+`--database-url <read-capable-url>`, `--sku <sku>` and `--json`.
 
 Use `--configuration <id>` to select a stock source when the app has multiple
 configurations. Use `--as-of <UTC-ISO-instant>` to repeat an observation at the
@@ -76,6 +74,32 @@ Use `--json` to see both quantities in the starter CLI. Default text output show
 the current quantity and the direction of change. MCP and the platform library
 also return both fields in the preview document.
 
+## Connect the command to your application
+
+The starter's settings script calls the experimental package command and passes
+`--app ./owned/settings-host.ts`. Set the script to
+`openlup settings --app ./owned/settings-host.ts` in a composed app with the same
+layout. The module exports one function, `createSettingsBindings({ db, configuration })`.
+It supplies read-only readers, previewers or a stock source key for the selected
+configuration. If the requested ID is unknown, return
+`{ configurationIds: [...] }` with the available IDs. The CLI owns the
+database connection and calls the module without a pool when resolving
+`--configuration` offline. The module must avoid starting the application,
+writing data or printing to stdout. Pass an explicit
+`--app` only for application code you trust.
+
+Offline list, show and explain work without an app or database. With a
+PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
+A stock preview needs the application's stock source. A connected reminder
+show needs the application's checkout wave policy. The command names
+`--app` when either input is missing. Omit the URL to read the catalogue offline.
+
+Use `--value -` to read one JSON value from stdin. Use `--value=-1` when
+passing a negative number directly. The command exits with 0 on completion,
+including a preview that reports an invalid policy, 1 for a refusal, 64 for
+invalid syntax or input, and 74 for an unavailable operation or app module.
+Use `--json` to get one settings document with `schemaVersion: 1` on stdout.
+
 ## Modes and runtime levels
 
 A domain keeps an executable descriptor in code and exports it from a
@@ -97,8 +121,8 @@ owns changes.
 
 Preview wraps a refusal in a document with `schemaVersion: 1` on both surfaces. The
 `refusal` object carries `code`, `path`, `rule`, `hint` and `remediation`.
-Run `node --experimental-strip-types host/settings.ts explain <refusal-code>` for the
-recheck command and whether retrying can help.
+Pass `explain <refusal-code>` to the settings script for the recheck command
+and whether retrying can help.
 
 | Code | Next step |
 | --- | --- |
@@ -106,7 +130,7 @@ recheck command and whether retrying can help.
 | `commerce_setting_refusal_unknown` | Check the exact refusal code from this version. |
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
 | `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
-| `commerce_setting_preview_connection_required` | Repeat preview with a read-capable connection to the intended store. |
+| `commerce_setting_preview_connection_required` | Use a read-capable connection to the intended store and supply the app bindings if requested. |
 | `commerce_setting_preview_unsupported` | Read the key's runtime level and effect with `show`. |
 | `commerce_setting_preview_json_invalid` | Correct the proposed JSON. |
 | `commerce_setting_preview_configuration_unknown` | Select one of the listed IDs. |

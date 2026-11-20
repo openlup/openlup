@@ -218,7 +218,7 @@ function proveReleasedStarter(receipt, input, run, environment) {
   const { application, packages } = input;
   proveNeutralStarterConsumer(root, { mode: receipt.mode ?? 'released', application, environment, run,
     lockfileSha256: receipt.extraction.lockfileSha256, packages: packages.map(({ name }) => name),
-    settingsDiscovery: existsSync(join(input.source, 'examples/neutral-store/host/settings.ts')), verifyInstalled() {
+    settingsDiscovery: existsSync(join(input.source, 'examples/neutral-store/owned/settings-host.ts')), verifyInstalled() {
       if (receipt.mode === 'candidate') { receipt.packages = [...readCurrentPackManifest(input.source, receipt.candidateManifest, receipt.tagCommit).values()]; return; }
       const audit = auditInstalledRelease(application, run);
       receipt.packages = verifiedReleasePackages(audit, packages, receipt.setVersion, receipt.tagCommit);

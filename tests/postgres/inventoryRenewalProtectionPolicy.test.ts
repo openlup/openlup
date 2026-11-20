@@ -443,8 +443,8 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
     const unknownKey = "unknown_setting";
     const refused = await mcp.callTool({ name: tool.name, arguments: { key: unknownKey, proposed } });
     expect(refused.structuredContent).toMatchObject({ schemaVersion: 1, refusal: { code: "commerce_setting_unknown" } });
-    const cliRefused = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
-      unknownKey, JSON.stringify(proposed), "--json"], options);
+    const cliRefused = spawnSync("npm", ["--silent", "run", "settings", "--", "preview",
+      unknownKey, "--value", JSON.stringify(proposed), "--json"], options);
     expect(cliRefused.status, cliRefused.stderr).toBe(1);
     expect(JSON.parse(cliRefused.stdout)).toEqual(refused.structuredContent);
 
@@ -470,7 +470,7 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
         "ROLLBACK",
       ]);
       if (selected.length === 1) {
-        const args = ["run", "--silent", "settings", "--", "preview", key, JSON.stringify(proposed),
+        const args = ["--silent", "run", "settings", "--", "preview", key, "--value", JSON.stringify(proposed),
           "--database-url", url.toString(), "--sku", sku, "--as-of", instant];
         const json = spawnSync("npm", [...args, "--json"], options);
         expect(json.status, json.stderr).toBe(0);
@@ -504,8 +504,8 @@ it("matches CLI JSON and MCP for a refusal and a 14 to 21 preview with six queri
       });
       expect(JSON.stringify(structuredContent), entry.name).toContain(`"proposed":${JSON.stringify(decoded)}`);
       if (decoded === null || typeof decoded !== "object" || entry.decodedNormalized || entry.name === "additional field") {
-        const cli = spawnSync("npm", ["run", "--silent", "settings", "--", "preview",
-          key, entry.input, "--database-url", url.toString(), "--as-of", instant, "--json"], options);
+        const cli = spawnSync("npm", ["--silent", "run", "settings", "--", "preview",
+          key, `--value=${entry.input}`, "--database-url", url.toString(), "--as-of", instant, "--json"], options);
         expect(cli.status, cli.stderr).toBe(0);
         expect(JSON.parse(cli.stdout)).toEqual(structuredContent);
       }

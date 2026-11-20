@@ -128,10 +128,10 @@ New-purchase requests must use the installed horizon and cannot waive protection
 
 ## Change a business setting
 
-From the starter application root, run `npm run --silent settings -- list` to find the
+From the starter application root, run `npm --silent run settings -- list` to find the
 key by goal. For example, run
-`npm run --silent settings -- list --goal "renewal stock protection horizon"`, then
-`npm run --silent settings -- show inventory_renewal_protection --json`. Check the
+`npm --silent run settings -- list --goal "renewal stock protection horizon"`, then
+`npm --silent run settings -- show inventory_renewal_protection --json`. Check the
 owner, allowed values, effect and frozen records before changing configuration.
 See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
 for the read path and refusal guidance.
@@ -139,7 +139,7 @@ for the read path and refusal guidance.
 Before changing renewal stock protection, run a connected, read-only preview.
 
 ```sh
-npm run --silent settings -- preview inventory_renewal_protection '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
+npm --silent run settings -- preview inventory_renewal_protection --value '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
 ```
 
 Use the store's configuration and SKU. Read the effect, uncertainty and any

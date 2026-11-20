@@ -7,8 +7,8 @@ import { dirname, join, resolve } from "node:path";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  reconcileLifecycleCustomization, reconcileReminderInstallationTest, reminderInstallationTest, starterLifecycle,
-  starterOptionalCatalogueFiles, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest,
+  reminderInstallationTest, starterLifecycle, starterOptionalCatalogueFiles, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -239,10 +239,14 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
       execFileSync("git", ["merge-file", join(app, path), previousFile(path), join(target, path)], { stdio: "pipe", timeout: 5_000 });
     }
     to.files[marketPath] = readFileSync(join(target, marketPath), "utf8");
+    includeSettingsHost(app, target, to);
   } else {
     migrateStarterOwned(app, target, from, to);
   }
-  expect(to.files).toEqual({ ...managedTarget, [marketPath]: readFileSync(join(target, marketPath), "utf8") });
+  expect(to.files).toEqual({ ...managedTarget,
+    [marketPath]: readFileSync(join(target, marketPath), "utf8"),
+    [starterSettingsHost]: readFileSync(join(target, starterSettingsHost), "utf8"),
+  });
   for (const path of targetOwnership.owned) expect(Object.hasOwn(from.files, path), path).toBe(false);
   writeFileSync(join(directory, "from.json"), JSON.stringify(from)); writeFileSync(join(directory, "to.json"), JSON.stringify(to));
   const run = () => spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
@@ -274,7 +278,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
     checkUpgradedFiles();
   };
   const result = run(); expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, reminderInstallationTest, starterLifecycle]));
+  expect(JSON.parse(result.stdout).applied).toEqual(expect.arrayContaining([marketPath, starterSettingsHost, reminderInstallationTest, starterLifecycle]));
   checkUpgradedFiles();
   replay();
   // Expected bytes come from the target inventory, including contracts that
@@ -379,6 +383,8 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
     "owned/store.config.ts": "export default '#3d6657';",
     "owned/fragments.ts": "export default 'offer-intro';",
     "owned/new.mjs": "export default true;",
+    "AGENTS.md": "# App guide\n\n## Change a business setting\n\nRun the settings script.\n",
+    [starterSettingsHost]: "export function createSettingsBindings() { return {}; }",
     "test/candidate.test.mjs": `import {readFileSync} from 'node:fs'; readFileSync(new URL('../owned/${required}', import.meta.url));`,
     [reminderInstallationTest]: "import 'node:test';",
     [starterLifecycle]: readFileSync(resolve("examples/neutral-store", starterLifecycle), "utf8"),
@@ -386,9 +392,9 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
     ".gitignore": "node_modules/\npackage-lock.json\n",
   };
   for (const [path, bytes] of Object.entries(files)) write(starter + path, bytes);
-  const ownership = { owned: Object.keys(files).filter(path => path.startsWith("owned/")), managed: ["ownership.json", "package.json", ...Object.keys(files).filter(path => !path.startsWith("owned/"))], generated: [], sourceOnly: [] };
+  const ownership = { owned: Object.keys(files).filter(path => path.startsWith("owned/") || path === "AGENTS.md"), managed: ["ownership.json", "package.json", ...Object.keys(files).filter(path => !path.startsWith("owned/") && path !== "AGENTS.md")], generated: [], sourceOnly: [] };
   write(starter + "ownership.json", ownership); write(starter + "starter-release.json", {});
-  write(starter + "package.json", { name: "candidate-fixture", version: "0.0.0", private: true, type: "module", dependencies, scripts: { test: "node --experimental-strip-types --test test/candidate.test.mjs", typecheck: `node --check owned/${required}`, build: "node --version" } });
+  write(starter + "package.json", { name: "candidate-fixture", version: "0.0.0", private: true, type: "module", dependencies, scripts: { settings: "openlup settings --app ./owned/settings-host.ts", test: "node --experimental-strip-types --test test/candidate.test.mjs", typecheck: `node --check owned/${required}`, build: "node --version" } });
   run("git", ["init", "--initial-branch=main"]); run("git", ["add", "."]);
   run("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@localhost", "-c", "commit.gpgsign=false", "commit", "-m", "Candidate fixture"]);
   run("git", ["remote", "add", "origin", "https://github.com/openlup/openlup.git"]);
@@ -400,9 +406,10 @@ it.each([false, true])("runs retained unpublished candidates and detects a newly
   expect(existsSync(receipt), result.stderr).toBe(true); const evidence = JSON.parse(readFileSync(receipt, "utf8")); expect(result.status, result.stderr).toBe(missing ? 1 : 0);
   expect(evidence).toMatchObject({ mode: "candidate", verificationSource: "candidate, local digest-verified", result: missing ? "FAIL" : "PASS", upgrade: { result: missing ? "FAIL" : "PASS" } });
   expect(evidence.upgrade.managedConflict).toEqual({ path: "test/candidate.test.mjs", action: "create" });
-  expect(evidence.upgrade.phases).toHaveLength(missing ? 9 : 10);
+  expect(evidence.upgrade.phases).toHaveLength(missing ? 10 : 11);
   expect(evidence.upgrade.phases).toContainEqual({ name: "reminder-test-reconciliation", result: "PASS" });
   expect(evidence.upgrade.phases).toContainEqual({ name: "lifecycle-reconciliation", result: "PASS" });
+  expect(evidence.upgrade.phases).toContainEqual({ name: "settings-host-reconciliation", result: "PASS" });
   expect(evidence.upgrade.phases.filter((phase: { result: string }) => phase.result !== "PASS")).toEqual([]);
   if (!missing) for (const mode of ["candidate", "released"]) {
     const path = receipt + ".applications/1/input/package-lock.json", lock = JSON.parse(readFileSync(path, "utf8")); cpSync(join(packs, packages[0]!.filename), join(directory, "foreign.tgz"));

@@ -115,6 +115,7 @@ export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
 export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
+export { runSettingsCommand, type SettingsAppBindings } from "./settingsCommand.js";
 ```
 ## dist/operations/server/migrations.d.ts
 
@@ -253,6 +254,39 @@ export declare function runPlatformWatchdog<Snapshot extends WatchdogSnapshot, C
     mutedDedupePrefixes?: readonly string[];
     normalizeDecision?: (decision: AlertDecision<Channel>) => AlertDecision<Channel>;
 }): Promise<PlatformWatchdogResult<Channel>>;
+```
+## dist/operations/server/settingsCommand.d.ts
+
+```ts
+import { type SettingPreviewer, type SettingReader } from "./settingsRead.js";
+type PreviewDocument = {
+    schemaVersion: 1;
+};
+/** @experimental Read-only bindings supplied by an explicitly loaded settings app. */
+export type SettingsAppBindings = {
+    readers?: Readonly<Record<string, SettingReader>>;
+    previewers?: Readonly<Record<string, SettingPreviewer<PreviewDocument>>>;
+    stockSourceKey?: string;
+} | {
+    configurationIds: readonly string[];
+};
+type SettingsHost = {
+    bind(input: {
+        databaseUrl?: string;
+        app?: string;
+        configuration?: string;
+    }): Promise<SettingsAppBindings & {
+        close?(): Promise<void>;
+    }>;
+    formatPreview?(result: PreviewDocument): string;
+};
+type SettingsIo = {
+    write(text: string): void;
+    readStdin(): Promise<string>;
+};
+/** @experimental Run the settings CLI without owning process I/O or application bindings. */
+export declare function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number>;
+export {};
 ```
 ## dist/operations/server/settingsRead.d.ts
 

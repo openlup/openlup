@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
-  reconcileEditorCustomization, reconcileSettingsCustomization, starterEditorPorts, starterSettingsCli, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => {
@@ -24,78 +24,47 @@ function fixture() {
   return { directory, write };
 }
 
-it.each([false, true])("reconciles settings guidance and the managed CLI upgrade, customized=%s", customized => {
+it.each([false, true])("upgrades the command and creates or preserves its owned host, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
-  const script = "host/settings.ts";
-  const base = "# App guide\n";
-  const section = "\n## Change a business setting\n\nRun `npm run --silent settings -- list`.\n";
-  write("AGENTS.md", customized ? base + "\nLocal workflow.\n" : base);
-  candidate("AGENTS.md", base + section);
-  const targetOwnership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
-  targetOwnership.managed.push(script);
-  candidate("ownership.json", targetOwnership);
-  candidate("package.json", { dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "node host/settings.ts" } });
-  candidate(script, "export {};");
+  const guide = "# App guide\n\nLocal workflow.\n";
+  const section = "\n## Change a business setting\n\nRun `npm --silent run settings -- list`.\n";
+  write("AGENTS.md", guide);
+  candidate("AGENTS.md", guide + section);
+  candidate("ownership.json", { managed: ["package.json", "ownership.json"], owned: ["AGENTS.md", starterSettingsHost], generated: [] });
+  const pkg = { dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
+  candidate("package.json", pkg);
+  candidate(starterSettingsHost, "export function createSettingsBindings() { return {}; }");
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
   migrateStarterOwned(app, target, from, to);
   migrateStarterOwned(app, target, from, to);
-  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe((customized ? base + "\nLocal workflow.\n" : base) + section);
+  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide + section);
   expect(Object.hasOwn(to.files, "AGENTS.md")).toBe(false);
-  expect(() => assertCompleteStarter(app, to)).toThrow("incomplete_application_upgrade");
   write("from.json", from); write("to.json", to);
-  const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
-    "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
-  expect(result.status, result.stderr).toBe(0);
-  expect(JSON.parse(result.stdout).applied.sort()).toEqual([script, "ownership.json", "package.json"]);
+  const apply = (status = 0) => {
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
+      "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  const local = "export function createSettingsBindings() { return { stockSourceKey: 'local' }; }";
+  const hostFile = join(app, starterSettingsHost);
+  if (customized) {
+    write(starterSettingsHost, local);
+    expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: starterSettingsHost }] });
+    expect(starterUpgradeSnapshot(app, from.version)).toEqual(from);
+    expect(readFileSync(hostFile, "utf8")).toBe(local);
+    includeSettingsHost(app, target, to);
+    write("to.json", to);
+  }
+  expect(apply().applied.sort()).toEqual(customized ? ["ownership.json", "package.json"] : [starterSettingsHost, "ownership.json", "package.json"].sort());
+  expect(apply().applied).toEqual([]);
+  expect(readFileSync(hostFile, "utf8")).toBe(customized ? local : to.files[starterSettingsHost]);
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
 });
 
 it("refuses an extracted starter without the settings script", () => {
   const { directory } = fixture();
   expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
-});
-
-it.each([false, true])("upgrades the preview CLI through refusal, reconciliation, apply and replay when customized=%s", customized => {
-  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
-  const settings = starterSettingsCli;
-  const earlier = "host/policy.ts"; // A replacement ordered before the settings conflict.
-  const base = "# App guide\n\n## Change a business setting\n\nRun the settings CLI.\n";
-  const preview = "\nBefore changing renewal stock protection, run a connected, read-only preview.\n\nRun `npm run --silent settings -- preview`.\n";
-  const local = "\n## Local operations\n\nUse our adoption checklist.\n";
-  const ownership = { managed: ["package.json", "ownership.json", earlier, settings], owned: ["AGENTS.md"], generated: [] };
-  write("ownership.json", ownership); candidate("ownership.json", ownership);
-  write(earlier, "export const revision = 1;");
-  candidate(earlier, "export const revision = 2;");
-  write(settings, "console.log('show');");
-  candidate(settings, "console.log('Preview before any change.');");
-  write("AGENTS.md", base + (customized ? local : ""));
-  candidate("AGENTS.md", base + preview);
-  const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
-  migrateStarterOwned(app, target, from, to);
-  migrateStarterOwned(app, target, from, to);
-  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(base + preview + (customized ? local : ""));
-  expect(Object.hasOwn(to.files, "AGENTS.md")).toBe(false);
-  expect(() => assertCompleteStarter(app, to)).toThrow("incomplete_application_upgrade");
-  write("from.json", from); write("to.json", to);
-  const run = (command: "plan" | "apply", status = 0) => {
-    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", command, "--root", app,
-      "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
-    expect(result.status, result.stderr || result.stdout).toBe(status);
-    return JSON.parse(result.stdout);
-  };
-  const customization = customized ? reconcileSettingsCustomization(app, from.files[settings]!, () => {
-    const before = starterUpgradeSnapshot(app, from.version);
-    const report = run("apply", 1);
-    expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
-    return report;
-  }) : undefined;
-  if (customization) expect(run("plan").plan.conflicts).toEqual([]);
-  expect(run("apply").applied).toEqual([earlier, settings]);
-  expect(readFileSync(join(app, settings), "utf8")).toBe(to.files[settings]);
-  expect(run("apply").applied).toEqual([]);
-  expect(() => assertCompleteStarter(app, to)).not.toThrow();
-  if (customization) expect(readFileSync(join(app, customization.path))).toEqual(customization.bytes);
-  expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(base + preview + (customized ? local : ""));
 });
 
 it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {

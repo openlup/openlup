@@ -16,7 +16,7 @@ Change rules and contributor process stay in `AGENTS.md` and `CONTRIBUTING.md`;
 do not duplicate reader guide content here.
 
 Business settings have a versioned [catalogue](packages/core/docs/guide/how-to/operate/settings-catalogue.md).
-In an extracted starter, run `node --experimental-strip-types host/settings.ts list` to find a key by goal or follow the app's guide for the npm form for JSON.
+In an extracted starter, use the settings script documented in the application's `AGENTS.md` to find a key by goal or read a versioned JSON document.
 Follow [Configure settings](packages/core/docs/guide/how-to/operate/configure-settings.md) and [Add a setting](CONTRIBUTING.md#add-a-setting) for the reader and contributor paths.
 
 Read these documents before changing a related boundary:

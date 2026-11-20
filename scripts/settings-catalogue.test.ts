@@ -50,24 +50,16 @@ it("discovers and validates settings data in a new domain directory", () => {
   }
 });
 
-it("runs each connected refusal remediation through the connected CLI branch", () => {
+it("gives each connected refusal an extracted-app remediation command", () => {
   const { refusals } = JSON.parse(readFileSync("packages/platform/settings-refusals.json", "utf8"));
   const connected = refusals.filter(({ remediation }) => /\brepeat the connected read\b/u.test(remediation.action));
   expect(connected.map(({ code }) => code)).toEqual(expect.arrayContaining([
     "checkout_recovery_policy_invalid", "commerce_setting_read_unavailable",
   ]));
   for (const { code, remediation } of connected) {
-    const [node, ...args] = remediation.command.split(" ");
-    expect([node, ...args.slice(0, 3)], code).toEqual(["node", "--experimental-strip-types", "host/settings.ts", "show"]);
-    expect(args[args.indexOf("--database-url") + 1], code).toBe("<read-capable-url>");
-    // A malformed URL refuses before opening a connection and distinguishes a connected read from offline discovery.
-    const result = spawnSync(process.execPath, args.map(arg => {
-      if (arg === "<key>") return "checkout_recovery_reminders";
-      if (arg === "<read-capable-url>") return "postgresql://[";
-      return arg;
-    }), { cwd: "examples/neutral-store", encoding: "utf8" });
-    expect(result.status, code).toBe(1);
-    expect(JSON.parse(result.stdout)).toMatchObject({ refusal: { code: "commerce_setting_read_unavailable" } });
+    expect(remediation.command, code).toMatch(
+      /^npm --silent run settings -- show \S+ --database-url <read-capable-url> --json$/u,
+    );
   }
 });
 
@@ -103,49 +95,4 @@ it("imports unrelated operations when both settings carriers are unreadable", ()
     assert.equal(typeof operations.createPlatformControlPlanePort, "function");
   `], { encoding: "utf8" });
   expect(result.status, result.stderr).toBe(0);
-});
-
-
-it.each([
-  [["--json", "--sku"], "sku", "Supply a value for --sku as shown in preview help."],
-  [["--sku", "--json"], "sku", "Supply a value for --sku as shown in preview help."],
-  [["--sku", "-1", "--json"], "sku", "Supply a value for --sku as shown in preview help."],
-  [["--sku-extra", "--json"], "sku-extra", "Unknown option --sku-extra. See preview help."],
-  [["--sku-extra=sample", "--json"], "sku-extra", "Unknown option --sku-extra. See preview help."],
-  [["-x", "--json"], "x", "Unknown option -x. See preview help."],
-  [["--json=1", "--json"], "json", "Supply a value for --json as shown in preview help."],
-] as const)("names the offending preview option for %j", (flags, option, hint) => {
-  const result = spawnSync(process.execPath, [
-    "--experimental-strip-types", "host/settings.ts", "preview", "inventory_renewal_protection", "{}", ...flags,
-  ], { cwd: "examples/neutral-store", encoding: "utf8" });
-  expect(result.status, result.stderr).toBe(1);
-  expect(result.stderr).toBe("");
-  expect(JSON.parse(result.stdout)).toMatchObject({ schemaVersion: 1, refusal: {
-    code: "commerce_setting_preview_input_invalid", path: [option], hint,
-  } });
-});
-
-it.each([
-  ["inventory_renewal_protection", "{", [], "json_invalid", ["proposed"]],
-  ["inventory_renewal_protection", "{}", ["--configuration", "unknown-store"], "configuration_unknown", ["configuration"]],
-  ["inventory_renewal_protection", "{}", ["--as-of", "yesterday"], "input_invalid", ["asOf"]],
-  ["inventory_renewal_protection", "{}", ["--database-url", "https://user:private@example.invalid"], "input_invalid", ["database-url"]],
-  ["inventory_renewal_protection", "{}", ["--database-url", "postgresql://"], "input_invalid", ["database-url"]],
-  ["inventory_renewal_protection", "{}", [], "connection_required", []],
-  ["checkout_recovery_reminders", "{}", [], "unsupported", ["key"]],
-] as const)("reports the preview refusal %s %s %j as %s", (key, value, flags, reason, path) => {
-  const result = spawnSync(process.execPath, ["--experimental-strip-types", "host/settings.ts", "preview", key, value, ...flags, "--json"],
-    { cwd: "examples/neutral-store", encoding: "utf8" });
-  expect(result.status, result.stderr).toBe(1);
-  expect(result.stderr).toBe("");
-  expect(result.stdout).not.toContain("private@example.invalid");
-  const document = JSON.parse(result.stdout);
-  expect(document).toMatchObject({ schemaVersion: 1, refusal: {
-    code: `commerce_setting_preview_${reason}`, path, rule: expect.any(String),
-    remediation: { action: expect.any(String), command: expect.stringContaining("host/settings.ts") },
-  } });
-  if (reason === "configuration_unknown") {
-    expect(document.refusal.hint).toContain("unknown-store");
-    expect(document.refusal.hint).toMatch(/supplements.*coffee/u);
-  }
 });

@@ -11,7 +11,7 @@
       "remediation": {
         "retry": true,
         "action": "Find a key in the list, then run show with that key.",
-        "command": "node --experimental-strip-types host/settings.ts list"
+        "command": "npm --silent run settings -- list"
       }
     },
     {
@@ -24,7 +24,7 @@
       "remediation": {
         "retry": true,
         "action": "Use explain with the reported code.",
-        "command": "node --experimental-strip-types host/settings.ts explain commerce_setting_unknown"
+        "command": "npm --silent run settings -- explain commerce_setting_unknown"
       }
     },
     {
@@ -35,7 +35,7 @@
       "remediation": {
         "retry": true,
         "action": "Review command syntax and correct the arguments.",
-        "command": "node --experimental-strip-types host/settings.ts --help"
+        "command": "npm --silent run settings -- --help"
       }
     },
     {
@@ -48,7 +48,7 @@
       "remediation": {
         "retry": true,
         "action": "Check the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.",
-        "command": "node --experimental-strip-types host/settings.ts show <key> --database-url <read-capable-url> --json"
+        "command": "npm --silent run settings -- show <key> --database-url <read-capable-url> --json"
       }
     },
     {
@@ -61,7 +61,7 @@
       "remediation": {
         "retry": false,
         "action": "Review the catalogue for the key's documented change mechanism.",
-        "command": "node --experimental-strip-types host/settings.ts list"
+        "command": "npm --silent run settings -- list"
       }
     },
     {
@@ -72,7 +72,7 @@
       "remediation": {
         "retry": true,
         "action": "Correct the named argument and run preview again.",
-        "command": "node --experimental-strip-types host/settings.ts preview --help"
+        "command": "npm --silent run settings -- preview --help"
       }
     },
     {
@@ -85,7 +85,7 @@
       "remediation": {
         "retry": true,
         "action": "Correct the JSON and run preview again.",
-        "command": "node --experimental-strip-types host/settings.ts preview --help"
+        "command": "npm --silent run settings -- preview --help"
       }
     },
     {
@@ -98,7 +98,7 @@
       "remediation": {
         "retry": true,
         "action": "Choose one of the listed configuration IDs and run preview again.",
-        "command": "node --experimental-strip-types host/settings.ts preview --help"
+        "command": "npm --silent run settings -- preview --help"
       }
     },
     {
@@ -111,7 +111,7 @@
       "remediation": {
         "retry": true,
         "action": "Choose a setting that supports preview.",
-        "command": "node --experimental-strip-types host/settings.ts show <key> --json"
+        "command": "npm --silent run settings -- show <key> --json"
       }
     },
     {
@@ -122,7 +122,7 @@
       "remediation": {
         "retry": true,
         "action": "Supply a read-capable connection and run preview again.",
-        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+        "command": "npm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json"
       }
     },
     {
@@ -135,7 +135,7 @@
       "remediation": {
         "retry": true,
         "action": "Ask your store administrator for a connection that can read the installed policy, then retry.",
-        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+        "command": "npm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json"
       }
     },
     {
@@ -148,7 +148,7 @@
       "remediation": {
         "retry": true,
         "action": "Ask your store administrator for a connection that can read stock availability, then retry.",
-        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+        "command": "npm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json"
       }
     },
     {
@@ -161,7 +161,7 @@
       "remediation": {
         "retry": true,
         "action": "Ask your store administrator for a connection with permission to preview this setting, then retry.",
-        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+        "command": "npm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json"
       }
     },
     {
@@ -174,7 +174,7 @@
       "remediation": {
         "retry": true,
         "action": "Ask your store administrator to update the store's OpenLup installation, then retry.",
-        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+        "command": "npm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json"
       }
     },
     {
@@ -185,7 +185,7 @@
       "remediation": {
         "retry": true,
         "action": "Retry once. If preview still fails, contact your store administrator.",
-        "command": "node --experimental-strip-types host/settings.ts preview <key> '<value>' --database-url <read-capable-url> --json"
+        "command": "npm --silent run settings -- preview <key> --value '<value>' --database-url <read-capable-url> --json"
       }
     },
     {
@@ -196,7 +196,7 @@
       "remediation": {
         "retry": true,
         "action": "Check the schema and correct the rejected value.",
-        "command": "node --experimental-strip-types host/settings.ts show inventory_renewal_protection --json"
+        "command": "npm --silent run settings -- show inventory_renewal_protection --json"
       }
     },
     {
@@ -207,7 +207,7 @@
       "remediation": {
         "retry": true,
         "action": "Correct the supplied policy using the rule, then repeat the connected read.",
-        "command": "node --experimental-strip-types host/settings.ts show checkout_recovery_reminders --database-url <read-capable-url> --json"
+        "command": "npm --silent run settings -- show checkout_recovery_reminders --database-url <read-capable-url> --json"
       }
     }
   ]

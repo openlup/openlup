@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test",
     "test:browser": "playwright test",
-    "settings": "node --experimental-strip-types host/settings.ts",
+    "settings": "openlup settings --app ./owned/settings-host.ts",
     "catalogue:check": "openlup catalogue check --packs ./owned/catalogue.json --json"
   },
   "dependencies": {

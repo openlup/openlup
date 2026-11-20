@@ -8,10 +8,12 @@ import { parseArgs } from "node:util";
 const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
 openlup verify [--app ./application-observations.mjs] [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
+openlup settings list|show|preview|explain [--help] [--json] (experimental)
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
 Verify loads no app implicitly. --app explicitly trusts and imports application code exporting createVerificationInput(); that module must only assemble observations and read-only probes, must not write stdout, and must close its own resources before returning/report completion. The CLI does not sandbox that module. Only the supplied schema observer is invoked by diagnosis; routes and jobs never run.
 Catalogue reads JSON text only; the supplied file is never imported. Reference and refusal records are fixture evidence. Application content validation is unavailable offline. PASS grants no install, migration, publication or activation authority.
+Settings reads the catalogue offline by default. Connected show and preview use --database-url and explicit --app bindings where needed. Preview takes --value <json> or --value - for stdin. Settings JSON uses schemaVersion=1. A completed preview with an invalid policy exits 0, refusals exit 1, invalid syntax/input exits 64, and operation or app loading failures exit 74.
 Exit codes: 0 satisfied/completed, 1 unsatisfied/conflict, 2 unknown, 64 invalid invocation/JSON, 74 operation or application loading failure. JSON uses formatVersion=1, one object on stdout.
 `;
 let json = process.argv.slice(2).includes("--json");
@@ -32,9 +34,74 @@ function refuse(exitCode, code, observed, fix, cause = exitCode === 64 ? "Invali
   emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding] }, `${renderFinding(finding)}\n${help}`);
 }
 
-try {
+async function bindSettings({ databaseUrl, app, configuration }) {
+  const db = databaseUrl ? new (await import("pg")).Pool({ connectionString: databaseUrl }) : undefined;
+  const close = async () => { await db?.end(); };
+  try {
+    let overrides = {};
+    if (app) {
+      const { createSettingsBindings } = await import(pathToFileURL(resolve(app)).href);
+      overrides = await createSettingsBindings({ db, configuration });
+    }
+    if (!db || "configurationIds" in overrides) return { ...overrides, close };
+    // eslint-disable-next-line no-restricted-syntax -- tool entry composes existing installed capabilities only for connected settings
+    const { readRenewalStockProtectionOverride, previewRenewalStockProtection } = await import("@openlup/platform/inventory");
+    const inventory = "inventory_renewal_protection";
+    return {
+      readers: {
+        [inventory]: async () => {
+          const policy = await readRenewalStockProtectionOverride(db);
+          return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        ...overrides.readers,
+      },
+      previewers: {
+        ...(overrides.stockSourceKey ? {
+          [inventory]: (value, options) => previewRenewalStockProtection(inventory, value, { ...options, db, sourceKey: overrides.stockSourceKey }),
+        } : {}),
+        ...overrides.previewers,
+      },
+      close,
+    };
+  } catch (error) { await close(); throw error; }
+}
+
+function formatSettingsPreview(result) {
+  if (result.key !== "inventory_renewal_protection") return JSON.stringify(result, null, 2);
+  const { key, asOf, current, proposed, difference, validation, effect, uncertainty } = result;
+  return [
+    `${key} at ${asOf}`,
+    `Current: ${JSON.stringify(current)}`,
+    `Proposed: ${JSON.stringify(proposed)}`,
+    `Horizon difference in days: ${difference?.renewalProtectionDays ?? "unavailable"}`,
+    `Validation: ${validation.state}`,
+    ...(validation.state === "valid" ? [`Normalized: ${JSON.stringify(validation.value)}`]
+      : [validation.code, validation.rule, validation.hint, validation.remediation.action, validation.remediation.command]),
+    "Existing reservations keep their quantities and expiry times.",
+    `New purchase availability: ${effect.newPurchaseAvailability}`,
+    ...effect.skus.map(row => `${row.sku}: ${row.currentAvailableForNewPurchases ?? "unavailable"} currently available (${row.source}${row.stale ? ", stale" : ""})`),
+    uncertainty,
+  ].join("\n");
+}
+
+async function main(args) {
+  if (args[0] === "settings") {
+    validatingInput = false;
+    // eslint-disable-next-line no-restricted-syntax -- tool entry loads the existing installed server subpath only for settings
+    const { runSettingsCommand } = await import("@openlup/platform/operations/server");
+    const readStdin = async () => {
+      process.stdin.setEncoding("utf8");
+      let text = "";
+      for await (const chunk of process.stdin) text += chunk;
+      return text;
+    };
+    process.exitCode = await runSettingsCommand(args.slice(1), {
+      write: text => process.stdout.write(text), readStdin,
+    }, { bind: bindSettings, formatPreview: formatSettingsPreview });
+    return;
+  }
   const { values, positionals } = parseArgs({
-    options: {
+    args, options: {
       json: { type: "boolean" }, help: { type: "boolean" },
       root: { type: "string" }, from: { type: "string" }, to: { type: "string" },
       "schema-version": { type: "string" }, app: { type: "string" }, packs: { type: "string" },
@@ -110,7 +177,9 @@ try {
   } else {
     refuse(64, "OPENLUP_E_CLI_INPUT", "Command or required options do not match the public syntax.", "Use openlup --help and explicit input paths.");
   }
-} catch (error) {
+}
+
+try { await main(process.argv.slice(2)); } catch (error) {
   // Never print raw application errors, configured values, connection strings or file contents.
   if (appStage === 1) {
     refuse(74, "OPENLUP_E_CLI_FAILURE", "The --app module could not be loaded; raw application errors are withheld.", "Check that the --app path exists, resolves its imports and evaluates without top-level errors.", "Importing the trusted --app module failed before createVerificationInput() could be checked.");
