@@ -11,7 +11,7 @@ import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
 import { CatalogPublicationError, publicationDiagnostic, publicationIssue, publicationRefuse } from "./publicationError.js";
-import { assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, publicationContent,
+import { assertNativeProductDocument, assertNativeProductReferences, assertPublicationRegistration, assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, decodePublishedSku, publicationContent,
   publicationDigest, publicationJson, publicationReadinessVerdict } from "./publicationCodec.js";
 import { resolvePublicationRules, ruleProduct, ruleSku } from "./publicationRules.js";
 import type { CatalogPublicationRulesModule, CatalogRulesContext } from "./catalogPublicationRules.js";
@@ -558,7 +558,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       throw new CatalogPublicationError(first.code, "validation_issue", first);
     }
     position.path = "product.sharedContent.presentation";
-    const content = publicationContent(payload.product.sharedContent, definition.key);
+    const content = publicationContent(payload.product.sharedContent, definition.key, payload.product.documentRevision?.digest);
     for (const [index, operation] of payload.publication.operations.entries()) {
       position.path = `publication.operations.${index}`;
       position.subject = "skuCode" in operation ? operation.skuCode : definition.key;
@@ -568,9 +568,11 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         assertPublishedFacts(operation.facts, `${position.path}.facts`, position.subject);
       if (operation.op === "create_identifier")
         need(!operation.isPrimary || operation.scheme === "gs1:gtin", "catalog_publication_identifier_primary_invalid");
-      if (operation.op === "register_document_revision")
+      if (operation.op === "register_document_revision") {
         need(createHash("sha256").update(operation.canonicalText).digest("hex") === operation.digest,
           "catalog_publication_v3_document_digest_mismatch");
+        assertPublicationRegistration(operation.canonicalText, `${position.path}.canonicalText`);
+      }
     }
     position.subject = definition.key;
     const { publication: _publication, skus: intentSkus, ...base } = payload;
@@ -1128,8 +1130,11 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       if (!missingProduct && lastChildWithdrawn) need(productState === "withdrawn"
         && payload.publication.operations.some(op => op.op === "set_product_lifecycle" && op.state === "withdrawn"),
       "catalog_lifecycle_last_active_child");
-      if (result && payload.product.documentRevision)
-        need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
+      if (result) {
+        assertNativeProductDocument(result);
+        if (payload.product.documentRevision)
+          need(equal(payload.product.documentRevision, result.document), "catalog_publication_document_source_mismatch");
+      }
       const afterDocument = result && selectedDocument(result.document);
       if (!withdrawalOnly && afterDocument)
         bindDocumentValue(afterDocument, payload.product.sharedContent.document, "catalog_publication_document_source_mismatch");
@@ -1194,15 +1199,16 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         }
         const key = combination(sku);
         need(!identities.has(key), "duplicate_combination"); identities.add(key);
-        publicationJson(catalogPublishedSkuSchema.parse(sku), CATALOG_PUBLICATION_LIMITS.skuBytes);
+        decodePublishedSku(sku, position.path, sku.code);
       }
       position.path = "product";
       position.subject = definition.key;
       await checkRetainedAttributes(skus.values(), result?.attributes ?? payload.product.attributes);
       need(skus.size <= (input.capacity ?? 50_000), "product_capacity_exceeded");
       if (!result) return;
+      assertNativeProductReferences(result);
       const primary = [...skus.values()].find(sku => sku.id === result.primarySkuId);
-      need(result.primarySkuId && result.document && (retainedState.product !== null || result.presentation), "catalog_publication_v3_structural_readiness_failed");
+      need(retainedState.product !== null || result.presentation, "catalog_publication_v3_structural_readiness_failed");
       need(equal(sealedPresentation(result.presentation), payload.product.sharedContent.presentation), "catalog_publication_presentation_effect_missing");
       need(primary && primary.status !== "archived", "catalog_publication_v3_compile_primary_foreign");
       const promotions = requiredPromotions(payload.publication.operations.filter(op => !isLifecycleOperation(op)), retainedState);

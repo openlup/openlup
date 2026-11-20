@@ -1,7 +1,8 @@
+import { nativeCatalogPublication } from "@openlup/platform/catalog";
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
-import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
 import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
@@ -9,6 +10,8 @@ import { restoreConnectedNativeStore } from "../../server/adapters/postgres/conn
 import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+
+const { catalogPublicationAdmissionRefusal } = nativeCatalogPublication;
 
 const resources = storeJourneyResources();
 const at = "2026-09-15T00:00:00Z";

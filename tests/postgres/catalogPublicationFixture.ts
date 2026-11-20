@@ -1,9 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import { canonicalCatalogPublicationJson, type CatalogPublishedSku, type CatalogPublishedProduct, type CatalogSkuRevisionRef } from "../../server/adapters/postgres/catalogPublicationWire.js";
+import type { CatalogPublishedSku, CatalogPublishedProduct, CatalogSkuRevisionRef } from "@openlup/platform/catalog";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
-export const json = canonicalCatalogPublicationJson;
+// Fixture construction can deliberately exceed wire bounds so that SQL owns the refusal.
+export const json = (input: unknown): string => JSON.stringify(input, (_key, value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const object = value as Record<string, unknown>;
+  return Object.fromEntries(Object.keys(object).sort().map(key => [key, object[key]]));
+});
 const type = { key: "example:article", version: 1 };
 const definitionDigest = hash("synthetic installed definition");
 export const actorId = randomUUID();

@@ -1,11 +1,16 @@
-import { catalogPublicationAdmissionRefusal } from "./catalogPublicationReads.js";
+import { nativeCatalogPublication } from "@openlup/platform/catalog";
+import { assertPublishedSkuIdentity } from "./catalogPublicationReads.js";
+import type { PgQueryExecutor } from "@openlup/platform/data";
 import { createHash } from "node:crypto";
 import {
   captureCompatiblePostgresRows, PostgresTransferError,
   type CompatiblePostgresPacket, type CompatiblePostgresSnapshot, type CompatiblePostgresTable,
 } from "@openlup/platform/portability";
 
-export async function assertConnectedCatalogPublications(db: { query(sql: string): Promise<unknown> }) {
+const { catalogPublicationAdmissionRefusal } = nativeCatalogPublication;
+
+export async function assertConnectedCatalogPublications(db: PgQueryExecutor) {
+  await assertPublishedSkuIdentity(db);
   // Evaluate both decoders in PostgreSQL without returning the projections.
   await db.query(`SELECT count(public.catalog_publication_product_facts(id,publication_facts,true))
     FROM public.catalog_products WHERE publication_facts IS NOT NULL`);

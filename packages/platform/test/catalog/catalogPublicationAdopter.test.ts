@@ -44,6 +44,6 @@ it.each([
     if (op.op === "register_document_revision") Object.assign(op, { documentRef: document.id, canonicalText, digest });
   }
   Object.assign(source, installed);
-  if (refusal) await expect(compileCatalogPublication(source)).rejects.toThrow(refusal);
+  if (refusal) await expect(compileCatalogPublication(source)).rejects.toMatchObject({ code: refusal });
   else expect((await compileCatalogPublication(source)).skus).toMatchObject([{ isAddon: false, netContent: sku.netContent }]);
 });

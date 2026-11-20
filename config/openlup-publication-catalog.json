@@ -5594,6 +5594,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/testing/publicationWireVectors.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/validation.ts",
       "class": "public-output"
     },
@@ -11298,6 +11302,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/migrations/packagedCatalog.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
       "class": "public-output"
     },
@@ -14355,10 +14363,6 @@
     },
     {
       "path": "server/adapters/postgres/catalogPublicationReads.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/catalogPublicationWire.ts",
       "class": "public-output"
     },
     {

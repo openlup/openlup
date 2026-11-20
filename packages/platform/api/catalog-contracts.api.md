@@ -986,8 +986,6 @@ export interface CatalogDraftListQuery {
 }
 /** Reject lossy JSON inputs, prototype keys and excessive recursion before validation or hashing. */
 export declare function canonicalCatalogDraftJson(input: unknown): string;
-/** @internal Shared scalar and JSON rules for publication envelopes. */
-export declare function canonicalCatalogPublicationJson(input: unknown): string;
 ```
 ## dist/catalog/contracts/draftV2.d.ts
 

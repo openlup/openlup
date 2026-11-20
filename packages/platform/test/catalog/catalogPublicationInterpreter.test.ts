@@ -5,7 +5,7 @@ import { createCatalogCandidateServiceWithPublication } from "../../src/catalog/
 import { catalogDefinitionDigest } from "../../src/catalog/catalogDefinitionDigest.js";
 import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/draft.js";
 import { CATALOG_PUBLICATION_LIMITS } from "../../src/catalog/publicationContracts.js";
-import { catalogPublicationManifestSchema, catalogPublishedSkuSchema, publicationDigest, publicationJson } from "../../src/catalog/publicationCodec.js";
+import { assertPublishedSkuDocumentExclusion, catalogPublicationManifestSchema, decodePublishedSku, decodeStoredPublicationSku, publicationDigest, publicationJson, SKU_PAGE_DEPTH } from "../../src/catalog/publicationCodec.js";
 import { loadCatalogPublicationRules } from "../../src/catalog/publicationRules.js";
 import { loadCatalogRules, withCatalogPublicationRules } from "../../src/catalog/catalogPublicationRules.js";
 import type { CatalogCandidateIssue } from "../../src/catalog/contracts/candidate.js";
@@ -16,6 +16,8 @@ import type { PublicationDraftRecord, PublicationIntent } from "../../src/catalo
 import { compileCatalogPublicationDraft } from "../../src/catalog/publicationDraft.js";
 import type { CatalogCandidatePublicationDeps } from "../../src/catalog/publicationEvidence.js";
 import { artifact, input, revision, setupRules, type PublicationFixture } from "./fixtures/publicationInput.js";
+
+import { publicationWireVectors } from "../../src/catalog/testing/publicationWireVectors.js";
 
 type Fixture = PublicationFixture;
 type Verdict = [preview: string | null, firstDecision: string | null, compile: string | null];
@@ -565,7 +567,7 @@ const cases: Case[] = [
     const facts = { derived: data.payload.product.sharedContent.document! };
     data.payload.product.sharedContent.publicationSkus[0]!.facts = facts;
     operation(data, "create_sku", { facts });
-  }, expected: reason("catalog_publication_facts_invalid"), ...beforeRoute },
+  }, expected: reason("catalog_publication_document_text_copied"), ...beforeRoute },
   { id: "A-5 zero mass reaches the same ingress refusal", arrange: data => { data.payload.skus[0]!.netContent!.unscaled = "0"; },
     expected: reason("catalog_publication_integral_grams_required"),
     diagnostic: { path: "skus.0.netContent", phase: "structural", subject: "ARTICLE" } },
@@ -1103,14 +1105,15 @@ it("K-3 document-free published content round-trips while the authored draft ret
   const priorDigest = createHash("sha256").update(priorText).digest("hex");
   expect(catalogPublicationManifestSchema(new Set([priorDigest])).safeParse(display(priorText)).error?.issues[0]?.path)
     .toEqual(["product", "presentation", "title"]);
-  expect(catalogPublishedSkuSchema.safeParse({ ...skus[0], facts: { derived: document } }).success).toBe(false);
+  expect(() => assertPublishedSkuDocumentExclusion({ ...skus[0]!, facts: { derived: document! } },
+    new Set([product.document!.digest]))).toThrow(/copied document/);
 });
 
 it.each([
   { id: "N-EXACT-OBJECT-COPY", field: "shortName", document: { fr: "Article", en: "Item" },
     exact: { shortName: { en: "Item", fr: "Article" } }, different: { shortName: { en: "Item", fr: "Example" } } },
-  { id: "O-EXACT-CANONICAL-STRING", field: "title", document: 'An "example" title',
-    exact: { title: 'An "example" title' }, different: { title: 'Another "example" title' } },
+  { id: "O-EXACT-CANONICAL-STRING", field: "title", document: { title: 'An "example" title' },
+    exact: { title: canonicalCatalogDraftJson({ title: 'An "example" title' }) }, different: { title: 'Another "example" title' } },
 ])("$id excludes the canonical display value from compile and the manifest", async ({ field, document, exact, different }) => {
   const data = { ...input(), ...setupRules(artifact + `
 module.exports.identifyDocument = () => ({
@@ -1176,13 +1179,13 @@ it("local dispatch decodes every installed hook result before transport", () => 
 
 it("cycle1 publication envelope exact UTF-8 boundary", () => {
   const value = { text: "é" }, text = canonicalCatalogDraftJson(value), bytes = Buffer.byteLength(text);
-  expect(() => publicationDigest(value, bytes - 1)).toThrow("catalog_publication_envelope_too_large");
+  expect(() => publicationDigest(value, bytes - 1)).toThrow(expect.objectContaining({ code: "catalog_publication_envelope_too_large" }));
   expect(publicationDigest(value, bytes)).toBe(publicationDigest(value, bytes + 1));
 
   const limit = CATALOG_PUBLICATION_LIMITS.skuBytes;
   const exactLimit = "é".repeat((limit - 2) / 2);
   expect(Buffer.byteLength(publicationJson(exactLimit, limit))).toBe(limit);
-  expect(() => publicationJson(exactLimit + "x", limit)).toThrow("catalog_publication_envelope_too_large");
+  expect(() => publicationJson(exactLimit + "x", limit)).toThrow(expect.objectContaining({ code: "catalog_publication_envelope_too_large" }));
 });
 
 it("W33 complete generated promotions must be present in the sealed draft", async () => {
@@ -1237,4 +1240,48 @@ it("W17_V5-1856_predicate_precedence_boundary", () => {
   }
   expect(() => assertCatalogPublicationGrossMass({ ...net, unscaled: "100", scale: 0 },
     { ...net, unit: "openlup:kg", unscaled: "1", scale: 1 }, definition)).not.toThrow();
+});
+
+it("runs the SQL/TypeScript boundary vectors through preparation and the stored SKU decoder", async () => {
+  const { skus: [sku] } = await compileCatalogPublication(input());
+  for (const vector of publicationWireVectors) {
+    const value = vector.apply(sku!);
+    if (vector.valid) {
+      const decoded = decodePublishedSku(value, "skus.0");
+      const bytes = publicationJson(decoded, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH);
+      expect(decodeStoredPublicationSku(bytes), vector.name).toEqual(value);
+      expect(() => publicationJson({ items: [{ facts: decoded }] }), vector.name).not.toThrow();
+    } else {
+      expect(() => decodePublishedSku(value, "skus.0"), vector.name).toThrow();
+    }
+  }
+});
+
+it.each([
+  ["document", "catalog_publication_document_required"],
+  ["primarySkuId", "catalog_publication_primary_sku_required"],
+] as const)("gives a typed preparation refusal for a missing native product %s", async (field, code) => {
+  const data = input();
+  const skip = field === "document" ? ["move_document_pointer", "create_sku", "set_primary_sku",
+    "create_identifier", "set_eligibility", "set_sku_metadata", "set_offer_membership", "set_derived_sku_facts", "set_sku_status"] : ["set_primary_sku"];
+  data.payload.publication.operations = data.payload.publication.operations.filter(operation => !skip.includes(operation.op));
+  await expect(compileCatalogPublication(data)).rejects.toMatchObject({ code, diagnostic: { path: `product.${field}` } });
+});
+
+it("refuses a nested reserved key in published intent at its exact field", async () => {
+  const data = input();
+  data.payload.product.sharedContent.publicationSkus[0]!.facts = { neutral: [{ canoniCAL__text: false }] };
+  const preview = await facade(data).prepareCandidate({ draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null });
+  expect(preview.preparation?.structural.issues).toContainEqual(expect.objectContaining({
+    code: "catalog_publication_reserved_carrier", path: "product.sharedContent.publicationSkus.0.facts.neutral.0.canoniCAL__text",
+  }));
+});
+
+it.each(['"scalar"', '{"label":"article"} true'])("refuses registration text %s before calling document rules", async canonicalText => {
+  const data = input();
+  const digest = createHash("sha256").update(canonicalText).digest("hex");
+  operation(data, "register_document_revision", { canonicalText, digest });
+  data.payload.product.documentRevision!.digest = digest;
+  await expect(compileCatalogPublication(data)).rejects.toMatchObject({ code: "catalog_publication_v3_document_invalid",
+    diagnostic: { path: expect.stringMatching(/^publication\.operations\.\d+\.canonicalText$/u) } });
 });

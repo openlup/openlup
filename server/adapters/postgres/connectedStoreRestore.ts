@@ -1,4 +1,5 @@
-import { catalogPublicationAdmissionRefusal } from "./catalogPublicationReads.js";
+import { nativeCatalogPublication } from "@openlup/platform/catalog";
+import { assertPublishedSkuIdentity } from "./catalogPublicationReads.js";
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import {
@@ -11,6 +12,8 @@ import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
 import { assertConnectedCatalogPublications, connectedNativeStoreTables,
   connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+
+const { catalogPublicationAdmissionRefusal } = nativeCatalogPublication;
 
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
@@ -472,6 +475,7 @@ export async function restoreConnectedNativeStore(input: {
       // No alignment case or source policy is activated while shipment/hold INSERT
       // triggers replay. Preserve the captured policy only after all retained data.
       await restoreSettings(client, baseline.get("subscription_delivery_alignment_control")!, source.get("subscription_delivery_alignment_control")!);
+      await assertPublishedSkuIdentity(client);
       await client.query("SET CONSTRAINTS ALL IMMEDIATE");
       await assertOutsideEmpty(client, relations);
       if (!await equalCensus(client, source)) fail("target_conflict");

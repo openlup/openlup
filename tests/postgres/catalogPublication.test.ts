@@ -3,13 +3,16 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import type { CatalogHistoryResult, CatalogPublicationJson, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
 import { afterAll, beforeAll, expect, expectTypeOf, it } from "vitest";
-import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { CATALOG_PUBLICATION_LIMITS, type CatalogPublicationManifestV2 } from "../../server/adapters/postgres/catalogPublicationWire.js";
+import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { publicationWireVectors } from "@openlup/platform/catalog/testing";
+import { nativeCatalogPublication, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { actorId, hash, json, installPublicationActors, transaction, fixture, graph, insertGraph, decisionRow,
   decisionReceipt, documentRow, skuRow, sealedState, stageProductRows, invalidReceiptResults, type Graph } from "./catalogPublicationFixture.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { installOmsHuman } from "./omsHumanAdmission.fixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
+
+const { catalogPublicationAdmissionRefusal, publicationJson, SKU_PAGE_DEPTH, limits: CATALOG_PUBLICATION_LIMITS } = nativeCatalogPublication;
 
 const migration = "db/platform/migrations/20261123190000_catalog_publication.sql";
 let pool: Pool;
@@ -1031,9 +1034,9 @@ it("uses the same depth 48 boundary for SQL admission and the TypeScript detail 
   const page = await publicationReader().readbackV2(head);
   if (page.outcome !== "page") throw new Error(page.reason);
   expect(page.items[0]?.facts.facts).toEqual(detail(48));
-  expect(() => json(page, maxDepth)).not.toThrow();
+  expect(() => publicationJson(page)).not.toThrow();
   const items = page.items.map(item => ({ ...item, facts: { ...item.facts, facts: detail(49) } }));
-  expect(() => json({ ...page, items }, maxDepth)).toThrow("draft_json_depth");
+  expect(() => publicationJson({ ...page, items })).toThrow("draft_json_depth");
 
   const tooDeep = fixture();
   let staged = false;
@@ -1141,3 +1144,67 @@ it("admits the maximum inherited observation roster and refuses one more SKU", a
   });
   expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: replacement.head });
 }, 120_000);
+
+it("matches the shared publication boundary vectors in native SQL", async () => {
+  const issue = await transaction(pool, db => graph(db, fixture()));
+  for (const vector of publicationWireVectors) {
+    const value = vector.apply(issue.facts);
+    const jsonText = JSON.stringify(value);
+    const probe = (body: string) => pool.query<{ canonical: string }>(
+      "SELECT public.catalog_publication_sku_projection($1,$2,$3,$4::jsonb,false) AS canonical",
+      [issue.skuId, issue.productId, issue.facts.code, body],
+    );
+    if (vector.valid) {
+      const { rows } = await probe(jsonText);
+      expect(rows[0]?.canonical, vector.name).toBe(publicationJson(value, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH));
+      expect(() => publicationJson({ items: [{ facts: value }] }), vector.name).not.toThrow();
+    } else if (vector.sqlNormalizesZero) {
+      const { rows } = await probe(jsonText.replace('"zero":0', '"zero":-0'));
+      expect(rows[0]?.canonical).toBe(publicationJson(JSON.parse(jsonText), CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH));
+    } else {
+      await expect(probe(jsonText), vector.name).rejects.toThrow();
+    }
+  }
+});
+
+it("shares the public receipt reason between exact V2 reads and rollback diagnostics", async () => {
+  const issue = await transaction(pool, async db => {
+    const result = await graph(db, fixture());
+    await insertGraph(db, result);
+    return result;
+  });
+  const { rows: [original] } = await pool.query<{ result: string }>(
+    "SELECT result FROM public.catalog_operator_receipts WHERE scope_id=$1 AND kind='publish'", [issue.productId]);
+  await transaction(pool, async db => {
+    await db.query("SET LOCAL session_replication_role=replica");
+    await db.query("UPDATE public.catalog_operator_receipts SET result='{}' WHERE scope_id=$1 AND kind='publish'", [issue.productId]);
+  });
+  const reader = publicationReader();
+  const rollback = catalogPublicationAdmissionRefusal({ code: "23514", constraint: "catalog_publication_receipt_invalid" });
+  expect(rollback?.reason).toBe("publication_incomplete");
+  expect(await reader.readbackV2(issue.head)).toEqual({ ...rollback, outcome: "dependency_unavailable" });
+  expect(await reader.reads.readback(issue.head)).toMatchObject({ reason: "publication_authority_unavailable" });
+  await transaction(pool, async db => {
+    await db.query("SET LOCAL session_replication_role=replica");
+    await db.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE scope_id=$1 AND kind='publish'", [issue.productId, original!.result]);
+  });
+});
+
+it("gives a live SKU code change its own remedy while retaining exact historical readback", async () => {
+  const issue = await transaction(pool, async db => {
+    const result = await graph(db, fixture());
+    await insertGraph(db, result);
+    return result;
+  });
+  await transaction(pool, async db => {
+    await db.query("SET LOCAL session_replication_role=replica");
+    await db.query("UPDATE public.catalog_skus SET sku=$2 WHERE id=$1", [issue.skuId, `renamed-${issue.skuId}`]);
+  });
+  const reader = publicationReader();
+  expect(await reader.reads.current(issue.productId)).toEqual({ outcome: "conflict", reason: "head_conflict",
+    message: "A SKU code differs from its published identity. Restore the saved code or prepare a new SKU." });
+  expect(await reader.readbackV2(issue.head)).toMatchObject({ outcome: "page", items: [{ facts: { code: issue.facts.code } }] });
+  await transaction(pool, async db => {
+    await db.query("UPDATE public.catalog_skus SET sku=$2 WHERE id=$1", [issue.skuId, issue.facts.code]);
+  });
+});
