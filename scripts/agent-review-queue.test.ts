@@ -103,10 +103,10 @@ describe('hosted receipt comments', () => {
     const rendered = receiptBody(summary);
     const edited = rendered.replace('| reviewer-1 | PASS |', '| reviewer-1 | FAIL |')
       .replace('| reviewer-2 | PASS | full | none |\n', '')
-      .replace('\n\nOpen cards:', '\n| fake-reviewer | PASS | delta | made-up-card |\n\nOpen cards:');
+      .replace('\n\nOpen cards:', '\n| fake-reviewer_2.1 | PASS | delta | made-up-card, second? |\n\nOpen cards:');
     expect(edited).toContain('| reviewer-1 | FAIL |');
     expect(edited).not.toContain('| reviewer-2 |');
-    expect(edited).toContain('| fake-reviewer |');
+    expect(edited).toContain('| fake-reviewer_2.1 |');
     expect(parseReceipt(edited + '\n \t\n')).toEqual(summary);
     expect(parseReceipt(rendered)).toEqual(summary);
     const admitted = await waitFor(rendered);
@@ -126,6 +126,13 @@ describe('hosted receipt comments', () => {
       ['an HTML comment opener in the display', withDisplay('<!-- hidden')],
       ['a details tag in the display', withDisplay('<details>')],
       ['a closing angle bracket in the display', withDisplay('>')],
+      ['a dangling tilde fence in the display', withDisplay('~~~')],
+      ['a dangling tagged tilde fence in the display', withDisplay('~~~text')],
+      ['a closed tilde fence in the display', withDisplay('~~~\nextra\n~~~')],
+      ['a closed tagged tilde fence in the display', withDisplay('~~~text\nextra\n~~~')],
+      ...['*', '[', '=', '+', '~', '\\', '&', '\t', '\r'].map(character => [
+        `Markdown control ${JSON.stringify(character)} in the display`, withDisplay(character),
+      ]),
       ['a duplicated details section', rendered + section],
       ['a missing details close', rendered.replace('</details>', '')],
       ['two machine blocks in the section', rendered.replace('\n\n</details>', `\n\n${machine}\n\n</details>`)],

@@ -63,7 +63,7 @@ function parseFramedReceipt(body) {
   if (![RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER].includes(marker)) return null;
   const header = `\n${RECEIPT_DETAILS_HEADER}\n\n`;
   const section = body.indexOf(header, markerEnd);
-  if (section < 0 || /[`<>]/u.test(body.slice(markerEnd, section))) return null;
+  if (section < 0 || /[^a-zA-Z0-9 \n#|:._?,·-]/u.test(body.slice(markerEnd, section))) return null;
   const match = /^```(json|text)\n([^\r\n]+)\n```\n\n<\/details>\s*$/u.exec(body.slice(section + header.length));
   const gzip = marker === COMPRESSED_RECEIPT_MARKER;
   if (!match || match[1] !== (gzip ? 'text' : 'json')) return null;
