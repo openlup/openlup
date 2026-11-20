@@ -319,11 +319,13 @@ type SettingsHost = {
         configuration?: string;
     }): Promise<SettingsAppBindings | undefined>;
     formatPreview?(result: PreviewDocument): string;
+    previewResultSchema?: ZodType;
 };
 type SettingsIo = {
     write(text: string): void;
     warn?(text: string): void;
     readStdin(): Promise<string>;
+    input?: AsyncIterable<Buffer>;
 };
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export declare function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number>;

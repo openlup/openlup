@@ -1004,3 +1004,17 @@ it.each([url, url + " ", url + "?host=other.invalid", url.replace("/shop", "/%ZZ
     expect(bind).not.toHaveBeenCalled();
   }
 });
+
+it("refuses a non-canonical MCP launch URL before reading or writing protocol frames", async () => {
+  const write = vi.fn();
+  const warn = vi.fn();
+  const bind = vi.fn();
+  const input = { [Symbol.asyncIterator]: vi.fn(() => { throw new Error("unexpected frame input"); }) };
+  expect(await runSettingsCommand(["mcp", `--database-url=${url} `], {
+    write, warn, input, readStdin: async () => { throw new Error("unexpected proposal input"); },
+  }, { bind, previewResultSchema: renewalStockProtectionPreviewResult })).toBe(64);
+  expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/^Supply a canonical [^\n]+\n$/u));
+  expect(write).not.toHaveBeenCalled();
+  expect(input[Symbol.asyncIterator]).not.toHaveBeenCalled();
+  expect(bind).not.toHaveBeenCalled();
+});

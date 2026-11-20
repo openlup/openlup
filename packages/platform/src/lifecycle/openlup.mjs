@@ -111,19 +111,6 @@ async function main(args) {
   if (args[0] === "settings") {
     validatingInput = false;
     const host = { bind: bindSettings, loadCheck: loadSettingsCheck, formatPreview: formatSettingsPreview };
-    if (args[1] === "mcp") {
-      // eslint-disable-next-line no-restricted-syntax -- the binary loads its private built transport without adding a package export
-      const { runSettingsMcp, settingsMcpContext } = await import("../../dist/operations/server/settingsMcp.js");
-      const { context, hint } = settingsMcpContext(args.slice(2));
-      if (!context) { process.stderr.write(hint + "\n"); process.exitCode = 64; return; }
-      const write = process.stdout.write.bind(process.stdout);
-      process.stdout.write = process.stderr.write.bind(process.stderr);
-      globalThis.console = new Console(process.stderr);
-      // eslint-disable-next-line no-restricted-syntax -- tool entry uses the same public preview contract as the catalogue generator
-      const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
-      await runSettingsMcp(process.stdin, write, { ...context, ...(context.app && { app: resolve(context.app) }) }, host, renewalStockProtectionPreviewResult);
-      return;
-    }
     // eslint-disable-next-line no-restricted-syntax -- tool entry loads the existing installed server subpath only for settings
     const { runSettingsCommand } = await import("@openlup/platform/operations/server");
     const readStdin = async () => {
@@ -132,9 +119,18 @@ async function main(args) {
       for await (const chunk of process.stdin) text += chunk;
       return text;
     };
-    process.exitCode = await runSettingsCommand(args.slice(1), {
-      write: text => process.stdout.write(text), warn: text => process.stderr.write(text), readStdin,
-    }, host);
+    const io = { write: text => process.stdout.write(text), warn: text => process.stderr.write(text), readStdin };
+    if (args[1] === "mcp") {
+      const write = process.stdout.write.bind(process.stdout);
+      process.stdout.write = process.stderr.write.bind(process.stderr);
+      globalThis.console = new Console(process.stderr);
+      // eslint-disable-next-line no-restricted-syntax -- tool entry uses the same public preview contract as the catalogue generator
+      const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
+      process.exitCode = await runSettingsCommand(args.slice(1), { ...io, write, input: process.stdin },
+        { ...host, previewResultSchema: renewalStockProtectionPreviewResult });
+    } else {
+      process.exitCode = await runSettingsCommand(args.slice(1), io, host);
+    }
     return;
   }
   const { values, positionals } = parseArgs({

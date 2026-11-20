@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import { runSettingsCommand } from "./settingsCommand.js";
@@ -14,7 +15,9 @@ export function settingsMcpContext(args: string[]) {
     if (values.app === "" || (values.configuration !== undefined && !values.app)) return { hint: usage };
     const url = values["database-url"];
     const admitted = url === undefined ? undefined : admitDatabaseUrl(url);
-    return admitted && "hint" in admitted ? { hint: admitted.hint } : { context: values };
+    if (admitted && "hint" in admitted) return { hint: admitted.hint };
+    if (values.app) values.app = resolve(values.app);
+    return { context: values };
   } catch {
     return { hint: usage };
   }

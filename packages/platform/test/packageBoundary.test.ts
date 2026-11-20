@@ -504,7 +504,7 @@ describe("package source boundary", () => {
   });
 });
 
-it("keeps the settings tool registry and transport private to the binary", async () => {
+it("keeps the settings tool registry private and serves MCP through the command with an input stream", async () => {
   const operations = await import("@openlup/platform/operations/server");
   for (const name of ["settingsReadTools", "listSettings", "showSetting", "explainSetting", "previewSetting",
     "invalidSettingsCommand", "refuseSettingsPreview", "settingsMcpTools", "callSettingsTool", "runSettingsMcp", "settingsMcpContext"]) {
@@ -513,9 +513,23 @@ it("keeps the settings tool registry and transport private to the binary", async
   for (const name of ["runSettingsCommand", "settingDescriptorSchema", "settingRefusalSchema", "toolInputSchema", "settingsToolOutputSchema"]) {
     expect(operations).toHaveProperty(name);
   }
+  const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
+  const host = {
+    bind: async () => { throw new Error("unexpected store connection"); },
+    previewResultSchema: renewalStockProtectionPreviewResult,
+  };
   const output: string[] = [];
-  expect(await operations.runSettingsCommand(["mcp", "--json"], {
-    write: line => output.push(line), readStdin: async () => { throw new Error("unexpected stream access"); },
-  })).toBe(64);
+  const io = {
+    write: (line: string) => output.push(line),
+    readStdin: async () => { throw new Error("unexpected proposal input"); },
+  };
+  expect(await operations.runSettingsCommand(["mcp", "--json"], io, host)).toBe(64);
   expect(JSON.parse(output.join(""))).toMatchObject({ refusal: { code: "commerce_setting_read_input_invalid" } });
+  output.length = 0;
+  const input = (async function* () { yield Buffer.from('{"jsonrpc":"2.0","id":1,"method":"ping"}\n'); })();
+  expect(await operations.runSettingsCommand(["mcp", "--json"], { ...io, input })).toBe(64);
+  expect(JSON.parse(output.join(""))).toMatchObject({ refusal: { code: "commerce_setting_read_input_invalid" } });
+  output.length = 0;
+  expect(await operations.runSettingsCommand(["mcp"], { ...io, input }, host)).toBe(0);
+  expect(output.map(line => JSON.parse(line))).toEqual([{ jsonrpc: "2.0", id: 1, result: {} }]);
 });

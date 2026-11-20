@@ -40,13 +40,15 @@ type SettingsHost = {
   bind(input: { database?: SettingsDatabase; app?: string; configuration?: string }): Promise<SettingsAppBindings & { close?(): Promise<void> }>;
   loadCheck?(input: { app: string; configuration?: string }): Promise<SettingsAppBindings | undefined>;
   formatPreview?(result: PreviewDocument): string;
+  previewResultSchema?: ZodType;
 };
-type SettingsIo = { write(text: string): void; warn?(text: string): void; readStdin(): Promise<string> };
+type SettingsIo = { write(text: string): void; warn?(text: string): void; readStdin(): Promise<string>; input?: AsyncIterable<Buffer> };
 type Result = Awaited<ReturnType<typeof previewSetting<PreviewDocument>>>
   | ReturnType<typeof listSettings> | Awaited<ReturnType<typeof showSetting>> | ReturnType<typeof explainSetting>
   | z.infer<ReturnType<typeof catalogueWithAppSettings>["appShowResult"]>;
 
 const help = `openlup settings (experimental) list [--goal <text>] | show <key> | preview <key> --value <json-or-> | explain <refusal-code-or-key>
+openlup settings mcp [--app <module>] [--configuration <id>] [--database-url <url>]
 Use --json for a versioned settings document. Preview before any change.
 Pass --value - to read one JSON value from stdin or --value=-1 for a negative number.
 For connected show or preview, pass --database-url <read-capable-url>.
@@ -292,6 +294,18 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     const result = preview ? refuseSettingsPreview("commerce_setting_preview_input_invalid") : invalidSettingsCommand();
     return emit(field && hint ? { ...result, refusal: { ...result.refusal, path: [field], hint } } : result, 64);
   };
+  if (argv[0] === "mcp") {
+    if (!io.input || !host) return invalid();
+    // Load the loop after CLI initialization. Tools call this command for the ordinary settings operations.
+    const { runSettingsMcp, settingsMcpContext } = await import("./settingsMcp.js");
+    const { context, hint } = settingsMcpContext(argv.slice(1));
+    if (!context || !host.previewResultSchema) {
+      io.warn?.((hint ?? "Supply host.previewResultSchema to start settings mcp.") + "\n");
+      return 64;
+    }
+    await runSettingsMcp(io.input, line => io.write(line), context, host, host.previewResultSchema);
+    return 0;
+  }
   const parser = {
     args: [...argv], allowPositionals: true,
     options: {
