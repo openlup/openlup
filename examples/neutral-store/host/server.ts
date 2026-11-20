@@ -4,7 +4,7 @@ import { resolve, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertConfig, parseHostArguments } from '../shared/config.ts';
 import { readQuoteAcceptanceKeyring } from './quote-secret.ts';
-import { isOperation, operations } from '../shared/api.ts';
+import { isOperation, isPinnedCatalogDraftKey, operations } from '../shared/api.ts';
 import { isRecord } from '../shared/offer.ts';
 import { selectConfiguration } from '../owned/store.config.ts';
 import { dispatchAction, pendingBindings, type ApplicationBindings } from './bindings.ts';
@@ -57,11 +57,15 @@ async function handle(request: IncomingMessage, response: ServerResponse, bindin
     const operation = url.pathname.slice('/api/actions/'.length);
     if (!isOperation(operation)) { sendJson(response, 404, { ok: false, code: 'starter_operation_unknown' }); return; }
     const commandKey = request.headers['idempotency-key'];
-    if (typeof commandKey !== 'string' || !/^[a-zA-Z0-9-]{16,100}$/.test(commandKey)) {
+    const pinnedDraft = typeof commandKey === 'string' && operation === 'operator.catalogDrafts' && isPinnedCatalogDraftKey(commandKey);
+    if (typeof commandKey !== 'string' || !pinnedDraft && !/^[a-zA-Z0-9-]{16,100}$/.test(commandKey)) {
       sendJson(response, 400, { ok: false, code: 'starter_command_identity_required' }); return;
     }
     const input = await body(request);
     if (!isRecord(input)) { sendJson(response, 400, { ok: false, code: 'starter_input_invalid' }); return; }
+    if (pinnedDraft && input.action !== 'create' && input.action !== 'revise') {
+      sendJson(response, 400, { ok: false, code: 'starter_command_identity_required' }); return;
+    }
     if (operation === 'application.status') {
       sendJson(response, 200, { ok: true, value: {
         artifact: 'local-candidate', installation: 'unknown', risk: 'off',
