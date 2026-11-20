@@ -12418,6 +12418,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-vitest-sequencer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-sequencer.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-vitest-shard.mjs",
       "class": "public-output"
     },

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -93,6 +93,25 @@ describe("ci-vitest-sequencer", () => {
       ]);
     } finally {
       rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back cleanly when the weights manifest is malformed or has invalid schema fields", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "ci-vitest-sequencer-invalid-"));
+    try {
+      const brokenJson = join(tempDir, "broken.json");
+      writeFileSync(brokenJson, "{not-valid-json");
+      expect(loadSequencerWeights(brokenJson, tempDir)).toEqual({ defaultDurationMs: 1, durationsMs: {} });
+
+      const nonPositiveDefault = join(tempDir, "non-positive.json");
+      writeFileSync(nonPositiveDefault, JSON.stringify({ defaultDurationMs: 0, durationsMs: {} }));
+      expect(loadSequencerWeights(nonPositiveDefault, tempDir)).toEqual({ defaultDurationMs: 1, durationsMs: {} });
+
+      const arrayDurations = join(tempDir, "array-durations.json");
+      writeFileSync(arrayDurations, JSON.stringify({ defaultDurationMs: 100, durationsMs: [] }));
+      expect(loadSequencerWeights(arrayDurations, tempDir)).toEqual({ defaultDurationMs: 1, durationsMs: {} });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
