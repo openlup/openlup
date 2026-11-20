@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { setTimeout } from 'node:timers/promises';
 import { z, type ZodType } from 'zod';
+import { runSettingsCommand } from '@openlup/platform/operations/server';
 import { createSettingsBindings } from '../owned/settings-host.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createHash } from 'node:crypto';
@@ -45,6 +46,101 @@ test('native starter declaration schemas accept and reject the same values as th
         assert.equal(old.safeParse(value).success, expected, message);
         assert.equal(current.safeParse(value).success, expected, message);
       }
+    }
+  }
+});
+
+async function starterSettings(configuration: string, ...args: string[]) {
+  let stdout = '';
+  const status = await runSettingsCommand([...args, '--app', './owned/settings-host.ts', '--configuration', configuration, '--json'], {
+    write: text => { stdout += text; },
+    readStdin: async () => '',
+  }, {
+    bind: async input => createSettingsBindings(input),
+    loadCheck: async input => createSettingsBindings(input),
+  });
+  assert.equal(status, 0, stdout);
+  return JSON.parse(stdout);
+}
+
+const starterSettingLocations = [
+  ['renewal.retryBackoffHours', 'owned/renewal.config.ts', 'retryBackoffHours'],
+  ['offer.shippingMinor', 'owned/store.config.ts', 'offer.shippingMinor'],
+  ['purchase.tax.vatRateBps', 'owned/store.config.ts', 'purchase.tax.vatRateBps'],
+  ['offer.minUnits', 'owned/store.config.ts', 'offer.minUnits'],
+  ['offer.maxUnits', 'owned/store.config.ts', 'offer.maxUnits'],
+  ['purchase.attemptLimits', 'owned/store.config.ts', 'purchase.attemptLimits'],
+  ['renewal.subscriptionCare.terms', 'owned/renewal.config.ts', 'subscriptionCare.terms'],
+  ['renewal.subscriptionCare.pausePresets', 'owned/renewal.config.ts', 'subscriptionCare.pausePresets'],
+  ['renewal.subscriptionCare.notices', 'owned/renewal.config.ts', 'subscriptionCare.notices'],
+  ['legal.returnsDays', 'owned/store.config.ts', 'legal.returnsDays'],
+  ['offer.subscriptionRoundingQuantumMinor', 'owned/store.config.ts', 'offer.subscriptionRoundingQuantumMinor'],
+  ['market', 'owned/store.config.ts', 'market'],
+  ['shipping.rateResolver', 'owned/quote-shipping.ts', 'createQuoteShipping'],
+] as const;
+
+test('settings check includes all new declarations and their edit locations in both configurations', async () => {
+  for (const configuration of Object.keys(configurations)) {
+    const checked = await starterSettings(configuration, 'check');
+    assert.equal(checked.configuration, configuration);
+    assert.equal(checked.state, 'checked');
+    assert.equal(checked.appValidation.state, 'passed');
+    for (const [key, file, symbol] of starterSettingLocations) {
+      const row = checked.rows.find((entry: { key: string }) => entry.key === key);
+      assert.ok(row, key);
+      assert.equal(row.takesEffect, `${file} ${symbol}`, key);
+      if (key === 'shipping.rateResolver') {
+        assert.deepEqual(row.file, { state: 'not-reported' });
+      } else {
+        assert.equal(row.file.state, 'present', key);
+        assert.deepEqual(row.file.location, { file, symbol }, key);
+      }
+      assert.equal(row.validation.state, key === 'legal.returnsDays' || key === 'shipping.rateResolver' ? 'not-validated' : 'valid', key);
+    }
+  }
+});
+
+test('settings list finds starter declarations by customer and operator goals', async () => {
+  const goals = [
+    ['payment retry', 'renewal.retryBackoffHours'],
+    ['dunning schedule', 'renewal.retryBackoffHours'],
+    ['flat shipping', 'offer.shippingMinor'],
+    ['delivery fee', 'offer.shippingMinor'],
+    ['vat', 'purchase.tax.vatRateBps'],
+    ['tax rate', 'purchase.tax.vatRateBps'],
+    ['quantity limit', 'offer.minUnits', 'offer.maxUnits'],
+    ['pause duration', 'renewal.subscriptionCare.terms'],
+    ['pause presets', 'renewal.subscriptionCare.pausePresets'],
+    ['reminder window', 'renewal.subscriptionCare.notices'],
+    ['return window', 'legal.returnsDays'],
+    ['rounding', 'offer.subscriptionRoundingQuantumMinor'],
+    ['currency', 'market'],
+    ['carrier', 'shipping.rateResolver'],
+    ['shipping provider', 'shipping.rateResolver'],
+  ] as const;
+  for (const configuration of Object.keys(configurations)) {
+    for (const [goal, ...keys] of goals) {
+      const listed = await starterSettings(configuration, 'list', '--goal', goal);
+      const matches = listed.entries.map((entry: { key: string }) => entry.key);
+      for (const key of keys) assert.ok(matches.includes(key), `${configuration}: ${goal} must find ${key}`);
+    }
+  }
+});
+
+test('settings show reports the six existing declarations from the selected file', async () => {
+  for (const [configuration, config] of Object.entries(configurations)) {
+    const settings = {
+      'offer.freeShippingFromMinor': config.offer.freeShippingFromMinor,
+      'offer.subscriptionDiscountBps': config.offer.subscriptionDiscountBps,
+      'purchase.reservationMinutes': config.purchase.reservationMinutes,
+      'subscriptionCreation.editWindowHours': config.subscriptionCreation.editWindowHours,
+      'subscriptionOffers.deliveryCycles': config.subscriptionOffers,
+      'subscriptions.lifecycleNoticeRetryBudget': config.renewal.subscriptionCare.dispatch.maxAttempts,
+    };
+    for (const [key, value] of Object.entries(settings)) {
+      const shown = await starterSettings(configuration, 'show', key);
+      assert.equal(shown.setting.key, key);
+      assert.deepEqual(shown.observation, { state: 'file', configuration, value }, key);
     }
   }
 });
