@@ -225,19 +225,31 @@ function readApiSurface(root: string, ref: string, directory: string) {
   const gates = `${directory}/release-gates.json`;
   const paths = documentationGit(root, ["ls-tree", "-r", "-z", "--name-only", ref, "--", `${directory}/api`, gates]).toString("utf8").split("\0");
   const read = (path: string) => documentationGit(root, ["show", `${ref}:${path}`]).toString("utf8");
-  const files = new Map<string, { body: string; report: string }>();
+  const files = new Map<string, { body: string; report: string; carriers: Set<string>; conflicting: boolean }>();
   const unheaded = new Map<string, string>();
   for (const report of paths.filter((path) => API_REPORT.test(path)).sort(bytewise)) {
     const snapshot = snapshotSections(read(report));
     unheaded.set(report, snapshot.unheaded);
     for (const { path, lines } of snapshot.files) {
-      const body = lines.join("\n"), previous = files.get(path);
-      if (previous && previous.body !== body) throw new Error(`${directory}: ${previous.report} and ${report} have conflicting bodies for ${path} at ${ref}; ${regenerateSnapshots}`);
-      if (!previous) files.set(path, { body, report });
+      const body = lines.join("\n");
+      const entry = files.get(path) ?? { body, report, carriers: new Set<string>(), conflicting: false };
+      entry.carriers.add(report);
+      entry.conflicting ||= entry.body !== body;
+      files.set(path, entry);
     }
   }
   const surface = paths.includes(gates) ? (JSON.parse(read(gates)) as { packageSurface?: Record<string, { snapshot: string }> }).packageSurface : undefined;
   const subpaths = new Map(Object.entries(surface ?? {}).map(([subpath, { snapshot }]) => [subpath, posix.join(directory, snapshot)]));
+  const configured = new Set(subpaths.values());
+  for (const [path, { carriers, conflicting }] of files) {
+    if (!conflicting) continue;
+    const reports = [...carriers];
+    const stale = reports.filter((report) => !configured.has(report));
+    const remedy = stale.length
+      ? `${stale.map((report) => `${report} is not a configured snapshot; delete it`).join(". ")}, then run npm run api:update and rerun`
+      : regenerateSnapshots;
+    throw new Error(`${directory}: ${reports.join(" and ")} have conflicting bodies for ${path} at ${ref}; ${remedy}`);
+  }
   return { files, unheaded, subpaths };
 }
 

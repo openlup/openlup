@@ -249,10 +249,19 @@ describe("upgrade page assembly", () => {
 
   it("refuses conflicting copies of a declaration file at one revision", () => {
     const first = declarationFile("shared", "export type Value = string;\n");
-    const f = fixture({ [api]: first });
+    const gates = "packages/core/release-gates.json", stale = "packages/core/api/z-stale.api.md";
+    const peerSurface = { "./peer": { snapshot: "api/peer.api.md" } };
+    const f = fixture({ [api]: first, [gates]: JSON.stringify({ packageSurface: { ".": { snapshot: "api/core.api.md" }, ...peerSurface } }) });
     f.write(peer, declarationFile("shared", "export type Value = number;\n")); f.commit();
-    expect(() => assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] })).toThrow(
+    const assemble = () => assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
+    expect(assemble).toThrow(
       `packages/core: ${api} and ${peer} have conflicting bodies for dist/shared.d.ts at HEAD; regenerate the API snapshots (npm run api:update) and rerun`,
+    );
+    f.write(gates, JSON.stringify({ packageSurface: peerSurface }));
+    f.write(stale, first); f.commit();
+    expect(assemble).toThrow(
+      `packages/core: ${api} and ${peer} and ${stale} have conflicting bodies for dist/shared.d.ts at HEAD; ` +
+      `${api} is not a configured snapshot; delete it. ${stale} is not a configured snapshot; delete it, then run npm run api:update and rerun`,
     );
   });
 
