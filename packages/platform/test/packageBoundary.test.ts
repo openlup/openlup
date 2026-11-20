@@ -502,3 +502,19 @@ describe("package source boundary", () => {
     expect(specifiers('// import("commented-sdk")\nclient.from("table_name");')).toEqual([]);
   });
 });
+
+it("keeps the settings tool registry and transport private to the binary", async () => {
+  const operations = await import("@openlup/platform/operations/server");
+  for (const name of ["settingsReadTools", "listSettings", "showSetting", "explainSetting", "previewSetting",
+    "invalidSettingsCommand", "refuseSettingsPreview", "settingsMcpTools", "callSettingsTool", "runSettingsMcp", "settingsMcpContext"]) {
+    expect(operations).not.toHaveProperty(name);
+  }
+  for (const name of ["runSettingsCommand", "settingDescriptorSchema", "settingRefusalSchema", "toolInputSchema", "settingsToolOutputSchema"]) {
+    expect(operations).toHaveProperty(name);
+  }
+  const output: string[] = [];
+  expect(await operations.runSettingsCommand(["mcp", "--json"], {
+    write: line => output.push(line), readStdin: async () => { throw new Error("unexpected stream access"); },
+  })).toBe(64);
+  expect(JSON.parse(output.join(""))).toMatchObject({ refusal: { code: "commerce_setting_read_input_invalid" } });
+});

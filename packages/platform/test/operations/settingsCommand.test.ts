@@ -5,6 +5,9 @@ import { z, type ZodType } from "zod";
 import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
+import { callSettingsTool, settingsMcpContext, settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
+import { renewalStockProtectionPreviewResult } from "../../src/inventory/renewalStockProtection.js";
+
 const key = "inventory_renewal_protection";
 const url = "postgresql://sample@read.invalid/shop";
 const databaseOptions = {
@@ -877,5 +880,105 @@ it.each([{}, appFixture()])("keeps unknown-key refusals for a healthy module wit
     const { exit, output } = await run([...args, ...appArgs], { host: checks(async () => binding) });
     const baseline = await run(args);
     expect({ exit, output }).toEqual({ exit: baseline.exit, output: baseline.output });
+  }
+});
+
+const fixedApp = { app: "./app.ts" };
+const connectedApp = { ...fixedApp, "database-url": url };
+const nativeProposal = { renewalProtectionDays: 21, revision: "next" };
+const validPreview = renewalStockProtectionPreviewResult.parse({
+  schemaVersion: 1, key, asOf, proposed: nativeProposal, current: parityValue,
+  difference: { renewalProtectionDays: 7 }, validation: { state: "valid", value: nativeProposal },
+  effect: { existingReservations: "unchanged", newPurchaseAvailability: "equal-or-lower", skus: [] }, uncertainty: "fixture",
+});
+
+it.each([
+  ["P01 app goal list", "list", { goal: "gift wrapping fee" }, ["--goal", "gift wrapping fee"], fixedApp, 0],
+  ["P02 declared file value with selected configuration", "show", { key: feeKey }, [feeKey], { ...fixedApp, configuration: "west" }, 0],
+  ["P03 explain refusal code", "explain", { keyOrCode: "commerce_setting_unknown" }, ["commerce_setting_unknown"], fixedApp, 0],
+  ["P03 explain selected declaration", "explain", { keyOrCode: feeKey }, [feeKey], { ...fixedApp, configuration: "west" }, 0],
+  ["P04 show missing key", "show", {}, [], fixedApp, 64],
+  ["P04 show empty key", "show", { key: "" }, [""], fixedApp, 64],
+  ["P05 connected override", "show", { key }, [key], connectedApp, 0],
+  ["P06 missing connected reader", "show", { key: "subscriber_winback_policy" }, ["subscriber_winback_policy"], connectedApp, 1],
+  ["P06 unavailable store", "show", { key }, [key], { ...connectedApp, app: "unavailable" }, 74],
+  ["P07 check ignores URL", "check", {}, [], connectedApp, 0],
+  ["P07 check invalid", "check", {}, [], { app: "invalid" }, 1],
+  ["P07 check unknown", "check", {}, [], { app: "unknown" }, 2],
+  ["P07 check missing factory", "check", {}, [], { app: "missing" }, 74],
+  ["P08 offline preview", "preview", { key, value: nativeProposal }, [key, "--value", JSON.stringify(nativeProposal)], fixedApp, 1],
+  ["P09 preview missing key", "preview", { value: null }, ["--value", "null"], fixedApp, 64],
+  ["P09 preview empty key", "preview", { key: "", value: null }, ["--value", "null", "--", ""], fixedApp, 64],
+  ["P09 preview missing proposal", "preview", { key }, [key], fixedApp, 64],
+  ["P10 unknown configuration precedes invalid asOf", "preview", { key, value: {}, asOf: "bad" },
+    [key, "--value", "{}", "--as-of", "bad"], { ...connectedApp, configuration: "missing" }, 64],
+  ["P11 valid preview", "preview", { key, value: nativeProposal, asOf },
+    [key, "--value", JSON.stringify(nativeProposal), "--as-of", asOf], connectedApp, 0],
+  ["P11 invalid-policy preview", "preview", { key, value: null, asOf }, [key, "--value", "null", "--as-of", asOf], connectedApp, 0],
+  ["P13 selected list", "list", {}, [], { ...fixedApp, configuration: "west" }, 0],
+  ["P13 selected connected show", "show", { key }, [key], { ...connectedApp, configuration: "west" }, 0],
+  ["P13 selected check", "check", {}, [], { ...connectedApp, configuration: "west" }, 0],
+  ["P13 unknown list configuration", "list", {}, [], { ...fixedApp, configuration: "missing" }, 64],
+  ["P13 unknown show configuration", "show", { key }, [key], { ...connectedApp, configuration: "missing" }, 64],
+  ["P13 unknown explain configuration", "explain", { keyOrCode: feeKey }, [feeKey], { ...fixedApp, configuration: "missing" }, 64],
+] as const)("%s returns identical CLI and MCP documents", async (_, command, input, argv, context, exit) => {
+  const loadCheck = vi.fn(async ({ app, configuration }: { app: string; configuration?: string }) => {
+    if (app === "missing") return undefined;
+    if (app === "unknown") return {};
+    if (app === "invalid") throw new Error("rejected edit");
+    if (configuration === "missing") return { configurationIds: ["west"] };
+    const configured = appFixture(() => configuration === "west" ? 151 : 150, z.number());
+    return { file: { ...configured.file!, configuration: configuration ?? "sample" } };
+  });
+  const close = vi.fn(async () => {});
+  const preview = vi.fn(async (value: unknown) => value === null ? { ...validPreview, proposed: null,
+    validation: { state: "invalid" as const, code: "inventory_renewal_protection_policy_invalid", rule: "policy", hint: "Use an object",
+      remediation: { retry: true, action: "Repair", command: "openlup settings preview --help" } } } : validPreview);
+  const bind = vi.fn(async ({ app, configuration }: Parameters<NonNullable<Parameters<typeof runSettingsCommand>[2]>["bind"]>[0]) => {
+    if (configuration === "missing") return { configurationIds: ["west"], close };
+    return { close, readers: { [key]: async () => {
+      if (app === "unavailable") throw new Error("store unavailable");
+      return { present: true as const, revision: "local", value: parityValue };
+    } }, previewers: { [key]: preview } };
+  });
+  const flags = Object.entries(context)
+    .filter(([flag]) => flag !== "database-url" || command === "show" || command === "preview")
+    .map(([flag, value]) => `--${flag}=${value}`);
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === command)!;
+  const host = { bind, loadCheck };
+  const cli = await run([...flags, "--json", command, ...argv], { host });
+  expect(cli.exit).toBe(exit);
+  const result = await callSettingsTool(tool, input, context, host);
+  expect(result).toEqual({ isError: exit !== 0, structuredContent: JSON.parse(cli.output),
+    content: [{ type: "text", text: cli.output.trimEnd() }] });
+  if (command === "show" && "database-url" in context) {
+    expect(bind).toHaveBeenCalledTimes(2);
+    expect(bind).toHaveBeenLastCalledWith({ database: databaseOptions, app: context.app,
+      configuration: "configuration" in context ? context.configuration : undefined });
+    expect(close).toHaveBeenCalledTimes(2);
+  }
+  if ("configuration" in context && (command === "list" || command === "explain" || command === "check" || !("database-url" in context))) {
+    expect(loadCheck).toHaveBeenLastCalledWith({ app: context.app, configuration: context.configuration });
+  }
+  if (command === "check" || command === "preview" && !("database-url" in context)) expect(bind).not.toHaveBeenCalled();
+  if (command === "preview" && exit !== 0) expect(preview).not.toHaveBeenCalled();
+});
+
+it.each([{ schemaVersion: 1 as const }, { ...validPreview, extra: true }])("P11 rejects preview output outside the advertised schema", async (output) => {
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "preview")!;
+  const result = await callSettingsTool(tool, { key, value: nativeProposal, asOf }, connectedApp,
+    { bind: async () => ({ previewers: { [key]: async () => output } }) });
+  expect(result).toEqual({ isError: true, content: [{ type: "text", text: expect.stringContaining("invalid document") }] });
+});
+
+it.each([url, url + " ", url + "?host=other.invalid", url.replace("/shop", "/%ZZ"), url.replace("/shop", "/")])("P12 uses shared named-store launch admission", async (candidate) => {
+  const launch = settingsMcpContext([`--database-url=${candidate}`]);
+  if (candidate === url) expect(launch.context).toEqual({ "database-url": url });
+  else {
+    const bind = vi.fn();
+    const cli = await run(["show", key, `--database-url=${candidate}`, "--json"], { host: { bind } });
+    expect(cli.exit).toBe(64);
+    expect(launch.hint).toBe(JSON.parse(cli.output).refusal.hint);
+    expect(bind).not.toHaveBeenCalled();
   }
 });

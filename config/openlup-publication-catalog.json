@@ -8462,6 +8462,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/server/settingsCommandSupport.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/settingsMcp.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/operations/server/settingsRead.ts",
       "class": "public-output"
     },

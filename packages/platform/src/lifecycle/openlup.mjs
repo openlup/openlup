@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Tool-only Node entry; importing platform engine entries never starts this CLI.
+import { Console } from "node:console";
 import { promises as fs } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,6 +10,7 @@ const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SN
 openlup verify [--app ./application-observations.mjs] [--json]
 openlup catalogue check --packs ./owned/catalogue.json [--json]
 openlup settings list|show|preview|explain [--help] [--json] (experimental)
+openlup settings mcp [--app <module>] [--configuration <id>] [--database-url <url>] (experimental, read-only stdio)
 openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
 
 Upgrade snapshots use the existing AppVersionSnapshot contract. All unlisted paths are application-owned; upstream-unchanged files preserve local edits. Apply requires an exclusive maintenance window. Rerun identical inputs to resume. No SQL, package installation or hooks run.
@@ -104,6 +106,20 @@ function formatSettingsPreview(result) {
 async function main(args) {
   if (args[0] === "settings") {
     validatingInput = false;
+    const host = { bind: bindSettings, loadCheck: loadSettingsCheck, formatPreview: formatSettingsPreview };
+    if (args[1] === "mcp") {
+      // eslint-disable-next-line no-restricted-syntax -- the binary loads its private built transport without adding a package export
+      const { runSettingsMcp, settingsMcpContext } = await import("../../dist/operations/server/settingsMcp.js");
+      const { context, hint } = settingsMcpContext(args.slice(2));
+      if (!context) { process.stderr.write(hint + "\n"); process.exitCode = 64; return; }
+      const write = process.stdout.write.bind(process.stdout);
+      process.stdout.write = process.stderr.write.bind(process.stderr);
+      globalThis.console = new Console(process.stderr);
+      // eslint-disable-next-line no-restricted-syntax -- tool entry uses the same public preview contract as the catalogue generator
+      const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
+      await runSettingsMcp(process.stdin, write, context, host, renewalStockProtectionPreviewResult);
+      return;
+    }
     // eslint-disable-next-line no-restricted-syntax -- tool entry loads the existing installed server subpath only for settings
     const { runSettingsCommand } = await import("@openlup/platform/operations/server");
     const readStdin = async () => {
@@ -114,7 +130,7 @@ async function main(args) {
     };
     process.exitCode = await runSettingsCommand(args.slice(1), {
       write: text => process.stdout.write(text), warn: text => process.stderr.write(text), readStdin,
-    }, { bind: bindSettings, loadCheck: loadSettingsCheck, formatPreview: formatSettingsPreview });
+    }, host);
     return;
   }
   const { values, positionals } = parseArgs({

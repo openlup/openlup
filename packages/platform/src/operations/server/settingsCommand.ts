@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { z, type ZodType } from "zod";
 import type { SettingDescriptor, SettingRefusal } from "../contracts/settings.js";
 import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue, settingsEntriesWithAppSettings } from "./settingsCatalog.js";
+import { admitDatabaseUrl, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
   explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
@@ -93,11 +94,6 @@ Exit codes: 0 checked, 1 invalid, 2 no file member, 64 invalid syntax or configu
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
 type FileBinding = NonNullable<Extract<SettingsAppBindings, { file?: unknown }>["file"]>;
-type FileValue = { state: "not-reported" }
-  | ({ location?: Location } & ({ state: "present"; value: JsonValue } | { state: "unreportable"; message: string }));
-type Validation = { state: "valid" | "not-validated" } | { state: "invalid"; paths: string[][] };
-type AppValidation = { state: "passed" } | { state: "not-provided"; hint?: string }
-  | { state: "failed"; message: string; phase?: "load" };
 
 type DeclaredFileEntry = Extract<SettingsFileEntry, { descriptor: unknown }>;
 type AppSetting = { setting: z.infer<typeof settingDescriptorSchema>; entry: DeclaredFileEntry; schema?: ZodType };
@@ -285,41 +281,6 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
   ].join("\n");
 }
 
-function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; hint: string } {
-  const path = ["database-url"];
-  const url = URL.parse(input);
-  if (!url || url.href !== input) return { path,
-    hint: "Supply a canonical postgres:// or postgresql:// URL with a host, username and database. Use matching brackets for IPv6 and omit the port or use a port from 1 to 65535. Remove whitespace and dot segments." };
-  if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") return { path, hint: "Use the postgres:// or postgresql:// scheme." };
-  if (!url.hostname.startsWith("[") && !/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.?$/u.test(url.hostname)) {
-    return { path, hint: "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host." };
-  }
-  const port = Number(url.port || 5432);
-  if (port < 1 || port > 65535) return { path, hint: "Omit the PostgreSQL URL port or use a port from 1 to 65535." };
-  if (!url.username) return { path, hint: "Name the PostgreSQL username before @ in the URL." };
-  if (!/^\/[^/]+$/u.test(url.pathname)) return { path, hint: "Use one non-empty database path segment after the host and port." };
-  const encoding = { path, hint: "Encode the PostgreSQL username, password and database as valid UTF-8 URL components without control characters." };
-  let user: string, password: string, database: string;
-  try {
-    user = decodeURIComponent(url.username);
-    password = decodeURIComponent(url.password);
-    database = decodeURIComponent(url.pathname.slice(1));
-  } catch { return encoding; }
-  if ([user, password, database].some(value => /\p{Cc}/u.test(value))) return encoding;
-  if (url.href.includes("#")) return { path, hint: "Remove the fragment from the PostgreSQL URL." };
-  if (url.href.includes("?") && !["?sslmode=disable", "?sslmode=require", "?sslmode=verify-full"].includes(url.search)) {
-    return { path, hint: "Use no query or a single sslmode set to disable, require or verify-full. If your provider needs another option, use a provider URL that works with verified TLS under Node's trust store." };
-  }
-  const host = url.hostname.replace(/^\[|\]$/gu, "");
-  return {
-    host, port, user, password: password || (() => ""), database,
-    ssl: url.search === "?sslmode=require" || url.search === "?sslmode=verify-full" ? { rejectUnauthorized: true, host } : false,
-    // Truthy no-op startup values prevent pg from inheriting process connection defaults.
-    sslnegotiation: "postgres", options: " ", replication: "false", client_encoding: "utf8",
-    application_name: "openlup settings", connectionTimeoutMillis: 0,
-  };
-}
-
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export async function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number> {
   let json = argv.includes("--json");
@@ -359,6 +320,12 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     io.write((json ? JSON.stringify({ schemaVersion: 1, help: usage }) : usage) + "\n");
     return 0;
   }
+  const configurationHint = (ids: readonly string[]) => {
+    const id = values.configuration ?? "";
+    return `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${ids.join(", ")}.`;
+  };
+  const invalidConfiguration = (ids: readonly string[]) => ({ refusal: { ...invalidSettingsCommand().refusal,
+    path: ["configuration"], hint: configurationHint(ids) } });
   const loadApp = () => host?.loadCheck?.({ app: values.app!, configuration: values.configuration });
   if (command === "check") {
     if (values["database-url"] !== undefined) return invalid("database-url", "Settings check is offline. Use settings preview with --database-url for connected effects.");
@@ -385,8 +352,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       } }, 74);
     }
     if ("configurationIds" in bindings) {
-      const id = values.configuration ?? "";
-      return invalid("configuration", `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`);
+      return emit(invalidConfiguration(bindings.configurationIds), 64);
     }
     const admitted = declaredSettings(bindings.file, io.warn);
     if ("refusal" in admitted) return emit(admitted, 64);
@@ -403,7 +369,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   if (preview && extra.length) return invalid("proposed", "Pass one proposed JSON value with --value.");
   if (extra.length || (command === "list" ? key !== undefined : !key)
     || (databaseUrl !== undefined && command !== "show" && !preview)
-    || (!preview && (values.value !== undefined || values.sku || values.configuration !== undefined || values["as-of"] !== undefined))
+    || (!preview && (values.value !== undefined || values.sku || (values.configuration !== undefined && !values.app) || values["as-of"] !== undefined))
     || values.app === "") return invalid();
   if (!preview && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (command !== "list" && command !== "explain" && command !== "show" && !preview) return invalid();
@@ -430,6 +396,9 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     try { bindings = await loadApp(); }
     catch (error) { return loadFailure(errorMessage(error), 1); }
     if (!bindings) return loadFailure(missing, 74);
+    if (values.configuration !== undefined && "configurationIds" in bindings) {
+      return emit(invalidConfiguration(bindings.configurationIds), 64);
+    }
     const file = "configurationIds" in bindings ? undefined : bindings.file;
     const admitted = declaredSettings(file, command === "list" ? io.warn : undefined);
     if ("refusal" in admitted) return emit(admitted, 64);
@@ -490,9 +459,9 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       ? await host?.bind({ database, app: values.app, configuration: values.configuration }) : undefined;
     try {
       if (bindings && "configurationIds" in bindings) {
-        const id = values.configuration ?? "";
+        if (!preview) return [invalidConfiguration(bindings.configurationIds), 64];
         return [refuseSettingsPreview("commerce_setting_preview_configuration_unknown", {
-          path: ["configuration"], hint: `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`,
+          path: ["configuration"], hint: configurationHint(bindings.configurationIds),
         }), 64];
       }
       if (preview) {

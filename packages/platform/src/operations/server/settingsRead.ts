@@ -1,6 +1,5 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
-import { listCatalogueSettings, loadSettingsCatalogue, settingsListRequest, settingsVersion } from "./settingsCatalog.js";
-import { settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
+import { listCatalogueSettings, loadSettingsCatalogue, settingsVersion } from "./settingsCatalog.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
@@ -120,7 +119,7 @@ function hasNonfiniteNumber(proposed: unknown): boolean {
   return false;
 }
 
-/** @experimental Shared dispatcher for CLI and host-mounted MCP preview. */
+/** @experimental Dispatch a preview to the selected domain previewer. */
 export async function previewSetting<Result extends { schemaVersion: 1 } = never>(
   input: unknown, previewers: Readonly<Record<string, SettingPreviewer<Result>>> = {},
 ): Promise<Result | PreviewRefusal> {
@@ -148,39 +147,3 @@ export async function previewSetting<Result extends { schemaVersion: 1 } = never
     return refuseSettingsPreview("commerce_setting_preview_unexpected");
   }
 }
-
-function createSettingsToolSchemas() {
-  const { listResult, showRequest, showResult, refusalSchema } = loadSettingsCatalogue();
-  return {
-    listOutput: settingsToolOutputSchema(listResult, refusalSchema),
-    showInput: toolInputSchema(showRequest),
-    showOutput: settingsToolOutputSchema(showResult, refusalSchema),
-  };
-}
-
-let toolSchemas: ReturnType<typeof createSettingsToolSchemas> | undefined;
-
-/** @experimental MCP definitions for adopters composing a read-only settings head. */
-export const settingsReadTools = [
-  {
-    name: "settings__list",
-    description: "Find a key by business goal, then use settings__show for value details or a reason and reference.",
-    inputSchema: toolInputSchema(settingsListRequest),
-    get outputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).listOutput; },
-    annotations: { readOnlyHint: true },
-  },
-  {
-    name: "settings__show",
-    description: "Call settings__list if you need the key. Read value details or a reason and reference. If refused, read remediation.",
-    get inputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).showInput; },
-    get outputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).showOutput; },
-    annotations: { readOnlyHint: true },
-  },
-  {
-    name: "settings__preview",
-    description: "Call before any change to the setting. Use settings__show for the value schema. If the value is invalid or preview is refused, read remediation.",
-    inputSchema: toolInputSchema(settingsPreviewRequest),
-    get outputSchema() { return loadSettingsCatalogue().previewOutputSchema; },
-    annotations: { readOnlyHint: true },
-  },
-] as const;

@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { env } from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { imageReference, pullWithRetry, readCiImage } from '../ci-image-pull.mjs';
-import { previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery, starterSettingsHost } from './distribution-cli-proof.ts';
+import { previousPublishedSet, proveDistributionCliConsumer, proveSettingsDiscovery, proveSettingsMcp, starterSettingsHost } from './distribution-cli-proof.ts';
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from './pack-manifest-input.ts';
 import { generateExactSetReleaseBom } from './generate-release-bom.ts';
 
@@ -118,6 +118,7 @@ export function proveNeutralStarterConsumer(checkout, input, packInstalled = und
     released?.verifyInstalled();
     // Only a historical release without the settings files can skip the check.
     if (released?.mode !== "released" || released.settingsDiscovery) proveSettingsDiscovery(extracted, execute);
+    if (!released) proveSettingsMcp(extracted, environment);
     for (const args of [["test"], ["run", "typecheck"], ["run", "build"]]) run("npm", args);
     run(process.execPath, ["--experimental-strip-types", "--test", "browser/dev-loop.proof.ts"]);
     if (released) assert.equal(lockHash(), released.lockfileSha256, "starter proof changed committed lock");

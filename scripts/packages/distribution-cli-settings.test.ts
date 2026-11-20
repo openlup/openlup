@@ -1,12 +1,13 @@
+import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
+import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery, proveSettingsMcp,
   includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 import { proveNeutralStarterConsumer } from "./exact-set-qualification.mjs";
@@ -477,4 +478,30 @@ it.each(baseline.settings)("preserves starter discovery bytes for $key with only
 
 it.each(baseline.checks)("preserves the full starter check report for $args", captured => {
   expect(runStarterSettings(starter, captured.args)).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
+});
+
+it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {
+  const { directory, write } = fixture();
+  const platform = join(directory, "node_modules/@openlup/platform");
+  mkdirSync(platform, { recursive: true });
+  mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
+  const packed = JSON.parse(execFileSync("npm", ["pack", resolve("packages/platform"), "--ignore-scripts",
+    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8" }));
+  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"]);
+  for (const dependency of ["zod", "@openlup/core", "@openlup/outbox"]) {
+    const target = join(directory, "node_modules", dependency);
+    rmSync(target, { recursive: true, force: true });
+    symlinkSync(resolve("node_modules", dependency), target, "dir");
+  }
+  symlinkSync(join(platform, "src/lifecycle/openlup.mjs"), join(directory, "node_modules/.bin/openlup"));
+  write(starterSettingsHost, `export function createSettingsBindings() {
+    return { file: { configuration: "supplements", validate() {}, entries: {
+      "offer.freeShippingFromMinor": { value: 1000, location: { file: "owned/store.config.ts", symbol: "threshold" },
+        descriptor: { domain: "shipping", goal: "Free shipping threshold",
+          effect: { appliesTo: "New orders.", impact: "customer-promise", frozenOn: [] } } },
+    } } };
+  }`);
+  const { listing, results } = proveSettingsMcp(directory);
+  expect(ListToolsResultSchema.parse(listing).tools).toHaveLength(5);
+  for (const result of results) expect(CallToolResultSchema.parse(result).structuredContent).toBeDefined();
 });

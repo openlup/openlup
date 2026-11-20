@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
@@ -566,6 +566,68 @@ export function proveSettingsDiscovery(app: string, execute = (command: string, 
     "subscriptionCreation.editWindowHours", "subscriptionOffers.deliveryCycles", "subscriptions.lifecycleNoticeRetryBudget",
   ]) {
     assert.equal(checked.rows.find((row: { key: string }) => row.key === key)?.validation.state, "valid", key);
+  }
+}
+
+/** One offline MCP session against the installed binary. */
+export function proveSettingsMcp(app: string, environment = isolatedConsumerEnv()) {
+  const directory = mkdtempSync(join(app, ".settings-mcp-"));
+  try {
+    const appPath = join(directory, "logging-app.mjs");
+    writeFileSync(appPath, `import { createSettingsBindings as bind } from "../${starterSettingsHost}";
+export function createSettingsBindings(input) {
+  console.log("app console log");
+  process.stdout.write("app stdout log\\n");
+  return bind(input);
+}
+`);
+    const request = (id: number, method: string, params?: unknown) => JSON.stringify({ jsonrpc: "2.0", id, method, params });
+    const toolCall = (id: number, name: string, args = {}) => request(id, "tools/call", { name: `settings_${name}`, arguments: args });
+    const key = "offer.freeShippingFromMinor";
+    const frames = [
+      request(1, "initialize", { protocolVersion: "2025-06-18" }),
+      request(2, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "packed-test", version: "1" } }),
+      '{"jsonrpc":"2.0","method":"notifications/initialized"}',
+      request(3, "tools/list"),
+      toolCall(4, "list", { goal: "free shipping" }), toolCall(5, "show", { key }), toolCall(6, "explain", { keyOrCode: key }),
+      toolCall(7, "check"), toolCall(8, "preview", { key: "inventory_renewal_protection", value: null }),
+      "{", request(9, "unknown", []), toolCall(10, "show", { key, app: "ignored" }), toolCall(11, "show", { key: 1 }),
+      toolCall(12, "unknown"), "x".repeat(1024 * 1024 + 1), request(13, "ping"),
+    ];
+    const executable = join(app, "node_modules/.bin/openlup");
+    const args = ["settings", "mcp", "--app", appPath];
+    const session = spawnSync(executable, args, { cwd: app, env: environment, encoding: "utf8", input: frames.join("\n") + "\n" });
+    assert.ifError(session.error);
+    assert.equal(session.status, 0);
+    assert.match(session.stderr, /app console log\napp stdout log/u);
+    const replies = session.stdout.trimEnd().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(replies.map(row => row.id), [1, 2, 3, 4, 5, 6, 7, 8, null, 9, 10, 11, 12, null, 13]);
+    const byId = new Map(replies.filter(row => row.id !== null).map(row => [row.id, row]));
+    assert.equal(byId.get(2).result.protocolVersion, "2025-06-18");
+    const listing = byId.get(3).result;
+    const tools: { name: string; annotations?: { readOnlyHint?: boolean }; inputSchema: { additionalProperties?: boolean }; outputSchema?: object }[] = listing.tools;
+    assert.deepEqual(tools.map(tool => tool.name), ["settings_list", "settings_show", "settings_explain", "settings_check", "settings_preview"]);
+    assert(tools.every(tool => tool.inputSchema.additionalProperties === false && tool.outputSchema && tool.annotations?.readOnlyHint));
+    const results = [4, 5, 6, 7, 8].map(id => byId.get(id).result);
+    const [list, show, explained, checked, preview] = results;
+    assert((list?.structuredContent?.entries as { key: string }[]).some(entry => entry.key === key));
+    assert.deepEqual(show?.structuredContent?.observation, { state: "file", configuration: "supplements", value: 1000 });
+    assert.equal((explained?.structuredContent?.setting as { key: string }).key, key);
+    assert.equal(checked?.structuredContent?.state, "checked");
+    assert.equal(preview?.isError, true);
+    assert.equal((preview.structuredContent?.refusal as { code: string }).code, "commerce_setting_preview_connection_required");
+    assert.deepEqual([1, 9, 10, 11, 12].map(id => byId.get(id).error.code), [-32602, -32601, -32602, -32602, -32602]);
+    assert.deepEqual(replies.filter(row => row.id === null).map(row => row.error.code), [-32700, -32600]);
+    assert.deepEqual(byId.get(13).result, {});
+    const refused = spawnSync(executable, [...args, "--database-url=postgresql://probe@db.invalid/"],
+      { cwd: app, env: environment, encoding: "utf8", input: frames[1] });
+    assert.ifError(refused.error);
+    assert.equal(refused.status, 64);
+    assert.equal(refused.stdout, "");
+    assert.match(refused.stderr, /database path segment/u);
+    return { listing, results };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 }
 
