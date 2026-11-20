@@ -11,7 +11,7 @@ type ListResult = {
 type FileObservation = z.infer<typeof fileObservationSchema>;
 type Observation =
   | FileObservation
-  | { state: "offline" }
+  | { state: "offline"; note?: string }
   | { state: "fallback"; value: JsonValue }
   | { state: "override"; value: JsonValue; revision: string | null }
   | { state: "absent"; absentMeans: string; source: string; value: JsonValue };
@@ -48,7 +48,9 @@ function isJsonValue(value: unknown, ancestors = new Set<object>()): value is Js
 function fileValue(setting: SettingDescriptor, file?: SettingsFileBinding) {
   if (!file || !Object.hasOwn(file.entries, setting.key)) return;
   const { value, location } = file.entries[setting.key]!;
-  const source = location ? { location } : "file" in setting.change ? { catalogueReference: setting.change } : {};
+  const source = typeof location?.file === "string" && typeof location.symbol === "string"
+    ? { location: { file: location.file, symbol: location.symbol } }
+    : "file" in setting.change ? { catalogueReference: setting.change } : {};
   try {
     if (isJsonValue(value)) return { ...source, value };
   } catch { /* The value cannot be inspected as JSON. */ }

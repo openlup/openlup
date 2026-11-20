@@ -51,7 +51,8 @@ by the app, if any. A starter catalogue reference describes where the starter
 keeps the setting. The JSON `observation.state` is `file` for an offline file value.
 A connected installed read keeps its store value in `observation` and puts
 the file value in `fileObservation`. When the app does not report the key,
-offline text says “No file value reported.”
+text output says “No file value reported.” If the binding fails to load offline,
+`show` still returns the catalogue result with a note about the failure.
 
 Check runs the application's startup validation when the binding supplies it
 and shows its result separately. Each code or installed row reports whether a

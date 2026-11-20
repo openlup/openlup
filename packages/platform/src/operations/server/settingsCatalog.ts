@@ -23,7 +23,7 @@ const observationSchema = z.discriminatedUnion("state", [
   fileObservationSchema,
   z.strictObject({ state: z.literal("fallback"), value: z.json() }),
   z.strictObject({ state: z.literal("absent"), absentMeans: z.string(), source: z.string(), value: z.json() }),
-  z.strictObject({ state: z.literal("offline") }),
+  z.strictObject({ state: z.literal("offline"), note: z.string().optional() }),
 ]);
 function readSettingsCatalogue() {
   const { entries, searchTerms, previewOutputSchema } = z.strictObject({

@@ -303,6 +303,7 @@ type ListResult = {
 type FileObservation = z.infer<typeof fileObservationSchema>;
 type Observation = FileObservation | {
     state: "offline";
+    note?: string;
 } | {
     state: "fallback";
     value: JsonValue;

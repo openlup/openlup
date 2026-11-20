@@ -108,21 +108,21 @@ it.each([
   });
 });
 
-it("reports a missing explicit settings module on both offline and connected show", () => {
+it.each([
+  [["show", "inventory_renewal_protection"], 0, undefined],
+  [["show", "inventory_renewal_protection", "--database-url", "postgresql://unused.invalid/shop"], 74, "key"],
+  [["check"], 74, "app"],
+] as const)("reports a missing explicit settings module for %j", (args, status, path) => {
   const { directory } = fixture();
-  const show = (...args: string[]) => spawnSync(process.execPath, [
-    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", "inventory_renewal_protection", "--json", ...args,
-  ], { cwd: directory, encoding: "utf8" });
-  const offline = show();
-  expect(offline.status, offline.stderr).toBe(0);
-  expect(JSON.parse(offline.stdout)).toMatchObject({ observation: { state: "offline" } });
-  for (const args of [[], ["--database-url", "postgresql://unused.invalid/shop"]]) {
-    const missing = show("--app", starterSettingsHost, ...args);
-    expect(missing.status, missing.stderr).toBe(74);
-    expect(JSON.parse(missing.stdout)).toMatchObject({ refusal: {
-      code: "commerce_setting_read_unavailable", path: [args.length ? "key" : "app"], hint: expect.stringContaining("createSettingsBindings"),
-    } });
-  }
+  const missing = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
+    "settings", ...args, "--json", "--app", starterSettingsHost], { cwd: directory, encoding: "utf8" });
+  expect(missing.status, missing.stderr).toBe(status);
+  if (path) expect(JSON.parse(missing.stdout)).toMatchObject({ refusal: {
+    code: "commerce_setting_read_unavailable", path: [path], hint: expect.stringContaining("createSettingsBindings"),
+  } });
+  else expect(JSON.parse(missing.stdout)).toMatchObject({ observation: {
+    state: "offline", note: expect.stringContaining("App binding could not be loaded offline. Cannot find module"),
+  } });
 });
 
 it.each([

@@ -70,20 +70,21 @@ function fileText(file: FileObservation): string {
   return `File as loaded (${file.configuration}) — ${fileLocationText(file)} = ${JSON.stringify(file.value)}.`;
 }
 
-function text(result: Result, host?: SettingsHost): string {
-  if ("refusal" in result || "explanation" in result) {
+function text(result: Result, command?: string, host?: SettingsHost): string {
+  if ("refusal" in result || (command === "explain" && "explanation" in result)) {
     const { code, rule, hint, remediation } = "refusal" in result ? result.refusal : result.explanation;
     return [code, rule, hint, remediation.action, remediation.command].join("\n");
   }
-  if ("rows" in result) return checkText(result);
-  if ("entries" in result) return result.entries.length
+  if (command === "preview" && "schemaVersion" in result) return host?.formatPreview?.(result) ?? JSON.stringify(result, null, 2);
+  if (command === "check" && "rows" in result) return checkText(result);
+  if (command === "list" && "entries" in result) return result.entries.length
     ? result.entries.map(({ key, kind, runtime, goal, change }) => [
       `${key} (${kind}, ${runtime.level})`, `  ${goal}`,
       ...((kind === "cap" || kind === "invariant") && "reason" in runtime ? [`  ${runtime.reason}`] : []),
       `  Change: ${Object.values(change).join(" ")}`,
     ].join("\n")).join("\n")
     : "No settings matched the goal.";
-  if (!("setting" in result)) return host?.formatPreview?.(result) ?? JSON.stringify(result, null, 2);
+  if ((command !== "show" && command !== "explain") || !("setting" in result)) return JSON.stringify(result, null, 2);
   const { setting, observation } = result;
   return [setting.key + " — " + setting.goal, `Owner: ${setting.domain}`,
     `Kind: ${setting.kind} (${setting.runtime.level})`,
@@ -96,17 +97,20 @@ function text(result: Result, host?: SettingsHost): string {
       `Frozen on: ${setting.effect.frozenOn.join(" ") || "No records named"}`,
     ] : []),
     `Change: ${Object.values(setting.change).join(" ")}`,
-    observation.state === "file" ? `${fileText(observation)} Running store not observed.` : `Observation: ${JSON.stringify(observation)}`,
+    observation.state === "file" ? `${fileText(observation)} Running store not observed.`
+      : `Observation: ${JSON.stringify(observation.state === "offline" ? { state: "offline" } : observation)}`,
+    ...(observation.state === "offline" && observation.note ? [observation.note] : []),
     ...(result.fileObservation ? [fileText(result.fileObservation)] : []),
-    ...(observation.state === "offline" && (setting.kind === "code" || setting.kind === "installed") ? ["No file value reported."] : []),
+    ...(command === "show" && observation.state !== "file" && !result.fileObservation ? ["No file value reported."] : []),
   ].join("\n");
 }
 
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export async function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number> {
   let json = argv.includes("--json");
+  let command: string | undefined;
   const emit = (result: Result, code = "refusal" in result ? 1 : 0) => {
-    io.write((json ? JSON.stringify("schemaVersion" in result ? result : { schemaVersion: 1, ...result }) : text(result, host)) + "\n");
+    io.write((json ? JSON.stringify("schemaVersion" in result ? result : { schemaVersion: 1, ...result }) : text(result, command, host)) + "\n");
     return code;
   };
   let preview = false;
@@ -135,7 +139,8 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       : error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" ? `Unknown option ${flag}. See ${helpTopic}.` : undefined;
     return invalid(option, hint);
   }
-  const { values, positionals: [command, key, ...extra] } = parsed;
+  const { values, positionals: [parsedCommand, key, ...extra] } = parsed;
+  command = parsedCommand;
   json = values.json === true;
   if (values.help) {
     io.write((json ? JSON.stringify({ schemaVersion: 1, help }) : help) + "\n");
@@ -152,9 +157,6 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     if (previewFlag) return invalid(previewFlag, `Use --${previewFlag} with preview.`);
     if (key !== undefined) return invalid("key", "Settings check reports all catalogue keys. Omit the key.");
   }
-  if (command === "show" && values.configuration !== undefined && !values.app) {
-    return invalid("configuration", "Pass --app <module> to select a configuration.");
-  }
   const url = databaseUrl === undefined ? undefined : URL.parse(databaseUrl);
   const invalidDatabase = databaseUrl !== undefined && (!url?.hostname || !["postgres:", "postgresql:"].includes(url.protocol))
     ? { path: ["database-url"], hint: databaseUrl ? "Supply a PostgreSQL URL for the intended store." : "Supply a read-capable database URL." }
@@ -165,7 +167,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   if (extra.length || (command === "list" || check ? key !== undefined : !key)
     || (databaseUrl !== undefined && command !== "show" && !preview)
     || (!preview && (values.value !== undefined || values.sku || values["as-of"] !== undefined))
-    || (!preview && !check && command !== "show" && values.configuration !== undefined)
+    || (!preview && !check && values.configuration !== undefined && (command !== "show" || !values.app))
     || values.app === "") return invalid();
   if (!preview && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (command === "list") return emit(listSettings({ goal: values.goal }), values.goal?.trim() === "" ? 64 : undefined);
@@ -201,10 +203,12 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     path: [field], hint: "Pass --app <module> for the shop's stock source and configuration.",
   });
   async function dispatch(): Promise<[Result, number?]> {
+    let offlineShow: Extract<Result, { setting: unknown }> | undefined;
     let showConnected = false;
     if (command === "show") {
       const offline = await showSetting({ key });
       if ("refusal" in offline) return [offline];
+      offlineShow = offline;
       showConnected = databaseUrl !== undefined && offline.setting.kind === "installed";
       if (!showConnected && !values.app) return [offline];
     }
@@ -219,14 +223,26 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     const connectedUrl = invalidDatabase || (command === "show" && !showConnected) ? undefined : databaseUrl;
     if (preview && connectedUrl && !host) return [needsApp(), 74];
     // An explicit configuration can be resolved without a pool, including before a URL refusal.
-    const bindings = (connectedUrl || resolveConfiguration || check || (command === "show" && values.app))
-      ? await host?.bind({ databaseUrl: connectedUrl, app: values.app, configuration: values.configuration }) : undefined;
-    if (!bindings && !preview && values.app) return [unavailableApp(), 74];
+    let bindings;
+    try {
+      bindings = (connectedUrl || resolveConfiguration || check || (command === "show" && values.app))
+        ? await host?.bind({ databaseUrl: connectedUrl, app: values.app, configuration: values.configuration }) : undefined;
+    } catch (error) {
+      if (!offlineShow || showConnected) throw error;
+      const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+      const reason = !message.trim() || message.includes("://")
+        ? "Check that the app can open its settings binding without a database."
+        : message.replace(/\s+/gu, " ").trim().slice(0, 180);
+      return [{ ...offlineShow, observation: { state: "offline", note: `App binding could not be loaded offline. ${reason}` } }];
+    }
+    if (!bindings && check) return [unavailableApp(), 74];
     try {
       if (bindings && "configurationIds" in bindings) {
         const id = values.configuration ?? "";
         const hint = `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`;
-        return preview ? [refuseSettingsPreview("commerce_setting_preview_configuration_unknown", { path: ["configuration"], hint }), 64]
+        if (offlineShow && !showConnected && values.configuration === undefined) return [offlineShow];
+        return preview || (showConnected && values.configuration === undefined)
+          ? [refuseSettingsPreview("commerce_setting_preview_configuration_unknown", { path: ["configuration"], hint }), 64]
           : [{ refusal: { ...invalidSettingsCommand().refusal, path: ["configuration"], hint } }, 64];
       }
       if (preview) {

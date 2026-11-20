@@ -564,3 +564,66 @@ it("shows a reported callback value outside check coverage", async () => {
   expect(checked.exit).toBe(0);
   expect(checked.output).not.toContain(key);
 });
+
+it.each([
+  ["extra member", { file: "policy.ts", symbol: "threshold", line: 42 }, { location: { file: "policy.ts", symbol: "threshold" } }],
+  ["missing symbol", { file: "policy.ts" }, { catalogueReference: { file: "owned/store.config.ts", symbol: codeKey } }],
+  ["non-string file", { file: 42, symbol: "threshold" }, { catalogueReference: { file: "owned/store.config.ts", symbol: codeKey } }],
+] as const)("projects the reported location with %s for show and check", async (_, rawLocation, source) => {
+  const location = rawLocation as { file: string; symbol: string };
+  const stock = { revision: "store-1", renewalProtectionDays: 21 };
+  const file = { configuration: "sample", entries: {
+    [codeKey]: { value: 12000, location },
+    [key]: { value: stock, location },
+  } };
+  const host = { bind: async () => ({ file, readers: { [key]: async () => ({ present: false as const }) } }) };
+  const shown = await run(["show", codeKey, "--app", "./app.ts", "--json"], { host });
+  expect(shown.exit).toBe(0);
+  expect(JSON.parse(shown.output).observation).toEqual({ state: "file", configuration: "sample", ...source, value: 12000 });
+  const checked = await run(defaultCheck, { host });
+  expect(checked.exit).toBe(0);
+  expect(JSON.parse(checked.output).rows.find((row: { key: string }) => row.key === codeKey).file)
+    .toEqual({ state: "present", ...source, value: 12000 });
+  const connected = await run(["show", key, "--app", "./app.ts", "--database-url", url, "--json"], { host });
+  expect(connected.exit).toBe(0);
+  const { observation, fileObservation } = JSON.parse(connected.output);
+  expect(observation).toEqual(JSON.parse(document(await showSetting({ key }, (await host.bind()).readers))).observation);
+  const stockSource = "location" in source ? source : {};
+  expect(fileObservation).toEqual({ state: "file", configuration: "sample", ...stockSource, value: stock });
+});
+
+it.each([[{ schemaVersion: 1 as const, rows: [{ sku: "A" }] }]])("uses the preview formatter for a result with rows", async result => {
+  const formatPreview = vi.fn(() => "preview with rows");
+  const { exit, output } = await run(["preview", key, "--value", "{}", "--database-url", url, "--app", "./app.ts"], {
+    host: { bind: async () => ({ previewers: { [key]: async () => result } }), formatPreview },
+  });
+  expect(exit).toBe(0);
+  expect(formatPreview).toHaveBeenCalledExactlyOnceWith(result);
+  expect(output).toBe("preview with rows\n");
+});
+
+it.each([
+  [["show", key], 0, undefined],
+  [["show", key, "--database-url", url], 74, "key"],
+  [["check"], 74, "app"],
+] as const)("handles a factory that needs a database for %j", async (argv, status, path) => {
+  const reason = "Needs a database. " + "x".repeat(162);
+  const host = { bind: async () => { throw new Error("  Needs a\n database.  " + "x".repeat(200)); } };
+  const { exit, output } = await run([...argv, "--app", "./app.ts", "--json"], { host });
+  expect(exit).toBe(status);
+  if (path) {
+    expect(JSON.parse(output).refusal).toMatchObject({ code: "commerce_setting_read_unavailable", path: [path] });
+    expect(output).not.toContain("Needs a database");
+    return;
+  }
+  const note = "App binding could not be loaded offline. " + reason;
+  expect(output).toBe(document(await showSetting({ key })).replace('"state":"offline"', `"state":"offline","note":${JSON.stringify(note)}`));
+  const rendered = await run([...argv, "--app", "./app.ts"], { host });
+  expect(rendered.output).toContain(`Observation: {"state":"offline"}\n${note}\nNo file value reported.\n`);
+});
+
+it.each(["savedAddressValidation"])("prints the missing file value line for the unreported callback %s", async setting => {
+  const { exit, output } = await run(["show", setting, "--app", "./app.ts"], { host: { bind: async () => ({}) } });
+  expect(exit).toBe(0);
+  expect(output).toContain('Observation: {"state":"offline"}\nNo file value reported.\n');
+});
