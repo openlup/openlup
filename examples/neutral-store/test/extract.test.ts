@@ -50,7 +50,7 @@ test('native starter declaration schemas accept and reject the same values as th
   }
 });
 
-async function starterSettings(configuration: string, ...args: string[]) {
+async function starterSettings(configuration: string, args: string[], expectedStatus = 0) {
   let stdout = '';
   const status = await runSettingsCommand([...args, '--app', './owned/settings-host.ts', '--configuration', configuration, '--json'], {
     write: text => { stdout += text; },
@@ -59,7 +59,7 @@ async function starterSettings(configuration: string, ...args: string[]) {
     bind: async input => createSettingsBindings(input),
     loadCheck: async input => createSettingsBindings(input),
   });
-  assert.equal(status, 0, stdout);
+  assert.equal(status, expectedStatus, stdout);
   return JSON.parse(stdout);
 }
 
@@ -81,7 +81,7 @@ const starterSettingLocations = [
 
 test('settings check includes all new declarations and their edit locations in both configurations', async () => {
   for (const configuration of Object.keys(configurations)) {
-    const checked = await starterSettings(configuration, 'check');
+    const checked = await starterSettings(configuration, ['check']);
     assert.equal(checked.configuration, configuration);
     assert.equal(checked.state, 'checked');
     assert.equal(checked.appValidation.state, 'passed');
@@ -95,8 +95,48 @@ test('settings check includes all new declarations and their edit locations in b
         assert.equal(row.file.state, 'present', key);
         assert.deepEqual(row.file.location, { file, symbol }, key);
       }
+      if (key === 'market') {
+        const { country, currency, timezone } = configurations[configuration]!.market;
+        assert.deepEqual(row.file.value, { country, currency, timezone });
+      }
       assert.equal(row.validation.state, key === 'legal.returnsDays' || key === 'shipping.rateResolver' ? 'not-validated' : 'valid', key);
     }
+  }
+});
+
+test('settings check identifies five invalid object members in scratch configurations', async () => {
+  const configuration = 'settings-review-scratch';
+  const cases: readonly [string, string[], (config: typeof configurations[string]) => void][] = [
+    ['purchase.attemptLimits', ['maxPerEmail'], config => { config.purchase.attemptLimits.maxPerEmail = 0; }],
+    ['renewal.subscriptionCare.terms', ['pauseDays'], config => { config.renewal.subscriptionCare.terms.pauseDays = 0; }],
+    ['renewal.subscriptionCare.pausePresets', ['allowed', '0'], config => {
+      Object.assign(config.renewal.subscriptionCare.pausePresets, { allowed: ['forever'] });
+    }],
+    ['renewal.subscriptionCare.notices', ['operatorMaxAttempts'], config => {
+      config.renewal.subscriptionCare.notices.operatorMaxAttempts = 0;
+    }],
+    ['market', ['country'], config => { config.market.country = 'USA'; }],
+  ];
+  for (const [key, path, change] of cases) {
+    const config = { ...structuredClone(configurations.supplements!), id: configuration };
+    change(config);
+    configurations[configuration] = config;
+    try {
+      const checked = await starterSettings(configuration, ['check'], 1);
+      assert.equal(checked.state, 'invalid', key);
+      assert.equal(checked.appValidation.state, 'failed', key);
+      const row = checked.rows.find((entry: { key: string }) => entry.key === key);
+      assert.deepEqual(row?.validation, { state: 'invalid', paths: [path] }, key);
+    } finally {
+      delete configurations[configuration];
+    }
+  }
+});
+
+test('settings show leaves frozen values empty for admission rules and notice windows', async () => {
+  for (const key of ['offer.minUnits', 'offer.maxUnits', 'renewal.subscriptionCare.pausePresets', 'renewal.subscriptionCare.notices']) {
+    const shown = await starterSettings('supplements', ['show', key]);
+    assert.deepEqual(shown.setting.effect.frozenOn, [], key);
   }
 });
 
@@ -120,7 +160,7 @@ test('settings list finds starter declarations by customer and operator goals', 
   ] as const;
   for (const configuration of Object.keys(configurations)) {
     for (const [goal, ...keys] of goals) {
-      const listed = await starterSettings(configuration, 'list', '--goal', goal);
+      const listed = await starterSettings(configuration, ['list', '--goal', goal]);
       const matches = listed.entries.map((entry: { key: string }) => entry.key);
       for (const key of keys) assert.ok(matches.includes(key), `${configuration}: ${goal} must find ${key}`);
     }
@@ -138,7 +178,7 @@ test('settings show reports the six existing declarations from the selected file
       'subscriptions.lifecycleNoticeRetryBudget': config.renewal.subscriptionCare.dispatch.maxAttempts,
     };
     for (const [key, value] of Object.entries(settings)) {
-      const shown = await starterSettings(configuration, 'show', key);
+      const shown = await starterSettings(configuration, ['show', key]);
       assert.equal(shown.setting.key, key);
       assert.deepEqual(shown.observation, { state: 'file', configuration, value }, key);
     }

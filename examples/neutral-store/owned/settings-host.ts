@@ -14,7 +14,6 @@ export function createSettingsBindings({ db, configuration }: {
   }
   const config = selectConfiguration(configuration);
   const file = 'owned/store.config.ts';
-  const renewalFile = 'owned/renewal.config.ts';
   const entries: Record<string, SettingsFileEntry> = {
     'offer.freeShippingFromMinor': {
       value: config.offer?.freeShippingFromMinor,
@@ -113,7 +112,7 @@ export function createSettingsBindings({ db, configuration }: {
     },
     'renewal.retryBackoffHours': {
       value: config.renewal?.retryBackoffHours,
-      location: { file: renewalFile, symbol: 'retryBackoffHours' },
+      location: { file: 'owned/renewal.config.ts', symbol: 'retryBackoffHours' },
       descriptor: {
         domain: 'subscriptions',
         goal: "Set the hours between payment retries after a failed renewal charge (payment retry policy, dunning schedule, retry ladder, backoff).",
@@ -170,7 +169,7 @@ export function createSettingsBindings({ db, configuration }: {
         ),
         effect: {
           appliesTo: "Cart validation reads the deployed minimum when admitting a new checkout quote.",
-          frozenOn: ["Saved checkout quotes keep the admitted line quantities on quote replay."],
+          frozenOn: [],
           impact: 'customer-promise',
         },
       },
@@ -186,7 +185,7 @@ export function createSettingsBindings({ db, configuration }: {
         ),
         effect: {
           appliesTo: "Cart validation reads the deployed maximum when admitting a new checkout quote.",
-          frozenOn: ["Saved checkout quotes keep the admitted line quantities on quote replay."],
+          frozenOn: [],
           impact: 'customer-promise',
         },
       },
@@ -197,7 +196,13 @@ export function createSettingsBindings({ db, configuration }: {
       descriptor: {
         domain: 'checkout',
         goal: "Set the checkout attempt rate limits per requester and per email (rate limit, throttling, abuse protection).",
-        schema: z.looseObject({}).describe(
+        schema: z.looseObject({
+          windowMs: z.number().int().min(1),
+          maxPerRequester: z.number().int().min(1),
+          maxPerEmail: z.number().int().min(1),
+          retentionMs: z.number().int().min(1),
+          maxEntries: z.number().int().min(1),
+        }).partial().catchall(z.number().int().min(1)).describe(
           "assertConfig checks positive safe integers for the attempt limits and requires retentionMs to be at least windowMs.",
         ),
         effect: {
@@ -209,48 +214,71 @@ export function createSettingsBindings({ db, configuration }: {
     },
     'renewal.subscriptionCare.terms': {
       value: config.renewal?.subscriptionCare?.terms,
-      location: { file: renewalFile, symbol: 'subscriptionCare.terms' },
+      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.terms' },
       descriptor: {
         domain: 'subscriptions',
         goal: "Set subscription pause lengths, reschedule (slide) limits and order-now and reactivation delays (pause duration, skip, postpone delivery).",
-        schema: z.looseObject({}).describe(
+        schema: z.looseObject({
+          pauseDays: z.number().int().min(1).max(2147483647),
+          pauseMonths: z.number().int().min(1).max(2147483647),
+          slideMinDays: z.number().int().min(1).max(2147483647),
+          slideMaxDays: z.number().int().min(1).max(2147483647),
+          orderNowDelayMinutes: z.number().int().min(1).max(2147483647),
+          reactivateDelayDays: z.number().int().min(1).max(2147483647),
+        }).partial().catchall(z.number().int().min(1).max(2147483647)).describe(
           "assertSubscriptionCare checks whole values from 1 through 2147483647 and requires slideMinDays to be at most slideMaxDays.",
         ),
         effect: {
           appliesTo: "The starter's subscription command handler passes the deployed lifecycle terms to native commands when handling new customer actions.",
-          frozenOn: ["Applied pause end dates and cycle schedules keep the timing assigned by the completed action."],
+          frozenOn: ["Applied pauses and scheduled cycles retain the dates computed by the completed action."],
           impact: 'customer-promise',
         },
       },
     },
     'renewal.subscriptionCare.pausePresets': {
       value: config.renewal?.subscriptionCare?.pausePresets,
-      location: { file: renewalFile, symbol: 'subscriptionCare.pausePresets' },
+      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.pausePresets' },
       descriptor: {
         domain: 'subscriptions',
         goal: "Choose the pause options offered to subscribers and the default (pause presets, pause choices).",
-        schema: z.looseObject({}).describe(
+        schema: z.looseObject({
+          allowed: z.array(z.enum(['2_weeks', '1_month', 'indefinite'])).min(1).max(3),
+          default: z.enum(['2_weeks', '1_month', 'indefinite']),
+        }).describe(
           "assertSubscriptionCare requires nonempty, distinct choices from 2_weeks, 1_month and indefinite, including the default. assertRetention requires any configured retention preset to be allowed.",
         ),
         effect: {
           appliesTo: "The account page and pause command admission use the deployed presets when subscribers open the pause form or request a new pause.",
-          frozenOn: ["An applied pause keeps its selected preset and end date."],
+          frozenOn: [],
           impact: 'customer-promise',
         },
       },
     },
     'renewal.subscriptionCare.notices': {
       value: config.renewal?.subscriptionCare?.notices,
-      location: { file: renewalFile, symbol: 'subscriptionCare.notices' },
+      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.notices' },
       descriptor: {
         domain: 'subscriptions',
         goal: "Set the timing windows for renewal, pause and at-risk notices (notification timing, reminder window, upcoming renewal email).",
-        schema: z.looseObject({}).describe(
+        schema: z.looseObject({
+          renewalMinSeconds: z.number().int().min(1).max(2147483647),
+          renewalMaxSeconds: z.number().int().min(1).max(2147483647),
+          ordinaryFreshnessSeconds: z.number().int().min(1).max(2147483647),
+          starterFreshnessSeconds: z.number().int().min(1).max(2147483647),
+          pauseWindowSeconds: z.number().int().min(1).max(2147483647),
+          atRiskMinDays: z.number().int().min(1).max(2147483647),
+          atRiskMaxDays: z.number().int().min(1).max(2147483647),
+          atRiskMaxDaysPerCause: z.number().int().min(1).max(2147483647),
+          operatorLeaseSeconds: z.number().int().min(1).max(2147483647),
+          operatorMaxAttempts: z.number().int().min(1).max(2147483647),
+          operatorHorizonSeconds: z.number().int().min(1).max(2147483647),
+          operatorTransientBackoffSeconds: z.number().int().min(1).max(2147483647),
+        }).partial().catchall(z.number().int().min(1).max(2147483647)).describe(
           "assertSubscriptionCare checks whole values from 1 through 2147483647 and requires each renewal and at-risk minimum to be at most its maximum.",
         ),
         effect: {
           appliesTo: "The lifecycle notice job uses the deployed windows and operator delivery controls on its next run.",
-          frozenOn: ["Accepted delivery receipts continue to identify notices already sent."],
+          frozenOn: [],
           impact: 'operations',
         },
       },
@@ -285,17 +313,25 @@ export function createSettingsBindings({ db, configuration }: {
       },
     },
     market: {
-      value: config.market,
+      value: {
+        country: config.market.country,
+        currency: config.market.currency,
+        timezone: config.market.timezone,
+      },
       location: { file, symbol: 'market' },
       descriptor: {
         domain: 'commerce',
-        goal: "Set the store country, currency, time zone and languages (market, locale, region).",
-        schema: z.looseObject({}).describe(
-          "assertLocaleMarket checks supported, distinct languages and an included default. assertConfig checks the country and currency codes, a valid time zone and matching product currencies.",
+        goal: "Set the store country, currency and time zone (market, region).",
+        schema: z.looseObject({
+          country: z.string().regex(/^[A-Z]{2}$/),
+          currency: z.string().regex(/^[A-Z]{3}$/),
+          timezone: z.string().regex(/\S/),
+        }).describe(
+          "assertConfig checks uppercase country and currency codes and a nonblank time zone, then checks whether Intl recognizes the time zone and the product currencies match.",
         ),
         effect: {
-          appliesTo: "New quotes use the deployed country and currency, and new page renders use the deployed languages and time zone.",
-          frozenOn: ["Saved checkout quotes retain their region and currency."],
+          appliesTo: "New quotes use the deployed country and currency, and new subscription editor renders format dates in the deployed time zone.",
+          frozenOn: ["Saved checkout quotes retain their line tax country and currency."],
           impact: 'customer-promise',
         },
       },

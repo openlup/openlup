@@ -524,21 +524,36 @@ it.each(baseline.settings)("preserves starter discovery bytes for $key with only
   }
 });
 
-it.each(baseline.checks)("preserves the existing starter check rows and report metadata for $args", captured => {
+const newStarterCheckKeys = [
+  "legal.returnsDays", "market", "offer.maxUnits", "offer.minUnits", "offer.shippingMinor",
+  "offer.subscriptionRoundingQuantumMinor", "purchase.attemptLimits", "purchase.tax.vatRateBps",
+  "renewal.retryBackoffHours", "renewal.subscriptionCare.notices", "renewal.subscriptionCare.pausePresets",
+  "renewal.subscriptionCare.terms", "shipping.rateResolver",
+];
+
+it.each(baseline.checks)("reports exactly the baseline and new starter check rows for $args", captured => {
   const { stdout, ...actual } = runStarterSettings(starter, captured.args);
   let existing: string;
   if (captured.args.includes("--json")) {
     const expected = JSON.parse(captured.stdout);
     const document = JSON.parse(stdout);
     const keys = new Set(expected.rows.map((row: { key: string }) => row.key));
+    expect(document.rows.map((row: { key: string }) => row.key).toSorted()).toEqual([...keys, ...newStarterCheckKeys].toSorted());
     expect(JSON.stringify(document) + "\n").toBe(stdout);
     document.rows = document.rows.filter((row: { key: string }) => keys.has(row.key));
     existing = JSON.stringify(document) + "\n";
   } else {
-    const blocks = (output: string) => output.split(/(?=^\S+: file )/mu);
-    const key = (block: string) => block.slice(0, block.indexOf(":"));
-    const keys = new Set(blocks(captured.stdout).slice(1).map(key));
-    existing = blocks(stdout).filter((block, index) => index === 0 || keys.has(key(block))).join("");
+    const blocks = (output: string) => output.split(/(?=^\S)/mu);
+    const key = (block: string) => /^(\S+): file /u.exec(block)?.[1];
+    const rowKeys = (parts: string[]) => parts.map(key).filter(value => value !== undefined);
+    const keys = new Set(rowKeys(blocks(captured.stdout)));
+    const actualBlocks = blocks(stdout);
+    expect(rowKeys(actualBlocks).toSorted()).toEqual([...keys, ...newStarterCheckKeys].toSorted());
+    existing = actualBlocks.map(block => {
+      const rowKey = key(block);
+      // New code rows end at Effect. Keep any text that follows them.
+      return rowKey === undefined || keys.has(rowKey) ? block : block.replace(/^[\s\S]*?^ {2}Effect: .*\n/mu, "");
+    }).join("");
   }
   expect({ ...actual, stdout: existing }).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
 });
