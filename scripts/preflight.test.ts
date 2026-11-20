@@ -46,7 +46,7 @@ describe("fast preflight", () => {
       `${process.execPath} scripts/public-ci-neutrality.mjs --base-commit ${fork}`,
       `${process.execPath} --experimental-strip-types packages/ui/smoke/neutrality.ts`,
       "npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression",
-      "npm run oss:published-tree -- --policy",
+      `npm run oss:published-tree -- --policy --docs-base ${fork}`,
       "npm run oss:published-tree -- --inventory",
       "git rev-parse origin/main",
     ];
@@ -125,6 +125,137 @@ describe("preflight report", () => {
     expect(build).toBeGreaterThan(calls.findIndex((call) => call.includes("public-ci-neutrality")));
     expect(log.mock.calls.flat().join("\n")).toContain("FAIL typecheck: package build (npm run prelint) failed");
     expect(calls.some((call) => call.includes("--typecheck"))).toBe(false);
+  });
+
+  it("runs ast-grep hygiene, skips eslint/sql when inapplicable, and stops on hygiene failures", () => {
+    const runWith = (options: { filewideFail?: boolean; ruleTestsFail?: boolean; nameStatus?: string }) => {
+      const calls: string[] = [];
+      vi.mocked(spawnSync).mockImplementation(((command, args) => {
+        const call = `${command} ${(args ?? []).join(" ")}`;
+        calls.push(call);
+        if (command === "git") {
+          if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
+          if (args?.includes("merge-base")) return { status: 0, stdout: "a".repeat(40), stderr: "" };
+          if (args?.includes("--name-status")) return { status: 0, stdout: options.nameStatus ?? "", stderr: "" };
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (call.includes("check-filewide-ignore.mjs") && options.filewideFail) {
+          return { status: 1, stdout: "", stderr: "scripts/bad.ts:1: first-line ast-grep-ignore" };
+        }
+        if (call.includes("ast-grep test --skip-snapshot-tests") && options.ruleTestsFail) {
+          return { status: 1, stdout: "", stderr: "FAIL domain-no-country-literals" };
+        }
+        if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        return { status: 0, stdout: "", stderr: "" };
+      }) as typeof spawnSync);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const exit = main(now);
+      return { exit, calls, lines };
+    };
+
+    const clean = runWith({ nameStatus: "M\0README.md\0D\0scripts/removed.ts\0" });
+    expect(clean.exit).toBe(0);
+    expect(clean.calls).toContain(`${process.execPath} scripts/ast-grep/check-filewide-ignore.mjs`);
+    expect(clean.calls).toContain("npx --no -- ast-grep test --skip-snapshot-tests");
+    expect(clean.calls.some((call) => call.includes("eslint"))).toBe(false);
+    expect(clean.calls.some((call) => call.includes("sql:admit"))).toBe(false);
+    expect(clean.lines).toContainEqual(expect.stringMatching(/^PASS ast-grep hygiene: /u));
+    expect(clean.lines).toContainEqual("SKIP eslint changed: no changed JS/TS files");
+    expect(clean.lines).toContainEqual("SKIP sql admit: no SQL under db/ or packages/*/sql/ changed");
+
+    const filewideFail = runWith({ filewideFail: true });
+    expect(filewideFail.exit).toBe(1);
+    expect(filewideFail.calls.some((call) => call.includes("ast-grep test"))).toBe(false);
+    expect(filewideFail.lines).toContainEqual(expect.stringMatching(/^FAIL ast-grep hygiene: file-wide ast-grep-ignore check failed/u));
+
+    const ruleTestFail = runWith({ ruleTestsFail: true });
+    expect(ruleTestFail.exit).toBe(1);
+    expect(ruleTestFail.lines).toContainEqual(expect.stringMatching(/^FAIL ast-grep hygiene: ast-grep rule tests failed/u));
+  });
+
+  it("lints only changed non-deleted JS/TS files with eslint before typecheck", () => {
+    const runEslint = (eslintExit: number) => {
+      const calls: string[] = [];
+      vi.mocked(spawnSync).mockImplementation(((command, args) => {
+        const call = `${command} ${(args ?? []).join(" ")}`;
+        calls.push(call);
+        if (command === "git") {
+          if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
+          if (args?.includes("merge-base")) return { status: 0, stdout: "a".repeat(40), stderr: "" };
+          if (args?.includes("--name-status")) return { status: 0, stdout: "M\0scripts/a.ts\0A\0src/b.tsx\0D\0scripts/deleted.ts\0M\0docs/guide.md\0", stderr: "" };
+          if (args?.includes("--others")) return { status: 0, stdout: "scripts/untracked.mjs\0", stderr: "" };
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (command === "npx" && args?.includes("eslint")) return { status: eslintExit, stdout: eslintExit === 0 ? "" : "lint error", stderr: "" };
+        if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        return { status: 0, stdout: "", stderr: "" };
+      }) as typeof spawnSync);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const exit = main(now);
+      return { exit, calls, lines };
+    };
+
+    const pass = runEslint(0);
+    expect(pass.exit).toBe(0);
+    const eslintCall = pass.calls.indexOf("npx --no -- eslint -- scripts/a.ts src/b.tsx scripts/untracked.mjs");
+    expect(eslintCall).toBeGreaterThan(-1);
+    expect(eslintCall).toBeLessThan(pass.calls.indexOf("npm run prelint"));
+    expect(pass.lines).toContainEqual(expect.stringMatching(/^PASS eslint changed: 3 changed file\(s\) passed eslint/u));
+
+    const fail = runEslint(1);
+    expect(fail.exit).toBe(1);
+    expect(fail.lines).toContainEqual("FAIL eslint changed: eslint failed on 3 changed file(s)");
+  });
+
+  it("handles sql admit across dirty, untracked, passing and failing SQL changes", () => {
+    const runSql = (options: { baseDiff: string; headDiff?: string; untracked?: string; admitCode?: number }) => {
+      const calls: string[] = [];
+      vi.mocked(spawnSync).mockImplementation(((command, args) => {
+        const call = `${command} ${(args ?? []).join(" ")}`;
+        calls.push(call);
+        if (command === "git") {
+          if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
+          if (args?.includes("merge-base")) return { status: 0, stdout: "a".repeat(40), stderr: "" };
+          if (args?.includes("--name-status") && args?.includes("HEAD")) return { status: 0, stdout: options.headDiff ?? "", stderr: "" };
+          if (args?.includes("--name-status")) return { status: 0, stdout: options.baseDiff, stderr: "" };
+          if (args?.includes("--others")) return { status: 0, stdout: options.untracked ?? "", stderr: "" };
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (call === "npm run sql:admit") return { status: options.admitCode ?? 0, stdout: options.admitCode ? "REFUSED migration" : "PASS", stderr: "" };
+        if (command === "docker") return { status: 1, stdout: "", stderr: "" };
+        if (command === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        return { status: 0, stdout: "", stderr: "" };
+      }) as typeof spawnSync);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      const exit = main(now);
+      return { exit, calls, lines };
+    };
+
+    const sqlPath = "db/platform/migrations/20400101000000_example.sql";
+    const dirtyTracked = runSql({ baseDiff: `A\0${sqlPath}\0`, headDiff: `M\0${sqlPath}\0` });
+    expect(dirtyTracked.exit).toBe(0);
+    expect(dirtyTracked.calls).not.toContain("npm run sql:admit");
+    expect(dirtyTracked.lines).toContainEqual("WARN sql admit: commit SQL changes to run npm run sql:admit");
+
+    const dirtyUntracked = runSql({ baseDiff: "", untracked: `${sqlPath}\0` });
+    expect(dirtyUntracked.exit).toBe(0);
+    expect(dirtyUntracked.calls).not.toContain("npm run sql:admit");
+    expect(dirtyUntracked.lines).toContainEqual("WARN sql admit: commit SQL changes to run npm run sql:admit");
+
+    const committedPass = runSql({ baseDiff: `A\0${sqlPath}\0`, admitCode: 0 });
+    expect(committedPass.exit).toBe(0);
+    expect(committedPass.calls).toContain("npm run sql:admit");
+    expect(committedPass.lines).toContainEqual(expect.stringMatching(/^PASS sql admit: SQL admission passed/u));
+
+    const committedFail = runSql({ baseDiff: `A\0${sqlPath}\0`, admitCode: 1 });
+    expect(committedFail.exit).toBe(1);
+    expect(committedFail.lines).toContainEqual("FAIL sql admit: npm run sql:admit exited 1");
   });
 
   it("distinguishes undiscovered tests from confirmed separate suites and discovered files", () => {

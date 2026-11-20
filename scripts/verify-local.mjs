@@ -66,6 +66,17 @@ export async function observePrerequisites({ cwd = process.cwd(), env = processE
   return observations;
 }
 
+const SQL_TREE = /^(?:db\/.+|packages\/[^/]+\/sql\/.+)\.sql$/u;
+
+function resolvePgtapSelection(candidate, pgtap) {
+  const autoSelected = !pgtap && (candidate?.changedPaths ?? []).some(path => SQL_TREE.test(path));
+  return {
+    selected: pgtap || autoSelected,
+    autoSelected,
+    note: autoSelected ? 'selected (auto-selected due to SQL changes)' : undefined,
+  };
+}
+
 export async function explainVerification({ cwd = process.cwd(), env = processEnvironment, pgtap = false } = {}) {
   let candidate; let error;
   try {
@@ -74,9 +85,12 @@ export async function explainVerification({ cwd = process.cwd(), env = processEn
     });
   } catch (failure) { error = failure.message; }
   const scope = candidate ? { state: 'known', candidate } : { state: 'unknown', error };
+  const resolvedPgtap = resolvePgtapSelection(candidate, pgtap);
+  const plan = verificationPlan(candidate ?? { base: '<comparison-base>', head: '<candidate-head>' }, '<run-directory>', '<package-artifacts>', resolvedPgtap.selected);
+  if (resolvedPgtap.note) plan.pgtap = resolvedPgtap.note;
   return {
     kind: 'verification-plan', evidence: 'none; verification commands have not run', scope,
-    ...verificationPlan(candidate ?? { base: '<comparison-base>', head: '<candidate-head>' }, '<run-directory>', '<package-artifacts>', pgtap),
+    ...plan,
     prerequisites: await observePrerequisites({ cwd, env, scope }),
   };
 }
@@ -128,7 +142,12 @@ export async function verifyLocal({ cwd = process.cwd(), env = processEnvironmen
     }
     const packs = await mkdtemp(join(tmpdir(), 'openlup-verify-packs-')); result.packs = packs;
     const broker = hasBroker(env); result.broker = broker;
-    const plan = verificationPlan(candidate, directory, packs, pgtap);
+    const resolvedPgtap = resolvePgtapSelection(candidate, pgtap);
+    const plan = verificationPlan(candidate, directory, packs, resolvedPgtap.selected);
+    if (resolvedPgtap.note) {
+      plan.pgtap = resolvedPgtap.note;
+      console.log('Local verification: auto-selected pgTAP due to SQL changes');
+    }
     result.pgtap = plan.pgtap;
     for (const step of plan.phases) {
       const current = await captureSessionCandidate(cwd, candidate.base, { env });

@@ -6,7 +6,7 @@ const npm = (...args) => ['npm', ...args];
 const node = (...args) => [process.execPath, ...args];
 const definitions = {
   policy: {
-    command: () => npm('run', 'oss:published-tree', '--', '--policy'), resource: null, requires: [],
+    command: ({ candidate }) => npm('run', 'oss:published-tree', '--', '--policy', '--docs-base', candidate.base), resource: null, requires: [],
     owner: 'scripts/oss-published-tree-check.ts', context: 'self-check',
     reason: 'Publication policy, documentation ownership and generated navigation.',
   },

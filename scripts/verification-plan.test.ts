@@ -16,7 +16,7 @@ describe('local obligation contract', () => {
   it.each([false, true])('preserves every existing command, env and resource, pgtap=%s', pgtap => {
     // Pinned to the pre-extraction contributor commands, independently of the new catalogue.
     const expected = [
-      ['policy', ['npm', 'run', 'oss:published-tree', '--', '--policy'], {}, null],
+      ['policy', ['npm', 'run', 'oss:published-tree', '--', '--policy', '--docs-base', candidate.base], {}, null],
       ['inventory', ['npm', 'run', 'oss:published-tree', '--', '--inventory'], {}, null],
       ['dco', ['npm', 'run', 'check:dco-signoff', '--', candidate.base, candidate.head], {}, null],
       ['gitleaks', ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner'], {}, null],
@@ -57,12 +57,15 @@ describe('local obligation contract', () => {
     const phases = plan().phases;
     expect([...new Set(phases.map(step => step.context))].sort()).toEqual(['dco', 'gitleaks', 'install-proof', 'self-check', 'test', 'typecheck']);
     for (const context of ['dco', 'gitleaks', 'install-proof', 'self-check', 'test', 'typecheck']) expect(job(context)).not.toBe('');
-    for (const name of ['policy', 'inventory', 'lint', 'typecheck', 'build', 'subscription']) {
+    for (const name of ['inventory', 'lint', 'typecheck', 'build', 'subscription']) {
       const phase = phases.find(step => step.name === name)!;
       const worker = phase.context === 'install-proof' ? 'install-packages' : phase.context;
       expect(job(worker)).toContain(`run: ${phase.command.join(' ')}`);
       expect(phase.owner).not.toBe(''); expect(phase.reason).not.toBe('');
     }
+    const policy = phases.find(step => step.name === 'policy')!;
+    expect(job('self-check')).toContain('run: npm run oss:published-tree -- --policy');
+    expect(policy.owner).not.toBe(''); expect(policy.reason).not.toBe('');
     expect(job('self-check')).toContain('run: node --experimental-strip-types packages/ui/smoke/neutrality.ts');
     expect(job('self-check')).toContain('github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before');
     expect(job('self-check')).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
