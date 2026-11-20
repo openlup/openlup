@@ -74,7 +74,9 @@ function parsePlatformEntry(value: unknown, label: string, errors: string[]): Pl
   return typeof entry.file === "string" && isSha256(entry.sha256) ? { file: entry.file, sha256: entry.sha256 } : null;
 }
 
-function evaluatePlan(input: PlatformManifestInput, baselineFile: string, ordered: boolean): string[] {
+type ManifestValidationInput = Omit<PlatformManifestInput, "migrations"> & { migrations?: PlatformManifestInput["migrations"] };
+
+function evaluatePlan(input: ManifestValidationInput, baselineFile: string, ordered: boolean): string[] {
   const errors: string[] = [];
   const raw = input.manifest;
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || !hasOnlyKeys(raw as Record<string, unknown>, ["schemaVersion", "baseline", "forward", "objectInventorySha256"])) return ["platform migration manifest: expected exactly { schemaVersion, baseline, forward, objectInventorySha256 }"];
@@ -92,6 +94,7 @@ function evaluatePlan(input: PlatformManifestInput, baselineFile: string, ordere
   if (uniqueFiles.size !== files.length) errors.push("platform migration manifest: duplicate migration filename");
   const forwardFiles = forward.map((entry) => entry?.file ?? "");
   if (ordered && forwardFiles.some((file, index) => index > 0 && file <= forwardFiles[index - 1])) errors.push("platform migration manifest.forward: entries must be in strict filename order");
+  if (input.migrations === undefined) return errors;
   const migrationByFile = new Map(input.migrations.map((migration) => [migration.file, migration.content]));
   const actualFiles = [...migrationByFile.keys()].sort();
   const expectedFiles = [...uniqueFiles].sort();
@@ -104,6 +107,15 @@ function evaluatePlan(input: PlatformManifestInput, baselineFile: string, ordere
 
 /** Validate every canonical generation before selecting one for the unchanged executor. */
 export function evaluatePlatformMigrationManifest(input: PlatformManifestInput): string[] {
+  return evaluateManifest(input);
+}
+
+/** Validate the canonical metadata without loading SQL files. */
+export function evaluatePlatformMigrationManifestMetadata(manifest: unknown): string[] {
+  return evaluateManifest({ manifest });
+}
+
+function evaluateManifest(input: ManifestValidationInput): string[] {
   const raw = input.manifest;
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || ![2, 3].includes((raw as { schemaVersion: number }).schemaVersion)) return evaluatePlan(input, PLATFORM_BASELINE_FILE, true);
   const manifest = raw as Record<string, unknown>;
@@ -138,12 +150,12 @@ export function evaluatePlatformMigrationManifest(input: PlatformManifestInput):
     .flatMap(entry => entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).file === "string" ? [(entry as { file: string }).file] : []);
   const legacyFiles = new Set(entries(legacy)), qFiles = new Set(entries(selected)), aFiles = new Set(selectedAdmin ? entries(selectedAdmin) : []);
   const errors = [
-    ...evaluatePlan({ manifest: legacy, migrations: input.migrations.filter(({ file }) => legacyFiles.has(file)) }, PLATFORM_BASELINE_FILE, true),
-    ...evaluatePlan({ manifest: selected, migrations: input.migrations.filter(({ file }) => qFiles.has(file)) }, QUALIFIED_BASELINE_FILE, false),
-    ...(selectedAdmin ? evaluatePlan({ manifest: selectedAdmin, migrations: input.migrations.filter(({ file }) => aFiles.has(file)) }, ADMIN_BASELINE_FILE, false) : []),
+    ...evaluatePlan({ manifest: legacy, migrations: input.migrations?.filter(({ file }) => legacyFiles.has(file)) }, PLATFORM_BASELINE_FILE, true),
+    ...evaluatePlan({ manifest: selected, migrations: input.migrations?.filter(({ file }) => qFiles.has(file)) }, QUALIFIED_BASELINE_FILE, false),
+    ...(selectedAdmin ? evaluatePlan({ manifest: selectedAdmin, migrations: input.migrations?.filter(({ file }) => aFiles.has(file)) }, ADMIN_BASELINE_FILE, false) : []),
   ];
   const union = new Set([...legacyFiles, ...qFiles, ...aFiles]);
-  for (const { file } of input.migrations) if (!union.has(file)) errors.push(`platform migration manifest: unmanifested catalog file ${file}`);
+  for (const { file } of input.migrations ?? []) if (!union.has(file)) errors.push(`platform migration manifest: unmanifested catalog file ${file}`);
   if (errors.length) return errors;
   const current = raw as Exclude<PlatformMigrationManifest, PlatformMigrationPlan>;
   const issuedSharedLength = current.forward.findIndex(({ file }) => file === QUALIFIED_AFTER_FILE) + 1;
