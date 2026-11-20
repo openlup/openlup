@@ -6,10 +6,11 @@ import type { SettingDescriptor, SettingRefusal } from "@openlup/platform/operat
 import { describeRenewalStockProtectionSetting, renewalStockProtectionPreviewResult } from "@openlup/platform/inventory";
 import { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "@openlup/platform/operations/server";
 
-type SourceDescriptor = Omit<SettingDescriptor, "schema" | "previewSchema"> & {
-  schema?: ZodType | SettingDescriptor["schema"];
-  previewSchema?: ZodType | SettingDescriptor["previewSchema"];
-};
+type ValueDescriptor = Extract<SettingDescriptor, { rules: unknown }>;
+type SourceDescriptor = Exclude<SettingDescriptor, ValueDescriptor> | (Omit<ValueDescriptor, "schema" | "previewSchema"> & {
+  schema?: ZodType | ValueDescriptor["schema"];
+  previewSchema?: ZodType | ValueDescriptor["previewSchema"];
+});
 
 export function parseSettingData(contents: string, domain: string): readonly SettingDescriptor[] {
   const raw: unknown = JSON.parse(contents);
@@ -49,6 +50,7 @@ function isZod(schema: ZodType | Record<string, unknown>): schema is ZodType {
 }
 
 function describeSetting(entry: SourceDescriptor) {
+  if (!("rules" in entry)) return entry;
   const { schema, previewSchema, rules, ...metadata } = entry;
   const descriptor = {
     ...metadata,
@@ -141,7 +143,7 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
   previewRefusal("configuration_unknown", ["configuration"], "The requested configuration is unknown.",
     "Use an ID defined by this starter.", "Choose one of the listed configuration IDs and run preview again.", previewHelp),
   previewRefusal("unsupported", ["key"], "This setting has no connected preview.",
-    "Use show to read the setting's effect and change mechanism.", "Choose a setting that supports preview.", settingCommand("<key>")),
+    "Use show for value details or a reason and reference.", "Choose a setting that supports preview.", settingCommand("<key>")),
   previewRefusal("connection_required", [], "Preview needs a connection to the intended store.",
     "Use the connected form of preview.", "Supply a read-capable connection and run preview again."),
   previewRefusal("policy_read_denied", ["current"], "This connection cannot read the installed policy.",
@@ -154,7 +156,7 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
     "Preview needs the matching installed OpenLup version.", "Ask your store administrator to update the store's OpenLup installation, then retry."),
   previewRefusal("unexpected", [], "The preview could not be completed.",
     "Check that the connection points to the intended store.", "Retry once. If preview still fails, contact your store administrator."),
-  ...descriptors.flatMap(entry => entry.rules.map(rule => ({
+  ...descriptors.flatMap(entry => !("rules" in entry) ? [] : entry.rules.map(rule => ({
     code: rule.code,
     path: rule.path,
     rule: rule.description,
@@ -199,19 +201,21 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
       `Search terms include ${settingSynonyms(entry)}.`,
       "",
       `- Owner **${entry.domain}** · kind **${entry.kind}** · runtime **${entry.runtime.level}**`,
-      ...(entry.runtime.level === "preview" ? [
-        `- ${entry.runtime.reason}`,
-        `- Frozen on: ${entry.effect.frozenOn.join(" ") || "No records named."}`,
-      ] : []),
-      `- Default ${entry.fallback === null ? "uses the documented behavior below." : `is \`${JSON.stringify(entry.fallback)}\`.`}`,
-      `- Basis \`${entry.defaultBasis.kind}\`${entry.defaultBasis.kind === "reference-code" ? " (matches the reference deployment's code)" : ""}.`,
-      `- ${entry.whyThisDefault}`,
-      ...(entry.kind === "code" && "file" in entry.change ? [
-        `- Edit \`${entry.change.file}\` (${entry.change.symbol}).`,
-        `- ${entry.effect.appliesTo}`,
-        ...(entry.effect.frozenOn.length ? [`- Frozen on: ${entry.effect.frozenOn.join(" ")}`] : []),
-      ] : []),
-      ...(entry.absentMeans ? [`- When absent, ${entry.absentMeans.description.charAt(0).toLowerCase()}${entry.absentMeans.description.slice(1)}`] : []),
+      ...("effect" in entry ? [
+        ...(entry.runtime.level === "preview" ? [
+          `- ${entry.runtime.reason}`,
+          `- Frozen on: ${entry.effect.frozenOn.join(" ") || "No records named."}`,
+        ] : []),
+        `- Default ${entry.fallback === null ? "uses the documented behavior below." : `is \`${JSON.stringify(entry.fallback)}\`.`}`,
+        `- Basis \`${entry.defaultBasis.kind}\`${entry.defaultBasis.kind === "reference-code" ? " (matches the reference deployment's code)" : ""}.`,
+        `- ${entry.whyThisDefault}`,
+        ...(entry.kind === "code" && "file" in entry.change ? [
+          `- Edit \`${entry.change.file}\` (${entry.change.symbol}).`,
+          `- ${entry.effect.appliesTo}`,
+          ...(entry.effect.frozenOn.length ? [`- Frozen on: ${entry.effect.frozenOn.join(" ")}`] : []),
+        ] : []),
+        ...(entry.absentMeans ? [`- When absent, ${entry.absentMeans.description.charAt(0).toLowerCase()}${entry.absentMeans.description.slice(1)}`] : []),
+      ] : [`- ${entry.runtime.reason}`]),
       "",
       `Show offline: \`show ${entry.key} --json\`.`,
       "",

@@ -165,6 +165,8 @@ it("uses the same dispatcher bytes for offline results and refusals", async () =
 it.each([
   ["empty result", ["list", "--goal", "no-such-setting"], "No settings matched the goal."],
   ["list result", ["list", "--goal", "inventory buffer"], "inventory_renewal_protection (installed, preview)"],
+  ["compact list reason", ["list", "--goal", "shipping.addressRegions"],
+    "\n  The native address contract requires a postal code and has no region field.\n  Change: docs/guide/"],
   ["text refusal", ["show", "unknown"], "commerce_setting_unknown"],
   ["text explanation", ["explain", "commerce_setting_unknown"], "commerce_setting_unknown"],
   ["text provenance", ["show", key], "Basis: reference-code (matches the reference deployment’s code)"],
@@ -238,6 +240,16 @@ it("uses an app-owned checkout reader without falling back to catalogue timing",
   expect(exit).toBe(0);
   expect(output).toBe(document(await showSetting({ key: reminder }, readers)));
   expect(host.bind).toHaveBeenCalledExactlyOnceWith({ databaseUrl: url, app, configuration: undefined });
+});
+
+it("prints the reason and reference for a fact without value fields", async () => {
+  const key = "shipping.addressRegions";
+  const { exit, output } = await run(["show", key]);
+  expect(exit).toBe(0);
+  const reason = "The native address contract requires a postal code and has no region field.";
+  expect(output.split(reason)).toHaveLength(2);
+  expect(output).toContain("Change: docs/guide/");
+  expect(output).not.toContain("Default:");
 });
 
 it.each([

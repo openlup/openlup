@@ -374,7 +374,7 @@ export declare function previewSetting<Result extends {
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export declare const settingsReadTools: readonly [{
     readonly name: "settings__list";
-    readonly description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.";
+    readonly description: "Find a key by business goal, then use settings__show for value details or a reason and reference.";
     readonly inputSchema: Record<string, unknown>;
     readonly outputSchema: Record<string, unknown>;
     readonly annotations: {
@@ -382,7 +382,7 @@ export declare const settingsReadTools: readonly [{
     };
 }, {
     readonly name: "settings__show";
-    readonly description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.";
+    readonly description: "Call settings__list if you need the key. Read value details or a reason and reference. If refused, read remediation.";
     readonly inputSchema: Record<string, unknown>;
     readonly outputSchema: Record<string, unknown>;
     readonly annotations: {
@@ -405,10 +405,9 @@ export {};
 import { z, type ZodType } from "zod";
 /** Project a tool contract as inline Draft 7 JSON Schema. */
 export declare function toolInputSchema(schema: ZodType, io?: "input" | "output"): Record<string, unknown>;
-/** @experimental Describe the data written to and loaded from the settings catalogue. */
-export declare const settingDescriptorSchema: z.ZodObject<{
+export declare const settingDescriptorSummary: z.ZodObject<{
     key: z.ZodString;
-    domain: z.ZodString;
+    goal: z.ZodString;
     kind: z.ZodEnum<{
         code: "code";
         installed: "installed";
@@ -416,8 +415,52 @@ export declare const settingDescriptorSchema: z.ZodObject<{
         cap: "cap";
         invariant: "invariant";
     }>;
+    runtime: z.ZodUnion<readonly [z.ZodObject<{
+        level: z.ZodLiteral<"ready">;
+    }, z.core.$strict>, z.ZodObject<{
+        level: z.ZodEnum<{
+            preview: "preview";
+            "read-only": "read-only";
+        }>;
+        reason: z.ZodString;
+    }, z.core.$strict>]>;
+    change: z.ZodUnion<readonly [z.ZodObject<{
+        operation: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        file: z.ZodString;
+        symbol: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        reference: z.ZodString;
+    }, z.core.$strict>]>;
+}, z.core.$strict>;
+/** @experimental Describe the data written to and loaded from the settings catalogue. */
+export declare const settingDescriptorSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    key: z.ZodString;
     goal: z.ZodString;
+    runtime: z.ZodUnion<readonly [z.ZodObject<{
+        level: z.ZodLiteral<"ready">;
+    }, z.core.$strict>, z.ZodObject<{
+        level: z.ZodEnum<{
+            preview: "preview";
+            "read-only": "read-only";
+        }>;
+        reason: z.ZodString;
+    }, z.core.$strict>]>;
+    change: z.ZodUnion<readonly [z.ZodObject<{
+        operation: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        file: z.ZodString;
+        symbol: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        reference: z.ZodString;
+    }, z.core.$strict>]>;
+    domain: z.ZodString;
     schemaVersion: z.ZodLiteral<1>;
+    kind: z.ZodEnum<{
+        code: "code";
+        installed: "installed";
+        callback: "callback";
+    }>;
     schema: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>>;
     previewSchema: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>>;
     rules: z.ZodArray<z.ZodObject<{
@@ -452,24 +495,23 @@ export declare const settingDescriptorSchema: z.ZodObject<{
             "customer-promise": "customer-promise";
         }>;
     }, z.core.$strict>;
-    runtime: z.ZodUnion<readonly [z.ZodObject<{
-        level: z.ZodLiteral<"ready">;
-    }, z.core.$strict>, z.ZodObject<{
-        level: z.ZodEnum<{
-            preview: "preview";
-            "read-only": "read-only";
-        }>;
+}, z.core.$strict>, z.ZodObject<{
+    key: z.ZodString;
+    goal: z.ZodString;
+    domain: z.ZodString;
+    schemaVersion: z.ZodLiteral<1>;
+    kind: z.ZodEnum<{
+        cap: "cap";
+        invariant: "invariant";
+    }>;
+    runtime: z.ZodObject<{
+        level: z.ZodLiteral<"read-only">;
         reason: z.ZodString;
-    }, z.core.$strict>]>;
-    change: z.ZodUnion<readonly [z.ZodObject<{
-        operation: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        file: z.ZodString;
-        symbol: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
+    }, z.core.$strict>;
+    change: z.ZodObject<{
         reference: z.ZodString;
-    }, z.core.$strict>]>;
-}, z.core.$strict>;
+    }, z.core.$strict>;
+}, z.core.$strict>], "kind">;
 /** @experimental Schema shared by packaged settings projections and their data reader. */
 export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObject<{
     code: z.ZodEnum<{

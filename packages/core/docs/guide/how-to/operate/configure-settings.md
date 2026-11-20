@@ -14,9 +14,10 @@ script shown in its `AGENTS.md`. Try these arguments:
 - `show inventory_renewal_protection --json`
 - `explain commerce_setting_unknown`
 
-The commands work offline. `show` includes the value schema where available,
-the default and its source, the effect on future decisions and the records that
-keep their current values. To discover these pages from the installed guide,
+The commands work offline. For settings with a value, `show` includes the value
+schema where available, the default and its source, the effect on future
+decisions and the records that keep their current values. For a capability or
+invariant, it gives the reason and where to read about the limit. To discover these pages from the installed guide,
 run `./node_modules/.bin/openlup-context search "renewal stock protection horizon"`.
 
 ## Read the effective behavior
@@ -132,7 +133,7 @@ and whether retrying can help.
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
 | `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
 | `commerce_setting_preview_connection_required` | Use a read-capable connection to the intended store and supply the app bindings if requested. |
-| `commerce_setting_preview_unsupported` | Read the key's runtime level and effect with `show`. |
+| `commerce_setting_preview_unsupported` | Use `show` for value details or a reason and reference. |
 | `commerce_setting_preview_json_invalid` | Correct the proposed JSON. |
 | `commerce_setting_preview_configuration_unknown` | Select one of the listed IDs. |
 | `commerce_setting_preview_input_invalid` | Correct the named argument or run `preview --help`. |

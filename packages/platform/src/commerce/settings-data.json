@@ -43,14 +43,8 @@
     "goal": "Distinguish separate reasons for manually holding an order.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Native order controls record a fixed manual hold reason.",
-    "effect": {"appliesTo": "Native order controls record a fixed manual hold reason.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Native order controls record a fixed manual hold reason."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemanualholdreasons"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemanualholdreasons"}
   },
   {
     "key": "commerce.multipleMarkets",
@@ -58,14 +52,8 @@
     "goal": "Serve several markets from one starter configuration.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "A starter configuration has one market and composes its own quote and checkout admission.",
-    "effect": {"appliesTo": "A starter configuration has one market and composes its own quote and checkout admission.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "A starter configuration has one market and composes its own quote and checkout admission."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemultiplemarkets"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemultiplemarkets"}
   },
   {
     "key": "commerce.promotionCodeRedemption",
@@ -73,14 +61,8 @@
     "goal": "Redeem promotion codes in native checkout.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The native checkout path lacks a promotion-code resolver.",
-    "effect": {"appliesTo": "The native checkout path lacks a promotion-code resolver.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The native checkout path lacks a promotion-code resolver."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercepromotioncoderedemption"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercepromotioncoderedemption"}
   },
   {
     "key": "commerce.returnReasons",
@@ -88,14 +70,8 @@
     "goal": "Choose the allowed return reasons.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The native order service still enforces a fixed vocabulary.",
-    "effect": {"appliesTo": "The native order service still enforces a fixed vocabulary.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The native order service still enforces a fixed vocabulary."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercereturnreasons"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercereturnreasons"}
   },
   {
     "key": "commerce.zeroPayableSettlements",
@@ -103,13 +79,7 @@
     "goal": "Settle orders and renewal cycles with zero payable.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path.",
-    "effect": {"appliesTo": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercezeropayablesettlements"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercezeropayablesettlements"}
   }
 ]

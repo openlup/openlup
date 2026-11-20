@@ -37,14 +37,8 @@
     "goal": "Support optional postal codes and address regions.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The native address contract requires a postal code and has no region field.",
-    "effect": {"appliesTo": "The native address contract requires a postal code and has no region field.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The native address contract requires a postal code and has no region field."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingaddressregions"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingaddressregions"}
   },
   {
     "key": "shipping.paymentMethodPreferences",
@@ -52,13 +46,7 @@
     "goal": "Save additional payment method preferences.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The customer preferences contract has a fixed payment method vocabulary.",
-    "effect": {"appliesTo": "The customer preferences contract has a fixed payment method vocabulary.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The customer preferences contract has a fixed payment method vocabulary."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingpaymentmethodpreferences"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingpaymentmethodpreferences"}
   }
 ]

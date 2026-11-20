@@ -74,7 +74,8 @@ it("refuses unknown descriptor fields, including nested metadata, and a mismatch
   expect(entry).toBeDefined();
   const withEntry = (value: unknown) => JSON.stringify([value]);
   expect(() => parseSettingData(withEntry({ ...entry, extra: true }), "shipping")).toThrow("Unrecognized key");
-  expect(() => parseSettingData(withEntry({ ...entry, effect: { ...entry!.effect, extra: true } }), "shipping"))
+  if (!entry || !("effect" in entry)) throw new Error("Expected a value descriptor");
+  expect(() => parseSettingData(withEntry({ ...entry, effect: { ...entry.effect, extra: true } }), "shipping"))
     .toThrow("Unrecognized key");
   expect(() => parseSettingData(contents, "fulfillment")).toThrow("Descriptor does not belong to fulfillment");
 });
@@ -95,4 +96,27 @@ it("imports unrelated operations when both settings carriers are unreadable", ()
     assert.equal(typeof operations.createPlatformControlPlanePort, "function");
   `], { encoding: "utf8" });
   expect(result.status, result.stderr).toBe(0);
+});
+
+it("uses one reason and no value metadata for caps and invariants", () => {
+  const files = renderSettingsCatalogue();
+  const { entries } = JSON.parse(files["packages/platform/settings-catalog.json"]!);
+  const guide = files["packages/core/docs/guide/how-to/operate/settings-catalogue.md"]!;
+  for (const entry of entries.filter(({ kind }) => kind === "cap" || kind === "invariant")) {
+    expect(Object.keys(entry).sort()).toEqual(["change", "domain", "goal", "key", "kind", "runtime", "schemaVersion"]);
+    const section = guide.split(`## ${entry.key}\n`)[1]!.split("\n## ")[0]!;
+    expect(section.split(entry.runtime.reason)).toHaveLength(2);
+  }
+});
+
+it("keeps the three combined compact reasons verbatim", () => {
+  const files = renderSettingsCatalogue();
+  const { entries } = JSON.parse(files["packages/platform/settings-catalog.json"]!);
+  const reasons = {
+    "communications.messageDateFormatting": "The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone.",
+    "pricing.currencyExponent": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.",
+    "subscriptions.stockWaitHoldLifetime": "Native stock-wait recovery fixes the hold at 15 minutes in SQL. The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused.",
+  };
+  expect(entries).toEqual(expect.arrayContaining(Object.entries(reasons).map(([key, reason]) =>
+    expect.objectContaining({ key, runtime: { level: "read-only", reason } }))));
 });

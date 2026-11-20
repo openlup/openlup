@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { settingRefusalSchema, toolInputSchema } from "../../src/operations/server/toolSchema.js";
+import { settingDescriptorSchema, settingRefusalSchema, toolInputSchema } from "../../src/operations/server/toolSchema.js";
 import { describe, expect, it, vi } from "vitest";
 import { previewRenewalStockProtection, renewalStockProtectionPreviewResult, describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
@@ -72,6 +72,24 @@ it("shows the effective winback send gate and explains both inventory refusal fi
 describe("settings show", () => {
   const key = "checkout_recovery_reminders";
   const abandonedCart = [{ stage: "first", afterHours: 1 }, { stage: "gentle", afterHours: 24 }, { stage: "last", afterHours: 72 }];
+  it("accepts every catalogue descriptor in the show output schema", async () => {
+    const { entries, showResult } = loadSettingsCatalogue();
+    for (const setting of entries) {
+      const expected = { schemaVersion: 1, setting, observation: { state: "offline" } };
+      expect(showResult.parse(expected), setting.key).toEqual(expected);
+      expect(await showSetting({ key: setting.key }), setting.key).toEqual(expected);
+    }
+  });
+
+  it("rejects the same unsupported descriptor version as the catalogue schema", () => {
+    const { entries, showResult } = loadSettingsCatalogue();
+    const value = entries.find(entry => entry.kind === "code");
+    if (!value) throw new Error("Expected a code descriptor");
+    const setting = { ...value, schemaVersion: 2 };
+    expect(settingDescriptorSchema.safeParse(setting).success).toBe(false);
+    expect(showResult.safeParse({ schemaVersion: 1, setting, observation: { state: "offline" } }).success).toBe(false);
+  });
+
   it("reports absent reminders with the supplied host offsets and fixed cart waves", async () => {
     const query = vi.fn(async () => ({ rows: [] }));
     const checkoutRecovery = [{ stage: "first", afterHours: 2 }, { stage: "last", afterHours: 15 }];
@@ -157,6 +175,16 @@ it.each([
   expect(entries[0]?.key).toBe(key);
 });
 
+it("accepts every catalogue list summary and enforces the compact branch", () => {
+  const { entries, listResult } = loadSettingsCatalogue();
+  const listed = listResult.parse(listSettings({}));
+  expect(listed.entries.map(entry => entry.key)).toEqual(entries.map(entry => entry.key));
+  const cap = listed.entries.find(entry => entry.kind === "cap");
+  if (!cap) throw new Error("Expected a capability summary");
+  expect(listResult.safeParse({ ...listed, entries: [{ ...cap, runtime: { level: "ready" } }] }).success).toBe(false);
+  expect(listResult.safeParse({ ...listed, entries: [{ ...cap, change: { operation: "apply" } }] }).success).toBe(false);
+});
+
 it("projects read-only MCP inputs and results from the settings read contracts", async () => {
   const [list, show, preview] = settingsReadTools;
   const { showRequest, showResult } = loadSettingsCatalogue();
@@ -179,9 +207,7 @@ it("projects read-only MCP inputs and results from the settings read contracts",
   });
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
-  expect(showResult.parse(await showSetting({ key })).setting.schema).toMatchObject({
-    properties: { renewalProtectionDays: { minimum: 1, maximum: 3660 } },
-  });
+  expect(showResult.parse(await showSetting({ key })).setting).toHaveProperty("schema.properties.renewalProtectionDays", expect.objectContaining({ minimum: 1, maximum: 3660 }));
   expect(await showSetting({ key: "unknown" })).toEqual({ refusal: expect.objectContaining({
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
     remediation: expect.objectContaining({ command: "npm --silent run settings -- list", retry: true }),

@@ -5,14 +5,8 @@
     "goal": "Require the invoice amount and currency to agree with the payment.",
     "schemaVersion": 1,
     "kind": "invariant",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "An invoice relies on matching durable payment evidence.",
-    "effect": {"appliesTo": "An invoice relies on matching durable payment evidence.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "An invoice relies on matching durable payment evidence."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#invoicinginvoicepaymentmatch"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#invoicinginvoicepaymentmatch"}
   },
   {
     "key": "invoicing.partialInvoiceCorrections",
@@ -20,13 +14,7 @@
     "goal": "Issue a partial invoice correction.",
     "schemaVersion": 1,
     "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The native correction contract supports full reversal.",
-    "effect": {"appliesTo": "The native correction contract supports full reversal.", "frozenOn": [], "impact": "operations"},
     "runtime": {"level": "read-only", "reason": "The native correction contract supports full reversal."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#invoicingpartialinvoicecorrections"},
-    "rules": []
+    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#invoicingpartialinvoicecorrections"}
   }
 ]

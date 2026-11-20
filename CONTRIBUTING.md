@@ -130,6 +130,10 @@ for settings changed by editing the owned configuration and validated in TypeScr
 3. Run `node scripts/settings-catalogue.ts` to check that the reader-guide page
    and packaged catalogue reproduce byte for byte.
 
+For `cap` or `invariant`, use the same data file and regeneration steps. Include
+`key`, `domain`, `kind`, `goal`, `schemaVersion: 1`, a read-only `runtime` with one
+`reason`, and `change.reference` for where to act. Omit value fields.
+
 ### Kind `installed`
 
 Use [renewal stock protection](packages/core/docs/guide/how-to/operate/settings-catalogue.md#inventory_renewal_protection)
