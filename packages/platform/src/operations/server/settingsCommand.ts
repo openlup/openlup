@@ -108,8 +108,7 @@ function text(result: Result, command?: string, host?: SettingsHost): string {
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export async function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number> {
   let json = argv.includes("--json");
-  let command: string | undefined;
-  const emit = (result: Result, code = "refusal" in result ? 1 : 0) => {
+  const emit = (result: Result, code = "refusal" in result ? 1 : 0, command?: string) => {
     io.write((json ? JSON.stringify("schemaVersion" in result ? result : { schemaVersion: 1, ...result }) : text(result, command, host)) + "\n");
     return code;
   };
@@ -139,8 +138,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       : error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" ? `Unknown option ${flag}. See ${helpTopic}.` : undefined;
     return invalid(option, hint);
   }
-  const { values, positionals: [parsedCommand, key, ...extra] } = parsed;
-  command = parsedCommand;
+  const { values, positionals: [command, key, ...extra] } = parsed;
   json = values.json === true;
   if (values.help) {
     io.write((json ? JSON.stringify({ schemaVersion: 1, help }) : help) + "\n");
@@ -170,8 +168,8 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     || (!preview && !check && values.configuration !== undefined && (command !== "show" || !values.app))
     || values.app === "") return invalid();
   if (!preview && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
-  if (command === "list") return emit(listSettings({ goal: values.goal }), values.goal?.trim() === "" ? 64 : undefined);
-  if (command === "explain") return emit(explainSetting(key!));
+  if (command === "list") return emit(listSettings({ goal: values.goal }), values.goal?.trim() === "" ? 64 : undefined, command);
+  if (command === "explain") return emit(explainSetting(key!), undefined, command);
   if (command !== "show" && !preview && !check) return invalid();
 
   let proposed: unknown;
@@ -276,5 +274,5 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       : databaseUrl === undefined ? unavailableApp() : unavailable(hint);
     outcome = [refusal, 74];
   }
-  return emit(...outcome);
+  return emit(outcome[0], outcome[1], command);
 }
