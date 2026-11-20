@@ -98,9 +98,31 @@ jobs:
         run: |
           npm run check:dco-signoff -- "$RANGE_BASE" "$RANGE_HEAD"
 
+  reuse-gate:
+    name: reuse-gate
+    if: ${{ github.event.repository.private == false && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      reuse: ${{ steps.reused.outputs.reuse }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          package-manager-cache: false
+      - name: Check completed merge-group evidence for this main push
+        id: reused
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-ci-reuse.mjs
+
   typecheck:
     name: typecheck
-    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    needs: [reuse-gate]
+    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -111,12 +133,6 @@ jobs:
         with:
           node-version: 24.21.0
           cache: npm
-      - name: Check completed merge-group evidence for this main push
-        id: reused
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/public-ci-reuse.mjs
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -124,19 +140,20 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci --prefer-offline --no-audit --fund=false
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
       # NOT `npm run typecheck`. The release contract names every compiler project and carries the
       # signed preview-debt ratchet. The source-only measurement baseline is deliberately absent.
       # A new unresolved edge fails, and so does a signed edge that is gone.
       - name: Package and domain import boundaries
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         run: npm run lint
       - run: npm run oss:published-tree -- --typecheck
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
 
   install-packages:
     name: install-packages
-    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    needs: [reuse-gate]
+    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -144,7 +161,7 @@ jobs:
       actions: read
       packages: read
     outputs:
-      reuse: ${{ steps.reused.outputs.reuse }}
+      reuse: ${{ needs.reuse-gate.outputs.reuse }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -155,12 +172,6 @@ jobs:
           cache: npm
       # The public root build is the complete build truth. Its bounded chain is projected into
       # package.json and catalogued; CI does not call a source-only prebuild or deployment guard.
-      - name: Check completed merge-group evidence for this main push
-        id: reused
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/public-ci-reuse.mjs
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -168,23 +179,23 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - name: Refuse newly introduced vulnerable dependencies
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/public-ci-dependencies.mjs
       - run: npm ci --prefer-offline --no-audit --fund=false
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
       - run: npm run build
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
       - name: Build the disposable subscription profile
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         env:
           OPENLUP_REFERENCE_PROFILE: subscription
           OPENLUP_BUILD_OUT_DIR: dist-subscription
           OPENLUP_SSR_OUT_DIR: dist-subscription-ssr
         run: npm run build:public-reference
       - name: Authenticate GitHub Container Registry pulls
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
@@ -192,20 +203,20 @@ jobs:
       # An explicit service starts after login; workflow services pull before any step.
       - name: Start the pinned package-proof PostgreSQL service
         id: postgres
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         run: |
           image="$(node --input-type=module -e 'import { readCiImage, pullWithRetry } from "./scripts/ci-image-pull.mjs"; const image = readCiImage("install-proof-postgres"); image.sources = image.sources.slice(0, 1); console.log(await pullWithRetry(image));')"
           container="$(docker run --pull=never --detach --name install-proof-postgres --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 "$image")"
           echo "container=$container" >> "$GITHUB_OUTPUT"
           echo "port=$(docker port "$container" 5432/tcp | cut -d: -f2)" >> "$GITHUB_OUTPUT"
       - name: Every publishable package API and installed-artifact proof
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         env:
           OPENLUP_PROOF_SERVICE_CONTAINER: ${{ steps.postgres.outputs.container }}
           OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
         run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"
       - name: Guide tutorial against the packed candidate
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         timeout-minutes: 4
         env:
           OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
@@ -215,7 +226,7 @@ jobs:
         run: docker rm --force install-proof-postgres
       # Transfer only the verified public set once, rather than cold-packing in each browser shard.
       - name: Share verified candidate packages
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: install-packages
@@ -227,7 +238,7 @@ jobs:
 
   install-browser:
     name: install-browser (${{ matrix.groups }})
-    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    if: ${{ always() && needs.install-packages.result == 'success' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     needs: [install-packages]
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -290,9 +301,51 @@ jobs:
           BROWSER_RESULT: ${{ needs.install-browser.result }}
         run: test "$PACKAGE_RESULT" = "success" && test "$BROWSER_RESULT" = "success"
 
+  test-prep:
+    name: test-prep
+    needs: [reuse-gate]
+    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          cache: npm
+      - name: Assert Node and npm contract
+        run: |
+          test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
+          test "$(npm --version)" = "11.19.0"
+          test "$(node -p 'require("./package.json").engines.node')" = "24.x"
+          test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      - run: npm ci --prefer-offline --no-audit --fund=false
+      - name: Select tooling fixtures from the event diff
+        env:
+          OPENLUP_VITEST_EXCLUDE_FILE: ${{ github.workspace }}/.context/scratch/ci-test-exclude.txt
+        run: mkdir -p .context/scratch && node scripts/ci-test-scope.mjs
+      - name: Build workspace packages once for all test shards
+        run: node scripts/build-packages-incremental.mjs
+      - name: Share test scope and built workspace packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-prep
+          path: |
+            .context/scratch/ci-test-exclude.txt
+            packages/core/dist
+            packages/outbox/dist
+            packages/platform/dist
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
   test-full-shard:
     name: test-full-shard (${{ matrix.shard }}/8)
-    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    needs: [reuse-gate, test-prep]
+    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && (needs.test-prep.result == 'success' || (needs.reuse-gate.outputs.reuse == 'true' && needs.test-prep.result == 'skipped')) && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -313,12 +366,6 @@ jobs:
         with:
           node-version: 24.21.0
           cache: npm
-      - name: Check completed merge-group evidence for this main push
-        id: reused
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/public-ci-reuse.mjs
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -326,32 +373,32 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - run: npm ci --prefer-offline --no-audit --fund=false
-        if: steps.reused.outputs.reuse != 'true'
-      - name: Select tooling fixtures from the event diff
-        if: steps.reused.outputs.reuse != 'true'
-        env:
-          OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
-        run: node scripts/ci-test-scope.mjs
+        if: needs.reuse-gate.outputs.reuse != 'true'
+      - name: Download test scope and built workspace packages
+        if: needs.reuse-gate.outputs.reuse != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: test-prep
       - name: Authenticate GitHub Container Registry pulls
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
       # Managed-rail suites install the checksum-pinned packages; every cached file is re-verified.
       - name: Restore pinned PostgreSQL test packages
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .context/scratch/cache/pgtap-debs
           key: pgtap-debs-${{ hashFiles('config/ci-postgres-packages.json') }}
       # Every shard derives the same included set before deterministic LPT weighted sharding.
       - name: Complete published root test shard
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         env:
-          OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
+          OPENLUP_VITEST_EXCLUDE_FILE: ${{ github.workspace }}/.context/scratch/ci-test-exclude.txt
           OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
-        run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8
+        run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest
 
   test:
     name: test
@@ -460,7 +507,8 @@ jobs:
 
   pgtap:
     name: pgtap
-    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
+    needs: [reuse-gate]
+    if: ${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -475,12 +523,6 @@ jobs:
         with:
           node-version: 24.21.0
           package-manager-cache: false
-      - name: Check completed merge-group evidence for this main push
-        id: reused
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/public-ci-reuse.mjs
       - name: Assert Node and npm contract
         run: |
           test "$(node -p 'process.versions.node.split(".")[0]')" = "24"
@@ -488,20 +530,20 @@ jobs:
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
       - name: Authenticate GitHub Container Registry pulls
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
       # Restore the checksum-pinned packages; the runner re-verifies every cached file.
       - name: Restore pinned PostgreSQL test packages
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .context/scratch/cache/pgtap-debs
           key: pgtap-debs-${{ hashFiles('config/ci-postgres-packages.json') }}
       - name: Every shipped pgTAP test on stock PostgreSQL with the managed-compat adapter
-        if: steps.reused.outputs.reuse != 'true'
+        if: needs.reuse-gate.outputs.reuse != 'true'
         env:
           OPENLUP_PGTAP_DEB_CACHE: ${{ github.workspace }}/.context/scratch/cache/pgtap-debs
         run: node scripts/public-ci-pgtap.mjs

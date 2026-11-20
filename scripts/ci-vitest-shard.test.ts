@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { digestKeyForPath } from "./ci-vitest-duration-keys.ts";
 import {
   DEFAULT_WEIGHTS_PATH,
+  buildShardCommand,
   listVitestFiles,
   loadShardWeights,
   parseShardArgs,
@@ -19,13 +20,15 @@ describe("ci-vitest-shard", () => {
       total: 8,
       weightsPath: DEFAULT_WEIGHTS_PATH,
       printFiles: false,
+      skipPretest: false,
       extraArgs: [],
     });
-    expect(parseShardArgs(["--shard=2", "--total=8", "--weights=custom.json", "--print-files", "--", "--reporter=dot"])).toEqual({
+    expect(parseShardArgs(["--shard=2", "--total=8", "--weights=custom.json", "--print-files", "--skip-pretest", "--", "--reporter=dot"])).toEqual({
       shard: 2,
       total: 8,
       weightsPath: "custom.json",
       printFiles: true,
+      skipPretest: true,
       extraArgs: ["--reporter=dot"],
     });
     expect(() => parseShardArgs([])).toThrow(/Usage:/);
@@ -33,6 +36,17 @@ describe("ci-vitest-shard", () => {
     expect(() => parseShardArgs(["--shard", "9", "--total", "8"])).toThrow(/between 1 and 8/);
     expect(() => parseShardArgs(["--shard", "1", "--total", "0"])).toThrow(/Usage:/);
     expect(() => parseShardArgs(["--shard", "1", "--total", "8", "--unknown"])).toThrow(/Unknown option/);
+  });
+
+  it("spawns npm test by default and direct run-vitest.mjs when --skip-pretest is set", () => {
+    expect(buildShardCommand(["a.test.ts", "b.test.ts"], { platform: "linux", execPath: "/usr/bin/node" })).toEqual({
+      command: "npm",
+      args: ["test", "--", "a.test.ts", "b.test.ts"],
+    });
+    expect(buildShardCommand(["a.test.ts"], { skipPretest: true, extraArgs: ["--reporter=dot"], platform: "linux", execPath: "/usr/bin/node" })).toEqual({
+      command: "/usr/bin/node",
+      args: ["scripts/run-vitest.mjs", "run", "a.test.ts", "--reporter=dot"],
+    });
   });
 
   it("partitions deterministically with LPT, lexicographical tie-breaking, and digest key lookup", () => {
