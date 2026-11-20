@@ -1789,6 +1789,9 @@ prints the comment body; posting it is an authorized GitHub write. A new head ne
 receipt. Hosted admission accepts the newest valid receipt from a user with
 write, maintain or admin permission and binds it to the PR head and tree.
 Existing receipt formats retain their identities; recorded expiry is not enforced.
+A v3 receipt over 65,536 characters is printed as gzip-compressed, base64-encoded
+text under a dedicated marker, and admission decodes and verifies it like any
+receipt. The command refuses a compressed body over 200,000 characters.
 
 ### Merge queue
 

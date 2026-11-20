@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ECONOMY_RECEIPT_MARKER, RECEIPT_MARKER } from "./agent-review-decide.mjs";
+import { COMPRESSED_RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, RECEIPT_MARKER } from "./agent-review-decide.mjs";
 import { RECEIPT_MARKER_PREFIX, RERUN_JOB, WORKFLOW_PATH, WRITE_PERMISSIONS, hasWriteAccess, latestRun, receiptComment, receiptRerun, selectRerun } from "./ci-receipt-rerun.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,9 +27,9 @@ const receipt = `${RECEIPT_MARKER}\n\`\`\`json\n{}\n\`\`\``;
 
 describe("receipt comment gate", () => {
   it("matches the marker of every receipt format the producer prints", () => {
-    for (const marker of [RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER]) expect(marker.startsWith(RECEIPT_MARKER_PREFIX)).toBe(true);
+    for (const marker of [RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER]) expect(marker.startsWith(RECEIPT_MARKER_PREFIX)).toBe(true);
     const producer = readFileSync(join(ROOT, "scripts/agent-review-session.mjs"), "utf8");
-    expect(producer).toContain("if (verb === 'receipt') console.log(`${session.version === 3 ? ECONOMY_RECEIPT_MARKER : RECEIPT_MARKER}\\n");
+    expect(producer).toContain("if (verb === 'receipt') console.log(receiptBody(receiptSummary(");
   });
 
   it.each([

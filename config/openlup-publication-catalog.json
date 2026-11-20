@@ -2594,6 +2594,14 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/catalogue-rules.cjs",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/owned/catalogue-rules.test.cjs",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/catalogue.json",
       "class": "public-output"
     },
@@ -5310,6 +5318,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/candidateService.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogConformance.ts",
       "class": "public-output"
     },
@@ -5327,6 +5339,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogPackManifest.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogPublicationRules.ts",
       "class": "public-output"
     },
     {
@@ -5403,6 +5419,10 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/productTypes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/contracts/publicationRuleFacts.ts",
       "class": "public-output"
     },
     {
@@ -5486,7 +5506,39 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/publicationCodec.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationDraft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationIntent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/publicationPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/publicationValidation.ts",
       "class": "public-output"
     },
     {
@@ -9811,6 +9863,34 @@
     },
     {
       "path": "packages/platform/test/catalog/catalogProductTypeIssues.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogPublicationAdopter.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/catalogPublicationInterpreter.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/categoryDocument.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/categoryDocumentInput.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/categoryPublicationRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/publicationInput.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/fixtures/releasedCandidate.ts",
       "class": "public-output"
     },
     {

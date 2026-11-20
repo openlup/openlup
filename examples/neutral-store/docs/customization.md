@@ -120,9 +120,14 @@ marker and preserved only across restarts of the same container.
 
 ## Catalogue authoring and storefront
 
-`owned/catalogue.ts` supplies the `starter:item@1` registry to
-`host/operator-composition.ts`. The native draft writer owns the command; the
-host supplies the command key and session actor, outside the JSON payload.
+`owned/catalogue.ts` supplies the draft type. If `owned/catalogue-rules.cjs`
+is present, `./lifecycle up` installs its rules and the operator form uses
+them. Use **Load draft example**, save it, and select **Prepare saved draft**.
+Older drafts keep the rules they were saved with. Keep the local catalogue
+build volume with the demonstration database when restarting the store.
+Without a rules bundle, drafts use the existing validator in `owned/catalogue.ts`.
+The native draft writer owns the command. The host supplies the command key
+and session actor outside the JSON payload.
 
 Evidence (historical record, 2026-11-13):
 Catalogue drafts write only isolated authoring tables (packages/platform/sql/20260908100000_catalog_draft_foundation.sql:1-9); bundle activation sets the native bundle status to active (packages/platform/sql/20260812210000_bundle_operator_write_boundary.sql:493), while this application’s storefront and checkout still use typed configuration through evaluateOffer (examples/neutral-store/shared/offer.ts:40), so neither creates a new purchasable storefront offer.

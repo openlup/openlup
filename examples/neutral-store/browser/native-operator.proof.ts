@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { copy } from '../owned/copy.ts';
 import { routes } from '../shared/routes.ts';
+import { operations as declaredOperations } from '../shared/api.ts';
 
 /** Fresh installed PostgreSQL only; owns identities and the documented owner roster step. */
 const test = base.extend<{ composeProject: string }>({ composeProject: ['', { option: true }] });
@@ -101,8 +102,7 @@ test('native support roster, catalogue administration, replay and operator admis
   const operations = ['operator.customerSearch', 'operator.customer', 'operator.bundles', 'operator.bundle',
     'operator.bundleCommand', 'operator.catalogDrafts'];
   const status = (await action('application.status')).value.bindings;
-  expect(status).toHaveLength(52);
-  expect(status.filter((row: { bound: boolean }) => row.bound)).toHaveLength(25);
+  expect(status.map((row: { operation: string }) => row.operation)).toEqual(declaredOperations);
   for (const operation of operations) {
     expect(status.find((row: { operation: string }) => row.operation === operation).bound).toBe(true);
     expect((await action(operation, { operatorRef: fixture.operator })).code).toBe('operator_required');
@@ -237,11 +237,54 @@ test('native support roster, catalogue administration, replay and operator admis
   const draftReplay = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
   await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
   expect((await (await draftReplay).json()).replayed).toBe(true);
+  const typeVersion = Number(created.value.record.payload.product.type.version);
+  expect(Number.isSafeInteger(typeVersion) && typeVersion > 1).toBe(true);
+  expect(sql(`SELECT count(*) FROM public.catalog_type_versions WHERE type_key='starter:item' AND version=${typeVersion}`)).toBe('1');
+  const staleDraft = structuredClone(created.value.record.payload);
+  const uninstalledVersion = typeVersion === 2 ? 3 : 2;
+  staleDraft.product.type.version = uninstalledVersion;
+  await draftForm.locator('[name=draftId]').fill(randomUUID());
+  await draftForm.locator('[name=payload]').fill(JSON.stringify(staleDraft));
+  const staleReply = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  const fix = `rules version ${uninstalledVersion} is not installed; run ./lifecycle up`;
+  expect(await (await staleReply).json()).toMatchObject({ ok: false,
+    issues: [{ path: 'product.type', code: 'type_not_installed', message: fix }] });
+  await expect(draftForm.locator('.action-result')).toContainText(fix);
+  const invalidDraft = structuredClone(created.value.record.payload);
+  invalidDraft.product.sharedContent.title = '';
+  await draftForm.locator('[name=draftId]').fill(randomUUID());
+  await draftForm.locator('[name=payload]').fill(JSON.stringify(invalidDraft));
+  const reply = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  expect(await (await reply).json()).toMatchObject({ ok: false, code: 'catalog_draft_payload_invalid',
+    issues: [{ path: 'product.sharedContent.title', code: 'title_required' }] });
+  await expect(draftForm.locator('.action-result')).toContainText('product.sharedContent.title');
   const draftRead = await action('operator.catalogDrafts', { action: 'get', draftId });
   expect(draftRead.value.record.revision).toBe(1);
   expect((await action('operator.catalogDrafts')).value.page.items.some((row: { draftId: string }) => row.draftId === draftId)).toBe(true);
   expect((await action('operator.catalogDrafts', { action: 'revise', draftId, expectedRevision: 1, payload: created.value.record.payload })).ok).toBe(true);
   expect((await action('operator.catalogDrafts', { action: 'abandon', draftId, expectedRevision: 2 })).ok).toBe(true);
+  await draftPanel.getByRole('button', { name: /Load draft example|Wczytaj przykładowy szkic/u }).click();
+  const draftInput = draftForm.locator('[name=payload]');
+  await expect(draftInput).toHaveValue(/"schemaVersion": 3/u);
+  const example = JSON.parse(await draftInput.inputValue());
+  expect(example.product.type.version).toBe(typeVersion);
+  const exampleId = randomUUID();
+  await draftForm.locator('[name=draftId]').fill(exampleId);
+  await draftInput.fill(JSON.stringify({ ...example, product: { ...example.product,
+    sharedContent: { ...example.product.sharedContent, presentation: {} } } }));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  await expect(draftForm.locator('.action-result')).toContainText('product.sharedContent.presentation.title');
+  await draftInput.fill(JSON.stringify(example));
+  const savedExample = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await draftForm.getByRole('button', { name: copy[market.defaultLocale].save, exact: true }).click();
+  expect(await (await savedExample).json()).toMatchObject({ ok: true, value: { record: { draftId: exampleId, revision: 1 } } });
+  const prepareDraft = draftPanel.locator('form').filter({ has: page.getByRole('button', { name: /Prepare saved draft|Przygotuj zapisany szkic/u }) });
+  await prepareDraft.locator('[name=draftId]').fill(exampleId);
+  const preparedExample = page.waitForResponse(response => response.url().endsWith('/api/actions/operator.catalogDrafts'));
+  await prepareDraft.locator('button[type=submit]').click();
+  expect(await (await preparedExample).json()).toMatchObject({ ok: true, value: { structural: { outcome: 'unknown' } } });
   expect((await action('operator.catalogDrafts', { action: 'create', draftId: randomUUID(), expectedRevision: 0, payload: {} })).code).toBe('catalog_draft_input_invalid');
   expect((await action('operator.catalogDrafts', { actorRef: principal })).code).toBe('starter_input_invalid');
   await action('auth.signOut');

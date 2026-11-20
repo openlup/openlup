@@ -2,12 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
-import { editorProducts } from '../host/editor-catalogue.ts';
+import { editorProducts, readStarterCatalogueRules, starterCatalogue } from '../host/editor-catalogue.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import { applyDemoSeed, demonstrationMarker, installDemonstration,
   type DemonstrationInstallation } from '../installation/install.ts';
@@ -99,6 +101,10 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
     stock: { async recordProviderStockCurrent(input) { stockCalls.push(input); return { replayed: false,readBack: true }; } },
     connection: { query: async (text, values) => {
       calls.push({ text, values });
+      if (text.startsWith('SELECT public.catalog_definition_install')) {
+        const { manifest } = JSON.parse(String(values?.[2]));
+        return { rows: [{ receipt: { manifestDigest: createHash('sha256').update(manifest).digest('hex'), types: JSON.parse(manifest).types } }] };
+      }
       if (text.startsWith('SELECT public.fulfillment_record_stock_current')) return { rows: [{ response: { status: 'recorded' } }] };
       if (text.startsWith('INSERT INTO public.subscription_price_policy_revisions') && values) { digests.set(String(values[0]), values[11]); policies.set(String(values[2]), { id: values[0],digest: values[11] }); }
       if (text.startsWith('SELECT id,digest')) return { rows: policies.has(String(values?.[0])) ? [policies.get(String(values?.[0]))!] : [] };
@@ -118,6 +124,110 @@ function installation(identity = { login: 'demo_install', role: 'demo_install', 
   };
   return { binding, calls, stockCalls, closed: () => closed };
 }
+
+test('local rules run before installation and derive an immutable product type on demo startup', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  // Start a standalone invocation, without inheriting the parent Node test runner context.
+  const output = execFileSync(process.execPath, ['--test', 'owned/catalogue-rules.test.cjs'],
+    { cwd: root, env: {}, encoding: 'utf8' });
+  assert.match(output, /pass 1\b/u);
+  async function installed(bytes: Buffer) {
+    const fixture = installation();
+    fixture.binding.catalogueRules = bytes;
+    const directory = await mkdtemp(resolve(tmpdir(), 'starter-catalogue-build-'));
+    try {
+      fixture.binding.catalogueBuildDirectory = directory;
+      await installDemonstration(Object.values(configurations)[0]!, async () => fixture.binding);
+      const install = fixture.calls.find(entry => entry.text.startsWith('SELECT public.catalog_definition_install'));
+      assert.ok(install);
+      const build = JSON.parse(await readFile(resolve(directory, `${install.values?.[1]}.json`), 'utf8'));
+      assert.equal(build.installed.version, install.values?.[1]);
+      assert.equal(build.asset, bytes.toString('base64'));
+    } finally { await rm(directory, { recursive: true, force: true }); }
+    const call = fixture.calls.find(entry => entry.text.startsWith('SELECT public.catalog_definition_install'));
+    assert.ok(call);
+    const { types } = JSON.parse(String(call.values?.[2]));
+    return JSON.parse(types[0].canonicalDefinition);
+  }
+  const first = await installed(bytes);
+  assert.deepEqual(await installed(bytes), first);
+  assert.equal(first.validatorRef, `sha256:${createHash('sha256').update(bytes).digest('hex')}`);
+  assert.ok(first.version > 1);
+  assert.notEqual((await installed(Buffer.concat([bytes, Buffer.from('// Changed rules asset')]))).version, first.version);
+});
+
+test('a retained build conflict rolls back definition installation before commit', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
+  const directory = await mkdtemp(resolve(tmpdir(), 'starter-catalogue-conflict-'));
+  try {
+    const config = Object.values(configurations)[0]!;
+    const first = installation();
+    first.binding.catalogueRules = bytes;
+    first.binding.catalogueBuildDirectory = directory;
+    await installDemonstration(config, async () => first.binding);
+    const change = first.calls.find(row => row.text.startsWith('SELECT public.catalog_definition_install'));
+    assert.ok(change);
+    const conflictingBuild = resolve(directory, `${change.values?.[1]}.json`);
+    await writeFile(conflictingBuild, 'conflicting build');
+    const retry = installation();
+    retry.binding.catalogueRules = bytes;
+    retry.binding.catalogueBuildDirectory = directory;
+    await assert.rejects(installDemonstration(config, async () => retry.binding), { code: 'EEXIST' });
+    assert.equal(retry.calls.at(-1)?.text, 'ROLLBACK');
+    assert.ok(!retry.calls.some(row => row.text === 'COMMIT'));
+    assert.equal(await readFile(conflictingBuild, 'utf8'), 'conflicting build');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a running reader exposes only committed rules builds across a failed commit', async context => {
+  const bytes = readStarterCatalogueRules();
+  if (!bytes) return context.skip('This starter has kept its existing draft validator.');
+  const directory = await mkdtemp(resolve(tmpdir(), 'starter-catalogue-rollback-'));
+  try {
+    const config = Object.values(configurations)[0]!;
+    const reader = starterCatalogue(directory);
+    assert.ok(reader.current);
+    const ref = reader.current;
+    assert.equal(reader.readInstalled(ref), undefined);
+    const fixture = installation();
+    fixture.binding.catalogueRules = bytes;
+    fixture.binding.catalogueBuildDirectory = directory;
+    const query = fixture.binding.connection.query;
+    const failure = new Error('synthetic commit failure');
+    let target: string | undefined, committed = false;
+    fixture.binding.connection.query = async (text, values) => {
+      const result = await query(text, values);
+      if (text.startsWith('SELECT public.catalog_definition_install')) target = resolve(directory, `${values?.[1]}.json`);
+      if (text === 'COMMIT') {
+        assert.ok(target);
+        if (committed) assert.ok(reader.readInstalled(ref));
+        else {
+          await assert.rejects(stat(target), { code: 'ENOENT' });
+          assert.equal(reader.readInstalled(ref), undefined);
+          assert.equal(reader.registry.resolve(ref), undefined);
+        }
+        throw failure;
+      }
+      return result;
+    };
+    await assert.rejects(installDemonstration(config, async () => fixture.binding), failure);
+    assert.equal(fixture.calls.at(-1)?.text, 'ROLLBACK');
+    assert.ok(target);
+    await assert.rejects(stat(target), { code: 'ENOENT' });
+    assert.equal(reader.readInstalled(ref), undefined);
+    const successful = installation();
+    await installDemonstration(config, async () => ({ ...successful.binding, catalogueRules: bytes, catalogueBuildDirectory: directory }));
+    const installed = await readFile(target);
+    committed = true;
+    assert.ok(reader.readInstalled(ref));
+    await assert.rejects(installDemonstration(config, async () => fixture.binding), failure);
+    assert.deepEqual(await readFile(target), installed);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 
 for (const config of Object.values(configurations)) {
   test(`${config.id}: fictional catalog and prices come from one configuration deterministically`, () => {

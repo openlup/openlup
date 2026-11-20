@@ -23,6 +23,7 @@ services:
     command: ['node', 'lifecycle.mjs', 'install']
     volumes:
       - installation-socket:/var/run/postgresql
+      - catalogue-builds:/application/.context/catalogue-builds
     depends_on:
       database:
         condition: service_healthy
@@ -31,6 +32,8 @@ services:
     command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0']
     environment:
       DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
+    volumes:
+      - catalogue-builds:/application/.context/catalogue-builds:ro
     depends_on:
       database:
         condition: service_healthy
@@ -44,6 +47,7 @@ services:
 volumes:
   database:
   installation-socket:
+  catalogue-builds:
 configs:
   database_auth:
     content: |

@@ -69,6 +69,8 @@ export { catalogDraftPriceOperationV2Schema, catalogDraftPayloadV2Schema, catalo
 export { validateCatalogDraftV2 } from "./draftV2Validation.js";
 export { createCatalogCandidateService, CatalogCandidateError } from "./candidate.js";
 export type { CatalogCandidateDeps } from "./candidate.js";
+export { createCatalogCandidateServiceWithPublication } from "./candidateService.js";
+export type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 
@@ -78,3 +80,7 @@ export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, cata
   catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
 export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
+
+export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
+export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
+export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";

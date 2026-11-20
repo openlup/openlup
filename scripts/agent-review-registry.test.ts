@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
-import { admit, digest, coverageState, protectedCoveragePath, receiptSummary, verdict, ECONOMY_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, digest, coverageState, protectedCoveragePath, receiptBody, receiptSummary, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
@@ -551,17 +551,31 @@ describe('fixture dependency evidence', () => {
 
 
 describe('v3 source admission from real Git objects', () => {
-  it('admits inherited integration coverage through the full queue reader', async () => {
-    const f = await fixture(); await f.review(); const main = await f.mainMove(() => f.write('other.ts', 'main\n'));
+  it.each(['raw', 'compressed'])('admits a %s receipt through the full queue reader', async format => {
+    const f = await fixture(); await f.review();
+    if (format === 'compressed') {
+      const findings = Array.from({ length: 20 }, (_, index) => ({ id: `advice-${index}`, summary: 'x'.repeat(3_500), material: false }));
+      await f.report({ findings });
+    }
+    const main = await f.mainMove(() => f.write('other.ts', 'main\n'));
     f.git('merge', '--no-ff', '-qm', 'integrate', main); await f.cli('prepare', f.request); const session = await f.state();
     const summary = receiptSummary(session, 12, Date.now());
-    const body = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const body = vi.mocked(console.log).mock.lastCall?.[0];
+    const raw = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
+    if (format === 'compressed') {
+      expect(raw.length).toBeGreaterThan(65_536);
+      expect(body.startsWith(`${COMPRESSED_RECEIPT_MARKER}\n`)).toBe(true);
+      expect(body).toBe(receiptBody(summary));
+    } else expect(body).toBe(raw);
+    expect(parseReceipt(body)).toEqual(summary);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: session.candidate.head } };
     const api = { get: async (path: string) => path.includes('/pulls/') ? pr : path.includes('/issues/')
       ? [{ id: 1, body, user: { login: 'supervisor', type: 'User' } }]
       : path.includes('/collaborators/') ? { permission: 'write' } : { object: { sha: main } } };
     const runGit = async (cwd: string, ...args: string[]) => args.includes('fetch') ? '' : sourceGit(cwd, ...args);
-    await expect(waitNativeAdmission({ cwd: f.cwd, api, runGit,
+    let clock = Date.now();
+    await expect(waitNativeAdmission({ cwd: f.cwd, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1,
       event: { number: 12, repository: { private: false }, pull_request: { head: pr.head } },
       env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
     })).resolves.toEqual(summary);

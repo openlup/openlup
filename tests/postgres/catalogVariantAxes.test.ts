@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { canonicalizeCatalogCombinationV2, classifyCatalogCombinationConflictV2, installCatalogDefinitions,
+import { canonicalizeCatalogCombinationV2, classifyCatalogCombinationConflictV2, installCatalogDefinitions, withCatalogPublicationRules,
   type CatalogCombinationIdentityV2, type CatalogProductTypeInput } from "@openlup/platform/catalog";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+const artifact = readFileSync(new URL("../../examples/neutral-store/owned/catalogue-rules.cjs", import.meta.url), "utf8");
 
 const path = "db/platform/migrations/20261122130000_catalog_variant_axes.sql";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -17,7 +18,7 @@ const definition: CatalogProductTypeInput = { key: "example:axes", version: 1,
   netContentUnits: ["openlup:piece"], dimensions: ["enabled", "visible"].map(key => ({ key, kind: "boolean" })),
   attributes: ["enabled", "visible"].map(key => ({ key, scope: "variant", valueType: { kind: "boolean" }, required: true, cardinality: { min: 1, max: 1 },
     filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} })),
-  axes: ["enabled", "visible"].map(key => ({ key, attributeKey: key })), validatorRef: `sha256:${"a".repeat(64)}`, validateContent: () => [] };
+  axes: ["enabled", "visible"].map(key => ({ key, attributeKey: key })), validateContent: () => [] };
 const options = (enabled: boolean) => ({ enabled: { kind: "boolean" as const, value: enabled } });
 const identity = (enabled: boolean) => canonicalizeCatalogCombinationV2({ definition, axes: ["enabled"], options: options(enabled) });
 const security = (db: Pool) => db.query(`SELECT c.relname,c.relowner,c.relacl,c.relrowsecurity,c.relforcerowsecurity,
@@ -49,8 +50,8 @@ beforeAll(async () => {
     FROM public.catalog_products p JOIN public.catalog_skus s ON s.product_id=p.id`)).rows)
     .toEqual(Array.from({ length: 2 }, () => ({ variant_axes: null, option_values: null, canonical_option_bytes: null, combination_digest: null })));
   await bootstrap.query("ALTER ROLE catalog_axes_install NOSUPERUSER NOBYPASSRLS");
-  await installCatalogDefinitions(owner, { id: "example:axis-pack", namespace: "example", version: 1, openlupRange: "0.44.x",
-    capabilities: { publish: false }, types: [definition], taxClasses: [] });
+  await installCatalogDefinitions(owner, withCatalogPublicationRules({ id: "example:axis-pack", namespace: "example", version: 1,
+    openlupRange: "0.44.x", capabilities: { publish: false }, types: [definition], taxClasses: [] }, () => Buffer.from(artifact)));
 }, postgresSetupTimeoutMs);
 afterAll(() => closePostgres(containers, pools), postgresTeardownTimeoutMs);
 

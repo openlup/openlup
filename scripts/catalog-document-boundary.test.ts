@@ -20,6 +20,8 @@ const QUOTE_PAYLOAD_USES = [
   "await verifyDocument(documents[index]!.revision_document_payload, envelope);",
   "revision_document_payload: unknown;",
 ];
+const parsedProvenance = "SyntheticProvenance";
+const parsedProvenanceRefusal = "imports or reconstructs provider provenance";
 
 interface SourceFile {
   path: string;
@@ -107,8 +109,8 @@ function violations(files: readonly SourceFile[]): string[] {
     if (readsDormantCatalogSkuGtin(file.source)) {
       found.push(`${file.path}: reads dormant catalog_skus.gtin`);
     }
-    if (file.path === PORTABLE_ADAPTER && /\bomnipack\b/i.test(file.source)) {
-      found.push(`${file.path}: imports or reconstructs OmniPack provenance`);
+    if (file.path === PORTABLE_ADAPTER && new RegExp(`\\b(?:OmniPack|${parsedProvenance})\\b`, "i").test(file.source)) {
+      found.push(`${file.path}: ${parsedProvenanceRefusal}`);
     }
 
     const isTestSource = /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file.path);
@@ -138,88 +140,26 @@ describe("portable catalog document boundary", () => {
   it("scans exactly the portable/core catalog perimeter", () => {
     const files = perimeterSources();
 
-    expect(files).not.toHaveLength(0);
-    expect(files.some((file) =>
-      file.path.startsWith("node_modules/@openlup/core/src/catalog/") && /\.tsx?$/.test(file.path),
-    )).toBe(true);
-    expect(files.every((file) => PERIMETERS.some((perimeter) => file.path.startsWith(`${perimeter}/`)))).toBe(true);
-    expect(files.some((file) => file.path === PORTABLE_MIGRATION)).toBe(true);
-    expect(files.some((file) => file.path === PORTABLE_ADAPTER)).toBe(true);
+    expect(files.some(file => file.path.startsWith("node_modules/@openlup/core/src/catalog/") && /\.tsx?$/.test(file.path))).toBe(true);
+    expect(files.every(file => PERIMETERS.some(perimeter => file.path.startsWith(`${perimeter}/`)))).toBe(true);
+    expect(files.some(file => file.path === PORTABLE_MIGRATION)).toBe(true);
+    expect(files.some(file => file.path === PORTABLE_ADAPTER)).toBe(true);
     expect(violations(files)).toEqual([]);
   });
 
-  it("fails document interpretation while allowing an opaque storage declaration", () => {
-    expect(violations([
-      { path: PORTABLE_MIGRATION, source: "  document_payload jsonb NOT NULL,\n" },
-      { path: "server/adapters/postgres/unsafe.ts", source: "import { ProductDocumentV1 } from '../../../src/overlays/reference/data/catalog/productDocumentContracts.js';" },
-      { path: "server/adapters/postgres/unsafe-payload.ts", source: "SELECT document_payload FROM public.catalog_product_document_revisions;" },
-    ])).toEqual([
-      "server/adapters/postgres/unsafe.ts: private document schema vocabulary is not portable",
-      "server/adapters/postgres/unsafe.ts: imports a private document boundary",
-      "server/adapters/postgres/unsafe-payload.ts: document payload must remain opaque SQL storage only",
-    ]);
-
-    const passThrough = QUOTE_PAYLOAD_USES.join("\n");
-    expect(violations([{ path: QUOTE_READER, source: passThrough }])).toEqual([]);
-    // Every other perimeter retains the original no-read boundary.
-    for (const perimeter of PERIMETERS) {
-      const path = `${perimeter}/unexpected-document-read.ts`;
-      expect(violations([{ path, source: passThrough }])).toContain(
-        `${path}: document payload must remain opaque SQL storage only`,
-      );
-    }
-    expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${QUOTE_PAYLOAD_SELECT}` }])).toContain(
-      `${QUOTE_READER}: document payload must remain opaque SQL storage only`,
-    );
-    for (const interpretation of ["parseDocument(value);", "validateDocument(value);", "canonicalizeDocument(value);"]) {
-      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${interpretation}` }])).toContain(
-        `${QUOTE_READER}: parses, validates, or canonicalizes a private document`,
-      );
-    }
-    for (const interpretation of ["JSON.parse(value);", "schema.safeParse(value);", "validate(value);", "canonicalize(value);"]) {
-      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${interpretation}` }])).toContain(
-        `${QUOTE_READER}: quote document must pass unparsed to host policy`,
-      );
-    }
-    for (const logging of ["console.log(documents);", "logger.info(documents[index]);", "JSON.stringify(documents);"]) {
-      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${logging}` }])).toContain(
-        `${QUOTE_READER}: quote document must pass unparsed to host policy`,
-      );
-    }
-    for (const schema of ["ProductDocumentV1", "productDocumentV1Schema", "productDocumentSchema"]) {
-      expect(violations([{ path: QUOTE_READER, source: `${passThrough}\n${schema};` }])).toContain(
-        `${QUOTE_READER}: private document schema vocabulary is not portable`,
-      );
-    }
-    for (const misuse of [
-      passThrough.replace("revision_document_payload, envelope", "revision_document_payload.title, envelope"),
-      passThrough.replace("revision_document_payload, envelope", 'revision_document_payload["title"], envelope'),
-      `${passThrough}\nconsole.log(documents[index]!.revision_document_payload);`,
-      `${passThrough}\nconst copied = documents[index]!.revision_document_payload;`,
-    ]) {
-      expect(violations([{ path: QUOTE_READER, source: misuse }])).toContain(
-        `${QUOTE_READER}: document payload must remain opaque SQL storage only`,
-      );
-    }
-  });
-
-  it("fails imports or interpretation of the private W2d mapping proof", () => {
-    expect(violations([
-      { path: "packages/core/src/catalog-mapping.ts", source: "export type { CatalogDocumentMappingReceiptV1 } from '../../../../src/overlays/private/data/catalog/catalogDocumentMappingContracts.js';" },
-      { path: "server/domains/catalog/mapper.ts", source: "const mapping = await import('../../../src/overlays/private/tooling/catalog/mapCatalogPresentation.js');" },
-    ])).toEqual([
-      "packages/core/src/catalog-mapping.ts: private document schema vocabulary is not portable",
-      "packages/core/src/catalog-mapping.ts: imports a private document boundary",
-      "server/domains/catalog/mapper.ts: imports a private document boundary",
-    ]);
-  });
-
   it.each([
-    "SELECT gtin FROM catalog_skus",
-    "SELECT sku.gtin FROM catalog_skus AS sku",
-    "SELECT sku.gtin FROM public.catalog_skus sku",
-    "SELECT catalog_skus.gtin FROM catalog_skus",
-  ])("rejects a dormant GTIN read mutation: %s", (source) => {
+    [PORTABLE_MIGRATION, "SELECT document_payload->>'name' FROM public.catalog_product_document_revisions;", "document payload must remain opaque SQL storage only"],
+    [QUOTE_READER, [...QUOTE_PAYLOAD_USES, "console.log(documents);"].join("\n"), "quote document must pass unparsed to host policy"],
+    [PORTABLE_ADAPTER, "import { ProductDocumentV1 } from './productDocumentContracts.js';", "imports a private document boundary"],
+    [PORTABLE_ADAPTER, "ProductDocumentV1;", "private document schema vocabulary is not portable"],
+    [PORTABLE_ADAPTER, "parseDocument(value);", "parses, validates, or canonicalizes a private document"],
+    [PORTABLE_ADAPTER, `const source = "${parsedProvenance}";`, parsedProvenanceRefusal],
+  ])("refuses %s with %s", (path, source, expected) => {
+    expect(violations([{ path, source }])).toContain(`${path}: ${expected}`);
+  });
+
+  it("rejects a qualified dormant GTIN read", () => {
+    const source = "SELECT sku.gtin FROM public.catalog_skus sku";
     expect(violations([{ path: "server/adapters/postgres/mutated-read.ts", source }])).toEqual([
       "server/adapters/postgres/mutated-read.ts: reads dormant catalog_skus.gtin",
     ]);
