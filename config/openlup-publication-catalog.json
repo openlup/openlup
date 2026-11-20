@@ -14418,6 +14418,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/catalogPublicationReads.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/catalogPublicationReads.ts",
       "class": "public-output"
     },
