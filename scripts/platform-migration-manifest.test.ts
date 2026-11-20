@@ -8,6 +8,7 @@ import {
   REVISED_ADMIN_RUNTIME_FILE,
   evaluatePlatformMigrationManifest,
   evaluatePlatformMigrationManifestHistory,
+  evaluatePlatformMigrationManifestMetadata,
   evaluateSelectedPlatformMigrationManifest,
   isQualifiedPlatformMigrationPath,
   QUALIFIED_ACQUISITION_FILE,
@@ -430,6 +431,17 @@ describe("shared forwards after issued generation tails", () => {
       change((generation === "legacy" ? manifest : manifest[generation]).forward);
       expect(evaluatePlatformMigrationManifestHistory(current, manifest, suffix.map(({ file }) => file)))
         .toEqual(expect.arrayContaining([expect.stringContaining("preserve the previous prefix")]));
+    }
+  });
+});
+
+describe("canonical manifest metadata without SQL files", () => {
+  it("validates the committed metadata without SQL and refuses malformed forward entries", () => {
+    expect(evaluatePlatformMigrationManifestMetadata(current)).toEqual([]);
+    expect(evaluatePlatformMigrationManifest({ manifest: current, migrations: [] })).not.toEqual([]);
+    for (const entry of [{}, null, { file: current.forward[0]!.file, sha256: "invalid" }]) {
+      expect(evaluatePlatformMigrationManifestMetadata({ ...current, forward: [entry, ...current.forward.slice(1)] }))
+        .toEqual(expect.arrayContaining([expect.stringMatching(/^platform migration manifest\.forward\[0\]/u)]));
     }
   });
 });

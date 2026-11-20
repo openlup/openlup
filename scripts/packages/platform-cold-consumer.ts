@@ -2134,14 +2134,35 @@ console.log("synthetic three-pack warm check ms=" + (performance.now()-start).to
 export function proveCatalogCompositionConsumer(consumer: string) {
   // HEAD owns expectations independently of both working-tree edits and packed bytes.
   const descriptor = command("git", ["show", "HEAD:packages/platform/src/catalog/sql.ts"], root, isolatedConsumerEnv());
-  const positions = JSON.parse(command(process.execPath, ["--input-type=module", "--eval", `${stripTypeScriptTypes(descriptor)}
-console.log(JSON.stringify(CATALOG_MIGRATIONS.map(unit => unit.position)));`], root, isolatedConsumerEnv()));
+  const manifest = JSON.parse(command("git", ["show", "HEAD:config/platform-migration-manifest.json"], root, isolatedConsumerEnv())) as
+    { baseline: { file: string; sha256: string }; forward: { file: string; sha256: string }[] };
+  const catalogPaths = [...descriptor.slice(descriptor.indexOf("= [", descriptor.indexOf("export const CATALOG_MIGRATIONS"))).matchAll(/catalogPath: "(db\/platform\/migrations\/[^"]+)"/gu)].map(match => match[1]!);
+  if (catalogPaths.length === 0 || new Set(catalogPaths).size !== catalogPaths.length) throw new Error("invalid committed catalogue descriptor");
+  const entries = [manifest.baseline, ...manifest.forward];
+  const expected = catalogPaths.map(catalogPath => {
+    const position = entries.findIndex(entry => entry.file === catalogPath);
+    if (position < 0) throw new Error(`committed catalogue manifest missing ${catalogPath}`);
+    return { catalogPath, position, sha256: entries[position]!.sha256 };
+  });
   consumerNode(consumer, `
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import * as catalog from "@openlup/platform/catalog";
-import { createCatalogContribution } from "@openlup/platform/composition";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+const originalRead = fs.readFileSync;
+let manifestReads = 0;
+fs.readFileSync = function (path, ...args) {
+  if (String(path).endsWith("/sql/manifest.json")) manifestReads++;
+  return originalRead.call(this, path, ...args);
+};
+syncBuiltinESMExports();
+const catalog = await import("@openlup/platform/catalog");
+const { createCatalogContribution } = await import("@openlup/platform/composition");
+assert.equal(typeof catalog.CATALOG_MIGRATIONS.at(-1).id, "string");
+assert.equal(manifestReads, 0, "presence-only import opened the SQL manifest");
+fs.readFileSync = originalRead;
+syncBuiltinESMExports();
 const statements = [];
 const executor = { query: async (sql, values) => { statements.push([sql, values]); return { rows: [] }; } };
 const native = catalog.createPostgresCatalogSkuEnvelopeReadPort(executor);
@@ -2150,7 +2171,8 @@ assert.equal(statements.length, 1);
 await assert.rejects(native.getSkuEnvelope({ kind: "sku_code", skuCode: "ABSENT" }), error => error instanceof catalog.CatalogSkuAuthorityError && error.code === "catalog_sku_authority_sku_absent");
 const draft = catalog.createPostgresCatalogDraftStore({ query: async () => { throw { code: "42501" }; } });
 assert.deepEqual(await draft.apply({ canonicalCommand: "{}", fingerprint: "a".repeat(64), actorId: "synthetic" }), { outcome: "unauthorized", reason: "operator_required" });
-assert.deepEqual(catalog.CATALOG_MIGRATIONS.map(unit => unit.position), ${JSON.stringify(positions)}, "installed catalogue migration positions differ from the committed descriptor");
+assert.deepEqual(catalog.CATALOG_MIGRATIONS.map(({ catalogPath, position, sha256 }) => ({ catalogPath, position, sha256 })),
+  ${JSON.stringify(expected)}, "installed catalogue migrations differ from the committed canonical manifest");
 for (const unit of catalog.CATALOG_MIGRATIONS) assert.equal(createHash("sha256").update(readFileSync(unit.url)).digest("hex"), unit.sha256);
 const quote = () => { throw new Error("synthetic_quote_unavailable"); };
 const selected = createCatalogContribution({ version: JSON.parse(readFileSync(new URL("./node_modules/@openlup/platform/package.json", import.meta.url))).version, requiredSchema: { version: "complete", migration: "complete", objects: [] },
