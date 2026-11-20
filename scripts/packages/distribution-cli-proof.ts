@@ -246,6 +246,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const phase = (name: string, action: () => void) => { const entry = { name, result: "FAIL" }; pair.evidence.phases.push(entry); action(); entry.result = "PASS"; };
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
+  const settingsHost = join(app, starterSettingsHost);
+  if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
   phase("migrate-owned-contracts", () => { migrateStarterOwned(app, pair.to, from, to); });
   phase("customize-owned", () => {
     for (const [path, before, after] of [

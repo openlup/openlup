@@ -83,7 +83,7 @@ function text(result: Result, host?: SettingsHost): string {
 }
 
 const checkHelp = `openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
-Check reported file values against packaged schemas and run the application's optional startup validation.
+Check reported file values against available setting schemas and run the application's optional startup validation.
 Exit codes: 0 checked, 1 invalid, 2 no file member, 64 invalid syntax or configuration, 74 app module or factory not found.`;
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
@@ -111,14 +111,20 @@ function inMemberOrder<T extends object>(ordered: T, original: Readonly<Record<s
   return Object.fromEntries(Object.keys(ordered).map(key => [key, original[key]])) as T;
 }
 
-function declaredSettings(file?: FileBinding) {
+function declaredSettings(file?: FileBinding, warn?: SettingsIo["warn"]) {
   const declarations = new Map<string, AppSetting>();
+  const packaged = loadSettingsCatalogue().entries;
+  const missingDescriptors: string[] = [];
   for (const [key, entry] of Object.entries(file?.entries ?? {})) {
-    if (entry?.descriptor === undefined) continue;
+    const packagedKey = packaged.some(setting => setting.key === key);
+    if (entry?.descriptor === undefined) {
+      if (warn && entry && !packagedKey) missingDescriptors.push(key);
+      continue;
+    }
     const refuse = (hint: string) => appRefusal("commerce_setting_read_input_invalid", ["file", "entries", key, "descriptor"],
       "The application setting declaration is invalid.", hint, "Correct the named declaration and retry.",
       "openlup settings list --app <module>");
-    if (loadSettingsCatalogue().entries.some(setting => setting.key === key)) {
+    if (packagedKey) {
       return refuse(`${key} is a packaged setting. Choose another key or report the installed file value and location without a descriptor.`);
     }
     if (typeof entry.location?.file !== "string" || typeof entry.location.symbol !== "string") {
@@ -150,6 +156,10 @@ function declaredSettings(file?: FileBinding) {
       effect: inMemberOrder(admitted.data.effect, setting.effect),
     });
     declarations.set(key, { setting: ordered, entry, schema });
+  }
+  if (missingDescriptors.length) {
+    const keys = missingDescriptors.sort().map(key => JSON.stringify(key)).join(", ");
+    warn?.(`Settings app: value reported without a descriptor for ${keys}. Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n`);
   }
   return { declarations };
 }
@@ -199,6 +209,7 @@ async function checkApp(file?: FileBinding): Promise<AppValidation> {
 function reportedFileValue(entry: FileBinding["entries"][string] | undefined, reference?: Location): FileValue {
   if (!entry) return { state: "not-reported" };
   const { location, value } = entry;
+  if (value === undefined && entry.descriptor !== undefined) return { state: "not-reported" };
   const source = typeof location?.file === "string" && typeof location.symbol === "string"
     ? { location: { file: location.file, symbol: location.symbol } } : reference ? { catalogueReference: reference } : {};
   try {
@@ -340,7 +351,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       const id = values.configuration ?? "";
       return invalid("configuration", `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`);
     }
-    const admitted = declaredSettings(bindings.file);
+    const admitted = declaredSettings(bindings.file, io.warn);
     if ("refusal" in admitted) return emit(admitted, 64);
     return report(bindings.file, await checkApp(bindings.file), admitted.declarations);
   }
@@ -384,7 +395,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     catch (error) { return loadFailure(errorMessage(error), 1); }
     if (!bindings) return loadFailure(missing, 74);
     const file = "configurationIds" in bindings ? undefined : bindings.file;
-    const admitted = declaredSettings(file);
+    const admitted = declaredSettings(file, command === "list" ? io.warn : undefined);
     if ("refusal" in admitted) return emit(admitted, 64);
     const declarations = admitted.declarations;
     if (command === "list") {
@@ -396,12 +407,12 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     let observation: z.infer<ReturnType<typeof catalogueWithAppSettings>["appShowResult"]>["observation"] = { state: "offline" };
     if (command === "show") {
       const reported = appFileValue(declaration.entry);
-      if (reported.state !== "present") {
+      if (reported.state === "unreportable") {
         const { location } = declaration.entry;
         return emit(appUnavailable(["file", "entries", key!, "value"], `Could not read ${key} at ${location.file}.`,
           "openlup settings show <key> --app <module>"), 74);
       }
-      observation = { state: "file", configuration: file.configuration, value: reported.value };
+      if (reported.state === "present") observation = { state: "file", configuration: file.configuration, value: reported.value };
     }
     const { appShowResult } = catalogueWithAppSettings([declaration.setting]);
     const result = { schemaVersion: 1 as const, setting: declaration.setting, observation };

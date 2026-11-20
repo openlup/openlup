@@ -8,7 +8,10 @@ experimental.
 ## Find a setting
 
 From an extracted starter with matching packages installed, use the settings
-script shown in its `AGENTS.md`. Try these arguments:
+script shown in its `AGENTS.md`. The script supplies the application binding, so
+list includes both packaged settings and settings declared by the starter.
+Without an application binding, discovery covers the packaged catalogue.
+Try these arguments:
 
 - `list --goal "renewal stock protection horizon"`
 - `show inventory_renewal_protection --json`
@@ -60,8 +63,9 @@ The starter checks its reported configuration ID against the registry and runs
 arguments and installer package availability. Seed preparation runs after
 database bootstrap.
 A file value that cannot be represented as JSON is reported as unreportable
-and fails check without a schema verdict. Value-only entries for unknown keys
-are ignored. Declared app rows use the effect and location from the declaration.
+and fails check without a schema verdict. For a value-only entry with no packaged
+key, list and check name the missing declaration on stderr. Add its descriptor
+as shown below. Declared app rows use the effect and location from the declaration.
 
 With `--json`, check emits one version-1 document. Exit 0 means checked and
 exit 1 means invalid. If importing the selected module or calling its binding
@@ -78,7 +82,9 @@ same assertion the app runs at startup. For connected effects, use
 
 ## Declare a setting of your own
 
-Keep the value and its business rule in your application's owned code. For a
+Keep the value and its business rule in your application's owned code.
+When a declared value is undefined, the key stays discoverable, show returns its
+descriptor with an offline observation, and check marks its value not reported. For a
 gift wrapping fee, put this in `owned/gift.config.ts` and call
 `quoteGiftOrderMinor` from your gift quote code.
 

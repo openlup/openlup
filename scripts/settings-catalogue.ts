@@ -66,7 +66,6 @@ const searchTerms: Record<string, string> = {
   inventory_renewal_protection: "stock lookahead, inventory buffer, renewal allocation, available to promise",
   checkout_recovery_reminders: "abandoned basket, reminder cadence, payment follow-up, recovery offsets",
   subscriber_winback_policy: "cancelled subscriber outreach, retention messaging, reactivation window",
-  "subscriptionCreation.editWindowHours": "edit cutoff, change deadline, activation window",
   savedAddressValidation: "postal format, phone normalization, delivery address checks",
   "account-support": "operator permissions, administrative access",
   catalog: "product assortment, SKU records",
@@ -100,8 +99,8 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
   {
     code: "commerce_setting_unknown",
     path: ["key"],
-    rule: "Use a key from the installed settings catalogue.",
-    hint: "Search by the business goal to find the key.",
+    rule: "Use a setting key in the selected catalogue or application binding.",
+    hint: "Search by business goal. For CLI discovery of application keys, use the application's settings script or pass --app <module> to openlup settings list.",
     remediation: { retry: true, action: "Find a key in the list, then run show with that key.", command: "npm --silent run settings -- list" },
   },
   {
@@ -209,11 +208,6 @@ export function renderSettingsCatalogue(root = process.cwd()): Readonly<Record<s
         `- Default ${entry.fallback === null ? "uses the documented behavior below." : `is \`${JSON.stringify(entry.fallback)}\`.`}`,
         `- Basis \`${entry.defaultBasis.kind}\`${entry.defaultBasis.kind === "reference-code" ? " (matches the reference deployment's code)" : ""}.`,
         `- ${entry.whyThisDefault}`,
-        ...(entry.kind === "code" && "file" in entry.change ? [
-          `- Edit \`${entry.change.file}\` (${entry.change.symbol}).`,
-          `- ${entry.effect.appliesTo}`,
-          ...(entry.effect.frozenOn.length ? [`- Frozen on: ${entry.effect.frozenOn.join(" ")}`] : []),
-        ] : []),
         ...(entry.absentMeans ? [`- When absent, ${entry.absentMeans.description.charAt(0).toLowerCase()}${entry.absentMeans.description.slice(1)}`] : []),
       ] : [`- ${entry.runtime.reason}`]),
       "",

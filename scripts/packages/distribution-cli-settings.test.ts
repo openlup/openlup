@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -35,10 +35,14 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   write("AGENTS.md", guide);
   candidate("AGENTS.md", guide + section);
   candidate("ownership.json", { managed: ["package.json", "ownership.json"], owned: ["AGENTS.md", starterSettingsHost], generated: [] });
-  const pkg = { dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
+  const pkg = { type: "module", dependencies: { "@openlup/core": "0.40.0", zod: "4.6.6" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
   candidate("package.json", pkg);
-  const file = "file: { configuration: 'sample', entries: { 'offer.freeShippingFromMinor': { value: 12000 } } }";
-  candidate(starterSettingsHost, "export function createSettingsBindings() { return { " + file + " }; }");
+  const fee = "offer.freeShippingFromMinor";
+  const descriptor = ', descriptor: { domain: "shipping", goal: "Set the free shipping threshold.", effect: { appliesTo: "New quotes.", impact: "money", frozenOn: [] } }';
+  const file = (metadata = "") => `file: { configuration: 'sample', entries: { '${fee}': {
+    value: 12000, location: { file: 'owned/store.config.ts', symbol: '${fee}' }${metadata}
+  } } }`;
+  candidate(starterSettingsHost, "export function createSettingsBindings() { return { " + file(descriptor) + " }; }");
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
   migrateStarterOwned(app, target, from, to);
   migrateStarterOwned(app, target, from, to);
@@ -53,7 +57,17 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   };
   const local = "export function createSettingsBindings() { return { stockSourceKey: 'local' }; }";
   const hostFile = join(app, starterSettingsHost);
+  const localCommand = 'console.log("local starter command");';
   if (customized) {
+    const localManifest = { ...JSON.parse(from.files["package.json"]!), scripts: { local: `node -e '${localCommand}'` } };
+    write("package.json", localManifest);
+    const before = starterUpgradeSnapshot(app, from.version);
+    expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: "package.json" }] });
+    expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
+    expect(existsSync(hostFile)).toBe(false);
+    write("owned/local.mjs", localCommand);
+    write("package.json", from.files["package.json"]!);
+
     write(starterSettingsHost, local);
     expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: starterSettingsHost }] });
     expect(starterUpgradeSnapshot(app, from.version)).toEqual(from);
@@ -65,22 +79,36 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   expect(apply().applied).toEqual([]);
   expect(readFileSync(hostFile, "utf8")).toBe(customized ? local : to.files[starterSettingsHost]);
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
+  expect(JSON.parse(readFileSync(join(app, "package.json"), "utf8")).dependencies.zod).toBe("4.6.6");
+  if (customized) expect(readFileSync(join(app, "owned/local.mjs"), "utf8")).toBe(localCommand);
 
-  const check = (status: number) => {
+  const settings = (command: string[], status = 0, warning = "") => {
     const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
-      "settings", "check", "--app", "./" + starterSettingsHost, "--json"], { cwd: app, encoding: "utf8" });
+      "settings", ...command, "--app", "./" + starterSettingsHost, "--json"], { cwd: app, encoding: "utf8" });
     expect(result.status, result.stderr || result.stdout).toBe(status);
+    expect(result.stderr).toBe(warning);
     return JSON.parse(result.stdout);
   };
+  const search = ["list", "--goal", "free shipping"];
   if (customized) {
-    expect(check(2)).toMatchObject({ state: "unknown", appValidation: { hint: expect.stringContaining("Add file: { configuration, entries }") } });
-    const reconciled = local.replace("stockSourceKey: 'local'", "stockSourceKey: 'local', " + file);
+    expect(settings(["check"], 2)).toMatchObject({ state: "unknown", appValidation: { hint: expect.stringContaining("Add file: { configuration, entries }") } });
+    const hostWithFile = (metadata = "") => local.replace("stockSourceKey: 'local'", "stockSourceKey: 'local', " + file(metadata));
+    const legacy = hostWithFile();
+    write(starterSettingsHost, legacy);
+    expect(apply().applied).toEqual([]);
+    expect(readFileSync(hostFile, "utf8")).toBe(legacy);
+    const warning = `Settings app: value reported without a descriptor for "${fee}". Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n`;
+    expect(settings(search, 0, warning).entries.some(({ key }: { key: string }) => key === fee)).toBe(false);
+    expect(settings(["check"], 0, warning).rows.some(({ key }: { key: string }) => key === fee)).toBe(false);
+    const reconciled = hostWithFile(descriptor);
     write(starterSettingsHost, reconciled);
     expect(apply().applied).toEqual([]);
     expect(readFileSync(hostFile, "utf8")).toBe(reconciled);
   }
-  expect(check(0)).toMatchObject({ state: "checked", configuration: "sample", rows: expect.arrayContaining([
-    expect.objectContaining({ key: "offer.freeShippingFromMinor", file: expect.objectContaining({ value: 12000 }) }),
+  expect(settings(search).entries).toEqual(expect.arrayContaining([expect.objectContaining({ key: fee })]));
+  expect(settings(["show", fee]).observation).toEqual({ state: "file", configuration: "sample", value: 12000 });
+  expect(settings(["check"])).toMatchObject({ state: "checked", configuration: "sample", rows: expect.arrayContaining([
+    expect.objectContaining({ key: fee, file: expect.objectContaining({ value: 12000 }) }),
   ]) });
 });
 
@@ -250,33 +278,38 @@ it.each([
   }
 });
 
-it("discovers and checks app declarations through the binary without a database", () => {
-  const { directory, write } = fixture();
-  write("settings-fixture.mjs", `
-    import { z } from ${JSON.stringify(import.meta.resolve("zod"))};
-    const fee = { domain: "gift", goal: "Set the gift wrapping fee.",
-      effect: { appliesTo: "New gift quotes use this fee.", impact: "money", frozenOn: [] } };
-    export function createSettingsBindings({ db }) {
-      if (db) throw Error("unexpected database");
-      return { file: { configuration: "sample", entries: {
-        "gift.wrapFeeMinor": { value: "150", location: { file: "owned/gift.ts", symbol: "wrapFeeMinor" },
-          descriptor: { ...fee, schema: z.coerce.number().int() } },
-        "gift.enabled": { value: true, location: { file: "owned/gift.ts", symbol: "enabled" },
-          descriptor: { ...fee, goal: "Offer gift wrapping." } },
-        inventory_renewal_protection: { value: { revision: "local", renewalProtectionDays: 14 } },
-      } } };
-    }`);
-  const invoke = (args: string[]) => {
+it("discovers, shows, explains and checks all six starter declarations through its settings script", () => {
+  const starter = resolve("examples/neutral-store");
+  const manifest = JSON.parse(readFileSync(join(starter, "package.json"), "utf8"));
+  const [, ...script] = manifest.scripts.settings.split(" ");
+  const invoke = (...args: string[]) => {
     const { status, stdout, stderr } = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
-      "settings", ...args, "--app", "./settings-fixture.mjs", "--json"], { cwd: directory, encoding: "utf8" });
+      ...script, ...args, "--json"], { cwd: starter, encoding: "utf8" });
     expect(status, stderr).toBe(0);
     expect(stderr).toBe("");
     return JSON.parse(stdout);
   };
-  expect(invoke(["list", "--goal", "gift wrapping fee"]).entries.map(({ key }: { key: string }) => key)).toEqual(["gift.wrapFeeMinor"]);
-  expect(invoke(["show", "gift.wrapFeeMinor"]).observation).toEqual({ state: "file", configuration: "sample", value: "150" });
-  expect(invoke(["check"]).rows).toEqual(expect.arrayContaining([
-    expect.objectContaining({ key: "gift.wrapFeeMinor", validation: { state: "valid" }, file: expect.objectContaining({ value: "150" }) }),
-    expect.objectContaining({ key: "inventory_renewal_protection", store: { state: "not-checked" } }),
-  ]));
+  const check = invoke("check");
+  expect(check).toMatchObject({ schemaVersion: 1, state: "checked", appValidation: { state: "passed" } });
+  for (const [key, goal, value] of [
+    ["offer.freeShippingFromMinor", "free shipping", 1000],
+    ["offer.subscriptionDiscountBps", "subscription discount", 500],
+    ["purchase.reservationMinutes", "checkout reservation", 30],
+    ["subscriptionCreation.editWindowHours", "edit cutoff", 72],
+    ["subscriptionOffers.deliveryCycles", "delivery interval", expect.objectContaining({ classic: expect.any(Object), sized: expect.any(Object) })],
+    ["subscriptions.lifecycleNoticeRetryBudget", "retry budget", 6],
+  ] as const) {
+    const show = invoke("show", key);
+    const { setting, observation } = show;
+    expect(setting).toMatchObject({ key, kind: "code", schema: expect.any(Object) });
+    expect(observation).toEqual({ state: "file", configuration: check.configuration, value });
+    expect(invoke("list", "--goal", goal).entries).toContainEqual({
+      key, goal: setting.goal, kind: setting.kind, runtime: setting.runtime, change: setting.change,
+    });
+    expect(invoke("explain", key)).toEqual({ ...show, observation: { state: "offline" } });
+    expect(check.rows).toContainEqual({
+      key, kind: "code", file: { state: "present", value: observation.value, location: setting.change },
+      validation: { state: "valid" }, effect: setting.effect.appliesTo, takesEffect: `${setting.change.file} ${setting.change.symbol}`,
+    });
+  }
 });
