@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { createCommercePaymentStatusHandler } from "./commercePaymentStatusHandler.js";
 import { displayReasonFor } from "../../adapters/paymentFailureDisplay.js";
@@ -26,6 +26,14 @@ const JOURNEY_ID = "checkout:77777777-7777-4777-8777-777777777777";
 const EMBEDDED_RAIL = PAYMENT_EXECUTION_PROVIDERS[2];
 
 describe("commerce payment status handler", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it.each(["paid", "failed"] as const)("keeps an old strict client reading %s after deployment", async (status) => {
     const snapshot = {
       ...processingSnapshot(),

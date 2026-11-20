@@ -51,6 +51,8 @@ describe("POST /api/bff/communications/integrations/events", () => {
   const originalEnv = new Map<EnvKey, string | undefined>();
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
     vi.resetModules();
     mockCreateClient.mockClear();
     mockCreateSupabasePort.mockClear();
@@ -71,6 +73,7 @@ describe("POST /api/bff/communications/integrations/events", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     for (const key of ENV_KEYS) {
       const value = originalEnv.get(key);
       if (value === undefined) delete process.env[key];

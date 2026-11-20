@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HttpRequest, HttpResponse } from "../../../_lib/types/http.js";
 import {
   COMMUNICATION_INTEGRATION_SIGNATURE_HEADER,
@@ -22,7 +22,14 @@ vi.mock("./acquisitionEvidenceDirect.js", () => ({
 }));
 
 describe("POST /api/bff/marketing/research/newsletter-consent", () => {
-  afterEach(() => { vi.unstubAllEnvs(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
 
   it("rejects an invalid signature before invoking the consent port", async () => {
     vi.stubEnv("COMMUNICATION_INTEGRATIONS_EVENTS_SECRET", "integration-secret");

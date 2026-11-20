@@ -1,5 +1,5 @@
 import { registerEmailProviderOutcomeCases, registerEmailRecipientCases } from "../../shared/__tests__/outboxEmailHandler.testFixtures.js";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COMMERCE_PAYMENT_FAILED_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
 import type { OutboxEventRow } from "./outboxDispatchContracts.js";
 import type {
@@ -17,6 +17,14 @@ import {
 
 const ORDER_UUID = "0f8c5b1e-7a2d-4c3b-9e6f-1a2b3c4d5e6f";
 const EVENT_ID = "11111111-2222-4333-8444-555555555555";
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function makeRow(payload: Record<string, unknown>): OutboxEventRow {
   return {

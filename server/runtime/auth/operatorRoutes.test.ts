@@ -69,11 +69,13 @@ beforeAll(async () => {
 });
 let configuration: Record<string, string>;
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2020-01-15T12:00:00.000Z"));
   vi.clearAllMocks(); f.adopterPolicy = false; f.privacyAuth = false;
   for (const [name, value] of Object.entries(configuration)) vi.stubEnv(name, value);
   f.store.findMembership.mockResolvedValue({ principalId: '11111111-1111-4111-8111-111111111111', email: 'admin@example.invalid', role: 'distributor', membershipState: 'active' });
 });
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 it.each(['magic-link', 'verify-otp', 'me'])('public policy refuses mounted %s before reading input or creating a binding', async operation => {
   const createBinding = vi.fn(createOperatorSessionBinding);
   const resolveBinding = vi.spyOn(adminAuthBinding, 'resolveAdminAuthBinding');
