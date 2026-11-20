@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runOutboxDispatchWorker, uniqueRegistry, readOutboxDispatchConfig, withPayloadSchema, OutboxHandlerExecutionTrace, type OutboxHandler, type OutboxStore } from "../src/index.js";
+import { runOutboxDispatchWorker, uniqueRegistry, readOutboxDispatchConfig, validateScheduledConfig, withPayloadSchema, OutboxHandlerExecutionTrace, type OutboxHandler, type OutboxStore } from "../src/index.js";
 import { syntheticOutboxRow } from "../src/testing.js";
 const config = { batchSize: 3, maxAttempts: 8, visibilitySeconds: 300, backoffBaseSeconds: 60, backoffCapSeconds: 3600, snoozeSeconds: 300, maxSnoozes: 48, softBudgetMs: 40000 };
 function store(batches = [[syntheticOutboxRow()]]) {
@@ -86,6 +86,78 @@ describe("portable worker protocol", () => {
   it("a throwing queue-stat logger still returns the worker result and finish observation",async()=>{
     const observe=vi.fn();const result=await runOutboxDispatchWorker({store:store([]),registry:uniqueRegistry([processed()]),config,diagnostics:{queueStats:async()=>{throw new Error("stats");}},logger:{warn(){throw new Error("log");},error(){throw new Error("log");}},observe});
     expect(result.ok).toBe(true);expect(observe).toHaveBeenCalledWith({event:"finished",count:0});
+  });
+
+  it("isolates snooze to the snoozed event type and affected aggregates when snoozeScope is event_type", async () => {
+    const batch1 = [
+      syntheticOutboxRow({ id: "e-1", aggregate_id: "agg-a", event_type: "example.slow", created_at: "1999-01-01T00:00:01Z" }),
+      syntheticOutboxRow({ id: "e-2", aggregate_id: "agg-a", event_type: "example.fast", created_at: "1999-01-01T00:00:02Z" }),
+      syntheticOutboxRow({ id: "e-3", aggregate_id: "agg-b", event_type: "example.fast", created_at: "1999-01-01T00:00:03Z" }),
+      syntheticOutboxRow({ id: "e-4", aggregate_id: "agg-c", event_type: "example.slow", created_at: "1999-01-01T00:00:04Z" }),
+      syntheticOutboxRow({ id: "e-5", aggregate_id: "agg-c", event_type: "example.fast", created_at: "1999-01-01T00:00:05Z" }),
+    ];
+    const batch2 = [
+      syntheticOutboxRow({ id: "e-6", aggregate_id: "agg-d", event_type: "example.fast", created_at: "1999-01-01T00:00:06Z" }),
+    ];
+    const db = store([batch1, batch2]);
+    db.markFailed.mockResolvedValueOnce({ status: "snoozed" } as never);
+    const slow = { ...processed("example.slow"), handle: vi.fn(async () => ({ kind: "snooze" as const, reason: "provider_rate_limit" })) };
+    const fast = processed("example.fast");
+
+    const r = await runOutboxDispatchWorker({
+      store: db,
+      registry: uniqueRegistry([slow, fast]),
+      knownEventTypes: ["example.slow", "example.fast", "example.external"],
+      config: { ...config, batchSize: 5, snoozeScope: "event_type" },
+    });
+
+    // e-1 snoozes; e-2 (same agg-a), e-4 (same event_type), and e-5 (transitively same agg-c as e-4) are released;
+    // e-3 (independent agg-b) and batch2's e-6 (independent agg-d) are processed cleanly!
+    expect(r).toMatchObject({ ok: true, snoozed: 1, released: 3, processed: 2, batches: 2 });
+    expect(r.reason).toBeUndefined();
+    expect(slow.handle).toHaveBeenCalledTimes(1);
+    expect(fast.handle).toHaveBeenCalledTimes(2);
+    expect(db.releaseUnprocessed).toHaveBeenCalledWith(
+      [
+        { eventId: "e-2", claimToken: "synthetic-token" },
+        { eventId: "e-4", claimToken: "synthetic-token" },
+        { eventId: "e-5", claimToken: "synthetic-token" },
+      ],
+      300,
+    );
+    // Second claimBatch omits example.slow from BOTH eventTypes and knownEventTypes so aggregate ordering holds
+    expect(db.claimBatch).toHaveBeenNthCalledWith(2, {
+      eventTypes: ["example.fast"],
+      knownEventTypes: ["example.fast", "example.external"],
+      batchSize: 5,
+      visibilitySeconds: 300,
+      maxAttempts: 8,
+    });
+  });
+
+  it("circuit-breaks with provider_outage under snoozeScope event_type once every registered type snoozes", async () => {
+    const db = store([[
+      syntheticOutboxRow({ id: "e-1", aggregate_id: "agg-a", event_type: "example.one", created_at: "1999-01-01T00:00:01Z" }),
+      syntheticOutboxRow({ id: "e-2", aggregate_id: "agg-b", event_type: "example.two", created_at: "1999-01-01T00:00:02Z" }),
+      syntheticOutboxRow({ id: "e-3", aggregate_id: "agg-c", event_type: "example.two", created_at: "1999-01-01T00:00:03Z" }),
+    ]]);
+    db.markFailed.mockResolvedValue({ status: "snoozed" } as never);
+    const one = { ...processed("example.one"), handle: vi.fn(async () => ({ kind: "snooze" as const, reason: "down_1" })) };
+    const two = { ...processed("example.two"), handle: vi.fn(async () => ({ kind: "snooze" as const, reason: "down_2" })) };
+
+    const r = await runOutboxDispatchWorker({
+      store: db,
+      registry: uniqueRegistry([one, two]),
+      config: { ...config, snoozeScope: "event_type" },
+    });
+    expect(r).toMatchObject({ ok: true, snoozed: 2, released: 1, processed: 0, reason: "provider_outage" });
+    expect(db.releaseUnprocessed).toHaveBeenCalledWith([{ eventId: "e-3", claimToken: "synthetic-token" }], 300);
+  });
+
+  it("validates snoozeScope in validateScheduledConfig", () => {
+    expect(() => validateScheduledConfig({ ...config, snoozeScope: "all" }, 60, [100])).not.toThrow();
+    expect(() => validateScheduledConfig({ ...config, snoozeScope: "event_type" }, 60, [100])).not.toThrow();
+    expect(() => validateScheduledConfig({ ...config, snoozeScope: "invalid" as never }, 60, [100])).toThrow(/snoozeScope/);
   });
 
 });

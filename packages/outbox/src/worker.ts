@@ -24,6 +24,15 @@ interface ClaimedItem {
   claimToken: string;
 }
 
+interface UnstartedItem extends ClaimedItem {
+  eventType: string;
+  aggregateKey: string;
+}
+
+function aggregateKeyOf(row: Pick<OutboxEventRow, "aggregate_type" | "aggregate_id">): string {
+  return `${row.aggregate_type}\0${row.aggregate_id}`;
+}
+
 type PerTypeCounter =
   | "processed"
   | "retried"
@@ -153,13 +162,29 @@ export async function runOutboxDispatchWorker(deps: {
     return finish({ skipped: true, reason: "outbox_registry_empty" });
   }
 
+  const snoozeScope = config.snoozeScope ?? "all";
+  const snoozedEventTypes = new Set<string>();
   const seen = new Set<string>();
   let circuitBroken = false;
 
   drain: while (clock.now() - startedAt < config.softBudgetMs) {
+    const activeAllowlist = snoozedEventTypes.size === 0
+      ? allowlist
+      : allowlist.filter((eventType) => !snoozedEventTypes.has(eventType));
+    if (activeAllowlist.length === 0) {
+      circuitBroken = true;
+      break;
+    }
+    // In event_type scope, omit snoozed types from knownEventTypes too so
+    // outbox_claim_batch's per-aggregate ordering barrier never lets a newer
+    // event on the same aggregate overtake an older snoozed event.
+    const activeKnownEventTypes = snoozedEventTypes.size === 0 || deps.knownEventTypes === undefined
+      ? deps.knownEventTypes
+      : deps.knownEventTypes.filter((eventType) => !snoozedEventTypes.has(eventType));
+
     const claimed = await store.claimBatch({
-      eventTypes: allowlist,
-      knownEventTypes: deps.knownEventTypes,
+      eventTypes: activeAllowlist,
+      knownEventTypes: activeKnownEventTypes,
       batchSize: config.batchSize,
       visibilitySeconds: config.visibilitySeconds,
       maxAttempts: config.maxAttempts,
@@ -171,9 +196,12 @@ export async function runOutboxDispatchWorker(deps: {
 
     // RETURNING order is unspecified — re-establish (created_at, id) order.
     const batch = [...claimed].sort(compareByCreatedAtThenId);
-    const unstarted: ClaimedItem[] = [];
+    let unstarted: UnstartedItem[] = [];
+    const skippedIndices = new Set<number>();
+    const snoozedAggregatesInBatch = new Set<string>();
 
     for (let index = 0; index < batch.length; index += 1) {
+      if (skippedIndices.has(index)) continue;
       const row = batch[index];
       const claimToken = row.metadata?.claimToken;
       if (typeof claimToken !== "string" || claimToken.length === 0) {
@@ -203,7 +231,7 @@ export async function runOutboxDispatchWorker(deps: {
 
       const elapsed = clock.now() - startedAt;
       if (elapsed + handler.timeoutMs + MARK_MARGIN_MS > config.softBudgetMs) {
-        unstarted.push({ eventId: row.id, claimToken });
+        unstarted.push({ eventId: row.id, claimToken, eventType: row.event_type, aggregateKey: aggregateKeyOf(row) });
         continue;
       }
 
@@ -240,9 +268,60 @@ export async function runOutboxDispatchWorker(deps: {
           continue;
         }
         await applyMarkFailed(row, claimToken, "snooze", outcome.reason);
+        if (snoozeScope === "event_type") {
+          snoozedEventTypes.add(row.event_type);
+          snoozedAggregatesInBatch.add(aggregateKeyOf(row));
+          const hasRemainingActiveTypes = allowlist.some((eventType) => !snoozedEventTypes.has(eventType));
+          if (!hasRemainingActiveTypes) {
+            const remainder: ClaimedItem[] = unstarted.map(({ eventId, claimToken: token }) => ({ eventId, claimToken: token }));
+            for (let rest = index + 1; rest < batch.length; rest += 1) {
+              if (skippedIndices.has(rest)) continue;
+              const restToken = batch[rest].metadata?.claimToken;
+              if (typeof restToken === "string" && restToken.length > 0) {
+                remainder.push({ eventId: batch[rest].id, claimToken: restToken });
+              }
+            }
+            if (remainder.length > 0) {
+              counters.released += await store.releaseUnprocessed(remainder, config.snoozeSeconds);
+            }
+            circuitBroken = true;
+            break drain;
+          }
+
+          // Release only remaining rows belonging to snoozed types or transitively
+          // blocked aggregates while continuing to drain healthy event types.
+          const toRelease: ClaimedItem[] = [];
+          const keptUnstarted: UnstartedItem[] = [];
+          for (const item of unstarted) {
+            if (snoozedEventTypes.has(item.eventType) || snoozedAggregatesInBatch.has(item.aggregateKey)) {
+              snoozedAggregatesInBatch.add(item.aggregateKey);
+              toRelease.push({ eventId: item.eventId, claimToken: item.claimToken });
+            } else {
+              keptUnstarted.push(item);
+            }
+          }
+          unstarted = keptUnstarted;
+          for (let rest = index + 1; rest < batch.length; rest += 1) {
+            if (skippedIndices.has(rest)) continue;
+            const candidate = batch[rest];
+            const candidateAgg = aggregateKeyOf(candidate);
+            if (snoozedEventTypes.has(candidate.event_type) || snoozedAggregatesInBatch.has(candidateAgg)) {
+              snoozedAggregatesInBatch.add(candidateAgg);
+              skippedIndices.add(rest);
+              const restToken = candidate.metadata?.claimToken;
+              if (typeof restToken === "string" && restToken.length > 0) {
+                toRelease.push({ eventId: candidate.id, claimToken: restToken });
+              }
+            }
+          }
+          if (toRelease.length > 0) {
+            counters.released += await store.releaseUnprocessed(toRelease, config.snoozeSeconds);
+          }
+          continue;
+        }
         // Circuit-break: the provider is down — refund everything still
         // claimed (tail-gated rows included) and stop hammering it.
-        const remainder = [...unstarted];
+        const remainder: ClaimedItem[] = unstarted.map(({ eventId, claimToken: token }) => ({ eventId, claimToken: token }));
         for (let rest = index + 1; rest < batch.length; rest += 1) {
           const restToken = batch[rest].metadata?.claimToken;
           if (typeof restToken === "string" && restToken.length > 0) {
@@ -260,7 +339,10 @@ export async function runOutboxDispatchWorker(deps: {
     }
 
     if (unstarted.length > 0) {
-      counters.released += await store.releaseUnprocessed(unstarted, 0);
+      counters.released += await store.releaseUnprocessed(
+        unstarted.map(({ eventId, claimToken: token }) => ({ eventId, claimToken: token })),
+        0,
+      );
       break;
     }
     if (claimed.length < config.batchSize) break;
