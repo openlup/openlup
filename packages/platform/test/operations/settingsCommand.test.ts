@@ -261,7 +261,7 @@ it("uses the same dispatcher bytes for offline results and refusals", async () =
 });
 
 it.each([
-  ["empty result", ["list", "--goal", "no-such-setting"], "No settings matched the goal."],
+  ["empty result", ["list", "--goal", "qzxunique"], "No settings matched the goal."],
   ["list result", ["list", "--goal", "inventory buffer"], "inventory_renewal_protection (installed, preview)"],
   ["compact list reason", ["list", "--goal", "shipping.addressRegions"],
     "\n  The native address contract requires a postal code and has no region field.\n  Change: docs/guide/"],

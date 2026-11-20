@@ -79,15 +79,28 @@ export function catalogueWithAppSettings(additions: readonly z.infer<typeof desc
   return { ...catalogue, ...documents, entries, appShowResult: documents.showResult.extend({ observation: fileObservationSchema }) };
 }
 
+function searchTokens(text: string) {
+  return text.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2")
+    .toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
 export function listCatalogueSettings(input: unknown, catalogue?: ReturnType<typeof loadSettingsCatalogue>) {
   const parsed = settingsListRequest.safeParse(input);
   if (!parsed.success) return { refusal: loadSettingsCatalogue().byCode.get("commerce_setting_read_input_invalid")! };
-  const words = parsed.data.goal?.toLowerCase().match(/[a-z0-9]+/gu) ?? [];
   const { entries, listResult, searchTerms } = catalogue ?? loadSettingsCatalogue();
-  const matches = entries.filter(entry => {
-    const text = `${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`.toLowerCase();
-    return words.every(word => text.includes(word));
-  });
+  const { goal } = parsed.data;
+  let matches = entries;
+  if (goal !== undefined) {
+    const words = searchTokens(goal);
+    const scored = entries.map(entry => {
+      const tokens = searchTokens(`${entry.goal} ${entry.key} ${entry.domain} ${searchTerms[entry.key] ?? searchTerms[entry.domain] ?? ""}`);
+      const count = words.filter(word => tokens.some(token => token.startsWith(word))).length;
+      return { entry, count };
+    }).filter(({ count }) => count > 0);
+    const complete = scored.filter(({ count }) => count === words.length);
+    matches = (complete.length > 0 ? complete : scored.sort((a, b) => b.count - a.count).slice(0, 10))
+      .map(({ entry }) => entry);
+  }
   return listResult.parse({
     schemaVersion: settingsVersion,
     entries: matches.map(({ key, goal, kind, runtime, change }) => ({ key, goal, kind, runtime, change })),

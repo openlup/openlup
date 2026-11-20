@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { previewRenewalStockProtection, renewalStockProtectionPreviewResult, describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
 import { explainSetting, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
-import { loadSettingsCatalogue } from "../../src/operations/server/settingsCatalog.js";
+import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue } from "../../src/operations/server/settingsCatalog.js";
 import { settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
 
 describe("renewal stock policy descriptor", () => {
@@ -167,6 +167,62 @@ it("finds inventory buffer in the packaged settings list", () => {
   const { listResult } = loadSettingsCatalogue();
   const entries = listResult.parse(listSettings({ goal: "inventory buffer" })).entries;
   expect(entries[0]?.key).toBe("inventory_renewal_protection");
+});
+
+describe("settings goal search", () => {
+  const catalogue = loadSettingsCatalogue();
+
+  it.each(["配送", "!!!", "vat"])("returns no entries without a matching token for %s", goal => {
+    expect(catalogue.listResult.parse(listSettings({ goal })).entries).toEqual([]);
+  });
+
+  it.each([
+    ["renewal stock", "inventory_renewal_protection"],
+    ["inventory buffer", "inventory_renewal_protection"],
+    ["renewal retry policy", "subscriptions.retrySchedule"],
+  ])("includes %s matches such as %s", (goal, key) => {
+    const { entries } = catalogue.listResult.parse(listSettings({ goal }));
+    expect(entries.map(entry => entry.key)).toContain(key);
+  });
+
+  it("puts the matching camelCase key first", () => {
+    const { entries } = catalogue.listResult.parse(listSettings({ goal: "shipping.addressRegions" }));
+    expect(entries[0]?.key).toBe("shipping.addressRegions");
+  });
+
+  const appKey = "offer.freeShippingFromMinor";
+  const appCatalogue = catalogueWithAppSettings([settingDescriptorSchema.parse({
+    schemaVersion: 1,
+    key: appKey,
+    domain: "offer",
+    kind: "code",
+    goal: "Set the free shipping threshold in currency minor units.",
+    runtime: { level: "read-only", reason: "Edit the application configuration and deploy." },
+    change: { file: "offer.ts", symbol: appKey },
+    rules: [],
+    examples: [],
+    fallback: null,
+    defaultBasis: { kind: "neutral" },
+    whyThisDefault: "The application config supplies the value.",
+    effect: { appliesTo: "Future orders", frozenOn: [], impact: "money" },
+  })]);
+
+  it.each([
+    ["free shiping threshold", 0],
+    ["shipping", undefined],
+  ] as const)("finds the app declaration for %s", (goal, first) => {
+    const { entries } = appCatalogue.listResult.parse(listCatalogueSettings({ goal }, appCatalogue));
+    const keys = entries.map(entry => entry.key);
+    expect(keys).toContain(appKey);
+    if (first !== undefined) expect(keys[first]).toBe(appKey);
+  });
+
+  it("limits partial matches to ten and preserves catalogue order for ties", () => {
+    const full = catalogue.listResult.parse(listSettings({ goal: "a" })).entries;
+    expect(full.length).toBeGreaterThan(10);
+    const partial = catalogue.listResult.parse(listSettings({ goal: "a qzxunique" })).entries;
+    expect(partial).toEqual(full.slice(0, 10));
+  });
 });
 
 it("accepts every catalogue list summary and enforces the compact branch", () => {
