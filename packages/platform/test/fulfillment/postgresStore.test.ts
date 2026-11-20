@@ -26,3 +26,93 @@ it.each([undefined, 'webhook', 'polling'] as const)('threads %s intake outside r
  expect(() => store.acknowledge({ dispatchRef: 'dispatch-a', acceptance: { ...legacy, receiptKey: 'Receipt-a' } })).toThrow('fulfillment_dispatch_receipt_key_conflict');
  expect(query).toHaveBeenCalledTimes(2);
 });
+
+it('batches stock sync writes with PostgreSQL collation-aligned MATERIALIZED CTE ordering, scatters by ord, and matches single-item fingerprints', async () => {
+ const calls: { sql: string; values: unknown[] }[] = [];
+ const query = vi.fn(async (sql: string, values: unknown[] = []) => {
+  calls.push({ sql, values });
+  if (sql.includes('WITH ordered AS MATERIALIZED') && sql.includes('fulfillment_record_stock_current')) {
+   const skus = values[3] as string[];
+   // Simulate PostgreSQL returning rows in sorted sku order (ord 2 before ord 1)
+   const sorted = skus.map((sku, idx) => ({ sku, ord: idx + 1 })).sort((a, b) => a.sku.localeCompare(b.sku) || a.ord - b.ord);
+   return { rows: sorted.map(({ sku, ord }) => ({ ord: String(ord), response: { replayed: sku === 'sku-a', readBack: true } })) };
+  }
+  if (sql.includes('WITH ordered AS MATERIALIZED') && sql.includes('fulfillment_record_stock_snapshot')) {
+   const keys = values[1] as string[];
+   const sorted = keys.map((key, idx) => ({ key, ord: idx + 1 })).sort((a, b) => a.key.localeCompare(b.key) || a.ord - b.ord);
+   return { rows: sorted.map(({ key, ord }) => ({ ord, response: { replayed: key === 'k-a', readBack: true } })) };
+  }
+  if (sql.includes('WITH ordered AS MATERIALIZED') && sql.includes('fulfillment_record_stock_evidence')) {
+   const skus = values[3] as string[];
+   const sorted = skus.map((sku, idx) => ({ sku, ord: idx + 1 })).sort((a, b) => a.sku.localeCompare(b.sku) || a.ord - b.ord);
+   return { rows: sorted.map(({ sku, ord }) => ({ ord, response: { replayed: sku === 'sku-a' } })) };
+  }
+  if (sql.includes('WITH ordered AS MATERIALIZED') && sql.includes('fulfillment_resolve_stock_evidence')) {
+   const payload = JSON.parse(String(values[1])) as { skuRef: string }[];
+   const sorted = payload.map((entry, idx) => ({ sku: entry.skuRef, ord: idx + 1 })).sort((a, b) => a.sku.localeCompare(b.sku) || a.ord - b.ord);
+   return { rows: sorted.map(({ sku, ord }) => ({ ord: String(ord), response: { resolved: sku === 'sku-a' ? 2 : 0 } })) };
+  }
+  return { rows: [{ response: { replayed: false } }] };
+ });
+ const port = createPostgresFulfillmentStockSyncPort({ query }, { sourceKey: 'native-a', readLocalInventoryStock: async () => [] });
+
+ expect(await port.recordProviderStockCurrentBatch!([])).toEqual([]);
+ expect(await port.recordStockSnapshotBatch!([])).toEqual([]);
+ expect(await port.recordLowStockEvidenceBatch!([])).toEqual([]);
+ expect(await port.resolveLowStockEvidenceBatch!([])).toEqual([]);
+ expect(query).not.toHaveBeenCalled();
+
+ const at = '1999-01-01T00:00:00Z';
+ const snapB = { providerRef: 'wh', syncRunId: 'run-1', collectedAt: at, sourceRevision: null, revisionSource: 'collection' as const, skuRef: 'sku-b', quantityKind: 'snapshot' as const, totalQuantity: 4, forSaleQuantity: 3, reservedOrUnavailableQuantity: 1 };
+ const snapA = { ...snapB, skuRef: 'sku-a', totalQuantity: 9, forSaleQuantity: 5, reservedOrUnavailableQuantity: 4 };
+ const localB = { skuRef: 'sku-b', onHand: 4, reserved: 0, unavailable: 0, safetyStock: 1 };
+ const localA = { skuRef: 'sku-a', onHand: 10, reserved: 2, unavailable: 1, safetyStock: 2 };
+
+ const currentOut = await port.recordProviderStockCurrentBatch!([
+  { requestKey: 'k-b', snapshot: snapB, inventoryClass: 'sellable', lastSyncedAt: at, staleAfter: at },
+  { requestKey: 'k-a', snapshot: snapA, inventoryClass: null, lastSyncedAt: at, staleAfter: at },
+ ]);
+ expect(calls[0].sql).toContain('ORDER BY t.sku, t.ord');
+ expect(calls[0].values[3]).toEqual(['sku-b', 'sku-a']);
+ expect(currentOut).toEqual([{ replayed: false, readBack: true }, { replayed: true, readBack: true }]);
+
+ const snapshotOut = await port.recordStockSnapshotBatch!([
+  { requestKey: 'k-b', snapshot: snapB, local: localB, mismatchKind: 'none', inventoryClass: 'sellable' },
+  { requestKey: 'k-a', snapshot: snapA, local: localA, mismatchKind: 'none', inventoryClass: null },
+ ]);
+ expect(calls[1].sql).toContain('ORDER BY t.request_key, t.ord');
+ expect(snapshotOut).toEqual([{ replayed: false, readBack: true }, { replayed: true, readBack: true }]);
+
+ const evA = { requestKey: 'ev-a', skuRef: 'sku-a', thresholdKind: 'safety_stock' as const, severity: 'warning' as const, providerForSaleQuantity: 5, localAvailableQuantity: 2, syncRunId: 'run-1' };
+ const evB = { requestKey: 'ev-b', skuRef: 'sku-b', thresholdKind: 'reservation_coverage' as const, severity: 'critical' as const, providerForSaleQuantity: 3, localAvailableQuantity: 1, syncRunId: 'run-1' };
+ const evidenceOut = await port.recordLowStockEvidenceBatch!([evB, evA]);
+ expect(calls[2].sql).toContain('ORDER BY t.sku, t.ord');
+ expect(evidenceOut).toEqual([{ replayed: false }, { replayed: true }]);
+ await port.recordLowStockEvidence(evA);
+ expect((calls[2].values[2] as string[])[1]).toBe(calls[3].values[2]);
+
+ const resolveOut = await port.resolveLowStockEvidenceBatch!([
+  { skuRef: 'sku-b', activeThresholdKinds: [], syncRunId: 'run-9' },
+  { skuRef: 'sku-a', activeThresholdKinds: ['safety_stock'], syncRunId: 'run-10' },
+ ]);
+ expect(calls[4].sql).toContain("ORDER BY t.elem->>'skuRef', t.ord");
+ expect(JSON.parse(String(calls[4].values[1]))).toEqual([
+  { skuRef: 'sku-b', activeThresholdKinds: [], syncRunId: 'run-9' },
+  { skuRef: 'sku-a', activeThresholdKinds: ['safety_stock'], syncRunId: 'run-10' },
+ ]);
+ expect(resolveOut).toEqual([{ resolved: 0 }, { resolved: 2 }]);
+
+ // Missing rows, duplicate ord, or out-of-range ord fail fast
+ for (const rows of [
+  [],
+  [{ ord: 1, response: { replayed: false, readBack: true } }, { ord: 1, response: { replayed: false, readBack: true } }],
+  [{ ord: 3, response: { replayed: false, readBack: true } }],
+ ]) {
+  const badPort = createPostgresFulfillmentStockSyncPort({ query: async () => ({ rows }) }, { sourceKey: 'native-a', readLocalInventoryStock: async () => [] });
+  const batch = rows.length === 2
+   ? [{ requestKey: 'k-b', snapshot: snapB, inventoryClass: 'sellable' as const, lastSyncedAt: at, staleAfter: at },
+      { requestKey: 'k-a', snapshot: snapA, inventoryClass: null, lastSyncedAt: at, staleAfter: at }]
+   : [{ requestKey: 'k-a', snapshot: snapA, inventoryClass: 'sellable' as const, lastSyncedAt: at, staleAfter: at }];
+  await expect(badPort.recordProviderStockCurrentBatch!(batch)).rejects.toThrow('fulfillment_native_response_missing');
+ }
+});
