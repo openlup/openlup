@@ -108,11 +108,12 @@ export { publicationWireVectors } from "./publicationWireVectors.js";
 ## dist/catalog/testing/publicationWireVectors.d.ts
 
 ```ts
-import type { CatalogPublishedSku } from "../publicationContracts.js";
+import { type CatalogPublishedSku } from "../index.js";
 type Vector = {
     name: string;
     apply(sku: CatalogPublishedSku): Record<string, unknown>;
     valid: boolean;
+    targetBytes?: number;
     sqlNormalizesZero?: boolean;
 };
 export declare const publicationWireVectors: readonly Vector[];

@@ -1468,8 +1468,9 @@ validator. Export the hooks documented by `CatalogPublicationRulesModule`.
 
 Use the named presentation fields for titles, routes, short names, advertised
 weights, media references, and accents. List advertised weights in ascending
-order without duplicates. Keep derived SKU facts to scalar values. Give each
-display field its own value. Copying a whole authored document into a display
+order without duplicates. Derived SKU facts can contain bounded JSON objects,
+arrays and scalar values. Published SKU details have a 2,097,152-byte UTF-8
+limit and must fit the publication page depth limit. Give each display field its own value. Copying a whole authored document into a display
 field fails preparation, including a copy as a localized map or array.
 An exact copy has an equal canonical JSON value. Transformed or re-encoded content, such as JSON serialized inside a string, other encodings or normalized text, is outside this rule.
 Content is refused while an earlier revision of the document cannot be read.

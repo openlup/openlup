@@ -93,6 +93,8 @@ export declare function isChannelIngestMigrationPath(file: string): boolean;
 export declare function sha256(value: string): string;
 /** Validate every canonical generation before selecting one for the unchanged executor. */
 export declare function evaluatePlatformMigrationManifest(input: PlatformManifestInput): string[];
+/** Validate the canonical metadata without loading SQL files. */
+export declare function evaluatePlatformMigrationManifestMetadata(manifest: unknown): string[];
 /** Normalize one validated generation for the unchanged package-owned executor. */
 export declare function selectPlatformMigrationManifest(manifest: PlatformMigrationManifest, generation: PlatformMigrationGeneration, binding?: PlatformQualifiedBindingShape | PlatformAdminBindingShape): PlatformMigrationPlan;
 /** The selected source is union-validated before normalization. */
@@ -117,7 +119,7 @@ export { packagedPlatformMigrationPosition } from "./packagedCatalog.js";
 ## dist/migrations/packagedCatalog.d.ts
 
 ```ts
-import type { PlatformMigrationManifest, PlatformMigrationManifestEntry } from "./catalog.js";
+import { type PlatformMigrationManifest, type PlatformMigrationManifestEntry } from "./catalog.js";
 type PackagedManifest = {
     schemaVersion: 1;
     catalog: PlatformMigrationManifest;

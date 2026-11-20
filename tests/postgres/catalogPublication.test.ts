@@ -8,7 +8,7 @@ import { publicationWireVectors } from "@openlup/platform/catalog/testing";
 import { nativeCatalogPublication, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { actorId, hash, json, installPublicationActors, transaction, fixture, graph, insertGraph, decisionRow,
   decisionReceipt, documentRow, skuRow, sealedState, stageProductRows, invalidReceiptResults, type Graph } from "./catalogPublicationFixture.js";
-import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { assertConnectedCatalogPublications, captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { installOmsHuman } from "./omsHumanAdmission.fixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -1005,7 +1005,8 @@ it.each(["object", "serialized", "nested"] as const)("refuses a %s document carr
       : { document: placement === "object" ? original : issue.canonicalText };
     await insertGraph(db, issue);
   }).catch(error => error);
-  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_facts_invalid" });
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_facts_invalid",
+    message: expect.stringMatching(/Remove reserved document keys.*document only in its designated draft field/u) });
 });
 
 it("refuses a document carrier in the existing published SKU attributes field", async () => {
@@ -1014,7 +1015,8 @@ it("refuses a document carrier in the existing published SKU attributes field", 
     issue.facts.attributes = { document_payload: JSON.parse(issue.canonicalText) };
     await insertGraph(db, issue);
   }).catch(error => error);
-  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_facts_invalid" });
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_facts_invalid",
+    message: expect.stringMatching(/Remove reserved document keys.*document only in its designated draft field/u) });
 });
 
 it("uses the same depth 48 boundary for SQL admission and the TypeScript detail page", async () => {
@@ -1150,6 +1152,7 @@ it("matches the shared publication boundary vectors in native SQL", async () => 
   for (const vector of publicationWireVectors) {
     const value = vector.apply(issue.facts);
     const jsonText = JSON.stringify(value);
+    if (vector.targetBytes !== undefined) expect(Buffer.byteLength(jsonText), vector.name).toBe(vector.targetBytes);
     const probe = (body: string) => pool.query<{ canonical: string }>(
       "SELECT public.catalog_publication_sku_projection($1,$2,$3,$4::jsonb,false) AS canonical",
       [issue.skuId, issue.productId, issue.facts.code, body],
@@ -1161,13 +1164,18 @@ it("matches the shared publication boundary vectors in native SQL", async () => 
     } else if (vector.sqlNormalizesZero) {
       const { rows } = await probe(jsonText.replace('"zero":0', '"zero":-0'));
       expect(rows[0]?.canonical).toBe(publicationJson(JSON.parse(jsonText), CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH));
+    } else if (vector.targetBytes !== undefined) {
+      await expect(probe(jsonText), vector.name).rejects.toMatchObject({ constraint: "catalog_publication_sku_revision_invalid" });
     } else {
       await expect(probe(jsonText), vector.name).rejects.toThrow();
     }
   }
 });
 
-it("shares the public receipt reason between exact V2 reads and rollback diagnostics", async () => {
+it.each([
+  ["invalid binding", "{}", "catalog_publication_receipt_invalid", "publication_incomplete"],
+  ["invalid bytes", invalidReceiptResults["escaped NUL"], "catalog_publication_receipt_input_invalid", "publication_receipt_input_invalid"],
+])("shares the %s receipt remedy between exact V2 reads and rollback", async (_label, result, constraint, reason) => {
   const issue = await transaction(pool, async db => {
     const result = await graph(db, fixture());
     await insertGraph(db, result);
@@ -1175,36 +1183,48 @@ it("shares the public receipt reason between exact V2 reads and rollback diagnos
   });
   const { rows: [original] } = await pool.query<{ result: string }>(
     "SELECT result FROM public.catalog_operator_receipts WHERE scope_id=$1 AND kind='publish'", [issue.productId]);
-  await transaction(pool, async db => {
+  const replace = (value: string) => transaction(pool, async db => {
     await db.query("SET LOCAL session_replication_role=replica");
-    await db.query("UPDATE public.catalog_operator_receipts SET result='{}' WHERE scope_id=$1 AND kind='publish'", [issue.productId]);
+    await db.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE scope_id=$1 AND kind='publish'", [issue.productId, value]);
   });
-  const reader = publicationReader();
-  const rollback = catalogPublicationAdmissionRefusal({ code: "23514", constraint: "catalog_publication_receipt_invalid" });
-  expect(rollback?.reason).toBe("publication_incomplete");
-  expect(await reader.readbackV2(issue.head)).toEqual({ ...rollback, outcome: "dependency_unavailable" });
-  expect(await reader.reads.readback(issue.head)).toMatchObject({ reason: "publication_authority_unavailable" });
-  await transaction(pool, async db => {
-    await db.query("SET LOCAL session_replication_role=replica");
-    await db.query("UPDATE public.catalog_operator_receipts SET result=$2 WHERE scope_id=$1 AND kind='publish'", [issue.productId, original!.result]);
-  });
+  await replace(result);
+  try {
+    const reader = publicationReader();
+    const rollback = catalogPublicationAdmissionRefusal({ code: "23514", constraint });
+    expect(rollback?.reason).toBe(reason);
+    const exact = await reader.readbackV2(issue.head);
+    expect(exact).toEqual({ ...rollback, outcome: "dependency_unavailable" });
+    if (constraint === "catalog_publication_receipt_input_invalid")
+      expect(exact).toMatchObject({ message: expect.stringContaining("Restore the original result from a verified copy") });
+    expect(await reader.reads.readback(issue.head)).toMatchObject({ reason: "publication_authority_unavailable" });
+  } finally { await replace(original!.result); }
 });
 
-it("gives a live SKU code change its own remedy while retaining exact historical readback", async () => {
+it.each([
+  ["unchanged cache", ""],
+  ["matching cache", ", publication_facts=jsonb_set(publication_facts,'{code}',to_jsonb($2::text))"],
+  ["cleared cache", ", publication_facts=NULL"],
+])("compares a live SKU rename with its sealed code with %s", async (_label, change) => {
   const issue = await transaction(pool, async db => {
     const result = await graph(db, fixture());
     await insertGraph(db, result);
     return result;
   });
   await transaction(pool, async db => {
-    await db.query("SET LOCAL session_replication_role=replica");
-    await db.query("UPDATE public.catalog_skus SET sku=$2 WHERE id=$1", [issue.skuId, `renamed-${issue.skuId}`]);
+    // Only the column-only variant requires bypassing the live row trigger.
+    if (!change) await db.query("SET LOCAL session_replication_role=replica");
+    await db.query(`UPDATE public.catalog_skus SET sku=$2${change} WHERE id=$1`, [issue.skuId, `renamed-${issue.skuId}`]);
   });
-  const reader = publicationReader();
-  expect(await reader.reads.current(issue.productId)).toEqual({ outcome: "conflict", reason: "head_conflict",
-    message: "A SKU code differs from its published identity. Restore the saved code or prepare a new SKU." });
-  expect(await reader.readbackV2(issue.head)).toMatchObject({ outcome: "page", items: [{ facts: { code: issue.facts.code } }] });
-  await transaction(pool, async db => {
-    await db.query("UPDATE public.catalog_skus SET sku=$2 WHERE id=$1", [issue.skuId, issue.facts.code]);
-  });
+  try {
+    const reader = publicationReader();
+    const message = "A SKU code differs from its published identity. Restore the saved code or prepare a new SKU.";
+    expect(await reader.reads.current(issue.productId)).toEqual({ outcome: "conflict", reason: "head_conflict", message });
+    const failure = await transaction(pool, assertConnectedCatalogPublications).catch(error => error);
+    expect(catalogPublicationAdmissionRefusal(failure)).toMatchObject({ reason: "publication_sku_identity_changed", message });
+    expect(await reader.readbackV2(issue.head)).toMatchObject({ outcome: "page", items: [{ facts: { code: issue.facts.code } }] });
+  } finally {
+    await transaction(pool, async db => {
+      await db.query("UPDATE public.catalog_skus SET sku=$2, publication_facts=$3 WHERE id=$1", [issue.skuId, issue.facts.code, json(issue.facts)]);
+    });
+  }
 });

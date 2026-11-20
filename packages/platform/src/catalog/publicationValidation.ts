@@ -11,7 +11,7 @@ import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
 import { CatalogPublicationError, publicationDiagnostic, publicationIssue, publicationRefuse } from "./publicationError.js";
-import { assertNativeProductDocument, assertNativeProductReferences, assertPublicationRegistration, assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, decodePublishedSku, publicationContent,
+import { assertNativeProductDocument, assertNativeProductReferences, assertNativeSkuNetWeight, assertPublicationRegistration, assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, decodePublishedSku, publicationContent,
   publicationDigest, publicationJson, publicationReadinessVerdict } from "./publicationCodec.js";
 import { resolvePublicationRules, ruleProduct, ruleSku } from "./publicationRules.js";
 import type { CatalogPublicationRulesModule, CatalogRulesContext } from "./catalogPublicationRules.js";
@@ -1199,7 +1199,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         }
         const key = combination(sku);
         need(!identities.has(key), "duplicate_combination"); identities.add(key);
-        decodePublishedSku(sku, position.path, sku.code);
       }
       position.path = "product";
       position.subject = definition.key;
@@ -1220,7 +1219,9 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         // An omitted derived cache effect has this publication's draft/receipt as
         // its effect provenance. Keep the retained physical/media source available.
         if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) sku.source = claim;
-        assertPublishedSkuDocumentExclusion(sku, documentDigests);
+        const finalSku = decodePublishedSku(sku, "skus", sku.code);
+        assertNativeSkuNetWeight(finalSku);
+        assertPublishedSkuDocumentExclusion(finalSku, documentDigests);
       }
       const lifecycle = governed && productState ? { product: productState, skus: Object.fromEntries([...skuStates].sort()) } : undefined;
       const changed = original !== publicationJson(materialState(result, sorted)) || Boolean(lifecycle && !equal(lifecycle, evidence?.lifecycle ?? null));

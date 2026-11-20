@@ -1242,9 +1242,9 @@ it("W17_V5-1856_predicate_precedence_boundary", () => {
     { ...net, unit: "openlup:kg", unscaled: "1", scale: 1 }, definition)).not.toThrow();
 });
 
-it("runs the SQL/TypeScript boundary vectors through preparation and the stored SKU decoder", async () => {
+it("runs the shared shape vectors through the published and stored SKU decoders", async () => {
   const { skus: [sku] } = await compileCatalogPublication(input());
-  for (const vector of publicationWireVectors) {
+  for (const vector of publicationWireVectors.filter(vector => vector.targetBytes === undefined)) {
     const value = vector.apply(sku!);
     if (vector.valid) {
       const decoded = decodePublishedSku(value, "skus.0");
@@ -1255,6 +1255,61 @@ it("runs the SQL/TypeScript boundary vectors through preparation and the stored 
       expect(() => decodePublishedSku(value, "skus.0"), vector.name).toThrow();
     }
   }
+});
+
+it("checks the exact and one-byte-over UTF-8 limits on the final evaluator output after binding the receipt", async () => {
+  for (const vector of publicationWireVectors.filter(vector => vector.targetBytes !== undefined)) {
+    const data = await revision();
+    const retained = data.evidence.skus[0]!;
+    const grossMass = { ...retained.netContent, unscaled: "120" };
+    data.payload.skus.push({ ...input().payload.skus[0]!, grossMass });
+    data.record.commandKey = "k".repeat(240);
+    data.evidence.drafts[0]!.receipt = catalogPublicationClaim(data.record);
+    const issuingSku = { ...retained, grossMass, source: catalogPublicationClaim(data.record) };
+    retained.facts = (vector.apply(issuingSku) as typeof issuingSku).facts;
+    Object.assign(data, setupRules(artifact + "\nmodule.exports.deriveSkuFacts = (_text, sku) => sku.facts;"));
+    expect(Buffer.byteLength(publicationJson({ ...retained, grossMass }))).toBeLessThan(CATALOG_PUBLICATION_LIMITS.skuBytes);
+
+    const evaluation = compileCatalogPublication(data, "first-decision");
+    if (vector.valid) {
+      const { skus: [finalSku] } = await evaluation;
+      expect(finalSku!.source).toEqual(catalogPublicationClaim(data.record));
+      const wire = publicationJson(finalSku, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH);
+      expect(Buffer.byteLength(wire)).toBe(vector.targetBytes);
+      expect(decodeStoredPublicationSku(wire)).toEqual(finalSku);
+    } else {
+      await expect(evaluation).rejects.toMatchObject({
+        code: "catalog_publication_sku_too_large", diagnostic: { subject: retained.code, path: "skus",
+          message: "Reduce the facts or details for SKU ARTICLE and prepare the publication again." },
+      });
+    }
+  }
+});
+
+it("explains how to order primary SKU selection before activation", async () => {
+  const data = input();
+  data.payload.publication.operations = data.payload.publication.operations.filter(operation => operation.op !== "set_primary_sku");
+  const activation = data.payload.publication.operations.length;
+  data.payload.publication.operations.push({ op: "set_product_status", productSlug: "article", status: "active" });
+  await expect(compileCatalogPublication(data, "first-decision")).rejects.toMatchObject({
+    code: "catalog_publication_v3_compile_product_incomplete",
+    diagnostic: { path: `publication.operations.${activation}`,
+      message: "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status." },
+  });
+});
+
+it("refuses a whole-gram amount whose authored scale cannot be issued natively", async () => {
+  const data = input();
+  const netContent = { dimension: "mass", unit: "openlup:g", unscaled: "1000", scale: 1 } as const;
+  data.payload.skus[0]!.netContent = netContent;
+  const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null };
+  const diagnostic = { code: "catalog_publication_net_weight_unsupported", path: "skus.netContent", subject: "ARTICLE",
+    message: expect.stringContaining("whole grams at scale 0") };
+  const preview = await facade(data).prepareCandidate(query);
+  expect(preview.preparation?.structural.issues).toContainEqual(expect.objectContaining(diagnostic));
+  for (const mode of ["first-decision", "compile"] as const)
+    await expect(compileCatalogPublication(data, mode)).rejects.toMatchObject({ code: diagnostic.code, diagnostic });
+  expect(data.payload.skus[0]!.netContent).toEqual(netContent);
 });
 
 it.each([

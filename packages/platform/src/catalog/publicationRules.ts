@@ -25,7 +25,7 @@ const results = {
     "Return the document identity and its canonicality flag, or null for an invalid document."],
   identifyDocument: [documentIdentity.nullable(), "Return the document identity, or null for an invalid document."],
   matchesDocument: [z.boolean(), "Return true or false to report whether the documents match."],
-  deriveSkuFacts: [publishedFactsSchema, "Return a record of scalar SKU facts."],
+  deriveSkuFacts: [publishedFactsSchema, "Return a JSON object of SKU facts within the publication size and depth limits. Values can include nested objects and arrays."],
   classifySkuChange: [z.enum(["compatible", "material", "inconclusive"]), "Return compatible, material or inconclusive."],
   validateMembershipChange: [z.boolean(), "Return true or false to accept or refuse the membership change."],
   validateSkuAmounts: [z.boolean(), "Return true or false to accept or refuse the SKU quantity."],

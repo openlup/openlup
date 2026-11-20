@@ -4250,6 +4250,8 @@ export declare function assertNativeProductDocument(product: CatalogPublishedPro
 export declare function assertNativeProductReferences(product: CatalogPublishedProduct): void;
 export declare function decodePublishedProduct(product: CatalogPublishedProduct, documentDigests: ReadonlySet<string>): CatalogPublishedProduct;
 export declare function decodePublishedSku(input: unknown, path: string, subject?: string): CatalogPublishedSku;
+/** The native latest issue must fit the whole-gram projection served by legacy readers. */
+export declare function assertNativeSkuNetWeight({ code, netContent }: CatalogPublishedSku): void;
 export declare function assertPublishedSkuDocumentExclusion(sku: CatalogPublishedSku, documentDigests: ReadonlySet<string>): void;
 /** Refuses exact copies of canonical values or raw text using the selected and caller-supplied revision digests. */
 export declare function catalogPublicationManifestSchema(documentDigests?: ReadonlySet<string>): z.ZodType<CatalogPublicationManifestV2>;
@@ -4413,12 +4415,13 @@ export declare const publicationRefusals: {
     readonly catalog_publication_approval_state_valid: readonly ["publication_approval_state_invalid", "The approved product details are invalid. Each SKU may appear once in the approved state. Prepare the publication again."];
     readonly catalog_publication_post_state_changed: readonly ["publication_post_state_changed", "The product or its SKUs differ from the approval. Prepare the publication again."];
     readonly catalog_publication_roster_limit: readonly ["publication_roster_limit", "A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again."];
+    readonly catalog_publication_sku_too_large: readonly ["publication_sku_too_large", string];
     readonly catalog_publication_sku_identity_changed: readonly ["publication_sku_identity_changed", "A SKU code differs from its published identity. Restore the saved code or prepare a new SKU."];
     readonly catalog_publication_document_required: readonly ["publication_document_required", "Select a product document revision and prepare the draft again."];
     readonly catalog_publication_primary_sku_required: readonly ["publication_primary_sku_required", "Select the primary SKU and prepare the draft again."];
     readonly catalog_publication_reserved_carrier: readonly ["publication_reserved_carrier", "Keep the authored document in its designated draft field. Remove this reserved key from published details."];
-    readonly catalog_publication_facts_invalid: readonly ["publication_facts_invalid", "A published fact or field is invalid. Review the named product or SKU field and prepare it again."];
-    readonly catalog_publication_receipt_input_invalid: readonly ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Re-export the original result and retry the restore."];
+    readonly catalog_publication_facts_invalid: readonly ["publication_facts_invalid", "Remove reserved document keys from the published product or SKU details. Keep the authored document only in its designated draft field, then prepare the publication again."];
+    readonly catalog_publication_receipt_input_invalid: readonly ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Restore the original result from a verified copy or ask the store operator to recover it."];
     readonly catalog_publication_committed_at_valid: readonly ["publication_time_invalid", "The publication date is out of range. Re-export a result dated between years 0001 and 9999."];
     readonly catalog_publication_decided_at_valid: readonly ["publication_decision_time_invalid", "The approval date is out of range. Re-export a decision dated between years 0001 and 9999."];
     readonly catalog_publications_canonical_state_check: readonly ["publication_details_invalid", "The saved product details are too large or empty. Review the product and prepare it again."];

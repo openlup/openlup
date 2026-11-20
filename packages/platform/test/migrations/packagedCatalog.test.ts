@@ -9,8 +9,8 @@ const manifestReadsAtImport = readFileSync.mock.calls.length;
 const baseline = { file: "db/platform/migrations/00000000000000_platform_baseline.sql", sha256: "a".repeat(64) };
 const published = { file: unit.catalogPath, sha256: unit.sha256 };
 const skipped = { file: "db/platform/migrations/20261123180000_example.sql", sha256: "b".repeat(64) };
-function manifest(forward: (typeof baseline)[]) {
-  readFileSync.mockReturnValue(JSON.stringify({ schemaVersion: 1, catalog: { baseline, forward }, migrations: [] }));
+function manifest(forward: readonly unknown[]) {
+  readFileSync.mockReturnValue(JSON.stringify({ schemaVersion: 1, catalog: { schemaVersion: 1, baseline, forward, objectInventorySha256: "c".repeat(64) }, migrations: [] }));
 }
 
 beforeEach(() => readFileSync.mockReset());
@@ -34,3 +34,9 @@ it.each([["missing", [skipped]], ["mismatched hash", [{ ...published, sha256: "0
     expect(() => unit.position).toThrow(unit.catalogPath);
   },
 );
+
+it.each([{}, null, { file: skipped.file, sha256: "invalid" }])("refuses malformed prefix metadata before deriving a position (%j)", entry => {
+  manifest([entry, published]);
+  expect(() => unit.position).toThrow(/platform migration manifest\.forward\[0\]/u);
+  expect(readFileSync).toHaveBeenCalledTimes(1);
+});

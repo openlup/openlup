@@ -184,12 +184,20 @@ export function decodePublishedSku(input: unknown, path: string, subject?: strin
   try {
     publicationJson(input, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH);
   } catch (error) {
-    return invalidAt(error instanceof CatalogPublicationError ? error.code : "catalog_publication_wire_invalid", path, subject);
+    return invalidAt(error instanceof CatalogPublicationError && error.code === "catalog_publication_envelope_too_large"
+      ? "catalog_publication_sku_too_large" : "catalog_publication_wire_invalid", path, subject);
   }
   const parsed = catalogPublishedSkuSchema.safeParse(input);
   if (!parsed.success) return invalidAt("catalog_publication_sku_revision_invalid",
     fieldPath([path, ...parsed.error.issues[0]!.path]), subject);
   return parsed.data;
+}
+
+/** The native latest issue must fit the whole-gram projection served by legacy readers. */
+export function assertNativeSkuNetWeight({ code, netContent }: CatalogPublishedSku): void {
+  if (netContent.dimension !== "mass" || netContent.unit !== "openlup:g" || netContent.scale !== 0
+    || Number(netContent.unscaled) > 2_147_483_647)
+    invalidAt("catalog_publication_net_weight_unsupported", "skus.netContent", code);
 }
 
 export function assertPublishedSkuDocumentExclusion(sku: CatalogPublishedSku, documentDigests: ReadonlySet<string>): void {
@@ -247,10 +255,18 @@ function boundedJson(text: unknown, bytes: number): unknown {
   return JSON.parse(text);
 }
 
-function decodeStored<T>(text: unknown, maxBytes: number, depth: number, code: string, decode: (value: unknown) => T): T {
+function decodeStored<T>(text: unknown, maxBytes: number, depth: number, code: string, decode: (value: unknown) => T,
+  inputCode = code): T {
+  let input: unknown, canonical: string;
   try {
-    const input = boundedJson(text, maxBytes);
-    if (publicationJson(input, maxBytes, depth) !== text) return publicationRefuse(code);
+    input = boundedJson(text, maxBytes);
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("publication_object_required");
+    canonical = publicationJson(input, maxBytes, depth);
+  } catch {
+    return publicationRefuse(inputCode, "dependency_unavailable");
+  }
+  if (canonical !== text) return publicationRefuse(code, "dependency_unavailable");
+  try {
     return decode(input);
   } catch {
     return publicationRefuse(code, "dependency_unavailable");
@@ -272,7 +288,7 @@ export function decodeStoredPublicationSku(text: unknown): CatalogPublishedSku {
 
 export function decodeStoredPublicationReceipt(text: unknown): CatalogPublicationReceiptV2 {
   return decodeStored(text, CATALOG_PUBLICATION_LIMITS.receiptBytes, 1,
-    "catalog_publication_receipt_invalid", input => publicationReceipt.parse(input));
+    "catalog_publication_receipt_invalid", input => publicationReceipt.parse(input), "catalog_publication_receipt_input_invalid");
 }
 
 export function assertPublicationRegistration(text: string, path: string): void {

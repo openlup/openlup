@@ -119,9 +119,13 @@ async function currentIssue(db: PgQueryExecutor, productId: string) {
 
 /** Detect a code rename directly because the issued projection folds it into a generic facts error. */
 export async function assertPublishedSkuIdentity(db: PgQueryExecutor, productId?: string): Promise<void> {
-  const { rows } = await db.query(`SELECT sku FROM public.catalog_skus
-    WHERE publication_facts IS NOT NULL AND jsonb_typeof(publication_facts->'code')='string'
-      AND sku IS DISTINCT FROM publication_facts->>'code'${productId ? " AND product_id=$1::uuid" : ""} LIMIT 1`,
+  const { rows } = await db.query(`SELECT 1
+    FROM public.catalog_publication_heads h
+    JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
+    CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') member
+    JOIN public.catalog_sku_revisions r ON r.id=(member->>'revisionId')::uuid AND r.product_id=p.product_id
+    JOIN public.catalog_skus s ON (s.product_id,s.id)=(r.product_id,r.sku_id)
+    WHERE s.sku IS DISTINCT FROM r.sku_code${productId ? " AND h.product_id=$1::uuid" : ""} LIMIT 1`,
     productId ? [productId] : []);
   requireCondition(rows.length === 0, "catalog_publication_sku_identity_changed", "conflict");
 }

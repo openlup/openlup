@@ -12,13 +12,18 @@ const fixes = new Map([
   ["catalog_lifecycle_fresh_sale_refused", "Restore the withdrawn product and SKU before making them sellable."],
   ["catalog_publication_gross_mass_required", "supply the gross mass for this SKU"],
   ["catalog_publication_presentation_invalid", "Use the supported presentation fields and keep the authored document in the draft."],
+  ["catalog_publication_v3_compile_product_incomplete", "Set the document and the primary SKU before activation. Select a primary SKU or move set_primary_sku before set_product_status."],
   ["catalog_publication_v3_document_invalid", "Use a complete JSON object for the product document revision."],
   ["sku_identity_change_requires_new_sku", "Keep the existing SKU identity or prepare a new SKU."],
   ["catalog_publication_document_text_copied", "Replace the copied document text with the display value for this field."],
 ]);
 
+function skuSizeRemedy(subject?: string): string {
+  return `Reduce the facts or details for ${subject ? `SKU ${subject}` : "this SKU"} and prepare the publication again.`;
+}
+
 export function publicationIssue(code: string, phase: NonNullable<CatalogCandidateIssue["phase"]>, path: string, subject?: string): CatalogCandidateIssue {
-  const message = fixes.get(code) ?? (Object.hasOwn(publicationRefusals, code) ? publicationRefusals[code as AdmissionDiagnostic][1] : undefined);
+  const message = code === "catalog_publication_sku_too_large" ? skuSizeRemedy(subject) : fixes.get(code) ?? (Object.hasOwn(publicationRefusals, code) ? publicationRefusals[code as AdmissionDiagnostic][1] : undefined);
   return { code, phase, path, ...(subject === undefined ? {} : { subject }), ...(message === undefined ? {} : { message }) };
 }
 
@@ -77,12 +82,13 @@ export const publicationRefusals = {
   catalog_publication_approval_state_valid: ["publication_approval_state_invalid", "The approved product details are invalid. Each SKU may appear once in the approved state. Prepare the publication again."],
   catalog_publication_post_state_changed: ["publication_post_state_changed", "The product or its SKUs differ from the approval. Prepare the publication again."],
   catalog_publication_roster_limit: ["publication_roster_limit", "A product can retain up to 10,000 SKUs. Put additional SKUs on another product and prepare the publication again."],
+  catalog_publication_sku_too_large: ["publication_sku_too_large", skuSizeRemedy()],
   catalog_publication_sku_identity_changed: ["publication_sku_identity_changed", "A SKU code differs from its published identity. Restore the saved code or prepare a new SKU."],
   catalog_publication_document_required: ["publication_document_required", "Select a product document revision and prepare the draft again."],
   catalog_publication_primary_sku_required: ["publication_primary_sku_required", "Select the primary SKU and prepare the draft again."],
   catalog_publication_reserved_carrier: ["publication_reserved_carrier", "Keep the authored document in its designated draft field. Remove this reserved key from published details."],
-  catalog_publication_facts_invalid: ["publication_facts_invalid", "A published fact or field is invalid. Review the named product or SKU field and prepare it again."],
-  catalog_publication_receipt_input_invalid: ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Re-export the original result and retry the restore."],
+  catalog_publication_facts_invalid: ["publication_facts_invalid", "Remove reserved document keys from the published product or SKU details. Keep the authored document only in its designated draft field, then prepare the publication again."],
+  catalog_publication_receipt_input_invalid: ["publication_receipt_input_invalid", "The saved command result contains invalid text or structure. Restore the original result from a verified copy or ask the store operator to recover it."],
   catalog_publication_committed_at_valid: ["publication_time_invalid", "The publication date is out of range. Re-export a result dated between years 0001 and 9999."],
   catalog_publication_decided_at_valid: ["publication_decision_time_invalid", "The approval date is out of range. Re-export a decision dated between years 0001 and 9999."],
   catalog_publications_canonical_state_check: ["publication_details_invalid", "The saved product details are too large or empty. Review the product and prepare it again."],

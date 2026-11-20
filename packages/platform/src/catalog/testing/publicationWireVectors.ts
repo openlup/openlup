@@ -1,5 +1,5 @@
 import type { CatalogPublicationJson } from "../contracts/index.js";
-import type { CatalogPublishedSku } from "../publicationContracts.js";
+import { nativeCatalogPublication, type CatalogPublishedSku } from "../index.js";
 
 function nested(levels: number, terminal: CatalogPublicationJson): CatalogPublicationJson {
   return Array.from({ length: levels }).reduce<CatalogPublicationJson>(child => [child], terminal);
@@ -9,10 +9,25 @@ type Vector = {
   name: string;
   apply(sku: CatalogPublishedSku): Record<string, unknown>;
   valid: boolean;
+  targetBytes?: number;
   // JSONB accepts negative zero but normalizes it, so the stored bytes cannot be '-0'.
   sqlNormalizesZero?: boolean;
 };
 const facts = (value: CatalogPublishedSku["facts"]) => (sku: CatalogPublishedSku) => ({ ...sku, facts: value });
+
+function skuAtByteLimit(extra: number): Vector {
+  const targetBytes = nativeCatalogPublication.limits.skuBytes + extra;
+  return {
+    name: extra === 0 ? "SKU at the exact UTF-8 byte limit" : "SKU one byte over the UTF-8 limit",
+    valid: extra === 0, targetBytes,
+    apply(sku) {
+      const facts = { ...sku.facts, details: "" };
+      const available = targetBytes - Buffer.byteLength(JSON.stringify({ ...sku, facts }));
+      facts.details = "é".repeat(Math.floor(available / 2)) + "x".repeat(available % 2);
+      return { ...sku, facts };
+    },
+  };
+}
 
 export const publicationWireVectors: readonly Vector[] = [
   { name: "empty array at page depth 48", apply: facts({ limits: nested(43, []) }), valid: true },
@@ -26,6 +41,8 @@ export const publicationWireVectors: readonly Vector[] = [
   { name: "unpaired surrogate", apply: facts({ value: "\uD800" }), valid: false },
   { name: "absent field", apply: ({ grossMass: _grossMass, ...sku }) => sku, valid: false },
   { name: "extra field", apply: sku => ({ ...sku, extra: true }), valid: false },
+  skuAtByteLimit(0),
+  skuAtByteLimit(1),
   { name: "nested neutral facts", apply: facts({ values: [{ scalar: "exact" }, [true, null]] }), valid: true },
   { name: "reserved scalar in nested facts", apply: facts({ values: [{ cANonical_TeXt: false }] }), valid: false },
   { name: "reserved attribute", apply: sku => ({ ...sku, attributes: { Document__Payload: "opaque" } }), valid: false },
