@@ -71,7 +71,10 @@ test('default lifecycle leaves compose.yaml healthcheck in place', async () => {
     await writeFile(resolve(directory, 'owned/store.config.ts'), `export function selectConfiguration() { return ${JSON.stringify(config)}; }`);
     const bin = resolve(directory, 'bin');
     await mkdir(bin);
-    await writeFile(resolve(bin, 'docker'), '#!/bin/sh\nif [ "$4" = "-f" ]; then /bin/cat > override.json; fi\n', { mode: 0o755 });
+    await writeFile(resolve(bin, 'docker'), `#!/bin/sh
+if [ "$2" = config ]; then echo '{"volumes":{"catalogue-builds":{"name":"fixture-builds"}}}'; fi
+if [ "$4" = "-f" ]; then /bin/cat > override.json; fi
+`, { mode: 0o755 });
     const child = spawn(process.execPath, ['lifecycle.mjs', 'up'], { cwd: directory, env: { PATH: bin }, stdio: 'pipe' });
     assert.equal((await once(child, 'exit'))[0], 0);
     const override = JSON.parse(await readFile(resolve(directory, 'override.json'), 'utf8'));

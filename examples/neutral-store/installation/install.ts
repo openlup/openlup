@@ -69,7 +69,7 @@ export async function installDemonstration(config: StoreConfig, bootstrap: Insta
 export async function applyDemoSeed(config: StoreConfig, installation: DemonstrationInstallation) {
   const { connection, installRole, runtimeRole } = installation;
   if (!installRole || !runtimeRole || installRole === runtimeRole) throw new Error('starter_seed_install_role_required');
-  const plan = installation.cataloguePlan ?? prepareStarterCatalogueRules(installation.catalogueRules);
+  const plan = installation.cataloguePlan ?? prepareStarterCatalogueRules(installation.catalogueRules, installation.catalogueBuildDirectory);
   const seed = buildDemoSeed(config);
   await connection.query('BEGIN');
   const stagedBuilds: NonNullable<ReturnType<typeof stageStarterCatalogueBuild>>[] = [];

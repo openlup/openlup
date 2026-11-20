@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
-  canonicalCatalogDraftJson, evaluateBundleComposition, type CatalogDraftPayloadV3, type CatalogProductTypeInput, type CatalogProductTypeRef } from '@openlup/platform/catalog';
+  canonicalCatalogDraftJson, evaluateBundleComposition, type CatalogDraftPayloadV3, type CatalogOptionValue, type CatalogProductTypeInput, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor } from '@openlup/platform/data';
 import { starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
 import { isPinnedCatalogDraftKey } from '../shared/api.ts';
@@ -24,8 +24,12 @@ function productTypeRef(ref: unknown): CatalogProductTypeRef | undefined {
     return { key: ref.key, version: ref.version };
 }
 
+const sameType = (ref: CatalogProductTypeRef, saved: CatalogProductTypeRef | undefined) =>
+  ref.key === saved?.key && ref.version === saved.version;
+
 function publicationExample(type: CatalogProductTypeInput, legacy: boolean): CatalogDraftPayloadV3 | null {
-  const selected = legacy ? 'openlup:g' : type.netContentUnits[0];
+  const netAxis = type.dimensions.find(dimension => dimension.kind === 'quantity' && dimension.role === 'net_content');
+  const selected = netAxis?.kind === 'quantity' ? netAxis.units[0] : legacy ? 'openlup:g' : type.netContentUnits[0];
   const unit = type.units.find(candidate => candidate.code === selected);
   if (!unit) return null;
   const id = randomUUID(), skuId = randomUUID(), revisionId = randomUUID(), slug = 'fictional-item';
@@ -37,9 +41,15 @@ function publicationExample(type: CatalogProductTypeInput, legacy: boolean): Cat
     sourceRef: 'starter:example', digest };
   const presentation = { title }, sku = { skuCode, title, minQuantity: 1, isAddon: false, facts: {} };
   const identifier = { scheme: 'gs1:gtin', issuer: 'starter:example', value: '5901234123457', packagingLevel: 'unit' as const };
-  return { schemaVersion: 3, product: { id, type: { key: type.key, version: type.version }, slug, dimensions: [], primarySkuId: skuId, documentRevision,
+  const netContent = { dimension: unit.dimension, unit: unit.code, unscaled: '100', scale: 0 };
+  const options = Object.fromEntries<CatalogOptionValue>(type.dimensions.map(axis => [axis.key,
+    axis.kind === 'choice' ? { kind: 'choice', value: axis.values[0]! } : axis.kind === 'boolean'
+      ? { kind: 'boolean', value: false } : { kind: 'quantity', value: axis.role === 'net_content' ? netContent
+        : { dimension: axis.dimension, unit: axis.units[0]!, unscaled: '100', scale: 0 } }]));
+  return { schemaVersion: 3, product: { id, type: { key: type.key, version: type.version }, slug,
+    dimensions: type.dimensions.map(axis => axis.key), primarySkuId: skuId, documentRevision,
     sharedContent: { schemaVersion: 1, catalogAction: 'create', document, presentation, publicationSkus: [sku], requestedModes: [], offerMemberships: [] } },
-  skus: [{ id: skuId, productId: id, code: skuCode, options: {}, netContent: { dimension: unit.dimension, unit: unit.code, unscaled: '100', scale: 0 }, identifiers: [identifier] }],
+  skus: [{ id: skuId, productId: id, code: skuCode, options, netContent, identifiers: [identifier] }],
   publication: { kind: 'release', evidence: {}, operations: [
     { op: 'create_product', productId: id, productSlug: slug, name: title },
     { op: 'register_document_revision', productSlug: slug, revisionId, revisionNo: 1, documentRef: document.documentRef,
@@ -56,8 +66,12 @@ function publicationExample(type: CatalogProductTypeInput, legacy: boolean): Cat
 export function composeOperatorCapabilities(input: { executor: PgQueryExecutor; connectionString: string }):
 Pick<ApplicationBindings, 'actions' | 'close'> {
   const catalogue = starterCatalogue();
-  const rulesVersionIssue = (ref: CatalogProductTypeRef, saved = false) => {
+  const rulesVersionIssue = (ref: CatalogProductTypeRef, saved = false, unmarked = false) => {
     const identity = `${ref.key}@${ref.version}`;
+    if (catalogue.isCorrupt(ref)) return { path: 'product.type', code: 'catalogue_build_invalid',
+      message: `Restore the retained catalogue build for ${identity} from a verified copy.` };
+    if (unmarked && catalogue.readInstalled(ref)?.legacy === false) return { path: 'commandKey', code: 'catalogue_pinned_save_required',
+      message: `Use the operator Save form or a pinned draft command key for the installed type ${identity}.` };
     const message = catalogue.derivesPin(ref)
       ? `rules version ${ref.version} is not installed; run ./lifecycle up`
       : saved
@@ -75,6 +89,8 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
   });
   const drafts = draftHandler(catalogue.pinnedRegistry);
   const legacyDrafts = draftHandler(catalogue.legacyRegistry);
+  const readRevision = (payload: Record<string, unknown>, context: ActionContext) =>
+    drafts.get({ draftId: payload.draftId, revision: payload.expectedRevision }, context);
   const actions: ApplicationBindings['actions'] = {};
   const support = (detail: boolean): ActionBinding => async (payload, context) => {
     if (!context.actor.operatorRef) return refused('operator_required');
@@ -162,7 +178,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
   };
   actions['operator.catalogDrafts'] = async (payload, context) => {
     if (!context.actor.operatorRef) return refused('operator_required');
-    const fields = payload.action === undefined ? [] : payload.action === 'example' ? ['action', 'type'] : payload.action === 'get' ? ['action', 'draftId']
+    const fields = payload.action === undefined ? [] : payload.action === 'example' ? ['action', 'type', 'draftId', 'expectedRevision'] : payload.action === 'get' ? ['action', 'draftId']
       : ['action', 'draftId', 'expectedRevision', 'payload'];
     if (!only(payload, fields)) return refused('starter_input_invalid');
     if (payload.action === 'example') {
@@ -170,11 +186,23 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         const ref = productTypeRef(payload.type);
         if (!ref) return { ...refused('starter_input_invalid'), issues: [{ path: 'product.type', code: 'type_ref_invalid',
           message: 'Enter a registered product type key and a positive integer version.' }] };
-        const resolved = catalogue.resolveSave(ref);
+        let saved: CatalogProductTypeRef | undefined;
+        if ('draftId' in payload || 'expectedRevision' in payload) {
+          if (!uuid(payload.draftId) || !Number.isSafeInteger(payload.expectedRevision) || Number(payload.expectedRevision) < 1)
+            return refused('starter_input_invalid');
+          const previous = await readRevision(payload, context);
+          if ('reason' in previous) return refused(`catalog_${previous.reason}`);
+          if (!previous.record) return { ...refused('catalog_draft_revision_missing'), issues: [{ path: 'expectedRevision',
+            code: 'draft_revision_missing', message: 'Read the draft and use its current revision before saving.' }] };
+          saved = previous.record.payload.product.type;
+        }
+        const unchanged = sameType(ref, saved);
+        const resolved = unchanged ? catalogue.registry.resolve(ref) : catalogue.resolveSave(ref);
         if (resolved) return success({ type: { key: resolved.key, version: resolved.version } });
-        const pin = catalogue.currentFor(ref) ?? ref;
-        return { ...refused('catalog_type_not_installed'), issues: [rulesVersionIssue(pin)] };
+        const pin = unchanged ? ref : catalogue.currentFor(ref) ?? ref;
+        return { ...refused('catalog_type_not_installed'), issues: [rulesVersionIssue(pin, unchanged)] };
       }
+      if ('draftId' in payload || 'expectedRevision' in payload) return refused('starter_input_invalid');
       const installed = catalogue.firstInstalled();
       const example = installed && publicationExample(installed.type, installed.legacy);
       if (example) return success(example);
@@ -206,13 +234,18 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       }
     }
     const pinned = isPinnedCatalogDraftKey(context.commandKey);
-    const handler = pinned ? drafts : legacyDrafts;
     let authored = payload.payload;
+    const requestedType = isRecord(authored) && isRecord(authored.product) ? productTypeRef(authored.product.type) : undefined;
+    let handler = pinned ? drafts : legacyDrafts;
+    if (pinned && payload.action === 'revise' && requestedType && catalogue.isInline(requestedType)) {
+      const previous = await readRevision(payload, context);
+      if ('record' in previous && sameType(requestedType, previous.record?.payload.product.type)) handler = legacyDrafts;
+    }
     if (!pinned && isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type)
       && authored.product.type.key === starterCatalogueType.key && authored.product.type.version === starterCatalogueType.version && uuid(payload.draftId)) {
       const receipt = await legacyDrafts.get({ draftId: payload.draftId, commandKey: context.commandKey }, context);
       const original = 'record' in receipt && receipt.record?.actorId === context.actor.operatorRef ? receipt.record : null;
-      const saved = !original && payload.action === 'revise' ? await legacyDrafts.get({ draftId: payload.draftId, revision: payload.expectedRevision }, context) : null;
+      const saved = !original && payload.action === 'revise' ? await readRevision(payload, context) : null;
       const pin = original?.payload.product.type ?? (saved && 'record' in saved ? saved.record?.payload.product.type : undefined) ?? catalogue.baseType;
       if (pin) authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version: pin.version } } };
     }
@@ -231,7 +264,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       const issues = 'issues' in result && Array.isArray(result.issues) ? result.issues : [];
       const type = isRecord(authored) && isRecord(authored.product) ? productTypeRef(authored.product.type) : undefined;
       const detail = issues.map(issue => issue.code === 'type_not_installed' && type
-        ? { ...issue, ...rulesVersionIssue(type) } : issue);
+        ? { ...issue, ...rulesVersionIssue(type, false, !pinned) } : issue);
       return { ...refused(`catalog_${result.reason}`), ...(detail.length ? { issues: detail } : {}) };
     }
     return { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };

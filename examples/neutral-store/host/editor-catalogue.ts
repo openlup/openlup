@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
@@ -41,8 +41,24 @@ function preflightRefusal(code: string, path: string, hint: string): never {
   throw Object.assign(new Error(code), { issue: { code, path }, hint });
 }
 
+/** Both filename formats reserve the version even when the build needs restoration. */
+export function assertStarterCataloguePins(names: readonly string[]) {
+  for (const name of names) {
+    const match = /^(?:([a-z0-9.-]+)%3A([a-z0-9._-]+)@)?([1-9][0-9]*)\.json$/u.exec(name);
+    if (!match) continue;
+    const key = match[1] ? `${match[1]}:${match[2]}` : starterCatalogueType.key;
+    const version = Number(match[3]);
+    if (version <= 1 || version > 2_147_483_647 || !authoringRegistry.resolve({ key, version })) continue;
+    const index = authoringRegistry.definitions?.findIndex(type => type.key === key && type.version === version) ?? -1;
+    preflightRefusal('starter_catalogue_rules_version_conflict', index < 0 ? '/definitions' : `/types/${index}/version`,
+      `Choose a different version number for ${key}. Version ${version} is already an installed pin.`);
+  }
+}
+
 /** Install immutable builds in the order declared in the owned registry. */
-export function prepareStarterCatalogueRules(rules: Uint8Array | undefined) {
+export function prepareStarterCatalogueRules(rules: Uint8Array | undefined, directory = buildDirectory) {
+  try { assertStarterCataloguePins(readdirSync(directory)); }
+  catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error; }
   if (!rules) return;
   const artifact = Buffer.from(rules);
   const legacy = authoringRegistry.resolve(starterCatalogueType);
@@ -67,7 +83,7 @@ export function prepareStarterCatalogueRules(rules: Uint8Array | undefined) {
     const pack = starterBuild({ ...type, version }, artifact);
     const pin = `${pack.id}@${version}`;
     if (authoringRegistry.resolve({ key: type.key, version }) || pins.has(pin))
-      preflightRefusal('starter_catalogue_rules_version_conflict', `/types/${index}/version`, 'Choose a different authoring version.');
+      preflightRefusal('starter_catalogue_rules_version_conflict', `/types/${index}/version`, `Choose a different version number for ${type.key}.`);
     const issue = catalogPackIssues(pack)[0];
     if (issue) preflightRefusal(issue.code, issue.path.replace(/^\/types\/0/u, `/types/${index}`), 'Correct the indicated definition field.');
     pins.add(pin);
@@ -108,10 +124,11 @@ export function stageStarterCatalogueBuild(artifact: Buffer, pack: ReturnType<ty
 }
 
 export function starterCatalogue(directory = buildDirectory) {
-  const plan = prepareStarterCatalogueRules(readStarterCatalogueRules());
+  const plan = prepareStarterCatalogueRules(readStarterCatalogueRules(), directory);
   const current = new Map(plan?.builds.map(({ authoring, pack }) => [identity(authoring), pack.types[0]!]));
   const currentPins = new Set([...current.values()].map(identity));
   const history = new Map<string, { type: NonNullable<ReturnType<typeof authoringRegistry.resolve>>; digest: string; legacy: boolean }>();
+  const corrupt = new Set<string>();
   function readInstalled(ref: CatalogProductTypeRef) {
     if (!Number.isSafeInteger(ref.version) || ref.version <= 1) return;
     const cached = history.get(identity(ref));
@@ -119,32 +136,39 @@ export function starterCatalogue(directory = buildDirectory) {
     const keyed = readOptional(join(directory, fileName(ref)));
     const legacy = keyed === undefined && ref.key === starterCatalogueType.key;
     const raw = keyed ?? (legacy ? readOptional(join(directory, `${ref.version}.json`)) : undefined);
+    corrupt.delete(identity(ref));
     if (!raw) return;
-    const { type, asset, installed } = JSON.parse(raw.toString()) as {
-      type: Omit<CatalogProductTypeInput, 'validateContent'>; asset: string;
-      installed: CatalogDefinitionInstallReceipt['types'][number];
-    };
-    if (identity(type) !== identity(ref) || identity(installed) !== identity(ref))
-      throw new Error('starter_catalogue_build_invalid');
-    const restored = starterBuild(type, Buffer.from(asset, 'base64'));
-    const definition = createCatalogProductTypeRegistry(restored.types).resolve(ref)!;
-    const digest = catalogDefinitionDigest(definition);
-    if (digest !== installed.definitionDigest || type.validatorRef !== definition.validatorRef)
-      throw new Error('starter_catalogue_build_invalid');
-    const build = { type: definition, digest, legacy };
-    history.set(identity(ref), build);
-    return build;
+    try {
+      const { type, asset, installed } = JSON.parse(raw.toString()) as {
+        type: Omit<CatalogProductTypeInput, 'validateContent'>; asset: string;
+        installed: CatalogDefinitionInstallReceipt['types'][number];
+      };
+      if (identity(type) !== identity(ref) || identity(installed) !== identity(ref))
+        throw new Error('starter_catalogue_build_invalid');
+      const restored = starterBuild(type, Buffer.from(asset, 'base64'));
+      const definition = createCatalogProductTypeRegistry(restored.types).resolve(ref)!;
+      const digest = catalogDefinitionDigest(definition);
+      if (digest !== installed.definitionDigest || type.validatorRef !== definition.validatorRef)
+        throw new Error('starter_catalogue_build_invalid');
+      const build = { type: definition, digest, legacy };
+      history.set(identity(ref), build);
+      return build;
+    } catch {
+      corrupt.add(identity(ref));
+    }
   }
   const registry = { resolve: (ref: CatalogProductTypeRef) => readInstalled(ref)?.type ?? authoringRegistry.resolve(ref) };
   const pinnedRegistry = { resolve: (ref: CatalogProductTypeRef) => readInstalled(ref)?.type
     ?? (plan ? undefined : authoringRegistry.resolve(ref)) };
   const legacyRegistry = { resolve(ref: CatalogProductTypeRef) {
     const installed = readInstalled(ref);
-    return installed?.legacy ? installed.type : !plan || base(ref) ? authoringRegistry.resolve(ref) : undefined;
+    return installed?.legacy ? installed.type : authoringRegistry.resolve(ref);
   } };
   return {
     current: current.values().next().value, baseType: current.get(identity(starterCatalogueType)),
     registry, pinnedRegistry, legacyRegistry, readInstalled,
+    isCorrupt: (ref: CatalogProductTypeRef) => corrupt.has(identity(ref)),
+    isInline: (ref: CatalogProductTypeRef) => Boolean(authoringRegistry.resolve(ref)),
     firstInstalled() {
       for (const pin of current.values()) {
         const installed = readInstalled(pin);
@@ -154,7 +178,7 @@ export function starterCatalogue(directory = buildDirectory) {
     currentFor: (ref: CatalogProductTypeRef) => current.get(identity(ref)),
     resolveSave(ref: CatalogProductTypeRef) {
       const derived = current.get(identity(ref));
-      return readInstalled(ref)?.type ?? pinnedRegistry.resolve(derived ?? ref);
+      return pinnedRegistry.resolve(derived ?? ref);
     },
     derivesPin: (ref: CatalogProductTypeRef) => currentPins.has(identity(ref)),
     hasRegisteredKey: (ref: CatalogProductTypeRef) => authoringRegistry.definitions?.some(type => type.key === ref.key)

@@ -395,14 +395,17 @@ it('installs exact catalogue versions and preserves base command receipts after 
   const source = readFileSync(owned, 'utf8');
   expect(source).toContain(registry);
   writeFileSync(owned, source.replace(registry, `
-    const volume = { ...types[0]!, version: 2, units: [{ code: 'example:ml', dimension: 'volume' as const, integral: true,
+    const volume = { ...types[0]!, version: 2, dimensions: [{key: 'format', kind: 'choice' as const, values: ['standard']}],
+      axes: [{key: 'format', attributeKey: 'format'}], attributes: [{key: 'format', scope: 'variant' as const,
+        valueType: {kind: 'enum' as const, values: [{id: 'standard'}]}, required: false, cardinality: {min: 0, max: 1},
+        filterable: false, facetable: false, public: true, displayOrder: 0, labels: {}}], units: [{ code: 'example:ml', dimension: 'volume' as const, integral: true,
       factor: { canonicalUnit: 'openlup:ml', unscaled: '1', scale: 0 } }], netContentUnits: ['example:ml'] };
     types.push(volume, { ...volume, key: 'example:article', version: 1 });
     ${registry}`));
   const script = String.raw`
     import assert from 'node:assert/strict';
     import {createHash, randomUUID} from 'node:crypto';
-    import {appendFileSync, readFileSync, unlinkSync} from 'node:fs';
+    import {appendFileSync, readFileSync, unlinkSync, writeFileSync} from 'node:fs';
     import pg from 'pg';
     import {createCatalogDraftHandlerV3, createPostgresCatalogDraftStoreV3} from '@openlup/platform/catalog';
     import {configurations} from './owned/store.config.ts';
@@ -422,24 +425,45 @@ it('installs exact catalogue versions and preserves base command receipts after 
     try {
       const install = {connection: owner, installRole: 'postgres', runtimeRole: 'starter_runtime',
         catalogueRules: readStarterCatalogueRules(), close: async () => {}};
+      const rulesFile = 'owned/catalogue-rules.cjs';
+      unlinkSync(rulesFile);
+      const inline = start();
+      const operatorRef = randomUUID(), commandKey = randomUUID();
+      const context = {config, actor: {customerRef: null, operatorRef}, commandKey};
+      const newDraft = payload => ({action: 'create', draftId: randomUUID(), expectedRevision: 0, payload});
+      const inlineDraft = version => newDraft({schemaVersion: 1, product: {id: randomUUID(), type: {key: 'starter:item', version},
+        dimensions: [], sharedContent: {title: 'Example item'}}, skus: []});
+      const inlineBase = inlineDraft(1), inlineLocal = inlineDraft(2);
+      const send = (input, key = randomUUID(), handler = action) => handler(input, {...context, commandKey: key});
+      assert.equal((await send(inlineBase, 'pin:' + randomUUID(), inline)).value?.outcome, 'committed', 'rules-absent inline Save');
+      assert.equal((await send(inlineLocal, undefined, inline)).value?.outcome, 'committed');
+      writeFileSync(rulesFile, install.catalogueRules);
       await applyDemoSeed(config, install);
       await applyDemoSeed(config, install);
       const action = start();
-      const operatorRef = randomUUID(), commandKey = randomUUID();
-      const context = {config, actor: {customerRef: null, operatorRef}, commandKey};
-      const send = (input, key = randomUUID(), handler = action) => handler(input, {...context, commandKey: key});
+      const revise = draft => ({...draft, action: 'revise', expectedRevision: 1, payload: {
+        ...draft.payload, product: {...draft.payload.product, sharedContent: {title: 'Edited item'}},
+      }});
+      const baseEdit = revise(inlineBase), ref = baseEdit.payload.product.type;
+      const resolved = await send({action: 'example', type: ref, draftId: baseEdit.draftId, expectedRevision: 1});
+      assert.deepEqual(resolved.value?.type, ref, 'title-only revise resolves to the saved inline type');
+      baseEdit.payload.product.type = resolved.value.type;
+      assert.deepEqual((await send(baseEdit, 'pin:' + randomUUID())).value?.record.payload.product.type, ref, 'pinned revise preserves the saved inline type');
+      const localEdit = await send(revise(inlineLocal));
+      assert.equal(localEdit.value?.record.payload.product.type.version, 2, 'unmarked revise still accepts the registered inline type');
       const resolve = async (key, version) => (await send({action: 'example', type: {key, version}})).value?.type;
       const base = await resolve('starter:item', 1), volume = await resolve('starter:item', 2), other = await resolve('example:article', 1);
       assert.deepEqual(base, {key: 'starter:item', version: 714101500}, 'exact base selection');
       assert.equal(volume?.key, base.key, 'same key selects its second version');
       assert.notEqual(volume.version, base.version, 'same key has independent pins');
+      assert.deepEqual((await send({action: 'example', type: inlineLocal.payload.product.type,
+        draftId: baseEdit.draftId, expectedRevision: 2})).value?.type, volume, 'a selected new version resolves to its installed pin');
       assert.equal(other?.key, 'example:article', 'second registered key resolves');
       const payload = (await send({action: 'example'})).value;
       assert.deepEqual(payload.product.type, base, 'first declared example');
       const file = '.context/catalogue-builds/714101500.json';
       assert.equal(createHash('sha256').update(readFileSync(file)).digest('hex'),
         'cd36418dee1de7afbe9a5bf5748ef3aaad3a962990cd7ff617208bd1593eb5bb', 'golden base receipt bytes');
-      const newDraft = payload => ({action: 'create', draftId: randomUUID(), expectedRevision: 0, payload});
       const legacy = newDraft({...payload, product: {...payload.product, type: {...base, version: 1}}});
       // Seed with the command the base writer passed to the native handler after translating @1.
       const baseWriter = createCatalogDraftHandlerV3({store: createPostgresCatalogDraftStoreV3(runtime),
@@ -456,8 +480,14 @@ it('installs exact catalogue versions and preserves base command receipts after 
       assert.deepEqual(next.product.type, volume, 'missing first build falls back in declaration order');
       assert.deepEqual(next.skus[0].netContent, {dimension: 'volume', unit: 'example:ml', unscaled: '100', scale: 0});
       const pinned = newDraft(next), key = 'pin:' + randomUUID();
-      assert.equal((await send(pinned, undefined, restarted)).code, 'catalog_draft_payload_invalid', 'derived type requires a pinned write');
-      assert.equal((await send(pinned, key, restarted)).value?.outcome, 'committed');
+      const unmarked = await send(pinned, undefined, restarted);
+      assert.equal(unmarked.code, 'catalog_draft_payload_invalid', 'derived type requires a pinned write');
+      assert.equal(unmarked.issues?.[0].code, 'catalogue_pinned_save_required');
+      assert.match(unmarked.issues[0].message, /Use the operator Save form or a pinned draft command key/u);
+      const saved = await send(pinned, key, restarted);
+      assert.equal(saved.value?.outcome, 'committed', 'declared example saves: ' + (saved.issues?.[0]?.code ?? saved.code));
+      assert.deepEqual(saved.value.record.payload.product.dimensions, ['format'], 'example saves declared dimensions');
+      assert.deepEqual(saved.value.record.payload.skus[0].options, {format: {kind: 'choice', value: 'standard'}}, 'example saves one option per axis');
       const changed = {...pinned, payload: {...next, product: {...next.product, type: {...base, version: 1}}}};
       const conflict = await send(changed, key, restarted);
       assert.equal(conflict.code, 'catalog_draft_command_key_reused', 'pinned version change is a conflict');
@@ -489,11 +519,11 @@ it('installs exact catalogue versions and preserves base command receipts after 
       assert.equal((await send(pinned, key, retry)).replayed, true, 'pinned replay survives rules changes');
       assert.deepEqual(await effects(), before, 'replay writes no additional revisions or receipts');
 
-      unlinkSync('owned/catalogue-rules.cjs');
-      const inline = start();
-      const input = newDraft({schemaVersion: 1, product: {id: randomUUID(), type: {...base, version: 1},
-        dimensions: [], sharedContent: {title: 'Example item'}}, skus: []});
-      assert.equal((await send(input, 'pin:' + randomUUID(), inline)).value?.outcome, 'committed', 'rules-absent inline Save');
+      writeFileSync('.context/catalogue-builds/' + encodeURIComponent(volume.key) + '@' + volume.version + '.json', '{');
+      const damaged = await send({action: 'example', type: volume}, undefined, start());
+      assert.equal(damaged.code, 'catalog_type_not_installed');
+      assert.deepEqual(damaged.issues, [{path: 'product.type', code: 'catalogue_build_invalid',
+        message: 'Restore the retained catalogue build for ' + volume.key + '@' + volume.version + ' from a verified copy.' }]);
     } finally {
       for (const binding of bindings) await binding.close();
       await runtime.end();

@@ -222,7 +222,8 @@ function catalogDraftActions(context: PageContext): HTMLElement {
         if (values.action === 'abandon') return values;
         const payload = values.payload;
         const type = isRecord(payload) && isRecord(payload.product) ? payload.product.type ?? null : null;
-        const resolved = await act('operator.catalogDrafts', { action: 'example', type }, crypto.randomUUID());
+        const resolved = await act('operator.catalogDrafts', { action: 'example', type,
+          ...(values.action === 'revise' ? { draftId: values.draftId, expectedRevision: values.expectedRevision } : {}) }, crypto.randomUUID());
         if (!current()) return null;
         if (resolved.ok && isRecord(resolved.value) && isRecord(resolved.value.type) && isRecord(payload) && isRecord(payload.product)) {
           pin.textContent = `${polski ? 'Typ szkicu' : 'Draft type'} ${resolved.value.type.key}@${resolved.value.type.version}`;

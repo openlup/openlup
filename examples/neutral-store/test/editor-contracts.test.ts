@@ -147,3 +147,41 @@ test('up and install report catalogue input paths before Docker or database effe
     }
   });
 });
+
+test('preflight reserves historical and retained pins before provisioning', async () => {
+  await probeCatalogue(async app => {
+    const directory = join(app, '.context/catalogue-builds');
+    await mkdir(directory, { recursive: true });
+    const retainedName = `${encodeURIComponent('example:article')}@42.json`;
+    for (const [name, key, version, metadata] of [
+      ['714101500.json', 'starter:item', 714101500, ''],
+      ['714101500.json', 'starter:item', 714101500, ", units: [{code: 'openlup:ml', dimension: 'volume', integral: true}], netContentUnits: ['openlup:ml']"],
+      [retainedName, 'example:article', 42, ''],
+    ] as const) {
+      await changeRegistry(app, `types.push({...types[0], key: '${key}', version: ${version}${metadata}});
+${registration}`);
+      await writeFile(join(app, 'owned/catalogue-rules.cjs'), await readFile(join(exampleRoot, 'owned/catalogue-rules.cjs'), 'utf8') + '\n// Changed rules');
+      await writeFile(join(directory, name), 'Retained build marker');
+      for (const command of ['up', 'install']) {
+        const result = invoke(app, ['--import', './probe.mjs', 'lifecycle.mjs', command]);
+        assert.equal(result.status, 2, result.stderr);
+        assert.match(result.stderr, /starter_catalogue_rules_version_conflict\nowned\/catalogue.ts \/types\/1\/version/u);
+        assert.ok(result.stderr.includes(`Choose a different version number for ${key}`));
+        await assert.rejects(readFile(join(app, 'durable-effect')), { code: 'ENOENT' });
+      }
+      await rm(join(directory, name));
+    }
+    await cp(join(exampleRoot, 'Dockerfile'), join(app, 'Dockerfile'));
+    await writeFile(join(app, 'docker'), `#!/bin/sh
+case "$1 $2" in
+  'compose config') echo '{"volumes":{"catalogue-builds":{"name":"fixture-builds"}}}' ;;
+  'volume ls') echo fixture-builds ;;
+  'run --rm') echo '${retainedName}' ;;
+  *) : > durable-effect; exit 1 ;;
+esac
+`);
+    const result = invoke(app, ['lifecycle.mjs', 'up']);
+    assert.match(result.stderr, /Choose a different version number for example:article/u);
+    await assert.rejects(readFile(join(app, 'durable-effect')), { code: 'ENOENT' });
+  });
+});

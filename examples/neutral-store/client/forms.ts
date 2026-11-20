@@ -98,7 +98,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
     if (inFlight || !form.isConnected || !form.reportValidity()) return;
     const requestGeneration = generation;
     const current = () => form.isConnected && generation === requestGeneration;
-    void (async () => {
+    const readValues = (): ActionInput | null => {
       let values: ActionInput = {};
       for (const { spec, control } of controls) {
         values[spec.name] = spec.type === 'checkbox'
@@ -107,8 +107,12 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       }
       try {
         if (options.transform) values = options.transform(values);
-        values = { ...values, ...options.input?.(), locale: context.locale };
-      } catch {
+        return { ...values, ...options.input?.(), locale: context.locale };
+      } catch { return null; }
+    };
+    void (async () => {
+      let values = readValues();
+      if (!values) {
         output.replaceChildren(refusal(context, 'starter_input_invalid'));
         return;
       }
@@ -120,8 +124,15 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
         uncertain = undefined;
         inFlight = true; submit.disabled = true; reset.disabled = true;
         try {
-          const prepared = await options.prepare(values, current);
-          if (!current() || !prepared) return;
+          const ready = () => {
+            if (!current()) return false;
+            if (!freeze || JSON.stringify(readValues()) === input) return true;
+            output.replaceChildren(el('p', {}, context.locale === 'pl' ? 'Formularz zmienił się podczas ustalania typu. Zapisz ponownie.'
+              : 'The form changed while resolving. Save again.'));
+            return false;
+          };
+          const prepared = await options.prepare(values, ready);
+          if (!ready() || !prepared) return;
           values = prepared;
         } finally { inFlight = false; submit.disabled = false; reset.disabled = false; }
       }

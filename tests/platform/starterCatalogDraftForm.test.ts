@@ -31,13 +31,13 @@ function openDraftForm() {
   const save = () => form.requestSubmit();
   const json = (value: unknown) => new Response(JSON.stringify(value));
   let pin = 101;
-  const reads = vi.fn((version: number) => Promise.resolve(json({ ok: true,
+  const reads = vi.fn((version: number, _draftId?: string, _revision?: number) => Promise.resolve(json({ ok: true,
     value: { type: { key: 'starter:item', version: version === 1 ? pin : 303 } } })));
   const writes: { key: string; body: string }[] = [];
   const first = deferred<Response>();
   vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
     const body = String(init.body), input = JSON.parse(body);
-    if (input.action === 'example') return reads(input.type.version);
+    if (input.action === 'example') return reads(input.type.version, input.draftId, input.expectedRevision);
     writes.push({ key: new Headers(init.headers).get('Idempotency-Key')!, body });
     return writes.length === 1 ? first.promise : Promise.resolve(json({ ok: true, value: { outcome: 'replayed' } }));
   }));
@@ -107,4 +107,31 @@ it.each([true, false])('discards an edited preflight with ok=%s', async ok => {
   await idle();
   expect(writes).toHaveLength(0);
   expect(form.textContent).not.toMatch(/starter:item@101|catalog_type_not_installed/u);
+});
+
+it('asks for another Save when the payload changes programmatically during resolution', async () => {
+  const { form, payload, reads, save, idle, writes, json, first } = openDraftForm();
+  const result = deferred<Response>();
+  reads.mockReturnValueOnce(result.promise);
+  save();
+  expect(reads).toHaveBeenCalledTimes(1);
+  payload.value = payload.value.replace('Fictional item', 'Edited item');
+  result.resolve(json({ ok: true, value: { type: { key: 'starter:item', version: 101 } } }));
+  first.resolve(json({ ok: true, value: {} }));
+  await idle();
+  expect(writes).toHaveLength(0);
+  expect(form.textContent).toContain('The form changed while resolving. Save again.');
+});
+
+it('supplies the saved revision to type resolution', async () => {
+  const { form, payload, reads, start, writes, first, json, idle } = openDraftForm();
+  form.querySelector<HTMLSelectElement>('[name=action]')!.value = 'revise';
+  form.querySelector<HTMLInputElement>('[name=expectedRevision]')!.value = '1';
+  payload.value = payload.value.replace('Fictional item', 'Edited item');
+  reads.mockResolvedValueOnce(json({ ok: true, value: { type: { key: 'starter:item', version: 1 } } }));
+  await start();
+  expect(reads).toHaveBeenCalledWith(1, form.querySelector<HTMLInputElement>('[name=draftId]')!.value, 1);
+  expect(JSON.parse(writes[0]!.body).payload.product.type.version).toBe(1);
+  first.resolve(json({ ok: true, value: {} }));
+  await idle();
 });

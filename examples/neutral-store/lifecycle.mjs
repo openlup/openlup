@@ -84,8 +84,16 @@ if (command === 'candidate') {
   try {
     const config = selectConfiguration(configurationArgument(args));
     assertConfig(config);
-    const { prepareStarterCatalogueRules, readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
+    const { assertStarterCataloguePins, prepareStarterCatalogueRules, readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
     prepareStarterCatalogueRules(readStarterCatalogueRules());
+    const inspect = (...args) => execFileSync('docker', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const volume = JSON.parse(inspect('compose', 'config', '--format', 'json')).volumes?.['catalogue-builds']?.name;
+    if (volume && inspect('volume', 'ls', '--quiet').trim().split('\n').includes(volume)) {
+      const image = /^FROM (\S+)/u.exec(await readFile(resolve(root, 'Dockerfile'), 'utf8'))?.[1];
+      if (!image) throw new Error('starter_catalogue_build_image_missing');
+      assertStarterCataloguePins(inspect('run', '--rm', '--network', 'none', '--read-only', '--mount',
+        `type=volume,source=${volume},target=/builds,readonly,volume-nocopy`, '--entrypoint', 'ls', image, '-1', '/builds').trim().split('\n'));
+    }
     run('docker', ['compose', 'build']);
     run('docker', ['compose', 'up', '--wait', 'database']);
     run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
