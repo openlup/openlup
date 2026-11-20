@@ -149,18 +149,6 @@ Search terms include messaging, notifications.
 
 Show offline: `show communications.additionalLocales --json`.
 
-## communications.messageDateFormatting
-
-Format the next-cycle date on the starter account page.
-Search terms include messaging, notifications.
-
-- Owner **communications** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
-- The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone.
-
-Show offline: `show communications.messageDateFormatting --json`.
-
 ## fulfillment.additionalDeliveryMethods
 
 Offer additional delivery methods.
@@ -348,18 +336,6 @@ Search terms include charge handling, settlement.
 - Settlement relies on verified provider evidence tied to the charged attempt.
 
 Show offline: `show payments.verifiedPaymentEvidence --json`.
-
-## pricing.currencyExponent
-
-Format money using the currency exponent.
-Search terms include quote amounts, price calculation.
-
-- Owner **pricing** · kind **cap** · runtime **read-only**
-- Default uses the documented behavior below.
-- Basis `neutral`.
-- The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.
-
-Show offline: `show pricing.currencyExponent --json`.
 
 ## pricing.indivisibleOfferTotals
 

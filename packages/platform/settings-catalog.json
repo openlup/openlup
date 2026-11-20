@@ -393,34 +393,6 @@
       "rules": []
     },
     {
-      "key": "communications.messageDateFormatting",
-      "domain": "communications",
-      "goal": "Format the next-cycle date on the starter account page.",
-      "schemaVersion": 1,
-      "kind": "cap",
-      "examples": [],
-      "fallback": null,
-      "defaultBasis": {
-        "kind": "neutral"
-      },
-      "whyThisDefault": "The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone.",
-      "effect": {
-        "appliesTo": "The starter account page displays the next-cycle timestamp directly.",
-        "frozenOn": [],
-        "impact": "operations"
-      },
-      "runtime": {
-        "level": "read-only",
-        "reason": "Format it in the starter using the market time zone."
-      },
-      "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsmessagedateformatting"
-      },
-      "schema": null,
-      "previewSchema": null,
-      "rules": []
-    },
-    {
       "key": "fulfillment.additionalDeliveryMethods",
       "domain": "fulfillment",
       "goal": "Offer additional delivery methods.",
@@ -965,34 +937,6 @@
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsverifiedpaymentevidence"
-      },
-      "schema": null,
-      "previewSchema": null,
-      "rules": []
-    },
-    {
-      "key": "pricing.currencyExponent",
-      "domain": "pricing",
-      "goal": "Format money using the currency exponent.",
-      "schemaVersion": 1,
-      "kind": "cap",
-      "examples": [],
-      "fallback": null,
-      "defaultBasis": {
-        "kind": "neutral"
-      },
-      "whyThisDefault": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.",
-      "effect": {
-        "appliesTo": "The starter paid-order email divides minor units by 100.",
-        "frozenOn": [],
-        "impact": "operations"
-      },
-      "runtime": {
-        "level": "read-only",
-        "reason": "Use formatCurrencyMinor in the starter formatter."
-      },
-      "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"
       },
       "schema": null,
       "previewSchema": null,

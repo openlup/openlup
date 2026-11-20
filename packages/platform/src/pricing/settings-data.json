@@ -16,21 +16,6 @@
     "rules": []
   },
   {
-    "key": "pricing.currencyExponent",
-    "domain": "pricing",
-    "goal": "Format money using the currency exponent.",
-    "schemaVersion": 1,
-    "kind": "cap",
-    "examples": [],
-    "fallback": null,
-    "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.",
-    "effect": {"appliesTo": "The starter paid-order email divides minor units by 100.", "frozenOn": [], "impact": "operations"},
-    "runtime": {"level": "read-only", "reason": "Use formatCurrencyMinor in the starter formatter."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"},
-    "rules": []
-  },
-  {
     "key": "pricing.indivisibleOfferTotals",
     "domain": "pricing",
     "goal": "Quote an offer total that cannot be divided evenly by quantity.",

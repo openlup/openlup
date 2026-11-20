@@ -23,7 +23,7 @@ it("represents every domain data key and executable descriptor in the catalogue"
   expect(entries.filter(({ kind }) => kind === "installed").map(({ key }) => key)).toEqual(expect.arrayContaining([
     "inventory_renewal_protection", "checkout_recovery_reminders", "subscriber_winback_policy",
   ]));
-  expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(42);
+  expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(40);
   expect(entries.find(({ key }) => key === "subscriptions.lifecycleNoticeRetryBudget")).toMatchObject({
     kind: "code", fallback: 6, change: { file: "owned/renewal.config.ts", symbol: "subscriptionCare.dispatch.maxAttempts" },
   });
