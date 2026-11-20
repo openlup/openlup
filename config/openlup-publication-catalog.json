@@ -12282,6 +12282,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/build-packages-incremental.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/build-packages-incremental.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/catalog-document-boundary.test.ts",
       "class": "public-output"
     },
@@ -31381,7 +31389,7 @@
     },
     {
       "name": "prelint",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
+      "command": "node scripts/build-packages-incremental.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31441,7 +31449,7 @@
     },
     {
       "name": "pretest",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/outbox run build && npm --workspace @openlup/platform run build",
+      "command": "node scripts/build-packages-incremental.mjs",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31487,7 +31495,7 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-2031519770f977de75b1836c28d953fc6cea9544ffa4dd1f4d994c463d14d6a2"
+      "digest": "sha256-7f2f88eb43581e036a35b93b9933d4f702e4fbee336bba7931e86eadbb4ee736"
     },
     {
       "path": "packages/core/package.json",
