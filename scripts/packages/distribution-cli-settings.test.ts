@@ -1,12 +1,13 @@
 import { afterEach, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { z } from "zod";
 import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
-  includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
+  reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
 import { proveNeutralStarterConsumer } from "./exact-set-qualification.mjs";
 
@@ -28,26 +29,76 @@ function fixture() {
   return { directory, write };
 }
 
+type CapturedSettings = { args: string[]; exit: number; stdout: string };
+
+const starter = resolve("examples/neutral-store");
+const baseline = JSON.parse(readFileSync(new URL("./fixtures/starter-settings.main.json", import.meta.url), "utf8")) as {
+  legacyHost: string;
+  settings: { key: string; goal: string }[];
+  discovery: CapturedSettings[];
+  checks: CapturedSettings[];
+};
+const starterKeys = baseline.settings.map(({ key }) => key);
+const discoveryCase = (...args: string[]) =>
+  baseline.discovery.find(row => JSON.stringify(row.args) === JSON.stringify(args))!;
+const defaultCheck = baseline.checks.find(row => row.args[2] === "supplements" && row.args.includes("--json"))!;
+
+function runStarterSettings(app: string, args: string[]) {
+  const { status, stdout, stderr, error } = spawnSync("npm", ["--silent", "run", "settings", "--", ...args], { cwd: app, encoding: "utf8" });
+  expect(error).toBeUndefined();
+  return { exit: status, stdout, stderr };
+}
+
+function applyDocumentedHostEdit(legacy: string, target: string) {
+  const fragment = readFileSync("packages/core/changes/settings-check-starter.md", "utf8");
+  const [poolImport, zodImport, oldType, newType, oldEntries, newEntries, oldFilter, newFilter] =
+    /```diff\n([\s\S]+?)\n```/u.exec(fragment)![1]!.split("\n").map(line => line.slice(1));
+  const changes = [[poolImport!, poolImport! + "\n" + zodImport], [oldType!, newType!],
+    [oldEntries!, newEntries!], [oldFilter!, newFilter!]];
+  let edited = legacy;
+  for (const [before, after] of changes) {
+    expect(edited).toContain(before);
+    edited = edited.replace(before, after);
+  }
+  for (const key of starterKeys) {
+    const start = `    '${key}': {`;
+    const descriptor = /^ {6}descriptor: \{\n[\s\S]+?^ {6}\},$/mu.exec(target.split(start)[1]!)![0];
+    const entry = edited.indexOf(start);
+    expect(entry).toBeGreaterThanOrEqual(0);
+    const end = edited.indexOf(" },\n", entry);
+    expect(end).toBeGreaterThan(entry);
+    edited = edited.slice(0, end) + ",\n" + descriptor + "\n    }," + edited.slice(end + " },".length);
+  }
+  return edited;
+}
+
 it.each([false, true])("upgrades the command and creates or preserves its owned host, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const guide = "# App guide\n\nLocal workflow.\n";
-  const section = "\n## Change a business setting\n\nRun `npm --silent run settings -- list`.\n";
+  const section = "\n## Change a business setting\n\nRun the settings script.\n";
+  const pkg = { type: "module", dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
+  const owned = ["AGENTS.md", starterSettingsHost];
+  const ownership = { managed: ["package.json", "ownership.json"], owned, generated: [] };
+  const targetHost = readFileSync(join(starter, starterSettingsHost), "utf8");
+  const legacy = baseline.legacyHost.replace("starter-demo:", "local-demo:");
+  const hostFile = join(app, starterSettingsHost);
   write("AGENTS.md", guide);
   candidate("AGENTS.md", guide + section);
-  candidate("ownership.json", { managed: ["package.json", "ownership.json"], owned: ["AGENTS.md", starterSettingsHost], generated: [] });
-  const pkg = { type: "module", dependencies: { "@openlup/core": "0.40.0", zod: "4.6.6" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
-  candidate("package.json", pkg);
-  const fee = "offer.freeShippingFromMinor";
-  const descriptor = ', descriptor: { domain: "shipping", goal: "Set the free shipping threshold.", effect: { appliesTo: "New quotes.", impact: "money", frozenOn: [] } }';
-  const file = (metadata = "") => `file: { configuration: 'sample', entries: { '${fee}': {
-    value: 12000, location: { file: 'owned/store.config.ts', symbol: '${fee}' }${metadata}
-  } } }`;
-  candidate(starterSettingsHost, "export function createSettingsBindings() { return { " + file(descriptor) + " }; }");
+  candidate("ownership.json", ownership);
+  candidate("package.json", { ...pkg, dependencies: { ...pkg.dependencies, zod: "4.6.6" } });
+  candidate(starterSettingsHost, targetHost);
+  if (customized) {
+    write("ownership.json", ownership);
+    write("package.json", pkg);
+    write(starterSettingsHost, legacy);
+  }
+
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
   migrateStarterOwned(app, target, from, to);
   migrateStarterOwned(app, target, from, to);
   expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide + section);
   expect(Object.hasOwn(to.files, "AGENTS.md")).toBe(false);
+  expect(Object.hasOwn(to.files, starterSettingsHost)).toBe(!customized);
   write("from.json", from); write("to.json", to);
   const apply = (status = 0) => {
     const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply", "--root", app,
@@ -55,61 +106,69 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
     expect(result.status, result.stderr || result.stdout).toBe(status);
     return JSON.parse(result.stdout);
   };
-  const local = "export function createSettingsBindings() { return { stockSourceKey: 'local' }; }";
-  const hostFile = join(app, starterSettingsHost);
+
   const localCommand = 'console.log("local starter command");';
   if (customized) {
-    const localManifest = { ...JSON.parse(from.files["package.json"]!), scripts: { local: `node -e '${localCommand}'` } };
-    write("package.json", localManifest);
+    write("package.json", { ...pkg, scripts: { ...pkg.scripts, local: `node -e '${localCommand}'` } });
     const before = starterUpgradeSnapshot(app, from.version);
     expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: "package.json" }] });
     expect(starterUpgradeSnapshot(app, from.version)).toEqual(before);
-    expect(existsSync(hostFile)).toBe(false);
+    expect(readFileSync(hostFile, "utf8")).toBe(legacy);
+    expect(readFileSync(join(app, "AGENTS.md"), "utf8")).toBe(guide + section);
     write("owned/local.mjs", localCommand);
     write("package.json", from.files["package.json"]!);
-
-    write(starterSettingsHost, local);
-    expect(apply(1)).toMatchObject({ applied: [], conflicts: [{ path: starterSettingsHost }] });
-    expect(starterUpgradeSnapshot(app, from.version)).toEqual(from);
-    expect(readFileSync(hostFile, "utf8")).toBe(local);
-    includeSettingsHost(app, target, to);
-    write("to.json", to);
   }
-  expect(apply().applied.sort()).toEqual(customized ? ["ownership.json", "package.json"] : [starterSettingsHost, "ownership.json", "package.json"].sort());
-  expect(apply().applied).toEqual([]);
-  expect(readFileSync(hostFile, "utf8")).toBe(customized ? local : to.files[starterSettingsHost]);
-  expect(() => assertCompleteStarter(app, to)).not.toThrow();
-  expect(JSON.parse(readFileSync(join(app, "package.json"), "utf8")).dependencies.zod).toBe("4.6.6");
-  if (customized) expect(readFileSync(join(app, "owned/local.mjs"), "utf8")).toBe(localCommand);
 
-  const settings = (command: string[], status = 0, warning = "") => {
-    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
-      "settings", ...command, "--app", "./" + starterSettingsHost, "--json"], { cwd: app, encoding: "utf8" });
-    expect(result.status, result.stderr || result.stdout).toBe(status);
-    expect(result.stderr).toBe(warning);
-    return JSON.parse(result.stdout);
-  };
-  const search = ["list", "--goal", "free shipping"];
+  expect(apply().applied.sort()).toEqual(customized ? ["package.json"] : [starterSettingsHost, "ownership.json", "package.json"].sort());
+  expect(readFileSync(hostFile, "utf8")).toBe(customized ? legacy : targetHost);
+  expect(JSON.parse(readFileSync(join(app, "package.json"), "utf8")).dependencies.zod).toBe("4.6.6");
+  expect(() => assertCompleteStarter(app, to)).not.toThrow();
+
+  for (const path of ["owned/acquisition-policy.ts", "owned/store.config.ts", "shared"]) {
+    symlinkSync(join(starter, path), join(app, path));
+  }
+  mkdirSync(join(app, "node_modules/.bin"));
+  for (const path of ["@openlup/platform", ".bin/openlup", "zod"]) {
+    symlinkSync(resolve("node_modules", path), join(app, "node_modules", path));
+  }
   if (customized) {
-    expect(settings(["check"], 2)).toMatchObject({ state: "unknown", appValidation: { hint: expect.stringContaining("Add file: { configuration, entries }") } });
-    const hostWithFile = (metadata = "") => local.replace("stockSourceKey: 'local'", "stockSourceKey: 'local', " + file(metadata));
-    const legacy = hostWithFile();
-    write(starterSettingsHost, legacy);
+    const search = discoveryCase("list", "--goal", "free shipping", "--json");
+    const { entries, ...listDocument } = JSON.parse(search.stdout);
+    const { rows, ...checkDocument } = JSON.parse(defaultCheck.stdout);
+    const remaining = (row: { key: string }) => !starterKeys.includes(row.key);
+    const warning = `Settings app: value reported without a descriptor for ${starterKeys.toSorted().map(key => JSON.stringify(key)).join(", ")}. Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n`;
+    const verifyLegacy = () => {
+      expect(readFileSync(hostFile, "utf8")).toBe(legacy);
+      expect(runStarterSettings(app, search.args)).toEqual({
+        exit: search.exit, stdout: JSON.stringify({ ...listDocument, entries: entries.filter(remaining) }) + "\n", stderr: warning,
+      });
+      expect(runStarterSettings(app, defaultCheck.args)).toEqual({
+        exit: defaultCheck.exit, stdout: JSON.stringify({ ...checkDocument, rows: rows.filter(remaining) }) + "\n", stderr: warning,
+      });
+    };
+    verifyLegacy();
     expect(apply().applied).toEqual([]);
-    expect(readFileSync(hostFile, "utf8")).toBe(legacy);
-    const warning = `Settings app: value reported without a descriptor for "${fee}". Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n`;
-    expect(settings(search, 0, warning).entries.some(({ key }: { key: string }) => key === fee)).toBe(false);
-    expect(settings(["check"], 0, warning).rows.some(({ key }: { key: string }) => key === fee)).toBe(false);
-    const reconciled = hostWithFile(descriptor);
+    verifyLegacy();
+    expect(readFileSync(join(app, "owned/local.mjs"), "utf8")).toBe(localCommand);
+
+    const reconciled = applyDocumentedHostEdit(legacy, targetHost);
+    const typedFixture = readFileSync(new URL("./fixtures/settings-upgrade-host.ts", import.meta.url), "utf8");
+    // The fixture rebases its starter imports so the repository typecheck can compile it in place.
+    expect(typedFixture).toBe(reconciled
+      .replaceAll("from './", "from '../../../examples/neutral-store/owned/")
+      .replace("from '../shared/", "from '../../../examples/neutral-store/shared/"));
     write(starterSettingsHost, reconciled);
     expect(apply().applied).toEqual([]);
     expect(readFileSync(hostFile, "utf8")).toBe(reconciled);
+  } else {
+    expect(apply().applied).toEqual([]);
   }
-  expect(settings(search).entries).toEqual(expect.arrayContaining([expect.objectContaining({ key: fee })]));
-  expect(settings(["show", fee]).observation).toEqual({ state: "file", configuration: "sample", value: 12000 });
-  expect(settings(["check"])).toMatchObject({ state: "checked", configuration: "sample", rows: expect.arrayContaining([
-    expect.objectContaining({ key: fee, file: expect.objectContaining({ value: 12000 }) }),
-  ]) });
+
+  const listed = runStarterSettings(app, ["list", "--json"]);
+  expect(listed.exit).toBe(0);
+  expect(listed.stderr).toBe("");
+  expect(JSON.parse(listed.stdout).entries.map(({ key }: { key: string }) => key)).toEqual(expect.arrayContaining(starterKeys));
+  expect(runStarterSettings(app, defaultCheck.args)).toEqual({ exit: defaultCheck.exit, stdout: defaultCheck.stdout, stderr: "" });
 });
 
 it("refuses an extracted starter without the settings script", () => {
@@ -278,38 +337,47 @@ it.each([
   }
 });
 
-it("discovers, shows, explains and checks all six starter declarations through its settings script", () => {
-  const starter = resolve("examples/neutral-store");
-  const manifest = JSON.parse(readFileSync(join(starter, "package.json"), "utf8"));
-  const [, ...script] = manifest.scripts.settings.split(" ");
-  const invoke = (...args: string[]) => {
-    const { status, stdout, stderr } = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
-      ...script, ...args, "--json"], { cwd: starter, encoding: "utf8" });
-    expect(status, stderr).toBe(0);
-    expect(stderr).toBe("");
-    return JSON.parse(stdout);
-  };
-  const check = invoke("check");
-  expect(check).toMatchObject({ schemaVersion: 1, state: "checked", appValidation: { state: "passed" } });
-  for (const [key, goal, value] of [
-    ["offer.freeShippingFromMinor", "free shipping", 1000],
-    ["offer.subscriptionDiscountBps", "subscription discount", 500],
-    ["purchase.reservationMinutes", "checkout reservation", 30],
-    ["subscriptionCreation.editWindowHours", "edit cutoff", 72],
-    ["subscriptionOffers.deliveryCycles", "delivery interval", expect.objectContaining({ classic: expect.any(Object), sized: expect.any(Object) })],
-    ["subscriptions.lifecycleNoticeRetryBudget", "retry budget", 6],
-  ] as const) {
-    const show = invoke("show", key);
-    const { setting, observation } = show;
-    expect(setting).toMatchObject({ key, kind: "code", schema: expect.any(Object) });
-    expect(observation).toEqual({ state: "file", configuration: check.configuration, value });
-    expect(invoke("list", "--goal", goal).entries).toContainEqual({
-      key, goal: setting.goal, kind: setting.kind, runtime: setting.runtime, change: setting.change,
-    });
-    expect(invoke("explain", key)).toEqual({ ...show, observation: { state: "offline" } });
-    expect(check.rows).toContainEqual({
-      key, kind: "code", file: { state: "present", value: observation.value, location: setting.change },
-      validation: { state: "valid" }, effect: setting.effect.appliesTo, takesEffect: `${setting.change.file} ${setting.change.symbol}`,
+function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
+  const [command] = captured.args;
+  const { setting: before } = JSON.parse(discoveryCase("show", key, "--json").stdout);
+  const check = JSON.parse(defaultCheck.stdout);
+  const value = check.rows.find((row: { key: string }) => row.key === key).file.value;
+  const runtimeReason = "Edit the application configuration and deploy.";
+  const editWindowGoal = "Set how many hours before a renewal customers can edit a newly created subscription (edit cutoff, change deadline, activation window).";
+  const goal = key === "subscriptionCreation.editWindowHours" ? editWindowGoal : before.goal;
+  const displayedSchema = z.toJSONSchema(z.fromJSONSchema(before.schema), { target: "draft-07", io: "input", reused: "inline" });
+  const fileObservation = { state: "file", configuration: check.configuration, value };
+  if (captured.args.includes("--json")) {
+    const document = JSON.parse(captured.stdout);
+    expect(JSON.stringify(document) + "\n").toBe(captured.stdout);
+    const setting = command === "list" ? document.entries.find((row: { key: string }) => row.key === key) : document.setting;
+    setting.goal = goal;
+    setting.runtime.reason = runtimeReason;
+    if (command !== "list") setting.schema = displayedSchema;
+    if (command === "show") document.observation = fileObservation;
+    return JSON.stringify(document) + "\n";
+  }
+  let expected = captured.stdout.replace(before.goal, goal);
+  if (command !== "list") {
+    expected = expected.replace(before.runtime.reason, runtimeReason)
+      .replace(`Schema: ${JSON.stringify(before.schema)}\n`, `Schema: ${JSON.stringify(displayedSchema)}\n`);
+  }
+  if (command === "show") {
+    expected = expected.replace('Observation: {"state":"offline"}', "Observation: " + JSON.stringify(fileObservation));
+  }
+  return expected;
+}
+
+it.each(baseline.settings)("preserves starter discovery bytes for $key with only the specified substitutions", ({ key, goal }) => {
+  const inputs = baseline.discovery.filter(({ args }) => args[0] === "list" ? args[2] === goal : args[1] === key);
+  expect(inputs).toHaveLength(6);
+  for (const captured of inputs) {
+    expect(runStarterSettings(starter, captured.args), captured.args.join(" ")).toEqual({
+      exit: captured.exit, stdout: expectedStarterDiscovery(captured, key), stderr: "",
     });
   }
+});
+
+it.each(baseline.checks)("preserves the full starter check report for $args", captured => {
+  expect(runStarterSettings(starter, captured.args)).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
 });

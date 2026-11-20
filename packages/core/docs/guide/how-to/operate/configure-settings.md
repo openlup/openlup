@@ -2,8 +2,9 @@
 
 Find the renewal stock protection horizon or other business settings before
 choosing how to change them. The [Settings catalogue](settings-catalogue.md)
-lists each key, its owner and the expected effect. This discovery surface is
-experimental.
+covers platform settings, capabilities and invariants. Use your application's
+settings script to discover settings declared by the app. This discovery surface
+is experimental.
 
 ## Find a setting
 
@@ -41,7 +42,7 @@ with remediation. To explain the absent-row behavior offline, pass
 
 ## Check owned configuration before proposing a change
 
-1. Use `list --goal <words>` to find the key.
+1. Pass `list --goal <words>` to your application’s settings script.
 2. Run `check --configuration <id>` with the starter's settings script to read
    values from the selected owned configuration and find their locations.
 3. Edit the owned configuration and rerun `check`.
@@ -209,17 +210,17 @@ Use `--json` to get one settings document with `schemaVersion: 1` on stdout.
 
 A domain keeps an executable descriptor in code and exports it from a
 non-browser entry. The generator reads descriptive entries from the domain's
-data file. Installed consumers discover those entries in the packaged catalogue.
+data file. These platform entries make up the packaged catalogue.
 
 A `code` setting is supplied by the adopter's application. A `callback`
 setting binds host-owned code. An `installed` setting has a store-specific
 policy row when explicitly configured. A capability gap (`cap`) or platform
-invariant (`invariant`) has no editable setting value.
+invariant (`invariant`) has no editable setting value. Find `code` settings with
+the application's settings script or with `openlup settings --app <module> list`.
 
 `read-only` covers discovery. `preview` allows inspection of a proposed
-change, and `ready` requires qualification for runtime changes. The current
-catalogue gives the runtime level, reason and existing change mechanism for
-each key. Renewal stock protection is at `preview`; the host installer still
+change, and `ready` requires qualification for runtime changes. `show` gives the runtime level, reason and existing change mechanism for the
+selected key. Renewal stock protection is at `preview`; the host installer still
 owns changes.
 
 ## Refusals
@@ -231,7 +232,7 @@ and whether retrying can help.
 
 | Code | Next step |
 | --- | --- |
-| `commerce_setting_unknown` | Find the installed key with `list`. |
+| `commerce_setting_unknown` | Run `list` with your application’s settings script for app keys, or use an unbound `list` for platform keys. |
 | `commerce_setting_refusal_unknown` | Check the exact refusal code from this version. |
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
 | `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |

@@ -131,6 +131,11 @@ and run the same regeneration steps as for installed settings. Include
 `key`, `domain`, `kind`, `goal`, `schemaVersion: 1`, a read-only `runtime` with one
 `reason`, and `change.reference` for where to act. Omit value fields.
 
+For `callback`, add a value descriptor to the owning domain's `settings-data.json`.
+Use `kind: "callback"` and the read-only runtime level. Describe the default,
+effect and records that keep existing values. Set `change.reference` to the guide
+for the platform callback contract, then regenerate the catalogue as below.
+
 ### Kind `installed`
 
 Use [renewal stock protection](packages/core/docs/guide/how-to/operate/settings-catalogue.md#inventory_renewal_protection)

@@ -1,0 +1,390 @@
+{
+  "base": "333d4c52f52d5a0883251400638daf0760104092",
+  "legacyHost": "import type { Pool } from 'pg';\nimport { readCheckoutRecoveryReminderObservation } from '@openlup/platform/commerce/server';\nimport type { SettingsAppBindings } from '@openlup/platform/operations/server';\nimport { checkoutWavePolicy } from './acquisition-policy.ts';\nimport { assertConfig } from '../shared/config.ts';\nimport { configurations, selectConfiguration } from './store.config.ts';\n\nexport function createSettingsBindings({ db, configuration }: {\n  db?: Pool; configuration?: string;\n}): SettingsAppBindings {\n  if (configuration !== undefined && !Object.hasOwn(configurations, configuration)) {\n    return { configurationIds: Object.keys(configurations) };\n  }\n  const config = selectConfiguration(configuration);\n  const file = 'owned/store.config.ts';\n  const entries = {\n    'offer.freeShippingFromMinor': { value: config.offer?.freeShippingFromMinor, location: { file, symbol: 'offer.freeShippingFromMinor' } },\n    'offer.subscriptionDiscountBps': { value: config.offer?.subscriptionDiscountBps, location: { file, symbol: 'offer.subscriptionDiscountBps' } },\n    'purchase.reservationMinutes': { value: config.purchase?.reservationMinutes, location: { file, symbol: 'purchase.reservationMinutes' } },\n    'subscriptionCreation.editWindowHours': { value: config.subscriptionCreation?.editWindowHours, location: { file, symbol: 'subscriptionCreation.editWindowHours' } },\n    'subscriptionOffers.deliveryCycles': { value: config.subscriptionOffers, location: { file, symbol: 'subscriptionOffers' } },\n    'subscriptions.lifecycleNoticeRetryBudget': { value: config.renewal?.subscriptionCare?.dispatch?.maxAttempts,\n      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.dispatch.maxAttempts' } },\n    inventory_renewal_protection: { value: config.inventory?.renewalProtection, location: { file, symbol: 'inventory.renewalProtection' } },\n    checkout_recovery_reminders: { value: config.checkoutRecoveryReminders, location: { file, symbol: 'checkoutRecoveryReminders' } },\n  };\n  return {\n    stockSourceKey: `starter-demo:${config.id}`,\n    file: {\n      configuration: config.id,\n      validate() {\n        assertConfig(config);\n        selectConfiguration(config.id);\n      },\n      entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.value !== undefined)),\n    },\n    readers: db ? {\n      checkout_recovery_reminders: () => readCheckoutRecoveryReminderObservation(db, checkoutWavePolicy),\n    } : {},\n  };\n}\n",
+  "settings": [
+    {
+      "key": "offer.freeShippingFromMinor",
+      "goal": "free shipping"
+    },
+    {
+      "key": "offer.subscriptionDiscountBps",
+      "goal": "subscription discount"
+    },
+    {
+      "key": "purchase.reservationMinutes",
+      "goal": "checkout reservation"
+    },
+    {
+      "key": "subscriptionCreation.editWindowHours",
+      "goal": "edit cutoff"
+    },
+    {
+      "key": "subscriptionOffers.deliveryCycles",
+      "goal": "delivery interval"
+    },
+    {
+      "key": "subscriptions.lifecycleNoticeRetryBudget",
+      "goal": "retry budget"
+    }
+  ],
+  "discovery": [
+    {
+      "args": [
+        "list",
+        "--goal",
+        "free shipping"
+      ],
+      "exit": 0,
+      "stdout": "offer.freeShippingFromMinor (code, read-only)\n  Set the free shipping threshold in currency minor units.\n  Change: owned/store.config.ts offer.freeShippingFromMinor\npromotions.freeShippingBasis (cap, read-only)\n  Choose the subtotal basis for free shipping.\n  Native threshold decisions use a fixed basis.\n  Change: docs/guide/how-to/operate/settings-catalogue.md#promotionsfreeshippingbasis\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "free shipping",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"entries\":[{\"key\":\"offer.freeShippingFromMinor\",\"goal\":\"Set the free shipping threshold in currency minor units.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.freeShippingFromMinor\"}},{\"key\":\"promotions.freeShippingBasis\",\"goal\":\"Choose the subtotal basis for free shipping.\",\"kind\":\"cap\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"Native threshold decisions use a fixed basis.\"},\"change\":{\"reference\":\"docs/guide/how-to/operate/settings-catalogue.md#promotionsfreeshippingbasis\"}}]}\n"
+    },
+    {
+      "args": [
+        "show",
+        "offer.freeShippingFromMinor"
+      ],
+      "exit": 0,
+      "stdout": "offer.freeShippingFromMinor — Set the free shipping threshold in currency minor units.\nOwner: shipping\nKind: code (read-only)\nThe starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver.\nDefault: 1000\nBasis: neutral\nBoth samples set the threshold to 1000 minor units.\nSchema: {\"type\":\"integer\",\"minimum\":0,\"maximum\":2147483647,\"description\":\"assertConfig checks whole minor units from 0 through 2147483647.\"}\nEffect: The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.\nFrozen on: The order draft saves the quote's shipping terms when present.\nChange: owned/store.config.ts offer.freeShippingFromMinor\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "show",
+        "offer.freeShippingFromMinor",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"offer.freeShippingFromMinor\",\"goal\":\"Set the free shipping threshold in currency minor units.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.freeShippingFromMinor\"},\"domain\":\"shipping\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2147483647,\"description\":\"assertConfig checks whole minor units from 0 through 2147483647.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":1000,\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"Both samples set the threshold to 1000 minor units.\",\"effect\":{\"appliesTo\":\"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.\",\"frozenOn\":[\"The order draft saves the quote's shipping terms when present.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "offer.freeShippingFromMinor"
+      ],
+      "exit": 0,
+      "stdout": "offer.freeShippingFromMinor — Set the free shipping threshold in currency minor units.\nOwner: shipping\nKind: code (read-only)\nThe starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver.\nDefault: 1000\nBasis: neutral\nBoth samples set the threshold to 1000 minor units.\nSchema: {\"type\":\"integer\",\"minimum\":0,\"maximum\":2147483647,\"description\":\"assertConfig checks whole minor units from 0 through 2147483647.\"}\nEffect: The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.\nFrozen on: The order draft saves the quote's shipping terms when present.\nChange: owned/store.config.ts offer.freeShippingFromMinor\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "offer.freeShippingFromMinor",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"offer.freeShippingFromMinor\",\"goal\":\"Set the free shipping threshold in currency minor units.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter supplies the threshold through commerceSettingsPort. To keep the threshold with the same quote helper, supply that port in a replacement resolver.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.freeShippingFromMinor\"},\"domain\":\"shipping\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2147483647,\"description\":\"assertConfig checks whole minor units from 0 through 2147483647.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":1000,\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"Both samples set the threshold to 1000 minor units.\",\"effect\":{\"appliesTo\":\"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.\",\"frozenOn\":[\"The order draft saves the quote's shipping terms when present.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "subscription discount"
+      ],
+      "exit": 0,
+      "stdout": "offer.subscriptionDiscountBps (code, read-only)\n  Set the subscription discount in basis points.\n  Change: owned/store.config.ts offer.subscriptionDiscountBps\nsubscriptions.introductoryPhases (cap, read-only)\n  Schedule introductory discounts by renewal cycle.\n  Native terms support one introductory phase before the retained terms take over.\n  Change: docs/guide/how-to/operate/settings-catalogue.md#subscriptionsintroductoryphases\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "subscription discount",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"entries\":[{\"key\":\"offer.subscriptionDiscountBps\",\"goal\":\"Set the subscription discount in basis points.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the discount from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.subscriptionDiscountBps\"}},{\"key\":\"subscriptions.introductoryPhases\",\"goal\":\"Schedule introductory discounts by renewal cycle.\",\"kind\":\"cap\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"Native terms support one introductory phase before the retained terms take over.\"},\"change\":{\"reference\":\"docs/guide/how-to/operate/settings-catalogue.md#subscriptionsintroductoryphases\"}}]}\n"
+    },
+    {
+      "args": [
+        "show",
+        "offer.subscriptionDiscountBps"
+      ],
+      "exit": 0,
+      "stdout": "offer.subscriptionDiscountBps — Set the subscription discount in basis points.\nOwner: pricing\nKind: code (read-only)\nThe starter reads the discount from the owned store config.\nDefault: 500\nBasis: neutral\nBoth samples set a 500-basis-point discount.\nSchema: {\"type\":\"integer\",\"minimum\":0,\"description\":\"assertConfig first checks whole basis points from 0 through 10000. Startup and the install seed require a rounded subscription unit price of 1 through 2147483647 minor units. A 10000-basis-point discount produces zero.\"}\nEffect: The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.\nFrozen on: The saved checkout quote includes the quoted unit price.\nChange: owned/store.config.ts offer.subscriptionDiscountBps\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "show",
+        "offer.subscriptionDiscountBps",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"offer.subscriptionDiscountBps\",\"goal\":\"Set the subscription discount in basis points.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the discount from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.subscriptionDiscountBps\"},\"domain\":\"pricing\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":0,\"description\":\"assertConfig first checks whole basis points from 0 through 10000. Startup and the install seed require a rounded subscription unit price of 1 through 2147483647 minor units. A 10000-basis-point discount produces zero.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":500,\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"Both samples set a 500-basis-point discount.\",\"effect\":{\"appliesTo\":\"The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.\",\"frozenOn\":[\"The saved checkout quote includes the quoted unit price.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "offer.subscriptionDiscountBps"
+      ],
+      "exit": 0,
+      "stdout": "offer.subscriptionDiscountBps — Set the subscription discount in basis points.\nOwner: pricing\nKind: code (read-only)\nThe starter reads the discount from the owned store config.\nDefault: 500\nBasis: neutral\nBoth samples set a 500-basis-point discount.\nSchema: {\"type\":\"integer\",\"minimum\":0,\"description\":\"assertConfig first checks whole basis points from 0 through 10000. Startup and the install seed require a rounded subscription unit price of 1 through 2147483647 minor units. A 10000-basis-point discount produces zero.\"}\nEffect: The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.\nFrozen on: The saved checkout quote includes the quoted unit price.\nChange: owned/store.config.ts offer.subscriptionDiscountBps\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "offer.subscriptionDiscountBps",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"offer.subscriptionDiscountBps\",\"goal\":\"Set the subscription discount in basis points.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the discount from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.subscriptionDiscountBps\"},\"domain\":\"pricing\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":0,\"description\":\"assertConfig first checks whole basis points from 0 through 10000. Startup and the install seed require a rounded subscription unit price of 1 through 2147483647 minor units. A 10000-basis-point discount produces zero.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":500,\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"Both samples set a 500-basis-point discount.\",\"effect\":{\"appliesTo\":\"The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.\",\"frozenOn\":[\"The saved checkout quote includes the quoted unit price.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "checkout reservation"
+      ],
+      "exit": 0,
+      "stdout": "purchase.reservationMinutes (code, read-only)\n  Set the checkout reservation lifetime in minutes.\n  Change: owned/store.config.ts purchase.reservationMinutes\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "checkout reservation",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"entries\":[{\"key\":\"purchase.reservationMinutes\",\"goal\":\"Set the checkout reservation lifetime in minutes.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the duration from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"purchase.reservationMinutes\"}}]}\n"
+    },
+    {
+      "args": [
+        "show",
+        "purchase.reservationMinutes"
+      ],
+      "exit": 0,
+      "stdout": "purchase.reservationMinutes — Set the checkout reservation lifetime in minutes.\nOwner: commerce\nKind: code (read-only)\nThe starter reads the duration from the owned store config.\nDefault: 30\nBasis: neutral\nBoth samples set a 30-minute duration.\nSchema: {\"type\":\"integer\",\"minimum\":1,\"maximum\":9007199254740991,\"description\":\"assertConfig checks that the duration is a positive safe integer.\"}\nEffect: The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.\nFrozen on: The reservation row records the expiry assigned at creation.\nChange: owned/store.config.ts purchase.reservationMinutes\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "show",
+        "purchase.reservationMinutes",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"purchase.reservationMinutes\",\"goal\":\"Set the checkout reservation lifetime in minutes.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the duration from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"purchase.reservationMinutes\"},\"domain\":\"commerce\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":9007199254740991,\"description\":\"assertConfig checks that the duration is a positive safe integer.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":30,\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"Both samples set a 30-minute duration.\",\"effect\":{\"appliesTo\":\"The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.\",\"frozenOn\":[\"The reservation row records the expiry assigned at creation.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "purchase.reservationMinutes"
+      ],
+      "exit": 0,
+      "stdout": "purchase.reservationMinutes — Set the checkout reservation lifetime in minutes.\nOwner: commerce\nKind: code (read-only)\nThe starter reads the duration from the owned store config.\nDefault: 30\nBasis: neutral\nBoth samples set a 30-minute duration.\nSchema: {\"type\":\"integer\",\"minimum\":1,\"maximum\":9007199254740991,\"description\":\"assertConfig checks that the duration is a positive safe integer.\"}\nEffect: The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.\nFrozen on: The reservation row records the expiry assigned at creation.\nChange: owned/store.config.ts purchase.reservationMinutes\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "purchase.reservationMinutes",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"purchase.reservationMinutes\",\"goal\":\"Set the checkout reservation lifetime in minutes.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the duration from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"purchase.reservationMinutes\"},\"domain\":\"commerce\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":9007199254740991,\"description\":\"assertConfig checks that the duration is a positive safe integer.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":30,\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"Both samples set a 30-minute duration.\",\"effect\":{\"appliesTo\":\"The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.\",\"frozenOn\":[\"The reservation row records the expiry assigned at creation.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "edit cutoff"
+      ],
+      "exit": 0,
+      "stdout": "subscriptionCreation.editWindowHours (code, read-only)\n  Set how many hours before a renewal customers can edit a newly created subscription.\n  Change: owned/store.config.ts subscriptionCreation.editWindowHours\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "edit cutoff",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"entries\":[{\"key\":\"subscriptionCreation.editWindowHours\",\"goal\":\"Set how many hours before a renewal customers can edit a newly created subscription.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the window from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionCreation.editWindowHours\"}}]}\n"
+    },
+    {
+      "args": [
+        "show",
+        "subscriptionCreation.editWindowHours"
+      ],
+      "exit": 0,
+      "stdout": "subscriptionCreation.editWindowHours — Set how many hours before a renewal customers can edit a newly created subscription.\nOwner: subscriptions\nKind: code (read-only)\nThe starter reads the window from the owned store config.\nDefault: 72\nBasis: reference-code (matches the reference deployment’s code)\nThe starter sets a 72-hour edit window.\nSchema: {\"type\":\"integer\",\"minimum\":1,\"maximum\":720}\nEffect: The starter supplies the deployed edit window at native subscription activation.\nFrozen on: The activation writes the window on the new subscription row.\nChange: owned/store.config.ts subscriptionCreation.editWindowHours\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "show",
+        "subscriptionCreation.editWindowHours",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"subscriptionCreation.editWindowHours\",\"goal\":\"Set how many hours before a renewal customers can edit a newly created subscription.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the window from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionCreation.editWindowHours\"},\"domain\":\"subscriptions\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":720},\"previewSchema\":null,\"rules\":[],\"examples\":[{\"value\":48}],\"fallback\":72,\"defaultBasis\":{\"kind\":\"reference-code\"},\"whyThisDefault\":\"The starter sets a 72-hour edit window.\",\"effect\":{\"appliesTo\":\"The starter supplies the deployed edit window at native subscription activation.\",\"frozenOn\":[\"The activation writes the window on the new subscription row.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "subscriptionCreation.editWindowHours"
+      ],
+      "exit": 0,
+      "stdout": "subscriptionCreation.editWindowHours — Set how many hours before a renewal customers can edit a newly created subscription.\nOwner: subscriptions\nKind: code (read-only)\nThe starter reads the window from the owned store config.\nDefault: 72\nBasis: reference-code (matches the reference deployment’s code)\nThe starter sets a 72-hour edit window.\nSchema: {\"type\":\"integer\",\"minimum\":1,\"maximum\":720}\nEffect: The starter supplies the deployed edit window at native subscription activation.\nFrozen on: The activation writes the window on the new subscription row.\nChange: owned/store.config.ts subscriptionCreation.editWindowHours\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "subscriptionCreation.editWindowHours",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"subscriptionCreation.editWindowHours\",\"goal\":\"Set how many hours before a renewal customers can edit a newly created subscription.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter reads the window from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionCreation.editWindowHours\"},\"domain\":\"subscriptions\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":720},\"previewSchema\":null,\"rules\":[],\"examples\":[{\"value\":48}],\"fallback\":72,\"defaultBasis\":{\"kind\":\"reference-code\"},\"whyThisDefault\":\"The starter sets a 72-hour edit window.\",\"effect\":{\"appliesTo\":\"The starter supplies the deployed edit window at native subscription activation.\",\"frozenOn\":[\"The activation writes the window on the new subscription row.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "delivery interval"
+      ],
+      "exit": 0,
+      "stdout": "subscriptionOffers.deliveryCycles (code, read-only)\n  Choose the allowed delivery interval and default cadence for subscriptions.\n  Change: owned/store.config.ts subscriptionOffers\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "delivery interval",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"entries\":[{\"key\":\"subscriptionOffers.deliveryCycles\",\"goal\":\"Choose the allowed delivery interval and default cadence for subscriptions.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter composes its offers from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionOffers\"}}]}\n"
+    },
+    {
+      "args": [
+        "show",
+        "subscriptionOffers.deliveryCycles"
+      ],
+      "exit": 0,
+      "stdout": "subscriptionOffers.deliveryCycles — Choose the allowed delivery interval and default cadence for subscriptions.\nOwner: subscriptions\nKind: code (read-only)\nThe starter composes its offers from the owned store config.\nDefault: {\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"defaultDays\":28}\nBasis: neutral\nThe samples default to 28 days; one also allows 56 days and the other allows 14 and 56 days.\nSchema: {\"type\":\"object\",\"description\":\"assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence.\"}\nEffect: A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.\nFrozen on: A saved starter-pack quote records the graduation cadence captured at checkout.\nChange: owned/store.config.ts subscriptionOffers\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "show",
+        "subscriptionOffers.deliveryCycles",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"subscriptionOffers.deliveryCycles\",\"goal\":\"Choose the allowed delivery interval and default cadence for subscriptions.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter composes its offers from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionOffers\"},\"domain\":\"subscriptions\",\"schemaVersion\":1,\"schema\":{\"type\":\"object\",\"description\":\"assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"defaultDays\":28},\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"The samples default to 28 days; one also allows 56 days and the other allows 14 and 56 days.\",\"effect\":{\"appliesTo\":\"A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.\",\"frozenOn\":[\"A saved starter-pack quote records the graduation cadence captured at checkout.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "subscriptionOffers.deliveryCycles"
+      ],
+      "exit": 0,
+      "stdout": "subscriptionOffers.deliveryCycles — Choose the allowed delivery interval and default cadence for subscriptions.\nOwner: subscriptions\nKind: code (read-only)\nThe starter composes its offers from the owned store config.\nDefault: {\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"defaultDays\":28}\nBasis: neutral\nThe samples default to 28 days; one also allows 56 days and the other allows 14 and 56 days.\nSchema: {\"type\":\"object\",\"description\":\"assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence.\"}\nEffect: A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.\nFrozen on: A saved starter-pack quote records the graduation cadence captured at checkout.\nChange: owned/store.config.ts subscriptionOffers\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "subscriptionOffers.deliveryCycles",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"subscriptionOffers.deliveryCycles\",\"goal\":\"Choose the allowed delivery interval and default cadence for subscriptions.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter composes its offers from the owned store config.\"},\"change\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionOffers\"},\"domain\":\"subscriptions\",\"schemaVersion\":1,\"schema\":{\"type\":\"object\",\"description\":\"assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"defaultDays\":28},\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"The samples default to 28 days; one also allows 56 days and the other allows 14 and 56 days.\",\"effect\":{\"appliesTo\":\"A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.\",\"frozenOn\":[\"A saved starter-pack quote records the graduation cadence captured at checkout.\"],\"impact\":\"customer-promise\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "retry budget"
+      ],
+      "exit": 0,
+      "stdout": "subscriptions.lifecycleNoticeRetryBudget (code, read-only)\n  Set the retry budget for dunning and event or reminder dispatch.\n  Change: owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\n"
+    },
+    {
+      "args": [
+        "list",
+        "--goal",
+        "retry budget",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"entries\":[{\"key\":\"subscriptions.lifecycleNoticeRetryBudget\",\"goal\":\"Set the retry budget for dunning and event or reminder dispatch.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter passes its dispatch policy to the lifecycle notice dispatcher.\"},\"change\":{\"file\":\"owned/renewal.config.ts\",\"symbol\":\"subscriptionCare.dispatch.maxAttempts\"}}]}\n"
+    },
+    {
+      "args": [
+        "show",
+        "subscriptions.lifecycleNoticeRetryBudget"
+      ],
+      "exit": 0,
+      "stdout": "subscriptions.lifecycleNoticeRetryBudget — Set the retry budget for dunning and event or reminder dispatch.\nOwner: subscriptions\nKind: code (read-only)\nThe starter passes its dispatch policy to the lifecycle notice dispatcher.\nDefault: 6\nBasis: neutral\nThe starter sets six attempts.\nSchema: {\"type\":\"integer\",\"minimum\":1,\"maximum\":2147483647,\"description\":\"assertSubscriptionCare checks the budget as an integer from 1 through 2147483647.\"}\nEffect: On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.\nFrozen on: No records named\nChange: owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "show",
+        "subscriptions.lifecycleNoticeRetryBudget",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"subscriptions.lifecycleNoticeRetryBudget\",\"goal\":\"Set the retry budget for dunning and event or reminder dispatch.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter passes its dispatch policy to the lifecycle notice dispatcher.\"},\"change\":{\"file\":\"owned/renewal.config.ts\",\"symbol\":\"subscriptionCare.dispatch.maxAttempts\"},\"domain\":\"subscriptions\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":2147483647,\"description\":\"assertSubscriptionCare checks the budget as an integer from 1 through 2147483647.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":6,\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"The starter sets six attempts.\",\"effect\":{\"appliesTo\":\"On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.\",\"frozenOn\":[],\"impact\":\"operations\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "subscriptions.lifecycleNoticeRetryBudget"
+      ],
+      "exit": 0,
+      "stdout": "subscriptions.lifecycleNoticeRetryBudget — Set the retry budget for dunning and event or reminder dispatch.\nOwner: subscriptions\nKind: code (read-only)\nThe starter passes its dispatch policy to the lifecycle notice dispatcher.\nDefault: 6\nBasis: neutral\nThe starter sets six attempts.\nSchema: {\"type\":\"integer\",\"minimum\":1,\"maximum\":2147483647,\"description\":\"assertSubscriptionCare checks the budget as an integer from 1 through 2147483647.\"}\nEffect: On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.\nFrozen on: No records named\nChange: owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\nObservation: {\"state\":\"offline\"}\n"
+    },
+    {
+      "args": [
+        "explain",
+        "subscriptions.lifecycleNoticeRetryBudget",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"setting\":{\"key\":\"subscriptions.lifecycleNoticeRetryBudget\",\"goal\":\"Set the retry budget for dunning and event or reminder dispatch.\",\"kind\":\"code\",\"runtime\":{\"level\":\"read-only\",\"reason\":\"The starter passes its dispatch policy to the lifecycle notice dispatcher.\"},\"change\":{\"file\":\"owned/renewal.config.ts\",\"symbol\":\"subscriptionCare.dispatch.maxAttempts\"},\"domain\":\"subscriptions\",\"schemaVersion\":1,\"schema\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":2147483647,\"description\":\"assertSubscriptionCare checks the budget as an integer from 1 through 2147483647.\"},\"previewSchema\":null,\"rules\":[],\"examples\":[],\"fallback\":6,\"defaultBasis\":{\"kind\":\"neutral\"},\"whyThisDefault\":\"The starter sets six attempts.\",\"effect\":{\"appliesTo\":\"On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.\",\"frozenOn\":[],\"impact\":\"operations\"}},\"observation\":{\"state\":\"offline\"}}\n"
+    }
+  ],
+  "checks": [
+    {
+      "args": [
+        "check",
+        "--configuration",
+        "supplements"
+      ],
+      "exit": 0,
+      "stdout": "Settings check (supplements): checked\nApp startup validation: passed\nCatalogue checks cover reported JSON values with an executable schema.\ncheckout_recovery_reminders: file present, schema not-validated\n  owned/store.config.ts · checkoutRecoveryReminders\n  Value: {\"revision\":\"starter-1\",\"abandonedCart\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"gentle\",\"afterHours\":24},{\"stage\":\"last\",\"afterHours\":72}],\"checkoutRecovery\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"last\",\"afterHours\":20}]}\n  Effect: A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing. Change: installCheckoutRecoveryReminderSchedule\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\ninventory_renewal_protection: file present, schema valid\n  owned/store.config.ts · inventory.renewalProtection\n  Value: {\"revision\":\"starter-1\",\"renewalProtectionDays\":14}\n  Effect: Future available-to-promise calculations and new purchase allocations. Change: installRenewalStockProtectionPolicy\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\noffer.freeShippingFromMinor: file present, schema valid\n  owned/store.config.ts · offer.freeShippingFromMinor\n  Value: 1000\n  Effect: The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect. Change: owned/store.config.ts offer.freeShippingFromMinor\noffer.subscriptionDiscountBps: file present, schema valid\n  owned/store.config.ts · offer.subscriptionDiscountBps\n  Value: 500\n  Effect: The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value. Change: owned/store.config.ts offer.subscriptionDiscountBps\npurchase.reservationMinutes: file present, schema valid\n  owned/store.config.ts · purchase.reservationMinutes\n  Value: 30\n  Effect: The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation. Change: owned/store.config.ts purchase.reservationMinutes\nsubscriber_winback_policy: file not-reported, schema not-validated\n  Effect: Candidates for new winback messages. Change: No settings write operation is available for this key.\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\nsubscriptionCreation.editWindowHours: file present, schema valid\n  owned/store.config.ts · subscriptionCreation.editWindowHours\n  Value: 72\n  Effect: The starter supplies the deployed edit window at native subscription activation. Change: owned/store.config.ts subscriptionCreation.editWindowHours\nsubscriptionOffers.deliveryCycles: file present, schema valid\n  owned/store.config.ts · subscriptionOffers\n  Value: {\"classic\":{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"defaultDays\":28,\"maximumUnits\":1782,\"maximumBaseLines\":6,\"maximumAddonLines\":12,\"bySku\":{\"ASTER-DAWN-60\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DAWN-60-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DAWN-60-EXTRA\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-NOON-60\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-NOON-60-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DUSK-30\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DUSK-30-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}]},\"minimumBaseUnits\":6,\"checkoutMinimumBaseUnits\":1},\"sized\":{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"defaultDays\":28,\"maximumUnits\":1782,\"maximumBaseLines\":6,\"maximumAddonLines\":12,\"bySku\":{\"ASTER-DAWN-60\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DAWN-60-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DAWN-60-EXTRA\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-NOON-60\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-NOON-60-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DUSK-30\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DUSK-30-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}]},\"minimumBaseUnits\":6}}\n  Effect: A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode. Change: owned/store.config.ts subscriptionOffers\nsubscriptions.lifecycleNoticeRetryBudget: file present, schema valid\n  owned/renewal.config.ts · subscriptionCare.dispatch.maxAttempts\n  Value: 6\n  Effect: On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap. Change: owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\n"
+    },
+    {
+      "args": [
+        "check",
+        "--configuration",
+        "supplements",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"configuration\":\"supplements\",\"state\":\"checked\",\"appValidation\":{\"state\":\"passed\"},\"rows\":[{\"key\":\"checkout_recovery_reminders\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"checkoutRecoveryReminders\"},\"value\":{\"revision\":\"starter-1\",\"abandonedCart\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"gentle\",\"afterHours\":24},{\"stage\":\"last\",\"afterHours\":72}],\"checkoutRecovery\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"last\",\"afterHours\":20}]}},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.\",\"takesEffect\":\"installCheckoutRecoveryReminderSchedule\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"inventory_renewal_protection\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"inventory.renewalProtection\"},\"value\":{\"revision\":\"starter-1\",\"renewalProtectionDays\":14}},\"validation\":{\"state\":\"valid\"},\"effect\":\"Future available-to-promise calculations and new purchase allocations.\",\"takesEffect\":\"installRenewalStockProtectionPolicy\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"offer.freeShippingFromMinor\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.freeShippingFromMinor\"},\"value\":1000},\"validation\":{\"state\":\"valid\"},\"effect\":\"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.\",\"takesEffect\":\"owned/store.config.ts offer.freeShippingFromMinor\",\"kind\":\"code\"},{\"key\":\"offer.subscriptionDiscountBps\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.subscriptionDiscountBps\"},\"value\":500},\"validation\":{\"state\":\"valid\"},\"effect\":\"The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.\",\"takesEffect\":\"owned/store.config.ts offer.subscriptionDiscountBps\",\"kind\":\"code\"},{\"key\":\"purchase.reservationMinutes\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"purchase.reservationMinutes\"},\"value\":30},\"validation\":{\"state\":\"valid\"},\"effect\":\"The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.\",\"takesEffect\":\"owned/store.config.ts purchase.reservationMinutes\",\"kind\":\"code\"},{\"key\":\"subscriber_winback_policy\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"Candidates for new winback messages.\",\"takesEffect\":\"No settings write operation is available for this key.\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"subscriptionCreation.editWindowHours\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionCreation.editWindowHours\"},\"value\":72},\"validation\":{\"state\":\"valid\"},\"effect\":\"The starter supplies the deployed edit window at native subscription activation.\",\"takesEffect\":\"owned/store.config.ts subscriptionCreation.editWindowHours\",\"kind\":\"code\"},{\"key\":\"subscriptionOffers.deliveryCycles\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionOffers\"},\"value\":{\"classic\":{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"defaultDays\":28,\"maximumUnits\":1782,\"maximumBaseLines\":6,\"maximumAddonLines\":12,\"bySku\":{\"ASTER-DAWN-60\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DAWN-60-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DAWN-60-EXTRA\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-NOON-60\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-NOON-60-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DUSK-30\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DUSK-30-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}]},\"minimumBaseUnits\":6,\"checkoutMinimumBaseUnits\":1},\"sized\":{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"defaultDays\":28,\"maximumUnits\":1782,\"maximumBaseLines\":6,\"maximumAddonLines\":12,\"bySku\":{\"ASTER-DAWN-60\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DAWN-60-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DAWN-60-EXTRA\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-NOON-60\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-NOON-60-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DUSK-30\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"ASTER-DUSK-30-L\":[{\"days\":{\"kind\":\"set\",\"values\":[28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}]},\"minimumBaseUnits\":6}}},\"validation\":{\"state\":\"valid\"},\"effect\":\"A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.\",\"takesEffect\":\"owned/store.config.ts subscriptionOffers\",\"kind\":\"code\"},{\"key\":\"subscriptions.lifecycleNoticeRetryBudget\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/renewal.config.ts\",\"symbol\":\"subscriptionCare.dispatch.maxAttempts\"},\"value\":6},\"validation\":{\"state\":\"valid\"},\"effect\":\"On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.\",\"takesEffect\":\"owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\",\"kind\":\"code\"}]}\n"
+    },
+    {
+      "args": [
+        "check",
+        "--configuration",
+        "coffee"
+      ],
+      "exit": 0,
+      "stdout": "Settings check (coffee): checked\nApp startup validation: passed\nCatalogue checks cover reported JSON values with an executable schema.\ncheckout_recovery_reminders: file present, schema not-validated\n  owned/store.config.ts · checkoutRecoveryReminders\n  Value: {\"revision\":\"starter-1\",\"abandonedCart\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"gentle\",\"afterHours\":24},{\"stage\":\"last\",\"afterHours\":72}],\"checkoutRecovery\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"last\",\"afterHours\":20}]}\n  Effect: A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing. Change: installCheckoutRecoveryReminderSchedule\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\ninventory_renewal_protection: file present, schema valid\n  owned/store.config.ts · inventory.renewalProtection\n  Value: {\"revision\":\"starter-1\",\"renewalProtectionDays\":14}\n  Effect: Future available-to-promise calculations and new purchase allocations. Change: installRenewalStockProtectionPolicy\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\noffer.freeShippingFromMinor: file present, schema valid\n  owned/store.config.ts · offer.freeShippingFromMinor\n  Value: 1000\n  Effect: The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect. Change: owned/store.config.ts offer.freeShippingFromMinor\noffer.subscriptionDiscountBps: file present, schema valid\n  owned/store.config.ts · offer.subscriptionDiscountBps\n  Value: 500\n  Effect: The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value. Change: owned/store.config.ts offer.subscriptionDiscountBps\npurchase.reservationMinutes: file present, schema valid\n  owned/store.config.ts · purchase.reservationMinutes\n  Value: 30\n  Effect: The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation. Change: owned/store.config.ts purchase.reservationMinutes\nsubscriber_winback_policy: file not-reported, schema not-validated\n  Effect: Candidates for new winback messages. Change: No settings write operation is available for this key.\n  Store: not checked. The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\nsubscriptionCreation.editWindowHours: file present, schema valid\n  owned/store.config.ts · subscriptionCreation.editWindowHours\n  Value: 72\n  Effect: The starter supplies the deployed edit window at native subscription activation. Change: owned/store.config.ts subscriptionCreation.editWindowHours\nsubscriptionOffers.deliveryCycles: file present, schema valid\n  owned/store.config.ts · subscriptionOffers\n  Value: {\"classic\":{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"defaultDays\":28,\"maximumUnits\":1782,\"maximumBaseLines\":6,\"maximumAddonLines\":12,\"bySku\":{\"PEBBLE-LIGHT-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-LIGHT-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-LIGHT-250-EXTRA\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-MEDIUM-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-MEDIUM-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-DARK-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-DARK-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}]},\"minimumBaseUnits\":6,\"checkoutMinimumBaseUnits\":1},\"sized\":{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"defaultDays\":28,\"maximumUnits\":1782,\"maximumBaseLines\":6,\"maximumAddonLines\":12,\"bySku\":{\"PEBBLE-LIGHT-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-LIGHT-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-LIGHT-250-EXTRA\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-MEDIUM-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-MEDIUM-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-DARK-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-DARK-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}]},\"minimumBaseUnits\":6}}\n  Effect: A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode. Change: owned/store.config.ts subscriptionOffers\nsubscriptions.lifecycleNoticeRetryBudget: file present, schema valid\n  owned/renewal.config.ts · subscriptionCare.dispatch.maxAttempts\n  Value: 6\n  Effect: On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap. Change: owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\n"
+    },
+    {
+      "args": [
+        "check",
+        "--configuration",
+        "coffee",
+        "--json"
+      ],
+      "exit": 0,
+      "stdout": "{\"schemaVersion\":1,\"configuration\":\"coffee\",\"state\":\"checked\",\"appValidation\":{\"state\":\"passed\"},\"rows\":[{\"key\":\"checkout_recovery_reminders\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"checkoutRecoveryReminders\"},\"value\":{\"revision\":\"starter-1\",\"abandonedCart\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"gentle\",\"afterHours\":24},{\"stage\":\"last\",\"afterHours\":72}],\"checkoutRecovery\":[{\"stage\":\"first\",\"afterHours\":1},{\"stage\":\"last\",\"afterHours\":20}]}},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.\",\"takesEffect\":\"installCheckoutRecoveryReminderSchedule\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"inventory_renewal_protection\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"inventory.renewalProtection\"},\"value\":{\"revision\":\"starter-1\",\"renewalProtectionDays\":14}},\"validation\":{\"state\":\"valid\"},\"effect\":\"Future available-to-promise calculations and new purchase allocations.\",\"takesEffect\":\"installRenewalStockProtectionPolicy\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"offer.freeShippingFromMinor\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.freeShippingFromMinor\"},\"value\":1000},\"validation\":{\"state\":\"valid\"},\"effect\":\"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.\",\"takesEffect\":\"owned/store.config.ts offer.freeShippingFromMinor\",\"kind\":\"code\"},{\"key\":\"offer.subscriptionDiscountBps\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"offer.subscriptionDiscountBps\"},\"value\":500},\"validation\":{\"state\":\"valid\"},\"effect\":\"The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.\",\"takesEffect\":\"owned/store.config.ts offer.subscriptionDiscountBps\",\"kind\":\"code\"},{\"key\":\"purchase.reservationMinutes\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"purchase.reservationMinutes\"},\"value\":30},\"validation\":{\"state\":\"valid\"},\"effect\":\"The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.\",\"takesEffect\":\"owned/store.config.ts purchase.reservationMinutes\",\"kind\":\"code\"},{\"key\":\"subscriber_winback_policy\",\"file\":{\"state\":\"not-reported\"},\"validation\":{\"state\":\"not-validated\"},\"effect\":\"Candidates for new winback messages.\",\"takesEffect\":\"No settings write operation is available for this key.\",\"kind\":\"installed\",\"store\":{\"state\":\"not-checked\"},\"note\":\"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.\"},{\"key\":\"subscriptionCreation.editWindowHours\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionCreation.editWindowHours\"},\"value\":72},\"validation\":{\"state\":\"valid\"},\"effect\":\"The starter supplies the deployed edit window at native subscription activation.\",\"takesEffect\":\"owned/store.config.ts subscriptionCreation.editWindowHours\",\"kind\":\"code\"},{\"key\":\"subscriptionOffers.deliveryCycles\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/store.config.ts\",\"symbol\":\"subscriptionOffers\"},\"value\":{\"classic\":{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"defaultDays\":28,\"maximumUnits\":1782,\"maximumBaseLines\":6,\"maximumAddonLines\":12,\"bySku\":{\"PEBBLE-LIGHT-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-LIGHT-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-LIGHT-250-EXTRA\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-MEDIUM-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-MEDIUM-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-DARK-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-DARK-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}]},\"minimumBaseUnits\":6,\"checkoutMinimumBaseUnits\":1},\"sized\":{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"defaultDays\":28,\"maximumUnits\":1782,\"maximumBaseLines\":6,\"maximumAddonLines\":12,\"bySku\":{\"PEBBLE-LIGHT-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-LIGHT-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-LIGHT-250-EXTRA\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-MEDIUM-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-MEDIUM-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-DARK-250\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}],\"PEBBLE-DARK-250-L\":[{\"days\":{\"kind\":\"set\",\"values\":[14,28,56]},\"quantities\":{\"kind\":\"range\",\"min\":1,\"max\":99,\"step\":1}}]},\"minimumBaseUnits\":6}}},\"validation\":{\"state\":\"valid\"},\"effect\":\"A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.\",\"takesEffect\":\"owned/store.config.ts subscriptionOffers\",\"kind\":\"code\"},{\"key\":\"subscriptions.lifecycleNoticeRetryBudget\",\"file\":{\"state\":\"present\",\"location\":{\"file\":\"owned/renewal.config.ts\",\"symbol\":\"subscriptionCare.dispatch.maxAttempts\"},\"value\":6},\"validation\":{\"state\":\"valid\"},\"effect\":\"On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.\",\"takesEffect\":\"owned/renewal.config.ts subscriptionCare.dispatch.maxAttempts\",\"kind\":\"code\"}]}\n"
+    }
+  ]
+}
