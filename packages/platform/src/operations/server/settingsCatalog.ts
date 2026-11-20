@@ -43,8 +43,8 @@ function readSettingsCatalogue() {
   return { entries, searchTerms, previewOutputSchema, byCode, refusalSchema, ...settingsDocuments(entries) };
 }
 
-function settingsDocuments(entries: readonly z.infer<typeof descriptor>[]) {
-  const key = z.enum(entries.map(entry => entry.key));
+export function settingsDocuments(entries?: readonly z.infer<typeof descriptor>[]) {
+  const key = entries ? z.enum(entries.map(entry => entry.key)) : z.string().min(1);
   const [value, ...facts] = descriptor.options;
   const summaryFields = Object.fromEntries(
     settingDescriptorSummary.keyof().options.map(field => [field, true]),
@@ -62,7 +62,7 @@ function settingsDocuments(entries: readonly z.infer<typeof descriptor>[]) {
   return { showRequest, showResult, listResult };
 }
 
-const fileObservationSchema = z.discriminatedUnion("state", [
+export const fileObservationSchema = z.discriminatedUnion("state", [
   ...observationSchema.options,
   z.strictObject({ state: z.literal("file"), configuration: z.string(), value: z.json() }),
 ]);

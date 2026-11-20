@@ -179,11 +179,7 @@ Use `preview inventory_renewal_protection` with
 
 Use `--configuration <id>` to select a stock source when the app has multiple
 configurations. Use `--as-of <UTC-ISO-instant>` to repeat an observation at the
-same instant. The host can also compose the read-only MCP definition
-`settings__preview` with `previewSetting` from `@openlup/platform/operations/server`.
-Bind the inventory key to `previewRenewalStockProtection` from
-`@openlup/platform/inventory` using the intended store's pool and stock source.
-Pass through the options supplied by `previewSetting`.
+same instant.
 The CLI decodes JSON once. Preview and the installer work from decoded values,
 including finite JavaScript numbers and own JSON fields. For example,
 `14.0000000000000001` decodes to `14` and previews as `14`. A raw PostgreSQL
@@ -218,9 +214,10 @@ startup validator for `check`. Connected commands use readers, previewers or a
 stock source key from the binding. If the requested configuration ID is unknown, return
 `{ configurationIds: [...] }` with the available IDs. The CLI owns the
 database connection and calls the module without a pool when resolving
-`--configuration` offline. The module must avoid starting the application,
-writing data or printing to stdout. Pass an explicit
-`--app` only for application code you trust.
+`--configuration` offline. With an explicit `--configuration`, show and explain
+resolve it before answering even for package keys, and list the valid IDs if it is unknown.
+The module must avoid starting the application, writing data or printing to
+stdout. Pass an explicit `--app` only for application code you trust.
 
 List, show and explain work for platform keys without an app or database. With a
 PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
@@ -280,3 +277,33 @@ and whether retrying can help.
 | `commerce_setting_runtime_not_ready` | Read the key's runtime reason and existing change mechanism. |
 | `inventory_renewal_protection_policy_invalid` | Check the value schema and examples using `show inventory_renewal_protection`. |
 | `checkout_recovery_policy_invalid` | Correct the supplied host policy, including offset order after defaults, then repeat the connected read. |
+
+## Use the settings server from an MCP client
+
+The settings server is read-only. After installing the extracted starter's
+dependencies, use this JSON in your MCP client configuration. Replace
+`/absolute/path/to/store` with the starter directory.
+
+```json
+{
+  "mcpServers": {
+    "openlup-settings": {
+      "command": "/absolute/path/to/store/node_modules/.bin/openlup",
+      "args": ["settings", "mcp", "--app", "/absolute/path/to/store/owned/settings-host.ts"]
+    }
+  }
+}
+```
+
+| Tool | Use it to |
+| --- | --- |
+| `settings_list` | Find platform and app settings by goal. |
+| `settings_show` | Read the allowed values and the available file or store observation for a key. |
+| `settings_explain` | Explain a setting or a refusal code, including remediation. |
+| `settings_check` | Validate the selected application's file settings offline. |
+| `settings_preview` | Estimate a change for supported settings using the proposed JSON value. |
+
+For connected show and preview, add `--database-url` and a read-capable
+PostgreSQL URL to the client's private launch configuration. Supply one TCP host,
+a username and the database name. Use `--configuration <id>` to select an app
+configuration. Tool calls cannot override the application, configuration or URL.

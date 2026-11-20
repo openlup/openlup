@@ -1,5 +1,4 @@
 import { ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
-import { settingsReadTools } from "@openlup/platform/operations/server";
 import { describeRenewalStockProtectionSetting } from "@openlup/platform/inventory";
 import { spawnSync } from "node:child_process";
 import { globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -65,8 +64,9 @@ it("gives each connected refusal an extracted-app remediation command", () => {
 });
 
 it("advertises settings results that the pinned MCP SDK accepts", () => {
-  expect(ListToolsResultSchema.parse({ tools: settingsReadTools }).tools.map(tool => tool.name))
-    .toEqual(["settings__list", "settings__show", "settings__preview"]);
+  const tools: unknown = JSON.parse(readFileSync("packages/platform/test/operations/settingsReadToolSchemas.main.json", "utf8"));
+  expect(ListToolsResultSchema.parse({ tools }).tools.map(tool => tool.name))
+    .toEqual(["settings_list", "settings_show", "settings_explain", "settings_check", "settings_preview"]);
 });
 
 it("refuses unknown descriptor fields, including nested metadata, and a mismatched domain", () => {

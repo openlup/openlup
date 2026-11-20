@@ -5,6 +5,9 @@ import { z, type ZodType } from "zod";
 import { runSettingsCommand, type SettingsAppBindings } from "../../src/operations/server/settingsCommand.js";
 import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
+import { callSettingsTool, settingsMcpContext, settingsMcpTools } from "../../src/operations/server/settingsMcp.js";
+import { renewalStockProtectionPreviewResult } from "../../src/inventory/renewalStockProtection.js";
+
 const key = "inventory_renewal_protection";
 const url = "postgresql://sample@read.invalid/shop";
 const fourDnsLabels = Array.from({ length: 4 }, () => "a".repeat(63)).join(".");
@@ -797,13 +800,14 @@ it("uses the packaged value descriptor member order for declared show JSON", asy
   expect(Object.keys(declared.change)).toEqual(["file", "symbol"]);
 });
 
+const ownProtoJson = '{"__proto__":{"flag":true}}';
+
 it("reports original JSON with own special keys", async () => {
-  const original = '{"__proto__":{"flag":true}}';
-  const raw = JSON.parse(original);
+  const raw = JSON.parse(ownProtoJson);
   const host = checks(async () => appFixture(() => raw, z.unknown()));
   const { output, exit } = await run(["show", feeKey, ...appArgs, "--json"], { host });
   expect(exit).toBe(0);
-  expect(output).toContain(`"value":${original}`);
+  expect(output).toContain(`"value":${ownProtoJson}`);
 });
 
 it.each(["show", "explain"])("preserves own metadata and projected properties in %s", async command => {
@@ -893,4 +897,158 @@ it.each([{}, appFixture()])("keeps unknown-key refusals for a healthy module wit
     const baseline = await run(args);
     expect({ exit, output }).toEqual({ exit: baseline.exit, output: baseline.output });
   }
+});
+
+const fixedApp = { app: "./app.ts" };
+const connectedApp = { ...fixedApp, "database-url": url };
+const nativeProposal = { renewalProtectionDays: 21, revision: "next" };
+const validPreview = renewalStockProtectionPreviewResult.parse({
+  schemaVersion: 1, key, asOf, proposed: nativeProposal, current: parityValue,
+  difference: { renewalProtectionDays: 7 }, validation: { state: "valid", value: nativeProposal },
+  effect: { existingReservations: "unchanged", newPurchaseAvailability: "equal-or-lower", skus: [] }, uncertainty: "fixture",
+});
+
+it.each([
+  ["P01 app goal list", "list", { goal: "gift wrapping fee" }, ["--goal", "gift wrapping fee"], fixedApp, 0],
+  ["P02 declared file value with selected configuration", "show", { key: feeKey }, [feeKey], { ...fixedApp, configuration: "west" }, 0],
+  ["P02 declared file value with own __proto__", "show", { key: feeKey }, [feeKey], fixedApp, 0, ownProtoJson],
+  ["P03 explain refusal code", "explain", { keyOrCode: "commerce_setting_unknown" }, ["commerce_setting_unknown"], fixedApp, 0],
+  ["P03 explain selected declaration", "explain", { keyOrCode: feeKey }, [feeKey], { ...fixedApp, configuration: "west" }, 0],
+  ["P04 show missing key", "show", {}, [], fixedApp, 64],
+  ["P04 show empty key", "show", { key: "" }, [""], fixedApp, 64],
+  ["P05 connected override", "show", { key }, [key], connectedApp, 0],
+  ["P06 missing connected reader", "show", { key: "subscriber_winback_policy" }, ["subscriber_winback_policy"], connectedApp, 1],
+  ["P06 unavailable store", "show", { key }, [key], { ...connectedApp, app: "unavailable" }, 74],
+  ["P07 check ignores URL", "check", {}, [], connectedApp, 0],
+  ["P07 check invalid", "check", {}, [], { app: "invalid" }, 1],
+  ["P07 check unknown", "check", {}, [], { app: "unknown" }, 2],
+  ["P07 check missing factory", "check", {}, [], { app: "missing" }, 74],
+  ["P08 offline preview", "preview", { key, value: nativeProposal }, [key, "--value", JSON.stringify(nativeProposal)], fixedApp, 1],
+  ["P09 preview missing key", "preview", { value: null }, ["--value", "null"], fixedApp, 64],
+  ["P09 preview empty key", "preview", { key: "", value: null }, ["--value", "null", "--", ""], fixedApp, 64],
+  ["P09 preview missing proposal", "preview", { key }, [key], fixedApp, 64],
+  ["P10 unknown configuration precedes invalid asOf", "preview", { key, value: {}, asOf: "bad" },
+    [key, "--value", "{}", "--as-of", "bad"], { ...connectedApp, configuration: "missing" }, 64],
+  ["P11 valid preview", "preview", { key, value: nativeProposal, asOf },
+    [key, "--value", JSON.stringify(nativeProposal), "--as-of", asOf], connectedApp, 0],
+  ["P11 invalid-policy preview", "preview", { key, value: null, asOf }, [key, "--value", "null", "--as-of", asOf], connectedApp, 0],
+  ["P13 selected list", "list", {}, [], { ...fixedApp, configuration: "west" }, 0],
+  ["P13 selected package show", "show", { key }, [key], { ...fixedApp, configuration: "west" }, 0],
+  ["P13 selected package explain", "explain", { keyOrCode: key }, [key], { ...fixedApp, configuration: "west" }, 0],
+  ["P13 unknown package show configuration", "show", { key }, [key], { ...fixedApp, configuration: "missing" }, 64],
+  ["P13 unknown package explain configuration", "explain", { keyOrCode: key }, [key], { ...fixedApp, configuration: "missing" }, 64],
+  ["P13 selected connected show", "show", { key }, [key], { ...connectedApp, configuration: "west" }, 0],
+  ["P13 selected check", "check", {}, [], { ...connectedApp, configuration: "west" }, 0],
+  ["P13 unknown list configuration", "list", {}, [], { ...fixedApp, configuration: "missing" }, 64],
+  ["P13 unknown show configuration", "show", { key }, [key], { ...connectedApp, configuration: "missing" }, 64],
+  ["P13 unknown explain configuration", "explain", { keyOrCode: feeKey }, [feeKey], { ...fixedApp, configuration: "missing" }, 64],
+] as const)("%s returns identical CLI and MCP documents", async (_, command, input, argv, context, exit, fileJson?) => {
+  const loadCheck = vi.fn(async ({ app, configuration }: { app: string; configuration?: string }) => {
+    if (app === "missing") return undefined;
+    if (app === "unknown") return {};
+    if (app === "invalid") throw new Error("rejected edit");
+    if (configuration === "missing") return { configurationIds: ["west"] };
+    const configured = fileJson === undefined
+      ? appFixture(() => configuration === "west" ? 151 : 150, z.number())
+      : appFixture(() => JSON.parse(fileJson), z.unknown());
+    return { file: { ...configured.file!, configuration: configuration ?? "sample" } };
+  });
+  const close = vi.fn(async () => {});
+  const preview = vi.fn(async (value: unknown) => value === null ? { ...validPreview, proposed: null,
+    validation: { state: "invalid" as const, code: "inventory_renewal_protection_policy_invalid", rule: "policy", hint: "Use an object",
+      remediation: { retry: true, action: "Repair", command: "openlup settings preview --help" } } } : validPreview);
+  const bind = vi.fn(async ({ app, configuration }: Parameters<NonNullable<Parameters<typeof runSettingsCommand>[2]>["bind"]>[0]) => {
+    if (configuration === "missing") return { configurationIds: ["west"], close };
+    return { close, readers: { [key]: async () => {
+      if (app === "unavailable") throw new Error("store unavailable");
+      return { present: true as const, revision: "local", value: parityValue };
+    } }, previewers: { [key]: preview } };
+  });
+  const launchFlags = Object.entries(context).map(([flag, value]) => `--${flag}=${value}`);
+  const launch = settingsMcpContext(launchFlags);
+  expect(launch.context).toEqual(context);
+  const flags = launchFlags.filter(flag => !flag.startsWith("--database-url=") || command === "show" || command === "preview");
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === command)!;
+  const host = { bind, loadCheck };
+  const cli = await run([...flags, "--json", command, ...argv], { host });
+  expect(cli.exit).toBe(exit);
+  const result = await callSettingsTool(tool, input, launch.context!, host);
+  expect(result).toEqual({ isError: exit !== 0, structuredContent: JSON.parse(cli.output),
+    content: [{ type: "text", text: cli.output.trimEnd() }] });
+  if (fileJson !== undefined) {
+    expect(JSON.stringify(result.structuredContent)).toContain(`"value":${fileJson}`);
+    expect(result.content[0]?.text).toContain(`"value":${fileJson}`);
+  }
+  if (command === "show" && "database-url" in context) {
+    expect(bind).toHaveBeenCalledTimes(2);
+    expect(bind).toHaveBeenLastCalledWith({ database: databaseOptions, app: context.app,
+      configuration: "configuration" in context ? context.configuration : undefined });
+    expect(close).toHaveBeenCalledTimes(2);
+  }
+  if ("configuration" in context && (command === "list" || command === "explain" || command === "check" || !("database-url" in context))) {
+    expect(loadCheck).toHaveBeenLastCalledWith({ app: context.app, configuration: context.configuration });
+    if (context.configuration === "missing") expect(JSON.parse(cli.output).refusal).toMatchObject({
+      code: "commerce_setting_read_input_invalid", path: ["configuration"], hint: 'Unknown configuration "missing". Use one of these IDs: west.',
+    });
+  }
+  if (command === "check" || command === "preview" && !("database-url" in context)) expect(bind).not.toHaveBeenCalled();
+  if (command === "preview" && exit !== 0) expect(preview).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["incomplete output", { schemaVersion: 1 as const }],
+  ["extra field with the platform's strict schema", { ...validPreview, extra: true }],
+] as const)("P11 rejects %s", async (_, output) => {
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "preview")!;
+  const result = await callSettingsTool(tool, { key, value: nativeProposal, asOf }, connectedApp,
+    { bind: async () => ({ previewers: { [key]: async () => output } }) });
+  expect(result).toEqual({ isError: true, content: [{ type: "text",
+    text: "The settings command returned an invalid document. Check the installed package version and app binding." }] });
+});
+
+it.each([url, url + " ", url + "?host=other.invalid", url.replace("/shop", "/%ZZ"), url.replace("/shop", "/")])("P12 uses shared named-store launch admission", async (candidate) => {
+  const launch = settingsMcpContext([`--database-url=${candidate}`]);
+  if (candidate === url) expect(launch.context).toEqual({ "database-url": url });
+  else {
+    const bind = vi.fn();
+    const cli = await run(["show", key, `--database-url=${candidate}`, "--json"], { host: { bind } });
+    expect(cli.exit).toBe(64);
+    expect(launch.hint).toBe(JSON.parse(cli.output).refusal.hint);
+    expect(bind).not.toHaveBeenCalled();
+  }
+});
+
+it("refuses a non-canonical MCP launch URL before reading or writing protocol frames", async () => {
+  const write = vi.fn();
+  const warn = vi.fn();
+  const bind = vi.fn();
+  const input = { [Symbol.asyncIterator]: vi.fn(() => { throw new Error("unexpected frame input"); }) };
+  expect(await runSettingsCommand(["mcp", `--database-url=${url} `], {
+    write, warn, input, readStdin: async () => { throw new Error("unexpected proposal input"); },
+  }, { bind, previewResultSchema: renewalStockProtectionPreviewResult })).toBe(64);
+  expect(warn).toHaveBeenCalledExactlyOnceWith(expect.stringMatching(/^Supply a canonical [^\n]+\n$/u));
+  expect(write).not.toHaveBeenCalled();
+  expect(input[Symbol.asyncIterator]).not.toHaveBeenCalled();
+  expect(bind).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["at the top level", "1e400"],
+  ["nested in an array", '{"nested":[{"amount":1e400}]}'],
+  ["under an own __proto__ member", '{"__proto__":{"amount":1e400}}'],
+])("refuses a non-finite preview frame %s before dispatch", async (_, value) => {
+  const input = (async function* () {
+    yield Buffer.from(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"settings_preview","arguments":{"key":"${key}","value":${value}}}}\n`);
+    yield Buffer.from('{"jsonrpc":"2.0","id":2,"method":"ping"}\n');
+  })();
+  const write = vi.fn<(line: string) => void>();
+  const bind = vi.fn(async () => ({ previewers: { [key]: async () => validPreview } }));
+  expect(await runSettingsCommand(["mcp", "--app=./app.ts", `--database-url=${url}`], { write, input, readStdin: async () => "" }, {
+    bind, previewResultSchema: renewalStockProtectionPreviewResult,
+  })).toBe(0);
+  expect(write.mock.calls.map(([line]) => JSON.parse(line))).toEqual([
+    { jsonrpc: "2.0", id: 1, error: { code: -32602, message: "Invalid tool or arguments. See tools/list." } },
+    { jsonrpc: "2.0", id: 2, result: {} },
+  ]);
+  expect(bind).not.toHaveBeenCalled();
 });
