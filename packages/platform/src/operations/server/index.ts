@@ -10,6 +10,6 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
-export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsCheckOutputSchema, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
+export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 export { runSettingsCommand, type SettingsAppBindings } from "./settingsCommand.js";

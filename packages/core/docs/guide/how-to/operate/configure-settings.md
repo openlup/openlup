@@ -46,8 +46,9 @@ checking to startup. For an installed key that supports preview, run `preview`
 separately to estimate what the change would do against a store.
 
 Use `show <key> --configuration <id>` to find a value before editing it.
-For a reported key, `show` names the loaded file value and its location where
-available. The JSON `observation.state` is `file` for an offline file value.
+For a reported key, `show` gives the loaded file value and the location supplied
+by the app, if any. A starter catalogue reference describes where the starter
+keeps the setting. The JSON `observation.state` is `file` for an offline file value.
 A connected installed read keeps its store value in `observation` and puts
 the file value in `fileObservation`. When the app does not report the key,
 offline text says “No file value reported.”
@@ -56,8 +57,10 @@ Check runs the application's startup validation when the binding supplies it
 and shows its result separately. Each code or installed row reports whether a
 file value was supplied, the packaged schema result and how the change takes
 effect. Missing values and entries without an executable schema are not
-validated against the catalogue. A passed check covers the reported values and
-available checks, and installed rows say “Store: not checked.”
+validated against the catalogue. A passed check covers reported values that have
+an executable schema and the application's startup validation when supplied.
+Check fails if the binding reports an unknown catalogue key. Installed rows say
+“Store: not checked.”
 
 With `--json`, check returns one version-1 document. It exits 0 when checked
 and 1 if startup or a reported value fails validation. Exit 2 means the binding

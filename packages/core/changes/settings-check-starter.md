@@ -8,32 +8,35 @@ configuration. An owned file is never overwritten.
 
 ```diff
 diff --git a/owned/settings-host.ts b/owned/settings-host.ts
-index 00b9518e0..70966d23b 100644
+index 00b9518e0..c5229ef05 100644
 --- a/owned/settings-host.ts
 +++ b/owned/settings-host.ts
 @@ -4,2 +4,3 @@ import type { SettingsAppBindings } from '@openlup/platform/operations/server';
  import { checkoutWavePolicy } from './acquisition-policy.ts';
 +import { assertConfig } from '../shared/config.ts';
  import { configurations, selectConfiguration } from './store.config.ts';
-@@ -12,4 +13,19 @@ export function createSettingsBindings({ db, configuration }: {
+@@ -12,4 +13,22 @@ export function createSettingsBindings({ db, configuration }: {
    }
 +  const config = selectConfiguration(configuration);
++  const file = 'owned/store.config.ts';
++  const entries = {
++    'offer.freeShippingFromMinor': { value: config.offer?.freeShippingFromMinor, location: { file, symbol: 'offer.freeShippingFromMinor' } },
++    'offer.subscriptionDiscountBps': { value: config.offer?.subscriptionDiscountBps, location: { file, symbol: 'offer.subscriptionDiscountBps' } },
++    'purchase.reservationMinutes': { value: config.purchase?.reservationMinutes, location: { file, symbol: 'purchase.reservationMinutes' } },
++    'subscriptionCreation.editWindowHours': { value: config.subscriptionCreation?.editWindowHours, location: { file, symbol: 'subscriptionCreation.editWindowHours' } },
++    'subscriptionOffers.deliveryCycles': { value: config.subscriptionOffers, location: { file, symbol: 'subscriptionOffers' } },
++    'subscriptions.lifecycleNoticeRetryBudget': { value: config.renewal?.subscriptionCare?.dispatch?.maxAttempts,
++      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.dispatch.maxAttempts' } },
++    inventory_renewal_protection: { value: config.inventory?.renewalProtection, location: { file, symbol: 'inventory.renewalProtection' } },
++    checkout_recovery_reminders: { value: config.checkoutRecoveryReminders, location: { file, symbol: 'checkoutRecoveryReminders' } },
++  };
    return {
 -    stockSourceKey: `starter-demo:${selectConfiguration(configuration).id}`,
 +    stockSourceKey: `starter-demo:${config.id}`,
 +    file: {
 +      configuration: config.id,
 +      validate: () => assertConfig(config),
-+      entries: {
-+        'offer.freeShippingFromMinor': { value: config.offer.freeShippingFromMinor },
-+        'offer.subscriptionDiscountBps': { value: config.offer.subscriptionDiscountBps },
-+        'purchase.reservationMinutes': { value: config.purchase.reservationMinutes },
-+        'subscriptionCreation.editWindowHours': { value: config.subscriptionCreation.editWindowHours },
-+        'subscriptionOffers.deliveryCycles': { value: config.subscriptionOffers },
-+        'subscriptions.lifecycleNoticeRetryBudget': { value: config.renewal.subscriptionCare.dispatch.maxAttempts },
-+        inventory_renewal_protection: { value: config.inventory.renewalProtection, location: { file: 'owned/store.config.ts', symbol: 'inventory.renewalProtection' } },
-+        checkout_recovery_reminders: { value: config.checkoutRecoveryReminders, location: { file: 'owned/store.config.ts', symbol: 'checkoutRecoveryReminders' } },
-+      },
++      entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.value !== undefined)),
 +    },
      readers: db ? {
 ```

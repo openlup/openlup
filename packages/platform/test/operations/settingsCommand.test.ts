@@ -1,7 +1,6 @@
 import { expect, it, vi } from "vitest";
-import { z } from "zod";
 import { runSettingsCommand } from "../../src/operations/server/settingsCommand.js";
-import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsCheckOutputSchema, showSetting } from "../../src/operations/server/settingsRead.js";
+import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
 
 const key = "inventory_renewal_protection";
 const url = "postgresql://db.example/shop";
@@ -356,6 +355,7 @@ it.each([[["--help"]], [["preview", "--help"]]] as const)("labels settings %j ex
   expect(output.split("\n")[0]).toContain("openlup settings (experimental)");
   expect(output).toContain("--value -");
   expect(output).toMatch(/0 completed.*1 refused.*64 invalid syntax or input.*74 operation unavailable/u);
+  expect(output).toContain("2 check has no file binding");
 });
 
 it("shows versioned JSON help before checking required arguments", async () => {
@@ -380,12 +380,24 @@ const unreportedRows = [
 
 const codeKey = "offer.freeShippingFromMinor";
 const hostFile = { configuration: "sample", entries: { [codeKey]: { value: 12000 } } };
-const reportedCode = '{"key":"offer.freeShippingFromMinor","file":{"state":"present","file":"owned/store.config.ts","symbol":"offer.freeShippingFromMinor","value":12000},"validation":{"state":"valid"},"effect":"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.","takesEffect":"deploy","kind":"code"}';
+const reportedCode = '{"key":"offer.freeShippingFromMinor","file":{"state":"present","catalogueReference":{"file":"owned/store.config.ts","symbol":"offer.freeShippingFromMinor"},"value":12000},"validation":{"state":"valid"},"effect":"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.","takesEffect":"deploy","kind":"code"}';
 const defaultCheck = ["check", "--app", "./app.ts", "--configuration", "sample", "--json"];
 
 it.each([
   ["passed startup validation", { file: { ...hostFile, validate() {} } }, 0,
     '"configuration":"sample","state":"checked","appValidation":{"state":"passed"}', reportedCode],
+  ["resolved startup validation", { file: { ...hostFile, validate: () => Promise.resolve() } }, 0,
+    '"configuration":"sample","state":"checked","appValidation":{"state":"passed"}', reportedCode],
+  ["rejected startup validation", { file: { ...hostFile, validate: () => Promise.reject(new Error("  async\n  refusal ")) } }, 1,
+    '"configuration":"sample","state":"invalid","appValidation":{"state":"failed","message":"async refusal"}', reportedCode],
+  ["thrown startup string", { file: { ...hostFile, validate() { throw "  invalid\n string "; } } }, 1,
+    '"configuration":"sample","state":"invalid","appValidation":{"state":"failed","message":"invalid string"}', reportedCode],
+  ["thrown startup message object", { file: { ...hostFile, validate() { throw { message: "  invalid\n object " }; } } }, 1,
+    '"configuration":"sample","state":"invalid","appValidation":{"state":"failed","message":"invalid object"}', reportedCode],
+  ["thrown other startup value", { file: { ...hostFile, validate() { throw 42; } } }, 1,
+    '"configuration":"sample","state":"invalid","appValidation":{"state":"failed","message":"Application validation failed."}', reportedCode],
+  ["empty file binding", { file: { ...hostFile, entries: {} } }, 0,
+    '"configuration":"sample","state":"checked","appValidation":{"state":"not-provided"}', unreportedRows[2]!],
   ["no startup validator", { file: hostFile }, 0,
     '"configuration":"sample","state":"checked","appValidation":{"state":"not-provided"}', reportedCode],
   ["failed startup validation", { file: { ...hostFile, validate() { throw new Error(`invalid\n  startup    config ${"x".repeat(200)}`); } } }, 1,
@@ -415,10 +427,10 @@ it("reports a file value with no executable schema and a nested invalid installe
   expect(exit).toBe(1);
   const rows = unreportedRows.map(row => {
     if (row.includes('"key":"checkout_recovery_reminders"')) {
-      return row.replace('"file":{"state":"not-reported"}', '"file":{"state":"present","file":null,"symbol":null,"value":[]}');
+      return row.replace('"file":{"state":"not-reported"}', '"file":{"state":"present","value":[]}');
     }
     if (row.includes(`"key":"${key}"`)) {
-      return row.replace('"file":{"state":"not-reported"}', '"file":{"state":"present","file":"config.ts","symbol":"inventory","value":{"revision":"sample","renewalProtectionDays":0}}')
+      return row.replace('"file":{"state":"not-reported"}', '"file":{"state":"present","location":{"file":"config.ts","symbol":"inventory"},"value":{"revision":"sample","renewalProtectionDays":0}}')
         .replace('"validation":{"state":"not-validated"}', '"validation":{"state":"invalid","paths":[["renewalProtectionDays"]]}');
     }
     return row;
@@ -467,13 +479,17 @@ it("refuses check when the app module cannot be loaded", async () => {
   } }));
 });
 
-const codeObservation = '{"state":"file","configuration":"sample","file":"owned/store.config.ts","symbol":"offer.freeShippingFromMinor","value":12000}';
+const codeObservation = '{"state":"file","configuration":"sample","catalogueReference":{"file":"owned/store.config.ts","symbol":"offer.freeShippingFromMinor"},"value":12000}';
 it.each([
   ["without an app", [], hostFile, '{"state":"offline"}', "No file value reported."],
   ["with an app that has no file member", ["--app", "./app.ts"], undefined, '{"state":"offline"}', "No file value reported."],
   ["with an app that leaves the key unreported", ["--app", "./app.ts"], { ...hostFile, entries: {} }, '{"state":"offline"}', "No file value reported."],
-  ["with a file value", ["--app", "./app.ts", "--configuration", "sample"], hostFile, codeObservation,
-    "File as loaded (sample) — owned/store.config.ts · offer.freeShippingFromMinor = 12000. Running store not observed."],
+  ["with a catalogue reference only", ["--app", "./app.ts", "--configuration", "sample"], hostFile, codeObservation,
+    "File as loaded (sample) — File location unreported (starter catalogue reference — owned/store.config.ts · offer.freeShippingFromMinor) = 12000. Running store not observed."],
+  ["with a relocated app file", ["--app", "./app.ts"], { ...hostFile, entries: {
+    [codeKey]: { value: 12000, location: { file: "policy.ts", symbol: "threshold" } },
+  } }, '{"state":"file","configuration":"sample","location":{"file":"policy.ts","symbol":"threshold"},"value":12000}',
+  "File as loaded (sample) — policy.ts · threshold = 12000. Running store not observed."],
 ] as const)("shows a code key %s", async (_, args, file, observation, line) => {
   const bind = vi.fn(async () => ({ file }));
   const offline = await showSetting({ key: codeKey });
@@ -493,14 +509,58 @@ it("keeps the connected installed observation and adds the file observation sepa
   const bound = { bind: async () => ({ readers, file }) };
   const result = await run(["show", key, "--database-url", url, "--app", "./app.ts", "--json"], { host: bound });
   const expected = document(await showSetting({ key }, readers)).slice(0, -2) +
-    ',"fileObservation":{"state":"file","configuration":"sample","file":"config.ts","symbol":"stock","value":{"revision":"new","renewalProtectionDays":21}}}\n';
+    ',"fileObservation":{"state":"file","configuration":"sample","location":{"file":"config.ts","symbol":"stock"},"value":{"revision":"new","renewalProtectionDays":21}}}\n';
   expect(result).toMatchObject({ exit: 0, output: expected });
 });
 
-it("publishes a schema for the check result and usage refusal", async () => {
-  const schema = z.fromJSONSchema(settingsCheckOutputSchema());
-  const result = await run(defaultCheck, { host: { bind: async () => ({ file: hostFile }) } });
-  const usage = await run(["check", "--json"]);
-  for (const output of [result.output, usage.output]) expect(schema.safeParse(JSON.parse(output)).success).toBe(true);
-  expect(schema.safeParse({ schemaVersion: 1, state: "checked" }).success).toBe(false);
+it.each([
+  ['{"revision":"local","renewalProtectionDays":14,"__proto__":{"custom":true}}', []],
+  ['{"revision":"local","renewalProtectionDays":{"__proto__":{"custom":true}}}', ["renewalProtectionDays"]],
+] as const)("checks and emits the original installed value %s", async (raw, path) => {
+  const file = { configuration: "sample", entries: { [key]: { value: JSON.parse(raw) } } };
+  const host = { bind: async () => ({ file }) };
+  const checked = await run(defaultCheck, { host });
+  expect(checked.exit).toBe(1);
+  expect(checked.output).toContain(`"file":{"state":"present","value":${raw}},"validation":{"state":"invalid","paths":${JSON.stringify([path])}}`);
+  const shown = await run(["show", key, "--app", "./app.ts", "--json"], { host });
+  expect(shown.exit).toBe(0);
+  expect(shown.output).toContain(`"observation":{"state":"file","configuration":"sample","value":${raw}}`);
+});
+
+const cyclic: { self?: unknown } = {};
+cyclic.self = cyclic;
+it.each([
+  ["cycle", cyclic], ["undefined", undefined], ["function", () => {}], ["NaN", NaN],
+  ["nested undefined", { value: undefined }], ["sparse array", Array(1)],
+] as const)("reports %s as an unreportable file value", async (_, value) => {
+  const file = { configuration: "sample", entries: { [key]: { value } } };
+  const host = { bind: async () => ({ file }) };
+  const checked = await run(defaultCheck, { host });
+  expect(checked.exit).toBe(1);
+  expect(checked.output).toContain('"file":{"state":"present"},"validation":{"state":"invalid","paths":[[]],"message":"Value cannot be reported as JSON."}');
+  const shown = await run(["show", key, "--app", "./app.ts", "--json"], { host });
+  expect(shown.exit).toBe(74);
+  expect(JSON.parse(shown.output).refusal.hint).toContain("Run settings check");
+});
+
+it("names unknown file keys and the fix in check", async () => {
+  const file = { ...hostFile, entries: { ...hostFile.entries, "offer.freeShippingFromMionr": { value: 12000 } } };
+  const host = { bind: async () => ({ file }) };
+  const checked = await run(defaultCheck, { host });
+  expect(checked.exit).toBe(1);
+  expect(checked.output).toContain('"unknownKeys":["offer.freeShippingFromMionr"],"unknownKeysHint":"Use settings list to find the catalogue key, then correct or remove these entries in the app file binding."');
+  const text = await run(["check", "--app", "./app.ts"], { host });
+  expect(text.output).toContain("Unknown file keys: offer.freeShippingFromMionr");
+});
+
+it("shows a reported callback value outside check coverage", async () => {
+  const key = "savedAddressValidation";
+  const file = { configuration: "sample", entries: { [key]: { value: null } } };
+  const host = { bind: async () => ({ file }) };
+  const shown = await run(["show", key, "--app", "./app.ts", "--json"], { host });
+  expect(shown.exit).toBe(0);
+  expect(shown.output).toContain('"observation":{"state":"file","configuration":"sample","catalogueReference":{"file":"owned/acquisition-policy.ts","symbol":"savedAddressValidation"},"value":null}');
+  const checked = await run(defaultCheck, { host });
+  expect(checked.exit).toBe(0);
+  expect(checked.output).not.toContain(key);
 });

@@ -21,7 +21,7 @@ type SettingsHost = {
 type SettingsIo = { write(text: string): void; readStdin(): Promise<string> };
 type Result = Awaited<ReturnType<typeof previewSetting<PreviewDocument>>>
   | ReturnType<typeof listSettings> | Awaited<ReturnType<typeof showSetting>> | ReturnType<typeof explainSetting>
-  | ReturnType<typeof checkFileSettings>;
+  | Awaited<ReturnType<typeof checkFileSettings>>;
 
 const help = `openlup settings (experimental) list [--goal <text>] | show <key> | preview <key> --value <json-or-> | explain <refusal-code-or-key>
 openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
@@ -30,7 +30,7 @@ Pass --value - to read one JSON value from stdin or --value=-1 for a negative nu
 For connected show or preview, pass --database-url <read-capable-url>.
 Use --app <module> for app-owned read bindings. Show, preview and check accept --configuration <id>.
 Preview accepts repeatable --sku and --as-of <UTC-ISO-instant>.
-Exit codes: 0 completed (including invalid-policy preview), 1 refused or invalid check, 2 check unknown, 64 invalid syntax or input, 74 operation unavailable.
+Exit codes: 0 completed (including invalid-policy preview), 1 refused or invalid check, 2 check has no file binding, 64 invalid syntax or input, 74 operation unavailable.
 
 Examples:
   npm --silent run settings -- list --goal "renewal stock protection horizon"
@@ -39,26 +39,35 @@ Examples:
   npm --silent run settings -- preview inventory_renewal_protection --value '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
   npm --silent run settings -- explain commerce_setting_unknown`;
 
-function checkText(result: ReturnType<typeof checkFileSettings>): string {
+type FileObservation = NonNullable<Extract<Result, { setting: unknown }>["fileObservation"]>;
+
+function fileLocationText({ location, catalogueReference }: Pick<FileObservation, "location" | "catalogueReference">): string {
+  if (location) return `${location.file} · ${location.symbol}`;
+  return catalogueReference ? `File location unreported (starter catalogue reference — ${catalogueReference.file} · ${catalogueReference.symbol})`
+    : "File location unreported";
+}
+
+function checkText(result: Awaited<ReturnType<typeof checkFileSettings>>): string {
   const { appValidation, configuration, rows, state } = result;
   return [
     `Settings check (${configuration ?? "configuration unreported"}): ${state}`,
     `App startup validation: ${appValidation.state}${appValidation.state === "failed" ? ` — ${appValidation.message}` : ""}`,
     ...("hint" in appValidation && appValidation.hint ? [appValidation.hint] : []),
+    ...(result.unknownKeys ? [`Unknown file keys: ${result.unknownKeys.join(", ")}`, result.unknownKeysHint] : []),
     "Catalogue checks cover the published schemas. Unreported values and unavailable schemas are not validated.",
     ...rows.flatMap(row => [
       `${row.key}: file ${row.file.state}, schema ${row.validation.state}${row.validation.state === "invalid"
         ? ` at ${row.validation.paths.map(path => path.join(".") || "<value>").join(", ")}` : ""}`,
-      ...(row.file.state === "present" ? [`  ${row.file.file ?? "File location unreported"}${row.file.symbol
-        ? ` · ${row.file.symbol}` : ""} = ${row.file.value === undefined ? "not representable as JSON" : JSON.stringify(row.file.value)}`] : []),
+      ...(row.validation.state === "invalid" && row.validation.message ? [`  ${row.validation.message}`] : []),
+      ...(row.file.state === "present" ? [`  ${fileLocationText(row.file)}${row.file.value === undefined ? "" : ` = ${JSON.stringify(row.file.value)}`}`] : []),
       `  Effect: ${row.effect} Change: ${row.takesEffect}`,
       ...("store" in row ? [`  Store: not checked. ${row.note}`] : []),
     ]),
   ].join("\n");
 }
 
-function fileText(file: NonNullable<Extract<Result, { setting: unknown }>["fileObservation"]>): string {
-  return `File as loaded (${file.configuration}) — ${file.file ?? "location unreported"}${file.symbol ? ` · ${file.symbol}` : ""} = ${JSON.stringify(file.value)}.`;
+function fileText(file: FileObservation): string {
+  return `File as loaded (${file.configuration}) — ${fileLocationText(file)} = ${JSON.stringify(file.value)}.`;
 }
 
 function text(result: Result, host?: SettingsHost): string {
@@ -231,7 +240,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
         return [result];
       }
       if (check) {
-        const result = checkFileSettings(bindings?.file);
+        const result = await checkFileSettings(bindings?.file);
         return [result, result.state === "unknown" ? 2 : result.state === "invalid" ? 1 : 0];
       }
       const readers = bindings?.readers;

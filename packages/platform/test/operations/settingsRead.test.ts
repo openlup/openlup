@@ -340,3 +340,20 @@ it("matches the pinned serialized schemas of the list and show settings tools", 
     .map(({ name, inputSchema, outputSchema }) => ({ name, inputSchema, outputSchema }));
   expect(JSON.stringify(schemas) + "\n").toBe(expected);
 });
+
+it.each([
+  ['{"__proto__":{"sample":true}}', ["__proto__"]],
+  ['{"classic":{"__proto__":{"sample":true}}}', ["classic", "__proto__"]],
+] as const)("returns the same file object with own keys from the read entry: %s", async (raw, path) => {
+  const key = "subscriptionOffers.deliveryCycles";
+  const value = JSON.parse(raw);
+  const shown = await showSetting({ key }, {}, { configuration: "sample", entries: { [key]: { value } } });
+  if ("refusal" in shown || shown.observation.state !== "file") throw new Error("Expected file observation");
+  expect(shown.observation.value).toBe(value);
+  expect(JSON.stringify(shown.observation.value)).toBe(raw);
+  let property: unknown = shown.observation.value;
+  for (const name of path) {
+    expect(Object.hasOwn(property as object, name)).toBe(true);
+    property = (property as Record<string, unknown>)[name];
+  }
+});

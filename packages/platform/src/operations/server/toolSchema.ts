@@ -70,20 +70,22 @@ export function settingsToolOutputSchema(
   return { type: "object", ...toolInputSchema(z.union([result, refused]), "output") };
 }
 
-const fileLocation = { file: z.string().nullable(), symbol: z.string().nullable() };
+const fileLocation = z.strictObject({ file: z.string(), symbol: z.string() });
+const fileSource = { location: fileLocation.optional(), catalogueReference: fileLocation.optional() };
 export const fileObservationSchema = z.strictObject({
-  state: z.literal("file"), configuration: z.string(), ...fileLocation, value: z.json(),
+  state: z.literal("file"), configuration: z.string(), ...fileSource, value: z.json(),
 });
 
 const checkRow = z.strictObject({
   key: z.string(),
   file: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("present"), ...fileLocation, value: z.json().optional() }),
+    // The file binding checks JSON compatibility before assembly. Keep the original value here.
+    z.strictObject({ state: z.literal("present"), ...fileSource, value: z.unknown().optional() }),
     z.strictObject({ state: z.literal("not-reported") }),
   ]),
   validation: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("valid") }),
-    z.strictObject({ state: z.literal("invalid"), paths: z.array(z.array(z.string())) }),
+    z.strictObject({ state: z.literal("invalid"), paths: z.array(z.array(z.string())), message: z.string().optional() }),
     z.strictObject({ state: z.literal("not-validated") }),
   ]),
   effect: z.string(),
@@ -102,4 +104,6 @@ export const settingsCheckResult = z.strictObject({
     checkRow.extend({ kind: z.literal("code") }),
     checkRow.extend({ kind: z.literal("installed"), store: z.strictObject({ state: z.literal("not-checked") }), note: z.string() }),
   ])),
+  unknownKeys: z.array(z.string()).optional(),
+  unknownKeysHint: z.string().optional(),
 });

@@ -113,7 +113,7 @@ export * from "./platformWatchdogDeliveryPolicy.js";
 export * from "./platformWatchdogQueue.js";
 export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
-export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsCheckOutputSchema, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
+export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 export { runSettingsCommand, type SettingsAppBindings } from "./settingsCommand.js";
 ```
@@ -331,7 +331,7 @@ export type SettingsFileBinding = {
             symbol: string;
         };
     }>>;
-    validate?: () => void;
+    validate?: () => void | Promise<void>;
 };
 /** @experimental The host observes an installed row using its own authorized reader. */
 export type SettingReader = () => Promise<{
@@ -387,9 +387,7 @@ export declare function previewSetting<Result extends {
     schemaVersion: 1;
 } = never>(input: unknown, previewers?: Readonly<Record<string, SettingPreviewer<Result>>>): Promise<Result | PreviewRefusal>;
 type CheckDocument = z.infer<typeof settingsCheckResult>;
-export declare function checkFileSettings(file?: SettingsFileBinding): CheckDocument;
-/** @experimental JSON Schema for the settings check document or its command refusal. */
-export declare function settingsCheckOutputSchema(): Record<string, unknown>;
+export declare function checkFileSettings(file?: SettingsFileBinding): Promise<CheckDocument>;
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export declare const settingsReadTools: readonly [{
     readonly name: "settings__list";
@@ -549,8 +547,14 @@ export declare function settingRefusalSchema(codes: readonly string[]): z.ZodObj
 export declare function settingsToolOutputSchema(result: ZodType, refusal: ReturnType<typeof settingRefusalSchema>, schemaVersion?: 1): Record<string, unknown>;
 export declare const fileObservationSchema: z.ZodObject<{
     value: z.ZodJSONSchema;
-    file: z.ZodNullable<z.ZodString>;
-    symbol: z.ZodNullable<z.ZodString>;
+    location: z.ZodOptional<z.ZodObject<{
+        file: z.ZodString;
+        symbol: z.ZodString;
+    }, z.core.$strict>>;
+    catalogueReference: z.ZodOptional<z.ZodObject<{
+        file: z.ZodString;
+        symbol: z.ZodString;
+    }, z.core.$strict>>;
     state: z.ZodLiteral<"file">;
     configuration: z.ZodString;
 }, z.core.$strict>;
@@ -574,9 +578,15 @@ export declare const settingsCheckResult: z.ZodObject<{
     rows: z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
         key: z.ZodString;
         file: z.ZodDiscriminatedUnion<[z.ZodObject<{
-            value: z.ZodOptional<z.ZodJSONSchema>;
-            file: z.ZodNullable<z.ZodString>;
-            symbol: z.ZodNullable<z.ZodString>;
+            value: z.ZodOptional<z.ZodUnknown>;
+            location: z.ZodOptional<z.ZodObject<{
+                file: z.ZodString;
+                symbol: z.ZodString;
+            }, z.core.$strict>>;
+            catalogueReference: z.ZodOptional<z.ZodObject<{
+                file: z.ZodString;
+                symbol: z.ZodString;
+            }, z.core.$strict>>;
             state: z.ZodLiteral<"present">;
         }, z.core.$strict>, z.ZodObject<{
             state: z.ZodLiteral<"not-reported">;
@@ -586,6 +596,7 @@ export declare const settingsCheckResult: z.ZodObject<{
         }, z.core.$strict>, z.ZodObject<{
             state: z.ZodLiteral<"invalid">;
             paths: z.ZodArray<z.ZodArray<z.ZodString>>;
+            message: z.ZodOptional<z.ZodString>;
         }, z.core.$strict>, z.ZodObject<{
             state: z.ZodLiteral<"not-validated">;
         }, z.core.$strict>], "state">;
@@ -595,9 +606,15 @@ export declare const settingsCheckResult: z.ZodObject<{
     }, z.core.$strict>, z.ZodObject<{
         key: z.ZodString;
         file: z.ZodDiscriminatedUnion<[z.ZodObject<{
-            value: z.ZodOptional<z.ZodJSONSchema>;
-            file: z.ZodNullable<z.ZodString>;
-            symbol: z.ZodNullable<z.ZodString>;
+            value: z.ZodOptional<z.ZodUnknown>;
+            location: z.ZodOptional<z.ZodObject<{
+                file: z.ZodString;
+                symbol: z.ZodString;
+            }, z.core.$strict>>;
+            catalogueReference: z.ZodOptional<z.ZodObject<{
+                file: z.ZodString;
+                symbol: z.ZodString;
+            }, z.core.$strict>>;
             state: z.ZodLiteral<"present">;
         }, z.core.$strict>, z.ZodObject<{
             state: z.ZodLiteral<"not-reported">;
@@ -607,6 +624,7 @@ export declare const settingsCheckResult: z.ZodObject<{
         }, z.core.$strict>, z.ZodObject<{
             state: z.ZodLiteral<"invalid">;
             paths: z.ZodArray<z.ZodArray<z.ZodString>>;
+            message: z.ZodOptional<z.ZodString>;
         }, z.core.$strict>, z.ZodObject<{
             state: z.ZodLiteral<"not-validated">;
         }, z.core.$strict>], "state">;
@@ -618,5 +636,7 @@ export declare const settingsCheckResult: z.ZodObject<{
         }, z.core.$strict>;
         note: z.ZodString;
     }, z.core.$strict>], "kind">>;
+    unknownKeys: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    unknownKeysHint: z.ZodOptional<z.ZodString>;
 }, z.core.$strict>;
 ```

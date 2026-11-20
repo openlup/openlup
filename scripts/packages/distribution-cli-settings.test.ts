@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { assertCompleteStarter, migrateStarterOwned, proveSettingsDiscovery,
   includeSettingsHost, reconcileEditorCustomization, starterEditorPorts, starterSettingsHost, starterUpgradeSnapshot } from "./distribution-cli-proof.ts";
 
@@ -83,6 +84,28 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
 it("refuses an extracted starter without the settings script", () => {
   const { directory } = fixture();
   expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
+});
+
+it.each([
+  ["subscriptionCreation", "starter_subscription_creation_invalid", "subscriptionCreation.editWindowHours"],
+  ["inventory", "inventory_renewal_protection_policy_invalid", "inventory_renewal_protection"],
+])("reports startup validation when the starter config omits %s", (field, message, key) => {
+  const { directory, write } = fixture();
+  const starter = resolve("examples/neutral-store/owned");
+  const load = (name: string) => JSON.stringify(pathToFileURL(join(starter, name)).href);
+  write("missing-config.mjs", `
+    const { configurations } = await import(${load("store.config.ts")});
+    delete configurations.supplements[${JSON.stringify(field)}];
+    const { createSettingsBindings } = await import(${load("settings-host.ts")});
+    export { createSettingsBindings };
+  `);
+  const run = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings",
+    "check", "--app", "./missing-config.mjs", "--configuration", "supplements", "--json"], { cwd: directory, encoding: "utf8" });
+  expect(run.status, run.stderr || run.stdout).toBe(1);
+  expect(JSON.parse(run.stdout)).toMatchObject({
+    configuration: "supplements", state: "invalid", appValidation: { state: "failed", message },
+    rows: expect.arrayContaining([expect.objectContaining({ key, file: { state: "not-reported" } })]),
+  });
 });
 
 it("reports a missing explicit settings module on both offline and connected show", () => {

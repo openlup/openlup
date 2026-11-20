@@ -535,13 +535,14 @@ export function proveSettingsDiscovery(app: string, requireFileValues = false): 
   assert.equal(result.setting.key, key);
   if (!requireFileValues && result.observation.state === "offline") return; // A retained release can predate file bindings.
   assert.equal(result.observation.state, "file");
+  if (requireFileValues) assert.deepEqual(result.observation.location,
+    { file: "owned/store.config.ts", symbol: "inventory.renewalProtection" });
   const checked = settings("check", "--configuration", result.observation.configuration);
   assert.equal(checked.state, "checked");
   if (requireFileValues) assert.equal(checked.appValidation.state, "passed");
   const stock = checked.rows.find((row: { key: string }) => row.key === key);
-  assert.deepEqual(stock?.file, {
-    state: "present", file: result.observation.file, symbol: result.observation.symbol, value: result.observation.value,
-  });
+  const { state: _state, configuration: _configuration, ...reported } = result.observation;
+  assert.deepEqual(stock?.file, { state: "present", ...reported });
   assert.deepEqual(stock?.store, { state: "not-checked" });
 }
 
