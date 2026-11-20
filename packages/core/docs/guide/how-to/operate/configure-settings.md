@@ -281,9 +281,9 @@ and whether retrying can help.
 ## Use the settings server from an MCP client
 
 The settings server is read-only. After installing the extracted starter's
-dependencies, configure your MCP client to run
-`npm --silent run settings -- mcp` from the application root. In clients that
-support a working directory, replace `/absolute/path/to/store` with that root.
+dependencies, configure your MCP client to run the starter's settings script
+from the application root. In clients that support a working directory,
+replace `/absolute/path/to/store` with that root.
 
 ```json
 {
