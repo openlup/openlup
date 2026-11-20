@@ -295,7 +295,7 @@ function admitDatabaseUrl(input: string): SettingsDatabase | { path: string[]; h
   const ipv4Like = /(?:^|\.)(?:[0-9]+|0x[0-9a-f]*)\.?$/u.test(url.hostname);
   if (!url.hostname.startsWith("[") && !(dnsName && (!ipv4Like || isIPv4(url.hostname)))) {
     return { path, hint: url.hostname
-      ? "Use one lowercase DNS name, IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. Keep each DNS label to 63 characters and the name to 253 characters. A DNS name cannot end in an all-digit label, 0x alone, or 0x followed only by hexadecimal digits. For an IPv4 address, write IPv4 octets in decimal without leading zeros."
+      ? "Use one lowercase DNS name, dotted-decimal IPv4 address or bracketed IPv6 address for the host. Replace an escaped, socket or comma-separated host with one TCP host. A DNS name uses only letters, digits, dots and hyphens. Each label must begin and end with a letter or digit. Keep each DNS label to 63 characters and the name to 253 characters, including any trailing dot. The final label cannot be all digits, 0x alone, or 0x followed only by hexadecimal digits. Write IPv4 as four decimal octets from 0 to 255 separated by dots, without leading zeros."
       : "Name the TCP host using the postgresql://user@host/database form." };
   }
   const port = Number(url.port || 5432);

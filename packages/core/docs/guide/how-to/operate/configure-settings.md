@@ -42,26 +42,31 @@ validation after defaults, the read returns `checkout_recovery_policy_invalid`
 with remediation. To explain the absent-row behavior offline, pass
 `explain checkout_recovery_reminders` to the settings script.
 
-For connected `show` and `preview`, use a canonical `postgres://` or
-`postgresql://` URL with one TCP host, a username and a single database path
-segment. Keep the DNS name to 253 characters and each label to 63 characters.
+For connected `show` and `preview`, supply a `postgres://` or `postgresql://`
+URL that exactly matches the URL parser's serialization. Omit whitespace and dot
+segments that would change its serialization. Supply one TCP host, a username,
+an optional password and one non-empty database path segment. Omit the colon for an empty password.
+For a DNS host, use lowercase letters, digits, dots and hyphens. Each label
+must begin and end with a letter or digit and can have up to 63 characters.
+The whole name can have up to 253 characters, including any trailing dot.
 The final label cannot be all digits, `0x` alone, or `0x` followed only by
-hexadecimal digits. Write IPv4 octets in decimal without leading zeros. Use
-brackets and lowercase hexadecimal without leading zeros for IPv6, compress
-the first longest run of two or more zero fields to ::, and write a single
-zero field as 0. Percent-encode reserved characters and keep the decoded
-username and database name to 63 UTF-8 bytes each. Leave out the colon for an
-empty password, and omit whitespace, dot segments and fragments. An omitted
-port uses 5432. Write an explicit port without leading zeros. The only query
-option is `sslmode`, with `disable`, `require` or `verify-full` as its value.
-`require` and `verify-full` verify the server certificate against the named
-host using Node's trust store. `disable` or an omitted mode uses plaintext.
-For a connected read, the launcher's pool removes `PG`-prefixed environment
-variables immediately before creating each client. It uses an empty password
-if the URL omits one, so password files are skipped. An application that
-replaces the driver or pool manages its own connection settings. A nonempty
-`NODE_PG_FORCE_NATIVE` makes the command refuse. Unset it for this command to
-use the JavaScript driver.
+hexadecimal digits. For IPv4, use four decimal octets from 0 to 255 separated
+by dots, without leading zeros. Use brackets and lowercase hexadecimal without
+leading zeros for IPv6, compress the first longest run of two or more zero
+fields to `::`, and write a single zero field as `0`. An omitted port uses
+5432. Write an explicit port from 1 to 65535 without leading zeros. The command
+decodes the username, password and database name once. Use valid UTF-8 escapes
+and omit control characters, including escaped controls. The decoded username
+and database name each have a limit of 63 UTF-8 bytes. Omit fragments and omit
+the query entirely unless it is exactly `?sslmode=disable`, `?sslmode=require`
+or `?sslmode=verify-full`. `require` and `verify-full` verify the server
+certificate against the named host using Node's trust store. `disable` or an
+omitted mode uses plaintext. The launcher's pool removes `PG`-prefixed
+environment variables immediately before creating each client. It supplies an
+empty password if the URL omits one, so password files are skipped. Unset
+`NODE_PG_FORCE_NATIVE` to use the JavaScript driver for connected reads.
+Applications that replace the driver or pool, change the environment after
+cleanup, or preload the driver in another mode manage their own connections.
 
 ## Check owned configuration before proposing a change
 

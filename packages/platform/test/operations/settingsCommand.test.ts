@@ -103,7 +103,7 @@ it.each([
   ["wrong scheme", url.replace("postgresql:", "https:"), "Use the postgres:// or postgresql:// scheme"],
   ["IPv4", url.replace("read.invalid", "192.0.2.1"), { host: "192.0.2.1" }],
   ...["192.0.2.010", "192.0.010.1", "192.0.2", "192.0.2.256", "read.123", "0xc0000201", "0xc0.0.2.0x1", "0x7f.0x", "read.0xface"].map(host =>
-    [`ambiguous IPv4 spelling ${host}`, url.replace("read.invalid", host), "write IPv4 octets in decimal without leading zeros"] as const),
+    [`ambiguous IPv4 spelling ${host}`, url.replace("read.invalid", host), "Write IPv4 as four decimal octets from 0 to 255 separated by dots, without leading zeros"] as const),
   ["DNS label starting with 0x", url.replace("read.invalid", "read.0xcloud"), { host: "read.0xcloud" }],
   ["63-character DNS label", url.replace("read", "a".repeat(63)), { host: `${"a".repeat(63)}.invalid` }],
   ["64-character DNS label", url.replace("read", "a".repeat(64)), "Keep each DNS label to 63 characters"],
@@ -115,7 +115,8 @@ it.each([
   ["escaped hostname", url.replace("read", "%72ead"), "Replace an escaped, socket or comma-separated host"],
   ["comma-separated hosts", url.replace("read.invalid", "read.invalid,backup.invalid"), "Replace an escaped, socket or comma-separated host"],
   ["non-DNS host", url.replace("read.invalid", "bad..invalid"), "Use one lowercase DNS name"],
-  ["uppercase host", url.replace("read.invalid", "Read.invalid"), "Use one lowercase DNS name"],
+  ["DNS label ending in a hyphen", "postgresql://sample@read-.invalid/shop", "Each label must begin and end with a letter or digit"],
+  ["uppercase host", "postgresql://sample@Read.invalid/shop", "Use one lowercase DNS name"],
   ...[1, 5432, 65535].map(port => [`explicit port ${port}`, url.replace("/shop", `:${port}/shop`), { port }] as const),
   ["port zero", url.replace("/shop", ":0/shop"), "port from 1 to 65535"],
   ["missing user", url.replace("sample@", ""), "Name the PostgreSQL username"],
