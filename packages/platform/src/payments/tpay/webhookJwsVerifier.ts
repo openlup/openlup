@@ -47,9 +47,10 @@ export async function verifyTpayJwsSignature({
   const parts = signatureHeader.split(".");
   if (parts.length !== 3 || !parts[0] || parts[1] !== "" || !parts[2]) return false;
   const header = parseJwsHeader(parts[0]);
-  if (!header?.x5u || !isAllowedCertificateUrl(header.x5u, allowedX5uPrefix)) return false;
+  const certificateUrl = header?.x5u ? canonicalizeAllowedCertificateUrl(header.x5u, allowedX5uPrefix) : null;
+  if (!certificateUrl) return false;
 
-  const signingCertificatePem = await resolveCertificate(header.x5u);
+  const signingCertificatePem = await resolveCertificate(certificateUrl);
   if (!verifyChain(signingCertificatePem, rootCertificatePem)) return false;
 
   const signedPayload = `${parts[0]}.${base64Url(Buffer.from(rawBody, "utf8"))}`;
@@ -57,20 +58,24 @@ export async function verifyTpayJwsSignature({
   return verifyDetached({ signingInput: signedPayload, signature, signingCertificatePem });
 }
 
-function isAllowedCertificateUrl(candidate: string, allowedPrefix: string): boolean {
+function canonicalizeAllowedCertificateUrl(candidate: string, allowedPrefix: string): string | null {
+  if (/[?#]/u.test(candidate) || /[?#]/u.test(allowedPrefix)) return null;
+  if (/%2f|%5c/iu.test(candidate)) return null;
   let allowed: URL;
   let parsed: URL;
   try {
     allowed = new URL(allowedPrefix);
     parsed = new URL(candidate);
   } catch {
-    return false;
+    return null;
   }
-  if (allowed.protocol !== "https:" || parsed.protocol !== "https:") return false;
-  if (allowed.username || allowed.password || allowed.search || allowed.hash) return false;
-  if (parsed.username || parsed.password || parsed.search || parsed.hash) return false;
-  if (parsed.origin !== allowed.origin) return false;
-  return parsed.href.startsWith(allowed.href);
+  if (allowed.protocol !== "https:" || parsed.protocol !== "https:") return null;
+  if (allowed.username || allowed.password || allowed.search || allowed.hash) return null;
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+  if (parsed.origin !== allowed.origin) return null;
+  const prefixPath = allowed.pathname.endsWith("/") ? allowed.pathname : `${allowed.pathname}/`;
+  if (!parsed.pathname.startsWith(prefixPath) || parsed.pathname.length <= prefixPath.length) return null;
+  return parsed.href;
 }
 
 function parseJwsHeader(encoded: string): { x5u?: string } | null {
@@ -99,8 +104,12 @@ function defaultVerifyDetachedSignature(input: {
   signature: Buffer;
   signingCertificatePem: string;
 }): boolean {
-  const publicKey = parseX509Certificate(input.signingCertificatePem).publicKey;
-  return verifySignature("RSA-SHA256", Buffer.from(input.signingInput), publicKey, input.signature);
+  try {
+    const publicKey = parseX509Certificate(input.signingCertificatePem).publicKey;
+    return verifySignature("RSA-SHA256", Buffer.from(input.signingInput), publicKey, input.signature);
+  } catch {
+    return false;
+  }
 }
 
 function base64Url(value: Buffer): string {

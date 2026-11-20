@@ -105,11 +105,13 @@ export function createTpayHttpClient({
     if (!inFlightToken) {
       const pending = (async (): Promise<OAuthToken> => {
         const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret });
+        // Always run the shared OAuth fetch with the client's full timeoutMs so a nearly-expired
+        // caller (e.g. a 401 GET retry) never aborts /oauth/auth for fresh concurrent callers.
         const response = await fetchWithTimeout(fetchImpl, `${normalizedBaseUrl}/oauth/auth`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: body.toString(),
-        }, oauthTimeoutMs, "tpay_oauth_timeout");
+        }, timeoutMs, "tpay_oauth_timeout");
         const json = await readJson(response, "tpay_oauth_failed");
         const accessToken = readString(json, "access_token");
         const expiresIn = readNumber(json, "expires_in");
@@ -121,10 +123,15 @@ export function createTpayHttpClient({
           inFlightToken = null;
         }
       });
+      // Prevent unhandledRejection if every waiting caller times out before pending rejects.
+      pending.catch(() => {});
       inFlightToken = pending;
-      return (await pending).accessToken;
     }
-    return (await awaitWithTimeout(inFlightToken, oauthTimeoutMs, "tpay_oauth_timeout")).accessToken;
+    const shared = inFlightToken;
+    if (oauthTimeoutMs >= timeoutMs) {
+      return (await shared).accessToken;
+    }
+    return (await awaitWithTimeout(shared, oauthTimeoutMs, "tpay_oauth_timeout")).accessToken;
   }
 
   async function request(

@@ -105,16 +105,22 @@ describe("Tpay JWS verifier", () => {
 
     for (const trickyUrl of [
       "https://secure.sandbox.tpay.com/x509/../other/cert.pem",
+      "https://secure.sandbox.tpay.com/x509evil/cert.pem",
+      "https://secure.sandbox.tpay.com/x509/",
       "https://secure.sandbox.tpay.com@evil.example/x509/cert.pem",
       "https://secure.sandbox.tpay.com/x509/cert.pem?redirect=https://evil.example",
+      "https://secure.sandbox.tpay.com/x509/cert.pem?",
       "https://secure.sandbox.tpay.com/x509/cert.pem#frag",
+      "https://secure.sandbox.tpay.com/x509/cert.pem#",
+      "https://secure.sandbox.tpay.com/x509/..%2fother/cert.pem",
+      "https://secure.sandbox.tpay.com/x509/..%5cother/cert.pem",
       "http://secure.sandbox.tpay.com/x509/cert.pem",
     ]) {
       const header = base64Url(JSON.stringify({ x5u: trickyUrl }));
       await expect(verifyTpayJwsSignature({
         rawBody: "tr_id=TR-123",
         signatureHeader: `${header}..${sig}`,
-        allowedX5uPrefix: "https://secure.sandbox.tpay.com/x509/",
+        allowedX5uPrefix: "https://secure.sandbox.tpay.com/x509",
         resolveCertificate,
         rootCertificatePem: "ROOT CERT",
         verifyCertificateChain: () => true,
@@ -123,6 +129,29 @@ describe("Tpay JWS verifier", () => {
     }
 
     expect(resolveCertificate).not.toHaveBeenCalled();
+
+    const canonicalizeHeader = base64Url(JSON.stringify({ x5u: "https://secure.sandbox.tpay.com/x509/sub/../cert.pem" }));
+    await expect(verifyTpayJwsSignature({
+      rawBody: "tr_id=TR-123",
+      signatureHeader: `${canonicalizeHeader}..${sig}`,
+      allowedX5uPrefix: "https://secure.sandbox.tpay.com/x509",
+      resolveCertificate,
+      rootCertificatePem: "ROOT CERT",
+      verifyCertificateChain: () => true,
+      verifyDetachedSignature: () => true,
+    })).resolves.toBe(true);
+    expect(resolveCertificate).toHaveBeenCalledExactlyOnceWith("https://secure.sandbox.tpay.com/x509/cert.pem");
+  });
+
+  it("returns false instead of throwing when default detached verification receives a malformed PEM", async () => {
+    const validHeader = base64Url(JSON.stringify({ x5u: "https://secure.sandbox.tpay.com/x509/notifications-jws.pem" }));
+    await expect(verifyTpayJwsSignature({
+      rawBody: "tr_id=TR-123",
+      signatureHeader: `${validHeader}..${base64Url("signature")}`,
+      resolveCertificate: async () => "NOT A VALID PEM",
+      rootCertificatePem: "ROOT CERT",
+      verifyCertificateChain: () => true,
+    })).resolves.toBe(false);
   });
 
   it("caches parsed X509Certificate instances by PEM", () => {
