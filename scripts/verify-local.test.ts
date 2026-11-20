@@ -155,7 +155,11 @@ describe('real Git and subprocess refusals', () => {
     const f = await fixture(); const run = vi.fn(async () => ({ code: 124 }));
     expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(124);
     const result = await f.result(); directories.push(result.packs);
-    expect(run).toHaveBeenCalledTimes(1); expect(result.phases).toHaveLength(1); expect(result.code).toBe(124);
+    expect(run.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(run.mock.calls.length).toBeLessThanOrEqual(4);
+    expect(result.phases).toHaveLength(run.mock.calls.length);
+    expect(result.phases.every(phase => phase.resource === null)).toBe(true);
+    expect(result.code).toBe(124);
   });
   it('retains a broken package build and stops before dependent diagnostics', async () => {
     const f = await fixture();
@@ -169,7 +173,47 @@ describe('real Git and subprocess refusals', () => {
     const f = await fixture(); const run = vi.fn(async () => { await writeFile(join(f.cwd, 'source.txt'), 'changed\n'); return { code: 0 }; });
     expect(await verifyLocal({ cwd: f.cwd, env: f.env, run })).toBe(1);
     const result = await f.result(); directories.push(result.packs);
-    expect(run).toHaveBeenCalledTimes(1); expect(result.error).toContain('candidate changed');
+    expect(result.phases.some(phase => phase.name === 'install')).toBe(false);
+    expect(result.error).toContain('candidate changed');
+  });
+  it('runs independent read-only phases concurrently while strictly enforcing requires and heavy-phase serialization', async () => {
+    const f = await fixture();
+    const expectedOrder = ['policy', 'inventory', 'dco', 'gitleaks', 'neutrality', 'ui-neutrality', 'install', 'lint', 'typecheck', 'build', 'subscription', 'packages', 'tests'];
+    const readOnly = new Set(['policy', 'inventory', 'dco', 'gitleaks', 'neutrality', 'ui-neutrality']);
+    const delays: Record<string, number> = { policy: 40, inventory: 10, dco: 30, gitleaks: 5, neutrality: 20, 'ui-neutrality': 15 };
+    const phaseNameFromLog = (logPath: string) => logPath.split('/').at(-1)!.replace(/\.log$/u, '');
+    let activeReadOnly = 0; let maxReadOnly = 0;
+    let activeHeavy = 0; let maxHeavy = 0;
+    const finished = new Set<string>();
+    const startedAfter = new Map<string, Set<string>>();
+    const run = vi.fn(async (_command, _args, _cwd, _env, logPath) => {
+      const name = phaseNameFromLog(logPath);
+      startedAfter.set(name, new Set(finished));
+      if (readOnly.has(name)) {
+        activeReadOnly++; maxReadOnly = Math.max(maxReadOnly, activeReadOnly);
+        await new Promise(resolveTimer => setTimeout(resolveTimer, delays[name] ?? 10));
+        activeReadOnly--;
+      } else {
+        expect(activeReadOnly).toBe(0);
+        activeHeavy++; maxHeavy = Math.max(maxHeavy, activeHeavy);
+        await new Promise(resolveTimer => setTimeout(resolveTimer, 5));
+        activeHeavy--;
+      }
+      finished.add(name);
+      return { code: 0 };
+    });
+    expect(await verifyLocal({ cwd: f.cwd, env: f.env, run, concurrency: 4 })).toBe(0);
+    const result = await f.result(); directories.push(result.packs);
+    expect(maxReadOnly).toBeGreaterThan(1);
+    expect(maxReadOnly).toBeLessThanOrEqual(4);
+    expect(maxHeavy).toBe(1);
+    expect(result.phases.map(phase => phase.name)).toEqual(expectedOrder);
+    for (const step of verificationSteps({ base: f.base, head: f.git('rev-parse', 'HEAD'), changedPaths: ['source.txt'] }, '/run', '/packs')) {
+      for (const req of step.requires) {
+        expect(startedAfter.get(step.name)?.has(req), `${step.name} must start after ${req}`).toBe(true);
+      }
+    }
+    for (const ro of readOnly) expect(startedAfter.get('install')?.has(ro)).toBe(true);
   });
   it.each(['1', '40%'])('retains the first actual worker observation %s and subprocess failure', async workers => {
     const cwd = await mkdtemp(join(tmpdir(), 'verify-log-')); directories.push(cwd);

@@ -29,6 +29,8 @@ import {
   materializedOutputPaths,
   policyVerdict,
   publicInventoryVerdict,
+  selfCheckCommand,
+  selfCheckVerdict,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
 import { validateGuidePage, PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
@@ -1297,6 +1299,93 @@ describe("the public-only policy check", () => {
       writeFileSync(join(root, "README.md"), `${forbiddenCoordinate}\n`);
       expect(() => policyVerdict(root, () => undefined)).toThrow(/prohibited private coordinate/);
       writeFileSync(join(root, "README.md"), "# Public source\n"); writeFileSync(join(root, "docs", "platform", "AGENT_GUIDE.md"), `${falseReliabilityClaim} cross-checks every declared signal.\n`); expect(() => policyVerdict(root, () => undefined)).toThrow(/unapproved adopter-owned materialized state/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the combined --self-check mode", () => {
+  it("runs shared tree checks once and enforces both policy and inventory failures", () => {
+    const root = mkdtempSync(join(tmpdir(), "published-self-check-"));
+    const digest = (contents: string) => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
+    try {
+      const policy = `${JSON.stringify({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "entrypoint", owners: ["README.md"] }] }, null, 2)}\n`;
+      const baselinePath = "db/platform/migrations/00000000000000_platform_baseline.sql", baseline = "CREATE TABLE example(id integer);\n";
+      const paths = [...new Set([
+        baselinePath, "README.md", "docs/platform/README.md", "docs/platform/AGENT_GUIDE.md",
+        "docs/platform/adopter-kit/dependabot.template.yml", "config/openlup-policy-registry.json",
+        "config/openlup-publication-catalog.json", "config/openlup-source-release-contract.json",
+        "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts",
+        "package-lock.json", "packages/core/package-lock.json", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS,
+      ])].sort();
+      const catalogue = createPublicPublicationCatalog(paths.map((path) => ({ path, class: "public-output" })), []).contents;
+      const manifest = publicRootManifest();
+      const lock = "{}\n";
+      const migration = JSON.stringify({ schemaVersion: 1, baseline: { file: baselinePath, sha256: digest(baseline).slice(7) }, forward: [], objectInventorySha256: digest("objects").slice(7) });
+      const types = "export type Database = Record<string, any>;\n";
+      const contract = createSourceReleaseContract({
+        inventoryDigest: publicPublicationCatalogDigests(catalogue).inventoryDigest,
+        classDigest: digest(JSON.stringify(paths)),
+        packageDigest: digest(manifest),
+        rootLockDigest: digest(lock),
+        coreLockDigest: digest(lock),
+        migrationManifestDigest: digest(migration),
+        databaseTypesDigest: digest(types),
+        policyRegistryDigest: digest(policy),
+        publicationCatalogDigest: digest(catalogue),
+      }).contents;
+      const files = new Map([
+        ["README.md", "# Public\n"],
+        ["docs/platform/README.md", "[Guide](AGENT_GUIDE.md)\n"],
+        ["docs/platform/AGENT_GUIDE.md", "# Guide\n"],
+        ["docs/platform/adopter-kit/dependabot.template.yml", 'groups:\n  openlup:\n    patterns:\n      - "@openlup/*"\n'],
+        ["package-lock.json", lock],
+        ["packages/core/package-lock.json", lock],
+        ["config/platform-migration-manifest.json", migration],
+        ["src/integrations/supabase/types.ts", types],
+        ["config/openlup-policy-registry.json", policy],
+        ["config/openlup-publication-catalog.json", catalogue],
+        ["config/openlup-source-release-contract.json", contract],
+      ]);
+      for (const [path, contents] of files) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); }
+      mkdirSync(dirname(join(root, baselinePath)), { recursive: true }); writeFileSync(join(root, baselinePath), baseline);
+      for (const path of PUBLIC_EXECUTION_ENTRYPOINTS) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), "public\n"); }
+      writePackageManifests(root);
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["add", "."], { cwd: root });
+
+      // Passes and executes shared snapshot check only once.
+      const lines: string[] = [];
+      expect(selfCheckVerdict(root, (line) => lines.push(line))).toBe(true);
+      expect(lines.filter((line) => line.includes("computed bindings ok"))).toHaveLength(1);
+      expect(lines.join("\n")).toContain("public policy paths: 1");
+      expect(lines.join("\n")).toContain(`tracked public paths: ${paths.length}`);
+
+      // Enforces policy failures (absolute path, broken markdown link).
+      writeFileSync(join(root, "docs/platform/README.md"), "See /Users/someone/project\n");
+      expect(() => selfCheckVerdict(root, () => undefined)).toThrow(/local filesystem path/);
+      writeFileSync(join(root, "docs/platform/README.md"), "[missing](NONEXISTENT.md)\n");
+      expect(() => selfCheckVerdict(root, () => undefined)).toThrow(/local Markdown link is missing/);
+      writeFileSync(join(root, "docs/platform/README.md"), "[Guide](AGENT_GUIDE.md)\n");
+
+      // Enforces inventory failures (migration manifest SHA-256 mismatch, unresolved #imports seam).
+      writeFileSync(join(root, baselinePath), `${baseline}SELECT 1;\n`);
+      const mismatchLines: string[] = [];
+      expect(selfCheckVerdict(root, (line) => mismatchLines.push(line))).toBe(false);
+      expect(mismatchLines.join("\n")).toContain("SHA-256 mismatch");
+      writeFileSync(join(root, baselinePath), baseline);
+
+      const manifestWithConditional = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as Record<string, unknown>;
+      manifestWithConditional.imports = { "#seam": { default: "./src/a.ts" } };
+      writeFileSync(join(root, "package.json"), JSON.stringify(manifestWithConditional));
+      const seamLines: string[] = [];
+      expect(selfCheckVerdict(root, (line) => seamLines.push(line))).toBe(false);
+      expect(seamLines.join("\n")).toContain("unresolved conditional seam");
+
+      // Rejects invalid options on selfCheckCommand.
+      expect(() => selfCheckCommand(root, ["--self-check", "--docs-update"], () => undefined)).toThrow(/unknown or repeated documentation option --docs-update/);
+      expect(() => selfCheckCommand(root, ["--self-check", "--docs-base"], () => undefined)).toThrow(/missing value for --docs-base/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

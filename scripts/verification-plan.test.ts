@@ -42,6 +42,18 @@ describe('local obligation contract', () => {
   ])('does not narrow mandatory obligations for %s inputs', (_label, changedPaths) => {
     expect(verificationPlan({ ...candidate, changedPaths }, '/run', '/packs').phases.map(step => step.name)).toEqual(expectedNames);
   });
+  it('scopes gitleaks to the commit range unless gitleaks config or ignore rules changed', () => {
+    const baseCommand = ['gitleaks', 'git', '.', '--config', 'config/gitleaks.toml', '--redact', '--no-banner'];
+    const rangeCommand = [...baseCommand, `--log-opts=${candidate.base}..${candidate.head}`];
+    const gitleaksFor = (cand: typeof candidate & { changedPaths?: string[] }) =>
+      verificationPlan(cand, '/run', '/packs').phases.find(step => step.name === 'gitleaks')?.command;
+    expect(gitleaksFor({ ...candidate, changedPaths: ['scripts/verify-local.mjs'] })).toEqual(rangeCommand);
+    expect(gitleaksFor({ ...candidate, changedPaths: ['config/gitleaks.toml'] })).toEqual(baseCommand);
+    expect(gitleaksFor({ ...candidate, changedPaths: ['.gitleaksignore'] })).toEqual(baseCommand);
+    expect(gitleaksFor({ ...candidate, changedPaths: ['src/app.ts', 'config/gitleaks.toml'] })).toEqual(baseCommand);
+    expect(gitleaksFor(candidate)).toEqual(baseCommand);
+    expect(gitleaksFor({ base: candidate.base, head: candidate.base, changedPaths: ['src/app.ts'] })).toEqual(baseCommand);
+  });
   it('refuses unknown, duplicate, missing and wrongly ordered obligations', () => {
     const steps = plan().phases;
     expect(() => validateVerificationSteps([...steps, { name: 'typo' }])).toThrow('unknown verification phase: typo');
