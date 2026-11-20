@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
+import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -116,6 +118,129 @@ it("refuses another product's revision at the pointer foreign key and rolls back
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 }, 60_000);
 
+const legacyFactsSql = `CASE $2::text
+  WHEN 'a document field' THEN jsonb_build_object('document', d.document_payload)
+  WHEN 'serialized document bytes' THEN to_jsonb(d.document_payload::text)
+  WHEN 'an arbitrary object' THEN '{"other":"fact"}'::jsonb
+END`;
+
+it.each(["a document field", "serialized document bytes", "an arbitrary object"] as const)(
+  "refuses %s on the first legacy SKU projection write and during restore", async shape => {
+  expect(packet.owned.find(entry => entry.table === "catalog_publications")!.rows).toEqual([]);
+  const { rows: [placed] } = await source.owner.query<{ id: string; row: string; facts: string }>(
+    "SELECT s.id, (to_jsonb(s) || jsonb_build_object('publication_facts', p.facts))::text AS row, p.facts::text AS facts "
+    + "FROM public.catalog_skus s JOIN public.catalog_products c ON c.id=s.product_id "
+    + "JOIN public.catalog_product_document_revisions d ON d.id=c.current_document_revision_id "
+    + `CROSS JOIN LATERAL (SELECT ${legacyFactsSql} AS facts) p WHERE c.id=$1`, [products[0], shape],
+  );
+  if (!placed) throw new Error("Legacy SKU fixture is missing");
+  const refused = await transaction(source.owner, db => db.query(
+    "UPDATE public.catalog_skus SET publication_facts=$2 WHERE id=$1", [placed.id, placed.facts],
+  )).catch(error => error);
+  const pristine = await journeyCensus(target.owner);
+  const edited = structuredClone(packet);
+  const table = edited.owned.find(entry => entry.table === "catalog_skus")!;
+  const index = table.rows.findIndex(row => JSON.parse(row).id === placed.id);
+  expect(index).toBeGreaterThanOrEqual(0);
+  table.rows[index] = placed.row;
+  rehash(edited);
+  const refusedTransfer = await restore(target.owner, edited).catch(error => error);
+  expect(refusedTransfer).toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_facts_invalid" },
+  });
+  expect(catalogPublicationAdmissionRefusal(refused)).toMatchObject({ reason: "publication_facts_invalid" });
+  expect((await source.owner.query("SELECT publication_facts FROM public.catalog_skus WHERE id=$1", [placed.id])).rows)
+    .toEqual([{ publication_facts: null }]);
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+}, 65_000);
+
+async function opaqueProductProjection(shape = "a document field") {
+  const { rows: [projection] } = await source.owner.query<{ row: string; facts: string }>(
+    `SELECT (to_jsonb(p) || jsonb_build_object('publication_facts',f.facts))::text AS row, f.facts::text AS facts
+    FROM public.catalog_products p JOIN public.catalog_product_document_revisions d ON d.id=p.current_document_revision_id
+    CROSS JOIN LATERAL (SELECT ${legacyFactsSql} AS facts) f WHERE p.id=$1`, [products[0], shape],
+  );
+  if (!projection) throw new Error("Legacy product fixture is missing");
+  return projection;
+}
+
+const productCarrierRefusal = {
+  code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_facts_invalid" },
+};
+
+function packetWithProductProjection(row: string) {
+  const edited = structuredClone(packet);
+  const table = edited.owned.find(entry => entry.table === "catalog_products")!;
+  const index = table.rows.findIndex(row => JSON.parse(row).id === products[0]);
+  expect(index).toBeGreaterThanOrEqual(0);
+  table.rows[index] = row;
+  rehash(edited);
+  return edited;
+}
+
+async function storeOpaqueProductProjection(owner: Pool, facts: string) {
+  // Model a row already on disk while leaving transfer admission active.
+  await transaction(owner, async db => {
+    await db.query("ALTER TABLE public.catalog_products DISABLE TRIGGER catalog_products_publication_pointer_fence");
+    await db.query("UPDATE public.catalog_products SET publication_facts=$2 WHERE id=$1", [products[0], facts]);
+    await db.query("ALTER TABLE public.catalog_products ENABLE TRIGGER catalog_products_publication_pointer_fence");
+  });
+}
+
+it("refuses an opaque document in the legacy product publication projection on write and restore", async () => {
+  expect(packet.owned.find(entry => entry.table === "catalog_publications")!.rows).toEqual([]);
+  const projection = await opaqueProductProjection();
+  const pristine = await journeyCensus(target.owner);
+  await expect(restore(target.owner, packetWithProductProjection(projection.row))).rejects.toMatchObject(productCarrierRefusal);
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+
+  const refused = await transaction(source.owner, db => db.query(
+    "UPDATE public.catalog_products SET publication_facts=$2 WHERE id=$1", [products[0], projection.facts],
+  )).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(refused)).toMatchObject({ reason: "publication_facts_invalid" });
+  expect((await source.owner.query("SELECT publication_facts FROM public.catalog_products WHERE id=$1", [products[0]])).rows)
+    .toEqual([{ publication_facts: null }]);
+}, 65_000);
+
+it.each(["serialized document bytes", "an arbitrary object"] as const)(
+  "refuses %s as the whole legacy product projection on INSERT and restore", async shape => {
+    expect(packet.owned.find(entry => entry.table === "catalog_publications")!.rows).toEqual([]);
+    const projection = await opaqueProductProjection(shape);
+    const productId = randomUUID();
+    const inserted = Symbol("owner insert succeeded");
+    const ownerError = await transaction(source.owner, async db => {
+      await db.query("INSERT INTO public.catalog_products(id,slug,name,publication_facts) VALUES($1,$2,'Synthetic product',$3)",
+        [productId, `synthetic-${productId}`, projection.facts]);
+      throw inserted;
+    }).catch(error => error);
+    const pristine = await journeyCensus(target.owner);
+    const transferError = await restore(target.owner, packetWithProductProjection(projection.row)).catch(error => error);
+    expect(catalogPublicationAdmissionRefusal(ownerError)).toMatchObject({ reason: "publication_facts_invalid" });
+    expect(transferError).toMatchObject(productCarrierRefusal);
+    expect(await journeyCensus(target.owner)).toEqual(pristine);
+  }, 65_000);
+
+it("refuses an opaque document in a stored legacy product publication projection during capture", async () => {
+  const { facts } = await opaqueProductProjection();
+  await storeOpaqueProductProjection(source.owner, facts);
+  try {
+    await expect(captureStoreJourney(source.owner, "catalog-document-source")).rejects.toMatchObject(productCarrierRefusal);
+  } finally {
+    await source.owner.query("UPDATE public.catalog_products SET publication_facts=NULL WHERE id=$1", [products[0]]);
+  }
+}, 65_000);
+
+it("refuses an opaque document in the same stored legacy product projection during exact replay", async () => {
+  expect(await restore()).toMatchObject({ replayed: false });
+  const projection = await opaqueProductProjection();
+  const edited = packetWithProductProjection(projection.row);
+  await storeOpaqueProductProjection(target.owner, projection.facts);
+  const before = await journeyCensus(target.owner);
+  expect(before.catalog_products).toContain(projection.row);
+  await expect(restore(target.owner, edited)).rejects.toMatchObject(productCarrierRefusal);
+  expect(await journeyCensus(target.owner)).toEqual(before);
+}, 65_000);
+
 it("preserves a null document pointer and a null primary SKU without changing product rows", async () => {
   expect(await restore()).toMatchObject({ replayed: false });
   const before = await journeyCensus(source.owner), after = await journeyCensus(target.owner);
@@ -143,3 +268,181 @@ it("refuses a changed staged product at the guarded pointer update and rolls bac
   expect(changed).toBe(true);
   expect(await journeyCensus(target.owner)).toEqual(pristine);
 }, 65_000);
+
+it("restores reordered sealed history and recovers the original publication after reconnect", async () => {
+  await installPublicationActors(source.owner);
+  const data = fixture();
+  const { first, second, receipt } = await transaction(source.owner, async db => {
+    const first = await graph(db, data);
+    const receipt = await insertGraph(db, first);
+    const second = await graph(db, data, first.head);
+    await insertGraph(db, second);
+    const unpublished = await graph(db, fixture(), null, false);
+    await decisionRow(db, unpublished);
+    await decisionReceipt(db, unpublished);
+    return { first, second, receipt };
+  });
+  await source.owner.query("UPDATE public.catalog_products SET name='Later draft name' WHERE id=$1", [data.productId]);
+  await expect(captureStoreJourney(source.owner, "catalog-publication-drift")).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
+  });
+  await source.owner.query("UPDATE public.catalog_products SET name=$2 WHERE id=$1", [data.productId, second.product.name]);
+  await source.owner.query("UPDATE public.catalog_skus SET net_weight_g=200 WHERE id=$1", [data.skuId]);
+  await expect(captureStoreJourney(source.owner, "catalog-publication-weight-drift")).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
+  });
+  await source.owner.query("UPDATE public.catalog_skus SET net_weight_g=100 WHERE id=$1", [data.skuId]);
+  const captured = await captureStoreJourney(source.owner, "catalog-publication-source");
+  const tampered = structuredClone(captured);
+  const revisions = tampered.owned.find(table => table.table === "catalog_publications")!;
+  const originalRow = revisions.rows[0]!;
+  const row = JSON.parse(originalRow) as { canonical_state: string; digest: string };
+  const manifest = JSON.parse(row.canonical_state) as { product: { document: { sourceRef: string } } };
+  manifest.product.document.sourceRef = "example:wrong-source";
+  row.canonical_state = json(manifest);
+  row.digest = createHash("sha256").update(row.canonical_state).digest("hex");
+  // Let PostgreSQL encode the row exactly as capture/restore does.
+  revisions.rows[0] = (await source.owner.query<{ value: string }>(`SELECT to_jsonb(x)::text AS value FROM
+    (SELECT set_config('TimeZone','UTC',true)) zone,
+    jsonb_populate_record(NULL::public.catalog_publications,$1::jsonb) x`, [JSON.stringify(row)])).rows[0]!.value;
+  rehash(tampered);
+  const pristine = await journeyCensus(target.owner);
+  await expect(restore(target.owner, tampered)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_content_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+
+  const malformed = structuredClone(captured);
+  const skuRows = malformed.owned.find(table => table.table === "catalog_sku_revisions")!;
+  const sku = JSON.parse(skuRows.rows[0]!) as { full_facts: string; digest: string };
+  sku.full_facts = sku.full_facts.replace(/"Article(?: 2)?"/, '"\\u0000"');
+  sku.digest = createHash("sha256").update(sku.full_facts).digest("hex");
+  skuRows.rows[0] = (await source.owner.query<{ value: string }>(`SELECT to_jsonb(x)::text AS value FROM
+    jsonb_populate_record(NULL::public.catalog_sku_revisions,$1::jsonb) x`, [JSON.stringify(sku)])).rows[0]!.value;
+  rehash(malformed);
+  await expect(restore(target.owner, malformed)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_revision_invalid" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+
+  const edited = structuredClone(captured);
+  const historyRows = edited.owned.find(table => table.table === "catalog_publications")!.rows;
+  const receiptRows = edited.owned.find(table => table.table === "catalog_operator_receipts")!.rows;
+  const oldIndex = historyRows.findIndex(text => JSON.parse(text).id === first.issueId);
+  const oldPublication = JSON.parse(historyRows[oldIndex]!);
+  const oldState = JSON.parse(oldPublication.canonical_state);
+  oldState.product.name = "Different historic title";
+  oldPublication.canonical_state = json(oldState);
+  oldPublication.digest = createHash("sha256").update(oldPublication.canonical_state).digest("hex");
+  historyRows[oldIndex] = JSON.stringify(oldPublication);
+  const oldReceiptIndex = receiptRows.findIndex(text => JSON.parse(text).publication_id === first.issueId);
+  const oldReceipt = JSON.parse(receiptRows[oldReceiptIndex]!);
+  oldReceipt.result = json({ ...JSON.parse(oldReceipt.result), publicationDigest: oldPublication.digest });
+  receiptRows[oldReceiptIndex] = JSON.stringify(oldReceipt);
+  rehash(edited);
+  await expect(restore(target.owner, edited)).rejects.toMatchObject({
+    code: "target_conflict", cause: { reason: "publication_post_state_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+
+  for (const [kind, result] of Object.entries(invalidReceiptResults)) {
+    const invalidResult = structuredClone(captured);
+    const invalidRows = invalidResult.owned.find(table => table.table === "catalog_operator_receipts")!.rows;
+    invalidRows[oldReceiptIndex] = JSON.stringify({ ...JSON.parse(invalidRows[oldReceiptIndex]!), result });
+    rehash(invalidResult);
+    const failedStatements: string[] = [];
+    const owner = observedOwner(async () => undefined, sql => { failedStatements.push(sql); });
+    await expect(restore(owner, invalidResult), kind).rejects.toMatchObject({
+      code: "target_conflict", cause: { reason: "publication_receipt_input_invalid",
+        message: "The saved command result contains invalid text or structure. Re-export the original result and retry the restore." },
+    });
+    expect(failedStatements, kind).toEqual(["SET CONSTRAINTS ALL IMMEDIATE"]);
+    expect(await journeyCensus(target.owner), kind).toEqual(pristine);
+  }
+
+  const disconnected = { async connect() {
+    const client = await target.owner.connect();
+    client.release(true);
+    return { query: client.query.bind(client), release: () => undefined };
+  } } as unknown as Pool;
+  await expect(restore(disconnected, captured)).rejects.toMatchObject({ code: "database_unavailable" });
+
+  captured.owned.reverse();
+  for (const table of captured.owned) table.rows.reverse();
+  rehash(captured);
+  expect(await restore(target.owner, captured)).toEqual({ captureSha256: captured.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
+  expect(await journeyCensus(target.owner)).toEqual(await journeyCensus(source.owner));
+  expect(await restore(target.owner, captured)).toMatchObject({ replayed: true });
+  const reader = createPostgresCatalogPublicationReads({
+    transactions: { run: work => transaction(target.owner, work) },
+    authorizeHuman: async () => ({ ok: true, userId: actorId, role: "admin", isMachineActor: false }),
+  });
+  const actor = (await reader.authorize(null))!;
+  expect(await reader.readbackV2(first.head)).toMatchObject({ outcome: "page", head: first.head });
+  expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: second.head });
+  expect(await reader.receipt({ productId: data.productId, commandKey: first.commandKey }, actor)).toEqual({ outcome: "found", receipt });
+
+  await target.owner.query("UPDATE public.catalog_products SET name='Later draft name' WHERE id=$1", [data.productId]);
+  const drifted = await journeyCensus(target.owner);
+  const replay = structuredClone(captured);
+  const productRows = replay.owned.find(table => table.table === "catalog_products")!.rows;
+  const index = productRows.findIndex(text => JSON.parse(text).id === data.productId);
+  expect(index).toBeGreaterThanOrEqual(0);
+  productRows[index] = drifted.catalog_products.find(text => JSON.parse(text).id === data.productId)!;
+  rehash(replay);
+  await expect(restore(target.owner, replay)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(drifted);
+
+  await target.owner.query("UPDATE public.catalog_products SET name=$2 WHERE id=$1", [data.productId, second.product.name]);
+  await target.owner.query("UPDATE public.catalog_skus SET net_weight_g=200 WHERE id=$1", [data.skuId]);
+  const weighed = await journeyCensus(target.owner);
+  const weightReplay = structuredClone(captured);
+  for (const table of weightReplay.owned) if (table.table === "catalog_products" || table.table === "catalog_skus") table.rows = [...weighed[table.table]!];
+  rehash(weightReplay);
+  await expect(restore(target.owner, weightReplay)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(weighed);
+});
+
+it("refuses a retained registration whose original text is a JSON object during restore", async () => {
+  if (!(await source.owner.query("SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1", [actorId])).rows.length) {
+    await installPublicationActors(source.owner);
+  }
+  const data = fixture();
+  const origin = await transaction(source.owner, async db => {
+    const older = await graph(db, data, null, true, { documentText: "{}" });
+    await documentRow(db, older);
+    return older;
+  });
+  await transaction(source.owner, async db => {
+    const issuing = await graph(db, data, null, false, { draftRevision: 2, retainedSource: origin.source, documentText: "{}" });
+    await insertGraph(db, issuing, { existingDocument: true });
+  });
+  const captured = await captureStoreJourney(source.owner, "catalog-registration-text");
+  const tampered = structuredClone(captured);
+  const drafts = tampered.owned.find(table => table.table === "catalog_draft_revisions")!.rows;
+  const index = drafts.findIndex(text => JSON.parse(text).draft_id === data.draftId && JSON.parse(text).revision === 1);
+  expect(index).toBeGreaterThanOrEqual(0);
+  const draft = JSON.parse(drafts[index]!) as { payload: { publication: { operations: { op: string; canonicalText?: unknown }[] } } };
+  const registration = draft.payload.publication.operations.find(operation => operation.op === "register_document_revision")!;
+  expect(registration.canonicalText).toBe("{}");
+  registration.canonicalText = {};
+  drafts[index] = (await source.owner.query<{ value: string }>(`SELECT to_jsonb(x)::text AS value FROM
+    (SELECT set_config('TimeZone','UTC',true)) zone,
+    jsonb_populate_record(NULL::public.catalog_draft_revisions,$1::jsonb) x`, [JSON.stringify(draft)])).rows[0]!.value;
+  rehash(tampered);
+  const pristine = await journeyCensus(target.owner);
+  await expect(restore(target.owner, tampered)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_content_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+  expect(await restore(target.owner, captured)).toMatchObject({ replayed: false });
+}, 65_000);
+
+function rehash(value: ConnectedNativeStoreCapture) {
+  const { sha256: _previous, ...body } = value;
+  value.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+}

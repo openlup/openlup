@@ -2610,6 +2610,7 @@ export interface CatalogPublicationReceipt {
 export interface CatalogPublicationRefusal {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: "publisher_not_authorized" | "candidate_invalid" | "head_conflict" | "publication_authority_unavailable" | "publication_not_supported";
+    message?: string;
 }
 /** Success requires coherent authoritative document and lifecycle facts. */
 export type CatalogPublicationReadResult = {
@@ -4888,6 +4889,14 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly catalogPath: "db/platform/migrations/20261122180000_catalog_base_price_writer.sql";
         readonly position: 150;
         readonly sha256: "42ae3bf025c9e1a6b0a554672dae00d122b55d7185f0016e7a7604ffc94b4d65";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261123190000_catalog_publication";
+        readonly catalogPath: "db/platform/migrations/20261123190000_catalog_publication.sql";
+        readonly position: 162;
+        readonly sha256: "4cbee715641c5cc7fcaa779feb5b25959db2418867a2be672e61d7130838a8e9";
         readonly url: URL;
     }
 ];

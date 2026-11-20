@@ -23,28 +23,33 @@ const QUOTE_PAYLOAD_USES = [
 const parsedProvenance = "SyntheticProvenance";
 const parsedProvenanceRefusal = "imports or reconstructs provider provenance";
 
+const OPAQUE_CARRIERS = new Map([
+  ["db/platform/migrations/20261123190000_catalog_publication.sql", "CROSS JOIN LATERAL (SELECT d.document_payload AS payload) stored"],
+  ["server/adapters/postgres/connectedStoreCapture.ts", '"id", "product_id", "revision_no", "schema_id", "document_ref", "document_payload",'],
+]);
+const documentTable = String.raw`(?:"?public"?\s*\.\s*)?"?catalog_product_document_revisions"?`;
+
+function readsWholeDocument(source: string): boolean {
+  const fromDocument = new RegExp(String.raw`\b(?:from|join)\s+(?:only\s+)?${documentTable}(?:\s+(?:as\s+)?("?\w+"?))?`, "i");
+  return source.replace(/public\.\$\{(?:identifier|quoted)\(table\)\}/g, "public.catalog_product_document_revisions")
+    .split(/[`;]/).some(statement => {
+      const table = fromDocument.exec(statement);
+      if (!table) return new RegExp(String.raw`^\s*table\s+${documentTable}`, "i").test(statement);
+      const fields = statement.slice(0, table.index);
+      const candidate = table[1];
+      const alias = candidate && !SQL_RESERVED_WORDS.has(candidate.toLowerCase())
+        ? candidate.replaceAll('"', "") : "catalog_product_document_revisions";
+      return /\bselect\s+(?:distinct(?:\s+on\s*\([^;]*?\))?\s+)?\*/i.test(fields)
+        || new RegExp(String.raw`(?:"?${alias}"?\s*\.\s*\*|\b(?:to_jsonb|row_to_json|jsonb?_agg)\s*\(\s*"?${alias}"?\s*\)|\bselect\s+"?${alias}"?\s*$)`, "i").test(fields);
+    });
+}
+
 interface SourceFile {
   path: string;
   source: string;
 }
 
-const SQL_RESERVED_WORDS = new Set([
-  "where",
-  "join",
-  "left",
-  "right",
-  "inner",
-  "outer",
-  "full",
-  "cross",
-  "on",
-  "order",
-  "group",
-  "limit",
-  "offset",
-  "union",
-  "returning",
-]);
+const SQL_RESERVED_WORDS = new Set("where join left right inner outer full cross on order group limit offset union returning having window fetch for except intersect".split(" "));
 
 function perimeterSources(): SourceFile[] {
   return PERIMETERS.flatMap((perimeter) => walk(join(ROOT, perimeter)).map((path) => ({
@@ -118,10 +123,12 @@ function violations(files: readonly SourceFile[]): string[] {
       .split("\n")
       .filter((line) => /\bdocument_payload\b/.test(line) && !line.trimStart().startsWith("--"));
     const opaqueQuoteRead = file.path === QUOTE_READER && opaqueQuotePayloadPassThrough(file.source, payloadLines);
+    const opaqueCarrier = payloadLines.length === 1 && payloadLines[0]?.trim() === OPAQUE_CARRIERS.get(file.path);
+    if (!isTestSource && readsWholeDocument(file.source)) found.push(`${file.path}: document rows must use explicit projections`);
     const opaqueStorage = file.path === PORTABLE_MIGRATION
       && payloadLines.every((line) => /^\s*document_payload jsonb NOT NULL,\s*$/.test(line));
     if (!isTestSource && (
-      (payloadLines.length > 0 && !opaqueStorage && !opaqueQuoteRead)
+      (payloadLines.length > 0 && !opaqueStorage && !opaqueQuoteRead && !opaqueCarrier)
       || (file.path === QUOTE_READER && /\brevision_document_payload\b/.test(file.source) && !opaqueQuoteRead)
     )) {
       found.push(`${file.path}: document payload must remain opaque SQL storage only`);
@@ -145,6 +152,37 @@ describe("portable catalog document boundary", () => {
     expect(files.some(file => file.path === PORTABLE_MIGRATION)).toBe(true);
     expect(files.some(file => file.path === PORTABLE_ADAPTER)).toBe(true);
     expect(violations(files)).toEqual([]);
+  });
+
+  const handoff = QUOTE_PAYLOAD_USES.join("\n");
+  const opaque = "document payload must remain opaque SQL storage only", unparsed = "quote document must pass unparsed to host policy";
+  it.each([
+    [PORTABLE_MIGRATION, "  document_payload jsonb NOT NULL,", null],
+    [QUOTE_READER, handoff, null],
+    [PORTABLE_ADAPTER, handoff, opaque],
+    [QUOTE_READER, `${handoff}\n${QUOTE_PAYLOAD_SELECT}`, opaque],
+    [QUOTE_READER, handoff.replace("revision_document_payload, envelope", "revision_document_payload.title, envelope"), opaque],
+    ...["JSON.parse(value);", "console.log(documents);", "logger.info(documents);", "JSON.stringify(documents);"].map(call =>
+      [QUOTE_READER, `${handoff}\n${call}`, unparsed] as const),
+  ] as const)("preserves the document handoff and custody checks in %s", (path, source, reason) => {
+    expect(violations([{ path, source }])).toEqual(reason ? [`${path}: ${reason}`] : []);
+  });
+
+  it.each([
+    ["SELECT document_payload->>'name' FROM public.catalog_product_document_revisions", "document payload must remain opaque SQL storage only"],
+    ["SELECT DISTINCT ON (d.id) * FROM ONLY public.catalog_product_document_revisions d", "document rows must use explicit projections"],
+    ["SELECT to_jsonb(catalog_product_document_revisions) FROM public.catalog_product_document_revisions WHERE id=$1", "document rows must use explicit projections"],
+    ["SELECT to_jsonb(t) FROM public.${identifier(table)} t", "document rows must use explicit projections"],
+    ["privateRules.parseDocument(document)", "parses, validates, or canonicalizes a private document"],
+  ])("refuses an ordinary opacity violation: %s", (source, reason) => {
+    const path = "server/adapters/postgres/connectedStoreCapture.ts";
+    expect(violations([{ path, source }])).toContain(`${path}: ${reason}`);
+  });
+
+  it("refuses a second opaque use on the same allowed path", () => {
+    const [path, use] = [...OPAQUE_CARRIERS][0]!;
+    expect(violations([{ path, source: use }])).toEqual([]);
+    expect(violations([{ path, source: `${use}\n${use}` }])).toContain(`${path}: document payload must remain opaque SQL storage only`);
   });
 
   it.each([

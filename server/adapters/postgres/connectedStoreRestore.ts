@@ -1,3 +1,4 @@
+import { catalogPublicationAdmissionRefusal } from "./catalogPublicationReads.js";
 import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import {
@@ -8,7 +9,8 @@ import { deriveOidcPrincipalId } from "@openlup/platform/identity";
 import { evaluatePlatformMigrationManifest, readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
 import { qualifiedAdminPostgresCatalogPayload, qualifiedPostgresCatalogPayload,
   assertQualifiedAdminPostgresSelection, type QualifiedAdminPostgresInstallation, type QualifiedPostgresInstallation } from "./qualifiedInstall.js";
-import { connectedNativeStoreTables, connectedStoreClusterIdentitySql, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
+import { assertConnectedCatalogPublications, connectedNativeStoreTables,
+  connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 
 type TableName = typeof connectedNativeStoreTables[number];
 type Rows = { table: TableName; columns: readonly { name: string; type: string }[]; rows: readonly string[] };
@@ -241,6 +243,7 @@ const order = [
   "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes",
   "catalog_products", "catalog_product_document_revisions", "catalog_skus", "catalog_sku_identifiers",
   "catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
+  "catalog_publications", "catalog_sku_revisions", "catalog_publication_heads", "catalog_operator_receipts", "catalog_publication_decisions",
   // AUTHORITATIVE policy tuples include their original-end close marker, byte-exactly.
   "price_lists", "subscription_price_policy_revisions", "price_entries", "commerce_promotion_definitions",
   "catalog_price_setup_receipts",
@@ -353,6 +356,7 @@ export async function restoreConnectedNativeStore(input: {
     if (source.get("subscriptions")!.rows.some(row =>
       (JSON.parse(row) as Record<string, unknown>).configured_offer_version !== "classic")) fail("unsupported_table", "subscriptions");
     if (await equalCensus(client, source)) {
+      await assertConnectedCatalogPublications(client);
       if (JSON.stringify((await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key")).rows) !== JSON.stringify(keyIdentity.rows)) fail("target_conflict", "acquisition_private.installation_key");
       if (installation.generation === "qualified-admin") await closeRestrictedOwnerWindow(client, installation);
       if (await catalogPayload(client, installation) !== lockedInventory) fail("schema_conflict");
@@ -371,6 +375,7 @@ export async function restoreConnectedNativeStore(input: {
       for (const table of settings) if (table !== "subscription_delivery_alignment_control") {
         await restoreSettings(client, baseline.get(table)!, source.get(table)!);
       }
+      const governedProducts = new Set(source.get("catalog_publications")!.rows.map(row => (JSON.parse(row) as { product_id: string }).product_id));
       let neutralized = 0;
       for (const table of order) {
         const rows = source.get(table)!;
@@ -438,8 +443,11 @@ export async function restoreConnectedNativeStore(input: {
           if (updated.rows.length !== 1) fail("target_conflict", "payment_simulator_attempts");
         }
         if (table === "catalog_product_document_revisions") for (const product of source.get("catalog_products")!.rows) {
-          const value = JSON.parse(product) as { current_document_revision_id: string | null };
+          const value = JSON.parse(product) as { id: string; current_document_revision_id: string | null; publication_facts: unknown };
           if (value.current_document_revision_id === null) continue;
+          if (governedProducts.has(value.id) || value.publication_facts !== null) await client.query(`INSERT INTO public.catalog_publication_pointer_capabilities(transaction_id,product_id,revision_id,command_fingerprint)
+            SELECT pg_current_xact_id(),x.id,x.current_document_revision_id,$2
+            FROM pg_catalog.jsonb_populate_record(NULL::public.catalog_products,$1::jsonb) x`, [product, packet.sha256]);
           const updated = await client.query(`UPDATE public.catalog_products p SET current_document_revision_id=x.current_document_revision_id
             FROM pg_catalog.jsonb_populate_record(NULL::public.catalog_products,
               pg_catalog.jsonb_set($1::jsonb,'{primary_sku_id}','null'::jsonb)) x
@@ -478,6 +486,8 @@ export async function restoreConnectedNativeStore(input: {
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     if (error instanceof PostgresTransferError) throw error;
+    const refusal = catalogPublicationAdmissionRefusal(error);
+    if (refusal) throw Object.assign(new PostgresTransferError("target_conflict"), { cause: refusal });
     if (typeof (error as { code?: unknown })?.code === "string" && /^23/.test((error as { code: string }).code)) fail("target_conflict");
     throw new PostgresTransferError("database_unavailable");
   } finally {
@@ -562,7 +572,7 @@ async function closeRestrictedOwnerWindow(client: PoolClient, installation: Qual
 }
 async function equalCensus(client: PoolClient, expected: Map<TableName, Rows>): Promise<boolean> {
   for (const [table, data] of expected) {
-    const actual = (await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM public.${quoted(table)} t`)).rows.map(row => row.value).sort();
+    const actual = (await client.query<{ value: string }>(`SELECT pg_catalog.to_jsonb(t)::pg_catalog.text AS value FROM ${connectedStoreRowSource(table, data.columns)} t`)).rows.map(row => row.value).sort();
     if (JSON.stringify(actual) !== JSON.stringify([...data.rows].sort())) return false;
   }
   return true;
@@ -581,7 +591,7 @@ async function insert(client: PoolClient, table: Rows, row: string): Promise<voi
   if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy','on',true)");
   await client.query(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM pg_catalog.jsonb_populate_record(NULL::${name},$1::jsonb) ON CONFLICT DO NOTHING`, [row]);
   if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy',$1,true)",[prior??'']);
-  if ((await client.query(`SELECT 1 FROM ${name} t WHERE pg_catalog.to_jsonb(t)=$1::jsonb`, [row])).rows.length !== 1) fail("target_conflict", table.table);
+  if ((await client.query(`SELECT 1 FROM ${connectedStoreRowSource(table.table, table.columns)} t WHERE pg_catalog.to_jsonb(t)=$1::jsonb`, [row])).rows.length !== 1) fail("target_conflict", table.table);
 }
 async function restoreSettings(client: PoolClient, baseline: Rows, source: Rows): Promise<void> {
   // Closed read-approved factory tables, including installation marking. Each deletion matches one whole
@@ -625,6 +635,14 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
 }
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
+    // Publication guards validate restored facts and the complete ledger.
+    catalog_products: ["catalog_products_publication_pointer_fence"],
+    catalog_skus: ["catalog_skus_publication_facts_admitted"],
+    catalog_publications: ["catalog_publications_issued"],
+    catalog_sku_revisions: ["catalog_sku_revisions_issued"],
+    catalog_operator_receipts: ["catalog_receipts_issued"],
+    catalog_publication_decisions: ["catalog_decisions_issued"],
+    catalog_publication_heads: ["catalog_heads_issued"],
     // These guards retain final intervals and recompute the same definition digest.
     subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],

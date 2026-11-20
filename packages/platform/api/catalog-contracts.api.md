@@ -1402,6 +1402,7 @@ export interface CatalogPublicationReceipt {
 export interface CatalogPublicationRefusal {
     outcome: "unauthorized" | "validation_issue" | "conflict" | "dependency_unavailable" | "unsupported";
     reason: "publisher_not_authorized" | "candidate_invalid" | "head_conflict" | "publication_authority_unavailable" | "publication_not_supported";
+    message?: string;
 }
 /** Success requires coherent authoritative document and lifecycle facts. */
 export type CatalogPublicationReadResult = {
