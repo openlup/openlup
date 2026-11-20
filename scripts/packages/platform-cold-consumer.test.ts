@@ -601,6 +601,12 @@ it.each([
   // The added descriptor must leave the import-time manifest probe untouched.
   ["extra", "CATALOG_MIGRATIONS.push({ ...CATALOG_MIGRATIONS[0], position: Number.MAX_SAFE_INTEGER });"],
   ["reordered", "CATALOG_MIGRATIONS.reverse();"],
+  ["catalogPath getter masks wrong position", `
+const unit = CATALOG_MIGRATIONS[0];
+const { catalogPath, position } = unit;
+unit.position = 999;
+Object.defineProperty(unit, "catalogPath", { get() { unit.position = position; return catalogPath; } });
+`],
 ])("refuses packed catalogue migrations differing from the committed canonical manifest: %s", (_name, mutation) => {
   const consumer = pristinePackedA1Fixture();
   const path = join(consumer, "node_modules/@openlup/platform/dist/catalog/sql.js");
@@ -629,8 +635,8 @@ it.each([
 });
 
 it.each([
-  ["wrong position only with manifest present", "if (manifestPresent) migrations[0].position = 999;", /installed catalogue migrations differ from the committed canonical manifest[\s\S]*\+ +position: 999/u],
-  ["different wrong positions with and without manifest", "migrations[0].position = manifestPresent ? 999 : 998;", /installed catalogue migrations differ from the committed canonical manifest[\s\S]*\+ +position: 999/u],
+  ["wrong position only with manifest present", "if (manifestPresent) migrations[0].position = 999;", /installed catalogue migrations differ from the committed canonical manifest[\s\S]*\+ +999,/u],
+  ["different wrong positions with and without manifest", "migrations[0].position = manifestPresent ? 999 : 998;", /installed catalogue migrations differ from the committed canonical manifest[\s\S]*\+ +999,/u],
   ["initialization throws only with manifest present", 'if (manifestPresent) throw new Error("synthetic present-manifest initialization failed");', /Error: synthetic present-manifest initialization failed/u],
 ])("checks normal packed catalogue initialization in a fresh process: %s", (_name, mutation, diagnostic) => {
   const consumer = pristinePackedA1Fixture();
@@ -647,7 +653,7 @@ ${mutation}
   } finally { writeFileSync(path, original); }
 });
 
-it("refuses a packed catalogue unit whose stale SQL and SHA-256 agree", () => {
+it.each(["literal", "getter"] as const)("refuses stale packed SQL with a matching SHA-256 %s", digestKind => {
   const consumer = pristinePackedA1Fixture();
   const platform = join(consumer, "node_modules/@openlup/platform");
   const descriptor = join(platform, "dist/catalog/sql.js");
@@ -656,10 +662,19 @@ it("refuses a packed catalogue unit whose stale SQL and SHA-256 agree", () => {
   const originalSql = readFileSync(sql, "utf8");
   const staleSql = originalSql + "\n-- Different packed bytes\n";
   const staleDigest = createHash("sha256").update(staleSql).digest("hex");
+  const mutation = digestKind === "literal" ? `CATALOG_MIGRATIONS[0].sha256 = "${staleDigest}";` : `
+const unit = CATALOG_MIGRATIONS[0];
+const canonicalDigest = unit.sha256;
+let reads = 0;
+Object.defineProperty(unit, "sha256", { get() { return reads++ === 0 ? canonicalDigest : "${staleDigest}"; } });
+`;
+  const diagnostic = digestKind === "literal"
+    ? /installed catalogue migrations differ from the committed canonical manifest/u
+    : /Expected values to be strictly equal:/u;
   try {
     writeFileSync(sql, staleSql);
-    writeFileSync(descriptor, originalDescriptor + `\nCATALOG_MIGRATIONS[0].sha256 = "${staleDigest}";`);
-    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(/installed catalogue migrations differ from the committed canonical manifest/);
+    writeFileSync(descriptor, originalDescriptor + "\n" + mutation);
+    expect(() => proveCatalogCompositionConsumer(consumer)).toThrow(diagnostic);
   } finally {
     writeFileSync(descriptor, originalDescriptor);
     writeFileSync(sql, originalSql);
