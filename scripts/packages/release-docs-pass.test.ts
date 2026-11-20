@@ -159,6 +159,38 @@ describe("upgrade page assembly", () => {
     expect(text).toContain(`### \`${api}\``); expect(text).toContain("export declare const oldName"); expect(text).toContain("export declare const send");
   });
 
+  it("omits declarations moved to another subpath snapshot or deduplicated there", () => {
+    const f = fixture(), peer = "packages/core/api/peer.api.md";
+    const moved = "## dist/moved.d.ts\n" + report("export declare const moved: string;\n");
+    const shared = "## dist/shared.d.ts\n" + report("export declare const shared: string;\n");
+    f.write(api, moved + shared);
+    f.write(peer, shared);
+    f.commit(); f.git("tag", "-f", "openlup-core-v0.4.0");
+    f.write(api, report(""));
+    f.write(peer, moved + shared);
+    f.commit();
+
+    const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
+    expect(text).toContain("No API declarations changed since the previous release.");
+    expect(text).not.toMatch(/\b(?:moved|shared): string/u);
+  });
+
+  it("lists a changed signature under the subpath carrying the new declaration", () => {
+    const f = fixture(), peer = "packages/core/api/peer.api.md";
+    f.write(api, "## dist/core.d.ts\n" + report("export declare const oldName: string;\n"));
+    const independent = "## dist/peer.d.ts\n" + report("export declare const oldName: string;\n");
+    f.write(peer, independent);
+    f.commit(); f.git("tag", "-f", "openlup-core-v0.4.0");
+    f.write(api, report(""));
+    f.write(peer, independent + "## dist/core.d.ts\n" + report("export declare const oldName: number;\n"));
+    f.commit();
+
+    const { text } = assembleUpgradePage({ root: f.root, version: "0.5.0", since: previousCoreTag(f.root), fragments: [] });
+    expect(text).toContain(`### \`${peer}\`\n\nChanged declarations:`);
+    expect(text).toContain("export declare const oldName: number;");
+    expect(text).not.toContain(api);
+  });
+
   it("compares added, removed, changed and unchanged declaration blocks across fences", () => {
     const before = report([
       "export interface Updated {", "    old: string;", "}",

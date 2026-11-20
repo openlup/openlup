@@ -367,6 +367,11 @@ export function assertAgentsFileSize(root: string, file: string, violations: str
   }
 }
 
+function isHistoricalUpgrade(label: string, version: string): boolean {
+  return /^docs\/guide\/upgrade\/v\d+-\d+-\d+\.md$/.test(label)
+    && label !== `${guideDirectory}/upgrade/v${version.replaceAll(".", "-")}.md`;
+}
+
 /**
  * Plans guide regeneration and release-link pins without writing. Paths are absolute;
  * pending files overlay the checkout so callers can include pages not yet written.
@@ -384,6 +389,7 @@ export function planGuideUpdates(repositoryRoot: string, packageRoot: string, ve
   for (const file of [...sources.keys()].sort()) {
     const original = sources.get(file)!;
     const label = relative(packageRoot, file).split(sep).join("/");
+    if (!pendingFiles.has(file) && isHistoricalUpgrade(label, version)) continue;
     // Generated links use the target version, so a release's regions point at its own tag.
     const source = syncGeneratedRegions(original, label, repositoryRoot, true, violations, version)
       .replace(/(https:\/\/github\.com\/openlup\/openlup\/blob\/)openlup-core-v[0-9A-Za-z.+-]+\//g, `$1openlup-core-v${version}/`);
@@ -569,9 +575,10 @@ function assertGuideLinks(guideRoot: string, file: string, label: string, raw: s
       violations.push(`${label}: non-canonical repository link ${url}; use ${canonical}`);
     }
   }
+  const historicalUpgrade = isHistoricalUpgrade(label, tag.slice("openlup-core-v".length));
   for (const match of candidateSource.matchAll(/https:\/\/github\.com\/openlup\/openlup\/(blob|tree)\/([^/\s)>"'`]+)\/?([^\s)>"'`#?]*)/g)) {
     const [url, , ref, path] = match;
-    if (ref !== tag) {
+    if (ref !== tag && !(historicalUpgrade && /^openlup-core-v\d+\.\d+\.\d+$/.test(ref ?? ""))) {
       violations.push(`${label}: repository link ${url} must pin ${tag}; run docs:check -- --write`);
       continue;
     }
