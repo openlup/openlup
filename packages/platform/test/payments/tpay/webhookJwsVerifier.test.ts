@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { verifyTpayJwsSignature } from "../../../src/payments/tpay/webhookJwsVerifier.js";
+import { parseX509Certificate, verifyTpayJwsSignature } from "../../../src/payments/tpay/webhookJwsVerifier.js";
 import { createTpayJwsFixture } from "./webhookJws.testFixtures.js";
 
 describe("Tpay JWS default crypto", () => {
@@ -81,6 +81,55 @@ describe("Tpay JWS verifier", () => {
     })).resolves.toBe(false);
 
     expect(resolveCertificate).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed detached JWS structure and non-canonical x5u URLs before fetching certificates", async () => {
+    const validHeader = base64Url(JSON.stringify({ x5u: "https://secure.sandbox.tpay.com/x509/notifications-jws.pem" }));
+    const sig = base64Url("signature");
+    const resolveCertificate = vi.fn(async () => "SIGNING CERT");
+
+    for (const malformedHeader of [
+      `${validHeader}.unexpected-payload.${sig}`,
+      `${validHeader}..${sig}.extra`,
+      `${validHeader}.${sig}`,
+    ]) {
+      await expect(verifyTpayJwsSignature({
+        rawBody: "tr_id=TR-123",
+        signatureHeader: malformedHeader,
+        resolveCertificate,
+        rootCertificatePem: "ROOT CERT",
+        verifyCertificateChain: () => true,
+        verifyDetachedSignature: () => true,
+      })).resolves.toBe(false);
+    }
+
+    for (const trickyUrl of [
+      "https://secure.sandbox.tpay.com/x509/../other/cert.pem",
+      "https://secure.sandbox.tpay.com@evil.example/x509/cert.pem",
+      "https://secure.sandbox.tpay.com/x509/cert.pem?redirect=https://evil.example",
+      "https://secure.sandbox.tpay.com/x509/cert.pem#frag",
+      "http://secure.sandbox.tpay.com/x509/cert.pem",
+    ]) {
+      const header = base64Url(JSON.stringify({ x5u: trickyUrl }));
+      await expect(verifyTpayJwsSignature({
+        rawBody: "tr_id=TR-123",
+        signatureHeader: `${header}..${sig}`,
+        allowedX5uPrefix: "https://secure.sandbox.tpay.com/x509/",
+        resolveCertificate,
+        rootCertificatePem: "ROOT CERT",
+        verifyCertificateChain: () => true,
+        verifyDetachedSignature: () => true,
+      })).resolves.toBe(false);
+    }
+
+    expect(resolveCertificate).not.toHaveBeenCalled();
+  });
+
+  it("caches parsed X509Certificate instances by PEM", () => {
+    const fixture = createTpayJwsFixture();
+    const first = parseX509Certificate(fixture.signingCertificatePem);
+    const second = parseX509Certificate(fixture.signingCertificatePem);
+    expect(second).toBe(first);
   });
 });
 

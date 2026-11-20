@@ -561,6 +561,136 @@ describe("Tpay default fetch wire and execution adapter", () => {
   });
 });
 
+describe("Tpay HTTP client hardening", () => {
+  it("deduplicates concurrent OAuth token requests into a single /oauth/auth call", async () => {
+    let releaseAuth!: () => void;
+    const authGate = new Promise<void>((resolve) => { releaseAuth = resolve; });
+    let authCalls = 0;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith("/oauth/auth")) {
+        authCalls += 1;
+        await authGate;
+        return httpResponse({ access_token: "shared-token", expires_in: 7200 });
+      }
+      return httpResponse({ channels: [] });
+    }) as unknown as TpayFetchLike;
+
+    const client = createTpayHttpClient({
+      baseUrl: "https://api.tpay.com",
+      clientId: "client",
+      clientSecret: "secret",
+      fetchImpl,
+      now: () => 10_000,
+    });
+
+    const first = client.listPaymentChannels();
+    const second = client.listPaymentChannels();
+    releaseAuth();
+    await Promise.all([first, second]);
+
+    expect(authCalls).toBe(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("refreshes the cached token and retries once on HTTP 401 for idempotent GET requests", async () => {
+    let tokenSeq = 0;
+    let channelCalls = 0;
+    const seenAuthHeaders: string[] = [];
+    const fetchImpl = vi.fn(async (url: string, init?: Parameters<TpayFetchLike>[1]) => {
+      if (url.endsWith("/oauth/auth")) {
+        tokenSeq += 1;
+        return httpResponse({ access_token: `token-${tokenSeq}`, expires_in: 7200 });
+      }
+      channelCalls += 1;
+      seenAuthHeaders.push(init?.headers?.Authorization ?? "");
+      if (channelCalls === 1) {
+        return httpResponse({ error: "unauthorized" }, false, 401);
+      }
+      return httpResponse({ channels: [] });
+    }) as unknown as TpayFetchLike;
+
+    const client = createTpayHttpClient({
+      baseUrl: "https://api.tpay.com",
+      clientId: "client",
+      clientSecret: "secret",
+      fetchImpl,
+      now: () => 10_000,
+    });
+
+    await expect(client.listPaymentChannels()).resolves.toEqual([]);
+    expect(tokenSeq).toBe(2);
+    expect(seenAuthHeaders).toEqual(["Bearer token-1", "Bearer token-2"]);
+  });
+
+  it("invalidates a stale token on HTTP 401 in createTransaction without silently double-dispatching POST", async () => {
+    let tokenSeq = 0;
+    let postCalls = 0;
+    const seenPostTokens: string[] = [];
+    const fetchImpl = vi.fn(async (url: string, init?: Parameters<TpayFetchLike>[1]) => {
+      if (url.endsWith("/oauth/auth")) {
+        tokenSeq += 1;
+        return httpResponse({ access_token: `token-${tokenSeq}`, expires_in: 7200 });
+      }
+      postCalls += 1;
+      seenPostTokens.push(init?.headers?.Authorization ?? "");
+      if (postCalls === 1) {
+        return httpResponse({ error: "unauthorized" }, false, 401);
+      }
+      return httpResponse({
+        transactionId: "01HZ",
+        title: "TR-789",
+        status: "pending",
+        transactionPaymentUrl: null,
+        requestId: "req-3",
+      });
+    }) as unknown as TpayFetchLike;
+
+    const client = createTpayHttpClient({
+      baseUrl: "https://api.tpay.com",
+      clientId: "client",
+      clientSecret: "secret",
+      fetchImpl,
+      now: () => 10_000,
+    });
+
+    await expect(client.createTransaction(createInput())).rejects.toMatchObject({
+      name: "TpayTransactionDispatchError",
+    });
+    expect(postCalls).toBe(1);
+
+    await expect(client.createTransaction(createInput())).resolves.toMatchObject({ transactionId: "01HZ" });
+    expect(tokenSeq).toBe(2);
+    expect(seenPostTokens).toEqual(["Bearer token-1", "Bearer token-2"]);
+  });
+
+  it("computes remaining request deadline from the injected now() clock", async () => {
+    let clock = 50_000;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith("/oauth/auth")) {
+        clock += 25;
+        return httpResponse({ access_token: "token-1", expires_in: 7200 });
+      }
+      return httpResponse({ channels: [] });
+    }) as unknown as TpayFetchLike;
+
+    const client = createTpayHttpClient({
+      baseUrl: "https://api.tpay.com",
+      clientId: "client",
+      clientSecret: "secret",
+      timeoutMs: 20,
+      fetchImpl,
+      now: () => clock,
+    });
+
+    await expect(client.listPaymentChannels()).rejects.toMatchObject({
+      name: "TpayHttpError",
+      code: "tpay_request_timeout",
+      status: 504,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
 function fakeFetch(responses: unknown[]): TpayFetchLike {
   return vi.fn(async () => {
     const body = responses.shift();

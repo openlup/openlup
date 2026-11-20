@@ -84,27 +84,47 @@ export function createTpayHttpClient({
   now = () => Date.now(),
 }: TpayHttpClientOptions): TpayHttpClient {
   let token: OAuthToken | null = null;
+  let inFlightToken: Promise<OAuthToken> | null = null;
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
 
   function requestDeadline(): { expiresAtMs: number } {
-    return { expiresAtMs: Date.now() + timeoutMs };
+    return { expiresAtMs: now() + timeoutMs };
+  }
+
+  function invalidateToken(usedToken: string): void {
+    if (token?.accessToken === usedToken) {
+      token = null;
+    }
   }
 
   async function bearer(deadline: { expiresAtMs: number }): Promise<string> {
     if (token && token.expiresAtMs - TOKEN_REFRESH_SKEW_MS > now()) {
       return token.accessToken;
     }
-    const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret });
-    const response = await fetchWithTimeout(fetchImpl, `${normalizedBaseUrl}/oauth/auth`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-    }, remainingTimeoutMs(deadline, "tpay_oauth_timeout"), "tpay_oauth_timeout");
-    const json = await readJson(response, "tpay_oauth_failed");
-    const accessToken = readString(json, "access_token");
-    const expiresIn = readNumber(json, "expires_in");
-    token = { accessToken, expiresAtMs: now() + expiresIn * 1000 };
-    return accessToken;
+    const oauthTimeoutMs = remainingTimeoutMs(deadline, "tpay_oauth_timeout", now);
+    if (!inFlightToken) {
+      const pending = (async (): Promise<OAuthToken> => {
+        const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret });
+        const response = await fetchWithTimeout(fetchImpl, `${normalizedBaseUrl}/oauth/auth`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body.toString(),
+        }, oauthTimeoutMs, "tpay_oauth_timeout");
+        const json = await readJson(response, "tpay_oauth_failed");
+        const accessToken = readString(json, "access_token");
+        const expiresIn = readNumber(json, "expires_in");
+        const nextToken = { accessToken, expiresAtMs: now() + expiresIn * 1000 };
+        token = nextToken;
+        return nextToken;
+      })().finally(() => {
+        if (inFlightToken === pending) {
+          inFlightToken = null;
+        }
+      });
+      inFlightToken = pending;
+      return (await pending).accessToken;
+    }
+    return (await awaitWithTimeout(inFlightToken, oauthTimeoutMs, "tpay_oauth_timeout")).accessToken;
   }
 
   async function request(
@@ -112,17 +132,28 @@ export function createTpayHttpClient({
     init: { method?: string; body?: unknown } = {},
     deadline = requestDeadline(),
   ) {
-    const headers: Record<string, string> = { Authorization: `Bearer ${await bearer(deadline)}` };
-    let body: string | undefined;
-    if (init.body !== undefined) {
-      headers["Content-Type"] = "application/json";
-      body = JSON.stringify(init.body);
+    const method = init.method ?? "GET";
+    const send = async (accessToken: string) => {
+      const headers: Record<string, string> = { Authorization: `Bearer ${accessToken}` };
+      let body: string | undefined;
+      if (init.body !== undefined) {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify(init.body);
+      }
+      return fetchWithTimeout(fetchImpl, `${normalizedBaseUrl}${path}`, {
+        method,
+        headers,
+        body,
+      }, remainingTimeoutMs(deadline, "tpay_request_timeout", now), "tpay_request_timeout");
+    };
+    const usedToken = await bearer(deadline);
+    let response = await send(usedToken);
+    if (response.status === 401) {
+      invalidateToken(usedToken);
+      if (method === "GET") {
+        response = await send(await bearer(deadline));
+      }
     }
-    const response = await fetchWithTimeout(fetchImpl, `${normalizedBaseUrl}${path}`, {
-      method: init.method ?? "GET",
-      headers,
-      body,
-    }, remainingTimeoutMs(deadline, "tpay_request_timeout"), "tpay_request_timeout");
     return readJson(response, "tpay_request_failed");
   }
 
@@ -132,17 +163,24 @@ export function createTpayHttpClient({
       return tpayTransactionDispatchBoundary({
         authenticate: () => bearer(deadline),
         prepare: (accessToken) => ({
+          accessToken,
           headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify(buildTpayTransactionPayload(input)),
-          timeoutMs: remainingTimeoutMs(deadline, "tpay_request_deadline_exhausted"),
+          timeoutMs: remainingTimeoutMs(deadline, "tpay_request_deadline_exhausted", now),
         }),
-        dispatch: ({ headers, body, timeoutMs }) => fetchWithTimeout(
-          fetchImpl,
-          `${normalizedBaseUrl}/transactions`,
-          { method: "POST", headers, body },
-          timeoutMs,
-          "tpay_request_timeout",
-        ),
+        dispatch: async ({ accessToken, headers, body, timeoutMs: dispatchTimeoutMs }) => {
+          const response = await fetchWithTimeout(
+            fetchImpl,
+            `${normalizedBaseUrl}/transactions`,
+            { method: "POST", headers, body },
+            dispatchTimeoutMs,
+            "tpay_request_timeout",
+          );
+          if (response.status === 401) {
+            invalidateToken(accessToken);
+          }
+          return response;
+        },
         decode: async (response) => {
           const json = await readJson(response, "tpay_request_failed");
           const payments = asRecord(json.payments);
@@ -191,10 +229,32 @@ export function createTpayHttpClient({
   };
 }
 
-function remainingTimeoutMs(deadline: { expiresAtMs: number }, timeoutCode: string): number {
-  const remaining = deadline.expiresAtMs - Date.now();
+function remainingTimeoutMs(
+  deadline: { expiresAtMs: number },
+  timeoutCode: string,
+  now: () => number,
+): number {
+  const remaining = deadline.expiresAtMs - now();
   if (remaining <= 0) throw new TpayHttpError(timeoutCode, 504);
   return remaining;
+}
+
+async function awaitWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutCode: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new TpayHttpError(timeoutCode, 504)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 async function fetchWithTimeout(

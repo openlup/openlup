@@ -129,24 +129,28 @@ function previewOrigin(env: Record<string, string | undefined>): string | null {
 
 /** Keep localized reference presentation outside the contributed protocol implementation. */
 function createReferenceTpayAdapter(options: Parameters<typeof createTpayPaymentExecutionAdapter>[0]): PaymentExecutionPort {
-  const bind = (input: Parameters<PaymentExecutionPort["execute"]>[0]) => createTpayPaymentExecutionAdapter({
+  const resolvePayer: Parameters<typeof createTpayPaymentExecutionAdapter>[0]["resolvePayer"] = (input) =>
+    input.payer ?? (input.customerRef ? { email: input.customerRef, name: "openlup customer" } : null);
+  const baseAdapter = createTpayPaymentExecutionAdapter({ ...options, resolvePayer });
+  const bindAccount = (input: Parameters<PaymentExecutionPort["execute"]>[0]) => createTpayPaymentExecutionAdapter({
     ...options,
-    resolvePayer: input => input.payer ?? (input.customerRef ? { email: input.customerRef, name: "openlup customer" } : null),
+    resolvePayer,
     client: {
       ...options.client,
       createTransaction: transaction => options.client.createTransaction({
         ...transaction,
         successUrl: referenceReturnUrl(transaction.successUrl, options.successUrl, input),
         errorUrl: referenceReturnUrl(transaction.errorUrl, options.errorUrl, input),
-        simulatorContext: input.returnContext === "account" && transaction.simulatorContext
+        simulatorContext: transaction.simulatorContext
           ? { ...transaction.simulatorContext, returnPath: "/konto/zamowienie/status" } : transaction.simulatorContext,
       }),
     },
   });
   return {
-    validateInput: input => bind(input).validateInput?.({ ...input, subjectId: input.petId }),
+    validateInput: input => baseAdapter.validateInput?.({ ...input, subjectId: input.petId }),
     async execute(input) {
-      return await bind(input).execute({ ...input, subjectId: input.petId }) as Awaited<ReturnType<PaymentExecutionPort["execute"]>>;
+      const adapter = input.returnContext === "account" ? bindAccount(input) : baseAdapter;
+      return await adapter.execute({ ...input, subjectId: input.petId }) as Awaited<ReturnType<PaymentExecutionPort["execute"]>>;
     },
   };
 }

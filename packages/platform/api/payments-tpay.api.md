@@ -832,6 +832,7 @@ export declare function readPaidAmountMinor(transaction: Record<string, unknown>
 ## dist/payments/tpay/webhookJwsVerifier.d.ts
 
 ```ts
+import { X509Certificate } from "node:crypto";
 export interface TpayJwsCertificateResolver {
     (url: string): Promise<string>;
 }
@@ -848,5 +849,7 @@ export interface TpayJwsVerificationInput {
         signingCertificatePem: string;
     }) => boolean;
 }
+/** Bounded PEM -> X509Certificate cache to avoid reparsing identical certs per webhook. */
+export declare function parseX509Certificate(pem: string): X509Certificate;
 export declare function verifyTpayJwsSignature({ rawBody, signatureHeader, resolveCertificate, rootCertificatePem, allowedX5uPrefix, verifyCertificateChain: verifyChain, verifyDetachedSignature: verifyDetached, }: TpayJwsVerificationInput): Promise<boolean>;
 ```
