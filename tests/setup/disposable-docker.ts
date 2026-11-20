@@ -4,6 +4,7 @@ import { env as processEnvironment } from "node:process";
 // Vitest loads this module in a separate runner for each inherited project.
 const runsKey = Symbol.for("openlup.disposable.setup");
 const wrappedKey = Symbol.for("openlup.disposable.wrapped");
+const targetedKey = Symbol.for("openlup.disposable.targeted");
 const runs: Map<string, Promise<void>> = process[runsKey] ??= new Map();
 const optionalExport = <K extends keyof typeof disposableDocker>(key: K): (typeof disposableDocker)[K] | undefined =>
   Object.prototype.hasOwnProperty.call(disposableDocker, key) ? disposableDocker[key] : undefined;
@@ -11,8 +12,7 @@ const optionalExport = <K extends keyof typeof disposableDocker>(key: K): (typeo
 export default async function setup() {
   const run = disposableDocker.currentRunId();
   if (!run || runs.has(run)) return;
-  const checkTargeted = optionalExport("hasTargetedTestArgs");
-  const targeted = typeof checkTargeted === "function" && checkTargeted(process.argv.slice(2));
+  const targeted = Boolean(process[targetedKey]);
   const start = (async () => {
     const explicitMode = processEnvironment.OPENLUP_DISPOSABLE_REAP;
     // Skip the host-wide dead-container sweep on targeted unit runs unless the
