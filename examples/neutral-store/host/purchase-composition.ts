@@ -32,7 +32,7 @@ const only = (payload: Record<string, unknown>, fields: string[]) => Object.keys
 const text = (value: unknown, max: number): value is string => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= max;
 const command = (context: ActionContext, operation: string) => `${operation}:${hash([context.actor.principalRef, context.commandKey])}`;
 const source = (context: ActionContext) => `starter-demo:${context.config.id}`;
-const present = (order: Record<string, unknown>) => ({ orderRef: order.id, status: order.status,
+const present = (order: { id: string; status: string; total_amount_minor: number | string; currency_code: string }) => ({ orderRef: order.id, status: order.status,
   total: { amountMinor: Number(order.total_amount_minor), currency: order.currency_code } });
 
 /** Existing request admission precedes each action; ownership is derived here. */
