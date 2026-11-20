@@ -565,7 +565,7 @@ describe('v3 source admission from real Git objects', () => {
     const json = JSON.stringify(summary);
     expect(body.split('\n')[0]).toBe(format === 'compressed' ? COMPRESSED_RECEIPT_MARKER : ECONOMY_RECEIPT_MARKER);
     expect(body).toBe(receiptBody(summary));
-    expect(body).toContain('Reviewer floor 0 · Scope delta');
+    expect(body).toContain('Reviewer floor 0 · Scope git');
     if (format === 'compressed') expect(json.length).toBeGreaterThan(65_536);
     else expect(body).toContain(`\n\`\`\`json\n${json}\n\`\`\`\n`);
     expect(parseReceipt(body)).toEqual(summary);

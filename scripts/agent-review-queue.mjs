@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { gunzipSync, inflateRawSync } from 'node:zlib';
-import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, demand, RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER, RECEIPT_DETAILS_HEADER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, carryOverSourceReview, git, validateEconomySession } from './agent-review-session.mjs';
 import { RECEIPT_MARKER_PREFIX } from './ci-receipt-rerun.mjs';
 import { assertCoLocatedForwardApproval, hasExactManagedForward, isNativeStoreMigrationPath, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
@@ -25,37 +25,53 @@ const RECEIPT_LIMIT = 1024 * 1024;
 export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = () => false) {
   return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
-export function parseReceipt(body) {
-  if (typeof body !== 'string' || body.length > RECEIPT_LIMIT) return null;
-  const [marker, ...lines] = body.split('\n');
-  if (![RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER].includes(marker)) return null;
-  const gzip = marker === COMPRESSED_RECEIPT_MARKER;
-  const fence = gzip ? '```text' : '```json';
-  const start = lines.indexOf(fence);
-  if (start < 0 || lines.indexOf(fence, start + 1) !== -1) return null;
-  const end = lines.indexOf('```', start + 1);
-  if (end < 0) return null;
-  if (gzip) {
-    const encoded = lines[start + 1];
-    if (end !== start + 2 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded)) return null;
-    try {
-      const payload = Buffer.from(encoded, 'base64');
-      if (payload.toString('base64') !== encoded) return null;
-      if (payload[3] !== 0) return null; // The encoder emits no optional gzip header fields.
-      const options = { maxOutputLength: RECEIPT_LIMIT };
-      const buffer = gunzipSync(payload, options);
-      // gunzip can ignore trailing bytes or join members. The first deflate stream must end at the final trailer.
-      const deflate = payload.subarray(10, -8);
-      if (inflateRawSync(deflate, { ...options, info: true }).engine.bytesWritten !== deflate.length) return null;
-      const receipt = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer));
-      return receipt?.version === 3 ? receipt : null;
-    } catch { return null; }
-  }
+function decodeGzipReceipt(encoded) {
   try {
-    const receipt = JSON.parse(lines.slice(start + 1, end).join('\n'));
+    const payload = Buffer.from(encoded, 'base64');
+    if (payload.toString('base64') !== encoded) return null;
+    if (payload[3] !== 0) return null; // The encoder emits no optional gzip header fields.
+    const options = { maxOutputLength: RECEIPT_LIMIT };
+    const buffer = gunzipSync(payload, options);
+    // gunzip can ignore trailing bytes or join members. The first deflate stream must end at the final trailer.
+    const deflate = payload.subarray(10, -8);
+    if (inflateRawSync(deflate, { ...options, info: true }).engine.bytesWritten !== deflate.length) return null;
+    const receipt = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer));
+    return receipt?.version === 3 ? receipt : null;
+  } catch { return null; }
+}
+function decodeRawReceipt(marker, json) {
+  try {
+    const receipt = JSON.parse(json);
     if (marker === ECONOMY_RECEIPT_MARKER ? receipt?.version !== 3 : receipt?.version !== undefined) return null;
     return receipt;
   } catch { return null; }
+}
+function parseBareReceipt(body) {
+  if (body.startsWith(`${COMPRESSED_RECEIPT_MARKER}\n`)) {
+    const match = /^```text\n([A-Za-z0-9+/]+={0,2})\n```\n?$/u.exec(body.slice(COMPRESSED_RECEIPT_MARKER.length + 1));
+    return match ? decodeGzipReceipt(match[1]) : null;
+  }
+  const marker = [RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER].find(value => body.startsWith(`${value}\n`));
+  if (!marker) return null;
+  const match = /^```json\s*\n([\s\S]*?)\n```\s*$/u.exec(body.slice(marker.length + 1));
+  return match ? decodeRawReceipt(marker, match[1]) : null;
+}
+function parseFramedReceipt(body) {
+  const markerEnd = body.indexOf('\n');
+  if (markerEnd < 0) return null;
+  const marker = body.slice(0, markerEnd);
+  if (![RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER].includes(marker)) return null;
+  const header = `\n${RECEIPT_DETAILS_HEADER}\n\n`;
+  const section = body.indexOf(header, markerEnd);
+  if (section < 0 || /[`<>]/u.test(body.slice(markerEnd, section))) return null;
+  const match = /^```(json|text)\n([^\r\n]+)\n```\n\n<\/details>\s*$/u.exec(body.slice(section + header.length));
+  const gzip = marker === COMPRESSED_RECEIPT_MARKER;
+  if (!match || match[1] !== (gzip ? 'text' : 'json')) return null;
+  return gzip ? decodeGzipReceipt(match[2]) : decodeRawReceipt(marker, match[2]);
+}
+export function parseReceipt(body) {
+  if (typeof body !== 'string' || body.length > RECEIPT_LIMIT) return null;
+  return parseBareReceipt(body) ?? parseFramedReceipt(body);
 }
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidCommentIds) {
   const comments = [];
@@ -92,6 +108,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
   if (group) demand(event.action === 'checks_requested' && group.base_ref === 'refs/heads/main' && SHA.test(group.head_sha) && SHA.test(group.base_sha) && (!env.GITHUB_SHA || env.GITHUB_SHA === group.head_sha) && (!env.GITHUB_REF || env.GITHUB_REF === group.head_ref), 'merge group identity differs from the event');
   const permissions = new Map();
   const start = now(); let reason = 'post a current receipt comment from a user with write, maintain or admin permission';
+  let invalidCommentNotice = '';
   while (now() - start < deadlineMs) {
     const pr = await api.get(`${root}/pulls/${prNumber}`);
     demand(pr.number === prNumber && pr.state === 'open' && pr.draft === false && !pr.merged && pr.base?.ref === 'main' && SHA.test(pr.head?.sha), 'PR must be the live open main candidate');
@@ -132,10 +149,10 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
-    if (invalidCommentIds.length) reason = `receipt comment ${invalidCommentIds[0]} is not a valid receipt (for example an edited or duplicated machine block); post the unchanged output of \`node scripts/agent-review-session.mjs receipt ${prNumber}\``;
-    console.log(`needs_agent_review: ${reason}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
+    invalidCommentNotice = invalidCommentIds.length ? `; receipt comment ${invalidCommentIds[0]} is not a valid receipt (for example an edited or duplicated machine block); post the unchanged output of \`node scripts/agent-review-session.mjs receipt ${prNumber}\`` : '';
+    console.log(`needs_agent_review: ${reason}${invalidCommentNotice}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
-  throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}`);
+  throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
 }
 // A completed source run hands an existing merge request to GitHub's queue once.
 // This code runs only from trusted main; source objects are never checked out.
