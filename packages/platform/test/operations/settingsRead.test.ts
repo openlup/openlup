@@ -197,9 +197,7 @@ it("projects read-only MCP inputs and results from the settings read contracts",
   });
   const key = "inventory_renewal_protection";
   expect(show.inputSchema).toMatchObject({ properties: { key: { enum: expect.arrayContaining([key]) } } });
-  expect(showResult.parse(await showSetting({ key })).setting.schema).toMatchObject({
-    properties: { renewalProtectionDays: { minimum: 1, maximum: 3660 } },
-  });
+  expect(showResult.parse(await showSetting({ key })).setting).toHaveProperty("schema.properties.renewalProtectionDays", expect.objectContaining({ minimum: 1, maximum: 3660 }));
   expect(await showSetting({ key: "unknown" })).toEqual({ refusal: expect.objectContaining({
     code: "commerce_setting_unknown", path: ["key"], rule: expect.any(String), hint: expect.any(String),
     remediation: expect.objectContaining({ command: "npm --silent run settings -- list", retry: true }),

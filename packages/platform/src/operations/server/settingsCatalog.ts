@@ -42,9 +42,10 @@ function readSettingsCatalogue() {
 
   const key = z.enum(entries.map(entry => entry.key));
   const summary = settingDescriptorSummary.extend({ key });
-  const [first, ...rest] = descriptor.options;
+  const [value, ...facts] = descriptor.options;
+  // The generator materializes both schema fields on value entries, even when null.
   const setting = z.discriminatedUnion(descriptor.def.discriminator, [
-    first.extend({ key }), ...rest.map(branch => branch.extend({ key })),
+    value.required({ schema: true, previewSchema: true }).extend({ key }), ...facts.map(branch => branch.extend({ key })),
   ]);
   const showRequest = z.strictObject({ key });
   const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema });

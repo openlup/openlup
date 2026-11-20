@@ -108,3 +108,15 @@ it("uses one reason and no value metadata for caps and invariants", () => {
     expect(section.split(entry.runtime.reason)).toHaveLength(2);
   }
 });
+
+it("keeps the three combined compact reasons verbatim", () => {
+  const files = renderSettingsCatalogue();
+  const { entries } = JSON.parse(files["packages/platform/settings-catalog.json"]!);
+  const reasons = {
+    "communications.messageDateFormatting": "The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone.",
+    "pricing.currencyExponent": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.",
+    "subscriptions.stockWaitHoldLifetime": "Native stock-wait recovery fixes the hold at 15 minutes in SQL. The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused.",
+  };
+  expect(entries).toEqual(expect.arrayContaining(Object.entries(reasons).map(([key, reason]) =>
+    expect.objectContaining({ key, runtime: { level: "read-only", reason } }))));
+});

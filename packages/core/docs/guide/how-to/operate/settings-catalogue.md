@@ -133,7 +133,7 @@ Format the next-cycle date on the starter account page.
 Search terms include messaging, notifications.
 
 - Owner **communications** · kind **cap** · runtime **read-only**
-- Use the market time zone to format the next-cycle timestamp currently shown raw on the starter account page.
+- The starter account page displays the next-cycle timestamp directly. Format it in the starter using the market time zone.
 
 Show offline: `show communications.messageDateFormatting --json`.
 
@@ -307,7 +307,7 @@ Format money using the currency exponent.
 Search terms include quote amounts, price calculation.
 
 - Owner **pricing** · kind **cap** · runtime **read-only**
-- Use formatCurrencyMinor in the starter paid-order email formatter to replace its division of minor units by 100.
+- The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter.
 
 Show offline: `show pricing.currencyExponent --json`.
 
@@ -601,7 +601,7 @@ Set the stock hold lifetime when a renewal leaves stock wait.
 Search terms include recurring orders, renewals.
 
 - Owner **subscriptions** · kind **cap** · runtime **read-only**
-- Native stock-wait recovery uses a fixed 15-minute hold in SQL, separate from the holdSeconds argument to the reserve method on the port that the starter uses only for expiry.
+- Native stock-wait recovery fixes the hold at 15 minutes in SQL. The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused.
 
 Show offline: `show subscriptions.stockWaitHoldLifetime --json`.
 
