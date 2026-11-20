@@ -32,7 +32,7 @@ export function settingsMcpTools(preview: ZodType) {
     list: ["Find settings by goal words. Searches platform settings and any settings the application declares for discovery when the server was started with --app. An empty list means no match: retry with fewer or different words, or omit goal to list everything.", z.strictObject({ goal: key.optional() }), listResult],
     show: ["Read one setting by key: its domain, how to change it, and any available value rules, effects, or current value observation.", z.strictObject({ key }), showResult.extend({ observation: fileObservationSchema })],
     explain: ["Explain a setting key, or a refusal code returned by another tool, including the next step.", z.strictObject({ keyOrCode: key }), z.union([showResult, z.strictObject({ schemaVersion: version, explanation: refusal })])],
-    check: ["Validate the application's configuration files offline and report the values the application declares, with their file and symbol where the binding supplies them. Run it after editing a value.", z.strictObject({}), checkResultSchema],
+    check: ["Run the application's offline settings check. Reported values can be checked against a packaged schema or a schema the application supplies. The application's own validator runs when supplied and its declarations are accepted. The result marks rows whose values were not validated. Run it after editing a value.", z.strictObject({}), checkResultSchema],
     preview: ["Preview the effect of a proposed value without writing anything. Only settings whose runtime level is preview support it, and the server must have been started with --database-url and --app. Pass the proposed JSON value itself in value, not a string containing JSON.", z.strictObject({ key, value: z.json(), skus: z.array(z.string()).optional(), asOf: key.optional() }), preview],
   } satisfies Record<string, [string, ZodType, ZodType]>).map(([command, [description, input, result]]) => {
     const output = z.union([result, z.strictObject({ schemaVersion: version, refusal })]);
@@ -121,14 +121,20 @@ export async function runSettingsMcp(input: AsyncIterable<Buffer>, write: (line:
         const selected = call.safeParse(params);
         const tool = selected.success ? tools.find(item => item.definition.name === selected.data.name) : undefined;
         const args = selected.success && selected.data.arguments !== undefined ? selected.data.arguments : {};
-        const required = tool?.definition.inputSchema.required as string[] | undefined;
-        const missing = args && typeof args === "object" && !Array.isArray(args)
-          ? required?.find(field => !Object.hasOwn(args, field)) : undefined;
-        const valid = tool && !hasNonfiniteNumber(args) && (missing || tool.input.safeParse(args).success);
+        const validated = tool && !hasNonfiniteNumber(args) ? tool.input.safeParse(args) : undefined;
         validatingArguments = false;
-        if (!valid) error(id, -32602, invalidTool);
-        else if (missing) error(id, -32602, `Invalid arguments for ${tool.definition.name}: ${missing} is required. See tools/list.`);
-        else reply(id, { result: await callSettingsTool(tool, args as ToolArguments, context, host) });
+        if (tool && validated?.success) {
+          reply(id, { result: await callSettingsTool(tool, args as ToolArguments, context, host) });
+        } else {
+          const issues = validated?.error?.issues;
+          const path = issues?.length === 1 ? issues[0].path : [];
+          const field = path[0];
+          const required = tool?.definition.inputSchema.required as string[] | undefined;
+          const missing = tool && path.length === 1 && typeof field === "string" && required?.includes(field)
+            && args !== null && typeof args === "object" && !Object.hasOwn(args, field);
+          error(id, -32602, missing
+            ? `Invalid arguments for ${tool.definition.name}: ${field} is required. See tools/list.` : invalidTool);
+        }
       } else if (["initialize", "ping", "tools/list"].includes(method)) {
         error(id, -32602, "Invalid params");
       } else {

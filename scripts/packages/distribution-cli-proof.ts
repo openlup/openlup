@@ -651,12 +651,17 @@ export function createSettingsBindings(input) {
       { code: -32700, message: "Parse error" }, { code: -32600, message: "Message exceeds 1 MiB" }, { code: -32700, message: "Parse error" },
     ]);
     for (const id of [13, 15, 16]) assert.deepEqual(byId.get(id).result, {});
-    const refused = spawnSync(executable, [...args, "--database-url=postgresql://probe@db.invalid/"],
-      { cwd: app, env: environment, encoding: "utf8", input: init });
+    const badUrl = "--database-url=postgresql://probe@db.invalid/";
+    const refused = spawnSync(executable, [...args, badUrl], { cwd: app, env: environment, encoding: "utf8", input: init });
     assert.ifError(refused.error);
     assert.equal(refused.status, 64);
     assert.equal(refused.stdout, "");
     assert.match(refused.stderr, /database path segment/u);
+    const prefixedRefusal = spawnSync(executable, ["settings", "--app", appPath, badUrl, "mcp"],
+      { cwd: app, env: environment, encoding: "utf8", input: init });
+    assert.ifError(prefixedRefusal.error);
+    assert.deepEqual([prefixedRefusal.status, prefixedRefusal.stdout, prefixedRefusal.stderr],
+      [refused.status, refused.stdout, refused.stderr]);
     return { listing, results };
   } finally {
     rmSync(directory, { recursive: true, force: true });

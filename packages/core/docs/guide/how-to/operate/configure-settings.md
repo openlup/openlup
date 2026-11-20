@@ -320,7 +320,7 @@ the application binding.
 | `settings_list` | Find platform and app settings by goal. |
 | `settings_show` | Pass `key` for the setting's details and any available value observation. |
 | `settings_explain` | Pass a setting key or refusal code as `keyOrCode` to get an explanation and the next step. |
-| `settings_check` | Validate the selected application's file settings offline. |
+| `settings_check` | Run the application's offline check and see which reported values were validated. |
 | `settings_preview` | Pass `key` and the proposed JSON `value` to estimate a change for a supported setting. |
 
 For connected show and preview, add `--database-url` and a read-capable

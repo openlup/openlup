@@ -187,13 +187,13 @@ function isJsonValue(value: unknown, ancestors = new Set<object>()): value is Js
   return valid;
 }
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, fallback = "Application validation failed."): string {
   try {
     const message = typeof error === "string" ? error
       : error && typeof error === "object" && "message" in error ? error.message : undefined;
-    if (typeof message === "string") return message.replace(/\s+/gu, " ").trim().slice(0, 180) || "Application validation failed.";
+    if (typeof message === "string") return message.replace(/\s+/gu, " ").trim().slice(0, 180) || fallback;
   } catch { /* A thrown value need not have a readable message. */ }
-  return "Application validation failed.";
+  return fallback;
 }
 
 async function checkApp(file?: FileBinding): Promise<AppValidation> {
@@ -312,9 +312,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       try {
         bindings = await host.loadCheck({ app: context.app, configuration: context.configuration });
       } catch (error) {
-        const message = typeof error === "string" ? error
-          : error && typeof error === "object" && "message" in error ? error.message : undefined;
-        if (typeof message === "string" && message.trim()) failure = errorMessage(message);
+        failure = errorMessage(error, "") || missing;
       }
       if (!bindings) {
         io.warn?.(`Settings app: ${failure}\n`);

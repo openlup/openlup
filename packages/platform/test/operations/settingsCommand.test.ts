@@ -1056,9 +1056,10 @@ it.each([
 it.each([
   ["settings_show", {}, "key"],
   ["settings_explain", {}, "keyOrCode"],
-  ["settings_preview", {}, "key"],
   ["settings_preview", { key }, "value"],
-] as const)("refuses %s arguments %j missing %s and continues the session", async (name, args, field) => {
+  ["settings_preview", {}, undefined],
+  ["settings_preview", { value: null, skus: 1 }, undefined],
+] as const)("refuses %s arguments %j and continues the session", async (name, args, field) => {
   using dispatch = vi.spyOn(await import("../../src/operations/server/settingsCommand.js"), "runSettingsCommand");
   const input = (async function* () {
     yield Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) + "\n");
@@ -1071,7 +1072,8 @@ it.each([
     bind, loadCheck, previewResultSchema: renewalStockProtectionPreviewResult,
   })).toBe(0);
   expect(write.mock.calls.map(([line]) => JSON.parse(line))).toEqual([
-    { jsonrpc: "2.0", id: 1, error: { code: -32602, message: `Invalid arguments for ${name}: ${field} is required. See tools/list.` } },
+    { jsonrpc: "2.0", id: 1, error: { code: -32602, message: field
+      ? `Invalid arguments for ${name}: ${field} is required. See tools/list.` : "Invalid tool or arguments. See tools/list." } },
     { jsonrpc: "2.0", id: 2, result: {} },
   ]);
   expect(dispatch).toHaveBeenCalledTimes(1);
