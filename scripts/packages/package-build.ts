@@ -8,8 +8,8 @@ type Manifest = { files?: string[]; scripts?: Record<string, string>; dependenci
 const fields = ["dependencies", "peerDependencies", "optionalDependencies"] as const;
 const git = (root: string, args: string[]): string => execFileSync("git", args, { cwd: root, encoding: "utf8" });
 
-/** Build declared internal prerequisites first; cold attempts cannot inherit another pack's dist. */
-export function preparePackage(root: string, selected: PackageEntry, packages: readonly PackageEntry[], cold: boolean): void {
+/** Build declared internal prerequisites once in topological order; cold attempts cannot inherit another pack's dist. */
+export function preparePackages(root: string, selected: readonly PackageEntry[], packages: readonly PackageEntry[], cold: boolean): void {
   if (cold) for (const entry of packages) {
     let path = root;
     for (const component of entry.directory.split("/")) {
@@ -33,7 +33,7 @@ export function preparePackage(root: string, selected: PackageEntry, packages: r
     }
     visiting.delete(entry.name); built.add(entry.name); order.push(entry);
   };
-  visit(selected);
+  for (const entry of selected) visit(entry);
   for (const entry of order) if (git(root, ["status", "--porcelain", "--untracked-files=no", "--", entry.directory]).trim()) throw new Error(`package-build: ${entry.directory} has uncommitted prerequisite changes`);
   if (cold) {
     // The portable package build output is dist/. Refuse another layout instead of claiming a cold proof.
@@ -51,4 +51,9 @@ export function preparePackage(root: string, selected: PackageEntry, packages: r
     if (prepare) execFileSync("npm", ["run", prepare], { cwd: join(root, entry.directory), stdio: ["ignore", "inherit", "inherit"] });
     if (git(root, ["status", "--porcelain", "--untracked-files=no", "--", entry.directory]).trim()) throw new Error(`package-build: the build rewrote tracked files under ${entry.directory}`);
   }
+}
+
+/** Build declared internal prerequisites first; cold attempts cannot inherit another pack's dist. */
+export function preparePackage(root: string, selected: PackageEntry, packages: readonly PackageEntry[], cold: boolean): void {
+  preparePackages(root, [selected], packages, cold);
 }
