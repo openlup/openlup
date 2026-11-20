@@ -171,7 +171,8 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
 }
 // A completed source run hands an existing merge request to GitHub's queue once.
 // This code runs only from trusted main; source objects are never checked out.
-export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = process.cwd(), now = Date.now, runGit = git }) {
+export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = process.cwd(), now = Date.now, runGit = git,
+  pauseMergeability = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   const repository = value => value?.id === 1376035358 && value.full_name === env.GITHUB_REPOSITORY && value.private === false;
   const positive = value => Number.isSafeInteger(value) && value > 0;
   demand(env.GITHUB_EVENT_NAME === 'workflow_run' && /^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && env.GITHUB_REF === 'refs/heads/main'
@@ -210,17 +211,31 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     return response.data.repository.pullRequest;
   };
   const eligible = pr => pr.state === 'OPEN' && pr.isDraft === false && pr.merged === false && pr.baseRefName === 'main' && pr.headRefOid === source.head_sha;
+  const readMergeable = async (checkIntent, beforeRead) => {
+    const maxReads = 7;
+    for (let reads = 1; ; reads += 1) {
+      if (beforeRead) await beforeRead();
+      const pr = await live();
+      if (!eligible(pr) || !pr.autoMergeRequest || pr.mergeQueueEntry) return null;
+      checkIntent?.(pr.autoMergeRequest);
+      if (pr.mergeable === 'MERGEABLE') return pr;
+      demand(pr.mergeable !== 'CONFLICTING', 'PR conflicts with main; merge main into the branch and push; auto-merge stays armed');
+      demand(pr.mergeable === 'UNKNOWN', 'invalid PR mergeability response');
+      demand(reads < maxReads, `PR mergeability is still unknown after ${reads} reads; re-run the Queue Handoff job`);
+      await pauseMergeability(10_000);
+    }
+  };
+  const skipped = { status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' };
   const attempted = pr => {
     demand(Array.isArray(pr.timelineItems?.nodes) && pr.timelineItems.nodes.length <= 1
       && pr.timelineItems.nodes.every(node => Number.isFinite(Date.parse(node?.createdAt))), 'queue attempt history is invalid');
     return pr.timelineItems.nodes.some(node => Date.parse(node.createdAt) >= Date.parse(pr.autoMergeRequest.enabledAt));
   };
-  let pr = await live();
-  if (!eligible(pr) || !pr.autoMergeRequest || pr.mergeQueueEntry) return { status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' };
-  demand(pr.mergeable === 'MERGEABLE', 'PR mergeability is conflicting or unknown; diagnose without retrying enqueue');
-  const intent = pr.autoMergeRequest; const login = intent.enabledBy?.login;
+  const initialPr = await readMergeable();
+  if (!initialPr) return skipped;
+  const intent = initialPr.autoMergeRequest; const login = intent.enabledBy?.login;
   demand(typeof login === 'string' && /^[\w[\].-]+$/u.test(login) && Number.isFinite(Date.parse(intent.enabledAt)), 'auto-merge author identity is invalid');
-  if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
+  if (attempted(initialPr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
   const access = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
   demand(['write', 'maintain', 'admin'].includes(access?.permission ?? access?.role_name), 'auto-merge author no longer has repository write permission');
   // Partial reruns replace only selected jobs. Read every attempt, then select
@@ -245,11 +260,11 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
     env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit,
     sleep: () => { throw new Error('Current native review is unavailable at CI completion; no enqueue retry'); } });
-  await sourceCurrent();
-  pr = await live();
-  if (!eligible(pr) || !pr.autoMergeRequest || pr.mergeQueueEntry) return { status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' };
-  demand(pr.mergeable === 'MERGEABLE' && pr.autoMergeRequest.enabledAt === intent.enabledAt && pr.autoMergeRequest.enabledBy?.login === login,
-    'mergeability or auto-merge authority changed before enqueue');
+  const pr = await readMergeable(currentIntent => {
+    demand(currentIntent.enabledAt === intent.enabledAt && currentIntent.enabledBy?.login === login,
+      'mergeability or auto-merge authority changed before enqueue');
+  }, sourceCurrent);
+  if (!pr) return skipped;
   if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
   const finalAccess = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
   demand(['write', 'maintain', 'admin'].includes(finalAccess?.permission ?? finalAccess?.role_name), 'auto-merge authority changed before enqueue');
