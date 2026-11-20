@@ -52,8 +52,6 @@ export interface CatalogTypeDefinitionV2 extends Omit<CatalogProductTypeInput, "
   attributes: readonly AttributeDefinition[];
 }
 export interface CatalogProductTypeRegistry {
-  /** Immutable definitions in registration order, when the registry supports enumeration. */
-  readonly definitions?: readonly Readonly<CatalogProductTypeInput>[];
   resolve(ref: CatalogProductTypeRef): CatalogProductTypeDefinition | undefined;
 }
 

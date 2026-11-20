@@ -1,1 +1,0 @@
-- Add optional, read-only definition enumeration to the released `CatalogProductTypeRegistry` interface at `@openlup/platform/catalog` and `@openlup/platform/catalog/contracts`. This additive change lets the factory expose its immutable definitions in registration order. Custom registries can continue to implement only `resolve`.

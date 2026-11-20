@@ -1491,8 +1491,7 @@ namespace, tax-class and profile references, then reuses those definition issues
 with paths under `/types`. These checks perform no I/O or callback execution.
 `createCatalogProductTypeRegistry` uses the definition issue list
 and throws its first issue as `error.issue`, retaining the
-`invalid_catalog_type_definition` refusal. The registry exposes optional
-read-only `definitions` in declaration order. Custom registries can supply
+`invalid_catalog_type_definition` refusal. Custom registries can supply
 `resolve` alone. The Node entry `./catalog` exports
 `CATALOG_CONFORMANCE_RULES`, an exhaustive typed record supplying severity, rule,
 fix and installed recipe destinations. Browser contracts export
