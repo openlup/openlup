@@ -480,6 +480,7 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
   const check = JSON.parse(defaultCheck.stdout);
   const value = check.rows.find((row: { key: string }) => row.key === key).file.value;
   const runtimeReason = "Edit the application configuration and deploy.";
+  const defaultReason = "The application config supplies the value.";
   const editWindowGoal = "Set how many hours before a renewal customers can edit a newly created subscription (edit cutoff, change deadline, activation window).";
   const goal = key === "subscriptionCreation.editWindowHours" ? editWindowGoal : before.goal;
   const displayedSchema = z.toJSONSchema(z.fromJSONSchema(before.schema), { target: "draft-07", io: "input", reused: "inline" });
@@ -490,13 +491,21 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
     const setting = command === "list" ? document.entries.find((row: { key: string }) => row.key === key) : document.setting;
     setting.goal = goal;
     setting.runtime.reason = runtimeReason;
-    if (command !== "list") setting.schema = displayedSchema;
+    if (command !== "list") {
+      setting.schema = displayedSchema;
+      setting.fallback = null;
+      setting.defaultBasis = { kind: "neutral" };
+      setting.whyThisDefault = defaultReason;
+    }
     if (command === "show") document.observation = fileObservation;
     return JSON.stringify(document) + "\n";
   }
   let expected = captured.stdout.replace(before.goal, goal);
   if (command !== "list") {
     expected = expected.replace(before.runtime.reason, runtimeReason)
+      .replace(`Default: ${JSON.stringify(before.fallback)}\n`, "Default: null\n")
+      .replace(/^Basis: .*$/mu, "Basis: neutral")
+      .replace(before.whyThisDefault, defaultReason)
       .replace(`Schema: ${JSON.stringify(before.schema)}\n`, `Schema: ${JSON.stringify(displayedSchema)}\n`);
   }
   if (command === "show") {
@@ -515,8 +524,23 @@ it.each(baseline.settings)("preserves starter discovery bytes for $key with only
   }
 });
 
-it.each(baseline.checks)("preserves the full starter check report for $args", captured => {
-  expect(runStarterSettings(starter, captured.args)).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
+it.each(baseline.checks)("preserves the existing starter check rows and report metadata for $args", captured => {
+  const { stdout, ...actual } = runStarterSettings(starter, captured.args);
+  let existing: string;
+  if (captured.args.includes("--json")) {
+    const expected = JSON.parse(captured.stdout);
+    const document = JSON.parse(stdout);
+    const keys = new Set(expected.rows.map((row: { key: string }) => row.key));
+    expect(JSON.stringify(document) + "\n").toBe(stdout);
+    document.rows = document.rows.filter((row: { key: string }) => keys.has(row.key));
+    existing = JSON.stringify(document) + "\n";
+  } else {
+    const blocks = (output: string) => output.split(/(?=^\S+: file )/mu);
+    const key = (block: string) => block.slice(0, block.indexOf(":"));
+    const keys = new Set(blocks(captured.stdout).slice(1).map(key));
+    existing = blocks(stdout).filter((block, index) => index === 0 || keys.has(key(block))).join("");
+  }
+  expect({ ...actual, stdout: existing }).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
 });
 
 it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {
