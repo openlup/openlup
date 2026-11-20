@@ -7,7 +7,10 @@
 
 Migration:
 
-No action is required for existing 1.x callers: `PostgresRoleFreeTransactionLane<G = unknown>` defaults `G` to `unknown`, `PgGatewayClient.query` widens `values` to `readonly unknown[]`, and `DataBindingDependencies.createSupabaseClient` becomes optional while retaining identical runtime behavior whenever supplied.
+Code that reads `DataBindingDependencies.createSupabaseClient` must handle
+`undefined`. Existing `PgGatewayClient.query` implementations keep their 1.2.0
+signature. For typed rows or readonly query values, wrap the client with
+`asPostgresSqlExecutor` from `@openlup/platform/data`.
 
 Before (separate pools per store and stubbed hosted client factory):
 ```ts

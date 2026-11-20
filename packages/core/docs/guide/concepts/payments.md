@@ -82,9 +82,12 @@ For a new settlement, the native PostgreSQL payment owner requires durable
 evidence of the captured amount and currency for the active attempt. Custom provider
 adapters set `capturedAmountBasis: "provider_capture_v1"` on verified success
 webhooks and authenticated readbacks only when the amount comes from the
-provider's collected-money field. Keep this attestation outside the webhook
-fingerprint and deploy the updated adapter with the migration. Completed
-receipts retain their replay response. A verified delivery whose normalized
+provider's collected-money field. In 1.x, reconciliation, verify-now and
+checkout recovery use the 1.2.0 readback checks when an adapter omits the
+basis. Strict readback validation is the 2.0 default. The native settlement
+guard still requires durable capture evidence. Keep the attestation outside
+the webhook fingerprint and deploy the updated adapter with the migration.
+Completed receipts retain their replay response. A verified delivery whose normalized
 money changed can acknowledge the original completed webhook receipt when its
 historical fingerprint matches. This lookup leaves payment and fulfillment state
 untouched. Hosts with an operational event recorder receive a diagnostic for

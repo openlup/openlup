@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import {
+  asPostgresSqlExecutor,
   createPostgresRoleFreeTransactionLane,
   type PgGatewayClient,
   type PostgresDataGatewayEnv,
   type PostgresDataGatewayOptions,
+  type SqlExecutor,
 } from "../data/index.js";
 
 export const nativeFingerprint = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -40,7 +42,7 @@ export function nativeTransactions(env: PostgresDataGatewayEnv, options: Postgre
   const lane = createPostgresRoleFreeTransactionLane<PgGatewayClient>(env, options);
   return {
     close: lane.close,
-    run: <T>(work: (db: PgGatewayClient) => Promise<T>): Promise<T> => lane.run(async db => {
+    run: <T>(work: (db: SqlExecutor) => Promise<T>): Promise<T> => lane.run(async db => {
       // Effective privileges include PUBLIC, role membership and column/default grants.
       // Missing relations, malformed responses and untrusted execution roles all refuse.
       const row = (await db.query(`SELECT current_user IN ('anon','authenticated','authenticator') AS browser,
@@ -53,7 +55,7 @@ export function nativeTransactions(env: PostgresDataGatewayEnv, options: Postgre
         OR EXISTS (SELECT 1 FROM unnest($1::text[]) t(name), pg_attribute c,
           LATERAL aclexplode(c.attacl) a WHERE c.attrelid = t.name::regclass AND a.grantee = 0) AS unsafe`, [tables])).rows[0];
       if (row?.browser !== false || row?.unsafe !== false) throw new Error("native_communications_privileges_unsafe");
-      return work(db);
+      return work(asPostgresSqlExecutor(db));
     }),
   };
 }

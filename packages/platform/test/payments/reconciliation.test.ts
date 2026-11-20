@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { runPaymentProviderReconciliationWorker } from "@openlup/platform/payments";
-import type { ClaimedPaymentAttempt, ProviderReconciliationStatus } from "@openlup/platform/payments/contracts";
+import {
+  createCheckoutRecoveryPaymentResolver,
+  runPaymentProviderReconciliationWorker,
+  verifyPaymentAttemptNow,
+} from "@openlup/platform/payments";
+import type {
+  ClaimedPaymentAttempt,
+  ProviderReconciliationStatus,
+  VerifiableAttemptSnapshot,
+} from "@openlup/platform/payments/contracts";
 
 // Pins current behavior for OSS M07 extraction; must not change with refactors.
 // Imports stay payment-domain only. Native tests retain absence admission/locking proof.
@@ -80,7 +88,6 @@ describe("payment ambiguity boundary characterization", () => {
     [{ amountMinor: 0, currency: "XXX" }, "provider_amount_mismatch"],
     [{ amountMinor: 9000, currency: null }, "provider_currency_missing"],
     [{ amountMinor: 9000, currency: " " }, "provider_currency_missing"],
-    [{ amountMinor: 9000, currency: "XXX", capturedAmountBasis: undefined }, "provider_capture_amount_unconfirmed"],
   ] as const)(
     "refuses incomplete or mismatched success money %j after an earlier ambiguous observation", async (money, reason) => {
       const f = fixture(); f.port.claimStaleAttempts.mockResolvedValue([attempt]);
@@ -92,4 +99,95 @@ describe("payment ambiguity boundary characterization", () => {
       expect(f.port.recordEvidence.mock.calls[1][0]).toMatchObject({ correctionStatus: "failed",
         payload: expect.objectContaining({ applied: false, failureReason: reason }) });
     });
+});
+
+describe("released 1.2.0 readback compatibility", () => {
+  // c6419ad88:packages/platform/src/payments/paymentProviderReconciliationEvidence.ts:33-44
+  // checks a non-null amount first, then a truthy currency case-insensitively.
+  // Worker: paymentProviderReconciliationWorker.ts:193-224.
+  // Verify-now: paymentVerifyNowService.ts:53-85.
+  // Recovery: checkoutRecoveryPaymentResolver.ts:75-104.
+  it.each([
+    ["matching", { currency: "xxx" }, null, "succeeded", "paid", "succeeded"],
+    ["amount mismatch before currency", { amountMinor: 8999, currency: "YYY" }, "provider_amount_mismatch", "manual_review", "manual_review", null],
+    ["currency mismatch", { currency: "YYY" }, "provider_currency_mismatch", "manual_review", "manual_review", null],
+    ["missing amount and currency", { amountMinor: null, currency: null }, null, "succeeded", "paid", "succeeded"],
+    ["empty currency", { currency: "" }, null, "succeeded", "paid", "succeeded"],
+    ["blank currency", { currency: " " }, "provider_currency_mismatch", "manual_review", "manual_review", null],
+    ["failed with missing money", { status: "failed", amountMinor: null, currency: null }, null, "failed", "retry_new", "failed"],
+    ["failed with mismatched money", { status: "failed", amountMinor: 0 }, "provider_amount_mismatch", "manual_review", "manual_review", null],
+    ["pending", { status: "pending", amountMinor: 0 }, null, "pending", "awaiting_provider", null],
+    ["unknown", { status: "unknown", currency: "YYY" }, null, "pending", "awaiting_provider", null],
+    ["attested matching money", { capturedAmountBasis: "provider_capture_v1" }, null, "succeeded", "paid", "succeeded"],
+    ["attested missing amount", { capturedAmountBasis: "provider_capture_v1", amountMinor: null }, "provider_amount_missing", "manual_review", "manual_review", null],
+    ["attested blank currency", { capturedAmountBasis: "provider_capture_v1", currency: " " }, "provider_currency_missing", "manual_review", "manual_review", null],
+  ] as const)("%s through worker, verify-now and recovery", async (
+    _label, override, mismatch, verifyStatus, recoveryKind, appliedStatus,
+  ) => {
+    const readback: ProviderReconciliationStatus = {
+      ...reading, status: "succeeded", amountMinor: attempt.amountMinor, currency: attempt.currency, ...override,
+    };
+    readback.providerStatus = readback.status;
+    const f = fixture();
+    f.port.claimStaleAttempts.mockResolvedValue([attempt]);
+    f.readPayment.mockResolvedValue(readback);
+    const apply = f.port.applyTerminalResult;
+    const expectApplication = () => {
+      if (appliedStatus === null) {
+        expect(apply).not.toHaveBeenCalled();
+        return;
+      }
+      expect(apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ resultStatus: appliedStatus }));
+      if (!("capturedAmountBasis" in override)) {
+        expect(apply.mock.calls[0][0].payload).not.toHaveProperty("capturedAmountBasis");
+      }
+    };
+
+    const worker = await f.run();
+    expect(worker).toMatchObject({ corrected: appliedStatus === null ? 0 : 1, amountCurrencyMismatches: mismatch === null ? 0 : 1 });
+    if (mismatch) {
+      expect(f.port.recordEvidence).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+        correctionStatus: "failed", payload: expect.objectContaining({ failureReason: mismatch }),
+      }));
+    } else if (verifyStatus === "pending") {
+      expect(f.port.recordEvidence).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+        correctionStatus: "observed", payload: expect.objectContaining({ normalizedStatus: readback.status }),
+      }));
+    }
+    expectApplication();
+    apply.mockClear();
+
+    const snapshot: VerifiableAttemptSnapshot = {
+      orderId: attempt.orderId, orderClientId: "client-original", orderMode: "one_time",
+      paymentIntentId: attempt.paymentIntentId, intentStatus: attempt.intentStatus,
+      paymentAttemptId: attempt.paymentAttemptId, paymentId: attempt.paymentId, attemptStatus: attempt.attemptStatus,
+      provider: attempt.provider, providerAttemptId: attempt.providerAttemptId, providerSessionId: attempt.providerSessionId,
+      intentProviderPaymentId: attempt.providerPaymentId, amountMinor: attempt.amountMinor, currency: attempt.currency,
+      localUpdatedAt: attempt.localUpdatedAt,
+    };
+    const deps = {
+      readPort: { readVerifiableAttempt: async () => snapshot },
+      applyPort: f.port,
+      providers: {
+        "provider-a": {
+          readPayment: f.readPayment,
+          resolvePaymentReference: () => attempt.providerPaymentId,
+          readRecoveryPayment: async () => ({
+            status: readback, identityMatches: true, configuredMoneyMatches: true, manualReviewRequired: false, clientAction: null,
+          }),
+        },
+      },
+      now: () => new Date(NOW),
+    };
+    expect(await verifyPaymentAttemptNow({ ...deps, snapshot })).toMatchObject({
+      status: verifyStatus, applied: appliedStatus !== null,
+    });
+    expectApplication();
+    apply.mockClear();
+
+    expect(await createCheckoutRecoveryPaymentResolver(deps).resolve({
+      orderId: attempt.orderId, paymentIntentId: attempt.paymentIntentId,
+    })).toEqual({ kind: recoveryKind });
+    expectApplication();
+  });
 });
