@@ -6201,6 +6201,7 @@ export interface PostgresCheckoutRecoveryTokenInspection extends CheckoutRecover
 }
 export interface PostgresCheckoutRecoveryTokenPort extends CheckoutRecoveryTokenPort {
     inspect(rawToken: string, now?: Date): Promise<PostgresCheckoutRecoveryTokenInspection | null>;
+    readExpiry?(tokenId: string): Promise<string | null>;
 }
 /**
  * Trusted-host service capability for an order the host has already admitted.
