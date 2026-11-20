@@ -562,12 +562,12 @@ describe('v3 source admission from real Git objects', () => {
     const summary = receiptSummary(session, 12, Date.now());
     await expect(f.cli('receipt', '12')).resolves.toBe(0);
     const body = vi.mocked(console.log).mock.lastCall?.[0];
-    const raw = `${ECONOMY_RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
-    if (format === 'compressed') {
-      expect(raw.length).toBeGreaterThan(65_536);
-      expect(body.startsWith(`${COMPRESSED_RECEIPT_MARKER}\n`)).toBe(true);
-      expect(body).toBe(receiptBody(summary));
-    } else expect(body).toBe(raw);
+    const json = JSON.stringify(summary);
+    expect(body.split('\n')[0]).toBe(format === 'compressed' ? COMPRESSED_RECEIPT_MARKER : ECONOMY_RECEIPT_MARKER);
+    expect(body).toBe(receiptBody(summary));
+    expect(body).toContain('Reviewer floor 0 · Scope git');
+    if (format === 'compressed') expect(json.length).toBeGreaterThan(65_536);
+    else expect(body).toContain(`\n\`\`\`json\n${json}\n\`\`\`\n`);
     expect(parseReceipt(body)).toEqual(summary);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: session.candidate.head } };
     const api = { get: async (path: string) => path.includes('/pulls/') ? pr : path.includes('/issues/')
