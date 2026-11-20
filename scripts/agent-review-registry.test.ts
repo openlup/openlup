@@ -551,15 +551,18 @@ describe('fixture dependency evidence', () => {
 
 
 describe('v3 source admission from real Git objects', () => {
-  it('admits a newly compressed receipt through the full queue reader', async () => {
+  it.each(['newly compressed', 'historical framed raw v3'])('admits a %s receipt through the full queue reader', async format => {
     const f = await fixture(); await f.review();
     const main = await f.mainMove(() => f.write('other.ts', 'main\n'));
     f.git('merge', '--no-ff', '-qm', 'integrate', main); await f.cli('prepare', f.request); const session = await f.state();
     const summary = receiptSummary(session, 12, Date.now());
     await expect(f.cli('receipt', '12')).resolves.toBe(0);
-    const body = vi.mocked(console.log).mock.lastCall?.[0];
-    expect(body.split('\n')[0]).toBe(COMPRESSED_RECEIPT_MARKER);
-    expect(body).toBe(receiptBody(summary));
+    const emitted = vi.mocked(console.log).mock.lastCall?.[0];
+    expect(emitted.split('\n')[0]).toBe(COMPRESSED_RECEIPT_MARKER);
+    expect(emitted).toBe(receiptBody(summary));
+    const body = format === 'newly compressed' ? emitted : emitted
+      .replace(COMPRESSED_RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER)
+      .replace(/```text\n[^\n]+/u, () => '```json\n' + JSON.stringify(summary));
     expect(body).toContain('Reviewer floor 0 · Scope git');
     expect(parseReceipt(body)).toEqual(summary);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: session.candidate.head } };

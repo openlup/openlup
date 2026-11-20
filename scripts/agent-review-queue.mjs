@@ -82,19 +82,40 @@ export function parseReceipt(body) {
 export function diagnoseReceipt(body) {
   if (typeof body !== 'string') return 'comment body is not text';
   if (body.length > RECEIPT_LIMIT) return 'receipt body exceeds the size limit';
-  const block = bareReceiptBlock(body) ?? framedReceiptBlock(body);
-  if (!block) return 'no machine block in the expected form';
-  if (block.marker === COMPRESSED_RECEIPT_MARKER) {
-    return decodeGzipReceipt(block.payload, MARKER_MISMATCH) === MARKER_MISMATCH
-      ? MARKER_MISMATCH : 'compressed block does not decode';
+  const lines = body.split('\n');
+  const marker = lines[0];
+  const noBlock = 'no single machine block after the marker';
+  if (![RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER].includes(marker)) return noBlock;
+  let block;
+  for (let index = 1; index < lines.length; index++) {
+    const fence = lines[index];
+    if (fence !== '```json' && fence !== '```text') continue;
+    const end = lines.indexOf('```', index + 1);
+    if (end < 0) break;
+    if (block) return noBlock;
+    block = { fence, payload: lines.slice(index + 1, end).join('\n') };
+    index = end;
   }
-  try { JSON.parse(block.payload); }
-  catch (error) {
-    const offset = /\bposition (\d+) \(line \d+ column \d+\)$/u.exec(error.message)?.[1];
-    return offset === undefined ? 'machine block is not valid JSON'
-      : 'machine block is not valid JSON at offset ' + offset + '; a client may have rewritten control characters';
+  if (!block) return noBlock;
+  const compressed = marker === COMPRESSED_RECEIPT_MARKER;
+  if (block.fence !== (compressed ? '```text' : '```json')) return 'machine block type does not match the receipt marker';
+  if (compressed) {
+    const decoded = decodeGzipReceipt(block.payload, MARKER_MISMATCH);
+    if (decoded === null) return 'compressed block does not decode';
+    if (decoded === MARKER_MISMATCH) return MARKER_MISMATCH;
+  } else {
+    let receipt;
+    try { receipt = JSON.parse(block.payload); }
+    catch (error) {
+      const message = error.message;
+      if (message === 'Unexpected end of JSON input') return 'machine block is truncated';
+      const offset = /\bposition (\d+)(?: \(line \d+ column \d+\))?$/u.exec(message)?.[1];
+      const hint = /^Bad (?:escaped|control) character/u.test(message) ? '; a client may have rewritten control characters' : '';
+      return 'machine block is not valid JSON' + (offset === undefined ? '' : ' at offset ' + offset) + hint;
+    }
+    if (marker === ECONOMY_RECEIPT_MARKER ? receipt?.version !== 3 : receipt?.version !== undefined) return MARKER_MISMATCH;
   }
-  return MARKER_MISMATCH;
+  return 'machine block is valid but the comment framing differs from the receipt command output';
 }
 export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments) {
   const comments = [];
@@ -173,7 +194,9 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
     const invalid = invalidComments[0];
-    invalidCommentNotice = invalid ? `; receipt comment ${invalid.id}: ${diagnoseReceipt(invalid.body)}; post the unchanged output of \`node scripts/agent-review-session.mjs receipt ${prNumber}\`` : '';
+    const v2Remedy = invalid?.body.split('\n', 1)[0] === RECEIPT_MARKER
+      ? '; a v2 receipt needs a session prepared on current main (it then prints a v3 receipt)' : '';
+    invalidCommentNotice = invalid ? `; receipt comment ${invalid.id}: ${diagnoseReceipt(invalid.body)}; post the unchanged output of \`node scripts/agent-review-session.mjs receipt ${prNumber}\`${v2Remedy}` : '';
     console.log(`needs_agent_review: ${reason}${invalidCommentNotice}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
   throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
