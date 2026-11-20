@@ -28,6 +28,6 @@ export const publicationWireVectors: readonly Vector[] = [
   { name: "extra field", apply: sku => ({ ...sku, extra: true }), valid: false },
   { name: "nested neutral facts", apply: facts({ values: [{ scalar: "exact" }, [true, null]] }), valid: true },
   { name: "reserved scalar in nested facts", apply: facts({ values: [{ cANonical_TeXt: false }] }), valid: false },
-  { name: "reserved attribute", apply: sku => ({ ...sku, attributes: { document_payload: "opaque" } }), valid: false },
+  { name: "reserved attribute", apply: sku => ({ ...sku, attributes: { Document__Payload: "opaque" } }), valid: false },
   { name: "reserved option", apply: sku => ({ ...sku, options: { document: { kind: "choice", value: "opaque" } } }), valid: false },
 ];
