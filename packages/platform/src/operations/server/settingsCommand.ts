@@ -1,8 +1,8 @@
 import { parseArgs } from "node:util";
 import { loadSettingsCatalogue } from "./settingsCatalog.js";
 import {
-  explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
-  type SettingPreviewer, type SettingReader,
+  checkFileSettings, explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
+  type SettingsFileBinding, type SettingPreviewer, type SettingReader,
 } from "./settingsRead.js";
 
 type PreviewDocument = { schemaVersion: 1 };
@@ -11,6 +11,7 @@ export type SettingsAppBindings = {
   readers?: Readonly<Record<string, SettingReader>>;
   previewers?: Readonly<Record<string, SettingPreviewer<PreviewDocument>>>;
   stockSourceKey?: string;
+  file?: SettingsFileBinding;
 } | { configurationIds: readonly string[] };
 
 type SettingsHost = {
@@ -19,27 +20,53 @@ type SettingsHost = {
 };
 type SettingsIo = { write(text: string): void; readStdin(): Promise<string> };
 type Result = Awaited<ReturnType<typeof previewSetting<PreviewDocument>>>
-  | ReturnType<typeof listSettings> | Awaited<ReturnType<typeof showSetting>> | ReturnType<typeof explainSetting>;
+  | ReturnType<typeof listSettings> | Awaited<ReturnType<typeof showSetting>> | ReturnType<typeof explainSetting>
+  | ReturnType<typeof checkFileSettings>;
 
 const help = `openlup settings (experimental) list [--goal <text>] | show <key> | preview <key> --value <json-or-> | explain <refusal-code-or-key>
-Use --json for a versioned settings document. Preview before any change.
+openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
+Use --json for a versioned settings document. Use check after editing owned config and preview for connected effects.
 Pass --value - to read one JSON value from stdin or --value=-1 for a negative number.
 For connected show or preview, pass --database-url <read-capable-url>.
-Use --app <module> for app-owned read bindings. Preview accepts repeatable --sku,
---as-of <UTC-ISO-instant>, and --configuration <id> for the selected app.
-Exit codes: 0 completed (including invalid-policy preview), 1 refused, 64 invalid syntax or input, 74 operation unavailable.
+Use --app <module> for app-owned read bindings. Show, preview and check accept --configuration <id>.
+Preview accepts repeatable --sku and --as-of <UTC-ISO-instant>.
+Exit codes: 0 completed (including invalid-policy preview), 1 refused or invalid check, 2 check unknown, 64 invalid syntax or input, 74 operation unavailable.
 
 Examples:
   npm --silent run settings -- list --goal "renewal stock protection horizon"
   npm --silent run settings -- show inventory_renewal_protection --json
+  npm --silent run settings -- check --json
   npm --silent run settings -- preview inventory_renewal_protection --value '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
   npm --silent run settings -- explain commerce_setting_unknown`;
+
+function checkText(result: ReturnType<typeof checkFileSettings>): string {
+  const { appValidation, configuration, rows, state } = result;
+  return [
+    `Settings check (${configuration ?? "configuration unreported"}): ${state}`,
+    `App startup validation: ${appValidation.state}${appValidation.state === "failed" ? ` — ${appValidation.message}` : ""}`,
+    ...("hint" in appValidation && appValidation.hint ? [appValidation.hint] : []),
+    "Catalogue checks cover the published schemas. Unreported values and unavailable schemas are not validated.",
+    ...rows.flatMap(row => [
+      `${row.key}: file ${row.file.state}, schema ${row.validation.state}${row.validation.state === "invalid"
+        ? ` at ${row.validation.paths.map(path => path.join(".") || "<value>").join(", ")}` : ""}`,
+      ...(row.file.state === "present" ? [`  ${row.file.file ?? "File location unreported"}${row.file.symbol
+        ? ` · ${row.file.symbol}` : ""} = ${row.file.value === undefined ? "not representable as JSON" : JSON.stringify(row.file.value)}`] : []),
+      `  Effect: ${row.effect} Change: ${row.takesEffect}`,
+      ...("store" in row ? [`  Store: not checked. ${row.note}`] : []),
+    ]),
+  ].join("\n");
+}
+
+function fileText(file: NonNullable<Extract<Result, { setting: unknown }>["fileObservation"]>): string {
+  return `File as loaded (${file.configuration}) — ${file.file ?? "location unreported"}${file.symbol ? ` · ${file.symbol}` : ""} = ${JSON.stringify(file.value)}.`;
+}
 
 function text(result: Result, host?: SettingsHost): string {
   if ("refusal" in result || "explanation" in result) {
     const { code, rule, hint, remediation } = "refusal" in result ? result.refusal : result.explanation;
     return [code, rule, hint, remediation.action, remediation.command].join("\n");
   }
+  if ("rows" in result) return checkText(result);
   if ("entries" in result) return result.entries.length
     ? result.entries.map(({ key, kind, runtime, goal, change }) => [
       `${key} (${kind}, ${runtime.level})`, `  ${goal}`,
@@ -59,7 +86,11 @@ function text(result: Result, host?: SettingsHost): string {
       `Schema: ${JSON.stringify(setting.schema)}`, `Effect: ${setting.effect.appliesTo}`,
       `Frozen on: ${setting.effect.frozenOn.join(" ") || "No records named"}`,
     ] : []),
-    `Change: ${Object.values(setting.change).join(" ")}`, `Observation: ${JSON.stringify(observation)}`].join("\n");
+    `Change: ${Object.values(setting.change).join(" ")}`,
+    observation.state === "file" ? `${fileText(observation)} Running store not observed.` : `Observation: ${JSON.stringify(observation)}`,
+    ...(result.fileObservation ? [fileText(result.fileObservation)] : []),
+    ...(observation.state === "offline" && (setting.kind === "code" || setting.kind === "installed") ? ["No file value reported."] : []),
+  ].join("\n");
 }
 
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
@@ -87,9 +118,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     parsed = parseArgs(parser);
   } catch (error) {
     if (!(error instanceof Error && "code" in error && typeof error.code === "string" && error.code.startsWith("ERR_PARSE_ARGS_"))) throw error;
-    preview = parseArgs({ ...parser, strict: false }).positionals[0] === "preview";
+    const command = parseArgs({ ...parser, strict: false }).positionals[0];
+    preview = command === "preview";
     const [, flag, option] = /^[^']*'(-{1,2}([^']+?))(?: <[^'>]+>)?'/u.exec(error.message) ?? [];
-    const helpTopic = preview ? "preview help" : "settings help";
+    const helpTopic = preview ? "preview help" : command === "check" ? "check help" : "settings help";
     const hint = error.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE" ? `Supply a value for ${flag} as shown in ${helpTopic}.`
       : error.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" ? `Unknown option ${flag}. See ${helpTopic}.` : undefined;
     return invalid(option, hint);
@@ -101,8 +133,19 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     return 0;
   }
   preview = command === "preview";
+  const check = command === "check";
   const databaseUrl = values["database-url"];
   if (values.goal !== undefined && command !== "list") return invalid("goal", "Use --goal with list.");
+  if (check) {
+    if (databaseUrl !== undefined) return invalid("database-url", "Settings check is offline. Use settings preview with --database-url for connected effects.");
+    if (!values.app) return invalid("app", "Pass --app <module> that exports createSettingsBindings.");
+    const previewFlag = (["value", "sku", "as-of"] as const).find(flag => values[flag] !== undefined);
+    if (previewFlag) return invalid(previewFlag, `Use --${previewFlag} with preview.`);
+    if (key !== undefined) return invalid("key", "Settings check reports all catalogue keys. Omit the key.");
+  }
+  if (command === "show" && values.configuration !== undefined && !values.app) {
+    return invalid("configuration", "Pass --app <module> to select a configuration.");
+  }
   const url = databaseUrl === undefined ? undefined : URL.parse(databaseUrl);
   const invalidDatabase = databaseUrl !== undefined && (!url?.hostname || !["postgres:", "postgresql:"].includes(url.protocol))
     ? { path: ["database-url"], hint: databaseUrl ? "Supply a PostgreSQL URL for the intended store." : "Supply a read-capable database URL." }
@@ -110,14 +153,15 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   if (preview && databaseUrl === "" && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (preview && !key) return invalid("key", "Pass the setting key and one proposed JSON value with --value.");
   if (preview && extra.length) return invalid("proposed", "Pass one proposed JSON value with --value.");
-  if (extra.length || (command === "list" ? key !== undefined : !key)
+  if (extra.length || (command === "list" || check ? key !== undefined : !key)
     || (databaseUrl !== undefined && command !== "show" && !preview)
-    || (!preview && (values.value !== undefined || values.sku || values.configuration !== undefined || values["as-of"] !== undefined))
+    || (!preview && (values.value !== undefined || values.sku || values["as-of"] !== undefined))
+    || (!preview && !check && command !== "show" && values.configuration !== undefined)
     || values.app === "") return invalid();
   if (!preview && invalidDatabase) return invalid("database-url", invalidDatabase.hint);
   if (command === "list") return emit(listSettings({ goal: values.goal }), values.goal?.trim() === "" ? 64 : undefined);
   if (command === "explain") return emit(explainSetting(key!));
-  if (command !== "show" && !preview) return invalid();
+  if (command !== "show" && !preview && !check) return invalid();
 
   let proposed: unknown;
   if (preview) {
@@ -134,13 +178,26 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     const refusal = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
     return { refusal: hint ? { ...refusal, hint } : refusal };
   };
+  const unavailableApp = (): Result => ({ refusal: {
+    ...unavailable().refusal,
+    path: ["app"],
+    rule: "The settings app must load and supply createSettingsBindings.",
+    hint: "Check the --app path and the createSettingsBindings export.",
+    remediation: {
+      retry: true, action: "Fix the module path or export and rerun.",
+      command: `openlup settings ${command} --help`,
+    },
+  } });
   const needsApp = (field = "app") => refuseSettingsPreview("commerce_setting_preview_connection_required", {
     path: [field], hint: "Pass --app <module> for the shop's stock source and configuration.",
   });
   async function dispatch(): Promise<[Result, number?]> {
+    let showConnected = false;
     if (command === "show") {
       const offline = await showSetting({ key });
-      if (!databaseUrl || "refusal" in offline || offline.setting.kind !== "installed") return [offline];
+      if ("refusal" in offline) return [offline];
+      showConnected = databaseUrl !== undefined && offline.setting.kind === "installed";
+      if (!showConnected && !values.app) return [offline];
     }
     const resolveConfiguration = preview && values.configuration !== undefined;
     if (preview && !resolveConfiguration && !invalidDatabase) {
@@ -150,17 +207,18 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
       }
     }
     if (resolveConfiguration && !values.app) return [needsApp("configuration")];
-    const connectedUrl = invalidDatabase ? undefined : databaseUrl;
+    const connectedUrl = invalidDatabase || (command === "show" && !showConnected) ? undefined : databaseUrl;
     if (preview && connectedUrl && !host) return [needsApp(), 74];
     // An explicit configuration can be resolved without a pool, including before a URL refusal.
-    const bindings = (connectedUrl || resolveConfiguration)
+    const bindings = (connectedUrl || resolveConfiguration || check || (command === "show" && values.app))
       ? await host?.bind({ databaseUrl: connectedUrl, app: values.app, configuration: values.configuration }) : undefined;
+    if (!bindings && !preview && values.app) return [unavailableApp(), 74];
     try {
       if (bindings && "configurationIds" in bindings) {
         const id = values.configuration ?? "";
-        return [refuseSettingsPreview("commerce_setting_preview_configuration_unknown", {
-          path: ["configuration"], hint: `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`,
-        }), 64];
+        const hint = `Unknown configuration ${id.includes("://") ? "ID" : JSON.stringify(id)}. Use one of these IDs: ${bindings.configurationIds.join(", ")}.`;
+        return preview ? [refuseSettingsPreview("commerce_setting_preview_configuration_unknown", { path: ["configuration"], hint }), 64]
+          : [{ refusal: { ...invalidSettingsCommand().refusal, path: ["configuration"], hint } }, 64];
       }
       if (preview) {
         if (invalidDatabase) return [refuseSettingsPreview("commerce_setting_preview_input_invalid", invalidDatabase), 64];
@@ -172,12 +230,16 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
         }
         return [result];
       }
+      if (check) {
+        const result = checkFileSettings(bindings?.file);
+        return [result, result.state === "unknown" ? 2 : result.state === "invalid" ? 1 : 0];
+      }
       const readers = bindings?.readers;
-      if (!readers || !Object.hasOwn(readers, key!) || typeof readers[key!] !== "function") {
+      if (showConnected && (!readers || !Object.hasOwn(readers, key!) || typeof readers[key!] !== "function")) {
         return [unavailable(host && !values.app ? "Pass --app <module> that supplies a reader for this setting."
           : "No connected reader exists for this key. Omit --database-url for offline discovery.")];
       }
-      const result = await showSetting({ key }, readers);
+      const result = await showSetting({ key }, showConnected ? readers : undefined, bindings?.file);
       return [result, "refusal" in result && result.refusal.code === "commerce_setting_read_unavailable" ? 74 : undefined];
     } finally { await bindings?.close?.(); }
   }
@@ -185,7 +247,9 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   try { outcome = await dispatch(); }
   catch {
     const hint = "Check the read-capable database connection and that --app exports createSettingsBindings.";
-    outcome = [preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint }) : unavailable(hint), 74];
+    const refusal = preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint })
+      : databaseUrl === undefined ? unavailableApp() : unavailable(hint);
+    outcome = [refusal, 74];
   }
   return emit(...outcome);
 }

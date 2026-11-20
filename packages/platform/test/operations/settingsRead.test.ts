@@ -7,6 +7,23 @@ import { explainSetting, listSettings, previewSetting, refuseSettingsPreview, se
 import { loadSettingsCatalogue, settingsListRequest } from "../../src/operations/server/settingsCatalog.js";
 import { z } from "zod";
 
+it("converts every executable packaged file schema and accepts its defaults and examples", () => {
+  const withoutSchema: string[] = [];
+  for (const entry of loadSettingsCatalogue().entries) {
+    if (entry.kind !== "code" && entry.kind !== "installed") continue;
+    if (!entry.schema) {
+      withoutSchema.push(entry.key);
+      continue;
+    }
+    const schema = z.fromJSONSchema(entry.schema);
+    expect(schema.safeParse(entry.fallback).success, entry.key).toBe(true);
+    for (const example of entry.examples) {
+      if (!example.code) expect(schema.safeParse(example.value).success, entry.key).toBe(true);
+    }
+  }
+  expect(withoutSchema).toEqual(["checkout_recovery_reminders", "subscriber_winback_policy"]);
+});
+
 describe("renewal stock policy descriptor", () => {
   it("matches the previous validator's acceptance, normalized value and refusal code", () => {
     const revision = " store-1 ";

@@ -1,6 +1,6 @@
 import type { SettingDescriptor, SettingRefusal } from "../contracts/index.js";
 import { loadSettingsCatalogue, settingsListRequest, settingsVersion } from "./settingsCatalog.js";
-import { settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
+import { fileObservationSchema, settingsCheckResult, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
 import { z } from "zod";
 
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
@@ -8,12 +8,32 @@ type ListResult = {
   schemaVersion: 1;
   entries: Pick<SettingDescriptor, "key" | "goal" | "kind" | "runtime" | "change">[];
 };
+type FileObservation = z.infer<typeof fileObservationSchema>;
 type Observation =
+  | FileObservation
   | { state: "offline" }
   | { state: "fallback"; value: JsonValue }
   | { state: "override"; value: JsonValue; revision: string | null }
   | { state: "absent"; absentMeans: string; source: string; value: JsonValue };
-type ShowResult = { schemaVersion: 1; setting: SettingDescriptor; observation: Observation };
+type ShowResult = { schemaVersion: 1; setting: SettingDescriptor; observation: Observation; fileObservation?: FileObservation };
+
+export type SettingsFileBinding = {
+  configuration: string;
+  entries: Readonly<Record<string, { value: unknown; location?: { file: string; symbol: string } }>>;
+  validate?: () => void;
+};
+
+function fileValue(setting: SettingDescriptor, file?: SettingsFileBinding) {
+  if (!file || (setting.kind !== "code" && setting.kind !== "installed") || !Object.hasOwn(file.entries, setting.key)) return;
+  const entry = file.entries[setting.key]!;
+  const location = entry.location ?? ("file" in setting.change ? setting.change : undefined);
+  let value: JsonValue | undefined;
+  try {
+    const json = z.json().safeParse(entry.value);
+    if (json.success) value = json.data;
+  } catch { /* Cyclic values cannot be reported as JSON. */ }
+  return { file: location?.file ?? null, symbol: location?.symbol ?? null, value };
+}
 
 /** @experimental The host observes an installed row using its own authorized reader. */
 export type SettingReader = () => Promise<
@@ -62,8 +82,10 @@ async function observe(setting: ReturnType<typeof loadSettingsCatalogue>["entrie
   return { state: "override", value: observed.value, revision: observed.revision };
 }
 
-/** @experimental Describe the key and, when a reader is supplied, its observed installed value. */
-export async function showSetting(input: unknown, readers: Readonly<Record<string, SettingReader>> = {}): Promise<ShowResult | { refusal: SettingRefusal }> {
+/** @experimental Describe a setting and its reported file or installed value. */
+export async function showSetting(
+  input: unknown, readers: Readonly<Record<string, SettingReader>> = {}, file?: SettingsFileBinding,
+): Promise<ShowResult | { refusal: SettingRefusal }> {
   const { entries, showRequest, showResult } = loadSettingsCatalogue();
   const parsed = showRequest.safeParse(input);
   if (!parsed.success) return refuse("commerce_setting_unknown");
@@ -72,7 +94,16 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
   try {
     const observation = await observe(setting, Object.hasOwn(readers, setting.key) ? readers[setting.key] : undefined);
     if ("refusal" in observation) return observation;
-    return showResult.parse({ schemaVersion: settingsVersion, setting, observation });
+    const reported = fileValue(setting, file);
+    if (!reported) return showResult.parse({ schemaVersion: settingsVersion, setting, observation });
+    if (reported.value === undefined) {
+      const { refusal } = refuse("commerce_setting_read_unavailable");
+      return { refusal: { ...refusal, hint: "The app file binding must report a JSON value. Run settings check to locate the invalid value." } };
+    }
+    const fileObservation = { state: "file", configuration: file!.configuration, ...reported };
+    return showResult.parse(observation.state === "offline"
+      ? { schemaVersion: settingsVersion, setting, observation: fileObservation }
+      : { schemaVersion: settingsVersion, setting, observation, fileObservation });
   } catch {
     return refuse("commerce_setting_read_unavailable");
   }
@@ -158,6 +189,57 @@ export async function previewSetting<Result extends { schemaVersion: 1 } = never
   } catch {
     return refuseSettingsPreview("commerce_setting_preview_unexpected");
   }
+}
+
+type CheckDocument = z.infer<typeof settingsCheckResult>;
+type RowValidation = CheckDocument["rows"][number]["validation"];
+
+function validateFileValue(value: JsonValue | undefined, schema: Record<string, JsonValue> | null): RowValidation {
+  if (value === undefined) return { state: "invalid", paths: [[]] };
+  if (!schema) return { state: "not-validated" };
+  try {
+    const parsed = z.fromJSONSchema(schema).safeParse(value);
+    return parsed.success ? { state: "valid" }
+      : { state: "invalid", paths: parsed.error.issues.map(issue => issue.path.map(String)) };
+  } catch { return { state: "not-validated" }; }
+}
+
+function checkApp(file?: SettingsFileBinding): CheckDocument["appValidation"] {
+  if (!file) return { state: "not-provided", hint: "Add file: { configuration, entries } to your existing createSettingsBindings return value, then rerun settings check." };
+  if (!file.validate) return { state: "not-provided" };
+  try {
+    file.validate();
+    return { state: "passed" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+    return { state: "failed", message: message.replace(/\s+/gu, " ").trim().slice(0, 180) || "Application validation failed." };
+  }
+}
+
+export function checkFileSettings(file?: SettingsFileBinding): CheckDocument {
+  const appValidation = checkApp(file);
+  const rows = loadSettingsCatalogue().entries.flatMap((entry): CheckDocument["rows"] => {
+    if (entry.kind !== "code" && entry.kind !== "installed") return [];
+    const reported = fileValue(entry, file);
+    const common = {
+      key: entry.key,
+      file: reported ? { state: "present" as const, ...reported } : { state: "not-reported" as const },
+      validation: reported ? validateFileValue(reported.value, entry.schema ?? null) : { state: "not-validated" as const },
+      effect: entry.effect.appliesTo,
+    };
+    return entry.kind === "code" ? [{ ...common, kind: entry.kind, takesEffect: "deploy" }] : [{
+      ...common, kind: entry.kind, takesEffect: Object.values(entry.change).join(" "), store: { state: "not-checked" },
+      note: "The starter checks its installed file policies for drift at boot, and preview shows the effect where supported.",
+    }];
+  });
+  const state = !file ? "unknown" : appValidation.state === "failed" || rows.some(row => row.validation.state === "invalid")
+    ? "invalid" : "checked";
+  return settingsCheckResult.parse({ schemaVersion: settingsVersion, configuration: file?.configuration ?? null, state, appValidation, rows });
+}
+
+/** @experimental JSON Schema for the settings check document or its command refusal. */
+export function settingsCheckOutputSchema(): Record<string, unknown> {
+  return settingsToolOutputSchema(settingsCheckResult, loadSettingsCatalogue().refusalSchema, settingsVersion);
 }
 
 function createSettingsToolSchemas() {

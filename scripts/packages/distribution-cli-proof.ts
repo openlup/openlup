@@ -521,17 +521,28 @@ console.log(JSON.stringify({installedVersion:installed.version,coreVersion:core.
 }
 
 /** Smoke the installed starter script; command semantics belong to package unit tests. */
-export function proveSettingsDiscovery(app: string): void {
+export function proveSettingsDiscovery(app: string, requireFileValues = false): void {
   const manifest = JSON.parse(readFileSync(join(app, "package.json"), "utf8"));
   assert.equal(manifest.scripts?.settings, "openlup settings --app ./owned/settings-host.ts", "extracted starter settings script missing");
   assert(existsSync(join(app, starterSettingsHost)), "extracted starter settings host missing");
   // Run the script's own command line through the installed binary's absolute path.
   const [binary, ...scriptArgs] = String(manifest.scripts.settings).split(" ");
-  const result = JSON.parse(execFileSync(join(app, "node_modules/.bin", binary!), [...scriptArgs, "show", "inventory_renewal_protection", "--json"],
+  const settings = (...args: string[]) => JSON.parse(execFileSync(join(app, "node_modules/.bin", binary!), [...scriptArgs, ...args, "--json"],
     { cwd: app, env: isolatedConsumerEnv(), encoding: "utf8" }));
+  const key = "inventory_renewal_protection";
+  const result = settings("show", key);
   assert.equal(result.schemaVersion, 1);
-  assert.equal(result.setting.key, "inventory_renewal_protection");
-  assert.equal(result.observation.state, "offline");
+  assert.equal(result.setting.key, key);
+  if (!requireFileValues && result.observation.state === "offline") return; // A retained release can predate file bindings.
+  assert.equal(result.observation.state, "file");
+  const checked = settings("check", "--configuration", result.observation.configuration);
+  assert.equal(checked.state, "checked");
+  if (requireFileValues) assert.equal(checked.appValidation.state, "passed");
+  const stock = checked.rows.find((row: { key: string }) => row.key === key);
+  assert.deepEqual(stock?.file, {
+    state: "present", file: result.observation.file, symbol: result.observation.symbol, value: result.observation.value,
+  });
+  assert.deepEqual(stock?.store, { state: "not-checked" });
 }
 
 /** Uses the cold consumer's existing owned database; SQL repair is harness work. */

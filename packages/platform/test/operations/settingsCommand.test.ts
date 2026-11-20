@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
+import { z } from "zod";
 import { runSettingsCommand } from "../../src/operations/server/settingsCommand.js";
-import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting } from "../../src/operations/server/settingsRead.js";
+import { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsCheckOutputSchema, showSetting } from "../../src/operations/server/settingsRead.js";
 
 const key = "inventory_renewal_protection";
 const url = "postgresql://db.example/shop";
@@ -363,4 +364,143 @@ it("shows versioned JSON help before checking required arguments", async () => {
   expect(exit).toBe(0);
   expect(JSON.parse(output)).toEqual({ schemaVersion: 1, help: expect.stringContaining("openlup settings (experimental)") });
   expect(bind).not.toHaveBeenCalled();
+});
+
+const unreportedRows = [
+  '{"key":"checkout_recovery_reminders","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"A changed schedule supplies timing for new episodes. Follow-up waves of pinned episodes retain the recorded schedule. Older unpinned episodes use live timing.","takesEffect":"installCheckoutRecoveryReminderSchedule","kind":"installed","store":{"state":"not-checked"},"note":"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported."}',
+  '{"key":"inventory_renewal_protection","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"Future available-to-promise calculations and new purchase allocations.","takesEffect":"installRenewalStockProtectionPolicy","kind":"installed","store":{"state":"not-checked"},"note":"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported."}',
+  '{"key":"offer.freeShippingFromMinor","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.","takesEffect":"deploy","kind":"code"}',
+  '{"key":"offer.subscriptionDiscountBps","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"The starter uses the deployed discount in subscription estimates. Initial installation seeds the native price policy from this value.","takesEffect":"deploy","kind":"code"}',
+  '{"key":"purchase.reservationMinutes","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"The starter calculates checkout hold expiry from the deployed duration. The recovery runtime uses the configured duration for its expiry calculation.","takesEffect":"deploy","kind":"code"}',
+  '{"key":"subscriber_winback_policy","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"Candidates for new winback messages.","takesEffect":"No settings write operation is available for this key.","kind":"installed","store":{"state":"not-checked"},"note":"The starter checks its installed file policies for drift at boot, and preview shows the effect where supported."}',
+  '{"key":"subscriptionCreation.editWindowHours","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"The starter supplies the deployed edit window at native subscription activation.","takesEffect":"deploy","kind":"code"}',
+  '{"key":"subscriptionOffers.deliveryCycles","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit\'s mode.","takesEffect":"deploy","kind":"code"}',
+  '{"key":"subscriptions.lifecycleNoticeRetryBudget","file":{"state":"not-reported"},"validation":{"state":"not-validated"},"effect":"On the next scheduled run using this config, the budget limits dunning claims and filters the event and reminder dispatch query. At-risk and operator notices run outside this cap.","takesEffect":"deploy","kind":"code"}',
+];
+
+const codeKey = "offer.freeShippingFromMinor";
+const hostFile = { configuration: "sample", entries: { [codeKey]: { value: 12000 } } };
+const reportedCode = '{"key":"offer.freeShippingFromMinor","file":{"state":"present","file":"owned/store.config.ts","symbol":"offer.freeShippingFromMinor","value":12000},"validation":{"state":"valid"},"effect":"The starter uses the deployed threshold in estimates. The default quote resolver uses it once the shipping policy takes effect.","takesEffect":"deploy","kind":"code"}';
+const defaultCheck = ["check", "--app", "./app.ts", "--configuration", "sample", "--json"];
+
+it.each([
+  ["passed startup validation", { file: { ...hostFile, validate() {} } }, 0,
+    '"configuration":"sample","state":"checked","appValidation":{"state":"passed"}', reportedCode],
+  ["no startup validator", { file: hostFile }, 0,
+    '"configuration":"sample","state":"checked","appValidation":{"state":"not-provided"}', reportedCode],
+  ["failed startup validation", { file: { ...hostFile, validate() { throw new Error(`invalid\n  startup    config ${"x".repeat(200)}`); } } }, 1,
+    `"configuration":"sample","state":"invalid","appValidation":{"state":"failed","message":"invalid startup config ${"x".repeat(157)}"}`, reportedCode],
+  ["invalid catalogue value despite passed startup validation", { file: {
+    ...hostFile, entries: { [codeKey]: { value: -1 } }, validate() {},
+  } }, 1, '"configuration":"sample","state":"invalid","appValidation":{"state":"passed"}',
+  reportedCode.replace('"value":12000', '"value":-1').replace('"validation":{"state":"valid"}', '"validation":{"state":"invalid","paths":[[]]}')],
+  ["no file binding", {}, 2, '"configuration":null,"state":"unknown","appValidation":{"state":"not-provided","hint":"Add file: { configuration, entries } to your existing createSettingsBindings return value, then rerun settings check."}', unreportedRows[2]!],
+] satisfies [string, Awaited<ReturnType<NonNullable<Parameters<typeof runSettingsCommand>[2]>["bind"]>>, number, string, string][])(
+  "prints the version-1 check document for %s", async (_, bindings, code, header, codeRow) => {
+    const bind = vi.fn(async () => bindings);
+    const { exit, output } = await run(defaultCheck, { host: { bind } });
+    expect(exit).toBe(code);
+    const rows = unreportedRows.map(row => row.includes(`"key":"${codeKey}"`) ? codeRow : row);
+    expect(output).toBe(`{"schemaVersion":1,${header},"rows":[${rows.join(",")}]}\n`);
+    expect(bind).toHaveBeenCalledExactlyOnceWith({ app: "./app.ts", configuration: "sample", databaseUrl: undefined });
+  },
+);
+
+it("reports a file value with no executable schema and a nested invalid installed field", async () => {
+  const file = { configuration: "sample", entries: {
+    checkout_recovery_reminders: { value: [] },
+    [key]: { value: { revision: "sample", renewalProtectionDays: 0 }, location: { file: "config.ts", symbol: "inventory" } },
+  } };
+  const { exit, output } = await run(defaultCheck, { host: { bind: async () => ({ file }) } });
+  expect(exit).toBe(1);
+  const rows = unreportedRows.map(row => {
+    if (row.includes('"key":"checkout_recovery_reminders"')) {
+      return row.replace('"file":{"state":"not-reported"}', '"file":{"state":"present","file":null,"symbol":null,"value":[]}');
+    }
+    if (row.includes(`"key":"${key}"`)) {
+      return row.replace('"file":{"state":"not-reported"}', '"file":{"state":"present","file":"config.ts","symbol":"inventory","value":{"revision":"sample","renewalProtectionDays":0}}')
+        .replace('"validation":{"state":"not-validated"}', '"validation":{"state":"invalid","paths":[["renewalProtectionDays"]]}');
+    }
+    return row;
+  });
+  expect(output).toBe(`{"schemaVersion":1,"configuration":"sample","state":"invalid","appValidation":{"state":"not-provided"},"rows":[${rows.join(",")}]}\n`);
+});
+
+it.each([
+  [["check"], "app", "Pass --app <module> that exports createSettingsBindings."],
+  [[...defaultCheck, "--app="], "app", "Pass --app <module> that exports createSettingsBindings."],
+  [[...defaultCheck, "--database-url", url], "database-url", "Settings check is offline. Use settings preview with --database-url for connected effects."],
+  [[...defaultCheck, "--database-url="], "database-url", "Settings check is offline. Use settings preview with --database-url for connected effects."],
+  [[...defaultCheck, "--sku", "SKU"], "sku", "Use --sku with preview."],
+  [[...defaultCheck, "--as-of", asOf], "as-of", "Use --as-of with preview."],
+  [[...defaultCheck, "--value", "{}"], "value", "Use --value with preview."],
+  [[...defaultCheck, "--goal", "stock"], "goal", "Use --goal with list."],
+  [[...defaultCheck, key], "key", "Settings check reports all catalogue keys. Omit the key."],
+  [[...defaultCheck, "--unknown"], "unknown", "Unknown option --unknown. See check help."],
+  [[...defaultCheck, "--app"], "app", "Supply a value for --app as shown in check help."],
+] as const)("refuses invalid check usage without binding %j", async (argv, field, hint) => {
+  const bind = vi.fn();
+  const { exit, output } = await run(["--json", ...argv], { host: { bind } });
+  expect(exit).toBe(64);
+  expect(output).toBe(document({ refusal: { ...invalidSettingsCommand().refusal, path: [field], hint } }));
+  expect(bind).not.toHaveBeenCalled();
+});
+
+it.each(["show", "check"] as const)("%s names an unknown configuration and its valid choices", async command => {
+  const host = { bind: async () => ({ configurationIds: ["coffee", "supplements"] }) };
+  const { exit, output } = await run([command, ...(command === "show" ? [codeKey] : []),
+    "--app", "./app.ts", "--configuration=", "--json"], { host });
+  expect(exit).toBe(64);
+  expect(output).toBe(document({ refusal: { ...invalidSettingsCommand().refusal, path: ["configuration"],
+    hint: 'Unknown configuration "". Use one of these IDs: coffee, supplements.' } }));
+});
+
+it("refuses check when the app module cannot be loaded", async () => {
+  const { exit, output } = await run(defaultCheck, { host: { bind: async () => { throw new Error("detail stays private"); } } });
+  const explained = explainSetting("commerce_setting_read_unavailable");
+  if (!("explanation" in explained)) throw new Error("Missing catalogue refusal");
+  expect(exit).toBe(74);
+  expect(output).toBe(document({ refusal: { ...explained.explanation,
+    path: ["app"], rule: "The settings app must load and supply createSettingsBindings.",
+    hint: "Check the --app path and the createSettingsBindings export.",
+    remediation: { retry: true, action: "Fix the module path or export and rerun.", command: "openlup settings check --help" },
+  } }));
+});
+
+const codeObservation = '{"state":"file","configuration":"sample","file":"owned/store.config.ts","symbol":"offer.freeShippingFromMinor","value":12000}';
+it.each([
+  ["without an app", [], hostFile, '{"state":"offline"}', "No file value reported."],
+  ["with an app that has no file member", ["--app", "./app.ts"], undefined, '{"state":"offline"}', "No file value reported."],
+  ["with an app that leaves the key unreported", ["--app", "./app.ts"], { ...hostFile, entries: {} }, '{"state":"offline"}', "No file value reported."],
+  ["with a file value", ["--app", "./app.ts", "--configuration", "sample"], hostFile, codeObservation,
+    "File as loaded (sample) — owned/store.config.ts · offer.freeShippingFromMinor = 12000. Running store not observed."],
+] as const)("shows a code key %s", async (_, args, file, observation, line) => {
+  const bind = vi.fn(async () => ({ file }));
+  const offline = await showSetting({ key: codeKey });
+  const expected = document(offline).replace('"observation":{"state":"offline"}', `"observation":${observation}`);
+  expect(await run(["show", codeKey, ...args, "--json"], { host: { bind } })).toMatchObject({ exit: 0, output: expected });
+  const text = await run(["show", codeKey, ...args], { host: { bind } });
+  expect(text.output).toContain(`\n${line}\n`);
+  expect(bind).toHaveBeenCalledTimes(args.length ? 2 : 0);
+});
+
+it("keeps the connected installed observation and adds the file observation separately", async () => {
+  const read = vi.fn(async () => ({ present: true as const, value: { revision: "old", renewalProtectionDays: 14 }, revision: "old" }));
+  const readers = { [key]: read };
+  const file = { configuration: "sample", entries: {
+    [key]: { value: { revision: "new", renewalProtectionDays: 21 }, location: { file: "config.ts", symbol: "stock" } },
+  } };
+  const bound = { bind: async () => ({ readers, file }) };
+  const result = await run(["show", key, "--database-url", url, "--app", "./app.ts", "--json"], { host: bound });
+  const expected = document(await showSetting({ key }, readers)).slice(0, -2) +
+    ',"fileObservation":{"state":"file","configuration":"sample","file":"config.ts","symbol":"stock","value":{"revision":"new","renewalProtectionDays":21}}}\n';
+  expect(result).toMatchObject({ exit: 0, output: expected });
+});
+
+it("publishes a schema for the check result and usage refusal", async () => {
+  const schema = z.fromJSONSchema(settingsCheckOutputSchema());
+  const result = await run(defaultCheck, { host: { bind: async () => ({ file: hostFile }) } });
+  const usage = await run(["check", "--json"]);
+  for (const output of [result.output, usage.output]) expect(schema.safeParse(JSON.parse(output)).success).toBe(true);
+  expect(schema.safeParse({ schemaVersion: 1, state: "checked" }).success).toBe(false);
 });

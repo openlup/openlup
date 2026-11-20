@@ -33,7 +33,8 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   candidate("ownership.json", { managed: ["package.json", "ownership.json"], owned: ["AGENTS.md", starterSettingsHost], generated: [] });
   const pkg = { dependencies: { "@openlup/core": "0.40.0" }, scripts: { settings: "openlup settings --app ./owned/settings-host.ts" } };
   candidate("package.json", pkg);
-  candidate(starterSettingsHost, "export function createSettingsBindings() { return {}; }");
+  const file = "file: { configuration: 'sample', entries: { 'offer.freeShippingFromMinor': { value: 12000 } } }";
+  candidate(starterSettingsHost, "export function createSettingsBindings() { return { " + file + " }; }");
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "1.3.0");
   migrateStarterOwned(app, target, from, to);
   migrateStarterOwned(app, target, from, to);
@@ -60,6 +61,23 @@ it.each([false, true])("upgrades the command and creates or preserves its owned 
   expect(apply().applied).toEqual([]);
   expect(readFileSync(hostFile, "utf8")).toBe(customized ? local : to.files[starterSettingsHost]);
   expect(() => assertCompleteStarter(app, to)).not.toThrow();
+
+  const check = (status: number) => {
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
+      "settings", "check", "--app", "./" + starterSettingsHost, "--json"], { cwd: app, encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  if (customized) {
+    expect(check(2)).toMatchObject({ state: "unknown", appValidation: { hint: expect.stringContaining("Add file: { configuration, entries }") } });
+    const reconciled = local.replace("stockSourceKey: 'local'", "stockSourceKey: 'local', " + file);
+    write(starterSettingsHost, reconciled);
+    expect(apply().applied).toEqual([]);
+    expect(readFileSync(hostFile, "utf8")).toBe(reconciled);
+  }
+  expect(check(0)).toMatchObject({ state: "checked", configuration: "sample", rows: expect.arrayContaining([
+    expect.objectContaining({ key: "offer.freeShippingFromMinor", file: expect.objectContaining({ value: 12000 }) }),
+  ]) });
 });
 
 it("refuses an extracted starter without the settings script", () => {
@@ -67,20 +85,21 @@ it("refuses an extracted starter without the settings script", () => {
   expect(() => proveSettingsDiscovery(directory)).toThrow("extracted starter settings script missing");
 });
 
-it("loads the settings binding on connected show and reports a missing module", () => {
+it("reports a missing explicit settings module on both offline and connected show", () => {
   const { directory } = fixture();
   const show = (...args: string[]) => spawnSync(process.execPath, [
-    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "--app", starterSettingsHost,
-    "show", "inventory_renewal_protection", "--json", ...args,
+    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", "inventory_renewal_protection", "--json", ...args,
   ], { cwd: directory, encoding: "utf8" });
   const offline = show();
   expect(offline.status, offline.stderr).toBe(0);
   expect(JSON.parse(offline.stdout)).toMatchObject({ observation: { state: "offline" } });
-  const connected = show("--database-url", "postgresql://unused.invalid/shop");
-  expect(connected.status, connected.stderr).toBe(74);
-  expect(JSON.parse(connected.stdout)).toMatchObject({ refusal: {
-    code: "commerce_setting_read_unavailable", path: ["key"], hint: expect.stringContaining("createSettingsBindings"),
-  } });
+  for (const args of [[], ["--database-url", "postgresql://unused.invalid/shop"]]) {
+    const missing = show("--app", starterSettingsHost, ...args);
+    expect(missing.status, missing.stderr).toBe(74);
+    expect(JSON.parse(missing.stdout)).toMatchObject({ refusal: {
+      code: "commerce_setting_read_unavailable", path: [args.length ? "key" : "app"], hint: expect.stringContaining("createSettingsBindings"),
+    } });
+  }
 });
 
 it.each([
