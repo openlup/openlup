@@ -357,7 +357,7 @@ it("restores reordered sealed history and recovers the original publication afte
     const owner = observedOwner(async () => undefined, sql => { failedStatements.push(sql); });
     await expect(restore(owner, invalidResult), kind).rejects.toMatchObject({
       code: "target_conflict", cause: { reason: "publication_receipt_input_invalid",
-        message: "The saved command result contains invalid text or structure. Re-export the original result and retry the restore." },
+        message: "The saved command result contains invalid text or structure. Restore the original result from a verified copy or ask the store operator to recover it." },
     });
     expect(failedStatements, kind).toEqual(["SET CONSTRAINTS ALL IMMEDIATE"]);
     expect(await journeyCensus(target.owner), kind).toEqual(pristine);
