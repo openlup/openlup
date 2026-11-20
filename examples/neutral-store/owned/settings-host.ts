@@ -4,7 +4,6 @@ import { readCheckoutRecoveryReminderObservation } from '@openlup/platform/comme
 import type { SettingsAppBindings, SettingsFileEntry } from '@openlup/platform/operations/server';
 import { checkoutWavePolicy } from './acquisition-policy.ts';
 import { assertConfig } from '../shared/config.ts';
-import { estimateOffer } from '../shared/offer-estimate.ts';
 import { configurations, selectConfiguration } from './store.config.ts';
 
 export function createSettingsBindings({ db, configuration }: {
@@ -275,14 +274,7 @@ export function createSettingsBindings({ db, configuration }: {
       descriptor: {
         domain: 'pricing',
         goal: "Set the rounding step for subscription prices in currency minor units (price rounding, rounding quantum).",
-        schema: z.number().int().min(1).refine(subscriptionRoundingQuantumMinor => {
-          const offer = { ...config.offer, subscriptionRoundingQuantumMinor };
-          return offer.products.every(product => {
-            if (!product.permittedPurchaseModes.includes('subscription')) return true;
-            const amount = estimateOffer({ ...config, offer }, 'subscription', [{ sku: product.sku, quantity: 1 }]).lines[0]!.unitMinor;
-            return amount >= 1 && amount <= 2147483647;
-          });
-        }).describe(
+        schema: z.number().int().min(1).describe(
           "assertConfig checks a positive safe integer and requires each estimated subscription unit price to be from 1 through 2147483647 minor units.",
         ),
         effect: {
