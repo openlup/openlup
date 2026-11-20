@@ -11346,6 +11346,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/operations/fixtures/settings-guide/owned/gift.config.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/fixtures/settings-guide/owned/settings-host.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/operations/platformWatchdogDeliveryPolicy.test.ts",
       "class": "public-output"
     },

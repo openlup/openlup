@@ -94,11 +94,13 @@ export const quoteGiftOrderMinor = (subtotal: number, wrap: boolean) =>
 
 In `owned/settings-host.ts`, import `gift` and add one entry to the
 `file.entries` returned by your existing `createSettingsBindings`. Keep its
-configuration selection, installed readers and startup validation. Choose an
+configuration selection, installed readers and startup validation. Use
+`satisfies SettingsFileEntry` to typecheck the entry as you write it. Choose an
 unused key and give its file and symbol so an agent knows where to edit.
 
 ```ts nocheck
 // The relative import resolves after you create the application file above.
+import type { SettingsFileEntry } from "@openlup/platform/operations/server";
 import { gift } from "./gift.config.ts";
 
 const entries = {
@@ -109,7 +111,7 @@ const entries = {
       domain: "gift", goal: "Set the gift wrapping fee in minor units.",
       effect: { appliesTo: "New gift quotes use this fee after deployment.", impact: "money", frozenOn: [] },
     },
-  },
+  } satisfies SettingsFileEntry,
 };
 ```
 

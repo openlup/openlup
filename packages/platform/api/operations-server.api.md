@@ -115,7 +115,7 @@ export * from "./controlPlaneWatchdog.js";
 export * from "./migrations.js";
 export { explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, settingsReadTools, showSetting, type SettingReader, type SettingPreviewer } from "./settingsRead.js";
 export { settingDescriptorSchema, settingRefusalSchema, settingsToolOutputSchema, toolInputSchema } from "./toolSchema.js";
-export { runSettingsCommand, type SettingsAppBindings } from "./settingsCommand.js";
+export { runSettingsCommand, type SettingsAppBindings, type SettingsFileEntry } from "./settingsCommand.js";
 ```
 ## dist/operations/server/migrations.d.ts
 
@@ -270,7 +270,8 @@ type ValueDescriptor = Extract<SettingDescriptor, {
 type Location = Extract<ValueDescriptor["change"], {
     file: string;
 }>;
-type FileEntry = {
+/** @experimental A file value reported by an application settings binding. */
+export type SettingsFileEntry = {
     value: unknown;
     location?: Location;
     descriptor?: never;
@@ -288,7 +289,7 @@ export type SettingsAppBindings = {
     stockSourceKey?: string;
     file?: {
         configuration: string;
-        entries: Readonly<Record<string, FileEntry>>;
+        entries: Readonly<Record<string, SettingsFileEntry>>;
         validate?: () => void | Promise<void>;
     };
 } | {

@@ -11,7 +11,8 @@ import {
 type PreviewDocument = { schemaVersion: 1 };
 type ValueDescriptor = Extract<SettingDescriptor, { effect: unknown }>;
 type Location = Extract<ValueDescriptor["change"], { file: string }>;
-type FileEntry = { value: unknown; location?: Location; descriptor?: never } | {
+/** @experimental A file value reported by an application settings binding. */
+export type SettingsFileEntry = { value: unknown; location?: Location; descriptor?: never } | {
   value: unknown;
   location: Location;
   descriptor: Pick<ValueDescriptor, "domain" | "goal" | "effect">
@@ -25,7 +26,7 @@ export type SettingsAppBindings = {
   stockSourceKey?: string;
   file?: {
     configuration: string;
-    entries: Readonly<Record<string, FileEntry>>;
+    entries: Readonly<Record<string, SettingsFileEntry>>;
     validate?: () => void | Promise<void>;
   };
 } | { configurationIds: readonly string[] };
@@ -94,7 +95,7 @@ type Validation = { state: "valid" | "not-validated" } | { state: "invalid"; pat
 type AppValidation = { state: "passed" } | { state: "not-provided"; hint?: string }
   | { state: "failed"; message: string; phase?: "load" };
 
-type DeclaredFileEntry = Extract<FileEntry, { descriptor: unknown }>;
+type DeclaredFileEntry = Extract<SettingsFileEntry, { descriptor: unknown }>;
 type AppSetting = { setting: z.infer<typeof settingDescriptorSchema>; entry: DeclaredFileEntry; schema?: ZodType };
 
 function appRefusal(code: string, path: string[], rule: string, hint: string, action: string, command: string): { refusal: SettingRefusal } {

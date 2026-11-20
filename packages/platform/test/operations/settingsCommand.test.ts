@@ -494,6 +494,16 @@ it("checks every packaged schema against its default and valid examples", async 
   }
 });
 
+it("keeps the guide's app declaration identical to the typechecked binding", () => {
+  const guide = readFileSync(new URL("../../../core/docs/guide/how-to/operate/configure-settings.md", import.meta.url), "utf8");
+  const section = guide.split("## Declare a setting of your own\n")[1]!.split("\n## ")[0]!;
+  const snippets = [...section.matchAll(/^```ts[^\n]*\n([\s\S]+?)^```/gmu)].map(([, code]) => code);
+  const fixture = new URL("./fixtures/settings-guide/owned/", import.meta.url);
+  const gift = readFileSync(new URL("gift.config.ts", fixture), "utf8");
+  const binding = readFileSync(new URL("settings-host.ts", fixture), "utf8");
+  expect(snippets).toEqual([gift, binding.split("\nexport function createSettingsBindings")[0]]);
+});
+
 const feeKey = "gift.wrapFeeMinor";
 const giftKey = "gift.enabled";
 const giftPath = "owned/gift.config.ts";
