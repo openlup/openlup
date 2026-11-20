@@ -42,6 +42,11 @@ const GUARDS: { id: string; catalog: string; where?: string; drop?: string[]; re
   { id: "triggers", catalog: "pg_trigger", relation: "tgrelid", added: (row, newConstraints) => row.tgisinternal === true && newConstraints.has(Number(row.tgconstraint)) }, { id: "policies", catalog: "pg_policy", relation: "polrelid" },
   { id: "rules", catalog: "pg_rewrite", relation: "ev_class" },
 ];
+const GUARDS_SNAPSHOT_SQL = `SELECT jsonb_build_object(${GUARDS.map(guard =>
+  `'${guard.id}', (SELECT COALESCE(jsonb_agg(r ORDER BY r),'[]'::jsonb) FROM (
+    SELECT regexp_replace((to_jsonb(t)${["oid", ...guard.drop ?? []].map(key => ` - '${key}'`).join("")})::text, ${POSITIONS}, 'g')::jsonb AS r
+    FROM ${guard.catalog} t WHERE ${guard.where ?? "true"}) s)`
+).join(", ")}) AS guards`;
 const aclOf = (expr: string, kind: string, owner: string) => `ARRAY(SELECT (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END)||':'||a.privilege_type||(CASE WHEN a.is_grantable THEN '${GRANT_OPTION}' ELSE '' END)
   FROM aclexplode(COALESCE(${expr}, acldefault(${kind}, ${owner}))) a ORDER BY 1)`;
 
@@ -59,10 +64,12 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid >= ${OID_FLOOR} ORDER BY c.oid`)).rows;
   // Objects PostgreSQL ships are compared as one digest of the facts that carry privileges; statistics columns are left out
   // because autovacuum changes them between two snapshots.
-  const system = (await db.query(`SELECT
+  const systemAndOids = (await db.query(`SELECT
     md5(COALESCE((SELECT string_agg(to_jsonb(p)::text, E'\\n' ORDER BY p.oid) FROM pg_proc p WHERE p.oid < ${OID_FLOOR}),'')) AS functions,
     md5(COALESCE((SELECT string_agg(jsonb_build_array(c.oid,c.relname,c.relnamespace,c.relowner,c.relkind,c.relrowsecurity,c.relforcerowsecurity,c.reloptions,c.relacl::text)::text, E'\\n' ORDER BY c.oid) FROM pg_class c WHERE c.oid < ${OID_FLOOR}),'')
-      || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${OID_FLOOR} AND a.attacl IS NOT NULL),'')) AS relations`)).rows[0];
+      || COALESCE((SELECT string_agg(a.attrelid||'.'||a.attname||'='||a.attacl::text, E'\\n' ORDER BY a.attrelid,a.attnum) FROM pg_attribute a WHERE a.attrelid < ${OID_FLOOR} AND a.attacl IS NOT NULL),'')) AS relations,
+    COALESCE((SELECT array_agg(oid::int ORDER BY oid) FROM pg_class), ARRAY[]::int[]) AS "relationOids",
+    COALESCE((SELECT array_agg(oid::int ORDER BY oid) FROM pg_constraint), ARRAY[]::int[]) AS "constraintOids"`)).rows[0];
   // The relation is schema-qualified explicitly: regclass text omits a schema that is on the search path.
   const constraints = (await db.query(`SELECT con.oid::int AS oid, con.conrelid::int AS "relationOid", con.contype AS kind, con.condeferrable AS deferrable, con.condeferred AS deferred,
     COALESCE(n.nspname||'.'||c.relname, 'type:'||con.contypid::regtype::text) AS rel, con.conname AS name, pg_get_constraintdef(con.oid) AS def, con.convalidated AS validated, con.conindid::int AS "indexOid"
@@ -78,13 +85,18 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
     regexp_replace(to_jsonb(i)::text, ${POSITIONS}, 'g')::jsonb AS attrs
     FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace
     JOIN pg_class t ON t.oid=i.indrelid JOIN pg_namespace tn ON tn.oid=t.relnamespace ORDER BY c.oid`)).rows;
-  const relationOids = (await db.query("SELECT oid::int AS oid FROM pg_class ORDER BY oid")).rows.map(row => row.oid as number);
-  const constraintOids = (await db.query("SELECT oid::int AS oid FROM pg_constraint ORDER BY oid")).rows.map(row => row.oid as number);
-  const guards: Snapshot["guards"] = {};
-  for (const guard of GUARDS) guards[guard.id] = (await db.query(`SELECT COALESCE(jsonb_agg(r ORDER BY r),'[]'::jsonb) AS rows FROM (
-    SELECT regexp_replace((to_jsonb(t)${["oid", ...guard.drop ?? []].map(key => ` - '${key}'`).join("")})::text, ${POSITIONS}, 'g')::jsonb AS r
-    FROM ${guard.catalog} t WHERE ${guard.where ?? "true"}) s`)).rows[0].rows;
-  return { functions, relations, columns, indexes, system, relationOids, constraintOids, constraints, guards };
+  const guards = (await db.query(GUARDS_SNAPSHOT_SQL)).rows[0].guards as Snapshot["guards"];
+  return {
+    functions,
+    relations,
+    columns,
+    indexes,
+    system: { functions: systemAndOids.functions as string, relations: systemAndOids.relations as string },
+    relationOids: systemAndOids.relationOids as number[],
+    constraintOids: systemAndOids.constraintOids as number[],
+    constraints,
+    guards,
+  };
 }
 
 const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}`;
@@ -639,9 +651,11 @@ async function verifyForward(pool: Pool, registry: ReviewedForwardRegistry, path
   return checkForward(pool, admission.slot, bytes.toString("utf8"), keep, setup, admission);
 }
 
+const pristineSnapshots = new WeakMap<Pool, Snapshot>();
+
 // Run a forward in a transaction on a real database and check it against the slot. It is rolled
 // back, except that `keep` commits a forward that passed so the next slot sees the cumulative chain.
-async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep = false, setup = "", admission?: NativeAdmission) {
+async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep = false, setup = "", admission?: NativeAdmission, cachedBefore?: Snapshot) {
   if (!admission && (keep || slot.createdTriggers?.some(entry => entry.deferred))) fail("deferred verification and commit require static admission");
   const db = await pool.connect();
   let passed = false;
@@ -650,11 +664,15 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
     await db.query("BEGIN");
     try {
       if (setup) await db.query(setup);
-      const before = await pinned(db, () => snapshot(db));
+      const reusableBefore = !keep && !setup ? (cachedBefore ?? pristineSnapshots.get(pool)) : undefined;
+      const before = reusableBefore ?? await pinned(db, () => snapshot(db));
       await db.query(forward);
       await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole, forward, admission));
       passed = true;
-    } finally { await db.query(keep && passed ? "COMMIT" : "ROLLBACK"); }
+    } finally {
+      await db.query(keep && passed ? "COMMIT" : "ROLLBACK");
+      if (keep && passed) pristineSnapshots.delete(pool);
+    }
   } finally { db.release(); }
 }
 
@@ -957,8 +975,17 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     const synthetic = new Pool({ connectionString: container.connectionStringFor("synthetic") });
     await synthetic.query(SYNTHETIC_BASE); await synthetic.end();
     pool = new Pool({ connectionString: container.connectionStringFor("synthetic") });
+    // Every test on `pool` runs inside a rolled-back transaction, so the pristine
+    // SYNTHETIC_BASE snapshot is invariant whenever `checkForward` runs with !keep && !setup.
+    const baseClient = await pool.connect();
+    try {
+      pristineSnapshots.set(pool, await pinned(baseClient, () => snapshot(baseClient)));
+    } finally { baseClient.release(); }
   }, postgresSetupTimeoutMs);
-  afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
+  afterAll(async () => {
+    if (pool) pristineSnapshots.delete(pool);
+    await closePostgres(container, pool);
+  }, postgresTeardownTimeoutMs);
 
   it("admits the fresh assignment default switch and preserves historical rows", async () => {
     await checkForward(pool, ASSIGNMENT_SLOT, forward(CREATED_OK, ASSIGNMENT_ADD + ASSIGNMENT_SWITCH));
