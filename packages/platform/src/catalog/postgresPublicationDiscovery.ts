@@ -1,5 +1,5 @@
 import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from "../data/index.js";
-import { CommercePriceAuthorityError, type CommercePriceAuthorityPort } from "../pricing/index.js";
+import { CommercePriceAuthorityError, deriveSubscriptionUnitPrice, type CommercePriceAuthorityPort } from "../pricing/index.js";
 import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
@@ -34,9 +34,9 @@ const page = z.discriminatedUnion("protocol", [
 const batchInput = z.object({ skuCodes: z.array(code).min(1).max(100).refine(codes => new Set(codes).size === codes.length), expectedHeadDigest: digest }).strict();
 const settlementContext = z.object({ regionCode: z.string().regex(/^[A-Z]{2}$/u), currency: z.string().regex(/^[A-Z]{3}$/u),
   atTime: z.string().refine(value => Number.isFinite(Date.parse(value))).transform(value => new Date(value).toISOString()) }).strict();
-const batch = z.object({ protocol: z.literal("governed"), headDigest: digest, context: settlementContext.nullable(), items: z.array(z.object({ skuCode: code,
+const batch = z.object({ protocol: z.literal("governed"), headDigest: digest, context: settlementContext.nullable(), selectedListId: id.nullable(), items: z.array(z.object({ skuCode: code,
   evidence: evidence.extend({ product: catalogPublishedProductSchema, sku: catalogPublishedSkuSchema }).strict().nullable(),
-  primaryPresent: z.boolean().nullable(), priceShapeInvalid: z.boolean().nullable() }).strict()).max(100) }).strict();
+  primaryPresent: z.boolean().nullable(), priceShapeInvalid: z.boolean().nullable(), storedSubscriptionRows: z.number().int().nonnegative().nullable() }).strict()).max(100) }).strict();
 
 /** @experimental */
 export type CatalogMembershipCursor = { skuId: string; headDigest: string; offerVersion: string; mode: "one_time" | "subscription" | null };
@@ -85,6 +85,19 @@ function refusal(error: unknown, invalid: string): CatalogDiscoveryRefusal {
 const selected = (row: CatalogDiscoveryEvidence, productId: string, skuId: string) =>
   row.document.productId === productId && row.head.documentDigest === row.document.digest && row.skuRevision.skuId === skuId;
 
+const installedVerdict = z.preprocess(value => {
+  if (typeof value !== "object" || value === null || !("reasons" in value) || !Array.isArray(value.reasons)) return value;
+  return { ...value, reasons: [...new Set(value.reasons)] };
+}, publicationReadinessVerdict);
+
+async function observeInstalled<T>(read: () => T | Promise<T>): Promise<T> {
+  try { return await read(); }
+  catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "40001") throw error;
+    throw new Error("Installed catalogue observation failed", { cause: error });
+  }
+}
+
 /** Read one governed page in the caller's catalogue snapshot.
  * @experimental
  */
@@ -94,7 +107,21 @@ export async function readPostgresCatalogMembershipPage(db: PgQueryExecutor, inp
   const { offerVersion, cursor: after, limit, mode: requestedMode = null } = query.data;
   if (after && (after.offerVersion !== offerVersion || after.mode !== requestedMode)) return { outcome: "validation_issue", reason: invalidPage };
   try {
-    const { rows } = await db.query("SELECT public.catalog_offer_memberships_page($1,$2,$3,$4) AS result", [offerVersion, after ?? null, limit, requestedMode]);
+    let transactional = true;
+    try { await db.query("SAVEPOINT catalog_membership_read"); }
+    catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "25P01") throw error;
+      transactional = false;
+    }
+    const { rows } = await db.query("SELECT public.catalog_offer_memberships_page($1,$2,$3,$4) AS result", [offerVersion, after ?? null, limit, requestedMode])
+      .catch(async error => {
+        if (transactional) {
+          await db.query("ROLLBACK TO SAVEPOINT catalog_membership_read");
+          await db.query("RELEASE SAVEPOINT catalog_membership_read");
+        }
+        throw error;
+      });
+    if (transactional) await db.query("RELEASE SAVEPOINT catalog_membership_read");
     if (rows.length !== 1) return unavailable;
     const result = page.parse(rows[0]?.result);
     const { items, nextCursor, headDigest } = result;
@@ -111,18 +138,27 @@ export async function readPostgresCatalogMembershipPage(db: PgQueryExecutor, inp
 const readerFence = "LOCK TABLE public.catalog_products IN SHARE MODE";
 
 async function priceReason(installed: ReturnType<CatalogInstalledReadiness>, settlement: z.output<typeof settlementContext>,
-  sku: RulesSku): Promise<string | null> {
+  sku: RulesSku, selectedListId: string | null, storedSubscriptionRows: number): Promise<string | null> {
   const query = { ...settlement, channel: installed.channel, variantId: sku.id, mode: "subscription" } as const;
   try {
     const money = await installed.prices.resolvePrice(query);
-    if (money.kind === "one_time" || (money.kind === "subscription_legacy" && money.unitPriceMinor !== money.legacyResolved.unitPriceMinor))
-      throw new Error("Unexpected subscription price observation");
-    const exact = (entry: typeof money.base, mode: "one_time" | "subscription") =>
-      entry.variantId === sku.id && entry.mode === mode && entry.amountKind === "gross" && entry.matchedMinQty === 1;
-    if (!exact(money.base, "one_time") || money.kind === "subscription_legacy" &&
-      (!exact(money.legacyResolved, "subscription") || money.legacyResolved.priceListId !== money.base.priceListId)) return "price_shape_invalid";
+    const matches = (entry: typeof money.base, mode: "one_time" | "subscription") =>
+      selectedListId !== null && entry.variantId === sku.id && entry.mode === mode
+        && entry.priceListId === selectedListId && entry.resolvedAt === query.atTime;
+    if (!matches(money.base, "one_time")) throw new Error("Contradictory base price observation");
+    const subscription = money.kind === "subscription_legacy" ? money.legacyResolved : null;
+    if (money.kind === "subscription_legacy") {
+      if (!matches(money.legacyResolved, "subscription") || money.unitPriceMinor !== money.legacyResolved.unitPriceMinor)
+        throw new Error("Contradictory stored subscription price observation");
+    } else if (money.kind !== "subscription_policy" || money.policy.priceListId !== selectedListId || money.policy.regionCode !== query.regionCode
+      || money.policy.currency !== query.currency || money.policy.channel !== query.channel
+      || money.unitPriceMinor !== deriveSubscriptionUnitPrice(money.base.unitPriceMinor, money.policy))
+      throw new Error("Contradictory subscription policy observation");
+    const exact = (entry: typeof money.base) => entry.amountKind === "gross" && entry.matchedMinQty === 1;
+    if (!exact(money.base) || (subscription && !exact(subscription))) return "price_shape_invalid";
     if (![money.base.unitPriceMinor, money.unitPriceMinor].every(Number.isSafeInteger)) throw new Error("Invalid price amount");
-    if (money.base.unitPriceMinor <= 0 || money.unitPriceMinor <= 0) return "price_readiness_missing";
+    if (money.base.unitPriceMinor <= 0 || money.unitPriceMinor <= 0
+      || storedSubscriptionRows !== (money.kind === "subscription_policy" ? 0 : 1)) return "price_readiness_missing";
     return null;
   } catch (error) {
     if (!(error instanceof CommercePriceAuthorityError)) throw error;
@@ -145,25 +181,26 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
       await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ WRITE");
       await db.query(readerFence);
       const { rows } = await db.query("SELECT public.catalog_publication_activation_readiness($1,$2) AS result", [skuCodes, expectedHeadDigest]);
-      if (rows.length !== 1) return unavailable;
+      if (rows.length !== 1) throw new Error("Invalid catalogue readiness evidence");
       const observed = batch.parse(rows[0]?.result);
       if (observed.headDigest !== expectedHeadDigest || observed.items.length !== skuCodes.length
         || observed.items.some((item, index) => item.skuCode !== skuCodes[index])
-        || Boolean(observed.context) !== observed.items.some(item => item.evidence !== null)) return unavailable;
-      const installed = observed.context && await Promise.resolve().then(() => bind(db)).catch(() => null);
+        || Boolean(observed.context) !== observed.items.some(item => item.evidence !== null)) throw new Error("Invalid catalogue readiness evidence");
+      const settlement = observed.context;
+      const installed = settlement && await observeInstalled(() => bind(db));
       const items = [];
-      for (const { skuCode, evidence: subject, primaryPresent, priceShapeInvalid } of observed.items) {
+      for (const { skuCode, evidence: subject, primaryPresent, priceShapeInvalid, storedSubscriptionRows } of observed.items) {
         if (!subject) {
-          if (primaryPresent !== null || priceShapeInvalid !== null) return unavailable;
+          if (primaryPresent !== null || priceShapeInvalid !== null || storedSubscriptionRows !== null) throw new Error("Invalid catalogue readiness evidence");
           items.push({ skuCode, skuId: null, logisticsRef: null, evidence: null, ready: false, reasons: ["sku_not_materialized"] });
           continue;
         }
         const { product, sku, ...references } = subject;
-        if (!installed || !observed.context || primaryPresent === null || priceShapeInvalid === null || sku.code !== skuCode
+        if (!installed || !settlement || primaryPresent === null || priceShapeInvalid === null || storedSubscriptionRows === null || sku.code !== skuCode
           || sku.productId !== product.id || sku.id !== references.skuRevision.skuId || !selected(references, product.id, sku.id)
-          || JSON.stringify(product.document) !== JSON.stringify(references.document)) return unavailable;
-        const definition = installed.registry.resolve(product.type);
-        if (!definition || definition.key !== product.type.key || definition.version !== product.type.version) return unavailable;
+          || JSON.stringify(product.document) !== JSON.stringify(references.document)) throw new Error("Invalid catalogue readiness evidence");
+        const definition = await observeInstalled(() => installed.registry.resolve(product.type));
+        if (!definition || definition.key !== product.type.key || definition.version !== product.type.version) throw new Error("Invalid catalogue readiness evidence");
         const reasons: string[] = [];
         if (!primaryPresent) reasons.push("primary_sku_missing");
         if (!sku.logisticsRef) reasons.push("logistics_reference_missing");
@@ -171,14 +208,13 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
         if (!sku.identifiers.some(i => i.scheme === "gs1:gtin" && i.isPrimary && i.packagingLevel === "unit")) reasons.push("unit_gtin_missing");
         try { assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, definition); }
         catch (error) { if (!(error instanceof CatalogPublicationError)) throw error; reasons.push(error.code); }
-        const price = await priceReason(installed, observed.context, sku).catch(() => undefined);
-        if (price === undefined) return unavailable;
+        const price = await observeInstalled(() => priceReason(installed, settlement, sku, observed.selectedListId, storedSubscriptionRows));
         if (price) reasons.push(price);
         if (priceShapeInvalid) reasons.push("price_shape_invalid");
         if (!product.presentation) reasons.push("presentation_missing");
         if (!sku.memberships.some(row => row.admitted)) reasons.push("offer_membership_missing");
-        const verdict = await Promise.resolve().then(() => installed.assess({ product, sku, evidence: references }, observed.context!)).catch(() => null);
-        const assessment = publicationReadinessVerdict.parse(verdict);
+        const verdict = await observeInstalled(() => installed.assess({ product, sku, evidence: references }, settlement));
+        const assessment = installedVerdict.parse(verdict);
         const combined = [...new Set([...reasons, ...assessment.reasons])];
         items.push({ skuCode, skuId: sku.id, logisticsRef: sku.logisticsRef, evidence: references, ready: combined.length === 0, reasons: combined });
       }

@@ -102,6 +102,16 @@ it("distinguishes legacy, governed empty and unreadable authority, and refuses u
     .toMatchObject({ outcome: "conflict", reason: "catalog_publication_head_moved" });
 });
 
+it("commits prior caller work after a handled membership refusal", async () => {
+  await transaction(pool, db => seed(db, { offer: "test:registered" }));
+  await transaction(pool, async db => {
+    await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES ('membership_caller_witness','retained')");
+    expect(await readPostgresCatalogMembershipPage(db, byOffer("test:unknown"))).toMatchObject({ outcome: "validation_issue" });
+  });
+  expect((await pool.query("SELECT value_text FROM public.commerce_settings WHERE key='membership_caller_witness'")).rows)
+    .toEqual([{ value_text: "retained" }]);
+});
+
 it("filters before limit for each mode and resolves evidence only for emitted rows", async () => {
   await transaction(pool, async db => {
     await seed(db, { id: fixedId(1), admitted: false });
@@ -229,6 +239,49 @@ it("preserves ordered present and absent subjects and validates bounded native b
   await expect(pool.query(readinessSql, [["valid"], "A".repeat(64)])).rejects.toMatchObject({ code: "22023" });
 });
 
+it("rolls back writes from a failed installed price observation", async () => {
+  const subject = await transaction(pool, db => seed(db));
+  const result = await readiness([subject.facts.code], await headDigest(), db => ({ ...binding(db),
+    prices: { resolvePrice: async () => {
+      await db.query("INSERT INTO public.commerce_settings(key,value_text) VALUES ('readiness_rollback_witness','discarded')");
+      throw new Error("installed observation unavailable");
+    } },
+  }));
+  expect(result).toMatchObject({ outcome: "dependency_unavailable" });
+  expect((await pool.query("SELECT value_text FROM public.commerce_settings WHERE key='readiness_rollback_witness'")).rows).toEqual([]);
+});
+
+it("preserves a retryable serialization failure during installed assessment", async () => {
+  const subject = await transaction(pool, db => seed(db));
+  const result = await readiness([subject.facts.code], await headDigest(), db => ({ ...binding(db),
+    assess: async () => {
+      await db.query("DO $$ BEGIN RAISE EXCEPTION 'serialization witness' USING ERRCODE='40001'; END $$");
+      return { ready: true, reasons: [] };
+    },
+  }));
+  expect(result).toMatchObject({ outcome: "conflict", reason: "catalog_publication_transaction_conflict", retryable: true });
+});
+
+it("deduplicates repeated installed and intrinsic reasons in first-occurrence order", async () => {
+  const subject = await transaction(pool, db => seed(db));
+  const result = await readiness([subject.facts.code], await headDigest(), db => ({ ...binding(db),
+    assess: async () => ({ ready: false, reasons: ["first_gate", "unit_gtin_missing", "first_gate", "second_gate"] }),
+  }));
+  expect(result).toMatchObject({ items: [{ ready: false, reasons: ["logistics_reference_missing", "unit_gtin_missing",
+    "catalog_publication_gross_mass_required", "price_readiness_missing", "first_gate", "second_gate"] }] });
+});
+
+it("refuses a missing live code that the sealed head still selects", async () => {
+  const subject = await transaction(pool, db => seed(db, { code: "sealed-code" }));
+  const expected = await headDigest();
+  await transaction(pool, async db => {
+    await db.query("SET LOCAL session_replication_role=replica");
+    await db.query("UPDATE public.catalog_skus SET sku='changed-live-code',publication_facts=NULL WHERE id=$1", [subject.skuId]);
+  });
+  expect(await headDigest()).toBe(expected);
+  expect(await readiness([subject.facts.code], expected)).toMatchObject({ outcome: "dependency_unavailable" });
+});
+
 it("assesses stored and policy-derived prices and preserves installed reason order on one executor", async () => {
   const { skuId, facts } = await transaction(pool, db => seed(db, { offer: "test:priced", complete: true, subscription: false }));
   const list = randomUUID(), expected = await headDigest();
@@ -253,13 +306,26 @@ it("assesses stored and policy-derived prices and preserves installed reason ord
   });
   expect(await readiness([facts.code], expected, bind)).toMatchObject({ items: [{ ready: false, reasons: ["installed_gate", "second_gate"] }] });
   expect(resolutions.at(-1)).toMatchObject({ kind: "subscription_legacy", unitPriceMinor: 875 });
+  for (const overrides of [{ variantId: randomUUID() }, { priceListId: randomUUID() }, { resolvedAt: start }]) {
+    const wrongSubject = await readiness([facts.code], expected, db => {
+      const installed = binding(db);
+      return { ...installed, prices: { resolvePrice: async query => {
+        const money = await installed.prices.resolvePrice(query);
+        return { ...money, base: { ...money.base, ...overrides } };
+      } } };
+    });
+    expect(wrongSubject).toMatchObject({ outcome: "dependency_unavailable" });
+  }
   const policy = { id: randomUUID(), revisionNo: 1, priceListId: list, regionCode: "ZZ", currency: "XXX", channel: "D2C",
     effectiveFrom: start, effectiveTo: null, discountBps: 1000, roundingQuantumMinor: 10, roundingRule: "FLOOR_TO_QUANTUM" as const };
   await pool.query(`INSERT INTO public.subscription_price_policy_revisions(id,revision_no,price_list_id,region_code,currency,channel,
     effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest) VALUES($1,1,$2,'ZZ','XXX','D2C',$3,1000,10,'FLOOR_TO_QUANTUM',$4)`,
   [policy.id, list, start, await digestSubscriptionPricePolicy(policy)]);
-  expect(await readiness([facts.code], expected, bind)).toMatchObject({ items: [{ reasons: ["installed_gate", "second_gate"] }] });
+  expect(await readiness([facts.code], expected)).toMatchObject({ items: [{ ready: false, reasons: ["price_readiness_missing"] }] });
+  expect(await readiness([facts.code], expected, bind)).toMatchObject({ items: [{ reasons: ["price_readiness_missing", "installed_gate", "second_gate"] }] });
   expect(resolutions.at(-1)).toMatchObject({ kind: "subscription_policy", unitPriceMinor: 900 });
+  await pool.query("UPDATE public.price_entries SET active=false WHERE variant_id=$1 AND mode='subscription'", [skuId]);
+  expect(await readiness([facts.code], expected)).toMatchObject({ items: [{ ready: true, reasons: [] }] });
   expect(instants[0]).toEqual(instants[1]);
   expect(instants[2]).toEqual(instants[3]);
 
@@ -295,9 +361,13 @@ it("admits only the service and owner calls and keeps helpers and the ledger own
       if (role === "service_role" || role === "postgres") await expect(run).resolves.toMatchObject({ rowCount: 1 });
       else await expect(run).rejects.toMatchObject({ code: "42501" });
     }
+    if (role !== "postgres") for (const [name, args] of [
+      ["catalog_publication_read_head", []], ["catalog_publication_selected_evidence", [admitted.productId, admitted.skuId]],
+    ] as const) await expect(transaction(pool, async db => {
+      await db.query(`SET LOCAL ROLE ${role}`);
+      await db.query(`SELECT public.${name}(${args.length ? "$1,$2" : ""})`, [...args]);
+    })).rejects.toMatchObject({ code: "42501", message: `permission denied for function ${name}` });
     if (role !== "postgres") for (const sql of [
-      "SELECT public.catalog_publication_read_head()",
-      "SELECT public.catalog_publication_selected_evidence(NULL,NULL)",
       "SELECT * FROM public.catalog_publications LIMIT 1",
       "SELECT * FROM public.catalog_publication_heads LIMIT 1",
       "SELECT * FROM public.catalog_sku_revisions LIMIT 1",

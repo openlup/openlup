@@ -1320,14 +1320,16 @@ compiles installed declarations without optional provider peers.
 
 Install the complete PostgreSQL catalogue through `20261123193000_catalog_publication_reads.sql`.
 Call the experimental `readPostgresCatalogMembershipPage(executor, input)`
-on a commerce executor. Pass back the returned cursor with the same offer and
-mode. If the head moved, restart at the first page.
+on a commerce executor. On a transaction executor, await the read before issuing
+more commands so its savepoint can preserve earlier work on refusal. Pass back
+the cursor with the same offer and mode. If the head moved, restart at the first page.
 
 Call `readPostgresCatalogActivationReadiness(ownerLane, bind, input)` with the
 observed head digest and 1–100 SKU codes. The installed binding receives the
 transaction executor. Supply the product-type registry, price channel, strict
 `CommercePriceAuthorityPort` built on that executor and the installed subject
 predicate. Every assessment uses the same snapshot and price evaluation instant.
+An unavailable observation rolls back the batch, and a serialization conflict is retryable.
 A busy or moved head returns a conflict. Reload before retrying a moved head.
 
 Opt-in Node tooling: `@openlup/platform/catalog/testing` exports

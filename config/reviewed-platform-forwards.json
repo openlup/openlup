@@ -8639,7 +8639,7 @@
     },
     {
       "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-      "sha256": "81f6e44e0fc56110ca5ca0e66dda79a94525ba909fbaaf83dd81355ff7a2476b",
+      "sha256": "f0a1804c8eff5cf0e45cf936c143cd804c394eaf9acebfe47689fd07e37d30ed",
       "functions": [
         {
           "signature": "public.catalog_publication_read_head()",
@@ -8659,7 +8659,7 @@
         {
           "signature": "public.catalog_publication_activation_readiness(text[],text)",
           "beforeSha256": null,
-          "afterSha256": "76066605a909c55d11a5540be60bec2efd2a1b7058d15cb58f5ffad32899a57c"
+          "afterSha256": "54d84ca556b215cee16d5258b4ba6176bda6adbf0c591c69f35ab2bbca1587ec"
         }
       ]
     }

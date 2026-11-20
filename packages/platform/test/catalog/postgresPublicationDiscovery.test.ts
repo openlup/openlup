@@ -6,14 +6,17 @@ const page = { offerVersion: "test:offer", limit: 1 };
 const batch = { skuCodes: ["article-100"], expectedHeadDigest: digest };
 
 it("uses the supplied membership executor and distinguishes SQL refusals from unusable envelopes", async () => {
-  const query = vi.fn().mockResolvedValueOnce({ rows: [{ result: { protocol: "legacy", headDigest: null, items: [], nextCursor: null } }] })
+  const queryPage = vi.fn().mockResolvedValueOnce({ rows: [{ result: { protocol: "legacy", headDigest: null, items: [], nextCursor: null } }] })
     .mockResolvedValueOnce({ rows: [{ result: { protocol: "legacy", headDigest: null, items: [], nextCursor: {} } }] })
     .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "42501" }))
     .mockRejectedValueOnce(Object.assign(new Error("catalog_publication_live_drift"), { code: "40001" }))
     .mockRejectedValueOnce(Object.assign(new Error("concurrent transaction"), { code: "40001" }))
     .mockRejectedValueOnce(Object.assign(new Error("unknown function"), { code: "42883" }));
+  const query = vi.fn((sql: string, args?: unknown[]) => sql.startsWith("SAVEPOINT")
+    ? Promise.reject(Object.assign(new Error("no caller transaction"), { code: "25P01" }))
+    : queryPage(sql, args));
   expect(await readPostgresCatalogMembershipPage({ query }, page)).toMatchObject({ protocol: "legacy" });
-  expect(query.mock.calls[0]?.[1]).toEqual(["test:offer", null, 1, null]);
+  expect(queryPage.mock.calls[0]?.[1]).toEqual(["test:offer", null, 1, null]);
   expect(await readPostgresCatalogMembershipPage({ query }, page)).toMatchObject({ outcome: "dependency_unavailable" });
   expect(await readPostgresCatalogMembershipPage({ query }, page)).toMatchObject({ outcome: "unauthorized" });
   expect(await readPostgresCatalogMembershipPage({ query }, page)).toMatchObject({ outcome: "conflict", reason: "catalog_publication_live_drift" });
@@ -35,9 +38,9 @@ it("times out at the fence without reading authority or binding readiness", asyn
 it("rejects misaligned or incomplete readiness observations before binding", async () => {
   const bind = vi.fn();
   for (const result of [
-    { protocol: "governed", headDigest: "b".repeat(64), context: null, items: [] },
-    { protocol: "governed", headDigest: digest, context: null, items: [{ skuCode: "other", evidence: null, primaryPresent: null, priceShapeInvalid: null }] },
-    { protocol: "governed", headDigest: digest, context: null, items: [{ skuCode: "article-100", evidence: null, primaryPresent: true, priceShapeInvalid: null }] },
+    { protocol: "governed", headDigest: "b".repeat(64), context: null, selectedListId: null, items: [] },
+    { protocol: "governed", headDigest: digest, context: null, selectedListId: null, items: [{ skuCode: "other", evidence: null, primaryPresent: null, priceShapeInvalid: null, storedSubscriptionRows: null }] },
+    { protocol: "governed", headDigest: digest, context: null, selectedListId: null, items: [{ skuCode: "article-100", evidence: null, primaryPresent: true, priceShapeInvalid: null, storedSubscriptionRows: null }] },
   ]) {
     const query = vi.fn().mockResolvedValue({ rows: [{ result }] });
     expect(await readPostgresCatalogActivationReadiness({ run: work => work({ query }) }, bind, batch))

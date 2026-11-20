@@ -118,8 +118,8 @@ $$;
 
 CREATE FUNCTION public.catalog_publication_activation_readiness(p_sku_codes text[],p_expected_head_digest text)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE head_digest text; items jsonb := '[]'; subject record; evidence jsonb; context jsonb;
- region text; currency text; at_time timestamptz; selected_list uuid; primary_present boolean; price_shape_invalid boolean;
+DECLARE head_digest text; items jsonb := '[]'; subject record; evidence jsonb; context jsonb; missing_codes text[] := '{}';
+ region text; currency text; at_time timestamptz; selected_list uuid; primary_present boolean; price_shape_invalid boolean; stored_subscription_rows integer;
 BEGIN
  IF p_sku_codes IS NULL OR cardinality(p_sku_codes) NOT BETWEEN 1 AND 100 OR array_ndims(p_sku_codes)<>1
   OR EXISTS (SELECT 1 FROM unnest(p_sku_codes) AS input(code) WHERE code IS NULL OR code !~ '^[A-Za-z0-9._:-]{1,160}$')
@@ -138,7 +138,7 @@ BEGIN
   LEFT JOIN (public.catalog_skus s JOIN public.catalog_publication_heads h ON h.product_id=s.product_id)
    ON s.sku COLLATE "C"=input.code COLLATE "C" ORDER BY input.position
  LOOP
-  evidence := NULL; primary_present := NULL; price_shape_invalid := NULL;
+  evidence := NULL; primary_present := NULL; price_shape_invalid := NULL; stored_subscription_rows := NULL;
   IF subject.id IS NOT NULL THEN
    evidence := public.catalog_publication_selected_evidence(subject.product_id,subject.id);
    IF context IS NULL THEN
@@ -150,15 +150,25 @@ BEGIN
    END IF;
    SELECT EXISTS (SELECT 1 FROM public.catalog_skus s WHERE (s.product_id,s.id)=
      (subject.product_id,(evidence#>>'{product,primarySkuId}')::uuid) AND s.status<>'archived'),
-    EXISTS (SELECT 1 FROM public.price_entries e WHERE e.price_list_id=selected_list AND e.variant_id=subject.id
-     AND e.active AND e.valid_from<=at_time AND (e.valid_to IS NULL OR e.valid_to>at_time)
-     AND (e.mode='any' OR e.amount_kind<>'gross' OR e.min_qty<>1))
-   INTO primary_present,price_shape_invalid;
+    coalesce(bool_or(e.mode='any' OR e.amount_kind<>'gross' OR e.min_qty<>1),false),
+    count(*) FILTER (WHERE e.mode='subscription')
+   INTO primary_present,price_shape_invalid,stored_subscription_rows
+   FROM public.price_entries e WHERE e.price_list_id=selected_list AND e.variant_id=subject.id
+    AND e.active AND e.valid_from<=at_time AND (e.valid_to IS NULL OR e.valid_to>at_time);
+  ELSE missing_codes := array_append(missing_codes,subject.code);
   END IF;
   items := items || jsonb_build_array(jsonb_build_object('skuCode',subject.code,'evidence',evidence,
-   'primaryPresent',primary_present,'priceShapeInvalid',price_shape_invalid));
+   'primaryPresent',primary_present,'priceShapeInvalid',price_shape_invalid,'storedSubscriptionRows',stored_subscription_rows));
  END LOOP;
- RETURN jsonb_build_object('protocol','governed','headDigest',head_digest,'items',items,'context',context);
+ IF cardinality(missing_codes)>0 AND EXISTS (
+   SELECT 1 FROM public.catalog_sku_revisions r JOIN public.catalog_publication_heads h ON h.product_id=r.product_id
+   JOIN public.catalog_publications p ON (p.product_id,p.id,p.revision)=(h.product_id,h.publication_id,h.revision)
+   WHERE r.sku_code COLLATE "C"=ANY(missing_codes) AND p.canonical_state::jsonb->'skus' @>
+    jsonb_build_array(jsonb_build_object('skuId',r.sku_id,'revisionId',r.id,'revision',r.revision,'digest',r.digest))
+ ) THEN
+  RAISE EXCEPTION 'catalog_publication_selected_evidence_invalid' USING ERRCODE='23514';
+ END IF;
+ RETURN jsonb_build_object('protocol','governed','headDigest',head_digest,'items',items,'context',context,'selectedListId',selected_list);
 END;
 $$;
 
