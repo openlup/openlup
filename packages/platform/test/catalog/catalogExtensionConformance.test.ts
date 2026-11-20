@@ -45,9 +45,17 @@ describe("offline catalogue conformance", () => {
     p.types[0].attributes = [{ ...attribute, key: "recycled_cover" }];
     expect((await check(p)).exitCode).toBe(0);
   });
-  it("explains how to fix a required locale missing from the declared locales", async () => {
+  it.each([
+    { name: "required locale missing from the declared locales",
+      valueType: { kind: "localized_text" as const, maxLength: 100, locales: ["en"], requiredLocales: ["pl"] },
+      correction: { kind: "localized_text" as const, maxLength: 100, locales: ["en", "pl"], requiredLocales: ["pl"] },
+      field: "requiredLocales", remedy: /^Correct the attribute definition at the reported path to match the attribute grammar\b/u },
+    { name: "text attribute with inverted bounds",
+      valueType: { kind: "text" as const, minLength: 10, maxLength: 3 },
+      correction: { kind: "text" as const, minLength: 10, maxLength: 10 },
+      field: "maxLength", remedy: /attribute kind, cardinality or bounds/u },
+  ])("explains how to fix a $name", async ({ valueType, correction, field, remedy }) => {
     const p = pack();
-    const valueType = { kind: "localized_text" as const, maxLength: 100, locales: ["en"], requiredLocales: ["pl"] };
     const attribute: AttributeDefinition = { key: "description", scope: "product", valueType,
       required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} };
     p.types[0].attributes = [attribute];
@@ -56,11 +64,11 @@ describe("offline catalogue conformance", () => {
     expect(report.exitCode).toBe(1);
     expect(report.findings).toContainEqual(expect.objectContaining({
       code: "definition_attribute_invalid",
-      path: "/packs/0/pack/types/0/attributes/0/valueType/requiredLocales",
-      fix: expect.stringMatching(/^Correct the attribute definition at the reported path to match the attribute grammar\b/u),
+      path: `/packs/0/pack/types/0/attributes/0/valueType/${field}`,
+      fix: expect.stringMatching(remedy),
     }));
 
-    p.types[0].attributes = [{ ...attribute, valueType: { ...valueType, locales: ["en", "pl"] } }];
+    p.types[0].attributes = [{ ...attribute, valueType: correction }];
     expect((await check(p)).exitCode).toBe(0);
   });
   it("conformance_reuses_row_validators", async () => {
