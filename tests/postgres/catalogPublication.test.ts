@@ -127,6 +127,52 @@ it.each(["origin registration bytes", "authored document"] as const)("refuses co
   expect((await pool.query("SELECT revision FROM public.catalog_draft_heads WHERE draft_id=$1", [data.draftId])).rows).toEqual([{ revision: 1 }]);
 });
 
+it("refuses a registration whose original text is a JSON object instead of a string", async () => {
+  const data = fixture();
+  let staged = false;
+  const error = await transaction(pool, async db => {
+    const issue = await graph(db, data, null, true, { documentText: "{}", registrationText: {} });
+    expect(issue.document.digest).toBe(hash("{}"));
+    await insertGraph(db, issue);
+    staged = true;
+  }).catch(error => error);
+  expect(staged).toBe(true);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_content_changed" });
+  expect((await pool.query("SELECT id FROM public.catalog_publications WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+  expect((await pool.query("SELECT id FROM public.catalog_products WHERE id=$1", [data.productId])).rows).toEqual([]);
+});
+
+const jsonDepth = (value: unknown, depth = 0): number => value !== null && typeof value === "object"
+  ? Math.max(depth, ...Object.values(value).map(item => jsonDepth(item, depth + 1))) : depth;
+
+it.each([48, 49])("starts the candidate at the released draft's own depth for a deepest value at %i", async deepest => {
+  const data = fixture();
+  // The authored document sits at depth 3 and its value at 4; each array adds one level.
+  let nested: unknown = [];
+  for (let level = 4; level < deepest; level++) nested = [nested];
+  const document = { value: nested };
+  let staged = false;
+  const error = await transaction(pool, async db => {
+    const issue = await graph(db, data, null, true, { documentText: json(document), authoredDocument: document });
+    const { rows: [draft] } = await db.query("SELECT payload FROM public.catalog_draft_revisions WHERE draft_id=$1", [data.draftId]);
+    expect(jsonDepth(draft.payload)).toBe(deepest);
+    await insertGraph(db, issue);
+    staged = true;
+  }).catch(error => error);
+  expect(staged).toBe(true);
+  const issued = await pool.query("SELECT revision FROM public.catalog_publications WHERE product_id=$1", [data.productId]);
+  const approvals = await pool.query("SELECT action FROM public.catalog_publication_decisions WHERE product_id=$1", [data.productId]);
+  if (deepest === 48) {
+    expect(error).toBeUndefined();
+    expect(issued.rows).toEqual([{ revision: 1 }]);
+    expect(approvals.rows).toEqual([{ action: "approve" }]);
+  } else {
+    expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_approval_invalid" });
+    expect(issued.rows).toEqual([]);
+    expect(approvals.rows).toEqual([]);
+  }
+});
+
 it.each([
   ["receipt", { receipt: "omit" }, "catalog_publication_receipt_invalid"],
   ["receipt timestamp", { receipt: "timestamp" }, "catalog_publication_receipt_invalid"],
@@ -422,6 +468,26 @@ it("gives the caller a remedy for a publication head with revision zero", async 
     message: "Reload the product and use the publication identifiers returned for it." };
   expect(await reader.reads.readback(head)).toEqual(refusal);
   expect(await reader.readbackV2(head)).toEqual(refusal);
+});
+
+it.each([
+  ["a changed digest", (head: Graph["head"]) => ({ ...head, documentDigest: hash("another document") }),
+    { outcome: "conflict", reason: "head_conflict" }, "head_conflict",
+    "The selected publication head does not match the saved publication. Reload the product and select its publication again."],
+  ["an absent publication", (head: Graph["head"]) => ({ ...head, publicationId: randomUUID() }),
+    { outcome: "unsupported", reason: "publication_not_supported" }, "catalog_publication_absent",
+    "The selected publication does not exist. Reload the product and select one of its publications."],
+] as const)("gives the caller a remedy on both exact reads for %s", async (_kind, select, released, exactReason, message) => {
+  const issued = await transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    await insertGraph(db, issue);
+    return issue.head;
+  });
+  const reader = publicationReader();
+  const head = select(issued);
+  expect(await reader.reads.readback(head)).toEqual({ ...released, message });
+  expect(await reader.readbackV2(head)).toEqual({ outcome: released.outcome, reason: exactReason, message });
+  expect(await reader.readbackV2(issued)).toMatchObject({ outcome: "page", head: issued });
 });
 
 it("uses the exact significant UTF-8 bytes of the recovery command key", async () => {

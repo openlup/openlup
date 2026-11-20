@@ -8488,7 +8488,7 @@
     },
     {
       "path": "db/platform/migrations/20261123190000_catalog_publication.sql",
-      "sha256": "85fdb43e0da853aa122b4e4f5df213c23bbddb64440b9c94c32a7f7a21dd1ecc",
+      "sha256": "4fbc51c2dbe2cfb8dc4f3a6454edb30d061ac83a972d7dbdf5abc54d35492a02",
       "functions": [
         {
           "signature": "public.catalog_publication_receipt_input(text)",
@@ -8518,7 +8518,7 @@
         {
           "signature": "public.catalog_publication_candidate_source(uuid,text,text)",
           "beforeSha256": null,
-          "afterSha256": "6056214b972b2f1dbef5e6515e4ecf50279b15a46ea8a917e7bcd65442d523d3"
+          "afterSha256": "2a345aa9cae87df91f43bfa0b018db0a77862667b56cbbf03423fd2407be824b"
         },
         {
           "signature": "public.catalog_publication_assert_head(uuid,boolean)",
@@ -8593,7 +8593,7 @@
         {
           "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
           "beforeSha256": null,
-          "afterSha256": "0a093d4c62be4c9bc068373edb01dcd17aa9ef1772ba4476af58015072e28ffd"
+          "afterSha256": "24c17adddaa3e63197f8b9ce20ed7ca4c28f6f4ecb161dbfbb11f17852900010"
         },
         {
           "signature": "public.catalog_publication_sku_admit()",

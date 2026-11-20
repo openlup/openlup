@@ -41,14 +41,14 @@ type Fixture = ReturnType<typeof fixture> & { skuCode?: string };
 type Head = { publicationId: string; revision: number; documentDigest: string };
 
 export async function graph(db: PoolClient, data: Fixture, before: Head | null = null, stageProduct = true,
-  options: { draftRevision?: number; registerExisting?: boolean; registrationText?: string;
-    retainedSource?: CatalogPublishedProduct["source"]; authoredDocument?: Record<string, string> } = {}) {
+  options: { draftRevision?: number; registerExisting?: boolean; registrationText?: string | Record<string, never>; documentText?: string;
+    retainedSource?: CatalogPublishedProduct["source"]; authoredDocument?: Record<string, unknown> } = {}) {
   const { productId, skuId, draftId, documentId } = data;
   const revision = (before?.revision ?? 0) + 1;
   const draftRevision = options.draftRevision ?? revision;
   const issueId = randomUUID(), skuRevisionId = randomUUID(), approvalId = randomUUID();
   const slug = `article-${productId}`, code = data.skuCode ?? `sku-${skuId}`;
-  const canonicalText = json({ label: "retained immutable bytes" });
+  const canonicalText = options.documentText ?? json({ label: "retained immutable bytes" });
   const document = { id: documentId, productId, revisionNo: 1, schemaId: "example:document", documentRef: "example:ref", sourceRef: "example:source", digest: hash(canonicalText) };
   const content: CatalogPublishedProduct["content"] = { schemaVersion: 1, catalogAction: before ? "revise" : "create", presentation: {},
     requestedModes: [], offerMemberships: [], publicationSkus: [] };

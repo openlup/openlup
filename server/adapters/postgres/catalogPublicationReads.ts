@@ -31,6 +31,8 @@ const selectorSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"
 const publicationRefusals = {
   catalog_publication_cursor_invalid: ["candidate_invalid", "Restart from the first page or reuse the continuation returned for this product."],
   catalog_publication_query_invalid: ["candidate_invalid", "Reload the product and use the publication identifiers returned for it."],
+  catalog_publication_absent: ["catalog_publication_absent", "The selected publication does not exist. Reload the product and select one of its publications."],
+  head_conflict: ["head_conflict", "The selected publication head does not match the saved publication. Reload the product and select its publication again."],
   catalog_publication_wire_invalid: ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."],
   catalog_publication_axes_invalid: ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."],
   catalog_publication_attributes_invalid: ["publication_attributes_invalid", "An attribute value is invalid. Check the value type in the product or SKU definition."],
@@ -67,6 +69,10 @@ const readInvalid = "catalog_publication_read_invalid";
 
 function requireCondition(condition: unknown, reason = readInvalid, outcome: CatalogPublicationFailure["outcome"] = "dependency_unavailable"): asserts condition {
   if (!condition) publicationRefuse(reason, outcome);
+}
+// The exact selector refuses only with codes from the remedy map, so a new reason without a remedy does not compile.
+function requireSelection(condition: unknown, reason: AdmissionDiagnostic, outcome: CatalogPublicationFailure["outcome"]): asserts condition {
+  requireCondition(condition, reason, outcome);
 }
 
 const deferredForeignKeys = new Map([
@@ -261,10 +267,10 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
   }
 
   async function exact(db: PgQueryExecutor, head: CatalogHeadRef) {
-    requireCondition(headSchema.safeParse(head).success, "catalog_publication_query_invalid", "validation_issue");
+    requireSelection(headSchema.safeParse(head).success, "catalog_publication_query_invalid", "validation_issue");
     const issue = await verifiedIssue(db, head.publicationId);
-    requireCondition(issue, "catalog_publication_absent", "unsupported");
-    requireCondition(equal(issue.head, head), "head_conflict", "conflict");
+    requireSelection(issue, "catalog_publication_absent", "unsupported");
+    requireSelection(equal(issue.head, head), "head_conflict", "conflict");
     return issue;
   }
 

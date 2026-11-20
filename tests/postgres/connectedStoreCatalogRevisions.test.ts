@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { catalogPublicationAdmissionRefusal, createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { actorId, decisionReceipt, decisionRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction } from "./catalogPublicationFixture.js";
+import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -390,6 +390,41 @@ it("restores reordered sealed history and recovers the original publication afte
   });
   expect(await journeyCensus(target.owner)).toEqual(drifted);
 });
+
+it("refuses a retained registration whose original text is a JSON object during restore", async () => {
+  if (!(await source.owner.query("SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1", [actorId])).rows.length) {
+    await installPublicationActors(source.owner);
+  }
+  const data = fixture();
+  const origin = await transaction(source.owner, async db => {
+    const older = await graph(db, data, null, true, { documentText: "{}" });
+    await documentRow(db, older);
+    return older;
+  });
+  await transaction(source.owner, async db => {
+    const issuing = await graph(db, data, null, false, { draftRevision: 2, retainedSource: origin.source, documentText: "{}" });
+    await insertGraph(db, issuing, { existingDocument: true });
+  });
+  const captured = await captureStoreJourney(source.owner, "catalog-registration-text");
+  const tampered = structuredClone(captured);
+  const drafts = tampered.owned.find(table => table.table === "catalog_draft_revisions")!.rows;
+  const index = drafts.findIndex(text => JSON.parse(text).draft_id === data.draftId && JSON.parse(text).revision === 1);
+  expect(index).toBeGreaterThanOrEqual(0);
+  const draft = JSON.parse(drafts[index]!) as { payload: { publication: { operations: { op: string; canonicalText?: unknown }[] } } };
+  const registration = draft.payload.publication.operations.find(operation => operation.op === "register_document_revision")!;
+  expect(registration.canonicalText).toBe("{}");
+  registration.canonicalText = {};
+  drafts[index] = (await source.owner.query<{ value: string }>(`SELECT to_jsonb(x)::text AS value FROM
+    (SELECT set_config('TimeZone','UTC',true)) zone,
+    jsonb_populate_record(NULL::public.catalog_draft_revisions,$1::jsonb) x`, [JSON.stringify(draft)])).rows[0]!.value;
+  rehash(tampered);
+  const pristine = await journeyCensus(target.owner);
+  await expect(restore(target.owner, tampered)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_content_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(pristine);
+  expect(await restore(target.owner, captured)).toMatchObject({ replayed: false });
+}, 65_000);
 
 function rehash(value: ConnectedNativeStoreCapture) {
   const { sha256: _previous, ...body } = value;

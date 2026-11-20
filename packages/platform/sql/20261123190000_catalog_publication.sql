@@ -229,9 +229,11 @@ BEGIN
   WHERE d.draft_id=parts[1]::uuid AND d.revision=parts[2]::integer AND d.product_id=p_product
    AND d.status='open' AND d.payload->'schemaVersion'='3'::jsonb;
   IF authored IS NOT NULL AND (parts[4] IS NULL OR expected_head->>'revision'=parts[5])
-   AND encode(sha256(convert_to(public.catalog_publication_canonical(jsonb_build_array(
-     'catalog-candidate',1,authored,jsonb_build_array((authored #> '{product,type}') ||
-     jsonb_build_object('definitionDigest',definition_digest)), expected_head),0),'UTF8')),'hex')=p_digest THEN
+   -- Each element starts at its own root depth, as in the released candidate reader.
+   AND encode(sha256(convert_to('["catalog-candidate",1,' || public.catalog_publication_canonical(authored,0) || ','
+     || public.catalog_publication_canonical(jsonb_build_array((authored #> '{product,type}') ||
+       jsonb_build_object('definitionDigest',definition_digest)),0) || ','
+     || public.catalog_publication_canonical(coalesce(expected_head,'null'::jsonb),0) || ']','UTF8')),'hex')=p_digest THEN
    RETURN authored;
   END IF;
  END IF;
@@ -793,6 +795,7 @@ BEGIN
          END IS NOT DISTINCT FROM d.provenance
          AND operation->'documentRef'=to_jsonb(d.document_ref) AND operation->'sourceRef'=to_jsonb(d.source_ref)
          AND operation->'digest'=to_jsonb(d.digest)
+         AND jsonb_typeof(operation->'canonicalText')='string'
          AND CASE WHEN pg_input_is_valid(operation->>'canonicalText','jsonb')
            THEN (operation->>'canonicalText')::jsonb=stored.payload ELSE false END
          AND encode(sha256(convert_to(operation->>'canonicalText','UTF8')),'hex')=d.digest) IS TRUE AS matches
