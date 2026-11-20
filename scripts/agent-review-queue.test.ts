@@ -51,7 +51,7 @@ function handoffFixture() {
 }
 
 describe('hosted receipt comments', () => {
-  const modernReceipt = (reviewer = 'reviewer-1', card = 'receipt-card', padding = '') => {
+  const modernReceipt = (reviewer = 'reviewer-1', card = 'receipt-card') => {
     const rules = { version: 3, base: digest([]), head: digest([]) };
     const candidate = { base: receipt.base, head: receipt.head, tree: receipt.tree, changedPaths: observed.changedPaths, modeChanged: false, clean: true, rules };
     const prepared = prepareCandidate(null, { ...candidate, authorSessionId: 'author', intent: { risk: 'behavior', criteria: 'Verify the receipt' } }, time);
@@ -60,8 +60,11 @@ describe('hosted receipt comments', () => {
     const first = recordReport(failed, { ...report, reviewer, closes: [card] }, time);
     const second = recordReport(first, { ...report, reviewer: 'reviewer-2' }, time);
     const completed = recordReport(second, { ...report, reviewer: 'delta-only', ordinary: true }, time);
-    return receiptSummary({ ...completed, padding }, receipt.pr, time);
+    return receiptSummary(completed, receipt.pr, time);
   };
+  const historicalRawReceipt = (summary: ReturnType<typeof modernReceipt>) => receiptBody(summary)
+    .replace(COMPRESSED_RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER)
+    .replace(/```text\n[^\n]+/u, () => '```json\n' + JSON.stringify(summary));
 
   const wait = (f: ReturnType<typeof handoffFixture>) => waitNativeAdmission({
     event: { number: receipt.pr, repository: { private: false }, pull_request: { head: { sha: receipt.head } } },
@@ -80,27 +83,33 @@ describe('hosted receipt comments', () => {
     } finally { log.mockRestore(); }
   };
 
-  it.each([false, true])('renders and admits the counted reports with gzip=%s', async gzip => {
-    const summary = modernReceipt(undefined, undefined, gzip ? 'x'.repeat(65_536) : '');
+  it('renders and admits the counted reports above one gzip machine block', async () => {
+    const summary = modernReceipt();
     const rendered = receiptBody(summary);
-    const json = JSON.stringify(summary);
-    const type = gzip ? 'text' : 'json';
-    const payload = gzip ? gzipSync(json).toString('base64') : json;
+    const payload = gzipSync(JSON.stringify(summary)).toString('base64');
     expect(rendered.split('\n')).toEqual([
-      gzip ? COMPRESSED_RECEIPT_MARKER : ECONOMY_RECEIPT_MARKER, '',
+      COMPRESSED_RECEIPT_MARKER, '',
       'PR #12 · Head bbbbbbb · Tree ccccccc · Verdict PASS · Reviewer floor 2 · Scope full', '',
       '| Reviewer | Verdict | Scope | Cards closed |', '| --- | --- | --- | --- |',
       '| reviewer-1 | PASS | full | receipt-card |', '| reviewer-2 | PASS | full | none |', '',
       'Open cards: none', '', '<details><summary>Machine-readable receipt (verified by admission)</summary>', '',
-      `\`\`\`${type}`, payload, '```', '', '</details>',
+      '```text', payload, '```', '', '</details>',
     ]);
     expect(parseReceipt(rendered)).toEqual(summary);
     await expect(waitFor(rendered)).resolves.toEqual(summary);
   });
 
+  it('parses and admits a historical framed raw v3 receipt', async () => {
+    const summary = modernReceipt();
+    const rendered = historicalRawReceipt(summary);
+    expect(rendered).toContain(`\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\`\n`);
+    expect(parseReceipt(rendered)).toEqual(summary);
+    await expect(waitFor(rendered)).resolves.toEqual(summary);
+  });
+
   it.each([false, true])('ignores a changed verdict cell, a deleted row and a fake row with gzip=%s', async gzip => {
-    const summary = modernReceipt(undefined, undefined, gzip ? 'x'.repeat(65_536) : '');
-    const rendered = receiptBody(summary);
+    const summary = modernReceipt();
+    const rendered = gzip ? receiptBody(summary) : historicalRawReceipt(summary);
     const edited = rendered.replace('| reviewer-1 | PASS |', '| reviewer-1 | FAIL |')
       .replace('| reviewer-2 | PASS | full | none |\n', '')
       .replace('\n\nOpen cards:', '\n| fake-reviewer_2.1 | PASS | delta | made-up-card, second? |\n\nOpen cards:');
@@ -115,7 +124,8 @@ describe('hosted receipt comments', () => {
   });
 
   describe.each(['raw', 'gzip'])('framed %s refusals', format => {
-    const rendered = receiptBody(modernReceipt(undefined, undefined, format === 'gzip' ? 'x'.repeat(65_536) : ''));
+    const summary = modernReceipt();
+    const rendered = format === 'gzip' ? receiptBody(summary) : historicalRawReceipt(summary);
     const section = rendered.slice(rendered.indexOf('\n<details>'));
     const machine = section.split('\n').slice(-5, -2).join('\n');
     const fence = machine.split('\n')[0];
@@ -143,8 +153,8 @@ describe('hosted receipt comments', () => {
   });
 
   it.each([false, true])('refuses a duplicate machine block with gzip=%s and names the comment and remedy', async gzip => {
-    const summary = modernReceipt(undefined, undefined, gzip ? 'x'.repeat(65_536) : '');
-    const rendered = receiptBody(summary);
+    const summary = modernReceipt();
+    const rendered = gzip ? receiptBody(summary) : historicalRawReceipt(summary);
     const machine = rendered.split('\n').slice(-5, -2).join('\n');
     const duplicate = `${rendered}\n\n${machine}`;
     expect(parseReceipt(duplicate)).toBeNull();
@@ -155,7 +165,7 @@ describe('hosted receipt comments', () => {
   });
 
   it('reports the JSON offset and remedy when a client rewrites the control escape', async () => {
-    const rendered = receiptBody(modernReceipt('reviewer\u0010-1'));
+    const rendered = historicalRawReceipt(modernReceipt('reviewer\u0010-1'));
     const rewritten = rendered.replaceAll('\\u0010', '\\^P');
     expect(parseReceipt(rendered)).not.toBeNull();
     expect(parseReceipt(rewritten)).toBeNull();
@@ -167,7 +177,7 @@ describe('hosted receipt comments', () => {
   });
 
   it('reports an undecodable compressed block and the remedy', async () => {
-    const rendered = receiptBody(modernReceipt(undefined, undefined, 'x'.repeat(65_536)));
+    const rendered = receiptBody(modernReceipt());
     const malformed = rendered.replace(/\n```text\n[^\n]+/u, '\n```text\nAAAA');
     expect(parseReceipt(malformed)).toBeNull();
     await expect(waitFor(malformed)).rejects.toThrow(
@@ -218,7 +228,7 @@ describe('hosted receipt comments', () => {
     const reviewer = 'reviewer:???json???details?'.padEnd(80, 'x');
     const card = 'card:???json???details?'.padEnd(80, 'x');
     expect(lines).toContain(`| ${reviewer} | PASS | full | ${card} |`);
-    expect(lines.filter(line => line.startsWith('```'))).toEqual(['```json', '```']);
+    expect(lines.filter(line => line.startsWith('```'))).toEqual(['```text', '```']);
     expect(parseReceipt(rendered)).toEqual(summary);
     await expect(waitFor(rendered)).resolves.toEqual(summary);
   });

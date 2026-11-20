@@ -377,27 +377,11 @@ function receiptDisplay(summary) {
     `Open cards: ${open || 'none'}`,
   ].join('\n');
 }
-function encodeReceiptBackslashes(json) {
-  const parts = [];
-  let start = 0;
-  // Skip the second character of every escape, even when it is not a backslash.
-  for (let index = 0; index < json.length; index++) {
-    if (json[index] !== '\\') continue;
-    index++;
-    if (json[index] !== '\\') continue;
-    parts.push(json.slice(start, index - 1), '\\u005c');
-    start = index + 1;
-  }
-  return parts.length ? parts.join('') + json.slice(start) : json;
-}
 export function receiptBody(summary) {
   const json = JSON.stringify(summary);
   if (summary.version !== 3) return `${RECEIPT_MARKER}\n\`\`\`json\n${json}\n\`\`\``;
-  const display = receiptDisplay(summary);
-  const wrap = (marker, type, payload) => `${marker}\n\n${display}\n\n${RECEIPT_DETAILS_HEADER}\n\n\`\`\`${type}\n${payload}\n\`\`\`\n\n</details>`;
-  const raw = wrap(ECONOMY_RECEIPT_MARKER, 'json', encodeReceiptBackslashes(json));
-  if (raw.length <= 65_536) return raw;
-  const compressed = wrap(COMPRESSED_RECEIPT_MARKER, 'text', gzipSync(json).toString('base64'));
+  const payload = gzipSync(json).toString('base64');
+  const compressed = `${COMPRESSED_RECEIPT_MARKER}\n\n${receiptDisplay(summary)}\n\n${RECEIPT_DETAILS_HEADER}\n\n\`\`\`text\n${payload}\n\`\`\`\n\n</details>`;
   const limit = 200_000;
   demand(compressed.length <= limit, `compressed receipt is ${compressed.length} characters (limit ${limit}). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   return compressed;

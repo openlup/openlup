@@ -1,9 +1,9 @@
-import { execFileSync, spawnSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { REGISTRY_PATHS, readRegistry, registryUnion, strictRegistryJson } from './agent-review-registry.mjs';
-import { admit, digest, coverageState, prepareCandidate, protectedCoveragePath, receiptBody, receiptSummary, recordReport, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, digest, coverageState, protectedCoveragePath, receiptBody, receiptSummary, verdict, ECONOMY_RECEIPT_MARKER, COMPRESSED_RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { carryOverSourceReview, captureReviewRules, captureSessionCandidate, sessionMain, validateEconomySession, git as sourceGit } from './agent-review-session.mjs';
 import { parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
@@ -54,242 +54,6 @@ function addRegistry(path: string, source: string, entry: string) {
   const list = [...registry.lists[0], entry]; const replacement = path === REGISTRY_PATHS[1] ? JSON.stringify(list) : `[\n${list.map(value => `  ${JSON.stringify(value)},`).join('\n')}\n]`;
   return source.slice(0, start) + replacement + source.slice(end);
 }
-
-describe('review input transport', () => {
-  const invisible = '\u0010\u001b\u007f\u0085';
-  const whitespace = '\tline\nnext\rreturn';
-  const nestedArray = (leaf: string, depth: number) => '['.repeat(depth) + leaf + ']'.repeat(depth);
-  const prepareRefusal = (field: string, input: string) =>
-    `${field} contains a control character (U+0010); if it is a file name, rename the file and prepare again; otherwise remove it from ${input} and prepare again.`;
-  const legacyRefusal = (field: string, path: string) =>
-    `${field} in ${path} holds a control character (U+0010) recorded before control characters were removed; move that file aside, then prepare and record the reports again.`;
-
-  it('strips report controls before storage and admits the unchanged receipt after caret rewriting', async () => {
-    const f = await fixture();
-    await f.cli('prepare', f.request);
-    const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await f.report({
-      documentation: 'Documentation' + invisible + whitespace,
-      findings: [{ id: 'advice', summary: 'Finding' + invisible + whitespace, material: false }],
-      extra: ['nested\u0085'],
-      ['__proto__']: 'own data\u0010',
-    });
-    expect(notice.mock.calls).toEqual([['record: removed 10 invisible control characters from the report']]);
-    const { report } = (await f.state()).history.at(-1);
-    expect(report).toMatchObject({
-      documentation: 'Documentation' + whitespace,
-      findings: [{ id: 'advice', summary: 'Finding' + whitespace, material: false }],
-      extra: ['nested'],
-    });
-    expect(Object.getOwnPropertyDescriptor(report, '__proto__')?.value).toBe('own data');
-    await f.report();
-    await f.cli('receipt', '12');
-    const body = vi.mocked(console.log).mock.lastCall![0];
-    expect(body).toMatch(/^<!-- openlup-native-review-receipt v3 -->\n/u);
-    expect(body).not.toMatch(/\\u00(?:0[0-9a-f]|1[0-9a-f]|7f|[89][0-9a-f])/iu);
-    expect(body).not.toMatch(/[\p{Cc}--[\n]]/v);
-    const transported = body.replaceAll('\\u0010', '\\^P');
-    expect(transported).toBe(body);
-    const receipt = parseReceipt(transported);
-    const session = await f.state();
-    expect(receipt?.sessionDigest).toBe(digest(session));
-    expect(admit({ receipt, observed: { ...session.candidate, pr: 12, baseValid: true }, now: Date.now() }).ok).toBe(true);
-  });
-
-  it('records clean JSON with the same bytes and digest as direct recording and no notice', async () => {
-    const f = await fixture();
-    await f.cli('prepare', f.request);
-    const previous = await f.state();
-    const at = Date.now();
-    vi.spyOn(Date, 'now').mockReturnValue(at);
-    const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await f.report({ documentation: '  Literal text \\u0010 is evidence.  ' });
-    const input = JSON.parse(await readFile(join(f.scratch, 'report.json'), 'utf8'));
-    const expected = recordReport(previous, input, at);
-    expect(await readFile(join(f.scratch, 'agent-review/session.json'), 'utf8')).toBe(JSON.stringify(expected, null, 2) + '\n');
-    expect(digest(await f.state())).toBe(digest(expected));
-    expect(notice).not.toHaveBeenCalled();
-  });
-
-  it('normalises intent before preparing and on a later read for the coverage digest', async () => {
-    const f = await fixture();
-    const input = JSON.stringify({ authorSessionId: 'author', intent: { risk: 'behavior', criteria: 'Criteria' + invisible + whitespace, extra: ['metadata\u0010'] } });
-    await writeFile(f.request, input);
-    const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const previous = await f.review();
-    expect(previous.intent).toEqual({ risk: 'behavior', criteria: 'Criteria' + whitespace, extra: ['metadata'] });
-    expect(notice.mock.calls).toEqual([['prepare: removed 5 invisible control characters from the intent']]);
-
-    await f.write('app.ts', 'export const before = 3;\n');
-    f.commit();
-    await f.cli('prepare', f.request);
-    expect(notice).toHaveBeenCalledTimes(2);
-    expect(notice).toHaveBeenLastCalledWith('prepare: removed 5 invisible control characters from the intent');
-    const candidate = (await f.state()).candidate;
-    expect(candidate.coverage).toMatchObject({ kind: 'repair', previous: digest(previous.history) });
-    await f.report();
-    await f.report();
-    await expect(f.cli('status', '--explain')).resolves.toBe(0);
-    await expect(f.cli('verify')).resolves.toBe(0);
-    expect(await readFile(f.request, 'utf8')).toBe(input);
-  });
-
-  it('refuses a new Git path containing a control character and prepares after renaming it', async () => {
-    const f = await fixture();
-    await f.cli('prepare', f.request);
-    const path = join(f.scratch, 'agent-review/session.json');
-    const previous = await readFile(path, 'utf8');
-    const input = join(f.scratch, 'agent-review/intent.json');
-    await writeFile(input, await readFile(f.request, 'utf8'));
-    const badPath = 'before\u0010after.txt';
-    await f.write(badPath, 'fixture\n');
-    f.commit();
-    await expect(f.cli('prepare')).rejects.toThrow(prepareRefusal('history[2].candidate.changedPaths[1]', input));
-    expect(await readFile(path, 'utf8')).toBe(previous);
-    f.git('mv', '--', badPath, 'clean.txt');
-    f.commit();
-    await expect(f.cli('prepare')).resolves.toBe(0);
-    const session = await f.state();
-    expect(session.candidate.changedPaths).toEqual(['app.ts', 'clean.txt']);
-    expect(session.history.slice(0, -1)).toEqual(JSON.parse(previous).history);
-  });
-
-  it.each([
-    ['report findings', 'history[2].report["findings\\u0010"]'],
-    ['intent risk', 'history[2].intent["risk\\u0010"]'],
-  ])('refuses a control key that collides with %s and preserves the previous session', async (caseName, field) => {
-    const f = await fixture();
-    await f.cli('prepare', f.request);
-    const path = join(f.scratch, 'agent-review/session.json');
-    const before = await readFile(path, 'utf8');
-    let operation, input, refusal;
-    if (caseName === 'report findings') {
-      input = join(f.scratch, 'report.json');
-      refusal = `${field} contains a control character (U+0010); remove it from ${input} and record again.`;
-      operation = f.report({
-        findings: [{ id: 'blocker', summary: 'Review is blocked.', material: true }],
-        ['findings\u0010']: [],
-      });
-    } else {
-      input = f.request;
-      refusal = prepareRefusal(field, input);
-      const request = JSON.parse(await readFile(f.request, 'utf8'));
-      request.intent['risk\u0010'] = 'routine';
-      await writeFile(f.request, JSON.stringify(request));
-      operation = f.cli('prepare', '--new', f.request);
-    }
-    await expect(operation).rejects.toThrow(refusal);
-    expect(await readFile(path, 'utf8')).toBe(before);
-    const json = JSON.parse(await readFile(input, 'utf8'));
-    if (caseName === 'report findings') {
-      delete json['findings\u0010'];
-      await writeFile(input, JSON.stringify(json));
-      await expect(f.cli('record', input)).resolves.toBe(0);
-      expect((await f.state()).history.at(-1).report.findings).toEqual(json.findings);
-    } else {
-      delete json.intent['risk\u0010'];
-      await writeFile(input, JSON.stringify(json));
-      await expect(f.cli('prepare', '--new', input)).resolves.toBe(0);
-      expect((await f.state()).history.at(-1).intent.risk).toBe('behavior');
-    }
-    expect((await f.state()).history.slice(0, -1)).toEqual(JSON.parse(before).history);
-  });
-
-  it('refuses a historical Git path at load and prepares after moving the session aside', async () => {
-    const f = await fixture();
-    const badPath = 'before\u0010after.txt';
-    await f.write(badPath, 'fixture\n');
-    f.commit();
-    const observed = await captureSessionCandidate(f.cwd, undefined, { env: f.env });
-    const rules = await captureReviewRules(f.cwd, observed);
-    const intent = JSON.parse(await readFile(f.request, 'utf8'));
-    // Recreate the session main prepared from the original Git paths.
-    const legacy = prepareCandidate(null, { ...observed, rules, ...intent }, Date.now());
-    const directory = join(f.scratch, 'agent-review');
-    const path = join(directory, 'session.json');
-    const oldBytes = JSON.stringify(legacy, null, 2) + '\n';
-    await mkdir(directory);
-    await writeFile(path, oldBytes);
-    f.git('mv', '--', badPath, 'clean.txt');
-    f.commit();
-
-    for (const args of [['prepare', f.request], ['prepare', '--new', f.request], ['record', join(f.scratch, 'report.json')], ['receipt', '12']]) {
-      await expect.soft(f.cli(...args), args.join(' ')).rejects.toThrow(legacyRefusal('history[1].candidate.changedPaths[1]', path));
-      expect(await readFile(path, 'utf8')).toBe(oldBytes);
-    }
-    await rename(path, path + '.legacy');
-    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
-    expect((await f.state()).candidate.changedPaths).toEqual(['app.ts', 'clean.txt']);
-    expect(await readFile(path + '.legacy', 'utf8')).toBe(oldBytes);
-  });
-
-  it.each([3_500, 20_000])('ignores a clean unused intent array nested %i levels', async depth => {
-    const f = await fixture();
-    await f.cli('prepare', f.request);
-    const path = join(f.scratch, 'agent-review/session.json');
-    const before = await readFile(path, 'utf8');
-    const clean = await readFile(f.request, 'utf8');
-    await writeFile(f.request, clean.slice(0, -1) + ',"unused":' + nestedArray('null', depth) + '}');
-    const notice = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
-    expect(await readFile(path, 'utf8')).toBe(before);
-    expect(notice).not.toHaveBeenCalled();
-  });
-
-  it('reaches the existing serializer limit for a report array nested 20,000 levels', async () => {
-    const f = await fixture();
-    await f.review();
-    const path = join(f.scratch, 'agent-review/session.json');
-    const before = await readFile(path, 'utf8');
-    const input = join(f.scratch, 'report.json');
-    const report = JSON.parse(await readFile(input, 'utf8'));
-    report.reviewer = 'deep-report';
-    await writeFile(input, JSON.stringify(report).slice(0, -1) + ',"extra":' + nestedArray('null', 20_000) + '}');
-    await expect(f.cli('record', input)).rejects.toMatchObject({
-      name: 'RangeError', stack: expect.stringContaining('at JSON.stringify'),
-    });
-    expect(await readFile(path, 'utf8')).toBe(before);
-  });
-
-  it('finds a control value deep in legacy state and builds its full path', async () => {
-    const f = await fixture();
-    await f.review();
-    const path = join(f.scratch, 'agent-review/session.json');
-    const state = JSON.stringify(await f.state());
-    await writeFile(path, state.slice(0, -1) + ',"extra":' + nestedArray(JSON.stringify('\u0010'), 20_000) + '}');
-    await expect(f.cli('receipt', '12')).rejects.toThrow(
-      legacyRefusal('extra' + '[0]'.repeat(20_000), path),
-    );
-  });
-
-  it('refuses to print a legacy receipt and recovers after moving the session aside', async () => {
-    const f = await fixture();
-    const reviewed = await f.review();
-    const path = join(f.scratch, 'agent-review/session.json');
-    // Use the legacy recorder's unchanged state transition and disk format.
-    const legacy = recordReport(reviewed, { ...reviewed.history.at(-1).report, reviewer: 'legacy', documentation: 'Before\u0010after' }, Date.now());
-    const oldBytes = JSON.stringify(legacy, null, 2) + '\n';
-    await writeFile(path, oldBytes);
-    const receipt = () => spawnSync(process.execPath, [resolve('scripts/agent-review-session.mjs'), 'receipt', '12'], { cwd: f.cwd, env: f.env, encoding: 'utf8' });
-    const refused = receipt();
-    expect.soft(refused.status).toBe(1);
-    expect(refused.stdout).toBe('');
-    const refusal = legacyRefusal('history[4].report.documentation', path);
-    expect(refused.stderr).toBe('invalid: ' + refusal + '\n');
-    expect(await readFile(path, 'utf8')).toBe(oldBytes);
-    await expect(f.cli('prepare', '--new', f.request)).rejects.toThrow(refusal);
-    await expect(f.cli('status')).resolves.toBe(0);
-    await expect(f.cli('verify')).resolves.toBe(0);
-    await expect(f.cli('verify-command', '--', process.execPath, '-e', 'process.exit(0)')).resolves.toBe(0);
-    await rename(path, path + '.legacy');
-    const clean = await f.review();
-    const regenerated = receipt();
-    expect(regenerated.status).toBe(0);
-    expect(regenerated.stdout).not.toContain('\\u0010');
-    expect(parseReceipt(regenerated.stdout)?.session).toEqual(clean);
-    expect(await readFile(path + '.legacy', 'utf8')).toBe(oldBytes);
-  });
-});
 
 describe('closed registry grammar', () => {
   it('rejects duplicate JSON keys and unsupported syntax', () => {
@@ -787,23 +551,16 @@ describe('fixture dependency evidence', () => {
 
 
 describe('v3 source admission from real Git objects', () => {
-  it.each(['raw', 'compressed'])('admits a %s receipt through the full queue reader', async format => {
+  it('admits a newly compressed receipt through the full queue reader', async () => {
     const f = await fixture(); await f.review();
-    if (format === 'compressed') {
-      const findings = Array.from({ length: 20 }, (_, index) => ({ id: `advice-${index}`, summary: 'x'.repeat(3_500), material: false }));
-      await f.report({ findings });
-    }
     const main = await f.mainMove(() => f.write('other.ts', 'main\n'));
     f.git('merge', '--no-ff', '-qm', 'integrate', main); await f.cli('prepare', f.request); const session = await f.state();
     const summary = receiptSummary(session, 12, Date.now());
     await expect(f.cli('receipt', '12')).resolves.toBe(0);
     const body = vi.mocked(console.log).mock.lastCall?.[0];
-    const json = JSON.stringify(summary);
-    expect(body.split('\n')[0]).toBe(format === 'compressed' ? COMPRESSED_RECEIPT_MARKER : ECONOMY_RECEIPT_MARKER);
+    expect(body.split('\n')[0]).toBe(COMPRESSED_RECEIPT_MARKER);
     expect(body).toBe(receiptBody(summary));
     expect(body).toContain('Reviewer floor 0 · Scope git');
-    if (format === 'compressed') expect(json.length).toBeGreaterThan(65_536);
-    else expect(body).toContain(`\n\`\`\`json\n${json}\n\`\`\`\n`);
     expect(parseReceipt(body)).toEqual(summary);
     const pr = { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: session.candidate.head } };
     const api = { get: async (path: string) => path.includes('/pulls/') ? pr : path.includes('/issues/')
