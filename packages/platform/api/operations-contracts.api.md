@@ -266,7 +266,7 @@ interface SettingMetadata {
     readonly key: string;
     readonly domain: string;
     readonly goal: string;
-    readonly schemaVersion: number;
+    readonly schemaVersion: 1;
 }
 /** @experimental Domain-owned metadata for settings discovery. */
 export type SettingDescriptor = SettingMetadata & {

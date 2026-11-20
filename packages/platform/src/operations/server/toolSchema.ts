@@ -22,7 +22,7 @@ export const settingDescriptorSummary = z.strictObject({
   ]),
 });
 const descriptorBase = settingDescriptorSummary.extend({ domain: z.string(), schemaVersion: z.literal(1) });
-export const settingValueDescriptor = descriptorBase.extend({
+const settingValueDescriptor = descriptorBase.extend({
   kind: z.enum(["installed", "code", "callback"]),
   schema: schemaObject(),
   previewSchema: schemaObject(),
@@ -38,7 +38,7 @@ export const settingValueDescriptor = descriptorBase.extend({
     impact: z.enum(["money", "customer-promise", "operations"]),
   }),
 });
-export const settingFactDescriptor = descriptorBase.extend({
+const settingFactDescriptor = descriptorBase.extend({
   kind: z.enum(["cap", "invariant"]),
   runtime: z.strictObject({ level: z.literal("read-only"), reason: z.string() }),
   change: z.strictObject({ reference: z.string() }),

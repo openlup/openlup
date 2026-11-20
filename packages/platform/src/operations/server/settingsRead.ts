@@ -175,14 +175,14 @@ let toolSchemas: ReturnType<typeof createSettingsToolSchemas> | undefined;
 export const settingsReadTools = [
   {
     name: "settings__list",
-    description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.",
+    description: "Find a key by business goal, then use settings__show for value details or a reason and reference.",
     inputSchema: toolInputSchema(settingsListRequest),
     get outputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).listOutput; },
     annotations: { readOnlyHint: true },
   },
   {
     name: "settings__show",
-    description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.",
+    description: "Call settings__list if you need the key. Read value details or a reason and reference. If refused, read remediation.",
     get inputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).showInput; },
     get outputSchema() { return (toolSchemas ??= createSettingsToolSchemas()).showOutput; },
     annotations: { readOnlyHint: true },

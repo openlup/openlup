@@ -374,7 +374,7 @@ export declare function previewSetting<Result extends {
 /** @experimental MCP definitions for adopters composing a read-only settings head. */
 export declare const settingsReadTools: readonly [{
     readonly name: "settings__list";
-    readonly description: "Start here to find a setting by business goal. Then call settings__show with its key to read its schema and effect.";
+    readonly description: "Find a key by business goal, then use settings__show for value details or a reason and reference.";
     readonly inputSchema: Record<string, unknown>;
     readonly outputSchema: Record<string, unknown>;
     readonly annotations: {
@@ -382,7 +382,7 @@ export declare const settingsReadTools: readonly [{
     };
 }, {
     readonly name: "settings__show";
-    readonly description: "Call settings__list first if you need the key. Read the effect, frozen records and change mechanism. If refused, read remediation.";
+    readonly description: "Call settings__list if you need the key. Read value details or a reason and reference. If refused, read remediation.";
     readonly inputSchema: Record<string, unknown>;
     readonly outputSchema: Record<string, unknown>;
     readonly annotations: {
@@ -432,85 +432,6 @@ export declare const settingDescriptorSummary: z.ZodObject<{
     }, z.core.$strict>, z.ZodObject<{
         reference: z.ZodString;
     }, z.core.$strict>]>;
-}, z.core.$strict>;
-export declare const settingValueDescriptor: z.ZodObject<{
-    key: z.ZodString;
-    goal: z.ZodString;
-    runtime: z.ZodUnion<readonly [z.ZodObject<{
-        level: z.ZodLiteral<"ready">;
-    }, z.core.$strict>, z.ZodObject<{
-        level: z.ZodEnum<{
-            preview: "preview";
-            "read-only": "read-only";
-        }>;
-        reason: z.ZodString;
-    }, z.core.$strict>]>;
-    change: z.ZodUnion<readonly [z.ZodObject<{
-        operation: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        file: z.ZodString;
-        symbol: z.ZodString;
-    }, z.core.$strict>, z.ZodObject<{
-        reference: z.ZodString;
-    }, z.core.$strict>]>;
-    domain: z.ZodString;
-    schemaVersion: z.ZodLiteral<1>;
-    kind: z.ZodEnum<{
-        code: "code";
-        installed: "installed";
-        callback: "callback";
-    }>;
-    schema: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>>;
-    previewSchema: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodJSONSchema>>>;
-    rules: z.ZodArray<z.ZodObject<{
-        code: z.ZodString;
-        path: z.ZodArray<z.ZodString>;
-        description: z.ZodString;
-    }, z.core.$strict>>;
-    examples: z.ZodArray<z.ZodObject<{
-        value: z.ZodJSONSchema;
-        code: z.ZodOptional<z.ZodString>;
-    }, z.core.$strict>>;
-    fallback: z.ZodJSONSchema;
-    absentMeans: z.ZodOptional<z.ZodObject<{
-        description: z.ZodString;
-        source: z.ZodString;
-        value: z.ZodJSONSchema;
-    }, z.core.$strict>>;
-    defaultBasis: z.ZodObject<{
-        kind: z.ZodEnum<{
-            "reference-code": "reference-code";
-            neutral: "neutral";
-            "reference-live": "reference-live";
-        }>;
-    }, z.core.$strict>;
-    whyThisDefault: z.ZodString;
-    effect: z.ZodObject<{
-        appliesTo: z.ZodString;
-        frozenOn: z.ZodArray<z.ZodString>;
-        impact: z.ZodEnum<{
-            operations: "operations";
-            money: "money";
-            "customer-promise": "customer-promise";
-        }>;
-    }, z.core.$strict>;
-}, z.core.$strict>;
-export declare const settingFactDescriptor: z.ZodObject<{
-    key: z.ZodString;
-    goal: z.ZodString;
-    domain: z.ZodString;
-    schemaVersion: z.ZodLiteral<1>;
-    kind: z.ZodEnum<{
-        cap: "cap";
-        invariant: "invariant";
-    }>;
-    runtime: z.ZodObject<{
-        level: z.ZodLiteral<"read-only">;
-        reason: z.ZodString;
-    }, z.core.$strict>;
-    change: z.ZodObject<{
-        reference: z.ZodString;
-    }, z.core.$strict>;
 }, z.core.$strict>;
 /** @experimental Describe the data written to and loaded from the settings catalogue. */
 export declare const settingDescriptorSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{

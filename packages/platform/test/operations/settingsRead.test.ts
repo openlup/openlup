@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { settingRefusalSchema, toolInputSchema } from "../../src/operations/server/toolSchema.js";
+import { settingDescriptorSchema, settingRefusalSchema, toolInputSchema } from "../../src/operations/server/toolSchema.js";
 import { describe, expect, it, vi } from "vitest";
 import { previewRenewalStockProtection, renewalStockProtectionPreviewResult, describeRenewalStockProtectionSetting, installRenewalStockProtectionPolicy, readRenewalStockProtectionOverride, readRenewalStockProtectionPolicy, validateRenewalStockProtection } from "../../src/inventory/renewalStockProtection.js";
 import { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation, readCheckoutRecoveryReminderSchedule } from "../../src/commerce/server/checkoutRecoveryReminderSchedule.js";
@@ -72,6 +72,24 @@ it("shows the effective winback send gate and explains both inventory refusal fi
 describe("settings show", () => {
   const key = "checkout_recovery_reminders";
   const abandonedCart = [{ stage: "first", afterHours: 1 }, { stage: "gentle", afterHours: 24 }, { stage: "last", afterHours: 72 }];
+  it("accepts every catalogue descriptor in the show output schema", async () => {
+    const { entries, showResult } = loadSettingsCatalogue();
+    for (const setting of entries) {
+      const expected = { schemaVersion: 1, setting, observation: { state: "offline" } };
+      expect(showResult.parse(expected), setting.key).toEqual(expected);
+      expect(await showSetting({ key: setting.key }), setting.key).toEqual(expected);
+    }
+  });
+
+  it("rejects the same unsupported descriptor version as the catalogue schema", () => {
+    const { entries, showResult } = loadSettingsCatalogue();
+    const value = entries.find(entry => entry.kind === "code");
+    if (!value) throw new Error("Expected a code descriptor");
+    const setting = { ...value, schemaVersion: 2 };
+    expect(settingDescriptorSchema.safeParse(setting).success).toBe(false);
+    expect(showResult.safeParse({ schemaVersion: 1, setting, observation: { state: "offline" } }).success).toBe(false);
+  });
+
   it("reports absent reminders with the supplied host offsets and fixed cart waves", async () => {
     const query = vi.fn(async () => ({ rows: [] }));
     const checkoutRecovery = [{ stage: "first", afterHours: 2 }, { stage: "last", afterHours: 15 }];

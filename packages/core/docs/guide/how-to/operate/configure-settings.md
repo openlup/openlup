@@ -133,7 +133,7 @@ and whether retrying can help.
 | `commerce_setting_read_input_invalid` | Check the arguments with `--help`. |
 | `commerce_setting_read_unavailable` | Verify the intended store connection, read access and installed value. |
 | `commerce_setting_preview_connection_required` | Use a read-capable connection to the intended store and supply the app bindings if requested. |
-| `commerce_setting_preview_unsupported` | Read the key's runtime level and effect with `show`. |
+| `commerce_setting_preview_unsupported` | Use `show` for value details or a reason and reference. |
 | `commerce_setting_preview_json_invalid` | Correct the proposed JSON. |
 | `commerce_setting_preview_configuration_unknown` | Select one of the listed IDs. |
 | `commerce_setting_preview_input_invalid` | Correct the named argument or run `preview --help`. |

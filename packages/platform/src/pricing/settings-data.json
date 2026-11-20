@@ -21,7 +21,7 @@
     "goal": "Format money using the currency exponent.",
     "schemaVersion": 1,
     "kind": "cap",
-    "runtime": {"level": "read-only", "reason": "The starter paid-order email divides minor units by 100. Use formatCurrencyMinor in the starter formatter."},
+    "runtime": {"level": "read-only", "reason": "Use formatCurrencyMinor in the starter paid-order email formatter to replace its division of minor units by 100."},
     "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingcurrencyexponent"}
   },
   {

@@ -143,7 +143,7 @@ const settingRefusals = (descriptors: readonly SourceDescriptor[]): readonly Set
   previewRefusal("configuration_unknown", ["configuration"], "The requested configuration is unknown.",
     "Use an ID defined by this starter.", "Choose one of the listed configuration IDs and run preview again.", previewHelp),
   previewRefusal("unsupported", ["key"], "This setting has no connected preview.",
-    "Use show to read the setting's effect and change mechanism.", "Choose a setting that supports preview.", settingCommand("<key>")),
+    "Use show for value details or a reason and reference.", "Choose a setting that supports preview.", settingCommand("<key>")),
   previewRefusal("connection_required", [], "Preview needs a connection to the intended store.",
     "Use the connected form of preview.", "Supply a read-capable connection and run preview again."),
   previewRefusal("policy_read_denied", ["current"], "This connection cannot read the installed policy.",

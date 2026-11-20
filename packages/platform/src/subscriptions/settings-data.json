@@ -158,7 +158,7 @@
     "goal": "Set the stock hold lifetime when a renewal leaves stock wait.",
     "schemaVersion": 1,
     "kind": "cap",
-    "runtime": {"level": "read-only", "reason": "Native stock-wait recovery fixes the hold at 15 minutes in SQL. The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused."},
+    "runtime": {"level": "read-only", "reason": "Native stock-wait recovery uses a fixed 15-minute hold in SQL, separate from the holdSeconds argument to the reserve method on the port that the starter uses only for expiry."},
     "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"}
   },
   {
