@@ -4,7 +4,7 @@ import { readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parsePackagesConfig } from "./package-manifest-policy.ts";
-import { preparePackage } from "./package-build.ts";
+import { preparePackages } from "./package-build.ts";
 import { isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 
 export function runRequiredPackageGates(root: string, output: string, commit: string): void {
@@ -28,20 +28,19 @@ export function runRequiredPackageGates(root: string, output: string, commit: st
   const input = join(directory, "packages-manifest.json");
   readCurrentPackManifest(root, input, commit);
   console.log(`Cold package set ${Math.round(performance.now() - started)} ms (${packages.length} publishable packages)`);
+  // Cold preparation clears every workspace per target. Restore built
+  // declarations once in topological dependency order without touching the
+  // retained tarballs so shared prerequisites are not rebuilt per package.
+  preparePackages(root, packages, catalog.packages, false);
   // Reject every package's cheap API drift before any package's expensive proof.
-  for (const entry of packages) {
-    const { name, directory: workspace } = entry;
+  for (const { name, directory: workspace } of packages) {
     const phase = performance.now();
-    // Cold preparation clears every workspace per target. Independent earlier
-    // packages may have no dist left; restore built declarations through the
-    // existing dependency-order helper without touching the retained tarballs.
-    preparePackage(root, entry, catalog.packages, false);
     run(["--workspace", `./${workspace}`, "run", "api:check"]);
     console.log(`Package API ${name}: ${Math.round(performance.now() - phase)} ms`);
   }
   for (const { name, directory: workspace } of packages) {
     const phase = performance.now();
-    const env = { ...isolatedConsumerEnv(), OPENLUP_PACK_MANIFEST: input, OPENLUP_PACK_COMMIT: commit };
+    const env = { ...isolatedConsumerEnv(), OPENLUP_PACK_MANIFEST: input, OPENLUP_PACK_COMMIT: commit, OPENLUP_DIST_READY: "1" };
     run(["--workspace", `./${workspace}`, "run", "ci:required"], env);
     console.log(`Package proof ${name}: ${Math.round(performance.now() - phase)} ms`);
   }
