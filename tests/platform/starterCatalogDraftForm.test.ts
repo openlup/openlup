@@ -132,6 +132,7 @@ it('supplies the saved revision to type resolution', async () => {
   await start();
   expect(reads).toHaveBeenCalledWith(1, form.querySelector<HTMLInputElement>('[name=draftId]')!.value, 1);
   expect(JSON.parse(writes[0]!.body).payload.product.type.version).toBe(1);
+  expect(writes[0]!.key.startsWith('pin:')).toBe(false);
   first.resolve(json({ ok: true, value: {} }));
   await idle();
 });

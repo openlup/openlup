@@ -624,7 +624,9 @@ check the bundled title rule, clear `product.sharedContent.presentation.title`
 in the JSON and choose **Save**. Expect `title_required` at that field. Restore
 the title, save, and choose **Prepare saved draft** with the saved draft ID and
 revision. Preparation can report that publication evidence is unavailable.
-Earlier saved drafts keep their installed rule version.
+Earlier saved drafts keep their installed rule version. Preserve the catalogue
+build volume with the database. If Save cannot verify the build for a saved
+pin, restore that exact build from a verified copy.
 
 ### Correct a price-list refusal
 

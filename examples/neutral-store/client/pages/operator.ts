@@ -1,6 +1,6 @@
 import { act } from '../api.ts';
 import type { PageContext } from '../context.ts';
-import type { Operation } from '../../shared/api.ts';
+import { starterCatalogueType, type Operation } from '../../shared/api.ts';
 import type { CopyKey } from '../../owned/copy.ts';
 import { operationLimitDefinitions } from '../../shared/limits.ts';
 import { isRecord } from '../../shared/offer.ts';
@@ -215,7 +215,12 @@ function catalogDraftActions(context: PageContext): HTMLElement {
         ...(values.action === 'abandon' ? {} : { payload: JSON.parse(String(values.payload)) as unknown }) }),
       freezePrepared: {
         when: values => values.action === 'create' || values.action === 'revise',
-        key: () => `pin:${crypto.randomUUID()}`,
+        key(values) {
+          const payload = values.payload;
+          const ref = isRecord(payload) && isRecord(payload.product) ? payload.product.type : null;
+          const inline = isRecord(ref) && ref.key === starterCatalogueType.key && ref.version === starterCatalogueType.version;
+          return inline ? crypto.randomUUID() : `pin:${crypto.randomUUID()}`;
+        },
       },
       async prepare(values, current) {
         pin.replaceChildren();

@@ -431,7 +431,7 @@ it('preserves base and legacy catalogue receipts and reads retained builds', asy
         dimensions: [], sharedContent: {title: 'Example item'}}, skus: []});
       const inlineBase = inlineDraft(1), inlineLocal = inlineDraft(2);
       const send = (input, key = randomUUID(), handler = action) => handler(input, {...context, commandKey: key});
-      assert.equal((await send(inlineBase, 'pin:' + randomUUID(), inline)).value?.outcome, 'committed', 'rules-absent inline Save');
+      assert.equal((await send(inlineBase, undefined, inline)).value?.outcome, 'committed', 'rules-absent inline Save');
       assert.equal((await send(inlineLocal, undefined, inline)).value?.outcome, 'committed');
       writeFileSync(rulesFile, install.catalogueRules);
       await applyDemoSeed(config, install);
@@ -444,7 +444,7 @@ it('preserves base and legacy catalogue receipts and reads retained builds', asy
       const resolved = await send({action: 'example', type: ref, draftId: baseEdit.draftId, expectedRevision: 1});
       assert.deepEqual(resolved.value?.type, ref, 'title-only revise resolves to the saved inline type');
       baseEdit.payload.product.type = resolved.value.type;
-      assert.deepEqual((await send(baseEdit, 'pin:' + randomUUID())).value?.record.payload.product.type, ref, 'pinned revise preserves the saved inline type');
+      assert.deepEqual((await send(baseEdit)).value?.record.payload.product.type, ref, 'stock inline revise preserves the saved type');
       const localEdit = await send(revise(inlineLocal));
       assert.equal(localEdit.value?.record.payload.product.type.version, 2, 'unmarked revise still accepts the registered inline type');
       const base = (await send({action: 'example', type: ref})).value?.type;
@@ -461,8 +461,16 @@ it('preserves base and legacy catalogue receipts and reads retained builds', asy
       assert.deepEqual((await send({action: 'example', type: kept, draftId: baseEdit.draftId, expectedRevision: 2})).value?.type,
         kept, 'an explicitly selected retained version keeps its exact pin');
       const file = '.context/catalogue-builds/714101500.json';
-      assert.equal(createHash('sha256').update(readFileSync(file)).digest('hex'),
+      const bytes = readFileSync(file);
+      assert.equal(createHash('sha256').update(bytes).digest('hex'),
         'cd36418dee1de7afbe9a5bf5748ef3aaad3a962990cd7ff617208bd1593eb5bb', 'golden base receipt bytes');
+      const installedDraft = inlineDraft(1);
+      installedDraft.payload.product.type = base;
+      const pinnedBaseKey = 'pin:' + randomUUID();
+      const baseSaved = await send(installedDraft, pinnedBaseKey);
+      assert.equal(baseSaved.value?.outcome, 'committed', 'original base pin saves before build loss');
+      writeFileSync('recorded-build.json', bytes);
+      writeFileSync('recorded-draft.json', JSON.stringify({operatorRef, draft: installedDraft}), {mode: 0o600});
       const legacy = newDraft({...payload, product: {...payload.product, type: {...base, version: 1}}});
       // Seed with the command the base writer passed to the native handler after translating @1.
       const baseWriter = createCatalogDraftHandlerV3({store: createPostgresCatalogDraftStoreV3(runtime),
@@ -482,8 +490,9 @@ it('preserves base and legacy catalogue receipts and reads retained builds', asy
       assert.match(unmarked.issues[0].message, /Use the operator Save form or a pinned draft command key/u);
       const saved = await send(pinned, key);
       assert.equal(saved.value?.outcome, 'committed', 'verified retained build saves');
-      const changed = {...pinned, payload: {...next, product: {...next.product, type: {...base, version: 1}}}};
-      const conflict = await send(changed, key);
+      const changed = {...installedDraft, payload: {...installedDraft.payload,
+        product: {...installedDraft.payload.product, type: {...base, version: 1}}}};
+      const conflict = await send(changed, pinnedBaseKey);
       assert.equal(conflict.code, 'catalog_draft_command_key_reused', 'pinned version change is a conflict');
       assert.equal(conflict.issues?.[0].path, 'commandKey');
 
@@ -528,4 +537,67 @@ it('preserves base and legacy catalogue receipts and reads retained builds', asy
   writeFileSync(join(app, 'catalogue-scenario.mjs'),
     `const fixture = ${JSON.stringify({ ownerUrl: container.connectionString, runtimeUrl: runtime.toString() })};\n${script}`);
   execFileSync(process.execPath, ['catalogue-scenario.mjs'], { cwd: app, stdio: 'pipe', timeout: 20_000 });
+  // Reload owned registration and rule code in a fresh process after the build is lost.
+  writeFileSync(owned, readFileSync(owned, 'utf8').replace(registry,
+    `types.push({...types[0]!, version: 714101500, validateContent: () => []});
+${registry}`));
+  const recordedPin = String.raw`
+    import assert from 'node:assert/strict';
+    import {readFileSync} from 'node:fs';
+    import pg from 'pg';
+    import {configurations} from './owned/store.config.ts';
+    import {catalogDraftRegistry} from './owned/catalogue.ts';
+    import {composeOperatorCapabilities} from './host/operator-composition.ts';
+    const {operatorRef, draft} = JSON.parse(readFileSync('recorded-draft.json', 'utf8'));
+    const ref = draft.payload.product.type;
+    assert.ok(catalogDraftRegistry.resolve(ref), 'the same version is now registered inline');
+    const owner = new pg.Pool({connectionString: fixture.ownerUrl}), runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const binding = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+    const action = binding.actions['operator.catalogDrafts'];
+    const send = (input, prefix = '') => action(input, {config: configurations.supplements, actor: {customerRef: null, operatorRef},
+      commandKey: prefix + crypto.randomUUID()});
+    const counts = async () => (await owner.query('SELECT (SELECT count(*) FROM public.catalog_draft_heads) AS heads,'
+      + '(SELECT count(*) FROM public.catalog_draft_revisions) AS revisions,'
+      + '(SELECT count(*) FROM public.catalog_draft_sku_reservations) AS reservations,'
+      + '(SELECT count(*) FROM public.catalog_draft_command_receipts) AS receipts')).rows;
+    try {
+      const before = await counts(), { mode } = fixture;
+      const resolve = await send({action: 'example', type: ref, draftId: draft.draftId, expectedRevision: 1});
+      const revise = {...draft, action: 'revise', expectedRevision: 1};
+      revise.payload.product.sharedContent.title = '';
+      if (mode === 'verified') {
+        assert.deepEqual(resolve.value?.type, ref, 'verified build resolves the saved pin');
+        assert.equal((await send(revise, 'pin:')).ok, false, 'original verified rules reject the blank title');
+        revise.payload.product.sharedContent.title = 'Edited item';
+        assert.equal((await send(revise, 'pin:')).value?.outcome, 'committed', 'verified build saves the pinned revision');
+      } else {
+        const restore = /Restore the retained catalogue build for starter:item@714101500/u;
+        const refused = reply => {
+          assert.equal(reply.ok, false, mode + ' build must refuse');
+          assert.match(reply.issues?.[0]?.message ?? '', restore, mode + ' build names the pin and remedy');
+        };
+        refused(resolve);
+        refused(await send(revise, 'pin:'));
+        refused(await send({...draft, draftId: crypto.randomUUID()}, 'pin:'));
+        assert.deepEqual(await counts(), before, mode + ' build refusal writes nothing');
+      }
+    } finally {
+      await binding.close();
+      await runtime.end();
+      await owner.end();
+    }
+  `;
+  const baseBuild = join(app, '.context/catalogue-builds/714101500.json');
+  const verified = readFileSync(join(app, 'recorded-build.json'));
+  const altered = JSON.parse(verified.toString());
+  altered.installed.definitionDigest = '0'.repeat(64);
+  for (const [mode, bytes] of [['missing', null], ['truncated', '{'],
+    ['unverified', JSON.stringify(altered)], ['unreadable', null], ['verified', verified]] as const) {
+    if (mode === 'unreadable') mkdirSync(baseBuild);
+    else if (bytes !== null) writeFileSync(baseBuild, bytes);
+    writeFileSync(join(app, 'recorded-pin.mjs'),
+      `const fixture = ${JSON.stringify({ ownerUrl: container.connectionString, runtimeUrl: runtime.toString(), mode })};\n${recordedPin}`);
+    try { execFileSync(process.execPath, ['recorded-pin.mjs'], { cwd: app, stdio: 'pipe', timeout: 20_000 }); }
+    finally { rmSync(baseBuild, { recursive: true, force: true }); }
+  }
 }, 95_000);

@@ -27,7 +27,7 @@ export interface ActionFormOptions {
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
   prepare?: (values: ActionInput, current: () => boolean) => Promise<ActionInput | null>;
-  freezePrepared?: { when: (values: ActionInput) => boolean; key: () => string };
+  freezePrepared?: { when: (values: ActionInput) => boolean; key: (values: ActionInput) => string };
   onSuccess?: (value: unknown) => void;
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
@@ -139,7 +139,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       if (!current()) return;
       if (freeze) {
         pair ??= Object.freeze({ editGeneration: requestGeneration, inputSignature: input,
-          key: freeze.key(), body: JSON.stringify(values) });
+          key: freeze.key(values), body: JSON.stringify(values) });
         frozen = pair;
       } else {
         const serialized = JSON.stringify(values);

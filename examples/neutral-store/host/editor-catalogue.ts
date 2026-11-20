@@ -7,10 +7,11 @@ import { canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackIssues, 
   type CatalogDefinitionInstallReceipt, type CatalogProductTypeInput, type CatalogProductTypeRef, type CatalogProductTypeRegistry, type NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
 import { catalogDraftRegistry } from '../owned/catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
+import { starterCatalogueType } from '../shared/api.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
 
-export const starterCatalogueType = { key: 'starter:item', version: 1 } as const;
+export { starterCatalogueType } from '../shared/api.ts';
 const authoringRegistry: CatalogProductTypeRegistry = catalogDraftRegistry;
 const buildDirectory = fileURLToPath(new URL('../.context/catalogue-builds', import.meta.url));
 
@@ -115,20 +116,17 @@ export function stageStarterCatalogueBuild(artifact: Buffer, pack: ReturnType<ty
 }
 
 export function starterCatalogue(directory = buildDirectory) {
-  const plan = prepareStarterCatalogueRules(readStarterCatalogueRules(), directory);
-  const current = plan?.pack.types[0];
-  const history = new Map<string, { type: NonNullable<ReturnType<typeof authoringRegistry.resolve>>; digest: string; legacy: boolean }>();
+  const rules = readStarterCatalogueRules();
+  const current = rules && starterCataloguePack(rules).types[0];
   const corrupt = new Set<string>();
   function readInstalled(ref: CatalogProductTypeRef) {
     if (!Number.isSafeInteger(ref.version) || ref.version <= 1) return;
-    const cached = history.get(identity(ref));
-    if (cached) return cached;
-    const keyed = readOptional(join(directory, fileName(ref)));
-    const legacy = keyed === undefined && ref.key === starterCatalogueType.key;
-    const raw = keyed ?? (legacy ? readOptional(join(directory, `${ref.version}.json`)) : undefined);
     corrupt.delete(identity(ref));
-    if (!raw) return;
     try {
+      const keyed = readOptional(join(directory, fileName(ref)));
+      const legacy = keyed === undefined && ref.key === starterCatalogueType.key;
+      const raw = keyed ?? (legacy ? readOptional(join(directory, `${ref.version}.json`)) : undefined);
+      if (!raw) return;
       const { type, asset, installed } = JSON.parse(raw.toString()) as {
         type: Omit<CatalogProductTypeInput, 'validateContent'>; asset: string;
         installed: CatalogDefinitionInstallReceipt['types'][number];
@@ -140,27 +138,25 @@ export function starterCatalogue(directory = buildDirectory) {
       const digest = catalogDefinitionDigest(definition);
       if (digest !== installed.definitionDigest || type.validatorRef !== definition.validatorRef)
         throw new Error('starter_catalogue_build_invalid');
-      const build = { type: definition, digest, legacy };
-      history.set(identity(ref), build);
-      return build;
+      return { type: definition, digest, legacy };
     } catch {
       corrupt.add(identity(ref));
     }
   }
-  const registry = { resolve: (ref: CatalogProductTypeRef) => readInstalled(ref)?.type ?? authoringRegistry.resolve(ref) };
-  const pinnedRegistry = { resolve: (ref: CatalogProductTypeRef) => readInstalled(ref)?.type
-    ?? (plan ? undefined : authoringRegistry.resolve(ref)) };
+  const pinnedRegistry = { resolve: (ref: CatalogProductTypeRef) => readInstalled(ref)?.type };
+  // Installed versions start at 2. The stock inline type has its own unmarked lane.
+  const registry = { resolve: (ref: CatalogProductTypeRef) => base(ref) ? authoringRegistry.resolve(ref) : pinnedRegistry.resolve(ref) };
   const legacyRegistry = { resolve(ref: CatalogProductTypeRef) {
     const installed = readInstalled(ref);
-    return installed?.legacy ? installed.type : authoringRegistry.resolve(ref);
+    if (installed) return installed.legacy ? installed.type : undefined;
+    if (!corrupt.has(identity(ref))) return authoringRegistry.resolve(ref);
   } };
   return {
-    current, baseType: current,
+    current,
     registry, pinnedRegistry, legacyRegistry, readInstalled,
     isCorrupt: (ref: CatalogProductTypeRef) => corrupt.has(identity(ref)),
-    isInline: (ref: CatalogProductTypeRef) => Boolean(authoringRegistry.resolve(ref)),
     currentFor: (ref: CatalogProductTypeRef) => base(ref) ? current : undefined,
-    resolveSave: (ref: CatalogProductTypeRef) => pinnedRegistry.resolve((base(ref) && current) || ref),
+    resolveSave: (ref: CatalogProductTypeRef) => registry.resolve((base(ref) && current) || ref),
     derivesPin: (ref: CatalogProductTypeRef) => current !== undefined && identity(current) === identity(ref),
     hasRegisteredKey: (ref: CatalogProductTypeRef) => ref.key === starterCatalogueType.key || Boolean(authoringRegistry.resolve(ref)),
   };

@@ -63,10 +63,10 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       message: `Restore the retained catalogue build for ${identity} from a verified copy.` };
     if (unmarked && catalogue.readInstalled(ref)?.legacy === false) return { path: 'commandKey', code: 'catalogue_pinned_save_required',
       message: `Use the operator Save form or a pinned draft command key for the installed type ${identity}.` };
-    const message = catalogue.derivesPin(ref)
-      ? `rules version ${ref.version} is not installed; run ./lifecycle up`
-      : saved
-        ? `Restore the retained catalogue build for ${identity} or select a registered version in a new revision.`
+    const message = saved
+      ? `Restore the retained catalogue build for ${identity} from a verified copy.`
+      : catalogue.derivesPin(ref)
+        ? `rules version ${ref.version} is not installed; run ./lifecycle up`
         : catalogue.hasRegisteredKey(ref)
           ? `Use a registered authoring version of ${ref.key} or restore the installed build for ${identity}.`
           : `Register ${ref.key} in owned/catalogue.ts or choose an installed type.`;
@@ -225,19 +225,17 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     }
     const pinned = isPinnedCatalogDraftKey(context.commandKey);
     let authored = payload.payload;
-    const requestedType = isRecord(authored) && isRecord(authored.product) ? productTypeRef(authored.product.type) : undefined;
     let handler = pinned ? drafts : legacyDrafts;
-    if (pinned && payload.action === 'revise' && requestedType && catalogue.isInline(requestedType)) {
-      const previous = await readRevision(payload, context);
-      if ('record' in previous && sameType(requestedType, previous.record?.payload.product.type)) handler = legacyDrafts;
-    }
     if (!pinned && isRecord(authored) && isRecord(authored.product) && isRecord(authored.product.type)
       && authored.product.type.key === starterCatalogueType.key && authored.product.type.version === starterCatalogueType.version && uuid(payload.draftId)) {
       const receipt = await legacyDrafts.get({ draftId: payload.draftId, commandKey: context.commandKey }, context);
       const original = 'record' in receipt && receipt.record?.actorId === context.actor.operatorRef ? receipt.record : null;
       const saved = !original && payload.action === 'revise' ? await readRevision(payload, context) : null;
-      const pin = original?.payload.product.type ?? (saved && 'record' in saved ? saved.record?.payload.product.type : undefined) ?? catalogue.baseType;
-      if (pin) authored = { ...authored, product: { ...authored.product, type: { ...authored.product.type, version: pin.version } } };
+      const pin = original?.payload.product.type ?? (saved && 'record' in saved ? saved.record?.payload.product.type : undefined) ?? catalogue.current;
+      if (pin?.key === starterCatalogueType.key && !sameType(pin, starterCatalogueType)) {
+        authored = { ...authored, product: { ...authored.product, type: { key: pin.key, version: pin.version } } };
+        handler = drafts;
+      }
     }
     const result = payload.action === undefined ? await handler.list({ limit: 30 }, context)
       : payload.action === 'get' ? await handler.get({ draftId: payload.draftId }, context)
@@ -254,7 +252,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       const issues = 'issues' in result && Array.isArray(result.issues) ? result.issues : [];
       const type = isRecord(authored) && isRecord(authored.product) ? productTypeRef(authored.product.type) : undefined;
       const detail = issues.map(issue => issue.code === 'type_not_installed' && type
-        ? { ...issue, ...rulesVersionIssue(type, false, !pinned) } : issue);
+        ? { ...issue, ...rulesVersionIssue(type, handler === drafts, handler === legacyDrafts) } : issue);
       return { ...refused(`catalog_${result.reason}`), ...(detail.length ? { issues: detail } : {}) };
     }
     return { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };
