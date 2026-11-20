@@ -11,6 +11,7 @@ const [command, ...args] = process.argv.slice(2);
 const packageNames = ['core', 'outbox', 'platform'];
 const installationHintLimit = 240;
 const knownStarterRefusal = /^(?:starter_[a-z_]+|inventory_renewal_protection_policy_invalid|checkout_recovery_reminder_schedule_invalid|saved_address_policy_invalid|starter_locale_unsupported: [A-Za-z0-9_-]{1,32}|starter_locale_copy_missing: [A-Za-z0-9_.\[\]-]{1,120} \([a-z]{2}\))$/;
+const blockedReminderInstall = /^checkout_recovery_schedule_change_blocked_open_episodes \([0-9]{1,19} blocking orders\)$/u;
 
 function run(executable, argv, input) {
   execFileSync(executable, argv, { cwd: root,
@@ -28,8 +29,9 @@ function printInstallationRefusal(error) {
   const rules = error?.name === 'CatalogPublicationError';
   const issue = rules ? error.diagnostic ?? { code: error.code, path: '/hooks' } : error?.issue;
   const structured = typeof issue?.code === 'string' && /^[a-z][a-z0-9_]{1,100}$/u.test(issue.code);
-  const code = structured ? issue.code : error instanceof Error && knownStarterRefusal.test(error.message)
-    ? error.message : 'starter_installation_failed';
+  const message = error instanceof Error ? error.message : '';
+  const code = structured ? issue.code : knownStarterRefusal.test(message) || blockedReminderInstall.test(message)
+    ? message : 'starter_installation_failed';
   process.stderr.write(`${code}\n`);
   const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
   const prefix = structured ? `${rules ? 'owned/catalogue-rules.cjs' : 'owned/catalogue.ts'} ${String(issue.path ?? '/').slice(0, 90)}. ` : '';

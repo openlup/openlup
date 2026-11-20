@@ -90,6 +90,30 @@ const invoke = (app: string, args: string[]) => spawnSync(process.execPath, args
   cwd: app, env: { PATH: app }, encoding: 'utf8', timeout: 15_000,
 });
 
+test('a resolve-only registry fits both catalogue imports and retains the base fallback', async () => {
+  await probeCatalogue(async app => {
+    await changeRegistry(app, `
+      import type { CatalogProductTypeRegistry as ContractsRegistry } from '@openlup/platform/catalog/contracts';
+      import type { CatalogProductTypeRegistry } from '@openlup/platform/catalog';
+      const local = createCatalogProductTypeRegistry(types);
+      export const catalogDraftRegistry = { resolve: local.resolve } satisfies CatalogProductTypeRegistry & ContractsRegistry;
+    `);
+    const root = fileURLToPath(new URL('../', import.meta.url));
+    const config = ts.readConfigFile(join(root, 'tsconfig.json'), ts.sys.readFile);
+    const { options } = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
+    const program = ts.createProgram([join(app, 'host/editor-catalogue.ts')], options);
+    const errors = ts.getPreEmitDiagnostics(program);
+    assert.equal(errors.length, 0, errors.map(error => ts.flattenDiagnosticMessageText(error.messageText, '\n')).join('\n'));
+    const result = invoke(app, ['--input-type=module', '-e', `
+      import {prepareStarterCatalogueRules, readStarterCatalogueRules} from './host/editor-catalogue.ts';
+      const { builds } = prepareStarterCatalogueRules(readStarterCatalogueRules());
+      console.log(JSON.stringify(builds.map(({ pack }) => pack.types[0].version)));
+    `]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [714101500]);
+  });
+});
+
 test('up and install report catalogue input paths before Docker or database effects', async () => {
   await probeCatalogue(async app => {
     const cases = [

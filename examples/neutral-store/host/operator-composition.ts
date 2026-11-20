@@ -24,9 +24,8 @@ function productTypeRef(ref: unknown): CatalogProductTypeRef | undefined {
     return { key: ref.key, version: ref.version };
 }
 
-function publicationExample(type: CatalogProductTypeInput): CatalogDraftPayloadV3 | null {
-  const selected = type.key === starterCatalogueType.key && type.netContentUnits.includes('openlup:g')
-    && type.units.at(0)?.code === 'starter:each' ? 'openlup:g' : type.netContentUnits[0];
+function publicationExample(type: CatalogProductTypeInput, legacy: boolean): CatalogDraftPayloadV3 | null {
+  const selected = legacy ? 'openlup:g' : type.netContentUnits[0];
   const unit = type.units.find(candidate => candidate.code === selected);
   if (!unit) return null;
   const id = randomUUID(), skuId = randomUUID(), revisionId = randomUUID(), slug = 'fictional-item';
@@ -177,7 +176,7 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
         return { ...refused('catalog_type_not_installed'), issues: [rulesVersionIssue(pin)] };
       }
       const installed = catalogue.firstInstalled();
-      const example = installed && publicationExample(installed.type);
+      const example = installed && publicationExample(installed.type, installed.legacy);
       if (example) return success(example);
       return { ...refused('starter_catalogue_rules_required'), ...(catalogue.current ? { issues: [rulesVersionIssue(catalogue.current)] } : {}) };
     }

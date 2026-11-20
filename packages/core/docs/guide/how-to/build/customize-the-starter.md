@@ -581,10 +581,20 @@ administer catalogue drafts and bundle composition, target prices and activation
 through native writers. Neither draft authoring nor bundle activation adds a
 product to the starter's configured storefront or checkout selection.
 
-Replace the fictional `starter:item@1` registry and content validator in
-`owned/catalogue.ts` for your application. Draft payloads cannot install
-executable validators. The operator can create, revise, abandon, list and read
-drafts; the host supplies the actor and command key. Provision and deactivate
+Register each draft type and authoring version with
+`createCatalogProductTypeRegistry` in `owned/catalogue.ts`. When
+`owned/catalogue-rules.cjs` is present, run `./lifecycle up` to install the
+shared rules for those definitions. Supply each type's own units and
+dimensions. The demonstration installer refuses tax-class and
+subscription-profile references before provisioning. Without the rules file,
+drafts use inline validation.
+
+In the operator form, **Load draft example** selects the first available
+installed example in registration order. Save shows the resolved type pin.
+After a lost response, retry the untouched form to confirm the original
+save. To make a different save, read the current revision first and choose
+**Start a new action**. Preserve the catalogue builds with the database so
+older revisions can still resolve their saved type. Provision and deactivate
 support access through the [operator roster](#provision-operator-rosters).
 
 ## Replace acquisition location choices

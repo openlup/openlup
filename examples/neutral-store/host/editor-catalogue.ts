@@ -140,7 +140,7 @@ export function starterCatalogue(directory = buildDirectory) {
     ?? (plan ? undefined : authoringRegistry.resolve(ref)) };
   const legacyRegistry = { resolve(ref: CatalogProductTypeRef) {
     const installed = readInstalled(ref);
-    return installed?.legacy ? installed.type : authoringRegistry.resolve(ref);
+    return installed?.legacy ? installed.type : !plan || base(ref) ? authoringRegistry.resolve(ref) : undefined;
   } };
   return {
     current: current.values().next().value, baseType: current.get(identity(starterCatalogueType)),
@@ -154,7 +154,7 @@ export function starterCatalogue(directory = buildDirectory) {
     currentFor: (ref: CatalogProductTypeRef) => current.get(identity(ref)),
     resolveSave(ref: CatalogProductTypeRef) {
       const derived = current.get(identity(ref));
-      return pinnedRegistry.resolve(derived ? { key: derived.key, version: derived.version } : ref);
+      return readInstalled(ref)?.type ?? pinnedRegistry.resolve(derived ?? ref);
     },
     derivesPin: (ref: CatalogProductTypeRef) => currentPins.has(identity(ref)),
     hasRegisteredKey: (ref: CatalogProductTypeRef) => authoringRegistry.definitions?.some(type => type.key === ref.key)
