@@ -4,10 +4,15 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createPostgresDeliveryAlignmentPort } from '@openlup/platform/fulfillment';
 import { createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
-import { createPostgresAutomaticRenewalPort } from '../../server/adapters/postgres/subscription/automaticRenewal.js';
-import { createPostgresRenewalSettlementPort } from '../../server/adapters/postgres/commerce/renewalSettlement.js';
-import { runOneAutomaticSubscriptionRenewal, type AutomaticRenewalRunDeps } from '../../server/domains/subscription/runAutomaticSubscriptionRenewal.js';
-import { withDeliveryAlignmentRenewalAdmission } from '../../server/runtime/subscription/deliveryAlignmentRenewalStore.js';
+import {
+  createNativeRenewalCodec,
+  createPostgresRenewalSettlementPort,
+  createPostgresRenewalStore,
+  createSandboxRenewalPolicy,
+  runOneAutomaticSubscriptionRenewal,
+  withNativeDeliveryAlignmentRenewalAdmission,
+  type AutomaticRenewalRunDeps,
+} from '@openlup/platform/subscriptions';
 import { executor, fixture, nativeHarness, openCase, replacement, schedule } from '../helpers/fulfillmentNative.js';
 
 const h = nativeHarness('m10-p1-baseline');
@@ -73,13 +78,14 @@ async function renewalFixture() {
 function runtime() {
   const queries: string[] = [];
   const sql = { async query(text: string, values?: unknown[]) { queries.push(text); return h.pool.query(text, values); } };
-  const raw = createPostgresAutomaticRenewalPort(sql);
-  const store = withDeliveryAlignmentRenewalAdmission(raw, sql, () => now);
+  const codec = createNativeRenewalCodec();
+  const raw = createPostgresRenewalStore(sql, codec);
+  const store = withNativeDeliveryAlignmentRenewalAdmission(raw, sql, () => now);
   let executions = 0;
-  const deps: AutomaticRenewalRunDeps = { store, inventory: createPostgresRenewalReservationPort(sql), settlement: createPostgresRenewalSettlementPort(sql),
-    paymentRails: { resolve: () => ({ executionPort: { validateInput: () => {}, execute: async () => { executions++; throw new Error('synthetic indeterminate execution'); } },
-      readOutcome: async () => ({ status: 'pending', occurredAt: null, reason: null, amountMinor: null, currency: null }) }) },
-    failureHandoff: { handoffFailure: async () => { throw new Error('unexpected dunning'); } }, workerId: 'm10-p1-baseline', now: () => now };
+  const deps: AutomaticRenewalRunDeps = { store, inventory: createPostgresRenewalReservationPort(sql), settlement: createPostgresRenewalSettlementPort(sql, codec),
+    paymentRails: { resolve: () => ({ execute: async () => { executions++; throw new Error('synthetic indeterminate execution'); }, findExternalAttempt: async () => null,
+      readOutcome: async () => ({ status: 'pending', disposition: 'observed', operationId: '', eventKey: '', requestFingerprint: '', verifiedEvidenceRef: '', externalAttemptRef: null, occurredAt: null, observedAt: now, firstRecordedAt: now, reason: null, amountMinor: null, currency: null }) }) },
+    failureHandoff: { handoffFailure: async () => { throw new Error('unexpected dunning'); } }, policy: createSandboxRenewalPolicy('fixture'), workerId: 'm10-p1-baseline', now: () => now };
   return { store, deps, executions: () => executions, admissions: () => queries.filter(sql => sql.includes('subscription_delivery_alignment_admit_renewal(')).length };
 }
 

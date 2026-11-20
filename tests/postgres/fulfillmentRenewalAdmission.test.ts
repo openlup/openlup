@@ -1,15 +1,20 @@
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
-import type { PaymentExecutionInput } from '../../src/domains/payment/types.js';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { createPostgresDeliveryAlignmentPort } from '@openlup/platform/fulfillment';
 import { createPostgresRenewalReservationPort } from '@openlup/platform/inventory';
-import { createPostgresAutomaticRenewalPort } from '../../server/adapters/postgres/subscription/automaticRenewal.js';
-import { createPostgresRenewalSettlementPort } from '../../server/adapters/postgres/commerce/renewalSettlement.js';
-import { runAutomaticSubscriptionRenewals, runOneAutomaticSubscriptionRenewal, type AutomaticRenewalRunDeps } from '../../server/domains/subscription/runAutomaticSubscriptionRenewal.js';
-import type { AutomaticRenewalPreparedSettlement, AutomaticRenewalReadback } from '../../server/domains/subscription/automaticRenewalPorts.js';
-import { withDeliveryAlignmentRenewalAdmission } from '../../server/runtime/subscription/deliveryAlignmentRenewalStore.js';
+import {
+  createNativeRenewalCodec,
+  createPostgresRenewalSettlementPort,
+  createPostgresRenewalStore,
+  createSandboxRenewalPolicy,
+  runAutomaticSubscriptionRenewals,
+  runOneAutomaticSubscriptionRenewal,
+  withNativeDeliveryAlignmentRenewalAdmission,
+  type AutomaticRenewalRunDeps,
+} from '@openlup/platform/subscriptions';
+import type { RenewalExecutionRequest, RenewalPreparedSettlement, RenewalReadback } from '@openlup/platform/subscriptions/contracts';
 import { executor, fixture, nativeHarness, openCase, schedule } from '../helpers/fulfillmentNative.js';
 
 const h = nativeHarness('g23');
@@ -35,19 +40,21 @@ async function seed() {
 function runtime(db: PoolClient, wrapped = true) {
   const queries: string[] = [];
   const sql = { async query(text: string, values?: unknown[]) { queries.push(text); return db.query(text, values); } };
-  const store = createPostgresAutomaticRenewalPort(sql);
-  const claimOverride: { current?: AutomaticRenewalReadback } = {};
+  const codec = createNativeRenewalCodec();
+  const store = createPostgresRenewalStore(sql, codec);
+  const claimOverride: { current?: RenewalReadback } = {};
   const claimDue = store.claimDue;
   store.claimDue = async input => claimOverride.current ?? claimDue(input);
-  const settlement = createPostgresRenewalSettlementPort(sql);
-  const prepared: AutomaticRenewalPreparedSettlement[] = [];
-  const execute = vi.fn(async (_input: PaymentExecutionInput) => { throw new Error('synthetic indeterminate execution'); });
+  const settlement = createPostgresRenewalSettlementPort(sql, codec);
+  const prepared: RenewalPreparedSettlement[] = [];
+  const execute = vi.fn(async (_input: RenewalExecutionRequest) => { throw new Error('synthetic indeterminate execution'); });
   const deps: AutomaticRenewalRunDeps = {
-    store: wrapped ? withDeliveryAlignmentRenewalAdmission(store, sql, () => NOW) : store,
+    store: wrapped ? withNativeDeliveryAlignmentRenewalAdmission(store, sql, () => NOW) : store,
     inventory: createPostgresRenewalReservationPort(sql),
     settlement: { ...settlement, async prepareRenewal(input) { const result = await settlement.prepareRenewal(input); prepared.push(result); return result; } },
-    paymentRails: { resolve: () => ({ executionPort: { execute }, readOutcome: async () => ({ status: 'pending', occurredAt: null, reason: null, amountMinor: 900, currency: 'XXX' }) }) },
+    paymentRails: { resolve: () => ({ execute, findExternalAttempt: async () => null, readOutcome: async () => ({ status: 'pending', disposition: 'observed', operationId: '', eventKey: '', requestFingerprint: '', verifiedEvidenceRef: '', externalAttemptRef: null, occurredAt: null, observedAt: NOW, firstRecordedAt: NOW, reason: null, amountMinor: 900, currency: 'XXX' }) }) },
     failureHandoff: { handoffFailure: async () => { throw new Error('unexpected dunning handoff'); } },
+    policy: createSandboxRenewalPolicy('fixture'),
     workerId: 'g23-fixture', now: () => NOW,
   };
   return { deps, store, queries, execute, prepared, sql, claimOverride };
@@ -211,9 +218,9 @@ it.each(['off', 'protect', 'auto_align'] as const)('G23 new-cycle admission at %
       expectBytes(operation?.operationFingerprint, legacyOperation?.operationFingerprint);
       expect(legacy.execute).toHaveBeenCalledTimes(1);
       const execution = r.execute.mock.calls[0][0], baselineExecution = legacy.execute.mock.calls[0][0];
-      expectBytes(execution.idempotencyKey, baselineExecution.idempotencyKey);
-      expectBytes(execution.providerIdempotencyKey, baselineExecution.providerIdempotencyKey);
-      expectBytes(execution.providerRequestFingerprint, baselineExecution.providerRequestFingerprint);
+      expectBytes(execution.executionIdempotencyKey, baselineExecution.executionIdempotencyKey);
+      expectBytes(execution.externalIdempotencyKey, baselineExecution.externalIdempotencyKey);
+      expectBytes(execution.requestFingerprint, baselineExecution.requestFingerprint);
       const wrappedRows = await databaseRows(db);
       expectBytes(persistedKeys(wrappedRows), persistedKeys(legacyRows));
       expectRenewalColumnParity(beforeRows, legacyRows, wrappedRows);
@@ -236,7 +243,7 @@ it.each(['off', 'protect', 'auto_align'] as const)('G23 new-cycle admission at %
     const replayRows = await alignmentRows(db), count = admissions(r.queries).length;
     await runOneAutomaticSubscriptionRenewal(r.deps, due, NOW);
     await db.query('INSERT INTO public.subscription_dunning_cases(subscription_id,cycle_id,client_id,idempotency_key) SELECT $1,id,$2,$3 FROM public.subscription_cycles WHERE renewal_operation_id=$4', [f.subscription, f.client, `g23-dunning-${f.subscription}`, claim.operationId]);
-    expect(await r.deps.store.admitDeliveryAlignment(due)).toEqual({ allowed: true, reason: null });
+    expect(await r.deps.store.admitDeliveryAlignment({ ...due, occurredAt: NOW })).toEqual({ allowed: true, reason: null });
     expect(admissions(r.queries)).toHaveLength(count);
     expect(await alignmentRows(db)).toEqual(replayRows);
     await db.query('ROLLBACK');

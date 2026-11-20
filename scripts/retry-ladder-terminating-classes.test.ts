@@ -75,7 +75,6 @@ const CORE_REAL = realpathSync("node_modules/@openlup/core").replaceAll("\\", "/
 const CORE = relative(".", CORE_REAL).replaceAll("\\", "/");
 const REQUIRED_CLASS_AWARE_CALLS = [
   `${CORE}/src/subscription/subscriptionEnginePayment.ts`,
-  "server/domains/subscription/automaticRenewalExecution.ts",
   "packages/platform/src/subscriptions/automaticRenewalExecution.ts",
   "packages/platform/src/subscriptions/renewalCycleFailureMechanism.ts",
 ] as const;

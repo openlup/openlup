@@ -20834,10 +20834,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/subscription/automaticRenewalExecution.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/subscription/automaticRenewalPorts.ts",
       "class": "public-output"
     },
@@ -20939,14 +20935,6 @@
     },
     {
       "path": "server/domains/subscription/renewalPreflightLadderFreeze.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/subscription/runAutomaticSubscriptionRenewal.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/subscription/runAutomaticSubscriptionRenewal.ts",
       "class": "public-output"
     },
     {
