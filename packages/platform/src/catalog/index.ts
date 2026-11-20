@@ -84,3 +84,7 @@ export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
 export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
+
+export { readPostgresCatalogMembershipPage, readPostgresCatalogActivationReadiness } from "./postgresPublicationDiscovery.js";
+export type { CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult, CatalogActivationReadinessInput,
+  CatalogActivationReadinessResult, CatalogDiscoveryEvidence, CatalogInstalledReadiness, CatalogDiscoveryRefusal } from "./postgresPublicationDiscovery.js";

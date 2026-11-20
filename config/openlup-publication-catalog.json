@@ -1514,6 +1514,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4954,6 +4958,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123193000_catalog_publication_reads.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5503,6 +5511,10 @@
     },
     {
       "path": "packages/platform/src/catalog/postgresBundleAdminWriteStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/postgresPublicationDiscovery.ts",
       "class": "public-output"
     },
     {
@@ -9903,6 +9915,10 @@
     },
     {
       "path": "packages/platform/test/catalog/fixtures/releasedCandidate.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/postgresPublicationDiscovery.test.ts",
       "class": "public-output"
     },
     {
@@ -30159,6 +30175,10 @@
     },
     {
       "path": "tests/postgres/catalogPublication.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublicationDiscovery.test.ts",
       "class": "public-output"
     },
     {

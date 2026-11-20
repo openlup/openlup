@@ -3913,6 +3913,8 @@ export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
 export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
 export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
+export { readPostgresCatalogMembershipPage, readPostgresCatalogActivationReadiness } from "./postgresPublicationDiscovery.js";
+export type { CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult, CatalogActivationReadinessInput, CatalogActivationReadinessResult, CatalogDiscoveryEvidence, CatalogInstalledReadiness, CatalogDiscoveryRefusal } from "./postgresPublicationDiscovery.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4001,6 +4003,114 @@ export interface PostgresBundleAdminWriteStore extends AdminBundleWritePort {
     close(): Promise<void>;
 }
 export declare function createPostgresBundleAdminWriteStore(env: PostgresDataGatewayEnv, options?: PostgresDataGatewayOptions): PostgresBundleAdminWriteStore;
+```
+## dist/catalog/postgresPublicationDiscovery.d.ts
+
+```ts
+import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from "../data/index.js";
+import { type CommercePriceAuthorityPort } from "../pricing/index.js";
+import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
+import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
+import type { CatalogHeadRef } from "./contracts/lifecycle.js";
+import type { CatalogSkuRevisionRef } from "./publicationContracts.js";
+import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
+/** @experimental */
+export type CatalogMembershipCursor = {
+    skuId: string;
+    headDigest: string;
+    offerVersion: string;
+    mode: "one_time" | "subscription" | null;
+};
+/** @experimental */
+export type CatalogMembershipPageInput = {
+    offerVersion: string;
+    limit: number;
+    mode?: CatalogMembershipCursor["mode"];
+    cursor?: CatalogMembershipCursor | null;
+};
+/** @experimental */
+export type CatalogDiscoveryEvidence = {
+    head: CatalogHeadRef;
+    document: CatalogDocumentRevisionRef;
+    skuRevision: CatalogSkuRevisionRef;
+};
+/** @experimental */
+export type CatalogMembershipItem = CatalogDiscoveryEvidence & {
+    skuId: string;
+    skuCode: string;
+    productId: string;
+    productSlug: string;
+    netWeightG: number;
+    sellableStandalone: boolean;
+    sellableInSubscription: boolean;
+    presentation: CatalogPublicationFacts | null;
+    logisticsRef: string | null;
+};
+/** @experimental */
+export type CatalogMembershipPageResult = {
+    protocol: "legacy";
+    headDigest: null;
+    items: [];
+    nextCursor: null;
+} | {
+    protocol: "governed";
+    headDigest: string;
+    items: CatalogMembershipItem[];
+    nextCursor: CatalogMembershipCursor | null;
+} | CatalogDiscoveryRefusal;
+/** @experimental */
+export type CatalogActivationReadinessInput = {
+    skuCodes: readonly string[];
+    expectedHeadDigest: string;
+};
+/** @experimental */
+export type CatalogActivationReadinessResult = {
+    protocol: "governed";
+    headDigest: string;
+    items: Array<{
+        skuCode: string;
+        skuId: string | null;
+        logisticsRef: string | null;
+        evidence: CatalogDiscoveryEvidence | null;
+        ready: boolean;
+        reasons: string[];
+    }>;
+} | CatalogDiscoveryRefusal;
+/** @experimental */
+export type CatalogDiscoveryRefusal = {
+    outcome: "validation_issue" | "unauthorized" | "unsupported" | "conflict" | "dependency_unavailable";
+    reason: string;
+    retryable?: true;
+};
+/** Bind installed definitions, strict pricing and the subject predicate to the supplied transaction.
+ * @experimental
+ */
+export type CatalogInstalledReadiness = (db: PgQueryExecutor) => {
+    registry: CatalogProductTypeRegistry;
+    prices: CommercePriceAuthorityPort;
+    channel: string;
+    assess(subject: {
+        product: RulesProduct;
+        sku: RulesSku;
+        evidence: CatalogDiscoveryEvidence;
+    }, context: {
+        regionCode: string;
+        currency: string;
+        atTime: string;
+    }): Promise<{
+        ready: boolean;
+        reasons: readonly string[];
+    }>;
+};
+/** Read one governed page in the caller's catalogue snapshot.
+ * @experimental
+ */
+export declare function readPostgresCatalogMembershipPage(db: PgQueryExecutor, input: CatalogMembershipPageInput): Promise<CatalogMembershipPageResult>;
+/** Wait for publication before observing catalogue, installed policy and price evidence on the named owner lane.
+ * @experimental
+ */
+export declare function readPostgresCatalogActivationReadiness(transactions: Pick<PostgresRoleFreeTransactionLane<PgQueryExecutor>, "run">, bind: CatalogInstalledReadiness, input: CatalogActivationReadinessInput): Promise<CatalogActivationReadinessResult>;
 ```
 ## dist/catalog/productTypeIssues.d.ts
 

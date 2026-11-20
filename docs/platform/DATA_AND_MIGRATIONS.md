@@ -931,6 +931,15 @@ transactions and exact-prefix/replay behavior remain.
 
 ### Sealed native catalog publication history
 
+The [discovery forward](../../db/platform/migrations/20261123193000_catalog_publication_reads.sql)
+adds two service-executable reads and owner-only evidence helpers. It changes
+function ACLs only. Membership uses the caller's snapshot. Activation readiness
+waits for the publisher's relation fence before observing the head. Use
+`READ COMMITTED` for the SQL readiness entry, or take the relation lock before
+the first snapshot in a repeatable-read owner transaction. See the installed
+[catalogue entry](../../packages/platform/README.md#read-governed-offers-and-activation-readiness)
+for the transaction-local readiness binding.
+
 The [`catalog_publication` forward](../../db/platform/migrations/20261123190000_catalog_publication.sql)
 adds native publication history.
 The publication, SKU revisions, operator receipts, and candidate decisions are
