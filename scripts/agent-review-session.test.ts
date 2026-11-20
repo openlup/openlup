@@ -14,16 +14,19 @@ describe('native receipt transport', () => {
   const rawBody = (marker: string, summary: unknown) => `${marker}\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\``;
   const textBody = (payload: string) => `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${payload}\n\`\`\``;
   const compress = (summary: unknown) => gzipSync(JSON.stringify(summary)).toString('base64');
+  const v3 = recordReport(prepare({ rules: { version: 3 } }), report(), time);
+  const padded = (padding: string) => receiptSummary({ ...v3, padding }, 12, time);
 
-  it('keeps raw v3 bytes through 65,536 characters and compresses at 65,537', () => {
-    const summary = { version: 3, session: { history: '' } };
-    const overhead = rawBody(ECONOMY_RECEIPT_MARKER, summary).length;
-    summary.session.history = 'x'.repeat(65_535 - overhead);
-    expect(receiptBody(summary)).toBe(rawBody(ECONOMY_RECEIPT_MARKER, summary));
-    summary.session.history += 'x';
-    expect(receiptBody(summary)).toBe(rawBody(ECONOMY_RECEIPT_MARKER, summary));
-    summary.session.history += 'x';
-    expect(receiptBody(summary)).toBe(textBody(compress(summary)));
+  it('counts the full body through 65,536 characters and compresses at 65,537', () => {
+    const padding = 'x'.repeat(65_536 - receiptBody(padded('')).length);
+    const atLimit = receiptBody(padded(padding));
+    expect(atLimit).toHaveLength(65_536);
+    expect(atLimit.split('\n')[0]).toBe(ECONOMY_RECEIPT_MARKER);
+    const above = padded(padding + 'x');
+    expect(rawBody(ECONOMY_RECEIPT_MARKER, above).length).toBeLessThan(65_536);
+    const compressed = receiptBody(above);
+    expect(compressed.split('\n')[0]).toBe(COMPRESSED_RECEIPT_MARKER);
+    expect(parseReceipt(compressed)).toEqual(above);
   });
 
   it('keeps v2 receipts byte-identical at any size', () => {
@@ -33,9 +36,40 @@ describe('native receipt transport', () => {
     expect(receiptBody(large)).toBe(rawBody(RECEIPT_MARKER, large));
   });
 
+  const bareCases: [string, { prefix?: string; markerEnd?: string; open?: string; before?: string; close?: string; after?: string }, boolean, boolean][] = [
+    // Expected raw and gzip acceptance observed by running the parser at d4c3786f5.
+    ['exact', {}, true, true],
+    ['opening space', { open: ' ' }, true, false],
+    ['opening tab', { open: '\t' }, true, false],
+    ['closing space', { close: ' ' }, true, false],
+    ['closing tab', { close: '\t' }, true, false],
+    ['marker CRLF', { markerEnd: '\r\n' }, false, false],
+    ['whitespace line before payload', { before: ' \t\n' }, true, false],
+    ['NBSP line before payload', { before: '\u00a0\n' }, true, false],
+    ['trailing newline', { after: '\n' }, true, true],
+    ['trailing blank lines', { after: '\n\n' }, true, false],
+    ['trailing whitespace lines', { after: '\n \t\n\n' }, true, false],
+    ['leading whitespace', { prefix: ' \t' }, false, false],
+  ];
+  it.each(bareCases)('preserves #843 bare parsing with %s', (_label, parts, raw, gzip) => {
+    const { prefix = '', markerEnd = '\n', open = '', before = '', close = '', after = '' } = parts;
+    const v2 = { pr: 12 };
+    const v3 = { version: 3, pr: 12 };
+    const formats = [
+      { marker: RECEIPT_MARKER, type: 'json', payload: JSON.stringify(v2), expected: raw ? v2 : null },
+      { marker: ECONOMY_RECEIPT_MARKER, type: 'json', payload: JSON.stringify(v3), expected: raw ? v3 : null },
+      { marker: COMPRESSED_RECEIPT_MARKER, type: 'text', payload: compress(v3), expected: gzip ? v3 : null },
+    ];
+    for (const { marker, type, payload, expected } of formats) {
+      const body = `${prefix}${marker}${markerEnd}\`\`\`${type}${open}\n${before}${payload}\n\`\`\`${close}${after}`;
+      expect(parseReceipt(body), marker).toEqual(expected);
+    }
+  });
+
   it('refuses an oversized compressed body with its measured size and recovery steps', () => {
-    const summary = { version: 3, session: { history: Array.from({ length: 5_000 }, (_, index) => digest(index)).join('') } };
-    const size = textBody(compress(summary)).length;
+    const summary = padded(Array.from({ length: 5_000 }, (_, index) => digest(index)).join(''));
+    const small = padded('');
+    const size = textBody(compress(summary)).length + receiptBody(small).length - rawBody(ECONOMY_RECEIPT_MARKER, small).length;
     expect(size).toBeGreaterThan(200_000);
     expect(() => receiptBody(summary)).toThrow(`compressed receipt is ${size} characters (limit 200000). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   });
@@ -53,6 +87,21 @@ describe('native receipt transport', () => {
       textBody(Buffer.from('not gzip').toString('base64')),
       textBody(gzipSync('not JSON').toString('base64')),
       textBody(compress(receiptSummary(passed(), 12, time))),
+    ]) expect(parseReceipt(body)).toBeNull();
+  });
+
+  it('requires exact framed marker and fence lines and keeps the 1 MiB body limit', () => {
+    const summary = padded('');
+    const framed = receiptBody(summary);
+    expect(parseReceipt(framed.padEnd(1024 * 1024, ' '))).toEqual(summary);
+    for (const body of [
+      framed.replace(`${ECONOMY_RECEIPT_MARKER}\n`, `${ECONOMY_RECEIPT_MARKER} \n`),
+      framed.replace('```json\n', '```json \n'),
+      framed.replace('```json\n', '```text\n'),
+      framed.replace('```json\n', '```json\n \n'),
+      framed.replace('\n```\n', '\n  ```\n'),
+      framed.replace('\n```\n', '\n``` \n'),
+      framed.padEnd(1024 * 1024 + 1, ' '),
     ]) expect(parseReceipt(body)).toBeNull();
   });
 
@@ -464,6 +513,9 @@ describe('native review decisions', () => {
       requirements: { scope: 'repair-delta', floor: 1, acceptedReports: 1, missingReports: 0, reviewers: ['r3'] },
     });
     expect(verdict(withDeltaReport, withDeltaReport.candidate, time + 2).ok).toBe(true);
+    const body = receiptBody(receiptSummary(withDeltaReport, 12, time + 2));
+    expect(body).toContain('Reviewer floor 1 · Scope repair-delta');
+    expect(body.match(/^\| .* \| PASS \| .*$/gmu)).toEqual(['| r3 | PASS | delta | none |']);
   });
   it.each(['git', 'registry-union', 'derived', 'resolution'])('explains v3 %s integration requirements', kind => {
     const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
@@ -488,12 +540,15 @@ describe('native review decisions', () => {
         requirements: { scope: 'resolution-delta', floor: 1, acceptedReports: 0, missingReports: 1 },
         coverage: { kind: 'integration', proofKind: 'resolution', scope: 'resolution-delta', delta: deltaDigest, paths: ['source.txt'], ordinaryAllowed: true },
       });
+      const reviewed = recordReport(session, report({ reviewer: 'r2', tree: nextCandidate.tree, ordinary: true, delta: deltaDigest }), time + 2);
+      expect(receiptBody(receiptSummary(reviewed, 12, time + 2))).toContain('Reviewer floor 1 · Scope resolution-delta');
     } else {
       expect(explained).toMatchObject({
         status: 'verify_required',
         requirements: { scope: kind, floor: 0, acceptedReports: 0, missingReports: 0 },
         coverage: { kind: 'integration', proofKind: kind, scope: kind, delta: deltaDigest, paths: [], ordinaryAllowed: false },
       });
+      expect(receiptBody(receiptSummary(session, 12, time + 1))).toContain(`Reviewer floor 0 · Scope ${kind}`);
     }
   });
 });

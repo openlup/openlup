@@ -7,6 +7,7 @@ export const REVIEW_RULES_VERSION = 3;
 export const ECONOMY_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 -->';
 export const COMPRESSED_RECEIPT_MARKER = '<!-- openlup-native-review-receipt v3 gzip -->';
 export const RECEIPT_MARKER = '<!-- openlup-native-review-receipt v2 -->';
+export const RECEIPT_DETAILS_HEADER = '<details><summary>Machine-readable receipt (verified by admission)</summary>';
 const SHA = /^[a-f0-9]{40}$/u;
 const RISKS = ['prose', 'routine', 'behavior', 'unknown'];
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -358,12 +359,32 @@ export function receiptSummary(session, pr, now) {
   }
   return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: session.candidate.integration ? 'behavior' : legacyClassifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: reviewExpiry(session), sessionDigest: digest(session) };
 }
+const displayCell = value => String(value).slice(0, 80).replace(/[^a-zA-Z0-9.:_-]/gu, '?');
+function receiptDisplay(summary) {
+  const { floor, reports, scope } = coverageRequirement(summary.session);
+  const rows = reports.map(report => {
+    const closes = report.closes.map(displayCell).join(', ').slice(0, 80);
+    return `| ${displayCell(report.reviewer)} | ${displayCell(report.verdict)} | ${report.ordinary === true ? 'delta' : 'full'} | ${closes || 'none'} |`;
+  });
+  const open = [...openFindings(summary.session).keys()].map(displayCell).join(', ');
+  return [
+    `PR #${displayCell(summary.pr)} · Head ${displayCell(summary.head.slice(0, 7))} · Tree ${displayCell(summary.tree.slice(0, 7))} · Verdict ${displayCell(summary.verdict)} · Reviewer floor ${displayCell(floor)} · Scope ${displayCell(scope)}`,
+    '',
+    '| Reviewer | Verdict | Scope | Cards closed |',
+    '| --- | --- | --- | --- |',
+    ...rows,
+    '',
+    `Open cards: ${open || 'none'}`,
+  ].join('\n');
+}
 export function receiptBody(summary) {
   const json = JSON.stringify(summary);
-  const marker = summary.version === 3 ? ECONOMY_RECEIPT_MARKER : RECEIPT_MARKER;
-  const raw = `${marker}\n\`\`\`json\n${json}\n\`\`\``;
-  if (summary.version !== 3 || raw.length <= 65_536) return raw;
-  const compressed = `${COMPRESSED_RECEIPT_MARKER}\n\`\`\`text\n${gzipSync(json).toString('base64')}\n\`\`\``;
+  if (summary.version !== 3) return `${RECEIPT_MARKER}\n\`\`\`json\n${json}\n\`\`\``;
+  const display = receiptDisplay(summary);
+  const wrap = (marker, type, payload) => `${marker}\n\n${display}\n\n${RECEIPT_DETAILS_HEADER}\n\n\`\`\`${type}\n${payload}\n\`\`\`\n\n</details>`;
+  const raw = wrap(ECONOMY_RECEIPT_MARKER, 'json', json);
+  if (raw.length <= 65_536) return raw;
+  const compressed = wrap(COMPRESSED_RECEIPT_MARKER, 'text', gzipSync(json).toString('base64'));
   const limit = 200_000;
   demand(compressed.length <= limit, `compressed receipt is ${compressed.length} characters (limit ${limit}). The session history is too long for one comment. Split the change or start a new native session with new counted reviews.`);
   return compressed;
