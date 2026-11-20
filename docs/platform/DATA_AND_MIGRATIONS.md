@@ -942,10 +942,12 @@ opaque bytes of its original draft operation. Pointer capabilities are
 transaction-local and must be empty on capture.
 
 The publication assertion checks the exact document and draft evidence, the
-approval active at publication time, the immediate predecessor, the resolved SKU
+candidate's current approval, the immediate predecessor, the resolved SKU
 roster, response size and the original command result. Approval records the
 expected product and SKU facts. An issue must match those facts, and the latest
-issue must also match the live product and SKU projections. Decision transitions
+issue must also match the live product and SKU projections, including the legacy
+whole-gram net weight that quote readers serve. A candidate with an issue keeps its
+approval, so a later revocation refuses. Decision transitions
 use the existing draft head to serialize with issuance, including before the
 product exists. Capture and exact restore replay apply the same read-only
 admission checks. Live product and SKU facts use the retained projection decoders.
@@ -962,7 +964,7 @@ an issue scales with the predecessor roster and issued SKU facts, with a sort
 for canonical order. SKU, receipt, head and pointer events use their indexed
 keys. Deferred triggers run per affected row, including in bulk restore. The live SKU event decodes each changed facts value.
 Decision events use the candidate and event-order index to check adjacent
-transitions and the approval active at the issue's saved time.
+transitions and the candidate's current decision.
 
 A product can retain up to 10,000 SKUs. Native transfer also limits a packet to
 10,000 rows across its retained tables, including both live and retained SKU

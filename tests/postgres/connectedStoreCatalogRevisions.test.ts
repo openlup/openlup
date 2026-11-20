@@ -287,6 +287,11 @@ it("restores reordered sealed history and recovers the original publication afte
     code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
   });
   await source.owner.query("UPDATE public.catalog_products SET name=$2 WHERE id=$1", [data.productId, second.product.name]);
+  await source.owner.query("UPDATE public.catalog_skus SET net_weight_g=200 WHERE id=$1", [data.skuId]);
+  await expect(captureStoreJourney(source.owner, "catalog-publication-weight-drift")).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
+  });
+  await source.owner.query("UPDATE public.catalog_skus SET net_weight_g=100 WHERE id=$1", [data.skuId]);
   const captured = await captureStoreJourney(source.owner, "catalog-publication-source");
   const tampered = structuredClone(captured);
   const revisions = tampered.owned.find(table => table.table === "catalog_publications")!;
@@ -389,6 +394,17 @@ it("restores reordered sealed history and recovers the original publication afte
     code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
   });
   expect(await journeyCensus(target.owner)).toEqual(drifted);
+
+  await target.owner.query("UPDATE public.catalog_products SET name=$2 WHERE id=$1", [data.productId, second.product.name]);
+  await target.owner.query("UPDATE public.catalog_skus SET net_weight_g=200 WHERE id=$1", [data.skuId]);
+  const weighed = await journeyCensus(target.owner);
+  const weightReplay = structuredClone(captured);
+  for (const table of weightReplay.owned) if (table.table === "catalog_products" || table.table === "catalog_skus") table.rows = [...weighed[table.table]!];
+  rehash(weightReplay);
+  await expect(restore(target.owner, weightReplay)).rejects.toMatchObject({
+    code: "target_conflict", cause: { outcome: "validation_issue", reason: "publication_changed" },
+  });
+  expect(await journeyCensus(target.owner)).toEqual(weighed);
 });
 
 it("refuses a retained registration whose original text is a JSON object during restore", async () => {

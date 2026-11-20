@@ -33,6 +33,16 @@ const publicationRefusals = {
   catalog_publication_query_invalid: ["candidate_invalid", "Reload the product and use the publication identifiers returned for it."],
   catalog_publication_absent: ["catalog_publication_absent", "The selected publication does not exist. Reload the product and select one of its publications."],
   head_conflict: ["head_conflict", "The selected publication head does not match the saved publication. Reload the product and select its publication again."],
+  catalog_publication_lineage_unknown: ["catalog_publication_lineage_unknown", "This product has no publication yet. Publish a revision of the product before reading its publication."],
+  catalog_publication_read_invalid: ["catalog_publication_read_invalid", "The saved publication could not be read. Try again, and ask the store operator to check its publication history if this continues."],
+  catalog_publication_envelope_too_large: ["catalog_publication_envelope_too_large", "The response is too large. Read the publication page by page."],
+  catalog_publication_history_item_too_large: ["catalog_publication_history_item_too_large", "A saved publication is too large for a history page. Read that publication with the full page reader."],
+  catalog_publication_readback_item_too_large: ["catalog_publication_readback_item_too_large", "A saved SKU revision is too large for one page. Ask the store operator to check the publication size limits."],
+  catalog_publication_receipt_unsupported: ["catalog_publication_receipt_unsupported", "Receipt lookup needs an authorized publisher. Authorize the reader, then look up the receipt again."],
+  publisher_not_authorized: ["publisher_not_authorized", "Sign in as a store administrator and try again."],
+  retained_read_not_authorized: ["retained_read_not_authorized", "This account cannot read the retained revision. Use the account, order or fulfilment that owns it."],
+  retained_revision_unavailable: ["retained_revision_unavailable", "The retained revision is not available in this store. Check that its source was accepted here, then try again."],
+  retained_source_mismatch: ["retained_source_mismatch", "The retained revision does not match the selected source. Reload the source and select its revision again."],
   catalog_publication_wire_invalid: ["publication_details_invalid", "Some publication details are invalid. Review the product and its revisions, then try again."],
   catalog_publication_axes_invalid: ["publication_axes_invalid", "Product axes are invalid. Use unique lowercase dimension keys."],
   catalog_publication_attributes_invalid: ["publication_attributes_invalid", "An attribute value is invalid. Check the value type in the product or SKU definition."],
@@ -65,14 +75,12 @@ const publicationRefusals = {
 } as const;
 type AdmissionDiagnostic = keyof typeof publicationRefusals;
 type AdmissionRefusal = { outcome: "validation_issue"; reason: (typeof publicationRefusals)[AdmissionDiagnostic][0]; message: string };
-const readInvalid = "catalog_publication_read_invalid";
-
-function requireCondition(condition: unknown, reason = readInvalid, outcome: CatalogPublicationFailure["outcome"] = "dependency_unavailable"): asserts condition {
-  if (!condition) publicationRefuse(reason, outcome);
-}
-// The exact selector refuses only with codes from the remedy map, so a new reason without a remedy does not compile.
-function requireSelection(condition: unknown, reason: AdmissionDiagnostic, outcome: CatalogPublicationFailure["outcome"]): asserts condition {
-  requireCondition(condition, reason, outcome);
+// Every read refusal uses a code from the remedy map, so a new reason without a remedy does not compile.
+const refuse = (reason: AdmissionDiagnostic, outcome: CatalogPublicationFailure["outcome"] = "dependency_unavailable"): never =>
+  publicationRefuse(reason, outcome);
+function requireCondition(condition: unknown, reason: AdmissionDiagnostic = "catalog_publication_read_invalid",
+  outcome: CatalogPublicationFailure["outcome"] = "dependency_unavailable"): asserts condition {
+  if (!condition) refuse(reason, outcome);
 }
 
 const deferredForeignKeys = new Map([
@@ -105,15 +113,17 @@ export function catalogPublicationAdmissionRefusal(error: unknown): AdmissionRef
   return { outcome: "validation_issue", reason: refusal[0], message };
 }
 
-function failure(error: unknown): CatalogPublicationFailure {
+function failure(error: unknown): CatalogPublicationFailure & { message: string } {
+  const unreadable = publicationRefusals.catalog_publication_read_invalid[1];
   if (error instanceof CatalogPublicationError) {
     const details = Object.hasOwn(publicationRefusals, error.code) ? publicationRefusals[error.code as AdmissionDiagnostic] : undefined;
     // Query and cursor refusals already use a released reason on every read path.
     const reason = details?.[0] === "candidate_invalid" ? details[0] : error.code;
-    return { outcome: error.outcome, reason, ...(details && { message: details[1] }) };
+    return { outcome: error.outcome, reason, message: details?.[1] ?? unreadable };
   }
   const refusal = catalogPublicationAdmissionRefusal(error);
-  return refusal ? { ...refusal, outcome: "dependency_unavailable" } : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable" };
+  return refusal ? { ...refusal, outcome: "dependency_unavailable" }
+    : { outcome: "dependency_unavailable", reason: "publication_authority_unavailable", message: unreadable };
 }
 
 /** Released ports narrow the reason by outcome and keep the same remedy. */
@@ -218,7 +228,7 @@ function decodeCursor(value: string | null, productId: string, kind: Cursor["kin
     const result = schema.parse(JSON.parse(Buffer.from(value, "base64url").toString("utf8")));
     if (encodeCursor(result) !== value || kind === "history" && result.before > result.highWater) throw new Error();
     return result;
-  } catch { return publicationRefuse("catalog_publication_cursor_invalid"); }
+  } catch { return refuse("catalog_publication_cursor_invalid", "validation_issue"); }
 }
 
 async function observations(db: PgQueryExecutor, issue: Issue): Promise<CatalogPublicationReceipt["changes"]> {
@@ -267,10 +277,10 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
   }
 
   async function exact(db: PgQueryExecutor, head: CatalogHeadRef) {
-    requireSelection(headSchema.safeParse(head).success, "catalog_publication_query_invalid", "validation_issue");
+    requireCondition(headSchema.safeParse(head).success, "catalog_publication_query_invalid", "validation_issue");
     const issue = await verifiedIssue(db, head.publicationId);
-    requireSelection(issue, "catalog_publication_absent", "unsupported");
-    requireSelection(equal(issue.head, head), "head_conflict", "conflict");
+    requireCondition(issue, "catalog_publication_absent", "unsupported");
+    requireCondition(equal(issue.head, head), "head_conflict", "conflict");
     return issue;
   }
 
@@ -360,7 +370,9 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
         });
       } catch (error) { return legacyFailure(failure(error)); }
     },
-    async receipt() { return { outcome: "unsupported", reason: "publication_not_supported" }; },
+    async receipt() {
+      return { outcome: "unsupported", reason: "publication_not_supported", message: publicationRefusals.catalog_publication_receipt_unsupported[1] };
+    },
   };
 
   async function readbackV2(head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure> {

@@ -337,9 +337,10 @@ BEGIN
    END IF;
    RAISE EXCEPTION 'catalog_publication_approval_wrong' USING ERRCODE='23514', CONSTRAINT='catalog_publication_approval_wrong';
   END IF;
+  -- A candidate has at most one issue. A later decision changes its current balance.
   SELECT * INTO issue FROM public.catalog_publications
    WHERE candidate_ref=p_decision.candidate_ref AND product_id=p_decision.product_id
-    AND candidate_digest=p_decision.candidate_digest AND committed_at>=p_decision.decided_at;
+    AND candidate_digest=p_decision.candidate_digest;
  END IF;
  IF issue.id IS NULL THEN RETURN; END IF;
 
@@ -347,9 +348,11 @@ BEGIN
    jsonb_build_array(issue.candidate_ref,issue.candidate_digest),0),'UTF8')),'hex');
  SELECT a.* INTO effective FROM public.catalog_publication_decisions a
   WHERE a.candidate_reference_digest=candidate_key AND a.product_id=issue.product_id
-   AND a.candidate_ref=issue.candidate_ref AND a.candidate_digest=issue.candidate_digest AND a.decided_at<=issue.committed_at
+   AND a.candidate_ref=issue.candidate_ref AND a.candidate_digest=issue.candidate_digest
   ORDER BY a.decided_at DESC,a.id DESC LIMIT 1;
- IF NOT FOUND OR effective.action<>'approve' THEN
+ -- The current decision balance decides, as the donor's publish command does
+ -- under its candidate lock; a saved issue time cannot skip a later revocation.
+ IF NOT FOUND OR effective.action<>'approve' OR effective.decided_at>issue.committed_at THEN
   RAISE EXCEPTION 'catalog_publication_approval_missing' USING ERRCODE='23514', CONSTRAINT='catalog_publication_approval_missing';
  END IF;
  IF effective.id<>issue.approval_id THEN
@@ -964,6 +967,9 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
       AND s.net_content_unit=f.facts #>> '{netContent,unit}'
       AND s.net_content_scale=(f.facts #>> '{netContent,scale}')::integer
       AND s.net_content_unscaled=(f.facts #>> '{netContent,unscaled}')::numeric
+      -- Legacy quote readers serve whole grams, as the donor's live check compares them.
+      AND f.facts #>> '{netContent,dimension}'='mass' AND f.facts #>> '{netContent,unit}'='openlup:g'
+      AND f.facts #> '{netContent,scale}'='0'::jsonb AND s.net_weight_g::text=f.facts #>> '{netContent,unscaled}'
       AND s.gross_mass_dimension IS NOT DISTINCT FROM f.facts #>> '{grossMass,dimension}'
       AND s.gross_mass_unit IS NOT DISTINCT FROM f.facts #>> '{grossMass,unit}'
       AND s.gross_mass_scale IS NOT DISTINCT FROM (f.facts #>> '{grossMass,scale}')::integer

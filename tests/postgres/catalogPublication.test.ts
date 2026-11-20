@@ -148,7 +148,8 @@ const jsonDepth = (value: unknown, depth = 0): number => value !== null && typeo
 it.each([48, 49])("starts the candidate at the released draft's own depth for a deepest value at %i", async deepest => {
   const data = fixture();
   // The authored document sits at depth 3 and its value at 4; each array adds one level.
-  let nested: unknown = [];
+  // The deepest value is an empty object, which the released draft encoder accepts at depth 48.
+  let nested: unknown = {};
   for (let level = 4; level < deepest; level++) nested = [nested];
   const document = { value: nested };
   let staged = false;
@@ -319,7 +320,8 @@ it("verifies current, history, recovery and accepted retained A after B with an 
     const binding = { kind, sourceId: randomUUID(), lineId: randomUUID(), productId: data.productId, skuId: data.skuId,
       skuRevisionId: issued.first.skuRevisionId, publicationId: issued.first.issueId, documentRevisionId: data.documentId };
     expect(await readers.resolveRetained(binding, readers.authorizeReadScope("owner"))).toMatchObject({ outcome: "found", head: issued.first.head, sku: { title: "Article" } });
-    expect(await readers.resolveRetained(binding, readers.authorizeReadScope("other"))).toEqual({ outcome: "unauthorized", reason: "retained_read_not_authorized" });
+    expect(await readers.resolveRetained(binding, readers.authorizeReadScope("other"))).toEqual({ outcome: "unauthorized", reason: "retained_read_not_authorized",
+      message: "This account cannot read the retained revision. Use the account, order or fulfilment that owns it." });
   }
   await pool.query("UPDATE public.catalog_products SET name='Later draft name' WHERE id=$1", [data.productId]);
   expect(await readers.reads.current(data.productId)).toEqual({ outcome: "conflict", reason: "head_conflict",
@@ -488,6 +490,16 @@ it.each([
   expect(await reader.reads.readback(head)).toEqual({ ...released, message });
   expect(await reader.readbackV2(head)).toEqual({ outcome: released.outcome, reason: exactReason, message });
   expect(await reader.readbackV2(issued)).toMatchObject({ outcome: "page", head: issued });
+});
+
+it.each(["current", "history"] as const)("tells the caller how to proceed with a product that has no publication through %s", async entry => {
+  const data = fixture();
+  await transaction(pool, db => stageProductRows(db, data));
+  const { reads } = publicationReader();
+  expect(entry === "current" ? await reads.current(data.productId) : await reads.history(data.productId, null)).toEqual({
+    outcome: "unsupported", reason: "publication_not_supported",
+    message: "This product has no publication yet. Publish a revision of the product before reading its publication.",
+  });
 });
 
 it("uses the exact significant UTF-8 bytes of the recovery command key", async () => {
@@ -738,6 +750,31 @@ it("refuses issuance after a receipted revocation and permits an active approval
   await transaction(pool, async db => insertGraph(db, await graph(db, data)));
 });
 
+it("refuses an issue backdated between a committed approval and its later revocation", async () => {
+  const data = fixture();
+  const issue = await transaction(pool, async db => {
+    const value = await graph(db, data);
+    await decisionRow(db, value);
+    await decisionReceipt(db, value);
+    return value;
+  });
+  const { rows: [times] } = await pool.query(`SELECT
+    to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '1 second','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS issued,
+    to_char($1::timestamptz AT TIME ZONE 'UTC' + interval '2 seconds','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS revoked`, [issue.time]);
+  const revoke = changeDecision(issue, "revoke", "revoke:1", randomUUID());
+  await transaction(pool, db => insertDecision(db, { ...revoke, time: times.revoked }));
+  let staged = false;
+  const error = await transaction(pool, async db => {
+    await insertGraph(db, { ...issue, time: times.issued }, { reuseApproval: true });
+    staged = true;
+  }).catch(error => error);
+  expect(staged).toBe(true);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_approval_missing" });
+  expect((await pool.query("SELECT id FROM public.catalog_publications WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+  expect((await pool.query("SELECT current_document_revision_id AS id FROM public.catalog_products WHERE id=$1", [data.productId])).rows)
+    .toEqual([{ id: null }]);
+});
+
 it("refuses a backdated revocation that would change a saved publication's approval", async () => {
   const issue = await transaction(pool, async db => {
     const value = await graph(db, fixture());
@@ -799,6 +836,7 @@ it("refuses retargeting and consuming a pointer authorization in its original tr
 it.each([
   ["product", "UPDATE public.catalog_products SET name='Drift' WHERE id=$1", "productId"],
   ["SKU", "UPDATE public.catalog_skus SET title='Drift' WHERE id=$1", "skuId"],
+  ["SKU net weight", "UPDATE public.catalog_skus SET net_weight_g=200 WHERE id=$1", "skuId"],
 ] as const)("refuses live %s drift before the publication commits", async (_label, update, key) => {
   const error = await transaction(pool, async db => {
     const issue = await graph(db, fixture());
