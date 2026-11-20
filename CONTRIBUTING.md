@@ -1640,8 +1640,9 @@ authority. Review evidence grants no merge, release, settings or credential righ
 7. **FAIL: one fix commit.** Commit the fix, then review the cumulative delta
    since the last candidate with its full floor of complete reviews, with the
    open finding cards, at the delta floor, or take a full review if no such
-   candidate exists or the base or intent changed. Close every blocking finding
-   explicitly and return to PASS when review succeeds.
+   candidate exists, the base, intent, or author changed, or the repair history
+   is no longer linear and merge-free. Close every blocking finding explicitly
+   and return to PASS when review succeeds.
 
    Count every review round. A repair cycle fails to converge if a finding of an
    already-seen class reappears on another path, the number of material findings

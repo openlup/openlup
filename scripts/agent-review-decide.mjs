@@ -104,14 +104,17 @@ export function cumulativeRepairPrefix(session) {
   if (!candidate.coverage || !reports.some(report => report.verdict === 'FAIL') ||
     !reports.every(report => report.ordinary === true && report.delta === candidate.coverage.delta)) return undefined;
   const intentDigest = digest(intent);
+  let repair = candidate.coverage;
   let end = session.history.findLastIndex(event => event.type === 'prepare');
   for (let index = end - 1; index >= 0; index--) {
     const prior = session.history[index];
     if (prior.type !== 'prepare') continue;
+    if (repair?.kind !== 'repair' || repair.from?.head !== prior.candidate.head) return undefined;
     if (prior.candidate.base !== candidate.base || prior.candidate.rules?.base !== candidate.rules?.base ||
       prior.authorSessionId !== authorSessionId || digest(prior.intent) !== intentDigest) return undefined;
     const prefix = prefixSession(session, end);
     if (fullReviewReports(prefix)) return prefix;
+    repair = prior.candidate.coverage;
     end = index;
   }
 }

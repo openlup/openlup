@@ -245,20 +245,26 @@ export async function captureCoverageEdge(cwd, session, observed, now, historica
       proof = await proveReviewIntegration(cwd, session.candidate, observed, portable, { legacy: !derivedEnabled || historicalLegacy });
       if (proof.prediction) { from = proof.prediction; to = observed.tree; }
     } catch { return undefined; }
-  } else {
-    if (session.candidate.rules?.version !== 3) return undefined;
-    from = cumulative?.candidate.head ?? from;
-    const delta = await captureCommittedReviewCandidate(cwd, from, observed.head);
-    const commits = (await git(cwd, 'rev-list', '--merges', `${from}..${observed.head}`)).trim();
-    if (!await ancestor(git, cwd, session.candidate.head, observed.head) || commits || !delta.changedPaths.length) return undefined;
-    if (cumulative && !await ancestor(git, cwd, from, session.candidate.head)) return undefined;
-    proof = { paths: delta.changedPaths, modeChanged: delta.modeChanged, ...(cumulative ? { cumulativeFrom: from } : {}) }; kind = 'repair';
   }
-  // Full object names keep the digest identical in every clone; abbreviated ones
-  // lengthen with the number of objects in the repository that runs git.
-  const index = abbreviatedIndex ? [] : ['--full-index'];
-  return { kind, previous: digest(session.history), from: { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree },
-    delta: digest(await git(cwd, 'diff', '--binary', ...index, '--no-renames', from, to)), proof };
+  try {
+    if (sameBase) {
+      if (session.candidate.rules?.version !== 3) return undefined;
+      from = cumulative?.candidate.head ?? from;
+      const delta = await captureCommittedReviewCandidate(cwd, from, observed.head);
+      const commits = (await git(cwd, 'rev-list', '--merges', `${from}..${observed.head}`)).trim();
+      if (!await ancestor(git, cwd, session.candidate.head, observed.head) || commits || !delta.changedPaths.length) return undefined;
+      if (cumulative && !await ancestor(git, cwd, from, session.candidate.head)) return undefined;
+      proof = { paths: delta.changedPaths, modeChanged: delta.modeChanged, ...(cumulative ? { cumulativeFrom: from } : {}) }; kind = 'repair';
+    }
+    // Full object names keep the digest identical in every clone; abbreviated ones
+    // lengthen with the number of objects in the repository that runs git.
+    const index = abbreviatedIndex ? [] : ['--full-index'];
+    return { kind, previous: digest(session.history), from: { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree },
+      delta: digest(await git(cwd, 'diff', '--binary', ...index, '--no-renames', from, to)), proof };
+  } catch (error) {
+    if (cumulative) return undefined;
+    throw error;
+  }
 }
 // Trusted admission and local verify rederive every recorded exceptional edge.
 export async function validateEconomySession(cwd, session, runGit = git) {

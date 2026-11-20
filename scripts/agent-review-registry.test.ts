@@ -460,6 +460,72 @@ describe('real Git coverage histories', () => {
     expect(body).toContain('Reviewer floor 2 · Scope repair-delta');
     await expect(admitSourceReceipt(f.cwd, f.base, head, body)).resolves.toEqual(receipt);
   });
+  it('refuses cumulative repair across divergent fresh prepares in local and hosted replay', async () => {
+    const f = await fixture();
+    const request = JSON.parse(await readFile(f.request, 'utf8')); request.intent.risk = 'routine';
+    await writeFile(f.request, JSON.stringify(request));
+    const protectedPath = 'scripts/agent-review-anchor.mjs'; const source = 'protected fixture\n';
+    await f.write(protectedPath, source); const anchorHead = f.commit();
+    const anchor = await f.review();
+
+    f.git('checkout', '-q', '--detach', f.base);
+    await f.write('side.md', 'side of divergent merge\n'); const side = f.commit();
+    f.git('checkout', '-q', '--detach', f.base);
+    await f.write('branch.md', 'other side of divergent merge\n'); f.commit();
+    f.git('merge', '--no-ff', '-qm', 'divergent merge', side);
+    await f.cli('prepare', '--new', f.request);
+    f.git('checkout', '-q', '--detach', anchorHead);
+    f.git('rm', protectedPath); await f.write('app.ts', f.git('show', f.base + ':app.ts') + '\n');
+    await f.write('return.md', 'return to the original branch\n'); f.commit();
+    await f.cli('prepare', '--new', f.request);
+    await expect(f.cli('verify')).resolves.toBe(0);
+
+    await f.write(protectedPath, source); await f.write('app.ts', 'first repair\n');
+    const firstHead = f.commit(); await f.cli('prepare', f.request);
+    const first = await f.state();
+    await f.report({ ordinary: true, delta: first.candidate.coverage.delta, verdict: 'FAIL' });
+    const failed = await f.state();
+    await f.write('app.ts', 'second repair\n'); const head = f.commit(); await f.cli('prepare', f.request);
+    const next = await f.state();
+    expect.soft(next.candidate.coverage).toBeUndefined();
+    await f.cli('status', '--explain');
+    expect.soft(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements).toMatchObject({ scope: 'full', floor: 2 });
+
+    // The final Git range is linear even though the recorded prepare history is not.
+    expect(await sourceGit(f.cwd, 'rev-list', '--merges', anchorHead + '..' + head)).toBe('');
+    const delta = digest(await sourceGit(f.cwd, 'diff', '--binary', '--full-index', '--no-renames', anchorHead, head));
+    const edge = { kind: 'repair', previous: digest(failed.history),
+      from: { base: f.base, head: firstHead, tree: first.candidate.tree }, delta,
+      proof: { paths: ['app.ts', 'return.md'], modeChanged: false, cumulativeFrom: anchorHead },
+    };
+    next.candidate.coverage = edge; next.history.at(-1).candidate.coverage = edge;
+    await writeFile(join(f.scratch, 'agent-review/session.json'), JSON.stringify(next));
+    await f.report({ ordinary: true, delta });
+    const session = await f.state();
+    await expect.soft(f.cli('verify')).rejects.toThrow('recorded coverage proof differs');
+    const receipt = { ...receiptSummary(anchor, 12, Date.now()), head, tree: next.candidate.tree, session, sessionDigest: digest(session) };
+    const body = ECONOMY_RECEIPT_MARKER + '\n```json\n' + JSON.stringify(receipt) + '\n```';
+    await expect(admitSourceReceipt(f.cwd, f.base, head, body)).rejects.toThrow('receipt wait expired');
+  }, 30_000);
+  it('prepares a full review when the cumulative patch exceeds the Git buffer', async () => {
+    const f = await fixture(); await f.cli('prepare', f.request);
+    await f.report({ verdict: 'FAIL' }); await f.report({ verdict: 'FAIL' });
+    const patchSize = 9 * 1024 * 1024;
+    await f.write('first.txt', 'a'.repeat(patchSize) + '\n');
+    f.commit(); await f.cli('prepare', f.request);
+    const first = await f.state();
+    expect(first.candidate.coverage.kind).toBe('repair');
+    await f.report({ ordinary: true, delta: first.candidate.coverage.delta, verdict: 'FAIL' });
+    await f.write('second.txt', 'b'.repeat(patchSize) + '\n'); const head = f.commit();
+    await expect(sourceGit(f.cwd, 'diff', '--binary', '--full-index', '--no-renames', f.head, head))
+      .rejects.toMatchObject({ code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' });
+
+    await expect(f.cli('prepare', f.request)).resolves.toBe(0);
+    expect((await f.state()).candidate).toMatchObject({ head });
+    expect((await f.state()).candidate.coverage).toBeUndefined();
+    await f.cli('status', '--explain');
+    expect(JSON.parse(vi.mocked(console.log).mock.lastCall?.[0]).requirements).toMatchObject({ scope: 'full', floor: 2 });
+  }, 30_000);
   it.each(['no full prefix', 'changed main base', 'changed stack base', 'changed intent'])('requires a full review after a delta-only FAIL with %s', async boundary => {
     const f = await fixture();
     const request = JSON.parse(await readFile(f.request, 'utf8')); request.intent.risk = 'routine';
