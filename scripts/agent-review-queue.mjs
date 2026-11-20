@@ -25,38 +25,28 @@ const RECEIPT_LIMIT = 1024 * 1024;
 export function needsForwardApproval(changedPaths, hasUpstreamManagedApproval = () => false) {
   return changedPaths.includes(REVIEWED_FORWARD_PATH) || changedPaths.some(path => isQualifiedPlatformMigrationPath(path) || isChannelIngestMigrationPath(path) || isNativeStoreMigrationPath(path) || hasUpstreamManagedApproval(path));
 }
-function decodeGzipReceipt(encoded) {
-  try {
-    const payload = Buffer.from(encoded, 'base64');
-    if (payload.toString('base64') !== encoded) return null;
-    if (payload[3] !== 0) return null; // The encoder emits no optional gzip header fields.
-    const options = { maxOutputLength: RECEIPT_LIMIT };
-    const buffer = gunzipSync(payload, options);
-    // gunzip can ignore trailing bytes or join members. The first deflate stream must end at the final trailer.
-    const deflate = payload.subarray(10, -8);
-    if (inflateRawSync(deflate, { ...options, info: true }).engine.bytesWritten !== deflate.length) return null;
-    const receipt = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer));
-    return receipt?.version === 3 ? receipt : null;
-  } catch { return null; }
+function decodeGzipText(encoded) {
+  const payload = Buffer.from(encoded, 'base64');
+  if (payload.toString('base64') !== encoded) throw new Error('base64 is not canonical');
+  if (payload[3] !== 0) throw new Error('gzip header is missing or has unsupported flags');
+  const options = { maxOutputLength: RECEIPT_LIMIT };
+  const buffer = gunzipSync(payload, options);
+  // gunzip can ignore trailing bytes or join members. The first deflate stream must end at the final trailer.
+  const deflate = payload.subarray(10, -8);
+  if (inflateRawSync(deflate, { ...options, info: true }).engine.bytesWritten !== deflate.length) throw new Error('gzip stream has trailing data');
+  return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer);
 }
-function decodeRawReceipt(marker, json) {
-  try {
-    const receipt = JSON.parse(json);
-    if (marker === ECONOMY_RECEIPT_MARKER ? receipt?.version !== 3 : receipt?.version !== undefined) return null;
-    return receipt;
-  } catch { return null; }
-}
-function parseBareReceipt(body) {
+function bareReceiptBlock(body) {
   if (body.startsWith(`${COMPRESSED_RECEIPT_MARKER}\n`)) {
     const match = /^```text\n([A-Za-z0-9+/]+={0,2})\n```\n?$/u.exec(body.slice(COMPRESSED_RECEIPT_MARKER.length + 1));
-    return match ? decodeGzipReceipt(match[1]) : null;
+    return match ? { marker: COMPRESSED_RECEIPT_MARKER, payload: match[1] } : null;
   }
   const marker = [RECEIPT_MARKER, ECONOMY_RECEIPT_MARKER].find(value => body.startsWith(`${value}\n`));
   if (!marker) return null;
   const match = /^```json\s*\n([\s\S]*?)\n```\s*$/u.exec(body.slice(marker.length + 1));
-  return match ? decodeRawReceipt(marker, match[1]) : null;
+  return match ? { marker, payload: match[1] } : null;
 }
-function parseFramedReceipt(body) {
+function framedReceiptBlock(body) {
   const markerEnd = body.indexOf('\n');
   if (markerEnd < 0) return null;
   const marker = body.slice(0, markerEnd);
@@ -67,13 +57,35 @@ function parseFramedReceipt(body) {
   const match = /^```(json|text)\n([^\r\n]+)\n```\n\n<\/details>\s*$/u.exec(body.slice(section + header.length));
   const gzip = marker === COMPRESSED_RECEIPT_MARKER;
   if (!match || match[1] !== (gzip ? 'text' : 'json')) return null;
-  return gzip ? decodeGzipReceipt(match[2]) : decodeRawReceipt(marker, match[2]);
+  return { marker, payload: match[2] };
+}
+function decodeReceipt(body) {
+  // Bare and framed bodies have different closing delimiters, so they cannot both match.
+  const block = bareReceiptBlock(body) ?? framedReceiptBlock(body);
+  if (!block) throw new Error('no machine block in the form the receipt command prints');
+  const receipt = JSON.parse(block.marker === COMPRESSED_RECEIPT_MARKER ? decodeGzipText(block.payload) : block.payload);
+  if (block.marker === RECEIPT_MARKER ? receipt?.version !== undefined : receipt?.version !== 3) {
+    throw new Error('receipt version does not match its marker');
+  }
+  if (receipt === null) throw new Error('receipt JSON is null');
+  return receipt;
 }
 export function parseReceipt(body) {
   if (typeof body !== 'string' || body.length > RECEIPT_LIMIT) return null;
-  return parseBareReceipt(body) ?? parseFramedReceipt(body);
+  try { return decodeReceipt(body); } catch { return null; }
 }
-export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidCommentIds) {
+// Only describe comments parseReceipt already refused. Never expose parser text that quotes the payload.
+export function diagnoseReceipt(body) {
+  if (typeof body !== 'string') return 'comment body is not text';
+  if (body.length > RECEIPT_LIMIT) return 'receipt body exceeds the size limit';
+  try { decodeReceipt(body); } catch (error) {
+    const message = error.message.replace(/(?:, |^)(?:\.\.\.)?"[\s\S]* is not valid JSON$/u, '') || 'input is not valid JSON';
+    const offset = /\bposition (\d+)(?: \(line \d+ column \d+\))?$/u.exec(message)?.[1];
+    return message.replace(/[^\x20-\x7e]/gu, '?').slice(0, 160) + (offset === undefined ? '' : ' at offset ' + offset);
+  }
+  return null;
+}
+export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments) {
   const comments = [];
   for (let page = 1; ; page += 1) {
     const batch = await api.get(`${root}/issues/${pr}/comments?per_page=100&page=${page}`);
@@ -84,7 +96,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   comments.sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at) || b.id - a.id);
   for (const comment of comments) {
     const receipt = parseReceipt(comment.body); const login = comment.user?.login;
-    if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidCommentIds?.push(comment.id);
+    if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidComments?.push(comment);
     if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
     const key = login.toLowerCase();
     if (!permissions.has(key)) {
@@ -113,8 +125,8 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
     const pr = await api.get(`${root}/pulls/${prNumber}`);
     demand(pr.number === prNumber && pr.state === 'open' && pr.draft === false && !pr.merged && pr.base?.ref === 'main' && SHA.test(pr.head?.sha), 'PR must be the live open main candidate');
     if (!group) demand(event.pull_request?.head?.sha === pr.head.sha, 'PR head changed; rerun CI for the current head', 'stale');
-    const invalidCommentIds = [];
-    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidCommentIds);
+    const invalidComments = [];
+    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidComments);
     for (const receipt of receipts) {
       const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main), 'main commit identity is invalid');
       const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
@@ -149,7 +161,10 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
-    invalidCommentNotice = invalidCommentIds.length ? `; receipt comment ${invalidCommentIds[0]} is not a valid receipt (for example an edited or duplicated machine block); post the unchanged output of \`node scripts/agent-review-session.mjs receipt ${prNumber}\`` : '';
+    const invalid = invalidComments[0];
+    const v2Remedy = invalid?.body.split('\n', 1)[0] === RECEIPT_MARKER
+      ? ' A v2 receipt needs a session prepared on current main.' : '';
+    invalidCommentNotice = invalid ? `; receipt comment ${invalid.id}: Review receipt machine block could not be parsed: ${diagnoseReceipt(invalid.body)}. Re-run \`node scripts/agent-review-session.mjs receipt ${prNumber}\` and post its exact output.${v2Remedy}` : '';
     console.log(`needs_agent_review: ${reason}${invalidCommentNotice}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
   throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
