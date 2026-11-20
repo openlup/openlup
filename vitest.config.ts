@@ -9,6 +9,8 @@ import { flatTestTimeoutMs, type DurationSections } from "./scripts/ci-vitest-du
 
 // The wrapper pins only its own child; a nested invocation gets a new identity.
 const disposableRunKey = Symbol.for("openlup.disposable.run");
+const disposableWrappedKey = Symbol.for("openlup.disposable.wrapped");
+process[disposableWrappedKey] ??= Boolean(processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER);
 process[disposableRunKey] ??= processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER ?? randomUUID();
 processEnvironment.OPENLUP_DISPOSABLE_RUN = process[disposableRunKey];
 delete processEnvironment.OPENLUP_DISPOSABLE_RUN_FROM_WRAPPER;
