@@ -1,16 +1,31 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
 import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 // Inputs are plain prefixes: an entry ending in '/' covers that directory and
 // everything below it (dot files included); any other entry is one exact file.
 // Glob matching is deliberately avoided: its '*' and '**' skip dot segments.
-// Broad shared triggers: every root file, every dot-prefixed segment anywhere
-// (.github, .npmignore, .env...), the tooling/import closure and test setup.
-// That includes both manifests, Vitest, run-vitest, this table and all workflows.
+// Broad shared triggers: every non-doc root file, every dot-prefixed segment
+// anywhere (.github, .npmignore, .env...), the tooling/import closure and test
+// setup. That includes both manifests, Vitest, run-vitest, this table and all
+// workflows.
 export const SHARED_INPUTS = ['scripts/', 'tests/setup/', 'src/test/',
   'src/checkout/machine/commerceRequestCache.ts'];
+
+// Root-level documentation files that do not affect build/test configuration
+// and therefore do not trigger the global root-file bailout. Unlisted doc and
+// policy checks always run; bounded doc tests declare ROOT_DOC_FILES below.
+export const ROOT_DOC_FILES = [
+  'README.md',
+  'AGENTS.md',
+  'CONTRIBUTING.md',
+  'SECURITY.md',
+  'GOVERNANCE.md',
+  'CHANGELOG.md',
+];
+const ROOT_DOC_SET = new Set(ROOT_DOC_FILES);
 
 // Only bounded fixtures belong here. Inputs are relative to the checkout;
 // every row also has SHARED_INPUTS. Package rows conservatively include all
@@ -25,10 +40,13 @@ export const TOOLING_INPUTS = {
   'scripts/agent-review-queue.test.ts': [], // Synthetic Git repositories and recorded transport.
   'scripts/agent-review-gate.test.ts': [], // Real-Git witnesses of the session CLI and hosted admission.
   'scripts/public-ci-reuse.test.ts': [], // Recorded workflow/job responses.
-  'scripts/documentation-cli.test.ts': ['packages/'], // Copies CLI closure and package manifests.
+  'scripts/documentation-cli.test.ts': ['packages/', ...ROOT_DOC_FILES], // Copies CLI closure, package manifests and validates root docs.
+  'scripts/pgtap-parity.test.ts': [], // Pure TAP/row-diff/sabotage/executable unit fixtures.
   'scripts/ast-grep/check-filewide-ignore.test.ts': [], // Fixture source; actual rules under scripts/.
   'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': [], // Fixture source and rules.
+  'scripts/packages/distribution-cli-proof.test.ts': ['packages/', 'examples/neutral-store/', 'config/openlup-packages.json', 'config/ci-images.json'], // Starter upgrade/extraction proof, CLI and candidate packs.
   'scripts/packages/eslint-import-map.test.ts': ['packages/', 'src/', 'server/'], // Config reads workspace exports and domain directories.
+  'scripts/packages/guide-tutorial.test.ts': ['packages/'], // Reads packages/core/docs/guide/start/tutorial.md plus temp fixtures.
   'scripts/packages/outbox-consumer-proof.test.ts': ['packages/', 'server/runtime/outbox/', 'config/openlup-packages.json', 'config/ci-images.json'], // Actual config, image pins, packs, smoke scripts and reference wiring.
   'scripts/packages/package-manifest-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, core exports and root tsconfigs.
   'scripts/packages/package-release.test.ts': ['packages/'], // Release module mutations and Git fixtures.
@@ -49,17 +67,44 @@ export function excludedToolingTests(changedPaths) {
     || !path || path.startsWith('/') || path.split('/').includes('..') || path.includes('\\'))) return [];
   const covers = (input, path) => input.endsWith('/') ? path.startsWith(input) : path === input;
   const touched = inputs => changedPaths.some(path => inputs.some(input => covers(input, path)));
-  if (changedPaths.some(path => !path.includes('/') || path.split('/').some(segment => segment.startsWith('.')))
+  if (changedPaths.some(path => (!path.includes('/') && !ROOT_DOC_SET.has(path))
+    || path.split('/').some(segment => segment.startsWith('.')))
     || touched(SHARED_INPUTS)) return [];
   return Object.entries(TOOLING_INPUTS)
     .filter(([, inputs]) => !touched(inputs))
     .map(([test]) => test).sort();
 }
 
-// A fixed Git binary and search path: a writable PATH entry cannot substitute
-// a fake git that reports no changed inputs.
-const runGit = (cwd, args) => execFileSync('/usr/bin/git', args, { cwd, encoding: 'utf8',
-  timeout: 30_000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: '/usr/bin:/bin' } });
+const isExecutableFile = candidate => {
+  try {
+    accessSync(candidate, constants.X_OK);
+    return statSync(candidate).isFile();
+  } catch {
+    return false;
+  }
+};
+
+// Prefer the fixed system Git binary with a locked PATH so a writable PATH
+// entry cannot substitute a fake git on standard runners; fall back to PATH
+// resolution on setups (e.g. Homebrew/Nix) where /usr/bin/git is absent.
+export function resolveGitExecutable({
+  preferred = '/usr/bin/git',
+  pathValue = processEnvironment.PATH ?? '',
+  isExecutable = isExecutableFile,
+} = {}) {
+  if (preferred && isExecutable(preferred)) return { binary: preferred, path: '/usr/bin:/bin' };
+  for (const directory of pathValue.split(delimiter).filter(Boolean)) {
+    const candidate = join(directory, 'git');
+    if (isExecutable(candidate)) return { binary: candidate, path: pathValue };
+  }
+  return { binary: 'git', path: pathValue };
+}
+
+const runGit = (cwd, args) => {
+  const { binary, path } = resolveGitExecutable();
+  return execFileSync(binary, args, { cwd, encoding: 'utf8',
+    timeout: 30_000, maxBuffer: 16 * 1024 * 1024, env: { ...processEnvironment, PATH: path } });
+};
 
 // HEAD is the checked-out candidate, including GitHub's PR merge commit. Diff
 // against its merge-base with the event's exact base, never a moving branch.
