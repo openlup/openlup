@@ -27,6 +27,47 @@ ALTER FUNCTION public.catalog_publication_record_command(jsonb) SECURITY DEFINER
 -- The deferred trigger performs only the existing draft fence no-op update.
 ALTER FUNCTION public.catalog_publication_admit() SECURITY DEFINER;
 
+-- Only the recorder can insert an issue for this login. Its trigger records the
+-- product in a private temporary table whose evidence is cleared at COMMIT.
+CREATE FUNCTION public.catalog_publication_bind_live_write() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $bind$
+DECLARE product uuid;
+BEGIN
+  IF TG_TABLE_NAME = 'catalog_publications' AND to_regclass('pg_temp.catalog_publication_issued_products') IS NULL THEN
+    CREATE TEMP TABLE catalog_publication_issued_products (product_id uuid PRIMARY KEY) USING heap ON COMMIT DELETE ROWS;
+  END IF;
+  -- A caller-owned temporary object with the reserved name is never evidence.
+  IF NOT EXISTS (SELECT 1 FROM pg_class WHERE oid=to_regclass('pg_temp.catalog_publication_issued_products')
+    AND relowner=current_user::regrole AND relkind='r' AND relpersistence='t') THEN
+    RAISE EXCEPTION 'catalog_publication_write_binding_required' USING ERRCODE='42501';
+  END IF;
+  IF TG_TABLE_NAME = 'catalog_publications' THEN
+    INSERT INTO pg_temp.catalog_publication_issued_products VALUES (NEW.product_id) ON CONFLICT DO NOTHING;
+  ELSE
+    CASE TG_TABLE_NAME
+      WHEN 'catalog_products' THEN product := CASE WHEN TG_OP='DELETE' THEN OLD.id ELSE NEW.id END;
+      WHEN 'catalog_sku_identifiers' THEN SELECT product_id INTO product FROM public.catalog_skus
+        WHERE id=CASE WHEN TG_OP='DELETE' THEN OLD.catalog_sku_id ELSE NEW.catalog_sku_id END;
+      WHEN 'catalog_attribute_projection' THEN SELECT product_id INTO product FROM public.catalog_skus
+        WHERE id=CASE WHEN TG_OP='DELETE' THEN OLD.sku_id ELSE NEW.sku_id END;
+      ELSE product := CASE WHEN TG_OP='DELETE' THEN OLD.product_id ELSE NEW.product_id END;
+    END CASE;
+    IF NOT EXISTS (SELECT 1 FROM pg_temp.catalog_publication_issued_products WHERE product_id=product) THEN
+      RAISE EXCEPTION 'catalog_publication_write_binding_required' USING ERRCODE='42501';
+    END IF;
+  END IF;
+  RETURN NULL;
+END
+$bind$;
+REVOKE ALL ON FUNCTION public.catalog_publication_bind_live_write() FROM PUBLIC;
+CREATE TRIGGER catalog_publication_record_write_binding AFTER INSERT ON public.catalog_publications FOR EACH ROW
+  WHEN (session_user='openlup_catalog_publication') EXECUTE FUNCTION public.catalog_publication_bind_live_write();
+DO $triggers$ DECLARE target text; BEGIN
+  FOREACH target IN ARRAY ARRAY['catalog_products','catalog_skus','catalog_sku_identifiers','catalog_product_document_revisions','catalog_attribute_projection'] LOOP
+    EXECUTE format('CREATE CONSTRAINT TRIGGER catalog_publication_live_write AFTER INSERT OR UPDATE OR DELETE ON public.%I DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (session_user=''openlup_catalog_publication'') EXECUTE FUNCTION public.catalog_publication_bind_live_write()', target);
+  END LOOP;
+END $triggers$;
+
 -- Check the effect (including replay) under the same row fence as the native writer.
 CREATE FUNCTION public.catalog_publication_lock_effective_base_price(p_sku uuid, p_list uuid)
 RETURNS TABLE(id uuid, unit_price_minor integer)

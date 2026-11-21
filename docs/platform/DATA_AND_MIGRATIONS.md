@@ -1619,6 +1619,12 @@ to the `qualified-v2` plan after lock and conflict completion and preserves
 the order of shared forwards. The SQL introduction can add the approval and
 manifest entry together. The reservation by itself grants no database privileges.
 
+The restricted publication login can write live products, SKUs, SKU identifiers,
+product-document revisions and attribute projections. At commit, each write
+must match a publication for the same product recorded by the definer recorder
+in that transaction. The database checks this binding. Column values inside an
+approved publication are trusted to the native runner, as on the owner path.
+
 Historically, delivery used three separately landed checkpoints: reader support,
 then an exact pin-only approval, then the identical active SQL and its selected
 manifest row. The current rule below permits class data, pins and SQL together

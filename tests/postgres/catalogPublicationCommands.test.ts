@@ -743,7 +743,7 @@ it("commits deferred publication checks through the restricted login", async () 
   const url = new URL(container.connectionString);
   url.username = "openlup_catalog_publication";
   url.password = password;
-  const publisher = new Pool({ connectionString: url.href });
+  const publisher = new Pool({ connectionString: url.href, max: 1 });
   try {
     expect((await publisher.query(`SELECT session_user,current_user,rolsuper,rolinherit,rolbypassrls,
       EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE roleid=oid OR member=oid) AS memberships,
@@ -787,6 +787,7 @@ it("commits deferred publication checks through the restricted login", async () 
       .toMatchObject({ rows: [{ status: "active" }] });
     await expect(publisher.query("UPDATE public.catalog_tax_classes SET status='retired'")).rejects.toMatchObject({ code: "42501" });
     const data = authored(26), priceListId = randomUUID();
+    data.payload.skus[0]!.attributes = { finish: "matte" };
     await pool.query(`INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from)
       VALUES($1,'Publication list','ZZ','XXX','active',statement_timestamp()-interval '1 hour')`, [priceListId]);
     data.payload.skus[0]!.priceOperations = [{ schemaVersion: 1, commandKey: randomUUID(), variantId: data.skuId, priceListId,
@@ -807,10 +808,29 @@ it("commits deferred publication checks through the restricted login", async () 
       .toMatchObject({ candidateDigest: prepared.approve.candidateDigest, preparation: { postStateDigest: expect.any(String) } });
     const approved = await api.execute(prepared.approve, who);
     expect(approved, sqlFailure).toMatchObject({ outcome: "committed" });
+
+    const otherProduct = randomUUID();
+    await pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES ($1,'unrelated-publication','Unrelated product')", [otherProduct]);
+    const bindingRefusal = { code: "42501", message: "catalog_publication_write_binding_required" };
+    let mixedError: unknown;
+    const mixed = createPostgresCatalogPublicationCommands({ registry,
+      authorizeHuman: async (userId: string) => ({ ok: true, userId, role: "admin", isMachineActor: false }),
+      catalogPublicationOwner: { run: work => transaction(publisher, async db => {
+        const receipt = await work(db);
+        expect(await db.query("UPDATE public.catalog_products SET name='Unbound edit' WHERE id=$1", [otherProduct])).toMatchObject({ rowCount: 1 });
+        return receipt;
+      }).catch(error => { mixedError = error; throw error; }) },
+    });
+    await mixed.execute(prepared.publish, (await mixed.authorize(actor))!);
+    expect(mixedError).toMatchObject(bindingRefusal);
+    expect((await pool.query("SELECT name FROM public.catalog_products WHERE id=$1", [otherProduct])).rows).toEqual([{ name: "Unrelated product" }]);
+    expect((await pool.query("SELECT id FROM public.catalog_publications WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+
     const published = await api.execute(prepared.publish, who);
     expect(published, sqlFailure).toMatchObject({ outcome: "committed", receipt: { head: { revision: 1 } } });
     if (!("receipt" in published) || !("head" in published.receipt)) throw new Error("publication receipt required");
     const { head, commandKey } = published.receipt;
+    await refuseStatement("INSERT INTO pg_temp.catalog_publication_issued_products SELECT NULL::uuid WHERE false");
     expect(await readers.reads.current(data.productId)).toMatchObject({ outcome: "found", head });
     expect(await readers.readbackV2(head)).toMatchObject({ outcome: "page", head, schemaVersion: 2 });
     expect(await readers.reads.history(data.productId, null)).toMatchObject({ outcome: "page", receipts: [{ head }] });
@@ -820,8 +840,42 @@ it("commits deferred publication checks through the restricted login", async () 
       .toEqual([{ revision: 1 }]);
     expect((await pool.query("SELECT mode,min_qty,amount_kind,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows)
       .toEqual([{ mode: "one_time", min_qty: 1, amount_kind: "gross", unit_price_minor: 1733 }]);
+    expect((await pool.query("SELECT attribute_key,text_value FROM public.catalog_attribute_projection WHERE sku_id=$1", [data.skuId])).rows)
+      .toEqual([{ attribute_key: "finish", text_value: "matte" }]);
     expect((await pool.query(`SELECT e.event_type, e.idempotency_key=h.publication_id::text AS matches
       FROM public.outbox_events e JOIN public.catalog_publication_heads h ON h.product_id=e.aggregate_id
       WHERE e.aggregate_id=$1`, [data.productId])).rows).toEqual([{ event_type: "catalog.publication.committed", matches: true }]);
+
+    // Every statement succeeds. The real COMMIT on the publishing connection refuses it.
+    for (const [sql, args] of [
+      ["UPDATE public.catalog_products SET name='Unbound product' WHERE id=$1", [data.productId]],
+      ["UPDATE public.catalog_skus SET status='archived' WHERE id=$1", [data.skuId]],
+      ["DELETE FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1", [data.skuId]],
+      [`INSERT INTO public.catalog_product_document_revisions
+        (product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest)
+        VALUES ($1,2,'example:document.v1','unbound','{}','example:source','{}',$2)`, [data.productId, "0".repeat(64)]],
+      [`INSERT INTO public.catalog_attribute_projection
+        (sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
+        VALUES ($1,2,'finish',1,1,'enum','matte')`, [data.skuId]],
+    ] as const) {
+      let wrote = false;
+      await expect(transaction(publisher, async db => {
+        expect(await db.query(sql, [...args])).toMatchObject({ rowCount: 1 });
+        wrote = true;
+      })).rejects.toMatchObject(bindingRefusal);
+      expect(wrote).toBe(true);
+    }
+
+    const repaired = structuredClone(data.payload);
+    delete repaired.skus[0]!.priceOperations;
+    repaired.product.sharedContent.catalogAction = "revise";
+    repaired.publication = { kind: "compensation", evidence: {},
+      operations: [{ op: "set_product_presentation", productSlug: data.slug, presentation: {} }] };
+    await save(data, 2, repaired);
+    await pool.query("UPDATE public.catalog_products SET name='Unpublished drift' WHERE id=$1", [data.productId]);
+    const compensation = await prepare(data, 2, head);
+    expect(await api.execute(compensation.approve, who), sqlFailure).toMatchObject({ outcome: "committed" });
+    expect(await api.execute(compensation.publish, who), sqlFailure)
+      .toMatchObject({ outcome: "committed", receipt: { previousHead: head, head: { revision: 2 }, changes: [] } });
   } finally { await publisher.end(); }
 });
