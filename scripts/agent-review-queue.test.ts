@@ -761,6 +761,82 @@ describe('hosted review decisions', () => {
       if (permission === 'read') expect(lookups).toBe(1); else expect(lookups).toBeGreaterThanOrEqual(3);
     } finally { log.mockRestore(); }
   });
+  it.each([
+    ['zero comments', []],
+    ['discussion comments only', [comment({ id: 1, body: 'Still reviewing this branch.' })]],
+    ['stale receipt from an older head', [comment({ id: 2, body: body({ ...receipt, head: 'e'.repeat(40) }) })]],
+    ['stale receipt from another PR', [comment({ id: 3, body: body({ ...receipt, pr: 13 }) })]],
+    ['discussion and stale receipts', [
+      comment({ id: 1, body: 'Waiting for final pass' }),
+      comment({ id: 2, body: body({ ...receipt, head: 'e'.repeat(40) }) }),
+      comment({ id: 3, body: body({ ...receipt, pr: 13 }) }),
+    ]],
+  ])('fails fast on pull_request without sleeping when no current-head receipt exists: %s', async (_label, comments) => {
+    let clock = time;
+    const api = { get: vi.fn(async path => {
+      if (path.includes('/pulls/')) return { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: receipt.head } };
+      if (path.includes('/issues/')) return comments;
+      throw new Error(`unexpected read ${path}`);
+    }) };
+    const sleep = vi.fn(async ms => { clock += ms; }); const runGit = vi.fn();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(waitNativeAdmission({
+        event: { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } } },
+        env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
+        api, runGit, now: () => clock, sleep, deadlineMs: 30000,
+      })).rejects.toThrow(`needs_agent_review: no receipt comment yet for head ${receipt.head}; post a current receipt comment from a user with write, maintain or admin permission; post the receipt comment and Native Review Receipt Rerun will rerun native-review automatically`);
+      expect(sleep).not.toHaveBeenCalled();
+      expect(runGit).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith('needs_agent_review: post a current receipt comment from a user with write, maintain or admin permission');
+      expect(api.get.mock.calls.filter(([path]) => path.includes('/issues/'))).toHaveLength(1);
+    } finally { log.mockRestore(); }
+  });
+  it('keeps the bounded wait on merge_group when no comments exist', async () => {
+    let clock = time;
+    const groupHead = 'f'.repeat(40);
+    const api = { get: vi.fn(async path => {
+      if (path.includes('/pulls/')) return { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: receipt.head } };
+      if (path.includes('/issues/')) return [];
+      throw new Error(`unexpected read ${path}`);
+    }) };
+    const sleep = vi.fn(async ms => { clock += ms; }); const runGit = vi.fn();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(waitNativeAdmission({
+        event: {
+          repository: { private: false }, action: 'checks_requested',
+          merge_group: { base_ref: 'refs/heads/main', head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${groupHead}`, base_sha: receipt.base, head_sha: groupHead },
+        },
+        env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'merge_group' },
+        api, runGit, now: () => clock, sleep, deadlineMs: 30000,
+      })).rejects.toThrow('bounded 3-minute receipt wait expired');
+      expect(sleep.mock.calls).toEqual([[15000], [15000]]);
+      expect(runGit).not.toHaveBeenCalled();
+    } finally { log.mockRestore(); }
+  });
+  it.each([
+    ['malformed receipt comment', [comment({ id: 42, body: `${RECEIPT_MARKER}\ninvalid` })], 'receipt comment 42'],
+    ['current-head receipt failing admission', [comment({ id: 43, body: body({ ...receipt, verdict: 'FAIL' }) })], 'bounded 3-minute receipt wait expired'],
+  ])('keeps the bounded wait on pull_request for %s', async (_label, comments, expectedError) => {
+    let clock = time;
+    const api = { get: vi.fn(async path => {
+      if (path.includes('/pulls/')) return { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: receipt.head } };
+      if (path.includes('/issues/')) return comments;
+      throw new Error(`unexpected read ${path}`);
+    }) };
+    const sleep = vi.fn(async ms => { clock += ms; }); const runGit = vi.fn();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(waitNativeAdmission({
+        event: { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } } },
+        env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
+        api, runGit, now: () => clock, sleep, deadlineMs: 30000,
+      })).rejects.toThrow(expectedError);
+      expect(sleep.mock.calls).toEqual([[15000], [15000]]);
+      expect(runGit).not.toHaveBeenCalled();
+    } finally { log.mockRestore(); }
+  });
 });
 
 describe('carry-over adapter', () => {

@@ -1885,21 +1885,25 @@ to this repository with no bypass; its private key stays in the main-only
 Handoff's built-in workflow token is read-only. Activation and settings remain
 maintainer actions.
 
-Admission waits up to three minutes for a receipt after the six mechanical
-checks pass. Where it is activated, a new receipt comment from an owner, member
-or collaborator with write, maintain or admin permission starts the trusted
+On `pull_request`, when no receipt comment exists for the current head (and no
+malformed receipt comment is present), `native-review` fails fast after the six
+mechanical checks pass so the run completes immediately instead of idling.
+`merge_group` runs and `pull_request` runs that already have a current-head or
+malformed receipt comment retain the bounded three-minute wait. Where it is
+activated, a new receipt comment from an owner, member or collaborator with
+write, maintain or admin permission starts the trusted
 [receipt rerun](.github/workflows/native-review-receipt-rerun.yml). It reruns the
 failed jobs once, with the built-in token's `actions: write`, only when the newest
 run for the PR's current head, branch and repository is complete and `native-review`
 is its only failed job. After an automatic rerun, confirm that the PR entered the
 queue: whether Queue Handoff fires for an attempt requested with the built-in token
-is unwitnessed until the first hosted rerun. In any other state, after a PR receipt
-timeout, submit or check the receipt and rerun the failed `native-review` job within
-rerun authority. A group timeout needs a requeue under merge authority. Queue recovery
-is bounded at two retries; a second timeout or removal of the same head stops
-for diagnosis. A flake requires a passing rerun on the same tree; missing or late
-receipts are not flakes. A timely valid receipt rejected without a conflict is
-a defect to diagnose.
+is unwitnessed until the first hosted rerun. In any other state, after a PR
+`native-review` failure or receipt timeout, submit or check the receipt and rerun
+the failed `native-review` job within rerun authority. A group timeout needs a
+requeue under merge authority. Queue recovery is bounded at two retries; a second
+timeout or removal of the same head stops for diagnosis. A flake requires a
+passing rerun on the same tree; missing or late receipts are not flakes. A timely
+valid receipt rejected without a conflict is a defect to diagnose.
 
 The admission script comes from trusted main, but the job YAML comes from the
 candidate. A successful same-name no-op could bypass admission. Review of changes
