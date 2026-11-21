@@ -2694,13 +2694,14 @@ compact `SET search_path=pg_catalog` header or tighten the list under the
 settings-only slot rules above. In both cases the slot's pinned `searchPath`
 must match the resulting list.
 New functions retain their existing spaced spelling, and no other SET grammar,
-schema-token or catalogue proconfig check changes. Grant-only signatures must
-exist in the pre-class native prefix and be disjoint from the replaced/created lists.
+schema-token or catalogue proconfig check changes. Ordinary grant-only signatures
+must exist in the pre-class native prefix and be disjoint from the replaced and
+created lists.
 They cannot be redefined or named by a direct privilege statement. Only their
 pinned conditional role/verb capabilities are admitted, without demanding a new
 PUBLIC revoke. A block naming created functions still requires their revokes;
 a block naming only grant-only functions does not.
-The conditional DO shell requires an exact `pg_roles` existence guard around
+The ordinary conditional DO shell requires an exact `pg_roles` existence guard around
 one constant privilege EXECUTE, on admitted targets, for the same role. Function
 privileges and table revokes retain one block per role, verb and object kind
 (FUNCTION or TABLE). The fixed baseline and notice-table allowances below additionally admit
@@ -2710,6 +2711,19 @@ one for its derived SELECT-only policy with `USING (true)` and no WITH CHECK.
 `anon` admits revokes only; for functions, `authenticated` and `service_role`
 admit revokes or EXECUTE grants. Extra statements, branches, dynamic strings and
 PUBLIC grants refuse.
+
+One dedicated grant-only shape allows a single non-grantable `EXECUTE` grant to
+`openlup_catalog_publication` for exactly
+`public.catalog_offer_memberships_page(text,jsonb,integer,text)` and
+`public.catalog_publication_activation_readiness(text[],text)`. Both functions
+must resolve to their already-issued native slots with matching file and function
+hashes. The exact `DO` block checks for the role in `pg_catalog.pg_roles` and for
+the exact `catalog_path` and `sha256` of the [qualified-v2 authority migration](../../db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql)
+in `ONLY public.platform_schema_migrations` before executing the grant. The
+runner records that row in the transaction that applies the authority migration.
+The legacy and qualified-admin plans omit that migration, so the block skips
+the grant in those databases even when the cluster role exists. The slot
+carries only those two grant capabilities, and its pin lists no function definitions.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON

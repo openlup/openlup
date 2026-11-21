@@ -43,12 +43,13 @@ const portableCreationPaths = [
   "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
 ];
 type PortableCreationBinding = { path: string; sha256: string };
+const cataloguePublicationAuthorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
 const qualifiedInstallationPaths = [
   QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE,
   ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE,
   REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE,
   QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE,
-  "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
+  cataloguePublicationAuthorityPath,
 ];
 const qualifiedOwnerPathSignatures = [
   "acquisition_private.keyed_digest(text,jsonb)",
@@ -1730,6 +1731,12 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     if (registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
       const { slot } = assertNativeStoreForward(registry, path, bytes, prefix);
       if (slot.settingsOnlyFunctions) assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, readPrecedingBlobs(root, approval, "db/platform/migrations/", path, true));
+      if (isQualifiedCatalogueReadGrant(slot)) {
+        for (const [sourcePath] of qualifiedCatalogueReadTargets) {
+          const issued = blob(root, approval, sourcePath);
+          if (!issued?.equals(prefix.find(source => source.path === sourcePath)!.bytes)) throw new Error(`reviewed native store qualified catalogue read predecessor must already be issued: ${sourcePath}`);
+        }
+      }
     } else if (registry.channelIngestForwards?.includes(forward as BatchedForwardBinding)) assertChannelIngestForward(registry, path, bytes, prefix);
     else assertSupportAuthorityForward(registry, path, bytes, prefix);
     return;
@@ -2610,6 +2617,24 @@ export function assertChannelIngestForward(registry: ReviewedForwardRegistry, pa
 }
 
 const nativeStoreRoles = ["anon", "authenticated", "service_role"];
+const cataloguePublicationRole = "openlup_catalog_publication";
+const qualifiedCatalogueReadTargets = [
+  ["db/platform/migrations/20261124120000_catalog_publication_reads.sql", "public.catalog_offer_memberships_page(text,jsonb,integer,text)"],
+  ["db/platform/migrations/20261124140000_catalog_publication_readiness.sql", "public.catalog_publication_activation_readiness(text[],text)"],
+] as const;
+const qualifiedCatalogueReadSql = `DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='${cataloguePublicationRole}')
+    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+      WHERE catalog_path OPERATOR(pg_catalog.=) '${cataloguePublicationAuthorityPath}'::pg_catalog.text
+        AND sha256 OPERATOR(pg_catalog.=) 'baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8'::pg_catalog.text)
+  THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION ${qualifiedCatalogueReadTargets[0][1]},
+      ${qualifiedCatalogueReadTargets[1][1]} TO ${cataloguePublicationRole};';
+  END IF;
+END; $$;
+`;
+const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
+
 // PostgreSQL treats non-ASCII separator lookalikes as identifier characters.
 // Do not erase them as JavaScript whitespace or fold them into an ASCII name.
 const nativeStoreTrim = (value: string): string => value.replace(/^[ \t\n]+|[ \t\n]+$/gu, "");
@@ -2927,6 +2952,14 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       if (new Set(settings.map(fn => fn.signature)).size !== settings.length) throw new Error("reviewed native store settings-only slot has duplicate signatures");
       continue;
     }
+    if (isQualifiedCatalogueReadGrant(slot)) {
+      const expected = {
+        path: slot.path, row: slot.row, createdFunctions: [], replacedFunctions: [], dataStatements: [],
+        grantOnlyFunctions: qualifiedCatalogueReadTargets.map(([, signature]) => ({ signature, grantTo: [cataloguePublicationRole], revokeFrom: [] })),
+      };
+      if (canonical(slot) !== canonical(expected)) throw new Error("reviewed native store qualified catalogue read slot must list exactly the two grants and no other capabilities");
+      continue;
+    }
     const functions = nativeStoreFunctions(slot);
     if (slot.replacedFunctions.some(fn => !keysAre(fn, "beforeSha256,searchPath,signature") || !hash(fn.beforeSha256)) || slot.createdFunctions.some(fn => !keysAre(fn, "searchPath,signature")) || functions.some(fn => nativeStoreSignature(fn.signature) !== fn.signature || (fn.searchPath !== null && !/^[a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*$/u.test(fn.searchPath)))) throw new Error("reviewed native store closed signature, preimage or search_path drifted");
     for (const fn of slot.grantOnlyFunctions) {
@@ -3045,7 +3078,7 @@ function nativeStoreTableNarrowing(statement: string, tables: Set<string>): { ki
 
 const nativeStoreRolePrivilege = /^DO \$\$[ \t\n]*BEGIN[ \t\n]+IF EXISTS[ \t\n]*\(SELECT 1 FROM pg_roles WHERE rolname[ \t\n]*=[ \t\n]*'(anon|authenticated|service_role)'\) THEN[ \t\n]+EXECUTE '([^']+)';[ \t\n]*END IF;[ \t\n]*END;[ \t\n]*\$\$;$/i;
 
-// The sole DO exception. Keep its grammar and role policy together so a later
+// The generic DO exception. Keep its grammar and role policy together so a later
 // control can tighten or remove it without changing the generic SQL splitter.
 function nativeStorePrivilege(statement: string, tables: Set<string>, insertSelectTables: string[], views = new Set<string>(), triggerFunctions = new Set<string>(), censusTables: string[] = [], block: RegExpExecArray | null = null): { kind: "RLS" } | { kind: "POLICY" } | { kind: "BASELINE"; action: number } | { kind: "CENSUS"; table: string; action: "grant" | "policy" } | { kind: "FUNCTION" | "TABLE"; targets: string[]; role: string; grant: boolean; conditional: boolean } | null {
   let sql = statement, exactSql = statement, roleGuard: string | undefined;
@@ -3304,6 +3337,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, preceding);
     return { slot, ordinaryProof };
   }
+  const qualifiedCatalogueReadGrant = isQualifiedCatalogueReadGrant(slot);
+  if (qualifiedCatalogueReadGrant && !bytes.equals(Buffer.from(qualifiedCatalogueReadSql))) throw new Error("reviewed native store qualified catalogue read forward must contain exactly the EXECUTE grant guarded by role existence and the authority ledger path and hash");
+  const definitionSources = qualifiedCatalogueReadGrant ? new Map<string, string>() : undefined;
   const triggerFunctions = new Set<string>(), granted = new Set<string>();
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
   const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), priorStatements = new Map<string, string>();
@@ -3334,6 +3370,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (definition) {
       const [signature, digest] = definition;
       prior.set(signature, digest); priorStatements.set(signature, statement);
+      definitionSources?.set(signature, source.path);
       if (source.path < `db/platform/migrations/${nativeStoreTime(control!.slots[0]!.path)}_`) baseDefinitions.set(signature, digest);
     }
     // The pinned hash binds a plain CREATE of the listed index. Reading history lexically cannot
@@ -3346,6 +3383,13 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     }
     if (slot.purposeCheck && statement.startsWith(`CREATE TABLE ${purposeTable} (`)) checkSource = statement;
     if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
+  }
+  if (definitionSources) {
+    for (const [sourcePath, signature] of qualifiedCatalogueReadTargets) {
+      const pin = registry.nativeStoreForwards!.find(entry => entry.path === sourcePath)?.functions.find(fn => fn.signature === signature);
+      if (!pin || definitionSources.get(signature) !== sourcePath || prior.get(signature) !== pin.afterSha256) throw new Error(`reviewed native store qualified catalogue read target must resolve to its pinned predecessor: ${signature}`);
+    }
+    return { slot, ordinaryProof };
   }
   if (indexCreates.size !== droppedIndexes.length) throw new Error("reviewed native store dropped index plain CREATE missing from prefix");
   const chained = new Set(earlierSlots.flatMap(slot => nativeStoreFunctions(slot).map(fn => fn.signature)));

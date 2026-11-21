@@ -56,6 +56,45 @@ function check(text = sql(), mutate?: (value: ReviewedForwardRegistry) => void) 
 }
 const encode = (value: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(value));
 
+const catalogueReadTargets = ["public.catalog_offer_memberships_page(text,jsonb,integer,text)", "public.catalog_publication_activation_readiness(text[],text)"];
+const catalogueReadRole = "openlup_catalog_publication";
+const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+const authoritySha256 = "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8";
+const roleGuard = "  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')\n";
+const ledgerGuard = `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+      WHERE catalog_path OPERATOR(pg_catalog.=) '${authorityPath}'::pg_catalog.text
+        AND sha256 OPERATOR(pg_catalog.=) '${authoritySha256}'::pg_catalog.text)
+`;
+const catalogueReadGuardRefusal = "qualified catalogue read forward must contain exactly the EXECUTE grant guarded by role existence and the authority ledger path and hash";
+const catalogueReadSql = `DO $$ BEGIN
+${roleGuard}${ledgerGuard}  THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_offer_memberships_page(text,jsonb,integer,text),
+      public.catalog_publication_activation_readiness(text[],text) TO openlup_catalog_publication;';
+  END IF;
+END; $$;
+`;
+const catalogueReadPredecessors = ["20261124120000_catalog_publication_reads.sql", "20261124140000_catalog_publication_readiness.sql"]
+  .map(file => `db/platform/migrations/${file}`);
+const catalogueReadSlot: NativeStoreSlot = {
+  row: "catalogue-read-grant", path: "db/platform/migrations/20990101000000_catalogue_read_grant.sql",
+  replacedFunctions: [], createdFunctions: [], dataStatements: [],
+  grantOnlyFunctions: catalogueReadTargets.map(signature => ({ signature, grantTo: [catalogueReadRole], revokeFrom: [] })),
+};
+function catalogueReadFixture() {
+  const value = registry();
+  value.nativeStoreForwardClass = { sealed: true, slots: [
+    ...structuredClone(production.nativeStoreForwardClass!.slots.filter(slot => catalogueReadPredecessors.includes(slot.path))),
+    structuredClone(catalogueReadSlot),
+  ] };
+  value.nativeStoreForwards = structuredClone(production.nativeStoreForwards!.filter(pin => catalogueReadPredecessors.includes(pin.path)));
+  const preceding = [{ path: PLATFORM_BASELINE_FILE, bytes: before }, ...catalogueReadPredecessors.map(path => ({ path, bytes: readFileSync(path) }))];
+  return { value, preceding };
+}
+function checkCatalogueRead(value: ReviewedForwardRegistry, preceding: { path: string; bytes: Buffer }[], text = catalogueReadSql) {
+  bind(value, value.nativeStoreForwardClass!.slots.length - 1, text);
+  assertNativeStoreForward(value, catalogueReadSlot.path, Buffer.from(text), preceding);
+}
+
 describe("closed native store class data", () => {
   it("keeps synthetic paths out of production and reads the exact seven-slot fixture", () => {
     expect(() => readReviewedForwardRegistry(encode(registry()))).not.toThrow();
@@ -434,6 +473,48 @@ REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 });
 
 describe("grant-only existing functions", () => {
+  it("admits the exact qualified catalogue read grant against the issued function pins", () => {
+    expect(production.qualifiedInstallations).toContainEqual({ path: authorityPath, sha256: authoritySha256 });
+    expect(sqlSha256(readFileSync(authorityPath))).toBe(authoritySha256);
+    const value = structuredClone(production);
+    value.nativeStoreForwardClass!.slots.push(structuredClone(catalogueReadSlot));
+    const directory = "db/platform/migrations";
+    const preceding = readdirSync(directory).filter(file => /^\d{14}_.*\.sql$/u.test(file))
+      .map(file => `${directory}/${file}`).filter(path => path < catalogueReadSlot.path).sort()
+      .map(path => ({ path, bytes: readFileSync(path) }));
+    expect(() => checkCatalogueRead(value, preceding)).not.toThrow();
+  });
+  it.each([
+    ["missing target", (slot: NativeStoreSlot) => slot.grantOnlyFunctions.pop()],
+    ["extra target", (slot: NativeStoreSlot) => slot.grantOnlyFunctions.push({ signature: "public.fixture_extra()", grantTo: [catalogueReadRole], revokeFrom: [] })],
+    ["revoke capability", (slot: NativeStoreSlot) => slot.grantOnlyFunctions[0]!.revokeFrom.push("service_role")],
+    ["extra slot list", (slot: NativeStoreSlot) => { slot.existingTableStatements = []; }],
+  ] as const)("refuses a qualified catalogue read slot with %s", (_label, change) => {
+    const { value, preceding } = catalogueReadFixture();
+    change(value.nativeStoreForwardClass!.slots.at(-1)!);
+    expect(() => checkCatalogueRead(value, preceding)).toThrow("qualified catalogue read slot must list exactly the two grants and no other capabilities");
+  });
+  it("refuses a qualified catalogue read grant with an absent predecessor slot", () => {
+    const { value, preceding } = catalogueReadFixture();
+    value.nativeStoreForwardClass!.slots.shift();
+    value.nativeStoreForwards!.shift();
+    expect(() => checkCatalogueRead(value, preceding)).toThrow(`qualified catalogue read target must resolve to its pinned predecessor: ${catalogueReadTargets[0]}`);
+  });
+  it("refuses a qualified catalogue read grant with an absent predecessor file", () => {
+    const { value, preceding } = catalogueReadFixture();
+    preceding.splice(1, 1);
+    expect(() => checkCatalogueRead(value, preceding)).toThrow("requires every earlier slot landed first");
+  });
+  it("refuses a qualified catalogue read grant with a drifted predecessor file", () => {
+    const { value, preceding } = catalogueReadFixture();
+    preceding[1]!.bytes = Buffer.concat([preceding[1]!.bytes, Buffer.from("\n")]);
+    expect(() => checkCatalogueRead(value, preceding)).toThrow("requires every earlier slot landed first");
+  });
+  it("refuses a qualified catalogue read grant with a drifted predecessor function pin", () => {
+    const { value, preceding } = catalogueReadFixture();
+    value.nativeStoreForwards![0]!.functions.find(fn => fn.signature === catalogueReadTargets[0])!.afterSha256 = "0".repeat(64);
+    expect(() => checkCatalogueRead(value, preceding)).toThrow(`qualified catalogue read target must resolve to its pinned predecessor: ${catalogueReadTargets[0]}`);
+  });
   const signature = "public.fixture_grant(text[])";
   const setup = () => {
     const value = registry(), slot = value.nativeStoreForwardClass!.slots[0]!;
@@ -493,6 +574,36 @@ describe("grant-only existing functions", () => {
 });
 
 describe("the sole conditional role rule", () => {
+  it.each([
+    ["old function lookup", "    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL\n"],
+    ["any ledger row", "    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations)\n"],
+    ["path without digest", `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations WHERE catalog_path OPERATOR(pg_catalog.=) '${authorityPath}'::pg_catalog.text)\n`],
+    ["digest without path", `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations WHERE sha256 OPERATOR(pg_catalog.=) '${authoritySha256}'::pg_catalog.text)\n`],
+    ["wrong path", ledgerGuard.replace(authorityPath, PLATFORM_BASELINE_FILE)],
+    ["wrong digest", ledgerGuard.replace(authoritySha256, "0".repeat(64))],
+  ])("refuses a qualified catalogue read grant with %s in place of the exact authority ledger check", (_label, guard) => {
+    const { value, preceding } = catalogueReadFixture();
+    expect(() => checkCatalogueRead(value, preceding, catalogueReadSql.replace(ledgerGuard, guard))).toThrow(catalogueReadGuardRefusal);
+  });
+  it.each([
+    ["unguarded grant", `GRANT EXECUTE ON FUNCTION ${catalogueReadTargets.join(", ")} TO ${catalogueReadRole};\n`],
+    ["altered guard", catalogueReadSql.replace("AND EXISTS", "AND NOT EXISTS")],
+    ["role-only guard", catalogueReadSql.replace(ledgerGuard, "")],
+    ["ledger-only guard", catalogueReadSql.replace(roleGuard + ledgerGuard, ledgerGuard.replace("    AND ", "  IF "))],
+    ["wrong grantee", catalogueReadSql.replace(" TO openlup_catalog_publication", " TO service_role")],
+    ["wrong schema", catalogueReadSql.replace("FUNCTION public.", "FUNCTION private.")],
+    ["wrong overload", catalogueReadSql.replace("text,jsonb,integer,text", "text,jsonb,bigint,text")],
+    ["missing target", catalogueReadSql.replace(`${catalogueReadTargets[0]},\n      `, "")],
+    ["extra target", catalogueReadSql.replace(" TO openlup_catalog_publication", ", public.fixture_extra() TO openlup_catalog_publication")],
+    ["helper target", catalogueReadSql.replace(catalogueReadTargets[0]!, "public.catalog_publication_read_head()")],
+    ["grant option", catalogueReadSql.replace(" TO openlup_catalog_publication;", " TO openlup_catalog_publication WITH GRANT OPTION;")],
+    ["revoke", catalogueReadSql.replace("GRANT EXECUTE", "REVOKE EXECUTE").replace(" TO openlup_catalog_publication", " FROM openlup_catalog_publication")],
+    ["extra SQL in the block", catalogueReadSql.replace("  END IF;", "    PERFORM 1;\n  END IF;")],
+    ["extra SQL after the block", `${catalogueReadSql}CREATE TABLE public.fixture_extra (id uuid);\n`],
+  ])("refuses a qualified catalogue read forward with %s", (_label, text) => {
+    const { value, preceding } = catalogueReadFixture();
+    expect(() => checkCatalogueRead(value, preceding, text)).toThrow(catalogueReadGuardRefusal);
+  });
   it.each([["anon", "REVOKE ALL"], ["authenticated", "REVOKE ALL"], ["service_role", "REVOKE ALL"], ["authenticated", "GRANT EXECUTE"], ["service_role", "GRANT EXECUTE"]])("accepts %s %s", (role, verb) => {
     expect(() => check(`${sql()}\n${block(role, verb)}`)).not.toThrow();
   });
