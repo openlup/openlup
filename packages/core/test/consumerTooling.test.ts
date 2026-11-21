@@ -146,6 +146,62 @@ describe("packed consumer dependency roots", () => {
     }
   });
 
+  const paymentAdapter = "str" + "ipe";
+  const paymentSubpath = `@openlup/platform/payments/${paymentAdapter}`;
+  const upgradePage = "docs/guide/upgrade/v1-3-0.md";
+  const providerLeak = /downstream provider dependency/;
+
+  it.each(["CHANGELOG.md", upgradePage])("accepts exact adapter references only in %s", path => {
+    const adapters = [
+      ["payments", paymentAdapter],
+      ["payments", "tp" + "ay"],
+      ["fulfillment", "omni" + "pack"],
+      ["communications", "res" + "end"],
+      ["communications", "kla" + "viyo"],
+    ];
+    const references = adapters.flatMap(([family, name]) => [
+      `\`@openlup/platform/${family}/${name}\``,
+      `\`${family}/${name}\``,
+      `// dist/${family}/${name}/index.d.ts`,
+      `\`${family}-${name}.api.md\``,
+      `### \`packages/platform/api/${family}-${name}.api.md\``,
+    ]).join("\n");
+    const packFiles = [...new Set([...requiredPackFiles, path])];
+    auditPackedFixture(path, references, {}, undefined, packFiles);
+    auditPackedFixture(path, `${references}\nBare ${paymentAdapter}`, {}, providerLeak, packFiles);
+    auditPackedFixture(path, `${references}\n${["process", "env", "CORE_TOKEN"].join(".")}`, {}, /runtime environment access/, packFiles);
+  });
+
+  it.each([
+    ["README.md", paymentSubpath],
+    ["docs/guide/upgrade/README.md", paymentSubpath],
+    ["dist/index.js", `import ${JSON.stringify(paymentSubpath)};`],
+    ["dist/index.d.ts", `export * from ${JSON.stringify(paymentSubpath)};`],
+  ])("still refuses an adapter reference in %s", (path, source) => {
+    auditPackedFixture(path, source, {}, providerLeak, [...new Set([...requiredPackFiles, path])]);
+  });
+
+  it.each([
+    `@another/platform/payments/${paymentAdapter}`,
+    `${paymentSubpath}-extra`,
+    `${paymentSubpath}/index.js`,
+    `dist/payments/${paymentAdapter}/`,
+    `dist/payments/${paymentAdapter}/nested/index.d.ts`,
+    `dist/payments/${paymentAdapter}/${paymentAdapter}.js`,
+    `payments-${paymentAdapter}.api.md.bak`,
+    `packages/platform/api/payments-${paymentAdapter}.api.md`,
+  ])("still refuses the unapproved reference %s in release notes", source => {
+    assertArtifactRefused("CHANGELOG.md", source, providerLeak);
+  });
+
+  it("still checks packed dependency declarations", () => {
+    const dependencies = { [paymentAdapter]: "1.0.0" };
+    assertArtifactRefused("package.json", JSON.stringify({ dependencies }), providerLeak, { dependencies });
+    assertArtifactRefused("package.json", "{}", /dependencies must not use local specs/, {
+      peerDependencies: { "@openlup/platform": "workspace:*" },
+    });
+  });
+
   it.each([
     ["missing", JSON.stringify({ evidence: { dogfoodEvidence: {} } })],
     ["rewritten", JSON.stringify({ evidence: { dogfoodEvidence: { meaning: "A public adopter has proved the platform seam." } } })],

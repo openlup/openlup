@@ -54,6 +54,21 @@ const packagedNeutralityPolicy: SourceNeutralityPolicy = {
 };
 const approvedDogfoodEvidence = "A first-party production deployment consumes package seams; this is first-party evidence only.";
 const extensionlessTextPackFiles = new Set(["LICENSE"]);
+// Use the owner-approved adapter names from scripts/public-ci-neutrality.mjs.
+const documentedAdapters = [
+  ["payments", ["str" + "ipe", "tp" + "ay"]],
+  ["fulfillment", ["omni" + "pack"]],
+  ["communications", ["res" + "end", "kla" + "viyo"]],
+] as const;
+const adapterSubpaths = documentedAdapters.map(([family, names]) => `${family}/(?:${names.join("|")})`).join("|");
+const adapterReports = documentedAdapters.map(([family, names]) => `${family}-(?:${names.join("|")})`).join("|");
+const packagedAdapterReference = new RegExp([
+  String.raw`(?<![\w./@-])(?:@openlup/platform/)?(?:${adapterSubpaths})(?![\w/@-]|\.[\w./-])`,
+  // Mask only the directory so the file name itself remains subject to the audit.
+  String.raw`(?<![\w./@-])dist/(?:${adapterSubpaths})(?=/[\w-]+(?:\.[\w-]+)*(?![\w./@-]))`,
+  String.raw`(?<![\w./@-])(?:${adapterReports})\.api\.md(?![\w./@-])`,
+  `^### \`packages/platform/api/(?:${adapterReports})\\.api\\.md\`$`,
+].join("|"), "gm");
 const approvedPublicSecurityContact = "dev@openlup.com";
 const approvedPublishConfig = { access: "public", provenance: true, tag: "preview" };
 const approvedRepository = { type: "git", url: "git+https://github.com/openlup/openlup.git", directory: "packages/core" };
@@ -177,7 +192,7 @@ function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInp
       .replaceAll(approvedPublicSecurityContact, "APPROVED_SECURITY_CONTACT");
     const approvedSource = path === "release-gates.json"
       ? normalizeApprovedDogfoodEvidence(source)
-      : source;
+      : normalizeReleaseAdapterReferences(path, source);
     const auditableSource = normalizeSimpleLiteralCompositions(approvedSource);
     const semanticViolations = Object.entries(scanNeutralitySource(auditableSource, packagedNeutralityPolicy))
       .filter(([, count]) => count > 0)
@@ -191,6 +206,11 @@ function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInp
   });
 
   assert(violations.length === 0, `packed core tarball contains downstream leakage:\n${violations.join("\n")}`);
+}
+
+function normalizeReleaseAdapterReferences(path: string, source: string): string {
+  if (path !== "CHANGELOG.md" && !/^docs\/guide\/upgrade\/v[0-9-]+\.md$/.test(path)) return source;
+  return source.replace(packagedAdapterReference, "APPROVED_ADAPTER_REFERENCE");
 }
 
 function normalizeSimpleLiteralCompositions(source: string): string {
