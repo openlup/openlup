@@ -9,7 +9,7 @@ import { needsForwardApproval } from "./agent-review-queue.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { PLATFORM_BASELINE_FILE, PLATFORM_MIGRATION_MANIFEST, sha256 } from "./platform-migration-manifest.ts";
-import { assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, readReviewedForwardRegistry, renderQualifiedSecurityDefiner, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { admissionRuleFiles } from "./sql-admit.ts";
 
 const CLI = resolve("scripts/sql-admit.ts");
@@ -19,8 +19,8 @@ const production = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PAT
 const baseline = readFileSync("scripts/fixtures/reviewed-native-store/before.sql", "utf8");
 const encode = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 const slot = (path: string, row = "Future"): NativeStoreSlot => ({ row, path, replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] });
-const manifest = (forward: { file: string; sha256: string }[]) =>
-  encode({ schemaVersion: 1, baseline: { file: PLATFORM_BASELINE_FILE, sha256: sha256(baseline) }, forward, objectInventorySha256: "0".repeat(64) });
+const manifest = (forward: { file: string; sha256: string }[], baselineSql = baseline) =>
+  encode({ schemaVersion: 1, baseline: { file: PLATFORM_BASELINE_FILE, sha256: sha256(baselineSql) }, forward, objectInventorySha256: "0".repeat(64) });
 // An independent synthetic registry, as in the native store witness: an empty sealed class and no issued qualified approval.
 function registry(): ReviewedForwardRegistry {
   const value = structuredClone(production);
@@ -33,16 +33,16 @@ function registry(): ReviewedForwardRegistry {
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 type Fixture = ReturnType<typeof fixture>;
-function fixture() {
+function fixture(baselineSql = baseline) {
   const root = mkdtempSync(join(tmpdir(), "openlup-sql-admit-fixture-"));
   roots.push(root);
   const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
   const put = (path: string, value: string | Buffer) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
   const commit = () => { git("add", "--all"); git("commit", "-qm", "SQL admission fixture"); return git("rev-parse", "HEAD"); };
   git("init", "-q", "-b", "main");
-  put(PLATFORM_BASELINE_FILE, baseline); put(MANAGED_BASELINE, "-- Synthetic managed baseline.\n");
-  put(PLATFORM_MIGRATION_MANIFEST, manifest([])); put(REVIEWED_FORWARD_PATH, encode(registry()));
-  return { root, git, put, commit, base: commit() };
+  put(PLATFORM_BASELINE_FILE, baselineSql); put(MANAGED_BASELINE, "-- Synthetic managed baseline.\n");
+  put(PLATFORM_MIGRATION_MANIFEST, manifest([], baselineSql)); put(REVIEWED_FORWARD_PATH, encode(registry()));
+  return { root, git, put, commit, baselineSql, base: commit() };
 }
 // Fixture bases hold no admission code, so the version check would refuse them; the stale-rules tests below cover that gate.
 const STALE = "--allow-stale-rules";
@@ -82,13 +82,15 @@ const nativePath = "db/platform/migrations/20271106100000_future.sql", nativeTex
 function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePath), functions: NonNullable<ReviewedForwardRegistry["nativeStoreForwards"]>[number]["functions"] = []) {
   const value = registry();
   value.nativeStoreForwardClass!.slots.push(entry); value.nativeStoreForwards!.push({ path: nativePath, sha256: sqlSha256(text), functions });
-  f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: nativePath, sha256: sha256(text) }])); f.put(nativePath, text);
+  f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: nativePath, sha256: sha256(text) }], f.baselineSql)); f.put(nativePath, text);
 }
 
 describe("qualified catalogue read grant in sql:admit and hosted checks", () => {
+  const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+  const authoritySha256 = sha256(readFileSync(authorityPath));
   const ledgerGuard = `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
-      WHERE catalog_path OPERATOR(pg_catalog.=) 'db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql'::pg_catalog.text
-        AND sha256 OPERATOR(pg_catalog.=) 'baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8'::pg_catalog.text)
+      WHERE catalog_path OPERATOR(pg_catalog.=) '${authorityPath}'::pg_catalog.text
+        AND sha256 OPERATOR(pg_catalog.=) '${authoritySha256}'::pg_catalog.text)
 `;
   const text = `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
@@ -143,6 +145,33 @@ END; $$;
     const reported = verdictLines(result.stdout);
     expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
     expect(reported).toEqual(expected);
+  }, 20_000);
+});
+
+describe("qualified SECURITY DEFINER replacement in sql:admit", () => {
+  it.each([true, false])("matches PR and queue admission with the exact guard present = %s", withGuard => {
+    const signature = "public.catalog_price_setup_region_code()", searchPath = "pg_catalog, pg_temp";
+    const prior = `CREATE FUNCTION ${signature} RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path = ${searchPath} AS $$ SELECT 'prior' $$;`;
+    const replacement = prior.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'prior'", "'replacement'");
+    const guard = renderQualifiedSecurityDefiner(signature);
+    const f = fixture(`${baseline}\n${prior}\n`), entry = slot(nativePath);
+    const beforeSha256 = sqlSha256(prior);
+    entry.replacedFunctions = [{ signature, searchPath, beforeSha256, qualifiedSecurityDefiner: true }];
+    stageNativeForward(f, withGuard ? `${replacement}\n${guard}` : replacement, entry, [
+      { signature, beforeSha256, afterSha256: sqlSha256(replacement) },
+    ]);
+    const head = f.commit();
+    const result = cli(f.root, ["--base", f.base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(withGuard ? 0 : 1);
+    const direct = directVerdicts(f, f.base, head).verdicts;
+    expect(verdictLines(result.stdout)).toEqual(direct.map(([status, message]) =>
+      message === undefined ? [status] : [status, message.split("\n", 1)[0]]));
+    if (!withGuard) {
+      const refusal = `${signature}: expected this exact statement immediately after its CREATE OR REPLACE FUNCTION:\n${guard}`;
+      expect(direct).toEqual(Array.from({ length: 4 }, () => ["REFUSED", `reviewed native store ${refusal}`]));
+      expect(result.stdout).toContain(refusal);
+    }
   }, 20_000);
 });
 
