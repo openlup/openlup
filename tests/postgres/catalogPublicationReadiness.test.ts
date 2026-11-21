@@ -7,11 +7,11 @@ import { catalogDefinitionDigest, createCatalogProductTypeRegistry, createPostgr
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installPublicationActors, json, stageProductRows, transaction } from "./catalogPublicationFixture.js";
+import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json,
+  publicFunctionGrants, readinessSignature as entry, stageProductRows, transaction } from "./catalogPublicationFixture.js";
 
 const forward = "db/platform/migrations/20261124140000_catalog_publication_readiness.sql";
 const readinessSql = "SELECT public.catalog_publication_activation_readiness($1::text[],$2) AS result";
-const entry = "public.catalog_publication_activation_readiness(text[],text)";
 const helpers = ["public.catalog_publication_readiness_snapshot(text[],text,timestamptz)", "public.catalog_publication_price_reasons(uuid[],timestamptz)"];
 const unavailable = { outcome: "dependency_unavailable", reason: "catalog_publication_read_unavailable" };
 const installedInvalid = { outcome: "dependency_unavailable", reason: "catalog_installed_readiness_invalid" };
@@ -46,12 +46,13 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-readiness-${process.pid}`, password: randomUUID() });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Catalogue readiness requires PostgreSQL");
   pool = new Pool({ connectionString: container.connectionString });
-  await pool.query("CREATE ROLE service_role; CREATE ROLE unrelated");
+  await pool.query("CREATE ROLE service_role; CREATE ROLE unrelated LOGIN");
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
   const position = manifest.forward.findIndex(unit => unit.file === forward);
   expect(position).toBeGreaterThan(0);
   for (const { file } of [manifest.baseline, ...manifest.forward.slice(0, position)]) await pool.query(readFileSync(file, "utf8"));
   await pool.query(readFileSync(forward, "utf8"));
+  await installCatalogueReadGrants(pool);
   await installPublicationActors(pool);
   const writerType = registry.resolve({ key: "example:article", version: 2 })!;
   await pool.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
@@ -392,17 +393,32 @@ it("keeps PostgreSQL failures at execution and commit retryable and separates en
     expect(observed).toHaveBeenCalledWith("40001");
     expect(assess).not.toHaveBeenCalled();
   }
-  for (const role of ["unrelated", "anon", "authenticated", "service_role", "postgres"]) {
+  expect(await publicFunctionGrants(pool, [entry, ...helpers])).toEqual([]);
+  for (const role of ["unrelated", "anon", "authenticated", "service_role", "openlup_catalog_publication", "postgres"]) {
+    const canRead = role === "service_role" || role === "openlup_catalog_publication" || role === "postgres";
     const privileges = await pool.query("SELECT name,has_function_privilege($1::name,name,'EXECUTE') AS allowed FROM unnest($2::text[]) name",
       [role, [entry, ...helpers]]);
-    expect(privileges.rows).toEqual([entry, ...helpers].map(name => ({ name, allowed: role === "postgres" || (role === "service_role" && name === entry) })));
+    expect(privileges.rows).toEqual([entry, ...helpers].map(name => ({ name, allowed: role === "postgres" || (canRead && name === entry) })));
     const result = await read(none, codes, digest, lane(async (db, work) => {
       await db.query(`SET LOCAL ROLE ${role}`);
       return work();
     }));
-    if (role === "service_role" || role === "postgres") expect(result).toMatchObject({ protocol: "governed" });
-    else expect(result).toEqual({ outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" });
+    if (canRead) expect(result).toMatchObject({ protocol: "governed" });
+    else {
+      expect(result).toEqual({ outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" });
+      await expect(transaction(pool, async db => {
+        await db.query(`SET LOCAL ROLE ${role}`);
+        await db.query(readinessSql, [codes, digest]);
+      })).rejects.toMatchObject({ code: "42501" });
+    }
   }
+  for (const call of [
+    "catalog_publication_readiness_snapshot(NULL,NULL,NULL)",
+    "catalog_publication_price_reasons(NULL,NULL)",
+  ]) await expect(transaction(pool, async db => {
+    await db.query("SET LOCAL ROLE openlup_catalog_publication");
+    await db.query(`SELECT public.${call}`);
+  })).rejects.toMatchObject({ code: "42501" });
   const owner = (await pool.query("SELECT proowner::regrole::text AS owner FROM pg_proc WHERE oid=$1::regprocedure", [entry])).rows[0]!.owner as string;
   try {
     for (const message of ["permission denied for table catalog_products", "permission denied for function catalog_publication_readiness_snapshot"]) {

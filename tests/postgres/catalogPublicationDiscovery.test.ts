@@ -4,7 +4,8 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { readPostgresCatalogMembershipPage, type CatalogMembershipPageInput } from "@openlup/platform/catalog";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { documentRow, fixture, graph, hash, insertGraph, installPublicationActors, json, publicationDocuments, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
+import { documentRow, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json, membershipSignature,
+  publicationDocuments, publicFunctionGrants, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
 
 const forward = "db/platform/migrations/20261124120000_catalog_publication_reads.sql";
 const membershipSql = "SELECT public.catalog_offer_memberships_page($1,$2::jsonb,$3,$4) AS result";
@@ -16,13 +17,15 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-discovery-${process.pid}`, password: randomUUID() });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Catalogue discovery requires PostgreSQL");
   pool = new Pool({ connectionString: container.connectionString });
-  await pool.query("CREATE ROLE service_role; CREATE ROLE unrelated");
+  await pool.query("CREATE ROLE service_role; CREATE ROLE unrelated LOGIN");
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
   const position = manifest.forward.findIndex(unit => unit.file === forward);
   expect(position).toBeGreaterThan(0);
   const prefix = [manifest.baseline, ...manifest.forward.slice(0, position)];
   for (const { file } of prefix) await pool.query(readFileSync(file, "utf8"));
   await pool.query(readFileSync(forward, "utf8"));
+  await pool.query(readFileSync("db/platform/migrations/20261124140000_catalog_publication_readiness.sql", "utf8"));
+  await installCatalogueReadGrants(pool);
   await installPublicationActors(pool);
   await pool.query("CREATE TABLE public.membership_serialization_witness(id int PRIMARY KEY, value int); INSERT INTO public.membership_serialization_witness VALUES (1,0),(2,0)");
 }, postgresSetupTimeoutMs);
@@ -381,7 +384,6 @@ it("refuses invalid SQL request bounds and cursor shape as values before reading
   });
 });
 
-const membershipSignature = "public.catalog_offer_memberships_page(text,jsonb,integer,text)";
 const helperSignatures = [
   "public.catalog_publication_read_json(text,text,integer)",
   "public.catalog_publication_read_manifest(uuid,text,text)",
@@ -393,26 +395,43 @@ const helperSignatures = [
 it("grants membership execution independently of effective helper and ledger privileges", async () => {
   const offer = "test:grants";
   await transaction(pool, db => seed(db, { offer }));
-  for (const role of ["unrelated", "anon", "authenticated", "service_role", "postgres"]) {
-    const canRead = role === "service_role" || role === "postgres";
+  expect(await publicFunctionGrants(pool, [membershipSignature, ...helperSignatures])).toEqual([]);
+  for (const role of ["unrelated", "anon", "authenticated", "service_role", "openlup_catalog_publication", "postgres"]) {
+    const canRead = role === "service_role" || role === "openlup_catalog_publication" || role === "postgres";
     const permissions = await pool.query(`SELECT name,has_function_privilege($1::name,name,'EXECUTE') AS allowed
       FROM unnest($2::text[]) name`, [role, [membershipSignature, ...helperSignatures]]);
     expect(permissions.rows).toEqual([membershipSignature, ...helperSignatures].map(name => ({
-      name, allowed: role === "postgres" || (role === "service_role" && name === membershipSignature),
+      name, allowed: role === "postgres" || (canRead && name === membershipSignature),
     })));
     const run = transaction(pool, async db => {
       await db.query(`SET LOCAL ROLE ${role}`);
       return readPostgresCatalogMembershipPage(db, byOffer(offer));
     });
     if (canRead) await expect(run).resolves.toMatchObject({ protocol: "governed" });
-    else await expect(run).resolves.toEqual({ outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" });
-    if (role !== "postgres") for (const table of [
+    else {
+      await expect(run).resolves.toEqual({ outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" });
+      await expect(transaction(pool, async db => {
+        await db.query(`SET LOCAL ROLE ${role}`);
+        await db.query(membershipSql, [offer, null, 1, null]);
+      })).rejects.toMatchObject({ code: "42501" });
+    }
+    if (role !== "postgres" && role !== "openlup_catalog_publication") for (const table of [
       "catalog_publications", "catalog_publication_heads", "catalog_sku_revisions", "catalog_operator_receipts",
     ]) await expect(transaction(pool, async db => {
       await db.query(`SET LOCAL ROLE ${role}`);
       await db.query(`SELECT * FROM public.${table} LIMIT 1`);
     })).rejects.toMatchObject({ code: "42501" });
   }
+  for (const call of [
+    "catalog_publication_read_json(NULL,NULL,NULL)",
+    "catalog_publication_read_manifest(NULL,NULL,NULL)",
+    "catalog_publication_read_sku_revision(NULL,NULL)",
+    "catalog_publication_read_head()",
+    "catalog_publication_selected_evidence(NULL,NULL)",
+  ]) await expect(transaction(pool, async db => {
+    await db.query("SET LOCAL ROLE openlup_catalog_publication");
+    await db.query(`SELECT public.${call}`);
+  })).rejects.toMatchObject({ code: "42501" });
 });
 
 it("maps internal function and relation denials to dependency unavailable", async () => {

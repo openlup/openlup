@@ -476,13 +476,12 @@ describe("grant-only existing functions", () => {
   it("admits the exact qualified catalogue read grant against the issued function pins", () => {
     expect(production.qualifiedInstallations).toContainEqual({ path: authorityPath, sha256: authoritySha256 });
     expect(sqlSha256(readFileSync(authorityPath))).toBe(authoritySha256);
-    const value = structuredClone(production);
-    value.nativeStoreForwardClass!.slots.push(structuredClone(catalogueReadSlot));
+    const path = "db/platform/migrations/20261124180000_catalogue_read_grant.sql";
     const directory = "db/platform/migrations";
     const preceding = readdirSync(directory).filter(file => /^\d{14}_.*\.sql$/u.test(file))
-      .map(file => `${directory}/${file}`).filter(path => path < catalogueReadSlot.path).sort()
+      .map(file => `${directory}/${file}`).filter(file => file < path).sort()
       .map(path => ({ path, bytes: readFileSync(path) }));
-    expect(() => checkCatalogueRead(value, preceding)).not.toThrow();
+    expect(() => assertNativeStoreForward(production, path, readFileSync(path), preceding)).not.toThrow();
   });
   it.each([
     ["missing target", (slot: NativeStoreSlot) => slot.grantOnlyFunctions.pop()],

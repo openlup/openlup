@@ -694,6 +694,10 @@
       {
         "file": "db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql",
         "sha256": "28e5d5f16011c42291e35a840cd64bd4a873a851d77a51c78b6406085e775e5b"
+      },
+      {
+        "file": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
+        "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a"
       }
     ],
     "objectInventorySha256": "5591e377513e431a7ae7550bec1950b6b715a97d1aa97a9563ed31eced5ead5e",
@@ -1414,14 +1418,18 @@
         {
           "file": "db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql",
           "sha256": "28e5d5f16011c42291e35a840cd64bd4a873a851d77a51c78b6406085e775e5b"
+        },
+        {
+          "file": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
+          "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "cc71045f15ef460eef4e23106584e78362d86874980c1ec8c7c1547bac07ec17"
+          "withRestore": "5dddd24e069d4027ea5efac3ba933c7ff8478544b5dd627f5e6832905d1ccf1c"
         },
         "separateMigrator": {
-          "withRestore": "89edcb11ffa25bbd8ab0b89fb7c224119c638d364295b5b747a30bedc98735e4"
+          "withRestore": "54707985a206e9aac7e76788733bc5854bbf6bfb3686a8da675c959ad86d0317"
         }
       }
     },
@@ -2134,6 +2142,10 @@
         {
           "file": "db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql",
           "sha256": "28e5d5f16011c42291e35a840cd64bd4a873a851d77a51c78b6406085e775e5b"
+        },
+        {
+          "file": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
+          "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a"
         }
       ],
       "objectInventorySha256": {
@@ -3007,6 +3019,11 @@
       "file": "20261124160000_catalog_canonical_ascii_order.sql",
       "source": "db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql",
       "sha256": "28e5d5f16011c42291e35a840cd64bd4a873a851d77a51c78b6406085e775e5b"
+    },
+    {
+      "file": "20261124180000_catalogue_read_grant.sql",
+      "source": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
+      "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",

@@ -1330,14 +1330,24 @@ returns evidence for each emitted SKU and a cursor when more entries match.
 Pass back that cursor with the same offer and mode. Start again at the first
 page when the head moves. A PostgreSQL serialization failure is retryable.
 
+On qualified-v2, apply `20261124180000_catalogue_read_grant.sql` to use
+`openlup_catalog_publication` for both reads. Where provisioned, `service_role`
+remains supported. Run readiness in a read-write `READ COMMITTED` transaction
+and close it promptly.
+
 ### Read activation readiness
 
 Install the complete PostgreSQL catalogue through
 `20261124140000_catalog_publication_readiness.sql`. Call the experimental
 `readPostgresCatalogActivationReadiness(transactions, installed, input)` from
 `@openlup/platform/catalog` with up to 100 distinct SKU codes and the expected
-head digest from a membership page. Only the service role can execute the SQL
-entry point. Use a transaction lane that runs as `service_role`.
+head digest from a membership page.
+
+On qualified-v2, apply `20261124180000_catalogue_read_grant.sql` to use
+`openlup_catalog_publication` for both reads. Where provisioned, `service_role`
+remains supported. Run readiness in a read-write `READ COMMITTED` transaction
+and close it promptly.
+
 The read waits for an in-flight publication, then reads the sealed head, SKU
 evidence and price readiness in one snapshot. It writes nothing. A moved head
 is a retryable conflict and a legacy catalogue is `unsupported`. A code with no

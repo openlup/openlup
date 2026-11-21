@@ -1,8 +1,32 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
 import type { CatalogPublishedSku, CatalogPublishedProduct, CatalogSkuRevisionRef, CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+export const catalogueReadGrant = "db/platform/migrations/20261124180000_catalogue_read_grant.sql";
+export const cataloguePublicationAuthority = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+export const membershipSignature = "public.catalog_offer_memberships_page(text,jsonb,integer,text)";
+export const readinessSignature = "public.catalog_publication_activation_readiness(text[],text)";
+
+// These isolated SQL suites install individual forwards without the production runner.
+export async function installCatalogueReadGrants(pool: Pool) {
+  await transaction(pool, async db => {
+    await db.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT");
+    await db.query("INSERT INTO public.platform_schema_migrations(catalog_path,sha256,position) VALUES($1,$2,0)",
+      [cataloguePublicationAuthority, hash(readFileSync(cataloguePublicationAuthority, "utf8"))]);
+    await db.query(readFileSync(catalogueReadGrant, "utf8"));
+    await db.query("DELETE FROM public.platform_schema_migrations WHERE catalog_path=$1", [cataloguePublicationAuthority]);
+  });
+}
+
+export async function publicFunctionGrants(pool: Pool, signatures: string[]) {
+  return (await pool.query(`SELECT name, acl.privilege_type FROM unnest($1::text[]) AS names(name)
+    JOIN pg_catalog.pg_proc fn ON fn.oid=name::regprocedure
+    CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(fn.proacl,pg_catalog.acldefault('f',fn.proowner))) acl
+    WHERE acl.grantee=0`, [signatures])).rows;
+}
+
 // Fixture construction can deliberately exceed wire bounds so that SQL owns the refusal.
 export const json = (input: unknown): string => JSON.stringify(input, (_key, value: unknown) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
