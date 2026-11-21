@@ -4,7 +4,7 @@ import {
   evidencePayload,
   observedEvidenceKey,
   terminalAmountMismatch,
-} from "./paymentProviderReconciliationEvidence.js";
+} from "@openlup/platform/payments";
 import type {
   ClaimedPaymentAttempt,
   ProviderReconciliationStatus,

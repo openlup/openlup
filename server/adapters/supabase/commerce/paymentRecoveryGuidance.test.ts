@@ -1,4 +1,4 @@
-import { evidencePayload } from "../../../domains/payment/paymentProviderReconciliationEvidence.js";
+import { evidencePayload } from "@openlup/platform/payments";
 import { createStripePaymentReconciliationProvider, mapStripeIntent } from "@openlup/platform/payments/stripe";
 const normalizeStripeIntent = (intent: ReturnType<typeof mapStripeIntent>) =>
   createStripePaymentReconciliationProvider({ retrievePaymentIntent: async () => intent }).readPayment({ providerPaymentId: intent.id });

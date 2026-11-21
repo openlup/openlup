@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_STALE_AFTER_SECONDS,
   runPaymentProviderReconciliationWorker,
-  type ClaimedPaymentAttempt,
-  type PaymentProviderReconciliationPort,
-  type ProviderReconciliationStatus,
-  type ReconciliationProviderKind,
-} from "./paymentProviderReconciliationWorker.js";
+} from "@openlup/platform/payments";
+import type {
+  ClaimedPaymentAttempt,
+  PaymentProviderReconciliationPort,
+  ProviderReconciliationStatus,
+  ReconciliationProviderKind,
+} from "./paymentProviderReconciliationContracts.js";
 import { PSP_PROVIDER_KINDS } from "../../../src/domains/payment/pspIntegrationPlan.js";
 
 const NOW = "2026-07-03T10:00:00.000Z";
@@ -327,6 +329,7 @@ function status(
     occurredAt: null,
     failureReason: kind === "failed" ? `provider_${providerStatus}` : null,
     amountMinor: 1200,
+    ...(kind === "succeeded" ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     currency: "PLN",
     rawPayload: { providerStatus },
     ...overrides,

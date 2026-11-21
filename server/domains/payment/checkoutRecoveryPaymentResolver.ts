@@ -5,7 +5,7 @@ import type {
   ProviderReadPurpose,
   ProviderReconciliationStatus,
 } from "./paymentProviderReconciliationContracts.js";
-import { terminalAmountMismatch } from "./paymentProviderReconciliationEvidence.js";
+import { terminalAmountMismatch } from "@openlup/platform/payments";
 import {
   toClaimedAttemptShape,
   verifyPaymentAttemptNow,
