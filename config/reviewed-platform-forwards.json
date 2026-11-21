@@ -9118,6 +9118,11 @@
       "path": "supabase/migrations/20261123153000_managed_reconciliation_replay_strip.sql",
       "sha256": "a2d50fb3bacb307897284d9ba08d1839e0057acbf69b1de57711ae09d4bde817",
       "prefixSha256": "e17c2f3b214f896664a0b1fd214be611094bb0eb75633a675d2d11df022bd89d"
+    },
+    {
+      "path": "supabase/migrations/20261124200000_checkout_attempt_ledger.sql",
+      "sha256": "8780f37eb06d02cff9d8250816eb8131440609738a623235c7947745847c2f57",
+      "prefixSha256": "2ca09123119170400600b3285d36b62bcfdbbf2418f7c405ded25c132570c456"
     }
   ]
 }
