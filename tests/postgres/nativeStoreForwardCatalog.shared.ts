@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, readReviewedForwardRegistry, renderNativeDeferredTrigger, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
@@ -100,28 +100,6 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
 }
 
 const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}`;
-
-/**
- * A replaced function's catalog attributes must remain unchanged, except its
- * single `search_path=` proconfig entry may strictly append trailing `, pg_temp`
- * when the slot pins that exact tightened search_path and the prior search_path
- * did not already name `pg_temp` or `pg_temp_<N>`.
- */
-export function expectedReplacedFunctionAttrs(oldAttrs: Record<string, unknown>, searchPath: string | null): Record<string, unknown> {
-  if (searchPath === null) return oldAttrs;
-  const oldConfig = oldAttrs.proconfig;
-  if (!Array.isArray(oldConfig)) return oldAttrs;
-  const searchPathEntries = oldConfig.filter((item): item is string => typeof item === "string" && item.startsWith("search_path="));
-  if (searchPathEntries.length !== 1) return oldAttrs;
-  const oldEntry = searchPathEntries[0]!;
-  const oldSchemasRaw = oldEntry.slice("search_path=".length);
-  if (!/^[A-Za-z_][A-Za-z0-9_]*(?:, [A-Za-z_][A-Za-z0-9_]*)*$/u.test(oldSchemasRaw)) return oldAttrs;
-  const oldSchemas = oldSchemasRaw.toLowerCase().split(", ");
-  if (oldSchemas.some(schema => schema === "pg_temp" || /^pg_temp_\d+$/u.test(schema))) return oldAttrs;
-  const target = norm(searchPath);
-  if (target !== `${oldEntry}, pg_temp`) return oldAttrs;
-  return { ...oldAttrs, proconfig: oldConfig.map(item => item === oldEntry ? target : item) };
-}
 const quotedValues = (list: string) => (list.match(/'((?:[^']|'')*)'/gu) ?? []).map(value => value.slice(1, -1).replaceAll("''", "'"));
 // Only the positive IN shape PostgreSQL deparses reads as a value list. The superset guard
 // strips NOT VALID only after proving equal validation states; other clauses remain refused.
