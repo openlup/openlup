@@ -1,6 +1,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import * as catalogueTesting from "@openlup/platform/catalog/testing";
+
+it("keeps the retained-source publication reader out of the installed testing entry point", () => {
+  expect(catalogueTesting).not.toHaveProperty("createRetainedCatalogPublicationReads");
+});
 
 const ROOT = process.cwd();
 const PERIMETERS = [
