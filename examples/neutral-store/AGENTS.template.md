@@ -116,7 +116,7 @@ The default `test:browser` setup does not prove a successful persisted purchase;
 [proof guidance](docs/proof.md). `./lifecycle verify` and `./lifecycle upgrade` depend
 on the installed CLI and explicit inputs and may refuse.
 
-Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md` (offline scope and pending owners).
+To publish a saved catalogue draft, see `node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft`.
 
 Own renewal stock priority in `inventory.renewalProtection` in
 `owned/store.config.ts`: exactly `revision` (nonblank) and `renewalProtectionDays`

@@ -54,10 +54,20 @@ Both qualified selections accept `roleMode: "installer-managed"` or
 `runtimeLogin`. The restricted `qualified-admin` selection also requires
 `restoreLogin` and, in operator-provisioned mode, a distinct `operatorLogin`.
 The privileged `qualified-v2` selection permits an optional restore login.
-Provision the selected PostgreSQL host profile before invoking the runner: these
-options validate existing roles and session facts; they do not create host
-logins or grant access. The [connection role guidance](../how-to/operate/connect-postgresql.md#assign-connections-by-work)
+Provision the migration, bootstrap, runtime and any required restore or operator
+logins before invoking the runner. The [connection role guidance](../how-to/operate/connect-postgresql.md#assign-connections-by-work)
 describes the prerequisites.
+
+For a `qualified-v2` plan containing the catalogue publication forward,
+installer-managed mode creates `openlup_catalog_publication` automatically.
+In operator-provisioned mode, create that login before applying the forward.
+Use `LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
+with no memberships or owned objects. The forward assigns its catalogue grants
+and policies. Supply a private credential to the catalogue host connection
+when enabling it. The demonstration installer manages the credential with
+`./lifecycle up`. If the runner reports `catalog_publication_login_missing`,
+restore the restricted login and its reviewed grants from the installation
+before starting the host.
 
 The factory also accepts a `poolFactory`, a custom `catalog` reader, its `root`
 and a `catalogProjectionPayload` callback. These are trusted host inputs. A
