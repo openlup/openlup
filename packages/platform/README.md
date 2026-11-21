@@ -222,6 +222,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
+| `./tax`, `./tax/contracts` | Experimental tax calculation port and coverage reconciliation |
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 
@@ -3186,6 +3187,14 @@ Lookup does not write customer data. Identifier normalization/validity and legal
 `CompanyIdentityRules`. Neutral defaults keep identifiers unchanged, accept
 non-empty values and do not prefer or seek fuller names. The reference
 application retains its existing national rules and callers unchanged.
+
+## Tax calculation
+
+Choose a tax adapter in application composition and supply one merchant coverage
+document. Use `./tax/contracts` for the browser-safe port and document decoders.
+Server integrations use `./tax` to prepare quote requests and reconcile coverage
+for every required cell. Calculation expiry and charge-date fiscal validity are
+separate checks.
 
 ## Market packs
 

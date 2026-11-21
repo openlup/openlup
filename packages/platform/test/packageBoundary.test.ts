@@ -235,6 +235,7 @@ describe("package source boundary", () => {
       "catalog/adminBundleWritePort.ts", "catalog/adminBundleHandler.ts", "catalog/adminBundleReadHandler.ts", "catalog/sellableBundleHandler.ts",
       "catalog/contracts/bundleAdmin.ts", "catalog/contracts/bundleRead.ts", "catalog/contracts/bundleAvailability.ts",
       "pricing/index.ts", "pricing/browser/index.ts", "pricing/contracts/index.ts",
+      "tax/index.ts", "tax/contracts/index.ts",
       "promotions/index.ts", "promotions/contracts/index.ts",
       "promotions/adminBindings.ts", "promotions/adminPromotionsHandler.ts", "promotions/adminPromotionCodesHandler.ts",
       "promotions/adminPromotionsContracts.ts", "promotions/adminPromotionCodesContracts.ts",
@@ -314,6 +315,16 @@ describe("package source boundary", () => {
       bundle: true, platform: "browser", format: "esm", write: false,
       treeShaking: false, logLevel: "silent",
     })).rejects.toThrow(/node:fs|node:crypto|node:path/);
+  });
+
+  it("bundles tax contracts for a browser without the tax server entry or provider code", async () => {
+    const result = await build({
+      entryPoints: [join(SOURCE_ROOT, "tax/contracts/index.ts")],
+      bundle: true, platform: "browser", format: "esm", write: false, metafile: true, logLevel: "silent",
+    });
+    const inputs = Object.keys(result.metafile!.inputs).map(path => path.replaceAll("\\", "/"));
+    expect(inputs.some(path => path.endsWith("tax/contracts/schemas.ts"))).toBe(true);
+    expect(inputs.filter(path => !path.includes("platform/src/tax/contracts/") && !path.includes("core/dist/pricing/"))).toEqual([]);
   });
 
   it("bundles the commerce browser entry without Node built-ins or the server entry", async () => {

@@ -4362,6 +4362,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/tax-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/tax.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/package.json",
       "class": "public-output"
     },
@@ -9858,6 +9866,42 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/tax/contracts/decode.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/contracts/identity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/contracts/port.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/contracts/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/contracts/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/coverage.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/digest.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/accountMutations.test.ts",
       "class": "public-output"
     },
@@ -12271,6 +12315,18 @@
     },
     {
       "path": "packages/platform/test/subscriptions/subscriptionSizing.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/coverage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/fixtures.ts",
       "class": "public-output"
     },
     {

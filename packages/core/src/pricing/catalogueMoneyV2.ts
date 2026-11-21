@@ -317,12 +317,20 @@ function validateComponentRef(ref: CatalogueMoneyV2ComponentRef, field: string):
   }
 }
 
-function scaledRate(value: string, field: string): bigint {
+function parseRate(value: unknown): bigint | undefined {
   const match = typeof value === "string" && /^(0|[1-9][0-9]{0,9})(?:\.([0-9]{1,6}))?$/.exec(value);
-  if (!match || match[0] !== value) refuse("money_rate_invalid", field);
+  if (!match || match[0] !== value) return undefined;
   const scaled = BigInt(match[1] + (match[2] ?? "").padEnd(6, "0"));
-  if (scaled > maxSafe) refuse("money_rate_invalid", field);
-  return scaled;
+  return scaled <= maxSafe ? scaled : undefined;
+}
+
+/** @beta @experimental */
+export function isCatalogueMoneyV2RateDecimal(value: unknown): value is string {
+  return parseRate(value) !== undefined;
+}
+
+function scaledRate(value: string, field: string): bigint {
+  return parseRate(value) ?? refuse("money_rate_invalid", field);
 }
 
 function exclusiveState(amountMinor: number, taxPositions: CatalogueMoneyV2Position[], field: string): CatalogueMoneyV2State {
