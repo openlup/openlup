@@ -2380,6 +2380,10 @@ contains a single `pg_temp` entry in the final position. The other function and
 data lists are empty. The whole-file pin covers exactly the listed
 `ALTER FUNCTION … SET search_path` statements in order. The PostgreSQL catalog
 check allows only the pinned `search_path` changes.
+A later ordinary slot treats a landed settings-only slot's exact pinned
+`ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
+function or grant privileges on it. A replacement may tighten `search_path` by
+appending a single final `pg_temp` to the existing list.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
 requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
 installed definer outside the shrink-only `DEFINER_SEARCH_PATH_PENDING` list.

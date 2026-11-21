@@ -1311,12 +1311,15 @@ describe("closed created row triggers on prefix tables", () => {
   it("refuses conditional prefix function drops for ordinary and deferred triggers", () => {
     const deferred = triggerBefore.replace("CREATE TRIGGER fixture_trigger_guard BEFORE INSERT OR DELETE OR UPDATE OF id, extra", "CREATE CONSTRAINT TRIGGER fixture_trigger_guard AFTER INSERT")
       .replace("FOR EACH ROW", "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW");
-    const refusal = "reviewed native store unsupported preceding function DDL";
-    for (const history of ["DROP FUNCTION IF EXISTS public.fixture_retired_guard();", "DROP FUNCTION IF EXISTS public.other(), public.fixture_existing(uuid);"]) {
+    const histories = [
+      ["DROP FUNCTION IF EXISTS public.fixture_retired_guard();", "public.fixture_retired_guard"],
+      ["DROP FUNCTION IF EXISTS public.other(), public.fixture_existing(uuid);", "public.fixture_existing"],
+    ] as const;
+    for (const [history, target] of histories) {
       for (const statement of [triggerBefore, deferred]) expect(() => triggerForward(statement, "", slot => {
         if (statement === deferred) slot.createdTriggers = [{ name: "fixture_trigger_guard", relation: "public.fixture_parameters",
           events: ["INSERT"], function: "public.fixture_trigger_guard()", sha256: sqlSha256(deferred), deferred: true }];
-      }, history)).toThrow(refusal);
+      }, history)).toThrow(`reviewed native store unsupported preceding function DDL in db/platform/migrations/20261031120000_parameter_history.sql for ${target}`);
     }
   });
   it("admits both guarded existing-table trigger shapes with PUBLIC and conditional revokes", () => {
@@ -2208,9 +2211,9 @@ describe("SECURITY DEFINER trailing pg_temp rule", () => {
   });
 
   const nativeDefinerCheck = (security: "DEFINER" | "INVOKER", searchPathSql: string | null, slotSearchPath: string | null) => {
-    const signature = "public.fixture_cd_sec_1(uuid)";
+    const signature = "public.fixture_new_definer(uuid)";
     const clause = searchPathSql === null ? "" : ` SET search_path = ${searchPathSql}`;
-    const definition = `CREATE FUNCTION public.fixture_cd_sec_1(p_id uuid) RETURNS text LANGUAGE sql SECURITY ${security}${clause} AS $$ SELECT 'ok'; $$;`;
+    const definition = `CREATE FUNCTION public.fixture_new_definer(p_id uuid) RETURNS text LANGUAGE sql SECURITY ${security}${clause} AS $$ SELECT 'ok'; $$;`;
     const text = `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`;
     const value = registry();
     const slot = value.nativeStoreForwardClass!.slots[0]!;
@@ -2227,7 +2230,7 @@ describe("SECURITY DEFINER trailing pg_temp rule", () => {
     ["pg_temp, public, pg_temp", "pg_temp, public, pg_temp", "pg_temp, public, pg_temp"],
   ])("refuses new native-store SECURITY DEFINER with %s even when slot searchPath matches", (_label, searchPathSql, slotSearchPath) => {
     expect(() => nativeDefinerCheck("DEFINER", searchPathSql, slotSearchPath))
-      .toThrow("SECURITY DEFINER function public.fixture_cd_sec_1(uuid) must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)");
+      .toThrow("SECURITY DEFINER function public.fixture_new_definer(uuid) must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)");
   });
 
   it.each([
@@ -2254,6 +2257,26 @@ describe("SECURITY DEFINER trailing pg_temp rule", () => {
 });
 
 describe("native-store replacement search_path pg_temp tightening", () => {
+  it("admits a later replacement of the installed channel listing function with its compact defining header", () => {
+    const value = structuredClone(production);
+    const slot = emptySlot("db/platform/migrations/20990101000000_fixture_followup.sql", "FixtureFollowup");
+    const signature = "public.channel_listing_read(uuid,uuid)";
+    const priorClause = "SET search_path=pg_catalog,public";
+    const searchPath = "pg_catalog, public, pg_temp";
+    const definitionPath = "db/platform/migrations/20261030121000_channel_retained_basis.sql";
+    const definition = sqlStatements(readFileSync(definitionPath, "utf8"))
+      .find(statement => statement.startsWith("CREATE FUNCTION public.channel_listing_read("))!;
+    expect(definition).toContain(priorClause);
+    const replacement = definition.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
+      .replace(priorClause, `SET search_path = ${searchPath}`);
+    slot.replacedFunctions.push({ signature, beforeSha256: sqlSha256(definition), searchPath });
+    const slots = value.nativeStoreForwardClass!.slots;
+    bind(value, slots.push(slot) - 1, replacement);
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
+    const history = [manifest.baseline, ...manifest.forward].map(unit => ({ path: unit.file, bytes: readFileSync(unit.file) }));
+    expect(() => assertNativeStoreForward(value, slot.path, Buffer.from(replacement), history)).not.toThrow();
+  });
+
   const signature = "public.fixture_tighten(uuid)";
   const nativeReplacementCheck = (priorAttrs: string, nextAttrs: string, slotSearchPath: string | null) => {
     const priorDef = `CREATE FUNCTION public.fixture_tighten(p_id uuid) RETURNS text LANGUAGE sql ${priorAttrs} AS $$ SELECT 'before'; $$;`;
@@ -2286,6 +2309,12 @@ describe("native-store replacement search_path pg_temp tightening", () => {
       "SECURITY INVOKER SET search_path=pg_catalog",
       "SECURITY INVOKER SET search_path=pg_catalog, pg_temp",
       "pg_catalog, pg_temp",
+    ],
+    [
+      "TO, flexible spacing and whitespace normalization around a non-final clause",
+      "SECURITY  INVOKER SET search_path=pg_catalog,public STABLE",
+      "SECURITY INVOKER SET\tsearch_path TO pg_catalog ,\npublic,pg_temp  STABLE",
+      "pg_catalog, public, pg_temp",
     ],
   ])("accepts %s", (_label, priorAttrs, nextAttrs, slotSearchPath) => {
     expect(() => nativeReplacementCheck(priorAttrs, nextAttrs, slotSearchPath)).not.toThrow();
@@ -2341,6 +2370,48 @@ describe("native-store replacement search_path pg_temp tightening", () => {
       "pg_catalog, public, extra",
     ],
     [
+      "adding an extra schema and a final pg_temp",
+      "SECURITY INVOKER SET search_path=pg_catalog,public",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, extra, pg_temp",
+      "pg_catalog, public, extra, pg_temp",
+    ],
+    [
+      "putting pg_temp before the final schema",
+      "SECURITY INVOKER SET search_path=pg_catalog,public",
+      "SECURITY INVOKER SET search_path = pg_catalog, pg_temp, public",
+      "pg_catalog, pg_temp, public",
+    ],
+    [
+      "appending two pg_temp schemas",
+      "SECURITY INVOKER SET search_path=pg_catalog,public",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp, pg_temp",
+      "pg_catalog, public, pg_temp, pg_temp",
+    ],
+    [
+      "tightening with more than one top-level SET search_path clause",
+      "SECURITY INVOKER SET search_path TO pg_catalog SET search_path=pg_catalog,public",
+      "SECURITY INVOKER SET search_path TO pg_catalog SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "changing an existing identifier's spelling",
+      "SECURITY INVOKER SET search_path=pg_catalog,PUBLIC",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "tightening a quoted schema list",
+      'SECURITY INVOKER SET search_path=pg_catalog,"public"',
+      'SECURITY INVOKER SET search_path=pg_catalog,"public",pg_temp',
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "treating a string literal as a search_path clause",
+      "SECURITY INVOKER SET other TO 'SET search_path=pg_catalog,public'",
+      "SECURITY INVOKER SET other TO 'SET search_path=pg_catalog,public,pg_temp'",
+      null,
+    ],
+    [
       "adding SET search_path when prior had none",
       "SECURITY INVOKER",
       "SECURITY INVOKER SET search_path = pg_catalog, pg_temp",
@@ -2369,18 +2440,6 @@ describe("native-store replacement search_path pg_temp tightening", () => {
       "SECURITY DEFINER SET search_path = pg_catalog, public",
       "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
       "pg_catalog, public, pg_temp",
-    ],
-    [
-      "changing whitespace alongside pg_temp",
-      "SECURITY INVOKER SET search_path = pg_catalog, public",
-      "SECURITY INVOKER  SET search_path = pg_catalog, public, pg_temp",
-      "pg_catalog, public, pg_temp",
-    ],
-    [
-      "changing compact = spacing alongside pg_temp",
-      "SECURITY INVOKER SET search_path=pg_catalog",
-      "SECURITY INVOKER SET search_path = pg_catalog, pg_temp",
-      "pg_catalog, pg_temp",
     ],
   ])("refuses %s", (_label, priorAttrs, nextAttrs, slotSearchPath) => {
     expect(() => nativeReplacementCheck(priorAttrs, nextAttrs, slotSearchPath))
