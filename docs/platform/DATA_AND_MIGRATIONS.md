@@ -985,6 +985,13 @@ transactions and exact-prefix/replay behavior remain.
 
 ### Sealed native catalog publication history
 
+The [membership read forward](../../db/platform/migrations/20261124120000_catalog_publication_reads.sql)
+adds a service-executable page and owner-only evidence helpers. The page uses
+the caller's statement snapshot. Its cursor binds the latest sealed issue
+across governed products. See the installed
+[catalogue entry](../../packages/platform/README.md#read-governed-offer-memberships)
+for paging and refusal behavior.
+
 The [`catalog_publication` forward](../../db/platform/migrations/20261123190000_catalog_publication.sql)
 adds native publication history.
 The publication, SKU revisions, operator receipts, and candidate decisions are

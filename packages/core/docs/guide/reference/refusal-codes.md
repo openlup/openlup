@@ -65,6 +65,7 @@ Find the machine-readable code identifying why an operation was refused; see the
 | `@openlup/platform` | `AuthReconcileErrorCode` | [`./risk/server`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/risk-server.api.md) | reference to another type |
 | `@openlup/platform` | `CatalogConformanceCode` | [`./catalog/contracts`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/catalog-contracts.api.md) | reference to another type |
 | `@openlup/platform` | `CatalogConformanceCode` | [`./catalog`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/catalog.api.md) | reference to another type |
+| `@openlup/platform` | `CatalogDiscoveryRefusal` | [`./catalog`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/catalog.api.md) | object type |
 | `@openlup/platform` | `CatalogPriceSetupRefusal` | [`./pricing`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/pricing.api.md) | reference to another type |
 | `@openlup/platform` | `ChannelBundleExpansionRefusal` | [`./channels/contracts`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/channels-contracts.api.md) | object type |
 | `@openlup/platform` | `ChannelBundleExpansionRefusal` | [`./channels`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/channels.api.md) | object type |
