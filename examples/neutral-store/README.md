@@ -203,9 +203,10 @@ the upgrade CLI installs nothing. These modes do not establish stable-framework
 or supported-installation status.
 
 When the manifest declares `managedEditRoutes`, extraction adds one header to
-each managed file that supports comments and lists managed JSON files in the
-extracted ownership guide. Manifests without the map retain their original
-extraction bytes, including the existing release rewrites.
+managed scripts, Markdown, YAML and supported configuration files. The extracted
+ownership guide lists Dockerfile, HTML, CSS and JSON paths. Extraction keeps
+their source bytes apart from the release rewrites above. A manifest without
+the map uses the original extraction procedure.
 The committed released lockfile stays generated and outside upgrade snapshots;
 the upgrade CLI installs no dependencies. Install the exact public-registry set
 separately from its committed lockfile with `npm ci`.
@@ -221,7 +222,7 @@ npm test -- test/extract.test.ts
 These fixtures cover canonical lock keys, the exact OpenLup allowlist, forbidden
 OpenLup references in other entries, named refusals, Git source verification,
 reconstruction and deterministic hashes. For candidate copies, the proof
-removes the expected headers and JSON index before comparing every file with
+removes the expected headers and ownership index before comparing every file with
 its source. These fixtures make no network request and do not qualify any
 released set.
 

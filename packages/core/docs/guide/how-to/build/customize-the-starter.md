@@ -681,6 +681,10 @@ Find the effective list for the selected configuration in `owned/demo-seed.ts`.
 The demonstration's `buildDemoSeed(config).priceLists[0].id` is derived from
 the configuration ID and market currency. Revise the affected operation to use
 that list and a fresh price operation `commandKey`.
+When changing lists, set `expected.entryId` and `expected.unitPriceMinor` from
+the SKU's current one-time base price on the destination list, using `null` for
+both when there is no current entry, and resolve any pending base price there
+before publishing.
 After each change, run `npm run typecheck` from the extracted application root.
 Send `{action: "revise", draftId, expectedRevision, payload}` to
 `operator.catalogDrafts` with the corrected draft as `payload`. Prepare and

@@ -245,7 +245,8 @@ test('extract creates an independent repository and refuses to overwrite an exis
     assert.deepEqual(candidateFiles.sort(), [...ownership.owned, ...ownership.managed, '.starter-origin.json'].sort());
     const managedJson = ['ownership.json', 'package.json', 'starter-release.json', 'tsconfig.json'];
     assert.deepEqual(ownership.managed.filter((path: string) => path.endsWith('.json')).sort(), managedJson);
-    const index = Buffer.from('\n## Managed JSON files\n\n' + managedJson.map(path => `- \`${path}\` — ${managedHint}\n`).join(''));
+    const indexed = ['Dockerfile', 'client/style.css', 'index.html', ...managedJson];
+    const index = Buffer.from('\n## Managed files without a header\n\n' + indexed.map(path => `- \`${path}\` — ${managedHint}\n`).join(''));
     // Strip only the expected annotations, then compare the source bytes and mode.
     for (const file of [...ownership.owned, ...ownership.managed]) {
       const source = resolve(root, ownership.sourceMappings?.[file] ?? file);
@@ -253,19 +254,18 @@ test('extract creates an independent repository and refuses to overwrite an exis
       assert.equal((await stat(output)).mode, (await stat(source)).mode, file);
       let bytes = await readFile(output);
       if (file === 'docs/ownership.md') {
-        assert.deepEqual(bytes.subarray(-index.length), index, 'managed JSON index');
+        assert.deepEqual(bytes.subarray(-index.length), index, 'managed ownership index');
         bytes = bytes.subarray(0, -index.length);
       }
       if (managedJson.includes(file)) JSON.parse(bytes.toString());
-      if (ownership.managed.includes(file) && !managedJson.includes(file)) {
+      if (ownership.managed.includes(file) && !indexed.includes(file)) {
         const hint = ['host/editor-catalogue.ts', 'installation/install.ts'].includes(file) ? catalogueHint : managedHint;
         let line = `# ${hint}`;
         if (/\.(?:ts|mts|mjs)$/.test(file)) line = `// ${hint}`;
-        if (/\.(?:md|html)$/.test(file)) line = `<!-- ${hint} -->`;
-        if (file.endsWith('.css')) line = `/* ${hint} */`;
+        if (file.endsWith('.md')) line = `<!-- ${hint} -->`;
         const lines = bytes.toString().split('\n');
         assert.equal(lines.filter(line => line.includes('Managed by OpenLup.')).length, 1, file);
-        const prefix = file === 'lifecycle' ? '#!/bin/sh\n' : file === 'index.html' ? '<!doctype html>\n' : '';
+        const prefix = file === 'lifecycle' ? '#!/bin/sh\n' : '';
         const annotation = Buffer.from(prefix + line + '\n');
         assert.deepEqual(bytes.subarray(0, annotation.length), annotation, file);
         bytes = Buffer.concat([Buffer.from(prefix), bytes.subarray(annotation.length)]);
@@ -442,24 +442,26 @@ test('released extraction pins and commits registry artifacts with deterministic
     for (const path of ['node_modules/pg', 'node_modules/pg/node_modules/@types/node'])
       f.lock.packages[path] = { version: '1.0.0', resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz' };
     await f.put('lock.json', f.lock);
-    const headers = [
-      ['Dockerfile', '# syntax=docker/dockerfile:1\n# check=error=true\n', `# ${managedHint}\n`, 'FROM scratch\n'],
-      ['style.css', '@charset "UTF-8";\n', `/* ${managedHint} */\n`, '/* café */\r\n'],
-      ['entry.mjs', '#!/usr/bin/env node\r\n', `// ${managedHint}\n`, 'export {};\r\n'],
-    ] as const;
-    for (const [path, prefix, , body] of headers) {
+    const indexed = {
+      Dockerfile: Buffer.from('FROM node:24.21.0-bookworm-slim AS application\nRUN true\n'),
+      'index.html': Buffer.from('<!doctype html><html lang="en"></html>\n'),
+      'bom.html': Buffer.from('\ufeff<!doctype html><html lang="en"></html>\n'),
+      'style.css': Buffer.from('@charset "windows-1252";a::after { content: "café"; }\n', 'latin1'),
+    };
+    for (const [path, bytes] of Object.entries(indexed)) {
       f.ownership.managed.push(path);
-      await f.put(`examples/neutral-store/${path}`, prefix + body);
+      await writeFile(resolve(f.source, path), bytes);
     }
-    const charset = '@charset "windows-1252";', rule = 'a::after { content: "café"; }\n';
-    f.ownership.managed.push('inline.css');
-    await writeFile(resolve(f.source, 'inline.css'), Buffer.from(charset + rule, 'latin1'));
+    f.ownership.managed.push('entry.mjs', 'entry.cjs');
+    await f.put('examples/neutral-store/entry.mjs', '#!/usr/bin/env node\r\nexport {};\r\n');
+    await f.put('examples/neutral-store/entry.cjs', '#!/usr/bin/env node');
     await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
     const first = f.run(), second = f.run('second');
-    assert.deepEqual(await readFile(resolve(first, 'inline.css')), Buffer.from(`${charset}\n/* ${managedHint} */\n${rule}`, 'latin1'));
-    for (const [path, prefix, header, body] of headers) {
-      assert.equal(await readFile(resolve(first, path), 'utf8'), prefix + header + body, path);
+    for (const [path, bytes] of Object.entries(indexed)) {
+      assert.deepEqual(await readFile(resolve(first, path)), bytes, path);
     }
+    assert.equal(await readFile(resolve(first, 'entry.mjs'), 'utf8'), `#!/usr/bin/env node\r\n// ${managedHint}\nexport {};\r\n`, 'entry.mjs');
+    assert.equal(await readFile(resolve(first, 'entry.cjs'), 'utf8'), `#!/usr/bin/env node\n// ${managedHint}\n`, 'entry.cjs');
     const identity = JSON.parse(await readFile(resolve(first, '.starter-origin.json'), 'utf8'));
     assert.equal(identity.mode, 'released'); assert.equal(identity.setVersion, f.version);
     assert.equal(identity.sourceRevision, f.revision); assert.equal(identity.sourceRevisionVerification, 'supplied');
@@ -499,6 +501,9 @@ test('extraction refuses misrouted or unhandled managed paths', async () => {
     await f.put('examples/neutral-store/unknown.txt', 'managed text\n');
     await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managed: [...f.ownership.managed, 'unknown.txt'], managedEditRoutes: {} });
     assert.throws(() => f.run('unknown-format'), /starter_managed_format_unknown: unknown.txt/);
+    await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
+    await f.put('examples/neutral-store/README.template.md', '\ufeff# Application\n');
+    assert.throws(() => f.run('managed-bom'), /starter_managed_file_bom: README.md/);
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
 
