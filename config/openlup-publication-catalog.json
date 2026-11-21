@@ -1558,6 +1558,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5055,6 +5059,10 @@
     },
     {
       "path": "packages/platform/sql/20261124160000_catalog_canonical_ascii_order.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124170000_catalog_publication_commit_perf.sql",
       "class": "public-output"
     },
     {
