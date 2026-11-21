@@ -8,9 +8,9 @@ vi.mock("node:child_process", async (original) => {
 });
 
 import {
-  addedLines, formatCheckLine, isTestEntry, isTestFile, missingFragments, nearDates, parseNameStatus,
-  main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries, sqlTreeChanges,
-  testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
+  addedLines, areaGuardTests, formatCheckLine, isTestEntry, isTestFile, missingFragments, nearDates,
+  parseNameStatus, main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries,
+  sqlTreeChanges, testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
 
 afterEach(() => {
@@ -30,7 +30,7 @@ describe("fast preflight", () => {
     { name: "clean", dirty: false, offline: false, warnings: false, failures: [], exit: 0 },
     { name: "clean with Git stderr warnings", dirty: false, offline: false, warnings: true, failures: [], exit: 0 },
     { name: "dirty with a failed fetch", dirty: true, offline: true, warnings: false, failures: ["clean"], exit: 1 },
-    { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "publication-inventory", "dco"], exit: 1 },
+    { name: "multiple failures", dirty: false, offline: false, warnings: false, failures: ["merge-clean", "neutrality", "publication", "dco"], exit: 1 },
   ])("reports every check and ends with JSON for a $name fixture", ({ dirty, offline, warnings, failures, exit }) => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const increase = '"scripts/example.ts": brand increased 0 -> 1';
@@ -47,29 +47,39 @@ describe("fast preflight", () => {
       `${process.execPath} scripts/public-ci-neutrality.mjs --base-commit ${fork}`,
       `${process.execPath} --experimental-strip-types packages/ui/smoke/neutrality.ts`,
       "npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression",
-      `npm run oss:published-tree -- --policy --docs-base ${fork}`,
-      "npm run oss:published-tree -- --inventory",
+      `${process.execPath} scripts/ast-grep/check-filewide-ignore.mjs`,
+      "npx --no -- ast-grep test --skip-snapshot-tests",
+      `npm run oss:published-tree -- --self-check --docs-base ${fork}`,
+      `git diff --name-status --no-renames -z ${fork} HEAD`,
+      "gitleaks version",
       "git rev-parse origin/main",
     ];
     const calls: string[] = [];
     const outputs = new Map([
       [expected[0], process.cwd()], [expected[1], head], [expected[3], dirty ? "?? local.txt\n" : ""],
       [expected[4], conflict], [expected[5], fork], [expected[6], increase],
-      [expected[10], `${mismatch}\n${closing}`], [expected[11], upstream],
+      [expected[11], `${mismatch}\n${closing}`], [expected[14], upstream],
     ]);
-    vi.mocked(spawnSync).mockImplementation(((bin, args) => {
+    vi.mocked(spawnSync).mockImplementation(((bin, args, options) => {
       const call = `${bin} ${(args ?? []).join(" ")}`;
       calls.push(call);
+      if (bin === "npx") {
+        expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+      }
+      if (bin === "gitleaks") {
+        return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+      }
       const status = Number((call === expected[2] && offline)
         || (call === expected[4] && failures.includes("merge-clean"))
         || (call === expected[6] && failures.includes("neutrality"))
-        || (call === expected[10] && failures.includes("publication-inventory")));
-      const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[11]].includes(call)
+        || (call === expected[11] && failures.includes("publication")));
+      const stderr = warnings && [expected[0], expected[1], expected[3], expected[5], expected[12], expected[14]].includes(call)
         ? "warning: fixture Git warning\n" : "";
       return { status, stdout: outputs.get(call) ?? "", stderr };
     }) as typeof spawnSync);
-    const message = failures.includes("dco") ? "unsigned commit" : "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
-    vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1f${message}\0${upstream}\x1f${head} ${fork}\x1funsigned merge\0`);
+    const signed = "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
+    const message = failures.includes("dco") ? "unsigned commit" : signed;
+    vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1f${message}\0${upstream}\x1f${head} ${fork}\x1f${signed}\0`);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -82,38 +92,235 @@ describe("fast preflight", () => {
       clean: "worktree has uncommitted changes. Commit or remove them.",
       "merge-clean": conflict,
       neutrality: "1 neutrality count increase(s) against the fork point; the required self-check job refuses them",
-      "publication-inventory": closing,
+      publication: closing,
       dco: `missing Signed-off-by on ${head.slice(0, 12)}`,
     };
+    const skipLines: Record<string, string> = {
+      fragments: "fragments: skip no released package source changed",
+      "test dates": "test dates: skip no new or changed test files",
+      "test expiries": "test expiries: skip no new or changed test files",
+      gitleaks: "gitleaks: skip gitleaks is not on PATH; the required gitleaks job still scans the pull request",
+      "guide-check": "guide-check: skip no guide or rule files changed",
+      "package-manifest": "package-manifest: skip no package manifests or config/openlup-packages.json changed",
+    };
     expect(lines.filter((line) => !line.startsWith("    ")).map((line) => line.replace(/ \(\d+ s\)$/u, "")))
-      .toEqual(["clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "publication-policy", "publication-inventory", "dco"]
-        .map((name) => `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
+      .toEqual([
+        "clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "ast-grep-hygiene",
+        "publication", "fragments", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
+      ].map((name) => skipLines[name] ?? `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
     expect(lines.filter((line) => line.startsWith("    "))).toEqual(
-      failures.includes("publication-inventory") ? [conflict, increase, mismatch, closing].map((line) => `    ${line}`) : [],
+      failures.includes("publication") ? [conflict, increase, mismatch, closing].map((line) => `    ${line}`) : [],
     );
     expect(stderr.mock.calls).toEqual(offline ? [["preflight: git fetch origin main failed. Using local origin/main."]] : []);
   });
 
-  it("omits --docs-base for publication-policy when OPENLUP_STACK_BASE is set", () => {
+  it("checks merge commits for DCO and passes when HEAD equals origin/main (0 commits)", () => {
+    const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
+    const setupMocks = (gitLogOutput: string, sameHead = false) => {
+      vi.mocked(spawnSync).mockImplementation(((bin, args) => {
+        const call = `${bin} ${(args ?? []).join(" ")}`;
+        if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
+        if (call === "git rev-parse HEAD") return { status: 0, stdout: sameHead ? upstream : head, stderr: "" };
+        if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: sameHead ? upstream : fork, stderr: "" };
+        if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
+        if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        return { status: 0, stdout: "", stderr: "" };
+      }) as typeof spawnSync);
+      vi.mocked(execFileSync).mockReturnValue(gitLogOutput);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      return { exit: main(now, ["--fast"]), lines };
+    };
+
+    const mergeSha = "e".repeat(40);
+    const signed = "change\n\nSigned-off-by: Test Fixture <fixture@example.invalid>";
+    const unsignedMerge = setupMocks(`${head}\x1f${fork}\x1f${signed}\0${mergeSha}\x1f${head} ${fork}\x1fMerge branch 'main'\0`);
+    expect(unsignedMerge.exit).toBe(1);
+    expect(JSON.parse(unsignedMerge.lines.at(-1)!)).toEqual({
+      preflight: "fast", result: "fail", head, failed: ["dco"],
+    });
+    expect(unsignedMerge.lines).toContain(`dco: FAIL missing Signed-off-by on ${mergeSha.slice(0, 12)}`);
+
+    const zeroCommits = setupMocks("", true);
+    expect(zeroCommits.exit).toBe(0);
+    expect(JSON.parse(zeroCommits.lines.at(-1)!)).toEqual({
+      preflight: "fast", result: "pass", head: upstream, failed: [],
+    });
+    expect(zeroCommits.lines).toContain("dco: ok");
+  });
+
+  it("handles OPENLUP_STACK_BASE for publication and merge-clean ancestry", () => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40), stackBase = "d".repeat(40);
-    vi.stubEnv("OPENLUP_STACK_BASE", stackBase);
+    const runWithStackBase = (value: string, isAncestor: boolean) => {
+      vi.stubEnv("OPENLUP_STACK_BASE", value);
+      const calls: string[] = [];
+      vi.mocked(spawnSync).mockImplementation(((bin, args) => {
+        const call = `${bin} ${(args ?? []).join(" ")}`;
+        calls.push(call);
+        if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
+        if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
+        if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
+        if (call === `git merge-base --is-ancestor ${value} origin/main`) return { status: isAncestor ? 0 : 1, stdout: "", stderr: "" };
+        if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
+        if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
+        return { status: 0, stdout: "", stderr: "" };
+      }) as typeof spawnSync);
+      vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1fchange\n\nSigned-off-by: Test Fixture <fixture@example.invalid>\0`);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const exit = main(now, ["--fast"]);
+      return { exit, calls, lines };
+    };
+
+    const unlanded = runWithStackBase(stackBase, false);
+    expect(unlanded.exit).toBe(0);
+    expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} origin/main`);
+    expect(unlanded.calls).not.toContain("git merge-tree --write-tree origin/main HEAD");
+    expect(unlanded.calls).toContain("npm run oss:published-tree -- --self-check");
+    expect(unlanded.calls.some((call) => call.includes("--docs-base"))).toBe(false);
+    expect(unlanded.lines).toContain("merge-clean: ok");
+
+    const landed = runWithStackBase(stackBase, true);
+    expect(landed.exit).toBe(0);
+    expect(landed.calls).toContain(`git merge-base --is-ancestor ${stackBase} origin/main`);
+    expect(landed.calls).toContain("git merge-tree --write-tree origin/main HEAD");
+
+    const invalid = runWithStackBase("not-a-sha", false);
+    expect(invalid.exit).toBe(0);
+    expect(invalid.calls.some((call) => call.includes("--is-ancestor"))).toBe(false);
+    expect(invalid.calls).toContain("git merge-tree --write-tree origin/main HEAD");
+  });
+
+  it("surfaces WARN/SKIP without failing --fast and runs conditional guide/manifest checks", () => {
+    const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40);
     const calls: string[] = [];
-    vi.mocked(spawnSync).mockImplementation(((bin, args) => {
+    const nameStatus = [
+      "M\0packages/core/src/index.ts\0",
+      "M\0scripts/example.test.ts\0",
+      "M\0packages/core/docs/guide/README.md\0",
+      "M\0packages/core/package.json\0",
+    ].join("");
+    vi.mocked(spawnSync).mockImplementation(((bin, args, options) => {
       const call = `${bin} ${(args ?? []).join(" ")}`;
       calls.push(call);
+      if (call === "npm run packages:check -- --manifest-only") {
+        expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
+      }
       if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
       if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
       if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
+      if (call === `git diff --name-status --no-renames -z ${fork} HEAD`) return { status: 0, stdout: nameStatus, stderr: "" };
+      if (call === `git diff -U0 --no-color --no-ext-diff ${fork} -- scripts/example.test.ts`) {
+        return { status: 0, stdout: '@@ -1,0 +7,1 @@\n+const at = "2040-03-01";', stderr: "" };
+      }
+      if (call === "git rev-list --count bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..HEAD") return { status: 0, stdout: "1\n", stderr: "" };
       if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
       return { status: 0, stdout: "", stderr: "" };
     }) as typeof spawnSync);
     vi.mocked(execFileSync).mockReturnValue(`${head}\x1f${fork}\x1fchange\n\nSigned-off-by: Test Fixture <fixture@example.invalid>\0`);
-    vi.spyOn(console, "log").mockImplementation(() => {});
+    const lines: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     expect(main(now, ["--fast"])).toBe(0);
-    expect(calls).toContain("npm run oss:published-tree -- --policy");
-    expect(calls.some((call) => call.includes("--docs-base"))).toBe(false);
+    expect(calls).toContain(`${process.execPath} --experimental-strip-types packages/core/scripts/documentation-contract.ts --check-guide packages/core`);
+    expect(calls).toContain("npm run packages:check -- --manifest-only");
+    expect(calls).toContain("gitleaks git . --config config/gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner --no-color --log-opts bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..HEAD");
+    expect(lines).toContain("fragments: warn source changed without a changes/*.md fragment in packages/core");
+    expect(lines).toContain("test dates: warn 1 added line(s) with a calendar date within 400 days of now; prefer an injected clock or a far date");
+    expect(lines).toContain('    scripts/example.test.ts:7: 2040-03-01 within 400 days of now: const at = "2040-03-01";');
+    expect(lines).toContain("test expiries: ok");
+    expect(lines).toContain("gitleaks: ok");
+    expect(lines).toContain("guide-check: ok");
+    expect(lines).toContain("package-manifest: ok");
+    expect(JSON.parse(lines.at(-1)!)).toEqual({ preflight: "fast", result: "pass", head, failed: [] });
+  });
+});
+
+describe("area preflight", () => {
+  const excludedHeavyOrDocker = [
+    "scripts/packages/outbox-consumer-proof.test.ts",
+    "scripts/packages/distribution-cli-proof.test.ts",
+    "scripts/packages/distribution-cli-settings.test.ts",
+    "scripts/packages/platform-cold-consumer.test.ts",
+    "scripts/packages/reference-delegation-consumer.test.ts",
+    "tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts",
+    "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts",
+    "tests/postgres/reviewedBatchForwards.test.ts",
+  ];
+
+  it("selects Docker-free, pack-free area tooling guards from ci-test-scope and catalog boundary triggers", () => {
+    expect(areaGuardTests([])).toEqual([]);
+    expect(areaGuardTests(["tests/unit/example.test.ts"])).toEqual([]);
+    expect(areaGuardTests(["src/app.tsx"])).toEqual(["scripts/packages/eslint-import-map.test.ts"]);
+    expect(areaGuardTests(["docs/platform/README.md"])).toEqual(["scripts/catalog-document-boundary.test.ts"]);
+
+    const sqlGuards = areaGuardTests(["db/platform/migrations/20400101000000_example.sql"]);
+    expect(sqlGuards).toEqual([
+      "scripts/qualified-migration-admission.test.ts",
+      "scripts/reviewed-batch-forward.test.ts",
+      "scripts/reviewed-native-store-forward.test.ts",
+    ]);
+
+    const catalogGuards = areaGuardTests(["packages/platform/src/catalog/example.ts"]);
+    expect(catalogGuards).toContain("scripts/catalog-document-boundary.test.ts");
+    expect(catalogGuards).toContain("scripts/packages/package-manifest-policy.test.ts");
+    for (const heavy of excludedHeavyOrDocker) expect(catalogGuards).not.toContain(heavy);
+
+    const sharedScriptGuards = areaGuardTests(["scripts/preflight.ts"]);
+    expect(sharedScriptGuards).toContain("scripts/catalog-document-boundary.test.ts");
+    expect(sharedScriptGuards).toContain("scripts/sql-admit.test.ts");
+    for (const heavy of excludedHeavyOrDocker) expect(sharedScriptGuards).not.toContain(heavy);
+  });
+
+  it("rejects mutually exclusive --fast and --area with exit code 2", () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(main(now, ["--fast", "--area"])).toBe(2);
+    expect(stderr).toHaveBeenCalledWith("preflight: --fast and --area are mutually exclusive");
+  });
+
+  it("runs eslint, area tooling guards via test-hosted, and sql admit without Docker or typecheck", () => {
+    const runArea = (options: { nameStatus?: string; untracked?: string; guardCode?: number }) => {
+      const calls: string[] = [];
+      vi.mocked(spawnSync).mockImplementation(((command, args) => {
+        const call = `${command} ${(args ?? []).join(" ")}`;
+        calls.push(call);
+        if (command === "git") {
+          if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
+          if (args?.includes("merge-base")) return { status: 0, stdout: "a".repeat(40), stderr: "" };
+          if (args?.includes("--name-status")) return { status: 0, stdout: options.nameStatus ?? "", stderr: "" };
+          if (args?.includes("--others")) return { status: 0, stdout: options.untracked ?? "", stderr: "" };
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (args?.[0] === "scripts/test-hosted.mjs") return { status: options.guardCode ?? 0, stdout: "hosted ok", stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      }) as typeof spawnSync);
+      const lines: string[] = [];
+      vi.spyOn(console, "log").mockImplementation((value) => { lines.push(String(value)); });
+      vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      return { exit: main(now, ["--area"]), calls, lines };
+    };
+
+    const skipped = runArea({ nameStatus: "M\0tests/unit/example.test.ts\0" });
+    expect(skipped.exit).toBe(0);
+    expect(skipped.lines).toContainEqual(expect.stringMatching(/^PASS eslint changed: 1 changed file\(s\) passed eslint/u));
+    expect(skipped.lines).toContain("SKIP area guards: no area tooling guard tests triggered");
+    expect(skipped.lines).toContain("SKIP sql admit: no SQL under db/ or packages/*/sql/ changed");
+
+    const triggered = runArea({ nameStatus: "A\0db/platform/migrations/20400101000000_example.sql\0M\0src/example.ts\0" });
+    expect(triggered.exit).toBe(0);
+    expect(triggered.calls).toContain("npx --no -- eslint -- src/example.ts");
+    expect(triggered.calls).toContain(
+      `${process.execPath} scripts/test-hosted.mjs scripts/packages/eslint-import-map.test.ts scripts/qualified-migration-admission.test.ts scripts/reviewed-batch-forward.test.ts scripts/reviewed-native-store-forward.test.ts`,
+    );
+    expect(triggered.calls).toContain("npm run sql:admit");
+    expect(triggered.calls.some((call) => call.includes("prelint") || call.includes("docker") || call.includes("inventory"))).toBe(false);
+
+    const failed = runArea({ nameStatus: "M\0docs/platform/README.md\0", guardCode: 1 });
+    expect(failed.exit).toBe(1);
+    expect(failed.lines).toContainEqual(expect.stringMatching(/^FAIL area guards: npm run test:hosted -- scripts\/catalog-document-boundary\.test\.ts exited 1/u));
   });
 });
 
