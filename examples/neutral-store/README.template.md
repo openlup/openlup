@@ -47,7 +47,9 @@ existing content checks into the bundle's `validateContent` so your store keeps
 its draft rules after switching.
 
 Edit `owned/catalogue-rules.cjs` and update the examples in
-`owned/catalogue-rules.test.cjs`. Run the test after each edit:
+`owned/catalogue-rules.test.cjs`.
+After each change, run `npm run typecheck` from the extracted application root.
+Run the rule test from the same directory:
 
 ```sh
 node --test owned/catalogue-rules.test.cjs

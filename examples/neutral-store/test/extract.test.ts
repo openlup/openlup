@@ -216,6 +216,14 @@ test('settings show reports the six existing declarations from the selected file
   }
 });
 
+const managedHint = 'Managed by OpenLup. Use AGENTS.md to find the owned extension point.';
+const catalogueHint = 'Managed by OpenLup. Use owned/catalogue.ts and owned/catalogue-rules.cjs for catalogue definitions and rules.';
+const managedHeaderFixtures = [
+  ['Dockerfile', 'FROM node:24.21.0-bookworm-slim AS application\n', `# ${managedHint}`, '# syntax=docker/dockerfile:1\nFROM scratch\n'],
+  ['index.html', '<!doctype html>\n', `<!-- ${managedHint} -->`, '<!doctype html><html></html>\n'],
+  ['client/style.css', '', `/* ${managedHint} */`, '@charset "UTF-8";\n:root {}\n'],
+] as const;
+
 test('extract creates an independent repository and refuses to overwrite an existing one', async () => {
   const { mkdir } = await import('node:fs/promises');
   await mkdir(dirname(scratch), { recursive: true });
@@ -234,19 +242,40 @@ test('extract creates an independent repository and refuses to overwrite an exis
     assert.equal(ownership.schemaVersion, 1);
     assert.equal(new Set([...ownership.owned, ...ownership.managed]).size,
       ownership.owned.length + ownership.managed.length);
-    const candidateDocumentation = ['README.md', 'docs/proof.md', 'docs/ownership.md'];
     const candidateFiles = [];
     for (const file of await readdir(target, { recursive: true })) {
       if (file === '.git' || file.startsWith('.git/')) continue;
       if ((await stat(resolve(target, file))).isFile()) candidateFiles.push(file);
     }
     assert.deepEqual(candidateFiles.sort(), [...ownership.owned, ...ownership.managed, '.starter-origin.json'].sort());
-    // Candidate copies follow this revision's sources, including ownership mappings.
+    const managedJson = ['ownership.json', 'package.json', 'starter-release.json', 'tsconfig.json'];
+    assert.deepEqual(ownership.managed.filter((path: string) => path.endsWith('.json')).sort(), managedJson);
+    const index = Buffer.from('\n## Managed JSON files\n\n' + managedJson.map(path => `- \`${path}\` — ${managedHint}\n`).join(''));
+    // Strip only the expected annotations, then compare the source bytes and mode.
     for (const file of [...ownership.owned, ...ownership.managed]) {
-      assert.ok((await stat(resolve(target, file))).isFile(), file);
-      if (candidateDocumentation.includes(file)) continue;
-      assert.deepEqual(await readFile(resolve(target, file)),
-        await readFile(resolve(root, ownership.sourceMappings?.[file] ?? file)), file);
+      const source = resolve(root, ownership.sourceMappings?.[file] ?? file);
+      const output = resolve(target, file);
+      assert.equal((await stat(output)).mode, (await stat(source)).mode, file);
+      let bytes = await readFile(output);
+      if (file === 'docs/ownership.md') {
+        assert.deepEqual(bytes.subarray(-index.length), index, 'managed ownership index');
+        bytes = bytes.subarray(0, -index.length);
+      }
+      if (managedJson.includes(file)) JSON.parse(bytes.toString());
+      if (ownership.managed.includes(file) && !managedJson.includes(file)) {
+        const hint = ['host/editor-catalogue.ts', 'installation/install.ts'].includes(file) ? catalogueHint : managedHint;
+        let line = `# ${hint}`;
+        if (/\.(?:ts|mts|mjs)$/.test(file)) line = `// ${hint}`;
+        if (file.endsWith('.md')) line = `<!-- ${hint} -->`;
+        const fixture = managedHeaderFixtures.find(([path]) => path === file);
+        const lines = bytes.toString().split('\n');
+        assert.equal(lines.filter(line => line.includes('Managed by OpenLup.')).length, 1, file);
+        const prefix = fixture?.[1] ?? (file === 'lifecycle' ? '#!/bin/sh\n' : '');
+        const annotation = Buffer.from(prefix + (fixture?.[2] ?? line) + '\n');
+        assert.deepEqual(bytes.subarray(0, annotation.length), annotation, file);
+        bytes = Buffer.concat([Buffer.from(prefix), bytes.subarray(annotation.length)]);
+      } else assert.ok(!bytes.includes('Managed by OpenLup.'), file);
+      assert.deepEqual(bytes, await readFile(source), file);
     }
     for (const [name, specifier] of Object.entries(manifest.dependencies)) {
       if (name.startsWith('@openlup/')) assert.match(specifier as string, /^file:artifacts\/.+\.tgz$/);
@@ -390,13 +419,73 @@ async function releasedFixture() {
   return { directory, source, names, version, revision, application, ownership, manifest, lock, put, args, run };
 }
 
+test('manifests without managed edit routes retain historical extraction bytes and identity', async () => {
+  const f = await releasedFixture();
+  try {
+    f.ownership.managed.push('docs/ownership.md');
+    await f.put('examples/neutral-store/docs/ownership.md', '# Application ownership\n');
+    await f.put('examples/neutral-store/ownership.json', f.ownership);
+    const target = f.run(), files = [...f.ownership.owned, ...f.ownership.managed];
+    const rewrites: Record<string, string> = {
+      'package.json': JSON.stringify(f.lock.packages[''], null, 2) + '\n',
+      '.gitignore': 'node_modules/\n',
+    };
+    const expected = await Promise.all(files.map(path => Object.hasOwn(rewrites, path)
+      ? Buffer.from(rewrites[path]!) : readFile(resolve(f.source, path === 'README.md' ? 'README.template.md' : path))));
+    const actual = await Promise.all(files.map(path => readFile(resolve(target, path))));
+    const { contentSha256 } = JSON.parse(await readFile(resolve(target, '.starter-origin.json'), 'utf8'));
+    // Recorded with the extractor before managed edit routes.
+    assert.deepEqual({ files: actual, contentSha256 }, {
+      files: expected, contentSha256: '715fda1eefd3977996b6f26eb4d9b50aaf5f6f93f6c3fd3f1e9e56a33f64153f',
+    });
+  } finally { await rm(f.directory, { recursive: true, force: true }); }
+});
+
+for (const [path, prefix, header, malformed] of managedHeaderFixtures) {
+  test(`released extraction marks ${path} and refuses an unsupported prefix`, async () => {
+    const f = await releasedFixture();
+    try {
+      f.ownership.managed.push(path);
+      await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
+      const source = resolve(f.source, path);
+      const original = await readFile(resolve(root, path));
+      await mkdir(dirname(source), { recursive: true });
+      await writeFile(source, original);
+      const target = f.run();
+      const expected = Buffer.concat([Buffer.from(prefix + header + '\n'), original.subarray(Buffer.byteLength(prefix))]);
+      assert.deepEqual(await readFile(resolve(target, path)), expected, path);
+      await writeFile(source, malformed);
+      assert.throws(() => f.run('invalid-prefix'), /starter_managed_format_unknown/);
+    } finally { await rm(f.directory, { recursive: true, force: true }); }
+  });
+}
+
 test('released extraction pins and commits registry artifacts with deterministic content and lock identities', async () => {
   const f = await releasedFixture();
   try {
     for (const path of ['node_modules/pg', 'node_modules/pg/node_modules/@types/node'])
       f.lock.packages[path] = { version: '1.0.0', resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz' };
     await f.put('lock.json', f.lock);
+    const scripts = [
+      ['lone-cr.mjs', '#!/usr/bin/env node\rconst text = `before\nafter`;\n',
+        `#!/usr/bin/env node\r// ${managedHint}\nconst text = \`before\nafter\`;\n`],
+      ['entry.mjs', '#!/usr/bin/env node\r\nexport {};\r\n', `#!/usr/bin/env node\r\n// ${managedHint}\nexport {};\r\n`],
+      ['entry.js', '#!/usr/bin/env node\nexport {};\n', `#!/usr/bin/env node\n// ${managedHint}\nexport {};\n`],
+      ['line-separator.d.mts', '#!/usr/bin/env node\u2028export {};\n',
+        `#!/usr/bin/env node\u2028// ${managedHint}\nexport {};\n`],
+      ['paragraph-separator.ts', '#!/usr/bin/env node\u2029export {};\n',
+        `#!/usr/bin/env node\u2029// ${managedHint}\nexport {};\n`],
+      ['entry.cjs', '#!/usr/bin/env node', `#!/usr/bin/env node\n// ${managedHint}\n`],
+    ] as const;
+    for (const [path, source] of scripts) {
+      f.ownership.managed.push(path);
+      await f.put(`examples/neutral-store/${path}`, source);
+    }
+    await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
     const first = f.run(), second = f.run('second');
+    for (const [path, , expected] of scripts) {
+      assert.deepEqual(await readFile(resolve(first, path)), Buffer.from(expected), path);
+    }
     const identity = JSON.parse(await readFile(resolve(first, '.starter-origin.json'), 'utf8'));
     assert.equal(identity.mode, 'released'); assert.equal(identity.setVersion, f.version);
     assert.equal(identity.sourceRevision, f.revision); assert.equal(identity.sourceRevisionVerification, 'supplied');
@@ -407,7 +496,7 @@ test('released extraction pins and commits registry artifacts with deterministic
     assert.equal(identity.lockfileSha256, sha256(await readFile(resolve(first, 'package-lock.json'))));
     const application = JSON.parse(await readFile(resolve(first, 'package.json'), 'utf8'));
     assert.deepEqual(application.dependencies, Object.fromEntries(f.names.map(name => [name, f.version])));
-    assert.equal(await readFile(resolve(first, '.gitignore'), 'utf8'), 'node_modules/\n');
+    assert.equal(await readFile(resolve(first, '.gitignore'), 'utf8'), `# ${managedHint}\nnode_modules/\n`);
     const git = (...args: string[]) => execFileSync('git', args, { cwd: first, encoding: 'utf8' }).trim();
     assert.equal(git('status', '--porcelain'), '');
     assert.equal(git('show', 'HEAD:package-lock.json'), (await readFile(resolve(f.directory, 'lock.json'), 'utf8')).trim());
@@ -419,6 +508,26 @@ test('released extraction pins and commits registry artifacts with deterministic
     await f.put('examples/neutral-store/copy.txt', 'changed copy');
     const changed = JSON.parse(await readFile(resolve(f.run('changed'), '.starter-origin.json'), 'utf8'));
     assert.notEqual(identity.contentSha256, changed.contentSha256);
+  } finally { await rm(f.directory, { recursive: true, force: true }); }
+});
+
+test('extraction refuses misrouted or unhandled managed paths', async () => {
+  const f = await releasedFixture();
+  try {
+    for (const managedEditRoutes of [null, [], 0, false, '']) {
+      await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes });
+      assert.throws(() => f.run('invalid-map'), /starter_managed_edit_routes_invalid/);
+    }
+    for (const managedEditRoutes of [{ 'copy.txt': ['copy.txt'] }, { 'README.md': ['unknown.txt'] }, { 'README.md': [] }]) {
+      await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes });
+      assert.throws(() => f.run('invalid-route'), /starter_managed_edit_route_invalid/);
+    }
+    await f.put('examples/neutral-store/unknown.txt', 'managed text\n');
+    await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managed: [...f.ownership.managed, 'unknown.txt'], managedEditRoutes: {} });
+    assert.throws(() => f.run('unknown-format'), /starter_managed_format_unknown: unknown.txt/);
+    await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
+    await f.put('examples/neutral-store/README.template.md', '\ufeff# Application\n');
+    assert.throws(() => f.run('managed-bom'), /starter_managed_file_bom: README.md/);
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
 
