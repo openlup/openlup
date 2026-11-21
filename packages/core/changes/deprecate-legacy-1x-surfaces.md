@@ -5,4 +5,5 @@ legacy `PaymentMethodCaptureHandoff` union, pointing adopters to their existing
 `fromCoreCaptureHandoff`) ahead of 2.0.0.
 
 Migration: no runtime or type changes in 1.x. Adopters can migrate incrementally
-to `FULFILLMENT_STATUS_EFFECTS` and application-owned i18n before 2.0.0.
+to `FULFILLMENT_STATUS_EFFECTS`, application-owned i18n, and
+`toCoreCaptureHandoff` / `fromCoreCaptureHandoff` before 2.0.0.

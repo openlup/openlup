@@ -5,6 +5,7 @@ payment reference-support exports under provider payment subpaths, the
 the legacy hosted-bundle default in `DEFAULT_PLATFORM_BUNDLE`.
 
 Migration: no runtime or type changes in 1.x. Existing 1.x replacements
-(`PaymentAdapter` + `PaymentProviderRegistry`, `createDefaultRenewalCyclePolicy`,
-`createPostgresFulfillmentDispatchStore`, explicit `PLATFORM_BUNDLE`, and
-shared `{ pool }` / `SqlExecutor` factories) are already available in 1.x.
+(`PaymentAdapter` / `PaymentProviderRegistry` from `@openlup/platform/payments/contracts`,
+`createPaymentProviderRegistry` from `@openlup/platform/payments`,
+`createDefaultRenewalCyclePolicy`, `createPostgresFulfillmentDispatchStore`,
+and explicit `PLATFORM_BUNDLE`) are already available in 1.x.
