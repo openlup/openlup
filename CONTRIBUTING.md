@@ -1232,6 +1232,7 @@ Keep documentation falsifiers independently discoverable for routing, navigation
 
 ### Package, policy and release checks
 
+See the [release cadence](.github/VERSIONING_AND_EOL.md#release-cadence).
 `npm run packages:check -- --manifest-only` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each
 package as released or as unreleased. A released package `packages/<name>` is
