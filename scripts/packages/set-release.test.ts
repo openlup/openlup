@@ -35,10 +35,12 @@ const committed: Modules = { policy, check, bump, release, releaseScript: fileUR
 const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
 const identity = { GIT_AUTHOR_NAME: "fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", env: { ...inherited, ...identity }, stdio: ["ignore", "pipe", "pipe"] }).trim();
-const taggerDate = "2026-01-02T03:04:05Z";
-const cadence = { now: () => Date.parse("2026-01-23T03:04:05Z") };
+const cadence = {
+  now: () => Date.parse("2026-01-23T03:04:05Z"),
+  readRegistry: () => ({ "dist-tags": { latest: "0.4.0" }, time: { "0.4.0": "2026-01-02T03:04:05Z" } }),
+};
 /** The annotated tag the release workflow makes: the release App as tagger, the release message. */
-const appTag = (cwd: string, name: string, version: string, commit: string, message = `OpenLup package @openlup/${name} ${version}.`) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "tag", "-a", "-m", message, `openlup-${name}-v${version}`, commit], { cwd, env: { ...inherited, ...identity, GIT_COMMITTER_NAME: "openlup-release[bot]", GIT_COMMITTER_EMAIL: "334697227+openlup-release[bot]@users.noreply.github.com", GIT_COMMITTER_DATE: taggerDate }, stdio: "ignore" });
+const appTag = (cwd: string, name: string, version: string, commit: string, message = `OpenLup package @openlup/${name} ${version}.`) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "tag", "-a", "-m", message, `openlup-${name}-v${version}`, commit], { cwd, env: { ...inherited, ...identity, GIT_COMMITTER_NAME: "openlup-release[bot]", GIT_COMMITTER_EMAIL: "334697227+openlup-release[bot]@users.noreply.github.com" }, stdio: "ignore" });
 let scratch = "";
 /** Answers release:bump's registry read: every replaced version is published at this many packed bytes. */
 const PUBLISHED_BYTES = 1000000;
@@ -203,11 +205,11 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     expect(JSON.parse(read("packages/kit/package-lock.json"))).toMatchObject({ version: "0.5.0", packages: { "": { version: "0.5.0", peerDependencies: { "@openlup/core": "0.5.0" } } } });
     quiet();
     expect(committed.check.runPackagesCheck(root, ["--manifest-only"]), "the bumped tree passes packages:check").toBe(0);
-    for (const version of ["0.5.0", "0.4.9", "0.0.9"]) expect(() => m.bump.bumpSet(root, version, published), version).toThrow(/is not a set version|the next set version must be above it/u);
+    for (const version of ["0.5.0", "0.4.9", "0.0.9"]) expect(() => m.bump.bumpSet(root, version, published, cadence), version).toThrow(/is not a set version|the next set version must be above it/u);
     const skewed = fixture();
     skewed.write("packages/kit/package.json", skewed.read("packages/kit/package.json").replace('"version": "0.4.0"', '"version": "0.3.0"'));
     const before = skewed.read("packages/core/package.json");
-    expect(() => m.bump.bumpSet(skewed.root, "0.5.0", published)).toThrow("the publishable packages carry different versions (@openlup/core@0.4.0, @openlup/kit@0.3.0); packages:check refuses that");
+    expect(() => m.bump.bumpSet(skewed.root, "0.5.0", published, cadence)).toThrow("the publishable packages carry different versions (@openlup/core@0.4.0, @openlup/kit@0.3.0); packages:check refuses that");
     expect(skewed.read("packages/core/package.json")).toBe(before);
   },
   "the Publishable line opens a new version section below Unreleased": async (m) => {
@@ -218,10 +220,10 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "a publishable package moves only with its set, at a set version": async (m) => {
     const both = fixture();
-    expect(() => m.bump.bumpRelease(both.root, "core", "0.5.0", published)).toThrow("@openlup/core moves with its set: npm run release:bump -- --set <version>");
+    expect(() => m.bump.bumpRelease(both.root, "core", "0.5.0", published, cadence)).toThrow("@openlup/core moves with its set: npm run release:bump -- --set <version>");
     const alone = fixture({ kitPublishable: false });
     alone.write("packages/core/package.json", alone.read("packages/core/package.json").replace('"version": "0.4.0"', '"version": "0.0.0"'));
-    expect(() => m.bump.bumpRelease(alone.root, "core", "0.0.1", published)).toThrow("@openlup/core is publishable, so its next version is a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1), not 0.0.1");
+    expect(() => m.bump.bumpRelease(alone.root, "core", "0.0.1", published, cadence)).toThrow("@openlup/core is publishable, so its next version is a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1), not 0.0.1");
     alone.write("packages/core/package.json", alone.read("packages/core/package.json").replace('"version": "0.0.0"', '"version": "0.4.0"'));
     expect(m.bump.bumpRelease(alone.root, "core", "0.5.0", published, cadence)).toContain("packages/core/package.json");
     expect(JSON.parse(alone.read("packages/kit/package.json")).peerDependencies).toEqual({ "@openlup/core": "0.5.0" });
@@ -342,7 +344,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "every preflight and each release leg run the patch-set check, before any network read": async (m) => {
     const repository = fixture();
-    committed.bump.bumpSet(repository.root, "0.4.1", published);
+    committed.bump.bumpSet(repository.root, "0.4.1", published, cadence);
     repository.write("packages/core/api/core.api.md", "# core API\n\nexport declare const added: 1;\n");
     const change = repository.commit("B: an API change in the patch set 0.4.1");
     const calls: string[] = [];
@@ -359,7 +361,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     }
     expect(existsSync(join(out, "notes.md")), "a refused leg prepares no note").toBe(false);
     const fixed = fixture();
-    committed.bump.bumpSet(fixed.root, "0.4.1", published);
+    committed.bump.bumpSet(fixed.root, "0.4.1", published, cadence);
     fixed.write("packages/core/src/a.ts", "export const a = 2;\n");
     const fix = fixed.commit("B: a fix in the patch set 0.4.1");
     const set = cli(m.releaseScript, fixed.root, ["preflight"], { PACKAGE: "all", VERSION: "0.4.1", TARGET_COMMIT: fix });
@@ -390,7 +392,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   },
   "the set preflight checks the clean target, the set and every package's patch": async (m) => {
     const repository = fixture();
-    committed.bump.bumpSet(repository.root, "0.4.1", published);
+    committed.bump.bumpSet(repository.root, "0.4.1", published, cadence);
     repository.write("packages/kit/src/a.ts", "export const a = 3;\n");
     const fix = repository.commit("B: set 0.4.1 with a fix");
     const manifestCheck = vi.fn((root: string, version: string) => { expect([root, version]).toEqual([repository.root, "0.4.1"]); });

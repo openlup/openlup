@@ -8,6 +8,7 @@ import { addReleaseSection, bumpSet } from "./release-bump.ts";
 import { assertMigrationBlocks } from "./packages-check.ts";
 import { effectivePublicCatalogPaths } from "../oss-publication-policy.ts";
 
+const bootstrap = { readRegistry: () => undefined };
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const fragment = "packages/core/changes/a-one.md";
@@ -37,7 +38,7 @@ describe("changelog fragment preparation", () => {
       f.write("packages/core/changes/z-last.md", "- Last.\n"); f.write(fragment, "### Added\n\n- First.\n");
     }
     f.write("packages/outbox/changes/not-consumed.md", "- Other package.\n");
-    const paths = bumpSet(f.root, "0.5.0"), result = f.read("packages/core/CHANGELOG.md");
+    const paths = bumpSet(f.root, "0.5.0", undefined, bootstrap), result = f.read("packages/core/CHANGELOG.md");
     expect(result.endsWith(history)).toBe(true);
     expect(result).toContain("## [Unreleased]\n\n## [0.5.0]\n");
     if (kind !== "legacy") {
@@ -48,8 +49,8 @@ describe("changelog fragment preparation", () => {
     expect(f.read("packages/outbox/changes/not-consumed.md")).toBe("- Other package.\n");
   });
   it.each(["", " \n", "# Heading\n", "## [1.0.0]\n", "<<<<<<< ours\n- Note\n", "- Note\n=======\n", "\0bad"])("refuses invalid content before any write: %j", (content) => {
-    const f = fixture(); f.commit(); f.write(fragment, content); const before = f.read("package-lock.json"), manifest = f.read("packages/core/package.json"), changelog = f.read("packages/core/CHANGELOG.md");
-    expect(() => bumpSet(f.root, "0.5.0")).toThrow(/fragment/);
+    const f = fixture(); f.write(fragment, content); const before = f.read("package-lock.json"), manifest = f.read("packages/core/package.json"), changelog = f.read("packages/core/CHANGELOG.md");
+    expect(() => bumpSet(f.root, "0.5.0", undefined, bootstrap)).toThrow(/fragment/);
     expect(f.read("package-lock.json")).toBe(before); expect(f.read("packages/core/package.json")).toBe(manifest); expect(f.read("packages/core/CHANGELOG.md")).toBe(changelog); expect(f.read(fragment)).toBe(content);
   });
   it("refuses nested directories, links and executable fragment modes", () => {
