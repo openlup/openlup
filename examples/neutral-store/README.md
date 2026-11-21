@@ -278,6 +278,12 @@ Domain inputs include `owned/renewal.config.ts` (account actions, pause presets,
 timing) and `owned/quote.config.ts`, composed in `owned/store.config.ts`. Follow
 [the business-configuration convention](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#keep-business-configuration-owned).
 
+After installing dependencies, discover platform and starter settings by goal with
+`npm --silent run settings -- list --goal "<goal>"`, validate owned edits offline
+with `npm --silent run settings -- check --configuration <id>`, or expose the
+same read-only operations over MCP with `npm --silent run settings -- mcp`. See
+`node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`.
+
 `./lifecycle verify` and `./lifecycle upgrade` delegate to the installed public
 CLI when it exists. They refuse explicitly before that capability is shipped.
 They do not replace it with an application-owned upgrade engine. A real

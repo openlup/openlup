@@ -758,10 +758,11 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
     }
   }
   // N3a bytes with the six starter keys removed, the callback guide reference,
-  // the unknown-key guidance, the text hint for an empty list and the clarified
-  // six-reason vocabulary description for commerce.manualHoldReasons.
+  // the unknown-key guidance, the text hint for an empty list, the clarified
+  // six-reason vocabulary description for commerce.manualHoldReasons, and
+  // domain-guide change.reference links for all 47 cap and invariant entries.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("5aa8b8408e8ae52277e18b2aa540b48f9ce52eb2bc778832e81d51862f12c152");
+    .toBe("2cef2946b7f649f0b811e348803df7d53a71107dad1d83099b5ab881af463cbe");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {

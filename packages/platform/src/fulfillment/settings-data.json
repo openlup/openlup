@@ -6,7 +6,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The delivery contract has a fixed set of native method kinds."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#fulfillmentadditionaldeliverymethods"}
+    "change": {"reference": "docs/guide/concepts/fulfillment.md#shipments-and-dispatch"}
   },
   {
     "key": "fulfillment.independentShipments",
@@ -15,6 +15,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native shipment sequencing needs additional fulfillment modeling for this case."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#fulfillmentindependentshipments"}
+    "change": {"reference": "docs/guide/concepts/fulfillment.md#shipments-and-dispatch"}
   }
 ]

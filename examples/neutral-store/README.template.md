@@ -75,6 +75,17 @@ installed starter guide's business-configuration convention when editing them.
 `AGENTS.md` holds the instructions for coding agents working in this
 application.
 
+## Discover and check settings
+
+After installing dependencies, search platform and starter settings by goal with
+`npm --silent run settings -- list --goal "<goal>"` (for example,
+`"renewal stock protection horizon"` or `"flat shipping"`). After editing owned
+configuration, validate it offline with
+`npm --silent run settings -- check --configuration <id>`. To expose the same
+read-only discovery, check and preview operations to an MCP client, run
+`npm --silent run settings -- mcp`. See
+`node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`.
+
 ## Contributor candidates
 
 A candidate extraction retains local package-archive pins. Only for that mode,

@@ -6,7 +6,7 @@
     "schemaVersion": 1,
     "kind": "invariant",
     "runtime": {"level": "read-only", "reason": "A replay returns the existing hold without changing stock allocation or expiry."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#inventoryreservationreplayexpiry"}
+    "change": {"reference": "docs/guide/concepts/checkout.md#inventory-reservation-lifetime"}
   },
   {
     "key": "inventory.safetyStock",
@@ -15,6 +15,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native available-to-promise currently uses zero safety stock and no channel allocation."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#inventorysafetystock"}
+    "change": {"reference": "docs/guide/concepts/checkout.md#native-stock-priority"}
   }
 ]

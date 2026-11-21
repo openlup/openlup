@@ -6,7 +6,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native threshold decisions use a fixed basis."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#promotionsfreeshippingbasis"}
+    "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#compose-shipping-quotes"}
   },
   {
     "key": "promotions.promotionCompatibilityGroups",
@@ -15,6 +15,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The adjustment engine needs additional combination rules."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#promotionspromotioncompatibilitygroups"}
+    "change": {"reference": "docs/guide/how-to/build/quote-prices.md#resolve-prices-and-adjustments"}
   }
 ]

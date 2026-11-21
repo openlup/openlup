@@ -30,6 +30,12 @@ starter inputs when available. The
 retains the historical 0.43.0 recipe and input pair. Local candidate archives
 are a contributor workflow.
 
+After installing dependencies, discover store settings by goal with
+`./node_modules/.bin/openlup settings list --goal "<goal>"` (or pass
+`list --goal "<goal>"` to your starter's `settings` script to include
+app-declared settings) and read
+[Configure settings](../how-to/operate/configure-settings.md).
+
 ## Keep application ownership
 
 Your application owns providers, persistence, local policy, authorization and

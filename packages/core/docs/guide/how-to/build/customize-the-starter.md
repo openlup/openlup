@@ -164,6 +164,15 @@ Adding a platform language requires a separate audit of durable SQL constraints.
 
 ## Keep business configuration owned
 
+Before editing a business setting, search platform and starter keys by goal by
+passing `list --goal "<goal>"` to your starter's `settings` script (or running
+`./node_modules/.bin/openlup settings --app ./owned/settings-host.ts list --goal "<goal>"`)
+and inspect the key's owner, schema and frozen-record rules. After editing owned
+configuration, pass `check --configuration <id>` to the same script to validate
+the change offline before restarting or running full tests. See
+[Configure settings](../operate/configure-settings.md) for discovery, check,
+preview and MCP usage.
+
 In the 1.2.0 starter, set
 `subscriptionCreation: { editWindowHours: 72 }` in `owned/store.config.ts` to
 choose the edit cutoff for newly activated subscriptions. Startup requires an

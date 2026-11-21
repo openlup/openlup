@@ -28,7 +28,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native order controls enforce a fixed six-reason hold vocabulary (payment_not_succeeded, inventory_review, risk_review, address_review, fulfillment_exception, manual_support). Applications can subset or relabel these codes in their own UI, but custom hold reasons are rejected by the schema and database."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemanualholdreasons"}
+    "change": {"reference": "docs/guide/concepts/orders.md#holds-and-returns"}
   },
   {
     "key": "commerce.multipleMarkets",
@@ -37,7 +37,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "A starter configuration has one market and composes its own quote and checkout admission."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemultiplemarkets"}
+    "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#select-your-configuration"}
   },
   {
     "key": "commerce.promotionCodeRedemption",
@@ -46,7 +46,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The native checkout path lacks a promotion-code resolver."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercepromotioncoderedemption"}
+    "change": {"reference": "docs/guide/reference/limits.md#catalogue-and-runtime-limits"}
   },
   {
     "key": "commerce.returnReasons",
@@ -55,7 +55,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The native order service still enforces a fixed vocabulary."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercereturnreasons"}
+    "change": {"reference": "docs/guide/how-to/build/oms-stores.md#record-return-intent"}
   },
   {
     "key": "commerce.zeroPayableSettlements",
@@ -64,6 +64,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#commercezeropayablesettlements"}
+    "change": {"reference": "docs/guide/concepts/orders.md#order-state-and-money"}
   }
 ]

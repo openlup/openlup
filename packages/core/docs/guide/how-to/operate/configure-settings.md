@@ -1,10 +1,6 @@
 # Configure settings
 
-Find the renewal stock protection horizon or other business settings before
-choosing how to change them. The [Settings catalogue](settings-catalogue.md)
-covers platform settings, capabilities and invariants. Use your application's
-settings script to discover settings declared by the app. This discovery surface
-is experimental.
+The settings tool answers four questions before you change store behavior: what can be changed, where the value lives, what changing it does (including which existing records keep their original values) and how to check a proposed edit. It is available through two equivalent entry points: the command line (`openlup settings ...` or your starter's `settings` script) and a read-only MCP server (`openlup settings mcp`). It writes nothing: discovery, check and preview are strictly read-only. The [Settings catalogue](settings-catalogue.md) covers platform settings, capabilities and invariants; your application's settings script adds settings declared by the app. This discovery surface is experimental.
 
 ## Find a setting
 
@@ -84,6 +80,28 @@ password files cannot change those settings. Other driver variables still
 apply. Both commands refuse when the driver loads the native client. Unset
 `NODE_PG_FORCE_NATIVE` to use the JavaScript client. Applications that replace
 the driver or pool manage their own connections.
+
+### Installed policy end-to-end (including the local demonstration)
+
+To change an installed policy such as `inventory_renewal_protection` in the starter:
+
+1. Edit the configured policy value and revision in `owned/store.config.ts`.
+2. Run offline validation by passing `check --configuration <id>` to your starter's `settings` script.
+3. Preview the proposed policy against the store database with `preview` before installing.
+4. Install the updated policy with `./lifecycle up --configuration <id>`.
+5. Verify the live installed row with a connected `show --database-url ...`.
+
+In the Docker Compose local demonstration, the `database` service does not publish a port on the host, while connected `openlup settings` commands require a TCP connection. Run connected `show` and `preview` inside the `application` container on the Compose network:
+
+```sh
+docker compose exec application ./node_modules/.bin/openlup settings --app ./owned/settings-host.ts show inventory_renewal_protection --database-url postgresql://starter_runtime@database:5432/neutral_store --json
+```
+
+Pass the same `--database-url` to `preview` inside `docker compose exec application` when estimating stock availability before reinstalling. To inspect the database directly with `psql`, run:
+
+```sh
+docker compose exec -T database psql -U starter_runtime -d neutral_store
+```
 
 ## Check owned configuration before proposing a change
 
@@ -282,7 +300,47 @@ level, its reason when present and the existing change mechanism for the selecte
 key. Renewal stock protection is at `preview`; the host installer still
 owns changes.
 
+## What belongs in settings
+
+A configurable item belongs in settings only when it passes all five tests:
+
+1. **Business decision.** Two honest stores could choose different values. It is not a guard for money integrity, data integrity, security mechanisms or legal evidence.
+2. **Value, not behavior.** It can be expressed as data consumed by existing code (a number, duration, list or subset of allowed options). If a different choice requires new logic or a contract change, it is a feature rather than a setting.
+3. **Known effect.** One sentence states the effect for customers or operators and which existing records keep their original values.
+4. **Single value author.** One place is the source of truth. A file may feed a database row only when startup detects drift between them.
+5. **Store level.** It describes store-wide policy, not a single installation's infrastructure or an individual record.
+
+| Kind | Where it lives | What it covers |
+| --- | --- | --- |
+| `code` | Application config and settings host | Store policy values owned by the application and validated at startup. |
+| `installed` | Database policy row (installed from host config) | Store policy read by database or platform runtime paths, with explicit installation and drift checks. |
+| `callback` | Host-owned module bound at startup | Pure, side-effect-free normalization or validation hook with a documented platform contract. |
+| `cap` | Packaged catalogue | Known platform capability limit with no editable setting value; points to the owning guide page. |
+| `invariant` | Packaged catalogue | Platform rule that cannot be disabled or tuned because it protects correctness or money integrity. |
+| Outside settings | Environment variables, code, catalogue data | Secrets, ports and host addresses, low-level technical tuning, brand and copy, provider selection, and per-record data (such as individual prices or revision IDs). |
+
+Boundary rules:
+
+- **Vocabularies:** Choosing a subset of codes already accepted by the platform and database is an application `code` setting. Introducing a new code outside the platform vocabulary requires a migration or feature.
+- **Time windows:** An eligibility or validity window can be a setting; ownership, replay and settlement rules around it remain invariants.
+- **Consumer required:** Every declared setting must have working consumer code in the scope where it is declared. Do not declare unused values.
+- **Abuse-protection thresholds:** Tunable rate or attempt limits pass the tests only with an explicit warning in their effect description (including scope caveats such as per-process memory). Security mechanisms (signatures, tokens, authentication) stay outside settings.
+- **Jurisdiction parameters:** Store-level jurisdiction inputs (such as a configured VAT rate or a contractual return window above the statutory minimum) belong in settings, distinct from mandatory legal rules that cannot be configured away.
+
 ## Refusals
+
+### Command, exit code and next step
+
+| Command | Outcome | Exit code | Next step for an agent |
+| --- | --- | --- | --- |
+| `list`, `show`, `explain` | Completed discovery or lookup | `0` | Read the key's owner, schema, effect and frozen records before editing. |
+| `check` | All reported values valid and startup validation passed | `0` | Run the application typecheck and open the change. |
+| `preview` | Preview completed (including an invalid proposed policy reported in the document) | `0` | Inspect the validation outcome, availability delta and uncertainty before installing. |
+| `mcp` | Read-only MCP server exited cleanly | `0` | Use `settings_list` with a known app key first to confirm the binding. |
+| `show`, `explain`, `check`, `preview` | Refusal or invalid application configuration | `1` | Run `explain <refusal-code>` or fix the reported configuration error and rerun. |
+| `check` | App binding omits `file` | `2` | Add `file: { configuration, entries }` to `createSettingsBindings` and rerun. |
+| Any command | Invalid CLI syntax, blank goal, unknown configuration or bad input | `64` | Correct the flags or configuration ID using `--help`. |
+| Any command | Missing app module, missing binding export or unavailable operation | `74` | Verify the `--app` path, `createSettingsBindings` export or database connectivity. |
 
 Preview wraps a refusal in a document with `schemaVersion: 1` on both surfaces. The
 `refusal` object carries `code`, `path`, `rule`, `hint` and `remediation`.

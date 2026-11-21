@@ -6,6 +6,6 @@
     "schemaVersion": 1,
     "kind": "invariant",
     "runtime": {"level": "read-only", "reason": "The last human administrator is required for recoverable administration."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#account-supportrecoverableadministration"}
+    "change": {"reference": "docs/guide/concepts/personal-data.md#export-and-erasure"}
   }
 ]

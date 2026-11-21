@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Retained native terms carry one shipping threshold profile."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsaddressbasedrenewalshipping"}
+    "change": {"reference": "docs/guide/concepts/starter-ownership.md#paid-order-messages-and-shipping"}
   },
   {
     "key": "subscriptions.calendarCadence",
@@ -30,7 +30,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native cadence is expressed in days."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionscalendarcadence"}
+    "change": {"reference": "docs/guide/reference/limits.md#subscription-cadence-representation"}
   },
   {
     "key": "subscriptions.customPauseDurations",
@@ -39,7 +39,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native lifecycle commands support two weeks, one month and indefinite."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionscustompausedurations"}
+    "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#configure-account-actions-and-pauses"}
   },
   {
     "key": "subscriptions.deliveryAlignmentEvidence",
@@ -48,7 +48,7 @@
     "schemaVersion": 1,
     "kind": "invariant",
     "runtime": {"level": "read-only", "reason": "A late delivery extends the cycle without stacking deliveries. A replacement counts only after arrival."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsdeliveryalignmentevidence"}
+    "change": {"reference": "docs/guide/concepts/subscriptions.md#subscription-delivery-alignment"}
   },
   {
     "key": "subscriptions.introductoryPhases",
@@ -57,7 +57,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native terms support one introductory phase before the retained terms take over."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsintroductoryphases"}
+    "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#configure-subscription-offers"}
   },
   {
     "key": "subscriptions.prepaidCycles",
@@ -66,7 +66,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native commands refuse multi-cycle prepaid subscriptions."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsprepaidcycles"}
+    "change": {"reference": "docs/guide/concepts/subscriptions.md#installed-subscription-boundary"}
   },
   {
     "key": "subscriptions.renewalPriceChanges",
@@ -75,7 +75,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native renewal prices are locked until an edit changes the terms."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsrenewalpricechanges"}
+    "change": {"reference": "docs/guide/how-to/build/quote-prices.md#preserve-the-price-history"}
   },
   {
     "key": "subscriptions.rescheduleTimeZone",
@@ -84,7 +84,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The native command compares dates using UTC days."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsrescheduletimezone"}
+    "change": {"reference": "docs/guide/concepts/subscription-engine.md#what-this-package-owns"}
   },
   {
     "key": "subscriptions.retrySchedule",
@@ -93,7 +93,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsretryschedule"}
+    "change": {"reference": "docs/guide/concepts/subscriptions.md#durable-retry-timing"}
   },
   {
     "key": "subscriptions.sharedDeliveryControls",
@@ -102,7 +102,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Managed and native delivery paths use separate controls."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsshareddeliverycontrols"}
+    "change": {"reference": "docs/guide/reference/limits.md#subscription-care"}
   },
   {
     "key": "subscriptions.stockWaitHoldLifetime",
@@ -111,7 +111,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native stock-wait recovery fixes the hold at 15 minutes in SQL. The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"}
+    "change": {"reference": "docs/guide/concepts/subscriptions.md#lifecycle-in-durable-storage"}
   },
   {
     "key": "subscriptions.subscriberReviewWindows",
@@ -120,7 +120,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Review branches exist in SQL and need composition before exposing a setting."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionssubscriberreviewwindows"}
+    "change": {"reference": "docs/guide/reference/limits.md#partner-intake-and-reviews"}
   },
   {
     "key": "subscriptions.unknownPaymentReconciliation",
@@ -129,7 +129,7 @@
     "schemaVersion": 1,
     "kind": "invariant",
     "runtime": {"level": "read-only", "reason": "Retrying a charge with an unknown outcome risks charging twice."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsunknownpaymentreconciliation"}
+    "change": {"reference": "docs/guide/concepts/payments.md#canonical-status"}
   },
   {
     "key": "subscriptions.winbackEpisodeDeduplication",
@@ -138,6 +138,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The native winback receipt deduplicates by subscription."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionswinbackepisodededuplication"}
+    "change": {"reference": "docs/guide/concepts/subscriptions.md#lifecycle-in-durable-storage"}
   }
 ]

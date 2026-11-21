@@ -1,6 +1,6 @@
 # Configuration keys
 
-Find configuration keys read by package source: names from the configuration inventory that occur in package source, excluding provider-specific names. The table includes ownership, category, required environments and whether a key is secret.
+Find configuration keys read by package source: names from the configuration inventory that occur in package source, excluding provider-specific names. The table includes ownership, category, required environments and whether a key is secret. For store business settings (as opposed to process environment variables), see [Configure settings](../how-to/operate/configure-settings.md) and the [Settings catalogue](../how-to/operate/settings-catalogue.md).
 
 <!-- generated:configuration-keys -->
 | Name | Owner | Category | Required in | Secret |

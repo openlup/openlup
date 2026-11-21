@@ -119,3 +119,14 @@ it("keeps the combined stock-wait reason verbatim", () => {
   expect(entries).toEqual(expect.arrayContaining(Object.entries(reasons).map(([key, reason]) =>
     expect.objectContaining({ key, runtime: { level: "read-only", reason } }))));
 });
+
+it("points every cap and invariant reference away from settings-catalogue.md", () => {
+  const { entries } = JSON.parse(readFileSync("packages/platform/settings-catalog.json", "utf8")) as {
+    entries: Array<{ key: string; kind: string; change: { reference: string } }>;
+  };
+  const nonEditable = entries.filter(({ kind }) => kind === "cap" || kind === "invariant");
+  expect(nonEditable.length).toBeGreaterThanOrEqual(47);
+  for (const entry of nonEditable) {
+    expect(entry.change.reference, entry.key).not.toContain("settings-catalogue.md");
+  }
+});

@@ -6,7 +6,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native decline notices wait three minutes and issue links for 24 hours."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeclinenoticetiming"}
+    "change": {"reference": "docs/guide/concepts/payments.md#dispatch-and-settlement"}
   },
   {
     "key": "payments.deferredCapture",
@@ -15,7 +15,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The current payment adapter contract has no separate capture operation."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeferredcapture"}
+    "change": {"reference": "docs/guide/concepts/payments.md#dispatch-and-settlement"}
   },
   {
     "key": "payments.paymentRefunds",
@@ -24,7 +24,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The current payment adapter contract has no funds-refund operation."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentspaymentrefunds"}
+    "change": {"reference": "docs/guide/concepts/payments.md#canonical-status"}
   },
   {
     "key": "payments.providerProfiles",
@@ -33,7 +33,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native recovery uses a fixed set of qualified provider profiles."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsproviderprofiles"}
+    "change": {"reference": "docs/guide/reference/limits.md#purchase-composition-boundaries"}
   },
   {
     "key": "payments.verifiedPaymentEvidence",
@@ -42,6 +42,6 @@
     "schemaVersion": 1,
     "kind": "invariant",
     "runtime": {"level": "read-only", "reason": "Settlement relies on verified provider evidence tied to the charged attempt."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsverifiedpaymentevidence"}
+    "change": {"reference": "docs/guide/concepts/payments.md#canonical-status"}
   }
 ]
