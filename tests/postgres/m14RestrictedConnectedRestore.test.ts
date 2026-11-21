@@ -1,3 +1,5 @@
+import { createPostgresCatalogPublicationReads } from "@openlup/platform/catalog";
+import { actorId, fixture, graph, insertGraph, installPublicationActors, transaction, type Graph } from "./catalogPublicationFixture.js";
 import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
@@ -190,6 +192,22 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
          gross_mass_dimension,gross_mass_unit,gross_mass_unscaled,gross_mass_scale)
        SELECT id,'VOLUME','Volume',NULL,'volume','openlup:ml',50,0,'mass','openlup:g',70,0 FROM product
        UNION ALL SELECT id,'LEGACY','Legacy',0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL FROM product`);
+      await installPublicationActors(source.owner);
+      const sealed = await transaction(source.owner, async db => {
+        const amounts = [
+          { netContent: { dimension: "mass", unit: "openlup:kg", unscaled: "4", scale: 1 }, grams: 400 },
+          { netContent: { dimension: "volume", unit: "openlup:ml", unscaled: "50", scale: 0 }, grams: null },
+        ] as const;
+        const results: { issue: Graph; grams: number | null }[] = [];
+        for (const { netContent, grams } of amounts) {
+          const issue = await graph(db, fixture());
+          issue.facts.netContent = netContent;
+          if (grams !== null) issue.facts.netWeightG = grams;
+          await insertGraph(db, issue, { exactQuantity: true });
+          results.push({ issue, grams });
+        }
+        return results;
+      });
       const packet = await capture(source, "restricted-source"), freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
@@ -207,10 +225,22 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
       expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
       expect((await target.owner.query(`SELECT sku,net_weight_g,net_content_unscaled::text,gross_mass_unscaled::text
-        FROM public.catalog_skus ORDER BY sku`)).rows).toEqual([
+        FROM public.catalog_skus WHERE sku IN ('LEGACY','VOLUME') ORDER BY sku`)).rows).toEqual([
         { sku: "LEGACY", net_weight_g: 0, net_content_unscaled: null, gross_mass_unscaled: null },
         { sku: "VOLUME", net_weight_g: null, net_content_unscaled: "50", gross_mass_unscaled: "70" },
       ]);
+      const readers = createPostgresCatalogPublicationReads({
+        transactions: { run: work => transaction(target!.owner, work) },
+        authorizeHuman: async () => ({ ok: true, userId: actorId, role: "admin", isMachineActor: false }),
+      });
+      for (const { issue, grams } of sealed) {
+        expect(await readers.reads.current(issue.productId)).toMatchObject({ outcome: "found", head: issue.head });
+        const readback = await readers.readbackV2(issue.head);
+        if (readback.outcome !== "page") throw new Error("Expected exact restored SKU evidence");
+        expect(readback.items.map(item => item.facts)).toEqual([issue.facts]);
+        expect((await target.owner.query("SELECT net_weight_g FROM public.catalog_skus WHERE id=$1", [issue.skuId])).rows)
+          .toEqual([{ net_weight_g: grams }]);
+      }
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
       expect((await target.owner.query("SELECT event_type FROM public.outbox_events")).rows).toEqual([{ event_type: "synthetic.retained" }]);
       if (shape === "neon" && mode === "installer-managed") {

@@ -129,6 +129,24 @@ it("refuses a legacy catalogue and orphan publication markers before any subject
   });
 });
 
+it("returns a structured read refusal for a malformed count from the executor", async () => {
+  const sealed = await transaction(pool, db => seed(db, { netContent: {
+    dimension: "count", unit: "openlup:piece", unscaled: "56", scale: 0,
+  } }));
+  const digest = await headDigest();
+  const response = await rolledBack(db => direct(db, [sealed.facts.code], digest));
+  expect(response.kind).toBe("batch");
+  const query = vi.fn(async (sql: string) => {
+    if (sql.startsWith("SET TRANSACTION")) return { rows: [] };
+    response.value.items[0].evidence.sku.netContent.unscaled = "1/2";
+    return { rows: [{ result: response }] };
+  });
+  const assess = vi.fn(() => []);
+  await expect(read({ ...none, assess }, [sealed.facts.code], digest, { run: work => work({ query }) }))
+    .resolves.toEqual(unavailable);
+  expect(assess).not.toHaveBeenCalled();
+});
+
 it("validates the request and transaction mode before taking the fence", async () => {
   await transaction(pool, db => seed(db));
   const digest = await headDigest();

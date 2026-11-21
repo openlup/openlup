@@ -512,11 +512,9 @@ it("preserves a PostgreSQL serialization failure at commit", async () => {
   }
 });
 
-it("MC5 checks the SQL bridge on writes and serves scoped typed evidence only through V2", async () => {
+it("serves scoped typed evidence through owner-only V2 and refuses drifted bridge evidence", async () => {
   const offer = "test:typed";
   const issue = await transaction(pool, db => seed(db, { offer, typedVolume: true }));
-  await expect(pool.query("UPDATE public.catalog_skus SET net_weight_g=50 WHERE id=$1", [issue.skuId]))
-    .rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
   const typedSql = "SELECT public.catalog_offer_memberships_page_v2($1,NULL,1,'one_time') AS result";
   for (const role of ["service_role", "openlup_catalog_publication"]) {
     await transaction(pool, async db => {
@@ -534,12 +532,81 @@ it("MC5 checks the SQL bridge on writes and serves scoped typed evidence only th
       await db.query(typedSql, [offer]);
     })).rejects.toMatchObject({ code: "42501" });
   }
+  await transaction(pool, async db => {
+    await db.query("UPDATE public.catalog_skus SET net_weight_g=50 WHERE id=$1", [issue.skuId]);
+    expect(await readPostgresCatalogMembershipPage(db, byOffer(offer, "one_time")))
+      .toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_live_drift" });
+    expect((await db.query(typedSql, [offer])).rows[0]?.result)
+      .toMatchObject({ kind: "refusal", reason: "inconsistent_evidence" });
+    await db.query("ROLLBACK");
+  });
 });
 
-it("refuses a sealed gram claim that agrees with the live column but disagrees with the installed definition", async () => {
-  const issue = await transaction(pool, db => seed(db, { offer: "test:forged-bridge" }));
-  await expect(transaction(pool, db => db.query(`UPDATE public.catalog_skus SET
-    publication_facts=jsonb_set(jsonb_set(publication_facts,'{netContent,unscaled}','"125"'),'{netWeightG}','124'),
-    net_content_unscaled=125, net_weight_g=124 WHERE id=$1`, [issue.skuId])))
-    .rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_facts_invalid" });
+it.each([
+  ["missing legacy grams", null, null, null, null, null, false],
+  ["negative legacy grams", null, null, null, null, -1, false],
+  ["historical zero", null, null, null, null, 0, true],
+  ["missing canonical gram bridge", "mass", "openlup:g", "400", 0, null, false],
+  ["wrong canonical gram bridge", "mass", "openlup:g", "400", 0, 401, false],
+  ["exact canonical gram bridge", "mass", "openlup:g", "400", 0, 400, true],
+  ["missing non-canonical bridge", "mass", "openlup:kg", "4", 1, null, true],
+  ["missing configured-unit bridge", "mass", "example:exact-mass", "4", 0, null, true],
+  ["negative non-canonical bridge", "mass", "openlup:kg", "4", 1, -1, false],
+] as const)("checks %s on the unsealed row", async (_label, dimension, unit, unscaled, scale, grams, accepted) => {
+  const data = fixture();
+  await transaction(pool, db => stageProductRows(db, data));
+  const write = pool.query(`UPDATE public.catalog_skus SET net_content_dimension=$2,
+    net_content_unit=$3,net_content_unscaled=$4,net_content_scale=$5,net_weight_g=$6 WHERE id=$1 RETURNING net_weight_g`,
+  [data.skuId, dimension, unit, unscaled, scale, grams]);
+  if (accepted) await expect(write).resolves.toMatchObject({ rows: [{ net_weight_g: grams }] });
+  else await expect(write).rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
+});
+
+it("refuses an invalid sealed revision when a later revision supersedes it in the same transaction", async () => {
+  const data = fixture();
+  let appended = false;
+  await expect(transaction(pool, async db => {
+    const first = await graph(db, data);
+    first.facts.netContent = { dimension: "count", unit: "openlup:piece", unscaled: "15", scale: 1 };
+    await insertGraph(db, first, { exactQuantity: true });
+    const second = await graph(db, data, first.head);
+    second.facts.netContent = { ...first.facts.netContent, unscaled: "2", scale: 0 };
+    await insertGraph(db, second, { exactQuantity: true });
+    appended = true;
+  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_net_content_invalid" });
+  expect(appended).toBe(true);
+  expect((await pool.query("SELECT id FROM public.catalog_sku_revisions WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+});
+
+it.each([
+  ["US fluid ounce within precision", { dimension: "volume", unit: "example:us-fl-oz", unscaled: "1", scale: 2 }, null, null],
+  ["US fluid ounce past precision", { dimension: "volume", unit: "example:us-fl-oz", unscaled: "1", scale: 3 }, null,
+    "catalog_publication_quantity_conversion_inexact"],
+  ["unregistered unit", { dimension: "volume", unit: "example:missing", unscaled: "1", scale: 0 }, null,
+    "catalog_publication_quantity_unit_unregistered"],
+  ["gross shortfall", { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
+    { dimension: "mass", unit: "openlup:g", unscaled: "99", scale: 0 }, "catalog_publication_gross_below_net"],
+] as const)("certifies a durable quantity or returns its own refusal for %s", async (_label, netContent, grossMass, constraint) => {
+  const write = transaction(pool, async db => {
+    const issue = await graph(db, fixture());
+    Object.assign(issue.facts, { netContent, grossMass });
+    return insertGraph(db, issue, { exactQuantity: true });
+  });
+  if (constraint) await expect(write).rejects.toMatchObject({ code: "23514", constraint });
+  else await expect(write).resolves.toMatchObject({ changes: [expect.any(Object)] });
+});
+
+it.each([undefined, 399] as const)("refuses a missing or inexact sealed gram bridge (%s) at commit", async grams => {
+  const data = fixture();
+  let staged = false;
+  await expect(transaction(pool, async db => {
+    const issue = await graph(db, data);
+    issue.facts.netContent = { dimension: "mass", unit: "openlup:kg", unscaled: "4", scale: 1 };
+    if (grams !== undefined) issue.facts.netWeightG = grams;
+    await insertGraph(db, issue, { exactQuantity: true });
+    await db.query("UPDATE public.catalog_skus SET net_weight_g=$2 WHERE id=$1", [issue.skuId, grams ?? null]);
+    staged = true;
+  })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_gram_bridge_mismatch" });
+  expect(staged).toBe(true);
+  expect((await pool.query("SELECT id FROM public.catalog_sku_revisions WHERE product_id=$1", [data.productId])).rows).toEqual([]);
 });

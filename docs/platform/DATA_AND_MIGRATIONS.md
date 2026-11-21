@@ -40,23 +40,22 @@ Installed readers follow the
 
 The native [quantity serving forward](../../db/platform/migrations/20261124190000_catalog_quantity_serving.sql)
 allows NULL in `catalog_skus.net_weight_g`. It keeps existing rows, defaults
-and sealed revisions. The existing deferred write guard validates typed net
-and gross quantities against the installed definition. Only an exact positive
+and sealed revisions. The SKU CHECK requires a nonnegative legacy value for
+untyped rows and the exact value for canonical scale-zero grams. Other typed
+rows may carry NULL or a positive value before sealing. The existing deferred
+publication checks verify each sealed revision against its installed definition,
+including revisions superseded in the same transaction. Only an exact positive
 whole mass up to 2,147,483,647 grams yields a legacy value. A positive
 conversion from a different mass representation adds optional sealed gram
 evidence. Readers compare the live columns with those sealed facts using
-existing privileges. Historical zero still means unknown.
+existing privileges. Historical zero still means unknown for untyped rows.
+The migration validates existing rows. Before applying it, reconcile any
+pre-issuance typed rows that still use a legacy zero.
 
 A scoped membership page that selects content without a gram value refuses on
 V1. The owner can use the bounded V2 SQL entry for authored `netContent` and
 `grossMass`. The existing readiness entry point continues to certify selected
 evidence for the service role. Runtime V2 membership binding follows in A2.
-
-The [managed peer](../../supabase/migrations/20261124190000_catalog_quantity_serving.sql)
-adds exact canonical content, independent gross grams and a checked nullable
-compatibility field. Managed readers use their current document pointer and
-keep the incumbent mandatory gram column and role policies. Managed
-publication remains dark.
 
 ## Native outbox partial indexes and atomic label/address RPCs
 

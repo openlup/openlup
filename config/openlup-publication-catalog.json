@@ -5654,10 +5654,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/catalog/managedCatalogContent.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/catalog/mediaSourcePack.ts",
       "class": "public-output"
     },
@@ -29011,10 +29007,6 @@
     },
     {
       "path": "supabase/migrations/20261123153000_managed_reconciliation_replay_strip.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "supabase/migrations/20261124190000_catalog_quantity_serving.sql",
       "class": "public-output"
     },
     {

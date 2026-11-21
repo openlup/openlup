@@ -5,8 +5,9 @@ import type { CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/
 
 export function catalogPhysicalUnits(definition: Pick<CatalogProductTypeDefinition, "units">): CatalogQuantityUnit[] {
   return definition.units.flatMap(unit => {
-    const factor = unit.factor ?? CATALOG_QUANTITY_UNITS.find(value => value.code === unit.code)?.factor;
-    return factor ? [{ ...unit, factor }] : [];
+    if (unit.factor) return [{ ...unit, factor: unit.factor }];
+    const builtIn = CATALOG_QUANTITY_UNITS.find(value => value.code === unit.code && value.dimension === unit.dimension);
+    return builtIn ? [builtIn] : [];
   });
 }
 

@@ -99,4 +99,3 @@ export type { CatalogActivationReadinessInput, CatalogActivationReadinessItem, C
   CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";
 
 export { asLegacyIntegralGrams } from "./physicalQuantity.js";
-export { projectManagedCatalogContent, type ManagedCatalogContentRow } from "./managedCatalogContent.js";

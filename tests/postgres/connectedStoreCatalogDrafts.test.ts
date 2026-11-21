@@ -92,10 +92,10 @@ beforeAll(async () => {
   const liveId = randomUUID(), listId = randomUUID();
   await source.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'transfer-live','Synthetic live product')", [liveId]);
   await source.owner.query("UPDATE public.catalog_products SET type_key='example:transfer-item',type_version=1 WHERE id=$1", [liveId]);
-  await source.owner.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,
+  await source.owner.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,net_weight_g,
     net_content_dimension,net_content_unscaled,net_content_scale,net_content_unit,
     gross_mass_dimension,gross_mass_unscaled,gross_mass_scale,gross_mass_unit)
-    VALUES($1,$1,'TRANSFER-LIVE','Synthetic live SKU','volume',1234567890123456789012345678901234567890,12,'example:custom-volume',
+    VALUES($1,$1,'TRANSFER-LIVE','Synthetic live SKU',NULL,'volume',1234567890123456789012345678901234567890,12,'example:custom-volume',
     'mass',9999999999999999999999999999999999999999,12,'example:custom-mass')`, [liveId]);
   await source.owner.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Synthetic list','ZZ','XXX',clock_timestamp())", [listId]);
   await source.owner.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',123,clock_timestamp())", [listId, liveId]);
@@ -126,7 +126,7 @@ beforeAll(async () => {
     id: liveId, option_values: { finish: { kind: "choice", value: "matte" }, enabled: { kind: "boolean", value: false } },
     canonical_option_bytes: `\\x${optionBytes.toString("hex")}`,
     combination_digest: `\\x${createHash("sha256").update(optionBytes).digest("hex")}`,
-    net_content_dimension: "volume", net_content_scale: 12, net_content_unit: "example:custom-volume",
+    net_weight_g: null, net_content_dimension: "volume", net_content_scale: 12, net_content_unit: "example:custom-volume",
     gross_mass_dimension: "mass", gross_mass_scale: 12, gross_mass_unit: "example:custom-mass",
   }), expect.objectContaining({ id: legacyId, option_values: null, canonical_option_bytes: null, combination_digest: null })]));
   expect(before.catalog_products!.map(row => JSON.parse(row))).toEqual(expect.arrayContaining([

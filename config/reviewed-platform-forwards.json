@@ -6337,10 +6337,6 @@
         ],
         "createdFunctions": [
           {
-            "signature": "public.catalog_check_legacy_net_grams()",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
             "signature": "public.catalog_offer_memberships_page_v2(text,jsonb,integer,text)",
             "searchPath": "pg_catalog, pg_temp"
           }
@@ -6348,14 +6344,8 @@
         "grantOnlyFunctions": [],
         "dataStatements": [],
         "existingTableStatements": [
-          "ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;"
-        ],
-        "createdTriggers": [
-          {
-            "name": "catalog_skus_legacy_net_grams_check",
-            "table": "public.catalog_skus",
-            "sha256": "82cae2e099865c218ce8eb0a8bdc98be599927454144bb00c29db9514915aa6f"
-          }
+          "ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;",
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_legacy_net_grams_check CHECK (\n CASE\n  WHEN net_content_dimension IS NULL THEN net_weight_g IS NOT NULL AND net_weight_g BETWEEN 0 AND 2147483647\n  WHEN net_content_dimension = 'mass' AND net_content_unit = 'openlup:g' AND net_content_scale = 0\n   THEN net_weight_g IS NOT NULL AND net_weight_g = net_content_unscaled\n  ELSE net_weight_g IS NULL OR net_weight_g BETWEEN 1 AND 2147483647\n END\n);"
         ]
       }
     ]
@@ -9152,17 +9142,17 @@
     },
     {
       "path": "db/platform/migrations/20261124190000_catalog_quantity_serving.sql",
-      "sha256": "30967c859ca8e656107e2ae9c8af452a845d40f071a41f0c843f74a681ef636f",
+      "sha256": "43329ff5134966e6efac9732a9dbdc1f2e769d8fc0c73956369d6eb7a233e790",
       "functions": [
         {
           "signature": "public.catalog_publication_sku_projection(uuid,uuid,text,jsonb,boolean)",
           "beforeSha256": "b73afa7b2aaed3fe2f615f0276c5c653e519ad798225be6c37d1df9b135cd9d5",
-          "afterSha256": "b54f5677f3a0bb794e1739111f0237ec786ec056fd1deeb18cecb041f09cb7a9"
+          "afterSha256": "b52262eb50241ba719a0c87a42e03e2c736494e3b510e1c0b1d65b9727b76b56"
         },
         {
           "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
           "beforeSha256": "7ffe422e1f64dfaaf0f10fabc949a2d3aa632f6f9db29d23f1a996e363144c38",
-          "afterSha256": "073f277819b92f453c934e9807dbb00887f4ec846d1fe3098371567638415a8d"
+          "afterSha256": "1ae6bf7601de77affb2102677ebdbbd0a984a980700cd5c5819edc5f4c8d574d"
         },
         {
           "signature": "public.catalog_publication_live_matches(uuid,jsonb,jsonb)",
@@ -9178,11 +9168,6 @@
           "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
           "beforeSha256": "4a43e9a8e2bca28d0d619a24aefcce70c89ecee49b0d0e4db5e3c4f7b89836a3",
           "afterSha256": "7ecdf4db8a5d1c714a4cc8237f2609f8fce53cb2e1b6d9241f839c113c6988ff"
-        },
-        {
-          "signature": "public.catalog_check_legacy_net_grams()",
-          "beforeSha256": null,
-          "afterSha256": "7000353ab417e645c07a43227dabf067eae875c5a10aad56359bf2bb40b89c98"
         },
         {
           "signature": "public.catalog_offer_memberships_page_v2(text,jsonb,integer,text)",

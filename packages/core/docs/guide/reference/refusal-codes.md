@@ -77,9 +77,21 @@ Find the machine-readable code identifying why an operation was refused; see the
 - `catalog_publication_net_content_invalid` asks for positive, exact content in
   a declared net unit. Supply whole counts and keep the converted value within
   the supported range and scale.
+- `catalog_publication_gross_mass_invalid` asks for a positive parcel mass in an
+  installed mass unit. `catalog_publication_gross_below_net` asks for parcel mass
+  at least as large as the net content when both are mass.
+- `catalog_publication_quantity_unit_unregistered` asks for an installed unit
+  of the right dimension. The product type must also admit the net unit.
+- `catalog_publication_quantity_conversion_inexact` asks for a quantity and
+  installed factor that convert within the supported range and 12 decimal places.
+- `catalog_publication_gram_bridge_mismatch` asks you to regenerate the SKU
+  projection with the exact positive whole-gram conversion, or with no bridge
+  when that conversion is unavailable. If a scale-zero gram quantity exceeds
+  2,147,483,647, express the same mass at a greater scale or in another declared
+  unit.
 - `catalog_publication_integral_grams_required` means the selected installed
   rule requires the legacy whole-gram input. Use exact whole grams within the
   legacy range or adopt the typed rule hook.
 - `quantity_requires_v2` means a selected SKU has typed content without an
-  exact positive integer gram value. Use the V2 membership SQL surface for
-  authored quantity evidence.
+  exact positive integer gram value. The database owner can use the V2
+  membership SQL entry for authored quantity evidence. This entry is owner-only in A1.

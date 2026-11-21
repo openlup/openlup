@@ -1227,7 +1227,8 @@ it.each([
   } });
   const create = f.adapter.productSync.ensureProduct("SKU-A");
   if (weight === null) {
-    await expect(create).rejects.toMatchObject({ phase: "sync", reason: "malformed" });
+    await expect(create).rejects.toMatchObject({ phase: "sync", reason: "malformed",
+      ...(declaredSku === "SKU-A" ? { code: "invalid_pack_weight", field: "pack.grossMass" } : {}) });
     expect(f.fetchImpl).not.toHaveBeenCalled();
   } else {
     await expect(create).resolves.toEqual({ replayed: false });

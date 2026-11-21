@@ -8,7 +8,6 @@ Migration: Apply the complete catalogue through
 or restoring a current native capture. The legacy gram column stays readable
 and uses NULL for typed content without an exact positive integer gram
 equivalent. Existing rows and sealed publication evidence retain their bytes.
-The managed peer expands SKU storage and keeps its existing mandatory column.
 
 The typed product binding in `@openlup/platform/fulfillment/omnipack` accepts
 explicit gross parcel mass. The

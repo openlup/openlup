@@ -154,17 +154,17 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
   if (!query.success || typeof installed !== "object" || installed === null || typeof installed.assess !== "function"
     || typeof installed.registry?.resolve !== "function") return invalidBatch;
   const { skuCodes, expectedHeadDigest } = query.data;
-  let result: unknown;
+  let decoded: ReturnType<typeof batchWire.safeParse>;
   try {
-    result = await transactions.run(async db => {
+    const result = await transactions.run(async db => {
       await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED READ WRITE");
       const { rows } = await db.query("SELECT public.catalog_publication_activation_readiness($1,$2) AS result", [skuCodes, expectedHeadDigest]);
       return rows.length === 1 ? rows[0]?.result : undefined;
     });
+    decoded = batchWire.safeParse(result);
   } catch (error) {
     return readError(error);
   }
-  const decoded = batchWire.safeParse(result);
   if (!decoded.success) return unavailable;
   if (decoded.data.kind === "refusal") {
     if (decoded.data.reason === "inconsistent_evidence") return { ...unavailable, reason: decoded.data.detail ?? unavailable.reason };

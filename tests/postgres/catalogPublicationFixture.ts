@@ -76,9 +76,14 @@ export async function installPublicationActors(pool: Pool) {
     VALUES($1,$2,$3,$4,$5)`, [type.key, type.version, {
     units: [
       { code: "openlup:g", dimension: "mass", integral: false },
+      { code: "openlup:kg", dimension: "mass", integral: false },
+      { code: "example:exact-mass", dimension: "mass", integral: false,
+        factor: { canonicalUnit: "openlup:g", unscaled: "25", scale: 0 } },
       { code: "openlup:ml", dimension: "volume", integral: false },
+      { code: "example:us-fl-oz", dimension: "volume", integral: false,
+        factor: { canonicalUnit: "openlup:ml", unscaled: "295735295625", scale: 10 } },
       { code: "openlup:piece", dimension: "count", integral: true },
-    ], netContentUnits: ["openlup:g", "openlup:ml", "openlup:piece"],
+    ], netContentUnits: ["openlup:g", "openlup:kg", "example:exact-mass", "openlup:ml", "example:us-fl-oz", "openlup:piece"],
   }, definitionDigest, `sha256:${hash("synthetic rules")}`]);
 }
 

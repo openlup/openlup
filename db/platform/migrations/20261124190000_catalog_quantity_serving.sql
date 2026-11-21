@@ -2,37 +2,21 @@
 -- compare stored projections with sealed facts using their existing privileges.
 ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;
 
--- Bind independent column changes to the sealed facts even when the deferred
--- validation of those facts has already run.
-CREATE FUNCTION public.catalog_check_legacy_net_grams() RETURNS trigger
-LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-BEGIN
- IF NEW.publication_facts->'netContent' IS NULL THEN RETURN NEW; END IF;
- IF (NEW.net_content_dimension,NEW.net_content_unit,NEW.net_content_scale::text,NEW.net_content_unscaled::text,
-     NEW.gross_mass_dimension,NEW.gross_mass_unit,NEW.gross_mass_scale::text,NEW.gross_mass_unscaled::text,
-     NEW.net_weight_g::text)
-  IS DISTINCT FROM (NEW.publication_facts #>> '{netContent,dimension}',NEW.publication_facts #>> '{netContent,unit}',NEW.publication_facts #>> '{netContent,scale}',NEW.publication_facts #>> '{netContent,unscaled}',
-     NEW.publication_facts #>> '{grossMass,dimension}',NEW.publication_facts #>> '{grossMass,unit}',NEW.publication_facts #>> '{grossMass,scale}',NEW.publication_facts #>> '{grossMass,unscaled}',
-     coalesce(NEW.publication_facts->>'netWeightG', CASE WHEN NEW.publication_facts #> '{netContent,dimension}'='"mass"'::jsonb
-   AND NEW.publication_facts #> '{netContent,unit}'='"openlup:g"'::jsonb AND NEW.publication_facts #> '{netContent,scale}'='0'::jsonb
-   AND pg_input_is_valid(NEW.publication_facts #>> '{netContent,unscaled}','integer') THEN NEW.publication_facts #>> '{netContent,unscaled}' END)) THEN
-  RAISE EXCEPTION 'catalog_skus_legacy_net_grams_check'
-   USING ERRCODE='23514', CONSTRAINT='catalog_skus_legacy_net_grams_check';
- END IF;
- RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER catalog_skus_legacy_net_grams_check BEFORE INSERT OR UPDATE OF
-  product_id, publication_facts, net_weight_g, net_content_dimension, net_content_unscaled, net_content_scale, net_content_unit,
-  gross_mass_dimension, gross_mass_unscaled, gross_mass_scale, gross_mass_unit
-  ON public.catalog_skus FOR EACH ROW EXECUTE FUNCTION public.catalog_check_legacy_net_grams();
+-- The row can check canonical whole grams without consulting a definition.
+ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_legacy_net_grams_check CHECK (
+ CASE
+  WHEN net_content_dimension IS NULL THEN net_weight_g IS NOT NULL AND net_weight_g BETWEEN 0 AND 2147483647
+  WHEN net_content_dimension = 'mass' AND net_content_unit = 'openlup:g' AND net_content_scale = 0
+   THEN net_weight_g IS NOT NULL AND net_weight_g = net_content_unscaled
+  ELSE net_weight_g IS NULL OR net_weight_g BETWEEN 1 AND 2147483647
+ END
+);
 
 CREATE OR REPLACE FUNCTION public.catalog_publication_sku_projection(p_sku uuid,p_product uuid,p_code text,body jsonb,p_live boolean) RETURNS text
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE canonical text; installed jsonb; quantity jsonb; declared jsonb; dimension text; unit text; canonical_unit text;
  coefficient numeric; quantity_scale integer; factor numeric; factor_scale integer; exact numeric; net_amount numeric;
- grams integer;
+ grams integer; rejected_constraint text;
 BEGIN
  IF jsonb_typeof(body) IS DISTINCT FROM 'object'
    OR NOT (body ?& ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
@@ -47,11 +31,6 @@ BEGIN
    OR jsonb_typeof(body->'isAddon') IS DISTINCT FROM 'boolean'
    OR jsonb_typeof(body->'sellableStandalone') IS DISTINCT FROM 'boolean'
    OR jsonb_typeof(body->'sellableInSubscription') IS DISTINCT FROM 'boolean'
-   OR public.catalog_publication_quantity_valid(body->'netContent') IS DISTINCT FROM true
-   OR (body->'grossMass'<>'null'::jsonb AND public.catalog_publication_quantity_valid(body->'grossMass') IS DISTINCT FROM true)
-   OR (body ? 'netWeightG' AND (body #>> '{netContent,dimension}'='mass'
-     AND jsonb_typeof(body->'netWeightG')='number' AND body->>'netWeightG' ~ '^[1-9][0-9]{0,9}$'
-     AND pg_input_is_valid(body->>'netWeightG','integer')) IS DISTINCT FROM true)
    OR jsonb_typeof(body->'options') IS DISTINCT FROM 'object'
      OR jsonb_typeof(body->'identifiers') IS DISTINCT FROM 'array'
    OR jsonb_typeof(body->'assetRefs') IS DISTINCT FROM 'array'
@@ -59,6 +38,18 @@ BEGIN
    OR jsonb_typeof(body->'memberships') IS DISTINCT FROM 'array'
    OR NOT public.catalog_publication_claim_valid(body->'source') THEN
   RAISE EXCEPTION 'catalog_publication_sku_revision_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_sku_revision_invalid';
+ END IF;
+ IF public.catalog_publication_quantity_valid(body->'netContent') IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'catalog_publication_net_content_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_net_content_invalid';
+ END IF;
+ IF body->'grossMass'<>'null'::jsonb AND (body #>> '{grossMass,dimension}' IS DISTINCT FROM 'mass'
+   OR public.catalog_publication_quantity_valid(body->'grossMass') IS DISTINCT FROM true) THEN
+  RAISE EXCEPTION 'catalog_publication_gross_mass_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_gross_mass_invalid';
+ END IF;
+ IF body ? 'netWeightG' AND (body #>> '{netContent,dimension}'='mass'
+   AND jsonb_typeof(body->'netWeightG')='number' AND body->>'netWeightG' ~ '^[1-9][0-9]{0,9}$'
+   AND pg_input_is_valid(body->>'netWeightG','integer')) IS DISTINCT FROM true THEN
+  RAISE EXCEPTION 'catalog_publication_gram_bridge_mismatch' USING ERRCODE='23514', CONSTRAINT='catalog_publication_gram_bridge_mismatch';
  END IF;
  IF EXISTS (SELECT 1 FROM jsonb_each(body->'options') AS option WHERE
      option.key !~ '^[a-z][a-z0-9_-]{0,63}$' OR option.key IN ('constructor','prototype')
@@ -111,51 +102,61 @@ BEGIN
     ELSE true END) THEN
   RAISE EXCEPTION 'catalog_publication_gtin_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_gtin_invalid';
  END IF;
- -- A queued intermediate snapshot can be superseded by a later write in
- -- this transaction. Validate the final live snapshot in the guard's context.
+ -- Each issued SKU carries the immutable draft claim that selects its definition.
  IF p_live THEN
-  SELECT v.definition INTO installed FROM public.catalog_skus s
-   JOIN public.catalog_products p ON p.id=s.product_id
-   LEFT JOIN public.catalog_type_versions v ON (v.type_key,v.version)=(p.type_key,p.type_version)
-   WHERE (s.product_id,s.id,s.publication_facts)=(p_product,p_sku,body);
-  IF FOUND THEN
-   IF (installed->'netContentUnits' ? (body #>> '{netContent,unit}')) IS DISTINCT FROM true THEN
-    RAISE check_violation;
+  SELECT v.definition INTO installed FROM public.catalog_draft_revisions d
+    JOIN public.catalog_type_versions v
+      ON (v.type_key,v.version)=(d.payload #>> '{product,type,key}',(d.payload #>> '{product,type,version}')::integer)
+    WHERE (d.product_id,d.draft_id,d.revision,d.command_key,d.fingerprint)=
+     (p_product,(body #>> '{source,draftId}')::uuid,(body #>> '{source,revision}')::integer,
+      body #>> '{source,commandKey}',body #>> '{source,fingerprint}');
+  IF (installed->'netContentUnits' ? (body #>> '{netContent,unit}')) IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'catalog_publication_quantity_unit_unregistered' USING ERRCODE='23514', CONSTRAINT='catalog_publication_quantity_unit_unregistered';
+  END IF;
+  FOREACH quantity IN ARRAY ARRAY[body->'netContent', body->'grossMass'] LOOP
+   IF quantity='null'::jsonb THEN CONTINUE; END IF;
+   dimension := quantity->>'dimension';
+   unit := quantity->>'unit';
+   canonical_unit := CASE dimension WHEN 'mass' THEN 'openlup:g' WHEN 'volume' THEN 'openlup:ml' ELSE 'openlup:piece' END;
+   SELECT entry INTO declared FROM jsonb_array_elements(installed->'units') entry WHERE entry->>'code'=unit;
+   IF declared->>'dimension' IS DISTINCT FROM dimension THEN
+    RAISE EXCEPTION 'catalog_publication_quantity_unit_unregistered' USING ERRCODE='23514', CONSTRAINT='catalog_publication_quantity_unit_unregistered';
    END IF;
-   FOREACH quantity IN ARRAY ARRAY[body->'netContent', body->'grossMass'] LOOP
-    IF quantity='null'::jsonb THEN CONTINUE; END IF;
-    dimension := quantity->>'dimension';
-    unit := quantity->>'unit';
-    canonical_unit := CASE dimension WHEN 'mass' THEN 'openlup:g' WHEN 'volume' THEN 'openlup:ml' ELSE 'openlup:piece' END;
-    SELECT entry INTO declared FROM jsonb_array_elements(installed->'units') entry WHERE entry->>'code'=unit;
-    IF declared->>'dimension' IS DISTINCT FROM dimension THEN RAISE check_violation; END IF;
-    coefficient := (quantity->>'unscaled')::numeric;
-    quantity_scale := (quantity->>'scale')::integer;
-    IF (dimension='count' OR declared->'integral'='true'::jsonb)
-      AND mod(coefficient,power(10::numeric,quantity_scale))<>0 THEN RAISE check_violation; END IF;
-    IF declared->'factor' IS NULL THEN
-     factor := CASE unit WHEN canonical_unit THEN 1 WHEN 'openlup:kg' THEN 1000 WHEN 'openlup:l' THEN 1000 END;
-     factor_scale := 0;
-    ELSE
-     IF (declared #>> '{factor,canonicalUnit}'=canonical_unit
-       AND declared #>> '{factor,unscaled}' ~ '^[1-9][0-9]{0,51}$'
-       AND declared #>> '{factor,scale}' ~ '^([0-9]|1[0-2])$') IS DISTINCT FROM true THEN RAISE check_violation; END IF;
-     factor := (declared #>> '{factor,unscaled}')::numeric;
-     factor_scale := (declared #>> '{factor,scale}')::integer;
+   coefficient := (quantity->>'unscaled')::numeric;
+   quantity_scale := (quantity->>'scale')::integer;
+   IF (dimension='count' OR declared->'integral'='true'::jsonb)
+     AND mod(coefficient,power(10::numeric,quantity_scale))<>0 THEN
+    RAISE EXCEPTION 'catalog_publication_net_content_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_net_content_invalid';
+   END IF;
+   IF declared->'factor' IS NULL THEN
+    factor := CASE unit WHEN canonical_unit THEN 1 WHEN 'openlup:kg' THEN 1000 WHEN 'openlup:l' THEN 1000 END;
+    factor_scale := 0;
+   ELSE
+    IF (declared #>> '{factor,canonicalUnit}'=canonical_unit
+      AND declared #>> '{factor,unscaled}' ~ '^[1-9][0-9]{0,39}$'
+      AND declared #>> '{factor,scale}' ~ '^([0-9]|1[0-2])$') IS DISTINCT FROM true THEN
+     RAISE EXCEPTION 'catalog_publication_quantity_conversion_inexact' USING ERRCODE='23514', CONSTRAINT='catalog_publication_quantity_conversion_inexact';
     END IF;
-    -- Multiplication retains the complete decimal through the scale check.
-    exact := trim_scale(coefficient * factor * ('1e-' || (quantity_scale + factor_scale))::numeric);
-    IF (exact>0 AND exact<1e40 AND scale(exact)<=12) IS DISTINCT FROM true THEN RAISE check_violation; END IF;
-    IF net_amount IS NULL THEN
-     net_amount := exact;
-     IF dimension='mass' AND scale(exact)=0 AND exact BETWEEN 1 AND 2147483647 THEN grams := exact::integer; END IF;
-    ELSIF dimension<>'mass' OR (body #>> '{netContent,dimension}'='mass' AND exact<net_amount) THEN
-     RAISE check_violation;
-    END IF;
-   END LOOP;
-   IF grams::text IS DISTINCT FROM (coalesce(body->>'netWeightG', CASE WHEN body #> '{netContent,dimension}'='"mass"'::jsonb
+    factor := (declared #>> '{factor,unscaled}')::numeric;
+    factor_scale := (declared #>> '{factor,scale}')::integer;
+   END IF;
+   exact := trim_scale(coefficient * factor * ('1e-' || (quantity_scale + factor_scale))::numeric);
+   IF (exact>0 AND exact<1e40 AND scale(exact)<=12) IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'catalog_publication_quantity_conversion_inexact' USING ERRCODE='23514', CONSTRAINT='catalog_publication_quantity_conversion_inexact';
+   END IF;
+   IF net_amount IS NULL THEN
+    net_amount := exact;
+    IF dimension='mass' AND scale(exact)=0 AND exact BETWEEN 1 AND 2147483647 THEN grams := exact::integer; END IF;
+   ELSIF body #>> '{netContent,dimension}'='mass' AND exact<net_amount THEN
+    RAISE EXCEPTION 'catalog_publication_gross_below_net' USING ERRCODE='23514', CONSTRAINT='catalog_publication_gross_below_net';
+   END IF;
+  END LOOP;
+  IF (grams IS NULL AND body #> '{netContent,dimension}'='"mass"'::jsonb
+   AND body #> '{netContent,unit}'='"openlup:g"'::jsonb AND body #> '{netContent,scale}'='0'::jsonb)
+   OR grams::text IS DISTINCT FROM (coalesce(body->>'netWeightG', CASE WHEN body #> '{netContent,dimension}'='"mass"'::jsonb
    AND body #> '{netContent,unit}'='"openlup:g"'::jsonb AND body #> '{netContent,scale}'='0'::jsonb
-   AND pg_input_is_valid(body #>> '{netContent,unscaled}','integer') THEN body #>> '{netContent,unscaled}' END)) THEN RAISE check_violation; END IF;
+   AND pg_input_is_valid(body #>> '{netContent,unscaled}','integer') THEN body #>> '{netContent,unscaled}' END)) THEN
+   RAISE EXCEPTION 'catalog_publication_gram_bridge_mismatch' USING ERRCODE='23514', CONSTRAINT='catalog_publication_gram_bridge_mismatch';
   END IF;
  END IF;
  -- Exact detail places each SKU at $.items[index].facts, three levels deep.
@@ -165,7 +166,10 @@ BEGIN
  END IF;
  RETURN canonical;
 EXCEPTION WHEN check_violation OR invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range OR untranslatable_character OR statement_too_complex THEN
- IF p_live THEN
+ GET STACKED DIAGNOSTICS rejected_constraint = CONSTRAINT_NAME;
+ IF p_live AND rejected_constraint NOT IN ('catalog_publication_net_content_invalid','catalog_publication_gross_mass_invalid',
+   'catalog_publication_gross_below_net','catalog_publication_quantity_unit_unregistered',
+   'catalog_publication_quantity_conversion_inexact','catalog_publication_gram_bridge_mismatch') THEN
   RAISE EXCEPTION 'catalog_publication_facts_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_facts_invalid';
  END IF;
  RAISE;
@@ -262,11 +266,13 @@ BEGIN
   SELECT value AS reference FROM jsonb_array_elements(coalesce(prior.canonical_state::jsonb->'skus','[]'::jsonb))
  ), issued AS MATERIALIZED (
   SELECT r.id,r.sku_id,r.sku_code,r.revision,r.digest,r.issue_ordinal,
-    public.catalog_publication_sku_facts(r) AS facts
+    r.full_facts::jsonb AS facts,
+    public.catalog_publication_sku_projection(r.sku_id,r.product_id,r.sku_code,r.full_facts::jsonb,true)=r.full_facts
+      AND encode(sha256(convert_to(r.full_facts,'UTF8')),'hex')=r.digest AS exact_facts
   FROM public.catalog_sku_revisions r WHERE r.publication_id=p_issue AND r.product_id=p_product
  ), merged AS (
   SELECT coalesce(new.sku_id::text,old.reference->>'skuId') AS sku_id,new.id AS issued_id,
-   new.revision,new.sku_code,new.facts->>'status' AS status,new.issue_ordinal,new.facts->'source' AS source,
+   new.revision,new.sku_code,new.facts->>'status' AS status,new.issue_ordinal,new.facts->'source' AS source,new.exact_facts,
    old.reference AS previous_reference,
    CASE WHEN new.id IS NULL THEN old.reference ELSE
     jsonb_build_object('skuId',new.sku_id,'revisionId',new.id,'revision',new.revision,'digest',new.digest) END AS reference
@@ -277,7 +283,7 @@ BEGIN
   count(m.issued_id)::integer,
   coalesce(bool_or(m.revision::bigint<>coalesce((m.previous_reference->>'revision')::bigint,0)+1
     OR m.reference->>'digest'=m.previous_reference->>'digest' OR m.issue_ordinal>issue.issued_count
-    OR m.source IS DISTINCT FROM product->'source')
+    OR m.source IS DISTINCT FROM product->'source' OR m.exact_facts IS DISTINCT FROM true)
     FILTER (WHERE m.issued_id IS NOT NULL),false),
   count(DISTINCT coalesce(m.sku_code,inherited.sku_code))::integer,
   coalesce(jsonb_agg(jsonb_build_object('productId',p_product,'variantId',m.sku_id,'sku',m.sku_code,
@@ -681,7 +687,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.catalog_check_legacy_net_grams(), public.catalog_offer_memberships_page_v2(text,jsonb,integer,text) FROM PUBLIC;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_check_legacy_net_grams(), public.catalog_offer_memberships_page_v2(text,jsonb,integer,text) FROM anon;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_check_legacy_net_grams(), public.catalog_offer_memberships_page_v2(text,jsonb,integer,text) FROM authenticated;'; END IF; END; $$;
-DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_check_legacy_net_grams(), public.catalog_offer_memberships_page_v2(text,jsonb,integer,text) FROM service_role;'; END IF; END; $$;
+REVOKE ALL ON FUNCTION public.catalog_offer_memberships_page_v2(text,jsonb,integer,text) FROM PUBLIC;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_offer_memberships_page_v2(text,jsonb,integer,text) FROM anon;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_offer_memberships_page_v2(text,jsonb,integer,text) FROM authenticated;'; END IF; END; $$;
+DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'REVOKE ALL ON FUNCTION public.catalog_offer_memberships_page_v2(text,jsonb,integer,text) FROM service_role;'; END IF; END; $$;

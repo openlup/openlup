@@ -1622,7 +1622,7 @@ positive legacy grams as mass / scale 0 / `openlup:g`; native zero stays unknown
 It preserves existing content and every gross-mass field. Migration application
 itself performs no backfill. The later exact-quantity forward makes the native
 gram field nullable for newly issued typed content. Historical zero still means
-unknown. The managed rail keeps its mandatory legacy column.
+unknown.
 
 The native attribute forward adds nullable `attribute_values` JSONB on products
 and SKUs. NULL preserves legacy absence; each supplied value must be an object

@@ -33,7 +33,7 @@ const publicationCodes = [
   "catalog_publication_document_source_missing", "catalog_publication_document_text_copied",
   "catalog_publication_draft_advanced", "catalog_publication_eligibility_source_mismatch",
   "catalog_publication_envelope_too_large", "catalog_publication_facts_invalid", "catalog_publication_gross_below_net",
-  "catalog_publication_gross_mass_invalid", "catalog_publication_gross_mass_required",
+  "catalog_publication_gram_bridge_mismatch", "catalog_publication_gross_mass_invalid", "catalog_publication_gross_mass_required",
   "catalog_publication_gtin_conflict", "catalog_publication_gtin_invalid", "catalog_publication_head_invalid",
   "catalog_publication_history_item_too_large", "catalog_publication_identifier_blank",
   "catalog_publication_identifier_conflict", "catalog_publication_identifier_effect_missing",
@@ -50,6 +50,7 @@ const publicationCodes = [
   "catalog_publication_metadata_effect_missing", "catalog_publication_net_weight_unsupported",
   "catalog_publication_operation_invalid", "catalog_publication_operation_source_ambiguous",
   "catalog_publication_operation_source_mismatch", "catalog_publication_operation_source_missing",
+  "catalog_publication_quantity_conversion_inexact", "catalog_publication_quantity_unit_unregistered",
   "catalog_publication_page_invalid", "catalog_publication_pointer_capability_unconsumed",
   "catalog_publication_post_state_changed", "catalog_publication_presentation_effect_missing",
   "catalog_publication_presentation_invalid", "catalog_publication_presentation_source_mismatch",
@@ -260,6 +261,9 @@ const publicationRefusals = {
   catalog_publication_document_source_missing: { fix: "Select a document revision backed by a saved draft for this product." },
   catalog_publication_document_text_copied: { fix: "Replace the copied document text with the display value for this field." },
   catalog_publication_eligibility_source_mismatch: { fix: "Match purchase eligibility to the modes in the saved draft." },
+  catalog_publication_gram_bridge_mismatch: { fix: "Regenerate the exact gram bridge. If whole grams exceed the legacy range, express the content with a greater scale or in another declared mass unit." },
+  catalog_publication_quantity_conversion_inexact: { fix: "Choose an amount and unit whose installed factor converts within 12 decimal places and the supported range." },
+  catalog_publication_quantity_unit_unregistered: { fix: "Choose an installed unit for the quantity dimension and make sure the product type admits its net unit." },
   catalog_publication_gross_below_net: { fix: "Supply a gross mass at least as large as the net content." },
   catalog_publication_gross_mass_invalid: { fix: "Supply a positive gross mass in an installed mass unit." },
   catalog_publication_gross_mass_required: { fix: "supply the gross mass for this SKU" },
@@ -379,14 +383,21 @@ const deferredForeignKeys = new Map<string, PlatformCode>([
   ["catalog_publication_decisions_receipt_fk", "catalog_publication_receipt_invalid"],
 ]);
 
+const sqlQuantityRefusals = new Set<string>([
+  "catalog_publication_net_content_invalid", "catalog_publication_gross_mass_invalid", "catalog_publication_gross_below_net",
+  "catalog_publication_quantity_unit_unregistered", "catalog_publication_quantity_conversion_inexact", "catalog_publication_gram_bridge_mismatch",
+]);
+
 function sqlAdmissionDiagnostic(error: unknown): PlatformCode | undefined {
   if (!error || typeof error !== "object" || !("code" in error)) return;
   if (error.code === "22023" && "message" in error && error.message === "catalog_publication_wire_invalid")
     return error.message;
   if (!("constraint" in error) || typeof error.constraint !== "string") return;
   if (error.code === "23503") return deferredForeignKeys.get(error.constraint);
+  if (error.code === "23514" && error.constraint === "catalog_skus_legacy_net_grams_check")
+    return "catalog_publication_gram_bridge_mismatch";
   if (error.code === "23514" && Object.hasOwn(publicationRefusals, error.constraint)
-    && !("fix" in publicationRefusals[error.constraint as PlatformCode])) return error.constraint as PlatformCode;
+    && (sqlQuantityRefusals.has(error.constraint) || !("fix" in publicationRefusals[error.constraint as PlatformCode]))) return error.constraint as PlatformCode;
 }
 
 /** Maps publication admission diagnostics after the transaction has rolled back.

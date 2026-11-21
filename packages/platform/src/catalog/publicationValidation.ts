@@ -7,7 +7,7 @@ import { isValidGtin, catalogDocumentRevisionRefSchema } from "./foundationSchem
 import { canonicalizeCatalogCombinationV2, CatalogCombinationError } from "./variantCombination.js";
 import { canonicalizeCatalogQuantity, compareCatalogQuantities } from "@openlup/core/catalog";
 import { asLegacyIntegralGrams, catalogPhysicalUnits } from "./physicalQuantity.js";
-import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
+import { validateCatalogQuantity, type CatalogDraftIssue, type CatalogProductTypeDefinition, type CatalogQuantity } from "./contracts/productTypes.js";
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/draftV3.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
@@ -53,7 +53,11 @@ function assertCatalogAction(payload: PublicationIntent, action: "create" | "rev
 }
 const authoredSlug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
 function exactNetContent(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): CatalogQuantity {
-  need(catalogQuantitySchema.safeParse(quantity).success && definition.netContentUnits.includes(quantity.unit), "catalog_publication_net_content_invalid");
+  need(catalogQuantitySchema.safeParse(quantity).success && definition.netContentUnits.includes(quantity.unit)
+    && validateCatalogQuantity(quantity, definition), "catalog_publication_net_content_invalid");
+  if (quantity.dimension === "mass" && quantity.unit === "openlup:g" && quantity.scale === 0) {
+    need(BigInt(quantity.unscaled) <= 2_147_483_647n, "catalog_publication_gram_bridge_mismatch");
+  }
   try { return canonicalizeCatalogQuantity(quantity, catalogPhysicalUnits(definition)); }
   catch { return publicationRefuse("catalog_publication_net_content_invalid"); }
 }
@@ -64,6 +68,11 @@ function assertPublicationQuantities(sku: { code: string; netContent: CatalogQua
   { definition, rules }: AmountBinding): void {
   exactNetContent(sku.netContent, definition);
   if (sku.grossMass) assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, definition);
+  assertPublicationAmountRules(sku, { definition, rules });
+}
+
+function assertPublicationAmountRules(sku: { code: string; netContent: CatalogQuantity; grossMass?: CatalogQuantity | null },
+  { definition, rules }: AmountBinding): void {
   if (rules.validateSkuQuantities) {
     need(rules.validateSkuQuantities({ code: sku.code, netContent: sku.netContent, grossMass: sku.grossMass ?? null }) === true,
       "catalog_publication_authored_amounts_invalid");
@@ -118,7 +127,7 @@ export function assertCatalogPublicationPreparation(payload: CatalogDraftPayload
  */
 export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void {
   if (!gross) return publicationRefuse("catalog_publication_gross_mass_required");
-  need(catalogQuantitySchema.safeParse(gross).success && gross.dimension === "mass", "catalog_publication_gross_mass_invalid");
+  need(catalogQuantitySchema.safeParse(gross).success && gross.dimension === "mass" && validateCatalogQuantity(gross, definition), "catalog_publication_gross_mass_invalid");
   const units = catalogPhysicalUnits(definition);
   let mass: CatalogQuantity;
   try { mass = canonicalizeCatalogQuantity(gross, units); }
@@ -1228,6 +1237,15 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           sku.source = before && equal({ ...sku, source: before.source }, before) ? before.source : claim;
         } else if (!withdrawalOnly && before && incoming.has(sku.code) && !equal(before, sku)) {
           sku.source = claim;
+        }
+        const draft = incoming.get(sku.code);
+        if (rules && !withdrawalOnly && (rules.validateSkuAmounts || rules.validateSkuQuantities) && (!before || !equal(sku, before)) &&
+          (!draft || !equal([draft.netContent ?? null, draft.grossMass ?? null], [sku.netContent, sku.grossMass]))) {
+          try { assertPublicationAmountRules(sku, { definition, rules }); }
+          catch (error) {
+            if (!(error instanceof CatalogPublicationError)) throw error;
+            throw new CatalogPublicationError(publicationDiagnostic(error, "structural", "skus", sku.code), error.outcome);
+          }
         }
         const finalSku = decodePublishedSku(sku, "skus", sku.code);
         assertPublishedSkuDocumentExclusion(finalSku, documentDigests);

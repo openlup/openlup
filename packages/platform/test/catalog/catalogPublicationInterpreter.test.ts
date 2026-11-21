@@ -1366,6 +1366,88 @@ it("MC5 issues exact authored amounts without replacing their original scale", a
     expect((await compileCatalogPublication(data, mode)).skus[0]?.netContent).toEqual(netContent);
 });
 
+it("refuses canonical whole grams outside the bridge range and prepares the same exact mass at another scale", async () => {
+  const data = input();
+  const netContent = { dimension: "mass", unit: "openlup:g", unscaled: "2147483648", scale: 0 } as const;
+  data.payload.skus[0]!.netContent = netContent;
+  const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null };
+  const code = "catalog_publication_gram_bridge_mismatch";
+  expect((await facade(data).prepareCandidate(query)).preparation?.structural.issues)
+    .toContainEqual(expect.objectContaining({ code }));
+  for (const mode of ["first-decision", "compile"] as const)
+    await expect(compileCatalogPublication(data, mode)).rejects.toMatchObject({ code });
+
+  const alternate = { ...netContent, unscaled: "21474836480", scale: 1 };
+  data.payload.skus[0]!.netContent = alternate;
+  expect((await facade(data).prepareCandidate(query)).preparation?.structural.issues).toEqual([]);
+  const sku = (await compileCatalogPublication(data)).skus[0]!;
+  expect(sku.netContent).toEqual(alternate);
+  expect(sku).not.toHaveProperty("netWeightG");
+});
+
+it("keeps integral grams without an explicit factor valid in Prepare and compile", async () => {
+  const legacy = setupRules(artifact + "\nmodule.exports.validateSkuAmounts = ({netGrams}) => netGrams === '100';", {
+    units: [{ code: "openlup:g", dimension: "mass", integral: true }], netContentUnits: ["openlup:g"],
+  });
+  const data = { ...input(), ...legacy };
+  const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null };
+  expect((await facade(data).prepareCandidate(query)).preparation?.structural.issues).toEqual([]);
+  expect((await compileCatalogPublication(data)).skus[0]?.netContent).toEqual(data.payload.skus[0]!.netContent);
+});
+
+it.each([
+  ["legacy hook", "module.exports.validateSkuAmounts = () => true;", false],
+  ["typed hook", `module.exports.validateSkuQuantities = ({code, netContent, grossMass}) => {
+     if (code === "ARTICLE") return true;
+     if (code !== "RETAINED" || netContent.dimension !== "volume" || netContent.unit !== "openlup:ml" ||
+       netContent.unscaled !== "50" || netContent.scale !== 0 || grossMass !== null) throw new Error("Unexpected quantity");
+     return true;
+   };`, true],
+  ["typed hook refuses", 'module.exports.validateSkuQuantities = ({code}) => code !== "RETAINED";', false],
+] as const)("binds explicitly retained create_sku quantity to the %s", async (name, hook, allowed) => {
+  const data = await revision(setupRules(artifact + "\n" + hook, {
+    units: [{ code: "openlup:g", dimension: "mass", integral: true }, { code: "openlup:ml", dimension: "volume", integral: false }],
+    netContentUnits: ["openlup:g", "openlup:ml"],
+    dimensions: [{ key: "style", kind: "choice", values: ["one", "two"] }],
+    axes: [{ key: "style", attributeKey: "style" }],
+    attributes: [{ key: "style", scope: "variant", valueType: { kind: "enum", values: [{ id: "one" }, { id: "two" }] },
+      filterable: false, facetable: false, public: true, required: false, cardinality: { min: 0, max: 1 }, displayOrder: 0, labels: {} }],
+  }));
+  data.payload.product.dimensions = ["style"];
+  data.evidence.product!.axes = ["style"];
+  data.evidence.skus[0]!.options = { style: { kind: "choice", value: "one" } };
+  const retained = structuredClone(input().record);
+  retained.draftId = "30000000-0000-4000-8000-000000000009";
+  const skuId = "20000000-0000-4000-8000-000000000009";
+  const netContent = { dimension: "volume", unit: "openlup:ml", unscaled: "50", scale: 0 } as const;
+  Object.assign(retained.payload.skus[0]!, { id: skuId, code: "RETAINED", netContent,
+    options: { style: { kind: "choice", value: "two" } } });
+  retained.payload.product.dimensions = ["style"];
+  retained.payload.product.primarySkuId = skuId;
+  retained.payload.product.sharedContent.requestedModes = [{ skuCode: "RETAINED", modes: [] }];
+  for (const op of retained.payload.publication.operations) {
+    if ("skuCode" in op) op.skuCode = "RETAINED";
+    if (op.op === "create_sku") op.skuId = skuId;
+  }
+  const facts = { ...retained.payload.product.sharedContent.publicationSkus[0]!, skuCode: "RETAINED" };
+  retained.payload.product.sharedContent.publicationSkus = [facts];
+  const claim = catalogPublicationClaim(retained);
+  data.payload.publication.evidence.drafts = [claim];
+  data.evidence.drafts.push({ record: retained, receipt: claim, head: retained });
+  data.payload.publication.operations.push({ op: "create_sku", productSlug: "article", documentRevisionNo: 1, skuId, ...facts });
+  const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: data.expectedHead };
+  const preview = await facade(data).prepareCandidate(query);
+  if (allowed) {
+    expect(preview.preparation?.structural.issues).toEqual([]);
+    const issued = await compileCatalogPublication(data);
+    expect(issued.skus).toContainEqual(expect.objectContaining({ code: "RETAINED", netContent }));
+  } else {
+    const code = name === "legacy hook" ? "catalog_publication_integral_grams_required" : "catalog_publication_authored_amounts_invalid";
+    expect(preview.preparation?.structural.issues).toContainEqual(expect.objectContaining({ code }));
+    await expect(compileCatalogPublication(data)).rejects.toMatchObject({ code });
+  }
+});
+
 it("uses a typed hook when selected and keeps the installed whole-gram rule contract", async () => {
   const data = input();
   const sku = data.payload.skus[0]!;

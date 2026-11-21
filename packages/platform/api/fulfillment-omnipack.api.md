@@ -265,7 +265,8 @@ export interface OmnipackProductInput {
 }
 export declare class OmnipackProductPayloadError extends Error {
     readonly code: string;
-    constructor(code: string);
+    readonly field?: string | undefined;
+    constructor(code: string, field?: string | undefined);
 }
 export declare function buildOmnipackProductPayload(input: OmnipackProductInput): Record<string, unknown>;
 /** Explicit packaged gross mass for the existing product-registration lane. @experimental */

@@ -21,6 +21,7 @@ class OmnipackSyncError extends Error implements FulfillmentRefusal {
   readonly providerFailure: boolean;
   readonly status: number | null;
   readonly code: string | null;
+  declare readonly field?: string;
 
   constructor(readonly reason: FulfillmentRefusal["reason"], operation: string, error?: unknown) {
     super(reason === "io_failure" ? `OmniPack request failed: ${operation}` : `OmniPack sync refused: ${reason}`);
@@ -28,7 +29,8 @@ class OmnipackSyncError extends Error implements FulfillmentRefusal {
     this.providerFailure = reason === "io_failure";
     this.retryable = error instanceof OmnipackProviderError ? error.retryable : false;
     this.status = error instanceof OmnipackProviderError ? error.status : null;
-    this.code = error instanceof OmnipackProviderError ? error.code : null;
+    this.code = error instanceof OmnipackProviderError || error instanceof OmnipackProductPayloadError ? error.code : null;
+    if (error instanceof OmnipackProductPayloadError && error.field) this.field = error.field;
   }
 }
 function syncFailure(operation: string, error: unknown): OmnipackSyncError {
@@ -363,7 +365,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           await client.createProduct(metadata, sku);
           return { replayed: false };
         } catch (error) {
-          if (config.typedProduct && error instanceof OmnipackProductPayloadError) throw new OmnipackSyncError("malformed", "createProduct");
+          if (config.typedProduct && error instanceof OmnipackProductPayloadError) throw new OmnipackSyncError("malformed", "createProduct", error);
           throw syncFailure("createProduct", error);
         }
       },

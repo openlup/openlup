@@ -767,7 +767,7 @@ const exactAmounts = [
   [1, "mass", "example:lb", "100000", 0, 45359237],
   [2, "volume", "example:us-fl-oz", "12", 0, null],
   [1, "mass", "openlup:g", "55", 1, null],
-  [1, "mass", "openlup:g", "2147483648", 0, null],
+  [1, "mass", "openlup:g", "21474836480", 1, null],
 ] as const;
 
 publicationTest("MC5 exact issuance preserves authored evidence and projects nullable grams on the restricted login", async ({ publicationUrl }) => {

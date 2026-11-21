@@ -155,7 +155,7 @@ export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.objec
   }
   for (const [path, quantity] of [["netContent", sku.netContent], ["grossMass", sku.grossMass]] as const) {
     if (quantity && (path === "grossMass" && quantity.dimension !== "mass"
-      || quantity.dimension === "count" && BigInt(quantity.unscaled) % (10n ** BigInt(quantity.scale)) !== 0n))
+      || quantity.dimension === "count" && catalogQuantitySchema.safeParse(quantity).success && BigInt(quantity.unscaled) % (10n ** BigInt(quantity.scale)) !== 0n))
       context.addIssue({ code: "custom", path: [path], message: "Expected mass for gross or a whole count for count content" });
   }
   if (!sku.memberships.every((row, index) => index === 0 || comparePublicationText(sku.memberships[index - 1]!.offerVersion, row.offerVersion) < 0)

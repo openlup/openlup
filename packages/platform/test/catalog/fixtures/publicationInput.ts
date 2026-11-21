@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { canonicalCatalogDraftJson } from "../../../src/catalog/contracts/draft.js";
+import type { CatalogProductTypeInput } from "../../../src/catalog/contracts/productTypes.js";
 import type { CatalogDraftPayloadV3 } from "../../../src/catalog/contracts/draftV3.js";
 import { createCatalogProductTypeRegistry } from "../../../src/catalog/productTypeSchemas.js";
 import { catalogPublicationClaim, compileCatalogPublication, type CatalogPublicationCompileInput } from "../../../src/catalog/publicationValidation.js";
@@ -28,12 +29,12 @@ module.exports = {
   deriveSkuFacts: canonicalText => ({ derived: JSON.parse(canonicalText).derived }),
   classifySkuChange: () => "compatible",
 };`;
-export function setupRules(source: string | Uint8Array = artifact) {
+export function setupRules(source: string | Uint8Array = artifact, metadata?: Partial<Pick<CatalogProductTypeInput, "units" | "netContentUnits" | "dimensions" | "axes" | "attributes">>) {
   const bytes = typeof source === "string" ? Buffer.from(source) : source;
   const pack = withCatalogPublicationRules({ id: "example:rules", namespace: "example", version: 1, openlupRange: "1.x",
     capabilities: {}, taxClasses: [], types: [{ key: "example:article", version: 1,
       units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:kg", dimension: "mass", integral: false }],
-      netContentUnits: ["openlup:g"], dimensions: [], axes: [] }] }, () => bytes);
+      netContentUnits: ["openlup:g"], dimensions: [], axes: [], ...metadata }] }, () => bytes);
   const registry = createCatalogProductTypeRegistry(pack.types);
   const definition = registry.resolve({ key: "example:article", version: 1 })!;
   return { registry, definition, installedDefinitionDigest: catalogDefinitionDigest(definition) };
