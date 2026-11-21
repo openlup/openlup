@@ -944,3 +944,65 @@ it("accepts an uppercase subscription UUID through the restricted installed rene
   expect(d.execute).toHaveBeenCalledTimes(1);
   expect(await allPublicRows(admin)).toEqual(before);
 }, 30_000);
+
+it("drains normal due renewals concurrently with bounded concurrency, zero duplicate dispatch, and monotonic cycle advance", async () => {
+  const subs = [await active(), await active(), await active(), await active()];
+  const d = await deps(subs[0].subscriptionId, "succeeded");
+  const executedByOrder = new Map<string, number>();
+  let inFlight = 0, maxInFlight = 0;
+  const baseRail = d.input.paymentRails.resolve("sandbox")!;
+  const timedRail = {
+    ...baseRail,
+    async execute(input: Parameters<typeof baseRail.execute>[0]) {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(resolve => setTimeout(resolve, 40));
+      executedByOrder.set(input.orderId, (executedByOrder.get(input.orderId) ?? 0) + 1);
+      try { return await baseRail.execute(input); }
+      finally { inFlight--; }
+    },
+  };
+  const unused = async (): Promise<never> => { throw new Error("unexpected_retry_on_concurrent_renewal"); };
+  let clock = now;
+  const native = api.createNativeSubscriptionBinding({
+    enabled: true, batchLimit: 10, concurrency: 4, population: `concurrent-renewal:${subs[0].subscriptionId}`,
+    executor, withTransaction: transaction,
+    withRunLease: async (_population, work) => work(),
+    codec: d.codec, settlement: db => settlement(d.codec, db), inventory: d.input.inventory,
+    paymentRails: { resolve: channel => channel === "sandbox" ? timedRail : null },
+    policy: d.input.policy,
+    retry: { readFrozenMandate: unused, retryInput: () => { throw new Error("unexpected_retry"); }, payments: { execute: unused, readOutcome: unused }, recoveredTemplate: "recovered" },
+    failureTemplate: "failed", recoveryPath: "/recover", workerId: "concurrent-worker", now: () => clock,
+    catalogue: { version: "complete-test-catalogue", migration: "native-test-catalogue" },
+    readiness: async () => ({ state: "ready", candidate: { artifact: "fixture", configuration: "fixture", environment: "disposable", database: "fixture", schema: "complete" }, loadedPackages: [], issues: [] }),
+  });
+
+  const settledIds: string[] = [];
+  for (let pass = 0; pass < 4 && settledIds.length < 4; pass++) {
+    const run = await native.services.run();
+    expect(run).not.toBeNull();
+    const renewals = "renewals" in run! ? run.renewals : [];
+    expect(renewals.every(r => r.status === "succeeded")).toBe(true);
+    settledIds.push(...renewals.map(r => r.subscriptionId));
+    // Rows omitted by 55P03 hot-SKU admission busy retain their 5-minute claim lease until expiry.
+    if (settledIds.length < 4) clock = new Date(Date.parse(clock) + 6 * 60_000).toISOString();
+  }
+  expect(settledIds).toHaveLength(4);
+  expect(new Set(settledIds)).toEqual(new Set(subs.map(s => s.subscriptionId)));
+  expect(maxInFlight).toBeGreaterThanOrEqual(2);
+  expect(maxInFlight).toBeLessThanOrEqual(4);
+  expect(executedByOrder.size).toBe(4);
+  expect([...executedByOrder.values()].every(count => count === 1)).toBe(true);
+
+  const schedules = (await runtime.query("SELECT id, next_cycle_at FROM public.subscriptions WHERE id = ANY($1::uuid[])", [subs.map(s => s.subscriptionId)])).rows;
+  expect(schedules).toHaveLength(4);
+  for (const row of schedules) {
+    expect(new Date(String(row.next_cycle_at)).getTime()).toBeGreaterThan(Date.parse(now));
+  }
+
+  // Re-running immediately must find no due renewals and dispatch nothing again.
+  const finalRun = await native.services.run();
+  expect(finalRun).not.toBeNull();
+  expect("renewals" in finalRun! ? finalRun.renewals : []).toEqual([]);
+  expect([...executedByOrder.values()].every(count => count === 1)).toBe(true);
+}, 30_000);

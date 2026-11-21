@@ -19,16 +19,69 @@ export async function recoverPreparedExternalAttempt(input: { operation: Renewal
   await input.settlement.acknowledgeExternalAttempt({ operationId: input.operation.operationId, operationFingerprint: input.operation.operationFingerprint, externalAttemptRef, acknowledgedAt: input.occurredAt });
   return externalAttemptRef;
 }
-export async function runRenewalBatchRows(due: RenewalDue[], run: (row: RenewalDue) => Promise<AutomaticRenewalRunResult>, policy: Pick<AutomaticRenewalPolicy, "identityKey">): Promise<AutomaticRenewalRunResult[]> {
-  const results: AutomaticRenewalRunResult[] = [];
-  for (const row of due) {
-    try { results.push(await run(row)); }
-    catch (error) {
-      if (isInventoryAdmissionBusy(error)) continue;
-      results.push({ subscriptionId: row.subscriptionId, identityKey: policy.identityKey(row), operationId: "", status: "error", replayed: false, reason: "renewal_processing_failed" });
-    }
+export const MAX_RENEWAL_CONCURRENCY = 16;
+
+export interface RunRenewalBatchOptions {
+  /** Bounded per-batch concurrency for normal due renewals (default `1`, max `16`). */
+  concurrency?: number;
+}
+
+export function normalizeRenewalConcurrency(concurrency: number | undefined): number {
+  if (concurrency === undefined) return 1;
+  if (typeof concurrency !== "number" || !Number.isInteger(concurrency) || concurrency < 1 || concurrency > MAX_RENEWAL_CONCURRENCY) {
+    throw new Error("subscription_renewal_concurrency_invalid");
   }
-  return results;
+  return concurrency;
+}
+
+export async function runRenewalBatchRows(
+  due: RenewalDue[],
+  run: (row: RenewalDue) => Promise<AutomaticRenewalRunResult>,
+  policy: Pick<AutomaticRenewalPolicy, "identityKey">,
+  options?: RunRenewalBatchOptions,
+): Promise<AutomaticRenewalRunResult[]> {
+  const concurrency = normalizeRenewalConcurrency(options?.concurrency);
+  if (concurrency === 1 || due.length <= 1) {
+    const results: AutomaticRenewalRunResult[] = [];
+    for (const row of due) {
+      try { results.push(await run(row)); }
+      catch (error) {
+        if (isInventoryAdmissionBusy(error)) continue;
+        results.push({ subscriptionId: row.subscriptionId, identityKey: policy.identityKey(row), operationId: "", status: "error", replayed: false, reason: "renewal_processing_failed" });
+      }
+    }
+    return results;
+  }
+
+  const slots: Array<AutomaticRenewalRunResult | null> = new Array(due.length).fill(null);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, due.length);
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const index = nextIndex;
+      if (index >= due.length) return;
+      nextIndex = index + 1;
+      const row = due[index];
+      try {
+        slots[index] = await run(row);
+      } catch (error) {
+        if (isInventoryAdmissionBusy(error)) {
+          slots[index] = null;
+        } else {
+          slots[index] = {
+            subscriptionId: row.subscriptionId,
+            identityKey: policy.identityKey(row),
+            operationId: "",
+            status: "error",
+            replayed: false,
+            reason: "renewal_processing_failed",
+          };
+        }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return slots.filter((item): item is AutomaticRenewalRunResult => item !== null);
 }
 export async function refuseRenewalBeforePayment(input: { store: RenewalStorePort; operation: RenewalReadback; reason: string; occurredAt: string }): Promise<AutomaticRenewalRunResult> {
   const refused = await input.store.refuseBeforePayment({ operationId: input.operation.operationId, claimToken: input.operation.claimToken, reason: input.reason, occurredAt: input.occurredAt });
