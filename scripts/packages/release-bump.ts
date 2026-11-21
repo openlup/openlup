@@ -35,7 +35,7 @@ import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackageRelease
 
 import { readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
 import { documentationGit } from "../documentation-routing.ts";
-import { assembleUpgradePage, planReleaseGuide, previousCoreTag, previousPackageTag, upgradePagePath } from "./release-docs-pass.ts";
+import { assembleUpgradePage, planReleaseGuide, previousCoreTag, upgradePagePath } from "./release-docs-pass.ts";
 
 type Json = Record<string, unknown>;
 type Edit = { path: readonly string[]; from: string | number; to: string | number };
@@ -51,6 +51,7 @@ const UNRELEASED = /^## \[Unreleased\]\n\n/mu;
 const PIN_FIELDS = ["dependencies", "peerDependencies", "optionalDependencies"] as const;
 const MINOR_INTERVAL_MS = 21 * 24 * 60 * 60 * 1000;
 const CADENCE_POLICY = ".github/VERSIONING_AND_EOL.md#release-cadence";
+const CADENCE_EXCEPTIONS = "Use --cadence-exception=security for a security defect or --cadence-exception=money for a money defect, only when the fix requires a database or public API change.";
 const at = (value: unknown, path: readonly string[]): unknown => path.reduce<unknown>((node, key) => (node !== null && typeof node === "object" ? (node as Json)[key] : undefined), value);
 
 /** `text` with each edit's `"<key>": <from>` member set to `<to>` at exactly its key path, and nowhere else. */
@@ -170,17 +171,33 @@ function bumpFiles(root: string, config: PackagesConfig, entries: readonly Packa
 
 const manifestVersion = (root: string, entry: PackageEntry): unknown => (JSON.parse(readFileSync(join(root, entry.directory, "package.json"), "utf8")) as Json).version;
 
+/** Cadence follows released versions even when the preparation branch predates a release. */
+function latestRelease(root: string, directories: readonly string[]): ReturnType<typeof parsePackageReleaseTag> {
+  const patterns = directories.map((directory) => `refs/tags/openlup-${directory.slice("packages/".length)}-v*`);
+  const refs = documentationGit(root, ["for-each-ref", "--format=%(objecttype) %(refname:strip=2)", ...patterns]).toString("utf8").trim();
+  let latest: ReturnType<typeof parsePackageReleaseTag>;
+  for (const line of refs.split("\n")) {
+    const [type, tag] = line.split(" ");
+    if (type !== "tag" || !tag) continue;
+    const release = parsePackageReleaseTag(tag);
+    if (!release || !directories.includes(release.directory)) continue;
+    // Core supplies the set's date when its tag names the same version.
+    if (!latest || releaseVersionAbove(release.version, latest.version) ||
+        (release.version === latest.version && release.directory === "packages/core")) latest = release;
+  }
+  return latest;
+}
+
 function taggerDate(root: string, tag: string): number | undefined {
   const seconds = documentationGit(root, ["tag", "--list", tag, "--format=%(taggerdate:unix)"]).toString("utf8").trim();
   return seconds ? Number(seconds) * 1000 : undefined;
 }
 
-function checkCadence(root: string, version: string, previousTag: string | undefined, {
+function checkCadence(root: string, version: string, directories: readonly string[], {
   majorApproved, exception, now = Date.now, readTagDate = taggerDate,
 }: CadenceOptions): void {
-  if (previousTag === undefined) return; // First release.
-  const previous = parsePackageReleaseTag(previousTag);
-  if (!previous) throw new Error(`${previousTag} is not a package release tag`);
+  const previous = latestRelease(root, directories);
+  if (!previous) return; // First release.
   const [major, minor] = version.split(".") as [string, string];
   const [previousMajor, previousMinor] = previous.version.split(".") as [string, string];
   if (BigInt(major) > BigInt(previousMajor) && !majorApproved) {
@@ -190,11 +207,11 @@ function checkCadence(root: string, version: string, previousTag: string | undef
   const name = previous.directory.slice("packages/".length);
   const minorTag = `openlup-${name}-v${previousMajor}.${previousMinor}.0`;
   const releasedAt = readTagDate(root, minorTag);
-  if (releasedAt === undefined) throw new Error(`Cannot read the annotated tagger date for ${minorTag}. Fetch the release tags and retry.`);
+  if (releasedAt === undefined) throw new Error(`Cannot read the annotated tagger date for ${minorTag}. Fetch the annotated release tags and retry. ${CADENCE_EXCEPTIONS} See ${CADENCE_POLICY}.`);
   const eligibleAt = releasedAt + MINOR_INTERVAL_MS;
   if (now() < eligibleAt) {
-    const date = new Date(eligibleAt).toISOString().slice(0, 10);
-    throw new Error(`For a minor release, wait until ${date} (UTC). Pass --cadence-exception=security or --cadence-exception=money only for a defect of that kind whose fix requires a database or public API change. See ${CADENCE_POLICY}.`);
+    const date = new Date(eligibleAt).toISOString().slice(0, 19).replace("T", " ");
+    throw new Error(`For a minor release, wait until ${date} UTC. ${CADENCE_EXCEPTIONS} See ${CADENCE_POLICY}.`);
   }
 }
 
@@ -218,7 +235,7 @@ export function bumpRelease(root: string, name: string, version: string, packed:
   if (typeof from !== "string" || releaseVersionAbove(version, from) !== true) throw new Error(`${entry.name} is at ${String(from)}; the next version must be a release version above it`);
   if (entry.publish && !SET_VERSION.test(version)) throw new Error(`${entry.name} is publishable, so its next version is a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1), not ${version}`);
   if (entry.publish && config.packages.some((row) => row.publish && row !== entry)) throw new Error(`${entry.name} moves with its set: npm run release:bump -- --set <version>`);
-  checkCadence(root, version, previousPackageTag(root, name), cadence);
+  checkCadence(root, version, [directory], cadence);
   return writeAll(root, bumpFiles(root, config, [entry], from, version, packed));
 }
 
@@ -232,12 +249,11 @@ export function bumpSet(root: string, version: string, packed: PublishedPackedBy
   const from = current[0]![1];
   if (current.some(([, other]) => other !== from)) throw new Error(`the publishable packages carry different versions (${current.map(([name, other]) => `${name}@${String(other)}`).join(", ")}); packages:check refuses that`);
   if (typeof from !== "string" || releaseVersionAbove(version, from) !== true) throw new Error(`the set is at ${String(from)}; the next set version must be above it`);
-  const since = previousCoreTag(root);
-  checkCadence(root, version, since, cadence);
+  checkCadence(root, version, publishable.map(({ directory }) => directory), cadence);
   const page = upgradePagePath(version);
   if (lstatSync(join(root, page), { throwIfNoEntry: false })) throw new Error(`${page}: upgrade page already exists`);
   const planned = bumpFiles(root, config, publishable, from, version, packed);
-  const upgrade = assembleUpgradePage({ root, version, since, fragments: planned.fragments });
+  const upgrade = assembleUpgradePage({ root, version, since: previousCoreTag(root), fragments: planned.fragments });
   for (const violation of upgrade.violations) console.warn(`release:bump: warning: ${violation}`);
   planned.writes.push([page, upgrade.text]);
   const repositoryRoot = resolve(root);

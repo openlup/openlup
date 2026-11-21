@@ -114,11 +114,38 @@ describe.each(["set", "package"] as const)("release:bump cadence for a %s", (for
     expect(bump("1.0.0", { majorApproved: true })).toContain("packages/core/package.json");
   });
 
-  it("waits until 21 days have elapsed from the minor tagger date", () => {
+  it("waits until the exact UTC instant 21 days after the minor tagger date", () => {
     const { bump, expectUntouched } = cadenceFixture();
-    expect(() => bump("0.8.0", { now: () => minorTagDate + 20 * day })).toThrow("wait until 2026-01-23");
+    const eligibleAt = minorTagDate + 21 * day;
+    for (const now of [minorTagDate + 20 * day, eligibleAt - 1000]) {
+      expect(() => bump("0.8.0", { now: () => now })).toThrow("wait until 2026-01-23 03:04:05 UTC");
+    }
     expectUntouched();
-    expect(bump("0.8.0", { now: () => minorTagDate + 21 * day })).toContain("packages/core/package.json");
+    expect(bump("0.8.0", { now: () => eligibleAt })).toContain("packages/core/package.json");
+  });
+
+  it("ignores a lightweight major tag when classifying both major and minor increases", () => {
+    const { root, bump, expectUntouched } = cadenceFixture();
+    git(root, "tag", "openlup-core-v2.0.0");
+    expect(() => bump("2.0.0", {})).toThrow("Pass --major-approved");
+    expect(() => bump("0.8.0", { now: () => minorTagDate + day })).toThrow("wait until 2026-01-23 03:04:05 UTC");
+    expectUntouched();
+  });
+
+  it("uses the highest annotated version even when its commit is outside HEAD ancestry", () => {
+    const { root, bump, expectUntouched } = cadenceFixture();
+    git(root, "switch", "-q", "-c", "release-history");
+    git(root, "commit", "-qm", "release commit", "--allow-empty");
+    tagRelease(root, "openlup-core-v0.10.0", minorTagDate + day);
+    tagRelease(root, "openlup-core-v0.9.0", minorTagDate + 2 * day);
+    git(root, "switch", "-q", "-");
+
+    const eligibleAt = minorTagDate + 22 * day;
+    expect(() => bump("0.11.0", { now: () => eligibleAt - 1000 })).toThrow("wait until 2026-01-24 03:04:05 UTC");
+    expectUntouched();
+    const assemble = vi.spyOn(docs, "assembleUpgradePage");
+    expect(bump("0.11.0", { now: () => eligibleAt })).toContain("packages/core/package.json");
+    if (form === "set") expect(assemble).toHaveBeenCalledWith(expect.objectContaining({ since: "openlup-core-v0.7.0" }));
   });
 
   it.each(["security", "money"] as const)("accepts a %s cadence exception after three days", (exception) => {
@@ -138,19 +165,34 @@ describe.each(["set", "package"] as const)("release:bump cadence for a %s", (for
     git(root, "tag", "-d", "openlup-core-v0.7.0");
     tagRelease(root, "openlup-core-v0.6.2");
     const readTagDate = vi.fn(() => minorTagDate);
-    expect(() => bump("0.7.1", { now: () => minorTagDate + day, readTagDate })).toThrow("wait until 2026-01-23");
+    expect(() => bump("0.7.1", { now: () => minorTagDate + day, readTagDate })).toThrow("wait until 2026-01-23 03:04:05 UTC");
     expect(readTagDate).toHaveBeenCalledExactlyOnceWith(root, "openlup-core-v0.6.0");
-    expect(() => bump("0.7.1", {})).toThrow("Cannot read the annotated tagger date for openlup-core-v0.6.0");
+    const missingDate = /Cannot read the annotated tagger date for openlup-core-v0\.6\.0\. Fetch the annotated release tags and retry\. Use --cadence-exception=security for a security defect or --cadence-exception=money for a money defect, only when the fix requires a database or public API change\. See \.github\/VERSIONING_AND_EOL\.md#release-cadence\./u;
+    expect(() => bump("0.7.1", {})).toThrow(missingDate);
+    git(root, "tag", "openlup-core-v0.6.0");
+    expect(() => bump("0.7.1", {})).toThrow(missingDate);
     expectUntouched();
   });
 });
 
 describe("release:bump", () => {
+  it("uses the highest version among the set's publishable package tags", () => {
+    const { root, files } = setFixture();
+    tagRelease(root, "openlup-outbox-v0.8.0", minorTagDate + day);
+    tagRelease(root, "openlup-kit-v0.9.0", minorTagDate + 2 * day);
+    const bump = () => bumpSet(root, "0.9.0", undefined, { now: () => minorTagDate + 21 * day });
+    expect(bump).toThrow("wait until 2026-01-24 03:04:05 UTC");
+    tagRelease(root, "openlup-core-v0.8.0", minorTagDate + 2 * day);
+    expect(bump).toThrow("wait until 2026-01-25 03:04:05 UTC");
+    expect(read(root, files)).toEqual(files);
+    expect(git(root, "status", "--porcelain")).toBe("");
+  });
+
   it("reads the named package's release tag for a per-package bump", () => {
     const { root, files } = fixture();
     tagRelease(root, "openlup-core-v0.7.0");
     tagRelease(root, "openlup-kit-v2.1.0");
-    expect(() => bumpRelease(root, "kit", "2.2.0", undefined, { now: () => minorTagDate + day })).toThrow("wait until 2026-01-23");
+    expect(() => bumpRelease(root, "kit", "2.2.0", undefined, { now: () => minorTagDate + day })).toThrow("wait until 2026-01-23 03:04:05 UTC");
     expect(read(root, files)).toEqual(files);
   });
 
