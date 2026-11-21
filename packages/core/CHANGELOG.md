@@ -10,6 +10,250 @@ in the source repository.
 
 ## [Unreleased]
 
+## [1.3.0]
+
+- Publishable on the npm `latest` dist-tag as `1.3.0`, from tag
+  `openlup-core-v1.3.0`.
+
+### Compatibility exception
+
+This minor release includes a fail-closed payment change outside the SemVer
+promise. Provider success now needs authenticated evidence of the money actually
+captured before it can settle a payment.
+
+- Update custom reconciliation providers to return the provider-collected
+  `amountMinor` and `currency` on success. Update custom native renewal adapters
+  to return that money in `observedMoney`. Both must set
+  `capturedAmountBasis: "provider_capture_v1"` on success with verified captured
+  money. Without it, the worker, verify-now and checkout recovery require manual
+  review, renewal cannot apply the success, and the native rail refuses fresh
+  success evidence. The payment stays unpaid.
+- `@openlup/platform/payments/stripe` and `@openlup/platform/payments/tpay` success readbacks use the collected amount. If collected money is
+  missing, the readback may report the configured amount separately for invoice
+  comparison.
+  Compare the provider evidence with the attempted payment before retrying or
+  issuing an invoice. Conflicting `@openlup/platform/payments/stripe` success webhooks and `@openlup/platform/payments/tpay` success
+  readbacks go to review. Managed invoice issuance and expired-checkout
+  recreation are blocked when their readback detects the conflict. In 1.2.0,
+  a `@openlup/platform/payments/stripe` success webhook with different requested and received amounts
+  settled using the requested amount.
+- Replay a completed 1.2.0 native reconciliation with its original key and
+  evidence. An exact replay remains valid. A changed payload can conflict,
+  including replacing an omitted amount with explicit `null`.
+- Review late verified captures on the native rail against the provider
+  transaction. For a cancelled intent or cancelled or expired order, 1.3.0
+  records the capture for review and leaves the order unpaid. In 1.2.0 this
+  capture was refused. Confirm the collected money and resolve it with the
+  provider, refunding when appropriate, before attempting another charge.
+
+If your legacy cart reminder job runs under its own database role, run this
+grant as the database owner once after applying the reminder episode pin
+migration. Replace `cart_runtime` with the role that runs the job.
+
+```sql
+GRANT EXECUTE ON FUNCTION public.commerce_enqueue_abandoned_cart_reminder_episodes(integer) TO cart_runtime;
+```
+
+The job reports `checkout_recovery_cart_runtime_grant_required` and supplies
+the command for its role if the grant is missing. The built-in runtime role
+already has the grant.
+
+Apply the checkout recovery reminder guard and episode pin migrations before
+using the target installer. Pinned episodes keep their timing and are exempt
+from the schedule-change guard. An older pending checkout order with a wave
+and no pin blocks a change regardless of age with
+`checkout_recovery_schedule_change_blocked_open_episodes`.
+The same refusal applies to an unpinned pending abandoned cart with a wave, a
+valid draft receipt and no settlement intent. Keep the current schedule until
+the blocking orders close or their carts stop qualifying.
+
+Changed installs and reminder producers at `REPEATABLE READ` or `SERIALIZABLE`
+refuse with `checkout_recovery_schedule_isolation_unsupported`. With an installed
+schedule, a compacted checkout wave consumes both stages and the later stage
+is skipped. With no schedule installed, historical hours identify its stage.
+
+### Fixed
+
+- Rank installed reader-guide recipes and upgrade narrative sections above generated `### \`packages/*/api/*.api.md\`` diff blocks in `openlup-context search`, cap repeated API-report diff matches to one per upgrade file unless `.api.md` is queried explicitly, match `PascalCase` and `UPPER_SNAKE_CASE` declaration symbols in multi-word queries, and raise the per-package declaration and source scan limit from 1,200 to 2,000 files.
+
+Migration: This search-ranking change does not alter result shapes, CLI flags, package runtime or SQL. The declaration and source scans report `scans[].fileLimit` of `2000`.
+
+- Improve `openlup-context search` to resolve exact exported symbols directly to their declared public package subpath via installed `package.json#exports` declaration entrypoints while keeping non-entrypoint declaration occurrences clearly marked unverified.
+- Scope `@openlup/core` `.api.md` declaration snapshots to each subpath's own directory and explicit re-exports without changing any exported runtime or type symbol.
+
+Migration: No application changes required. Snapshot scoping does not alter public exports. It removes cross-subpath duplicates from generated `.api.md` snapshots.
+
+- Add machine-readable `FULFILLMENT_STATUS_EFFECTS` and `FulfillmentStatusEffect` to `@openlup/core/fulfillment` alongside the unchanged `FULFILLMENT_STATUS_MAP`, exposing domain stock, handover, notification, tracking, and off-track flags without UI prose or locale keys.
+
+- Improve `openlup-context` search ergonomics and determinism:
+  - Traverse declaration, application, and package-source directories in deterministic lexicographic order so bounded scans produce identical results across filesystems.
+  - Add configurable result limits (`1..50`, default `8`) via `--limit <n>` / `--limit=<n>` on the CLI, `limit` on the MCP `search_openlup_context` tool, and an optional `SearchContextOptions` argument on `searchContext(...)`.
+
+### Discover and check the starter's owned settings
+
+Update the installed OpenLup packages together. Include the target's
+`owned/settings-host.ts` as a creation in the upgrade snapshot if that path
+is absent. If the file exists, preserve it and merge the following additions by hand.
+
+Ensure the upgraded application manifest declares `"zod": "4.6.6"` in
+dependencies and update its lockfile. In `owned/settings-host.ts`, add the Zod
+import after the `pg` type import, extend the settings type import, annotate
+`entries`, and replace the existing filter as follows:
+
+```diff
+ import type { Pool } from 'pg';
++import { z } from 'zod';
+-import type { SettingsAppBindings } from '@openlup/platform/operations/server';
++import type { SettingsAppBindings, SettingsFileEntry } from '@openlup/platform/operations/server';
+-  const entries = {
++  const entries: Record<string, SettingsFileEntry> = {
+-      entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.value !== undefined)),
++      entries: Object.fromEntries(Object.entries(entries).filter(([, entry]) => entry.descriptor !== undefined || entry.value !== undefined)),
+```
+
+Copy the six `descriptor` members with their native Zod schemas from the target
+starter's `file.entries` into the existing entries for
+`offer.freeShippingFromMinor`, `offer.subscriptionDiscountBps`,
+`purchase.reservationMinutes`, `subscriptionCreation.editWindowHours`,
+`subscriptionOffers.deliveryCycles` and `subscriptions.lifecycleNoticeRetryBudget`.
+Keep your value expressions, file locations and app-specific entries.
+The filter keeps declarations with missing values and omits undefined
+value-only reports.
+If your binding has no `file` member yet, merge the target's
+`file: { configuration, entries, validate }` section using your selected
+configuration and existing startup assertion. Keep the installed policy
+entries value-only and preserve your connected readers and stock source.
+
+From the app root, pass these arguments to the settings script in `AGENTS.md`:
+
+- `list --goal "free shipping"`
+- `show offer.freeShippingFromMinor --json`
+- `check --json`
+
+Confirm that the list includes the key, show reports the expected file value and
+check includes the six declarations. For a value reported without a descriptor,
+add the matching descriptor as above and rerun. These reads require no database
+connection.
+
+### Discover and preview settings with the package command
+
+- Use the settings script from the extracted application root as shown in its `AGENTS.md`.
+  The settings script calls the installed experimental `openlup settings`
+  command. `show` and `explain` work offline. To preview, pass the proposal with
+  `--value <json>` or `--value -` for stdin.
+- Upgrade the managed `package.json` and `ownership.json` to the target
+  extraction. Include `owned/settings-host.ts` as a creation in the target
+  snapshot only if that file is absent in the application. Keep an existing
+  owned file and its local bindings. Append the **Change a business setting**
+  section from the target's `AGENTS.md` to the application's guide when absent.
+- If the upgrade refuses because the planned host path became occupied, keep the
+  local file and remove its creation from the target snapshot. Replan and apply
+  the reconciled snapshots, then replay. The installed application upgrades with
+  its local host bindings intact.
+- After applying the snapshot, update the installed dependencies to match the
+  target extraction. Use the settings script with
+  `show checkout_recovery_reminders --database-url <read-capable-url> --json`
+  against the intended store to verify the command and the owned binding: this
+  key is read through the reader that `owned/settings-host.ts` supplies. A
+  missing or unloadable binding module returns `commerce_setting_read_unavailable`
+  with exit 74. A module that loads without that reader returns the same code
+  with exit 1 and the hint that no connected reader exists for this key. Stock or
+  reminder policy installation remains a separate deployment step.
+
+### Use the installed renewal horizon in the starter editor
+
+Take the target extraction's `host/editor-ports.ts` through the managed upgrade
+plan and apply. If local edits cause a conflict, move them to an application-owned
+file outside both snapshots and restore the exact predecessor bytes in
+`host/editor-ports.ts`. Replan and apply with the same snapshots. Keep the app
+stopped until the managed snapshot and installed OpenLup versions match.
+
+The running editor reads the installed horizon on its next stock read. This
+upgrade needs no separate policy write or runtime privilege.
+
+### Preview renewal stock protection before deploying
+
+- The settings host supplies the stock source for the selected owned
+  configuration. Pass `preview --help` to the settings script to see
+  the connected syntax. Preview requires a read-capable PostgreSQL connection.
+
+### Starter catalogue unit factor
+
+- For a pristine starter, take the target extraction's `owned/catalogue.ts`.
+  It declares one `openlup:piece` per `starter:each`.
+- For a customized starter, add the exact factors from `owned/catalogue.json`
+  to the corresponding count units in `owned/catalogue.ts`. For a unit that
+  represents one piece, use `{ canonicalUnit: 'openlup:piece', unscaled: '1', scale: 0 }`.
+
+No database step is required.
+
+### Show database hints during starter installation
+
+Take the target extraction's `lifecycle.mjs` through the managed upgrade plan
+and apply. If local edits cause a conflict, move the local launch behavior to
+an application-owned launcher outside both snapshots that delegates to
+`lifecycle.mjs`. Restore the exact predecessor bytes in `lifecycle.mjs`, then
+replan and apply with the same snapshots. Keep the app stopped until the
+managed snapshot and installed OpenLup versions match.
+
+When the schedule guard refuses installation, the starter prints the existing
+message first and the retry hint on the next stderr line. Other installer
+errors with a database hint use the same format. Installation retains the same
+exit status and refusal codes. This file upgrade requires no additional
+settings write or database grant.
+
+### Starter paid receipts and account dates
+
+A pristine upgrade replaces the managed `host/paid-mail.ts`,
+`client/pages/account.ts` and `browser/acquisition.spec.ts` with the target
+extraction's files. Paid receipts use the order currency's minor-unit exponent.
+The account page shows the next cycle date in the market time zone.
+
+If apply refuses because one of those files has local edits, move the edits to
+application-owned files, keeping any imports they need. Restore the pristine
+predecessor at each modified managed path, then apply again. Apply installs
+the target managed files and replay preserves the application-owned files.
+
+### Starter catalogue rules
+
+Keep your existing `owned/catalogue.ts` validator when you upgrade. The
+upgrade leaves the new rules bundle and test absent. To switch to installed
+rules, copy `owned/catalogue-rules.cjs` and `owned/catalogue-rules.test.cjs`
+from a fresh extraction of the target starter and move your content checks
+to the bundle's `validateContent`. Run `node --test owned/catalogue-rules.test.cjs`,
+then `./lifecycle up` to use those rules in the operator form.
+
+- Clarify in the starter ownership guide which extraction modes commit the installation lockfile and which local address callback results the platform accepts.
+
+### Starter installation test
+
+Use the target extraction's managed `test/installation.test.ts` when the
+predecessor file is pristine. The test checks one idempotent write per setting
+with the configured value inside a single install transaction.
+
+For a customized test, move independent local test cases and their imports to
+an application-owned test file. Restore the pristine predecessor at the managed
+path, then apply the upgrade. Apply and replay keep the local file and use the
+exact target bytes for the managed test. Startup refusals retain their existing
+behavior.
+
+### Find more starter settings by goal
+
+New neutral-store extractions declare payment retry timing, checkout limits,
+shipping and tax, subscription care, the displayed returns period, price
+rounding, and market settings in `owned/settings-host.ts`. Use the app's
+settings script with `list --goal "payment retry"` or `list --goal "flat shipping"`
+to find the owned file to edit, then run `check --json` for the selected
+configuration.
+
+An upgrade preserves an existing `owned/settings-host.ts`. To add these
+settings to an existing app's search, copy the new declarations from the target
+starter into your binding and keep your app's values, locations and custom
+entries. This step is optional. Existing bindings and app behavior continue to
+work without it. The upgrade requires no installed-policy step. If the settings
+check refuses after reconciliation, correct the named declaration or startup
+validation error and rerun it.
+
 ## [1.2.0]
 
 - Publishable on the npm `latest` dist-tag as `1.2.0`, from tag

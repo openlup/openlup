@@ -1,3 +1,0 @@
-Native installations can preserve product publication and revision history when transferring a store.
-Migration: Apply the complete native database update before transferring a store that already has publication history. The managed rail does not supply this feature. Publication read refusals keep their released reasons and now carry an optional `message` that names the fix, which callers can display; an invalid history cursor or publication head returns `candidate_invalid`.
-Migration: In 1.3.0, `CATALOG_MIGRATIONS` grows from 14 to 16 entries with `20261123190000_catalog_publication` and `20261123191000_catalog_publication_commands`. Update code that pins the tuple length.

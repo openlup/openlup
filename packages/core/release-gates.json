@@ -276,13 +276,13 @@
       "maxFiles": 20
     },
     "guide": {
-      "maxPackedBytes": 282000,
+      "maxPackedBytes": 294847,
       "maxFiles": 80
     },
-    "maxPackedBytes": 544500,
-    "maxUnpackedBytes": 2115000,
+    "maxPackedBytes": 601000,
+    "maxUnpackedBytes": 2325000,
     "maxFiles": 440,
-    "capReason": "Measured on merged main 90c2d2ee0 plus the pause-after-exhaustion recipe (Node 24.22.2, npm 11.19.1): total 422588 B packed / 1609791 B unpacked / 375 files; code 187556 B packed / 300 files; docs 20669 B / root files; guide 207013 B packed / 63 files. Owner 2026-11-17: these Core caps sat at 0.7-1.3% headroom and blocked unrelated PRs; reset to about 15% headroom over the measurement so routine growth does not trip them, while gross accidental bloat still fails. Raise again in a reviewed PR when headroom drops below about 5%. New caps: total 486000 B packed / 1851000 B unpacked / 440 files; guide 238000 B / 80 files; code 276480 B / 400 files and docs 49152 B / 20 files already exceed 15% and stay. The 1.2.0 generated upgrade guide brought the guide pack to 245226 B (Node 24.22.2, npm 11.19.1). Reset only the guide byte cap to 282000 B, about 15% headroom. This activates no capability. With Node 24.21.0 and npm 11.19.0, the published 1.2.0 Core tarball measured 473,385 B packed and matched the registry integrity, the cold baseline before the guide wording updates measured 473,415 B packed, and the cold candidate after those updates measured 473,379 B packed and 1,839,234 B unpacked before this rationale edit, supporting the reset to 544,500 B packed and 2,115,000 B unpacked for about 15% headroom.",
+    "capReason": "Measured on merged main 90c2d2ee0 plus the pause-after-exhaustion recipe (Node 24.22.2, npm 11.19.1): total 422588 B packed / 1609791 B unpacked / 375 files; code 187556 B packed / 300 files; docs 20669 B / root files; guide 207013 B packed / 63 files. Owner 2026-11-17: these Core caps sat at 0.7-1.3% headroom and blocked unrelated PRs; reset to about 15% headroom over the measurement so routine growth does not trip them, while gross accidental bloat still fails. Raise again in a reviewed PR when headroom drops below about 5%. New caps: total 486000 B packed / 1851000 B unpacked / 440 files; guide 238000 B / 80 files; code 276480 B / 400 files and docs 49152 B / 20 files already exceed 15% and stay. The 1.2.0 generated upgrade guide brought the guide pack to 245226 B (Node 24.22.2, npm 11.19.1). Reset only the guide byte cap to 282000 B, about 15% headroom. This activates no capability. With Node 24.21.0 and npm 11.19.0, the published 1.2.0 Core tarball measured 473,385 B packed and matched the registry integrity, the cold baseline before the guide wording updates measured 473,415 B packed, and the cold candidate after those updates measured 473,379 B packed and 1,839,234 B unpacked before this rationale edit, supporting the reset to 544,500 B packed and 2,115,000 B unpacked for about 15% headroom. 1.3.0 cold measurement (Node 24.21.0, npm 11.19.0). Tarball packed bytes measured 522591 against 544500. New cap 601000. Headroom was below 5%. The new cap rounds up from 15% above measurement. Tarball unpacked bytes measured 2021523 against 2115000. New cap 2325000. Headroom was below 5%. The new cap rounds up from 15% above measurement. Compressed guide bytes measured 289065 against 282000. New cap 294847. The 7065 B crossing uses measured size times 1.02, rounded up.",
     "requiredFiles": [
       "AGENTS.md",
       "CHANGELOG.md",
@@ -296,8 +296,8 @@
       "release-gates.json"
     ],
     "baseline": {
-      "version": "1.1.0",
-      "packedBytes": 448561
+      "version": "1.2.0",
+      "packedBytes": 473385
     },
     "browserEntries": {}
   },

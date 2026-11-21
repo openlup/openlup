@@ -6,7 +6,7 @@ compose, extend, operate and upgrade the `@openlup/*` packages.
 
 **Status: stable 1.x.** Read the [API stability policy](reference/stability.md#public-api),
 [generated subpath classifications](reference/maturity.md) and
-[installation support boundary](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/.github/INSTALL_SUPPORT_POLICY.md).
+[installation support boundary](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/INSTALL_SUPPORT_POLICY.md).
 Pin exact versions and upgrade all `@openlup/*` packages together.
 
 ## Instructions for agents
@@ -132,4 +132,4 @@ Pin exact versions and upgrade all `@openlup/*` packages together.
   URLs too.
 
 How to change OpenLup itself is in
-[CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/CONTRIBUTING.md).
