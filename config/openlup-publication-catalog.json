@@ -15462,10 +15462,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/commerce/oms/types.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/commerce/oms/types.ts",
       "class": "public-output"
     },
@@ -15658,10 +15654,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/communications/adminPermissions.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/communications/adminPermissions.ts",
       "class": "public-output"
     },
@@ -15706,15 +15698,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/communications/notificationRecipients.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/communications/notificationRecipients.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/communications/publicPreferenceToken.test.ts",
       "class": "public-output"
     },
     {
@@ -17042,10 +17026,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/bff/admin/communications/permissions.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/bff/admin/communications/permissions.ts",
       "class": "public-output"
     },
@@ -17374,10 +17354,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/bff/admin/partners/shared.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/bff/admin/partners/shared.ts",
       "class": "public-output"
     },
@@ -17467,10 +17443,6 @@
     },
     {
       "path": "server/bff/admin/platform/settings/update.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/bff/admin/platform/shared.test.ts",
       "class": "public-output"
     },
     {
@@ -26903,10 +26875,6 @@
     },
     {
       "path": "src/lib/catalogAdminFlag.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "src/lib/catalogDbBackedGuard.test.ts",
       "class": "public-output"
     },
     {
