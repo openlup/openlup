@@ -6,11 +6,13 @@ import { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 import { z } from "./validation.js";
 
 // Refusal reasons returned by the LC3 claim and apply routines.
-export const publicationPriceRefusalReason = z.enum([
+const priceRefusalCodes = [
   "command_fingerprint_invalid", "command_invalid", "command_key_reused", "operator_mismatch",
   "command_in_progress", "sku_not_found", "sku_archived", "price_list_not_found",
   "price_list_not_active", "base_price_ambiguous",
-]);
+] as const;
+export const publicationPriceRefusalReason: z.ZodEnum<{ [Code in typeof priceRefusalCodes[number]]: Code }> =
+  z.enum(priceRefusalCodes);
 const reviewDraft = "Review the selected draft and prepare it again.";
 
 const rulesMismatch = "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying.";
