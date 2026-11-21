@@ -40,8 +40,8 @@ run `./node_modules/.bin/openlup-context search "renewal stock protection horizo
 
 Pass `show inventory_renewal_protection --json` to the starter's settings
 script. Then pass `check --configuration <id>` to the same script to find the
-file and symbol holding the configured value. In the demonstration, the
-`./lifecycle up` installation step applies the changed policy.
+file and symbol holding the configured value. In the demonstration, run
+`./lifecycle up --configuration <id>` with the same ID to apply the changed policy.
 
 Offline `show` for package keys returns catalogue metadata. For a declared
 app setting with a reported value, `show` also returns a file observation with
