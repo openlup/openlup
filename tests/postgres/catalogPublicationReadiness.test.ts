@@ -501,6 +501,26 @@ it("refuses committed owner-side product name drift before assessing published f
   }
 });
 
+it("refuses committed owner-side minimum order quantity drift before assessing published facts", async () => {
+  const product = draft(5);
+  expect(await publish(await approved(product, 1, null))).toMatchObject({ outcome: "committed" });
+  const sku = product.payload.skus[0]!, digest = await headDigest();
+  const assess = vi.fn(() => []);
+  expect(await read({ registry, assess }, [sku.code!], digest)).toMatchObject({ protocol: "governed" });
+  expect(assess).toHaveBeenCalledWith(expect.objectContaining({ sku: expect.objectContaining({ minQuantity: 1 }) }));
+  assess.mockClear();
+  const changed = await pool.query("UPDATE public.catalog_skus SET min_order_qty=2 WHERE id=$1 AND min_order_qty=1", [sku.id]);
+  try {
+    expect(changed.rowCount).toBe(1);
+    expect(await headDigest()).toBe(digest);
+    expect(await read({ registry, assess }, [sku.code!], digest))
+      .toEqual({ outcome: "dependency_unavailable", reason: "catalog_publication_live_drift" });
+    expect(assess).not.toHaveBeenCalled();
+  } finally {
+    await pool.query("UPDATE public.catalog_skus SET min_order_qty=1 WHERE id=$1", [sku.id]);
+  }
+});
+
 it("waits behind the held real writer, refuses its moved head without installed calls, and makes a later publication busy", async () => {
   const subject = await transaction(pool, db => seed(db));
   const advanced = draft(1);

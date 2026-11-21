@@ -998,7 +998,9 @@ helpers are owner-only.
 Outside a `READ COMMITTED` read-write transaction it refuses before locking.
 Otherwise it takes `SHARE` on `catalog_products`, which conflicts with the
 publication writer's first lock, and reads in a separate statement snapshot.
-A live product name that differs from the sealed evidence refuses the batch.
+For each selected product, it uses the current-publication reader's matcher to
+compare the live product and its SKU roster with the sealed evidence. A
+mismatch refuses the batch.
 It writes nothing. See the
 [catalogue entry](../../packages/platform/README.md#read-activation-readiness).
 

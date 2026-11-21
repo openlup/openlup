@@ -74,14 +74,27 @@ BEGIN
    OR EXISTS (SELECT 1 FROM requested q JOIN public.catalog_skus s ON s.sku COLLATE "C"=q.code COLLATE "C"
     JOIN public.catalog_publication_heads h ON h.product_id=s.product_id
     WHERE NOT EXISTS (SELECT 1 FROM claims c WHERE (c.position,c.product_id,c.sku_id)=(q.position,s.product_id,s.id)))
-  THEN invalid ELSE (SELECT CASE WHEN e->>'kind'='evidence'
-    THEN invalid || '{"detail":"catalog_publication_live_drift"}'::jsonb ELSE coalesce(e,invalid) END
-   FROM selected LEFT JOIN public.catalog_products p ON p.id=selected.product_id
-   WHERE sku_id IS NOT NULL AND (e->>'kind' IS DISTINCT FROM 'evidence' OR p.name IS DISTINCT FROM (e #>> '{product,name}'))
+  THEN invalid ELSE (SELECT coalesce(e,invalid)
+   FROM selected WHERE sku_id IS NOT NULL AND e->>'kind' IS DISTINCT FROM 'evidence'
    ORDER BY position LIMIT 1) END,
   (SELECT jsonb_agg(jsonb_build_object('skuCode',code,'productId',product_id,'skuId',sku_id,'evidence',e-'kind') ORDER BY position) FROM selected)
  INTO failed,subjects;
  IF failed IS NOT NULL THEN RETURN failed; END IF;
+ -- Use the same full product and SKU roster comparison as the current-publication reader.
+ BEGIN
+  IF EXISTS (
+   WITH selected_manifests AS MATERIALIZED (
+    SELECT h.product_id,p.canonical_state::jsonb AS body
+    FROM (SELECT DISTINCT (s->>'productId')::uuid AS id FROM jsonb_array_elements(subjects) s WHERE s->>'skuId' IS NOT NULL) selected_product
+    JOIN public.catalog_publication_heads h ON h.product_id=selected_product.id
+    JOIN public.catalog_publications p ON (p.product_id,p.id,p.revision)=(h.product_id,h.publication_id,h.revision)
+   )
+   SELECT 1 FROM selected_manifests m
+   WHERE public.catalog_publication_live_matches(m.product_id,m.body->'product',m.body->'skus') IS DISTINCT FROM true
+  ) THEN RETURN invalid || '{"detail":"catalog_publication_live_drift"}'::jsonb; END IF;
+ EXCEPTION WHEN invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range THEN
+  RETURN invalid;
+ END;
  -- An all-absent batch reads no settlement or price rows.
  IF EXISTS (SELECT 1 FROM jsonb_array_elements(subjects) s WHERE jsonb_typeof(s->'skuId')='string') THEN
   prices := public.catalog_publication_price_reasons(ARRAY(SELECT (s->>'skuId')::uuid FROM jsonb_array_elements(subjects) s
