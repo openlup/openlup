@@ -25,7 +25,11 @@ describe.each(lifecycleProfiles)("subscription lifecycle closure on %s", profile
     [f.actor.toUpperCase(), f.client.toUpperCase(), key, f.subscription.toUpperCase(), action, payload, now, ...(policy ? [policy] : [])]);
 
   it("preserves replacement headers/ACLs, closes every created ACL, and replays the upgrade", async () => {
-    expect(env.after).toEqual(env.before);
+    // The full suffix also pins the pause function's search path.
+    const expectedCatalog = env.before.map(row => row.signature === "customer_subscription_pause_as_actor(uuid,text,text,text)"
+      ? { ...row, proconfig: ["search_path=pg_catalog, pg_temp"] }
+      : row);
+    expect(env.after).toEqual(expectedCatalog);
     expect(env.bodiesBefore).toHaveLength(3);
     expect(env.bodiesAfter).toHaveLength(7);
     expect(env.guardAfter).toEqual(env.guardBefore);
