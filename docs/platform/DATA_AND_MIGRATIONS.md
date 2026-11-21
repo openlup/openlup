@@ -463,6 +463,27 @@ price with a subsequent expected-base command.
 
 ## Compatible data transfer
 
+Checkout attempt ledger rows are authoritative, short-lived admission state.
+The native connected-store profile carries the three digests and original epoch
+milliseconds exactly in owner-only packets. Treat these as restricted
+pseudonymous abuse-control data and keep the packets private. The ledger holds
+no raw email, IP address, idempotency key, headers or request payload, and has no
+client foreign key or absorption mapping.
+
+Restore the ledger before enabling checkout under the same limit and identity
+policy. Restored attempts age on their original timestamps. Admission prunes
+rows at the retention cutoff on each call. Idle databases keep bounded rows
+until the next call or an owner cleanup. For managed same-schema transfer use
+the bounded `@openlup/platform/portability` utility. The managed-to-native
+legacy projection refuses populated limiter relations outside its finite profile.
+
+The forward starts with an empty ledger. The table owner can inspect or clean
+it up. The routine runs with owner rights and grants only routine EXECUTE to
+`service_role`, which qualified runtimes already inherit. For a separate native
+runtime login, grant EXECUTE on `public.commerce_record_checkout_attempt(text,
+text, text, bigint, bigint, bigint, bigint, bigint)` to that login, with no
+table grants. Apply the forward before wiring a checkout caller.
+
 Catalogue definitions, definition-install receipts and tax-class keys are
 AUTHORITATIVE catalogue relations in the native connected-store profile. The `transfer_round_trip_matrix` covers each relation, retained v1/v2 definitions,
 receipt replay, bound product references and retired tax keys. Restore

@@ -262,7 +262,7 @@ const order = [
   "commerce_order_draft_receipts", "fulfillment_stock_operations",
   "commerce_order_adjustments", "commerce_promotion_claims", "commerce_promotion_claim_events",
   "subscription_activations", "subscription_renewal_attachments", "subscription_method_state_events",
-  "commerce_checkout_compensations",
+  "commerce_checkout_attempt_ledger", "commerce_checkout_compensations",
   "fulfillment_stock_current", "fulfillment_inventory_reservations", "fulfillment_inventory_reservation_lines", "fulfillment_purchase_reservation_receipts",
   "commerce_settlement_intents", "commerce_settlement_transitions",
   "subscription_reminder_ledger", "transactional_delivery_receipts",
