@@ -747,7 +747,7 @@ it("commits deferred publication checks through the restricted login", async () 
   try {
     expect((await publisher.query(`SELECT session_user,current_user,rolsuper,rolinherit,rolbypassrls,
       EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE roleid=oid OR member=oid) AS memberships,
-      has_table_privilege('public.catalog_publications','SELECT') AS issue_read,
+      has_column_privilege('public.catalog_publications','canonical_state','SELECT') AS issue_read,
       has_table_privilege('public.catalog_publications','INSERT') AS issue_insert,
       has_table_privilege('public.catalog_publications','UPDATE,DELETE,TRUNCATE') AS issue_mutation,
       has_any_column_privilege('public.catalog_product_document_revisions','UPDATE') AS document_mutation,
@@ -776,6 +776,10 @@ it("commits deferred publication checks through the restricted login", async () 
       "INSERT INTO public.catalog_price_setup_receipts(status) SELECT NULL::text WHERE false",
       "SELECT public.catalog_price_setup_claim(NULL,NULL)",
       "SELECT public.catalog_price_setup_apply_claimed(NULL,NULL)",
+      "SELECT value_text FROM public.commerce_settings",
+      "SELECT principal_id FROM public.platform_human_memberships",
+      "SELECT description FROM public.catalog_products",
+      "SELECT created_at FROM public.catalog_sku_identifiers",
     ]) await refuseStatement(sql);
     await refuseStatement("SELECT public.catalog_publication_record_command('{}'::jsonb)");
     await pool.query("INSERT INTO public.catalog_tax_classes VALUES ('example:standard','Standard','active')");

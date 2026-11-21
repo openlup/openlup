@@ -1938,7 +1938,7 @@
     },
     {
       "path": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
-      "sha256": "7860bfc9083381a0a8ecc2b41a0c2a566772df9b38e5430e8705f2c69030d983"
+      "sha256": "e9485f6bec842ec85cb2611e8b31044b3516f1f202345ea00d149b88d5a87968"
     }
   ],
   "channelIngestForwards": [

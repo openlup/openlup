@@ -94,7 +94,9 @@ type Issue = NonNullable<Awaited<ReturnType<typeof verifiedIssue>>>;
 
 async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonly CatalogSkuRevisionRef[]) {
   const { rows } = await db.query(`SELECT r.id,r.sku_id,r.sku_code,r.digest,r.revision,
-    CASE WHEN public.catalog_publication_sku_facts(r) IS NOT NULL THEN r.full_facts END AS full_facts
+    CASE WHEN public.catalog_publication_sku_facts(jsonb_populate_record(NULL::public.catalog_sku_revisions,
+      jsonb_build_object('sku_id',r.sku_id,'product_id',r.product_id,'sku_code',r.sku_code,
+        'full_facts',r.full_facts,'digest',r.digest))) IS NOT NULL THEN r.full_facts END AS full_facts
     FROM public.catalog_sku_revisions r WHERE r.product_id=$1 AND r.id=ANY($2::uuid[])`, [issue.manifest.product.id, references.map(ref => ref.revisionId)]);
   const byId = new Map(rows.map(row => [row.id, row]));
   requireCondition(rows.length === references.length && rows.length === byId.size, "catalog_publication_sku_revision_invalid");
