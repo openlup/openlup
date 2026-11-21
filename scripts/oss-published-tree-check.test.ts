@@ -947,7 +947,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(workflow).toContain("gitleaks git . --config config/gitleaks.toml --redact --no-banner");
   });
 
-  it("scans only a non-empty pull-request or merge-group range, full history otherwise or on scanner input changes, and refuses unreadable event SHAs", () => {
+  it("scans non-empty pull-request and merge-group ranges, full history on scanner input changes, and only the event commit's history on push", () => {
     const job = workflowJob("gitleaks");
     expect(job).toContain("fetch-depth: 0");
     const step = job.split("      - name: Scan the event range, or the complete available history\n")[1] ?? "";
@@ -983,21 +983,27 @@ describe("the workflow stays in step with what it claims to run", () => {
       const run =(event: string, patch: Record<string, string> = {}) => {
         writeFileSync(calls, "");
         const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { cwd: repo, encoding: "utf8", timeout: 20_000,
-          env: { ...environment, PATH: `${bin}:${environment.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
+          env: { ...environment, PATH: `${bin}:${environment.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, GITHUB_SHA: "", PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
         return { status: result.status, calls: readFileSync(calls, "utf8") };
       };
-      const full = "[git][.][--config][config/gitleaks.toml][--redact][--no-banner]\n";
-      const range = `[git][.][--config][config/gitleaks.toml][--redact][--no-banner][--log-opts][${base}..${head}]\n`;
+      const scanArgs = "[git][.][--config][config/gitleaks.toml][--redact][--no-banner]";
+      const full = `${scanArgs}\n`;
+      const range = `${scanArgs}[--log-opts][${base}..${head}]\n`;
       const all = { PR_BASE: base, PR_HEAD: head, GROUP_BASE: base, GROUP_HEAD: head };
       expect(run("pull_request", { PR_BASE: base, PR_HEAD: head })).toEqual({ status: 0, calls: range });
       expect(run("merge_group", { GROUP_BASE: base, GROUP_HEAD: head })).toEqual({ status: 0, calls: range });
-      for (const event of ["push", "workflow_dispatch", ""]) expect(run(event, all)).toEqual({ status: 0, calls: full });
+      // The event SHA differs from the checkout's HEAD. Require the exact argv, which excludes --all.
+      for (const event of ["push", "workflow_dispatch", ""]) {
+        expect(run(event, { ...all, GITHUB_SHA: head })).toEqual({ status: 0, calls: `${scanArgs}[--log-opts=${head}]\n` });
+      }
       expect(run("pull_request", { PR_BASE: head, PR_HEAD: rules })).toEqual({ status: 0, calls: full });
       expect(run("pull_request", { PR_BASE: base, PR_HEAD: ignored })).toEqual({ status: 0, calls: full });
       expect(run("merge_group", { GROUP_BASE: rules, GROUP_HEAD: ignored })).toEqual({ status: 0, calls: full });
       expect(run("merge_group", { GROUP_BASE: ignored, GROUP_HEAD: unignored })).toEqual({ status: 0, calls: full });
       const absent = "1".repeat(40);
       const refusals: [string, Record<string, string>][] = [
+        ["push", all], ["push", { GITHUB_SHA: head.slice(0, 39) }], ["push", { GITHUB_SHA: `${head} --all` }],
+        ["push", { GITHUB_SHA: absent }], ["push", { GITHUB_SHA: tree }],
         ["pull_request", {}], ["pull_request", { PR_BASE: base }], ["pull_request", { GROUP_BASE: base, GROUP_HEAD: head }],
         ["pull_request", { PR_BASE: "A".repeat(40), PR_HEAD: head }], ["pull_request", { PR_BASE: base.slice(0, 39), PR_HEAD: head }],
         ["pull_request", { PR_BASE: "--all", PR_HEAD: head }], ["pull_request", { PR_BASE: `${base} --all`, PR_HEAD: head }],
