@@ -746,6 +746,48 @@ const publicationTest = it.extend("publicationUrl", { scope: "file" }, async () 
   return url.href;
 });
 
+publicationTest("checks every proposed price list during Prepare through the publication login", async ({ publicationUrl }) => {
+  const publisher = new Pool({ connectionString: publicationUrl, max: 1 });
+  const missing = randomUUID(), inactive = randomUUID(), future = randomUUID(), expired = randomUUID();
+  const wrongRegion = randomUUID(), wrongCurrency = randomUUID(), valid = randomUUID();
+  const installedLists = [inactive, future, expired, wrongRegion, wrongCurrency, valid];
+  try {
+    const data = authored(40);
+    await pool.query(`INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from,valid_to) VALUES
+      ($1,'Inactive','ZZ','XXX','archived',now()-interval '1 hour',NULL),
+      ($2,'Future','ZZ','XXX','active',now()+interval '1 hour',NULL),
+      ($3,'Expired','ZZ','XXX','active',now()-interval '2 hours',now()-interval '1 hour'),
+      ($4,'Other region','AA','XXX','active',now()-interval '1 hour',NULL),
+      ($5,'Other currency','ZZ','XTS','active',now()-interval '1 hour',NULL),
+      ($6,'Effective','ZZ','XXX','active',now()-interval '1 hour',NULL)`,
+    installedLists);
+    const prices = [missing, ...installedLists].map(priceListId => ({
+      schemaVersion: 1 as const, commandKey: randomUUID(), priceListId, variantId: data.skuId,
+      mode: "one_time" as const, minQty: 1 as const, amountKind: "gross" as const, unitPriceMinor: 1733,
+      expected: { entryId: null, unitPriceMinor: null },
+    }));
+    data.payload.skus[0]!.priceOperations = prices;
+    await save(data, 1);
+    const api = native(undefined, publisher), who = (await api.authorize(actor))!;
+    const priceIssues = async (draftRevision: number) => {
+      const preview = await api.prepareCandidate({ draftId: data.draftId, draftRevision, expectedHead: null }, who);
+      expect(preview).toMatchObject({ preparation: { postStateDigest: expect.any(String) } });
+      if (!("issues" in preview)) throw new Error(JSON.stringify(preview));
+      return preview.issues.filter(({ code }) => code.startsWith("price_list_") || code === "price_validation_unavailable");
+    };
+    expect(await priceIssues(1)).toEqual([
+      { path: "skus.0.priceOperations.0.priceListId", code: "price_list_not_found" },
+      ...[1, 2, 3, 4, 5].map(index => ({ path: `skus.0.priceOperations.${index}.priceListId`, code: "price_list_not_active" })),
+    ]);
+    data.payload.skus[0]!.priceOperations = [prices.at(-1)!];
+    await save(data, 2);
+    expect(await priceIssues(2)).toEqual([]);
+  } finally {
+    await publisher.end();
+    await pool.query("DELETE FROM public.price_lists WHERE id=ANY($1::uuid[])", [installedLists]);
+  }
+});
+
 publicationTest("commits deferred publication checks through the restricted login", async ({ publicationUrl }) => {
   const publisher = new Pool({ connectionString: publicationUrl, max: 1 });
   try {

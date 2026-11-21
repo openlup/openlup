@@ -12,6 +12,7 @@ import { withCatalogPublicationRules } from "../../src/catalog/catalogPublicatio
 import type { CatalogValidationPort } from "../../src/catalog/publicationPorts.js";
 import { artifact, input, revision } from "./fixtures/publicationInput.js";
 import { createCatalogCandidateServiceWithPublication } from "../../src/catalog/candidateService.js";
+import { createPostgresCatalogPublicationCommands } from "../../src/catalog/catalogPublicationCommands.js";
 import { createCatalogCandidateService as createReleasedCatalogCandidateService } from "./fixtures/releasedCandidate.js";
 
 const draftId = "10000000-0000-4000-8000-000000000001", productId = "20000000-0000-4000-8000-000000000001";
@@ -23,6 +24,40 @@ const definition = { key: "example:article", version: 1, units: [{ code: "openlu
 const operation = { schemaVersion: 1 as const, commandKey: "price:first", variantId: skuId, priceListId: listId,
   mode: "one_time" as const, minQty: 1 as const, amountKind: "gross" as const, unitPriceMinor: 1200,
   expected: { entryId: null, unitPriceMinor: null } };
+
+it("reports each installed price-list refusal at its operation field during native Prepare", async () => {
+  const { record, payload, registry, installedDefinitionDigest, evidence } = input();
+  const actorId = "50000000-0000-4000-8000-000000000001";
+  const lists = [
+    { reason: "missing", code: "price_list_not_found" },
+    { reason: "inactive", code: "price_list_not_active" },
+    { reason: "out of window", code: "price_list_not_active" },
+    { reason: "wrong currency", code: "price_list_not_active" },
+    { reason: "valid", code: null },
+  ].map((list, index) => ({ ...list, id: `60000000-0000-4000-8000-00000000000${index}` }));
+  const sku = payload.skus[0]!;
+  sku.priceOperations = lists.map(({ id, reason }) => ({ ...operation, variantId: sku.id, priceListId: id, commandKey: reason }));
+  const query = vi.fn(async (sql: string, _args?: unknown[]) => {
+    if (sql.includes("public.catalog_draft_get(")) return { rows: [{ result: record }] };
+    if (sql.startsWith("SELECT public.catalog_draft_record(")) return { rows: [{ record }] };
+    if (sql.startsWith("WITH selected AS")) return { rows: evidence.drafts };
+    if (sql.includes("public.catalog_type_versions")) return { rows: [{ definition_digest: installedDefinitionDigest }] };
+    if (sql.includes("AS live")) return { rows: [{ head: null, live: false }] };
+    if (sql.includes("public.price_lists")) return { rows: lists.map(({ id, code }) => ({ id, code })) };
+    return { rows: [] };
+  });
+  const api = createPostgresCatalogPublicationCommands({ registry, catalogPublicationOwner: { run: work => work({ query }) },
+    authorizeHuman: async () => ({ ok: true, userId: actorId, role: "admin", isMachineActor: false }) });
+  const preview = await api.prepareCandidate({ draftId: record.draftId, draftRevision: record.revision, expectedHead: null },
+    (await api.authorize(null))!);
+  expect(preview).toMatchObject({ preparation: { postStateDigest: expect.any(String) } });
+  if (!("issues" in preview)) throw new Error(JSON.stringify(preview));
+  expect(preview.issues.filter(({ code }) => code.startsWith("price_list_") || code === "price_validation_unavailable")).toEqual(
+    lists.flatMap(({ code }, index) => code ? [{ path: `skus.0.priceOperations.${index}.priceListId`, code }] : []));
+  expect(query).toHaveBeenNthCalledWith(1, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  expect(query).toHaveBeenCalledWith(expect.stringContaining("public.price_lists"), [lists.map(({ id }) => id)]);
+});
+
 const payload = (): CatalogDraftPayloadV2 => ({ schemaVersion: 2, product: { id: productId, type: { key: definition.key, version: 1 },
   dimensions: [], slug: "synthetic-article", primarySkuId: skuId, sharedContent: {}, attributes: { title: "Synthetic title" } },
   skus: [{ id: skuId, productId, code: "SYNTHETIC-ONE", options: {}, netContent: { dimension: "count", unit: "openlup:piece", unscaled: "1", scale: 0 }, priceOperations: [operation] }] });

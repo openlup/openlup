@@ -96,6 +96,9 @@ test('publishes and recovers an installed catalogue issue under human authority'
     const prepared = await call(operatorPage, drafts, { action: 'prepare', draftId, expectedRevision });
     expect(prepared).toMatchObject({ ok: true, value: { expectedHead: head, candidateRef: expect.any(String),
       candidateDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), preparation: { postStateDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) } } });
+    if (expectedRevision === 1) expect(prepared.value.issues).toContainEqual({
+      path: 'skus.0.priceOperations.0.priceListId', code: 'price_list_not_found',
+    });
     const { candidateRef, candidateDigest, expectedHead, preparation } = prepared.value;
     const candidate = { productId, candidateRef, candidateDigest };
     expect(await call(operatorPage, operation, { action: 'approve', ...candidate, postStateDigest: preparation.postStateDigest }))
