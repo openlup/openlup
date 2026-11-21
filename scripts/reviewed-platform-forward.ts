@@ -3209,20 +3209,26 @@ const normalizeNativeStoreHeader = (value: string): string => nativeStoreTrim(va
 
 function nativeStoreSearchPathClause(header: string) {
   const { tokens, complete } = platformSqlTokens(header, false, true);
-  if (!complete) return null;
+  // The lexer skips comments, which must not disappear from a header comparison.
+  if (!complete || /--|\/\*/u.test(header)) return null;
+  const rawToken = (token: PlatformSqlToken) => header.slice(token.start, token.end);
   let depth = 0;
   let clause: { before: string; after: string; schemas: string[] } | null = null;
   for (const [index, token] of tokens.entries()) {
     if (nativeSymbol(tokens, index, "(")) depth++;
     if (nativeSymbol(tokens, index, ")")) depth--;
-    if (depth !== 0 || !nativeWord(tokens, index, "SET") || !nativeWord(tokens, index + 1, "SEARCH_PATH")) continue;
+    if (depth !== 0) continue;
+    const searchPath = nativeWord(tokens, index + 1, "SEARCH_PATH");
+    if (nativeWord(tokens, index, "RESET") && (searchPath || nativeWord(tokens, index + 1, "ALL"))) return null;
+    if (!nativeWord(tokens, index, "SET") || !searchPath) continue;
     // Read the raw clause so skipped comments and partial identifiers cannot join the list.
     const match = /^SET[ \t\n]+search_path(?:[ \t\n]*=[ \t\n]*|[ \t\n]+TO[ \t\n]+)([A-Za-z_][A-Za-z0-9_]*(?:[ \t\n]*,[ \t\n]*[A-Za-z_][A-Za-z0-9_]*)*)(?=$|[ \t\n]+[^, \t\n])/iu.exec(header.slice(token.start));
     const schemas = match && parseAsciiSearchPath(match[1]!);
     if (clause || !match || !schemas) return null;
+    const clauseEnd = token.start + match[0].length;
     clause = {
-      before: normalizeNativeStoreHeader(header.slice(0, token.start)),
-      after: normalizeNativeStoreHeader(header.slice(token.start + match[0].length)),
+      before: tokens.slice(0, index).map(rawToken).join(" "),
+      after: tokens.filter(entry => entry.start >= clauseEnd).map(rawToken).join(" "),
       schemas,
     };
   }

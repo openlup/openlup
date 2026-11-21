@@ -2277,10 +2277,10 @@ describe("native-store replacement search_path pg_temp tightening", () => {
     expect(() => assertNativeStoreForward(value, slot.path, Buffer.from(replacement), history)).not.toThrow();
   });
 
-  const signature = "public.fixture_tighten(uuid)";
-  const nativeReplacementCheck = (priorAttrs: string, nextAttrs: string, slotSearchPath: string | null) => {
-    const priorDef = `CREATE FUNCTION public.fixture_tighten(p_id uuid) RETURNS text LANGUAGE sql ${priorAttrs} AS $$ SELECT 'before'; $$;`;
-    const nextDef = `CREATE OR REPLACE FUNCTION public.fixture_tighten(p_id uuid) RETURNS text LANGUAGE sql ${nextAttrs} AS $$ SELECT 'after'; $$;`;
+  const signature = "public.fixture_tighten(text)";
+  const nativeReplacementCheck = (priorAttrs: string, nextAttrs: string, slotSearchPath: string | null, priorArg = "p_id text", nextArg = priorArg) => {
+    const priorDef = `CREATE FUNCTION public.fixture_tighten(${priorArg}) RETURNS text LANGUAGE sql ${priorAttrs} AS $$ SELECT 'before'; $$;`;
+    const nextDef = `CREATE OR REPLACE FUNCTION public.fixture_tighten(${nextArg}) RETURNS text LANGUAGE sql ${nextAttrs} AS $$ SELECT 'after'; $$;`;
     const beforeSha256 = sqlSha256(priorDef);
     const afterSha256 = sqlSha256(nextDef);
     const value = registry();
@@ -2318,6 +2318,27 @@ describe("native-store replacement search_path pg_temp tightening", () => {
     ],
   ])("accepts %s", (_label, priorAttrs, nextAttrs, slotSearchPath) => {
     expect(() => nativeReplacementCheck(priorAttrs, nextAttrs, slotSearchPath)).not.toThrow();
+  });
+
+  it.each([
+    ["single-quoted", "'a b'", "'a  b'"],
+    ["dollar-quoted", "$value$a b$value$", "$value$a  b$value$"],
+  ])("refuses changing whitespace in a %s DEFAULT alongside pg_temp", (_label, priorDefault, nextDefault) => {
+    expect(() => nativeReplacementCheck(
+      "SECURITY INVOKER SET search_path = pg_catalog, public",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+      `p_id text DEFAULT ${priorDefault}`,
+      `p_id text DEFAULT ${nextDefault}`,
+    )).toThrow("reviewed native store replacement header drifted");
+  });
+
+  it.each(["RESET search_path", "RESET ALL"])("refuses tightening with a top-level %s", reset => {
+    expect(() => nativeReplacementCheck(
+      `SECURITY INVOKER SET search_path = pg_catalog, public ${reset}`,
+      `SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp ${reset}`,
+      "pg_catalog, public, pg_temp",
+    )).toThrow("reviewed native store replacement header drifted");
   });
 
   it.each([
@@ -2421,6 +2442,18 @@ describe("native-store replacement search_path pg_temp tightening", () => {
       "changing STABLE to VOLATILE alongside pg_temp",
       "STABLE SECURITY INVOKER SET search_path = pg_catalog, public",
       "VOLATILE SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "changing STABLE to VOLATILE after the tightened search_path clause",
+      "SECURITY INVOKER SET search_path = pg_catalog, public STABLE",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp VOLATILE",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "changing whitespace in a SET literal alongside pg_temp",
+      "SECURITY INVOKER SET application_name TO 'a b' SET search_path = pg_catalog, public",
+      "SECURITY INVOKER SET application_name TO 'a  b' SET search_path = pg_catalog, public, pg_temp",
       "pg_catalog, public, pg_temp",
     ],
     [
