@@ -258,10 +258,20 @@ describe("packed consumer dependency roots", () => {
       requiredPackFiles.filter(path => path !== "docs/guide/README.md"));
   });
 
-  it("accepts only the closed copied catalogue skeleton", () => {
-    const base = "docs/guide/how-to/extend/catalogue-pack-skeleton/";
-    for (const name of ["catalogue.json"]) auditPackedFixture("none", "", {}, undefined, [...requiredPackFiles, base + name]);
-    for (const name of ["pack.ts", "catalogue.ts", "fixtures.ts", "registry.ts", "tsconfig.json", "extra.ts", "install.mjs", "nested/pack.ts"]) auditPackedFixture("none", "", {}, /contains non-runtime files/, [...requiredPackFiles, base + name]);
+  const skeletonDirectory = "docs/guide/how-to/extend/catalogue-pack-skeleton";
+
+  it("accepts the four copied catalogue skeleton files", () => {
+    const skeletonFiles = ["catalogue.json", "catalogue.ts", "pack.ts", "fixtures.ts"]
+      .map(name => `${skeletonDirectory}/${name}`);
+    auditPackedFixture("none", "", {}, undefined, [...requiredPackFiles, ...skeletonFiles]);
+  });
+
+  it("refuses unlisted catalogue skeleton and guide files", () => {
+    const unlistedFiles = ["registry.ts", "tsconfig.json", "extra.ts", "install.mjs", "nested/pack.ts"]
+      .map(name => `${skeletonDirectory}/${name}`);
+    for (const path of [...unlistedFiles, "docs/guide/other.ts"]) {
+      auditPackedFixture("none", "", {}, /contains non-runtime files/, [...requiredPackFiles, path]);
+    }
   });
 
   it("accepts nested guide pages", () => {

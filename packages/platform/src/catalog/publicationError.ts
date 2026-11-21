@@ -413,7 +413,7 @@ function publicationFailure(error: CatalogPublicationError): CatalogPublicationF
   const issue = error.diagnostic;
   const remedy = issue.kind === "platform" ? publicationRefusals[issue.code] : undefined;
   return { outcome: error.outcome, reason: remedy && !("fix" in remedy) ? remedy[0] : issue.code,
-    message: error.message, ...(issue.path ? { path: issue.path } : {}) };
+    message: error.message, ...(issue.path ? { path: issue.path } : {}), ...(issue.subject ? { subject: issue.subject } : {}) };
 }
 
 export function publicationReadFailure(error: unknown): CatalogPublicationFailure & { message: string } {

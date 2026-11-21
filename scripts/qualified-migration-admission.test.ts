@@ -140,10 +140,14 @@ it("pins the appended owner definitions to the issued preimages and exact path-o
 
 it("preserves the first twelve issued identities and pins all four revised replacements", () => {
   const registry = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH));
-  const issued = registry.qualifiedInstallations!;
-  expect(issued).toHaveLength(17);
+  const approved = registry.qualifiedInstallations!;
+  const issued = approved.slice(0, 17);
+  expect(approved).toHaveLength(18);
+  const publication = approved[17]!;
+  expect(publication.path).toBe("db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql");
+  expect(publication.sha256).toBe(sqlSha256(readFileSync(publication.path)));
   expect(issued.map(({ path }) => path)).toEqual(paths.slice(0, issued.length));
-  for (const entry of registry.qualifiedInstallations!) {
+  for (const entry of issued) {
     const bytes = readFileSync(`scripts/fixtures/reviewed-m14-qualified/${entry.path}`);
     expect(sqlSha256(bytes), entry.path).toBe(entry.sha256);
   }
@@ -166,7 +170,6 @@ it("preserves the first twelve issued identities and pins all four revised repla
 
 it("keeps the four revised restricted fixtures inert and exact after separate approval", () => {
   const issued = readReviewedForwardRegistry(readFileSync(REVIEWED_FORWARD_PATH)).qualifiedInstallations!;
-  expect(issued).toHaveLength(17);
   const revised = [REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE];
   const prior = [ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE];
   const hashes = [

@@ -1,4 +1,4 @@
-import { createCatalogProductTypeRegistry, type CatalogProductTypeInput } from '@openlup/platform/catalog';
+import { createCatalogProductTypeRegistry, type CatalogPackInput, type CatalogProductTypeInput } from '@openlup/platform/catalog';
 
 /** Fictional authoring type, shared by both configurations; no publication authority. */
 const types: CatalogProductTypeInput[] = [{
@@ -10,4 +10,20 @@ const types: CatalogProductTypeInput[] = [{
     && 'title' in content && typeof content.title === 'string' && content.title.trim()
     ? [] : [{ path: 'title', code: 'title_required' }],
 }];
-export const catalogDraftRegistry = createCatalogProductTypeRegistry(types);
+const pack = { id: 'starter', namespace: 'starter', version: 1, openlupRange: '1.x',
+  types, capabilities: {}, taxClasses: [] } satisfies CatalogPackInput;
+
+export const catalogueConformance = {
+  packs: [{ pack, drafts: [{ schemaVersion: 1, product: {
+    id: '00000000-0000-4000-8000-000000000001', type: { key: types[0]!.key, version: types[0]!.version },
+    dimensions: [], sharedContent: { title: 'Example item' },
+  }, skus: [] }] }],
+  requiredChecks: ['draft-content'],
+};
+
+let registry: ReturnType<typeof createCatalogProductTypeRegistry> | undefined;
+export const catalogDraftRegistry = {
+  get resolve() {
+    return (registry ??= createCatalogProductTypeRegistry(catalogueConformance.packs.flatMap(entry => entry.pack.types))).resolve;
+  },
+};

@@ -4,10 +4,11 @@ import { cpSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { env } from "node:process";
 import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualification.mjs";
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
-  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest,
+  includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers,
   reminderInstallationTest, starterLifecycle, starterOptionalCatalogueFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization } from "./distribution-cli-proof.ts";
@@ -178,12 +179,42 @@ it("migrates the pristine catalogue after the 1.2.0 starter release", () => {
   const previous = released(path), packBytes = released(pack);
   const next = readFileSync(resolve("examples/neutral-store", path), "utf8");
   write(path, previous); write(pack, packBytes); candidate(path, next);
+  write("package.json", released("package.json"));
+  candidate("package.json", readFileSync(resolve("examples/neutral-store/package.json"), "utf8"));
   const from = starterUpgradeSnapshot(app, "1.2.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
   migrateStarterOwned(app, target, from, { ...to, version: "1.2.0" });
   expect(readFileSync(join(app, path), "utf8")).toBe(previous);
   migrateStarterOwned(app, target, from, to);
   expect(readFileSync(join(app, path), "utf8")).toBe(next);
   expect(readFileSync(join(app, pack), "utf8")).toBe(packBytes);
+  expect(next).toContain("export const catalogueConformance");
+  expect(next).toContain("get resolve()");
+
+  const bin = resolve("packages/platform/src/lifecycle/openlup.mjs");
+  mkdirSync(join(app, "node_modules/.bin"), { recursive: true });
+  symlinkSync(bin, join(app, "node_modules/.bin/openlup"));
+  symlinkSync(resolve("packages/platform"), join(app, "node_modules/@openlup/platform"));
+  write("from.json", from);
+  write("to.json", to);
+  const upgraded = spawnSync(process.execPath, [bin, "upgrade", "apply", "--root", app, "--from", join(app, "from.json"),
+    "--to", join(app, "to.json"), "--schema-version", "0", "--json"], { cwd: app, encoding: "utf8" });
+  expect(upgraded.status, upgraded.stdout).toBe(0);
+  const verifyWrappers = () => proveStarterCatalogueWrappers(app, target);
+  verifyWrappers();
+
+  write("released-catalogue.ts", previous);
+  write(path, previous.replace("title_required", "adopter_title_required"));
+  const reconciled = execFileSync("git", ["merge-file", "-p", join(app, path), join(app, "released-catalogue.ts"), join(target, path)], { encoding: "utf8" });
+  expect(reconciled).toBe(next.replace("title_required", "adopter_title_required"));
+  write(path, reconciled);
+  verifyWrappers();
+  const installed = execFileSync(process.execPath, ["--input-type=module", "-e", `
+    const { catalogueConformance, catalogDraftRegistry } = await import(${JSON.stringify(pathToFileURL(join(app, path)).href)});
+    const type = { key: "starter:item", version: 1 };
+    console.log(JSON.stringify({ effects: catalogDraftRegistry.resolve(type).validateContent({}),
+      sameValidator: catalogueConformance.packs[0].pack.types[0].validateContent === catalogDraftRegistry.resolve(type).validateContent }));
+  `], { cwd: resolve("examples/neutral-store"), encoding: "utf8" });
+  expect(JSON.parse(installed)).toEqual({ effects: [{ code: "adopter_title_required", path: "title" }], sameValidator: true });
 });
 
 it.each([false, true])("upgrades the 1.3.0 starter agent guide, customized=%s", customized => {
@@ -337,6 +368,7 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
       return JSON.parse(refusal.stdout);
     }, path)) : [];
   const checkUpgradedFiles = () => {
+    expect(read("AGENTS.md")).toContain("customize-the-starter.md#publish-a-saved-catalogue-draft");
     expect(read(reminderInstallationTest)).toBe(to.files[reminderInstallationTest]);
     expect(read(starterLifecycle)).toBe(to.files[starterLifecycle]);
     if (localTest) expect(read(localTest.path)).toBe(localTest.bytes);

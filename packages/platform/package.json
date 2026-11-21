@@ -70,6 +70,9 @@
   "dependencies": {
     "zod": "^4.6.6"
   },
+  "imports": {
+    "#catalog-testing/projector": "./dist/catalog/testing/catalogExtensionConformance.js"
+  },
   "exports": {
     "./package.json": "./package.json",
     "./fulfillment/native": {

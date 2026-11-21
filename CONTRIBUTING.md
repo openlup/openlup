@@ -193,7 +193,7 @@ Start from the question you need to answer during implementation:
 | Change | Contributor files |
 | --- | --- |
 | Edit existing behavior | Edit the owning source and its nearest behavior tests. Update reader guidance if the public contract changes. |
-| Add or remove a tracked public file | Update the [publication inventory](config/openlup-publication-catalog.json) unless the [publication policy](docs/platform/DOCUMENTATION.md) already admits the file by pattern. |
+| Add or remove a tracked public file | Update the [publication inventory](config/openlup-publication-catalog.json) unless the [publication policy](docs/platform/DOCUMENTATION.md) already admits the file by pattern (`packages/{core,outbox,platform}/changes/*.md` or `packages/core/docs/guide/**/*.md`). |
 | Change an exported contract or add a migration | Follow the owning [package checks](#package-policy-and-release-checks) or [migration workflow](docs/platform/DATA_AND_MIGRATIONS.md) to regenerate affected files. |
 | Prepare a release or change repository controls | See [release and repository controls](docs/platform/DEVELOPMENT_AND_RELEASE.md). These are maintainer tasks. |
 
@@ -1232,6 +1232,7 @@ Keep documentation falsifiers independently discoverable for routing, navigation
 
 ### Package, policy and release checks
 
+See the [release cadence](.github/VERSIONING_AND_EOL.md#release-cadence).
 `npm run packages:check -- --manifest-only` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each
 package as released or as unreleased. A released package `packages/<name>` is

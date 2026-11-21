@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AppUpgradePlan, AppVerificationFinding } from "@openlup/platform/lifecycle";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
@@ -270,6 +270,23 @@ export function reconcileLifecycleCustomization(app: string, predecessor: string
   return { path, bytes };
 }
 
+export function proveStarterCatalogueWrappers(app: string, scratch: string): void {
+  const { scripts } = JSON.parse(readFileSync(join(app, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
+  for (const [script, expected] of [
+    ["catalogue:check", "openlup catalogue check --packs ./owned/catalogue.json --json"],
+    ["catalogue:check:source", "openlup catalogue project --trusted-packs ./owned/catalogue.ts --json"],
+  ] as const) {
+    const command = scripts?.[script];
+    assert(typeof command === "string" && command === expected, `unexpected starter catalogue script: ${script}`);
+    const [, ...args] = command.split(" ");
+    const report = JSON.parse(execFileSync(process.execPath, [realpathSync(join(app, "node_modules/.bin/openlup")), ...args], {
+      cwd: app, encoding: "utf8", env: { ...isolatedConsumerEnv(), TMPDIR: scratch, TMP: scratch, TEMP: scratch },
+    }));
+    assert.equal(report.command, script.endsWith(":source") ? "catalogue project" : "catalogue check");
+    assert.equal(report.exitCode, 0);
+  }
+}
+
 type UpgradePair = { from: string; to: string; fromVersion: string; toVersion: string;
   evidence: { planSha256?: string; customizations?: Record<string, string>;
     managedConflict?: { path: string; action: "create" | "replace" }; phases: { name: string; result: string }[] } };
@@ -429,7 +446,10 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
   rmSync(workspace, { recursive: true, force: true });
-  return () => phase("installed-application-and-owned-bytes", () => { assertCompleteStarter(app, to); checkUpgradeFiles(); });
+  return () => phase("installed-application-and-owned-bytes", () => {
+    assertCompleteStarter(app, to); checkUpgradeFiles();
+    if (to.files["package.json"]?.includes('"catalogue:check:source"')) proveStarterCatalogueWrappers(app, dirname(app));
+  });
 }
 
 // CLI refusal reports can omit the command-specific payload. The assertions

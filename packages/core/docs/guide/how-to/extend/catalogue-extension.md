@@ -1,87 +1,80 @@
 # Catalogue extension recipes
 
-Experimental catalogue additions target the next package set. Use matching installed
-`@openlup/*` versions and Node 24. This offline tool checks definitions,
-references, exact quantities and supplied v1 draft facts. It grants no installation,
-migration, publication or activation authority. The minimal skeleton is a fictional
-stationery pack; full reference packs and installed commerce journeys remain pending.
+Use matching installed `@openlup/*` versions and Node 24. Check an application-owned
+pack with `catalogue project --trusted-packs`. The module exports
+`catalogueConformance`, whose `packs` list pairs each authoring pack with its
+fixtures. Keep its imports and fixture setup silent and offline. Build the
+authoring registry lazily from the same packs. The module and its imports run
+with the operator's process permissions, so use this command only with trusted code.
 
-The single Node entry `runCatalogExtensionConformance(jsonText: string)` returns
-`Promise<CatalogConformanceReport>`. Supply JSON text, parsed without a reviver.
-Non-string direct arguments report `conformance_subject_invalid` (1) without
-inspection or coercion; invalid JSON rejects with `SyntaxError`. The CLI reads
-UTF-8 text and never imports the supplied file.
+The CLI writes deterministic UTF-8 JSON, with sorted keys and original array
+order, to a private scratch directory. The CLI resolves symlinks and requires
+scratch to be outside the working directory and every ancestor of the trusted
+module with a `package.json`. The CLI reads the file back and checks those bytes once. Registered content validators must return
+synchronously. The report gives the file, SHA-256, timings, checker invocation
+count, recheck and inert replay commands. The scratch file can be deleted after replay.
 
-Each `packs` entry contains `pack` and optional `drafts`, `quantities`, `attributes`,
-`combinations` and `refusals`. JSON type definitions omit `validateContent`;
-supplying it refuses with `definition_unknown_field`. A v1 draft requesting
-`sharedContent` validation returns `conformance_owner_unavailable` (2). The
-copied skeleton omits that content and checks only its supplied facts.
-Quantity fixtures contain `{type, value, targetUnit?}` and require explicit
-conversion factors. Type references use a namespaced string key and positive
-integer version; malformed references refuse before registry lookup. Quantity values have only
-`dimension`, `unit`, `unscaled` and `scale`: the first three are strings and scale
-is an integer. The shared owner retains domain, numeric and conversion bounds.
+`catalogue check --packs` reads inert JSON regardless of the file suffix.
+The Node entry `runCatalogExtensionConformance(jsonText: string)` returns a Promise
+and refuses non-string arguments without inspection or coercion. JSON definitions
+omit `validateContent`. Replay reports unavailable content evidence and still
+runs the other draft owner checks. `requiredChecks: ["draft-content"]` requires
+at least one admitted fixture per pack that calls its content validator.
 
-`requiredChecks: ["attribute-values", "variant-combinations"]` requires fixtures
-for those available owners in each pack. Category graphs, tax intervals, cadence,
-promotion grammar and publication remain unavailable; for example,
-`requiredChecks: ["taxonomy"]` reports required evidence unavailable (2).
-Unknown fields refuse. Attributes and combinations stay separate from strict v1 drafts.
+Each pack accepts `drafts`, `quantities`, `attributes`, `combinations` and
+`refusals`. Drafts use the v1–v3 schemas and draft owners. Version 3 checks
+operation and price shape. Quantity fixtures use `{type, value, targetUnit?}`,
+explicit conversion factors, and a type key and version. Request
+`attribute-values` or `variant-combinations` in `requiredChecks` to require their
+fixtures in each pack.
 
-Reference rows and retained options are fixture observations. A PASS does not
-validate persisted identity bytes, history or database state. Installed versions,
-database references/cadence, listing capacity, publication races and legal
-rate correctness remain runtime facts. No database, network, seed or publish
-path is supplied. Exit codes: 0 satisfied within scope, 1 violated, 2 required
-evidence unavailable, 64 invalid invocation or JSON syntax, 74 filesystem or
-unexpected operation failure. Only explicitly allowlisted, deliberate owner input
-errors become exit 1 at the input path, retaining their stable codes. Other owner
-exceptions propagate unchanged: the direct promise rejects and the CLI returns
-74 with raw errors withheld. Default checker failure is 74; only an error tagged
-at its `JSON.parse` site gives 64, and only owner input-denial codes give 1.
-Integrity failures, including `combination_identity_integrity_failed` and legacy
-`combination_digest_collision`, give 74. Closed primitive
-admission prevents malformed quantity types from reaching owner coercion.
-Violations take precedence over unavailable evidence.
-JSON stdout is one `formatVersion: 1` object. Findings retain exact owner codes
-and paths, sort by JSON pointer, code and fixture, and include cause, fix, recipe,
-identical recheck command and evidence.
+Refusal and reference records and retained options describe fixture observations.
+Installed state, price execution and publication require separate evidence and
+authority. Exit 0 means supplied checks passed, 1 means an input violation, 2
+means required evidence is unavailable, 64 means invalid command or inert JSON
+syntax, and 74 means a load, I/O, integrity or unexpected validator failure.
+Violations take precedence over unavailable evidence. JSON stdout is one
+`formatVersion: 1` object. Findings retain owner codes, JSON pointers, cause, fix,
+recipe, recheck and evidence, ordered by path, code and fixture.
+An integrity failure such as `combination_identity_integrity_failed` exits 74.
+The CLI withholds raw errors when loading the module or running its validators.
+
+
+For the installed starter, follow [Publish a saved catalogue draft](../build/customize-the-starter.md#publish-a-saved-catalogue-draft)
+to prepare, approve, issue and read the exact saved facts.
 
 ## New vertical
 
-Copy [the static skeleton](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/catalogue.json):
+Copy the [TypeScript skeleton](./catalogue-pack-skeleton/catalogue.ts), rename its
+namespace, edit `pack.ts` and `fixtures.ts`, and add each pack once in `catalogue.ts`.
 
 ```sh
-cp node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton/catalogue.json owned/catalogue.json
-npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json
+mkdir -p owned/catalogue
+cp node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton/*.ts owned/catalogue/
+npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json
 ```
 
-Five steps: copy; rename its namespace; edit definitions/data; register each pack
-as one entry in `packs`; check. This JSON file is offline evidence, separate from
-application code that composes `defineCatalogPack`, its content validator and
-runtime registry. Empty capabilities claim no runtime feature. For each
-`capabilities: {"feature": false}`, include a recorded refusal observation:
+For inert checking, copy the [static JSON sample](./catalogue-pack-skeleton/catalogue.json)
+and run `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+For a capability declared `false`, record a refusal observation such as
 
 ```json
 {"name":"feature refusal","capability":"feature","expectedCode":"owner_unsupported","observedCode":"owner_unsupported","zeroEffects":true}
 ```
 
-The checker checks consistency of these records; it does not execute the refusal
-or independently observe effects. Missing, malformed, mismatched or nonzero-effect
-records refuse. Usual codes: `pack_type_namespace_mismatch`, `definition_key_invalid`,
-`definition_unknown_field`, `draft_input_invalid`, `draft_payload_invalid`,
-`conformance_subject_invalid`, `conformance_owner_unavailable`,
-`conformance_refusal_fixture_missing`, `conformance_refusal_fixture_invalid`,
-`conformance_refusal_fixture_mismatch`. Custom attribute kinds, quantity dimensions
-and promotion benefit/target kinds require upstream changes to the closed grammar.
+The checker compares the codes and requires zero effects in the record. Requesting
+`requiredChecks: ["owner-refusals"]` reports unavailable evidence until an owner
+can execute that refusal. Usual codes include `pack_type_namespace_mismatch`,
+`definition_unknown_field`, `draft_input_invalid`, `conformance_subject_invalid`,
+`conformance_refusal_fixture_missing`, `conformance_refusal_fixture_invalid` and
+`conformance_refusal_fixture_mismatch`.
 
 ## Add attribute
 
-Edit `catalogue.json`. Metadata example: `attributes: [{key: "finish",
+Edit `pack.ts`. Metadata example: `attributes: [{key: "finish",
 scope: "variant", valueType: {kind: "boolean"}, required: false, cardinality:
 {min: 0, max: 1}, filterable: true, facetable: true, public: true, displayOrder: 0,
-labels: {en: "Finish"}}]`. Separate `attributes` fixtures call `validateCatalogAttributes` and
+labels: {en: "Finish"}}]`. In `fixtures.ts`, `attributes` fixtures call `validateCatalogAttributes` and
 `prepareCatalogAttributeProjection` with `{type, input, publicationRevision,
 references?}`. `input` contains `productAttributes` and `skus: [{id, attributes?}]`.
 Missing required values/locales, scope, unknown keys, storage and projection-text
@@ -102,15 +95,15 @@ Usual metadata codes:
 `definition_attribute_invalid`, `definition_duplicate_attribute`,
 `definition_facetable_not_filterable`, `definition_unknown_attribute_unit`,
 `definition_duplicate_enum_value`. Check:
-`npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+`npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
 ## Add unit
 
-Edit `catalogue.json`: `units: [{code: "stationery:each", dimension:
+Edit `pack.ts`: `units: [{code: "stationery:each", dimension:
 "count", integral: true, factor: {canonicalUnit: "openlup:piece", unscaled: "1",
 scale: 0}}]`. Add `{type: {key: pack.types[0].key, version: pack.types[0].version},
 value: {dimension: "count", unit:
-"stationery:each", unscaled: "2", scale: 0}}` to quantity fixtures.
+"stationery:each", unscaled: "2", scale: 0}}` to `quantities` in `fixtures.ts`.
 Exact conversion is available; new dimensions require upstream grammar changes.
 Usual codes: `definition_unit_invalid`, `definition_unit_factor_invalid`,
 `definition_duplicate_unit`, `definition_net_content_invalid`,
@@ -119,13 +112,13 @@ Usual codes: `definition_unit_invalid`, `definition_unit_factor_invalid`,
 `quantity_unknown_unit`, `quantity_overflow`, `quantity_not_exactly_representable`.
 Combination quantities additionally refuse `unit_factor_missing` until their
 installed definition declares an explicit exact factor.
-Check: `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
 ## Add axis
 
-Edit `catalogue.json`: `dimensions: [{key: "finish", kind:
+Edit `pack.ts`: `dimensions: [{key: "finish", kind:
 "boolean"}], axes: [{key: "finish", attributeKey: "finish"}]`, referencing a
-variant attribute in the same type. Separate `combinations` fixtures call `canonicalizeCatalogCombinationV2` and
+variant attribute in the same type. In `fixtures.ts`, `combinations` fixtures call `canonicalizeCatalogCombinationV2` and
 `validateCatalogCombinationChangesV2` with `{type, input}`. Input contains
 `axes`, `typed`, `retained`, `incoming` and optional `capacity`. Each row has a
 nonempty string `skuId`, `state: "draft" | "active" | "withdrawn"` and
@@ -157,50 +150,50 @@ record for compatibility; the owner now emits `combination_identity_integrity_fa
 configured retained product capacity (default 50,000), reported by
 `product_capacity_exceeded` or `product_capacity_invalid`. Persisted incremental
 publication and its authority/races remain with the publisher.
-Check: `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
 ## Add tax class
 
-Edit `catalogue.json`: `taxClasses: [{key: "standard"}]` and
+Edit `pack.ts`: `taxClasses: [{key: "standard"}]` and
 `taxClass: "standard"` on the type. Default class references are checked now;
 market-owned dated rates in `owned/market-packs/<market>/tax-table.ts`, coverage,
 gaps/overlaps and tax publication await their owners. No fake rate data belongs
 in this skeleton. New attribute/dimension/promotion kinds remain upstream work.
 Usual codes: `definition_tax_class_invalid`, `definition_unknown_tax_class`.
-Check references: `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+Check references: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 Requesting `requiredChecks: ["tax-coverage"]` returns 2 until its owner is available.
 
 ## Add category or collection
 
-Future evidence in `catalogue.json`. Example request: `requiredChecks:
+Request evidence in `catalogue.ts`. Set `requiredChecks:
 ["taxonomy"]`. Graph/depth and collection-reference validation and publishing are
 pending; there is no admitted category field to paste into current pack metadata.
 Usual current code: `conformance_owner_unavailable`; future codes belong to the
 taxonomy owner. New closed grammar kinds require upstream work.
-Check availability: `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+Check availability: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
 ## Promotion with existing grammar
 
-Future evidence in `catalogue.json`; request `requiredChecks:
+In `catalogue.ts`, set `requiredChecks:
 ["promotions"]`. Target/currency validation and publishing are pending, including
 per-currency money maps; do not invent a campaign field here. New benefit/target
 kinds require upstream work. Usual current code: `conformance_owner_unavailable`.
-Check availability: `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+Check availability: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
 ## Subscription profile
 
-Edit metadata in `catalogue.json`: `subscriptionProfiles: [{key:
+Edit metadata in `pack.ts`: `subscriptionProfiles: [{key:
 "stationery:repeat", version: 1}]`, with the same `subscriptionProfileRef` on a
 type. Reference checking is available. Cadence bounds, demand pools, unit
 compatibility, overflow and runtime composition await the profile owner; request
 `requiredChecks: ["profiles"]` for those checks. Never infer a database cadence
 bound. New closed grammar kinds require upstream work. Usual codes:
 `definition_profile_ref_invalid`, `definition_unknown_profile_ref`.
-Check: `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
 ## Upgrade a definition
 
-Edit `catalogue.json`, keeping the old version composed. Example:
+Edit `pack.ts`, keeping the old version composed. Example:
 `key: "stationery:notebook", version: 2`. Every digest-covered change gets a new
 version; see the installed [canonical agreements](../../concepts/architecture-and-ownership.md).
 The offline checker finds duplicates and invalid metadata; it cannot compare an
@@ -208,4 +201,4 @@ installed digest or authorize replacement, migration or publication. Those remai
 with the installer and later writers. New kinds/dimensions/benefits require upstream
 work. Usual codes: `definition_version_invalid`, `definition_duplicate_identity`,
 `definition_validator_ref_invalid`. Check:
-`npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
+`npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.

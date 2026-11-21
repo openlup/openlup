@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { resolve, dirname, relative } from 'node:path';
+import { access, cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { delimiter, resolve, dirname, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { setTimeout } from 'node:timers/promises';
@@ -12,6 +12,8 @@ import { runSettingsCommand } from '@openlup/platform/operations/server';
 import { createSettingsBindings } from '../owned/settings-host.ts';
 import { configurations } from '../owned/store.config.ts';
 import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { proveStarterCatalogueWrappers } from '../../../scripts/packages/distribution-cli-proof.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // Source-release tests keep scratch inside this application.
@@ -695,4 +697,80 @@ export function selectConfiguration(id: string = defaultConfigurationId): StoreC
     if (child && child.exitCode === null) { child.kill('SIGTERM'); await exited; }
     await rm(target, { recursive: true, force: true });
   }
+});
+
+test('RP2 source wrapper checks the independent registry from packed dependencies', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'catalogue-extract-'));
+  const target = resolve(directory, 'app'), checkout = resolve(root, '../..');
+  const scoped = resolve(target, 'node_modules/@openlup'), bin = resolve(target, 'node_modules/.bin');
+  try {
+    execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' });
+    await mkdir(bin, { recursive: true });
+    for (const name of ['core', 'platform']) {
+      const [pack] = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', directory],
+        { cwd: resolve(checkout, 'packages', name), encoding: 'utf8', stdio: 'pipe' }));
+      const installed = resolve(scoped, name);
+      await mkdir(installed, { recursive: true });
+      execFileSync('tar', ['-xzf', resolve(directory, pack.filename), '-C', installed, '--strip-components=1']);
+    }
+    await cp(resolve(checkout, 'node_modules/zod'), resolve(target, 'node_modules/zod'), { recursive: true });
+    await symlink('../@openlup/platform/src/lifecycle/openlup.mjs', resolve(bin, 'openlup'));
+
+    const invoke = (script: string, exit: number) => {
+      const result = spawnSync('npm', ['run', '--silent', script], { cwd: target, encoding: 'utf8',
+        env: { PATH: [dirname(process.execPath), '/usr/bin', '/bin'].join(delimiter), TMPDIR: directory, TMP: directory, TEMP: directory } });
+      assert.ifError(result.error);
+      assert.equal(result.stderr, '');
+      assert.equal(result.status, exit, result.stdout);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.exitCode, exit);
+      return report;
+    };
+    const path = resolve(target, 'owned/catalogue.ts');
+    const owned = await readFile(path, 'utf8');
+    assert.equal(invoke('catalogue:check', 0).command, 'catalogue check');
+    assert.equal(invoke('catalogue:check:source', 0).command, 'catalogue project');
+
+    const manifestPath = resolve(target, 'package.json');
+    const manifestBytes = await readFile(manifestPath);
+    const manifest = JSON.parse(manifestBytes.toString('utf8'));
+    try {
+      for (const [script, wrong] of [
+        ['catalogue:check', manifest.scripts['catalogue:check:source']],
+        ['catalogue:check:source', manifest.scripts['catalogue:check:source'] + ';'],
+      ]) {
+        await writeFile(manifestPath, JSON.stringify({ ...manifest, scripts: { ...manifest.scripts, [script]: wrong } }));
+        assert.throws(() => proveStarterCatalogueWrappers(target, directory),
+          { message: `unexpected starter catalogue script: ${script}` });
+      }
+    } finally { await writeFile(manifestPath, manifestBytes); }
+    proveStarterCatalogueWrappers(target, directory);
+
+    const independent = owned.replaceAll('starter:', 'independent:').replaceAll("'starter'", "'independent'");
+    await writeFile(path, independent);
+    // This application uses offline authoring and has no installed starter rules.
+    await rm(resolve(target, 'owned/catalogue-rules.cjs'));
+    const report = invoke('catalogue:check:source', 0);
+    const projected = JSON.parse(await readFile(report.transport.subjectPath, 'utf8'));
+    assert.deepEqual(projected.packs.map(({ pack }: { pack: { id: string } }) => pack.id), ['independent']);
+    assert.deepEqual(projected.packs[0].drafts[0].product.type, { key: 'independent:item', version: 1 });
+    const registry = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import assert from 'node:assert/strict';
+      import { catalogDraftRegistry, catalogueConformance } from './owned/catalogue.ts';
+      import { starterCatalogue } from './host/editor-catalogue.ts';
+      const type = { key: 'independent:item', version: 1 };
+      const resolved = catalogDraftRegistry.resolve(type);
+      assert.equal(resolved, starterCatalogue().registry.resolve(type));
+      assert.equal(resolved.validateContent, catalogueConformance.packs[0].pack.types[0].validateContent);
+      assert.equal(catalogDraftRegistry.resolve({ key: 'starter:item', version: 1 }), undefined);
+      process.stdout.write(resolved.key);
+    `], { cwd: target, encoding: 'utf8', stdio: 'pipe' });
+    assert.equal(registry, 'independent:item');
+
+    await writeFile(path, independent.replace("netContentUnits: ['independent:each']", "netContentUnits: ['independent:absent']"));
+    assert.ok(invoke('catalogue:check:source', 1).findings.some(({ code }: { code: string }) => code === 'definition_unknown_net_content_unit'));
+    const host = spawnSync(process.execPath, ['--input-type=module', '-e', "import './host/editor-catalogue.ts';"], { cwd: target, encoding: 'utf8' });
+    assert.equal(host.status, 1);
+    assert.match(host.stderr, /invalid_catalog_type_definition/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

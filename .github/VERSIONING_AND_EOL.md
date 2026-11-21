@@ -12,9 +12,6 @@ npm installation.
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
 
-Keep a deprecation bridge through at least one supported stable minor, and
-remove it no earlier than the next major with explicit upgrade notes.
-
 ## Support window
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#support-window).
@@ -24,6 +21,17 @@ Earlier minors receive no fixes; upgrade to the latest minor before reporting a
 defect. There are no LTS or maintenance branches and no previous-major backport
 commitment. The project maintainer remains accountable through [SECURITY.md](../SECURITY.md).
 Release-evidence retention is owned by [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification).
+
+## Release cadence
+
+- Major releases are planned and ship at most once a year.
+  No further major release ships in 2026. A major release removes only previously
+  deprecated contracts, after a compatibility bridge through at least one
+  supported minor release.
+- Minor releases ship about every four weeks. A minor release ships earlier only
+  for a security or money defect whose fix requires a database (SQL) or public
+  API change.
+- Patch releases contain fixes only.
 
 ## Exceptional cessation
 
