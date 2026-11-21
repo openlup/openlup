@@ -96,6 +96,7 @@ export const TOOLING_INPUTS = {
     'db/platform/migrations/',
     'supabase/migrations/',
     'packages/',
+    'server/adapters/postgres/migrationRunner.ts',
     'src/domains/commerce/offerAvailability.ts',
   ], // Real PostgreSQL native/managed batch catalog gate, compat harness and inventory/offer witnesses.
 };

@@ -156,6 +156,7 @@ describe('conservative tooling scope', () => {
     expect(pkgChange).not.toContain('scripts/packages/release-docs-pass.test.ts');
     expect(pkgChange).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
 
+    expect(excludedToolingTests(['server/adapters/postgres/migrationRunner.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['src/domains/commerce/offerAvailability.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
     expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
