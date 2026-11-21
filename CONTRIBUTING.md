@@ -307,12 +307,12 @@ sources, such as the starter browser image's, are mirror inputs only: that image
 is pulled from the organization mirror alone, with no upstream fallback.
 Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
 the existing 300-second cold image pull and schema installation, and
-`postgresTeardownTimeoutMs` (45 seconds). These are explicit integration-hook
+`postgresTeardownTimeoutMs` (75 seconds). These are explicit integration-hook
 budgets; ordinary test deadlines remain unchanged. The shared helper bounds
-Docker availability to five seconds, each start/removal command to 30 seconds,
+Docker availability to five seconds, each start/removal command to 60 seconds,
 and TCP readiness to 60 seconds of wall-clock time, including connect/query
 attempts and waits. After image resolution, port-conflict retries share a
-60-second startup budget; failed-start cleanup still gets its 30-second removal
+90-second startup budget; failed-start cleanup still gets its 60-second removal
 budget before reporting failure. Readiness destroys its throwaway client after each probe.
 `closePostgres` gives all fixture pools and adapter/store close callbacks one
 shared five-second close phase, then attempts every owned container removal even
