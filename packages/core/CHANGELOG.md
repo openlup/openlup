@@ -17,40 +17,16 @@ in the source repository.
 
 ### Compatibility exception
 
-This minor release includes a fail-closed payment change outside the SemVer
-promise. The native rail now needs authenticated evidence of captured money
-before it can settle a payment.
+This minor release tightens native payment settlement outside the SemVer promise.
 
-- Return provider-collected `amountMinor` and `currency` with
-  `capturedAmountBasis: "provider_capture_v1"` on verified success readbacks.
-  The packaged reconciliation worker, verify-now and checkout recovery send
-  a success without the basis to manual review. The managed reference cron
-  can still take a matching success without the basis to terminal application.
-- Custom native renewal adapters supply the collected money in `observedMoney`
-  with the same basis. A dated success with matching amount and currency
-  returns `unknown` without the basis and is left unapplied. A money mismatch
-  raises `subscription_renewal_provider_money_mismatch` first.
-- For custom native webhook adapters, set
-  `capturedAmountBasis: "provider_capture_v1"` on verified success evidence
-  backed by the provider-collected amount. Keep the field outside the event
-  fingerprint. Fresh native settlement requires it.
-- `@openlup/platform/payments/stripe` and `@openlup/platform/payments/tpay` success readbacks use the collected amount. If collected money is
-  missing, the readback may report the configured amount separately for invoice
-  comparison.
-  Compare the provider evidence with the attempted payment before retrying or
-  issuing an invoice. Conflicting `@openlup/platform/payments/stripe` success webhooks and `@openlup/platform/payments/tpay` success
-  readbacks go to review. Managed invoice issuance and expired-checkout
-  recreation are blocked when their readback detects the conflict. In 1.2.0,
-  a `@openlup/platform/payments/stripe` success webhook with different requested and received amounts
-  settled using the requested amount.
-- Replay a completed 1.2.0 native reconciliation with its original key and
-  evidence. An exact replay remains valid. A changed payload can conflict,
-  including replacing an omitted amount with explicit `null`.
-- Review late verified captures on the native rail against the provider
-  transaction. For a cancelled intent or cancelled or expired order, 1.3.0
-  records the capture for review and leaves the order unpaid. In 1.2.0 this
-  capture was refused. Confirm the collected money and resolve it with the
-  provider, refunding when appropriate, before attempting another charge.
+- (a) In custom payment reconciliation readbacks and native renewal bindings that report success, supply provider-collected amount and currency (`amountMinor` and `currency` in readbacks, `observedMoney` in renewals) with `capturedAmountBasis: "provider_capture_v1"`, and set the same basis outside the event fingerprint on verified custom native webhook success evidence backed by the collected amount.
+  Behaviour is specified by “records the exact amount and provenance of a %s readback before settling” and “makes replay fingerprints independent of receipt time and never invents provider occurrence time”.
+- (b) For successful `@openlup/platform/payments/stripe` and `@openlup/platform/payments/tpay` readbacks, use the provider-collected amount without substituting the configured amount, and review `provider_amount_mismatch` readbacks or verified `@openlup/platform/payments/stripe` webhooks that return HTTP 409 before proceeding.
+  Behaviour is specified by “keeps a provider success with zero collected money out of capture readback”, “records a provider success with conflicting %s without settling native payment”, “records and refuses a signed success with conflicting collected amount %s on each delivery” and “acknowledges a completed legacy receipt for $object”.
+- (c) Replay completed 1.2.0 native reconciliations with the original key and evidence.
+  Behaviour is specified by “records the exact amount and provenance of a %s readback before settling”.
+- (d) For native late captures on a cancelled intent or a cancelled or expired order, use `captureReviewRequired` or `readCaptureReview` to find a recorded review and resolve the transaction with the provider before charging again.
+  Behaviour is specified by “retains a %s order's late %s capture without paying it”.
 
 If your legacy cart reminder job runs under its own database role, run this
 grant as the database owner once after applying the reminder episode pin
