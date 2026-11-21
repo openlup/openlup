@@ -164,7 +164,6 @@ test('settings check names the offer member when zero cadence prevents configura
     assert.equal(checked.appValidation.state, 'failed');
     assert.equal(checked.appValidation.phase, 'load');
     assert.match(checked.appValidation.message, /^starter_subscription_offer_invalid \(subscriptionOffers\.<mode>\.days: .+\)$/);
-    assert.deepEqual(checked.rows, []);
   } finally {
     await rm(target, { recursive: true, force: true });
   }

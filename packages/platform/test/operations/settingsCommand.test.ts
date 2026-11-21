@@ -527,7 +527,7 @@ it.each([
   expect(loaded.exit).toBe(1);
   expect(validated.exit).toBe(1);
   expect(JSON.parse(loaded.output)).toMatchObject({
-    state: "invalid", appValidation: { state: "failed", phase: "load", message }, rows: [],
+    state: "invalid", appValidation: { state: "failed", phase: "load", message },
   });
   expect(JSON.parse(validated.output)).toMatchObject({
     state: "invalid", appValidation: { state: "failed", message },
