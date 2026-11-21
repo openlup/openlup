@@ -344,15 +344,15 @@ describe('CI completion queue handoff', () => {
     };
     await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
     expect(f.liveReads()).toBe(4);
-    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(15_000);
     expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
   });
-  it('refuses persistent UNKNOWN after six re-reads', async () => {
+  it('refuses persistent UNKNOWN after twelve re-reads', async () => {
     const f = handoffFixture();
     f.queuePr.mergeable = 'UNKNOWN';
-    await expect(f.execute()).rejects.toThrow('PR mergeability is still unknown after 7 reads; re-run the Queue Handoff job');
-    expect(f.liveReads()).toBe(7);
-    expect(f.pauseMergeability.mock.calls).toEqual(Array.from({ length: 6 }, () => [10_000]));
+    await expect(f.execute()).rejects.toThrow('PR mergeability is still unknown after 13 reads; re-run the Queue Handoff job');
+    expect(f.liveReads()).toBe(13);
+    expect(f.pauseMergeability.mock.calls).toEqual(Array.from({ length: 12 }, () => [15_000]));
     expect(f.enqueue).not.toHaveBeenCalled();
   });
   it.each([
@@ -375,7 +375,7 @@ describe('CI completion queue handoff', () => {
     });
     await expect(f.execute()).resolves.toEqual({ status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' });
     expect(f.liveReads()).toBe(2);
-    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(15_000);
     expect(f.enqueue).not.toHaveBeenCalled();
   });
   it('refuses an intent change during the final mergeability check', async () => {
@@ -388,7 +388,7 @@ describe('CI completion queue handoff', () => {
     });
     await expect(f.execute()).rejects.toThrow('mergeability or auto-merge authority changed before enqueue');
     expect(f.liveReads()).toBe(3);
-    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(15_000);
     expect(f.enqueue).not.toHaveBeenCalled();
   });
   it('skips when the PR is disarmed during the final source run listing', async () => {
@@ -401,7 +401,7 @@ describe('CI completion queue handoff', () => {
     };
     await expect(f.execute()).resolves.toEqual({ status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' });
     expect(f.liveReads()).toBe(3);
-    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(15_000);
     expect(f.enqueue).not.toHaveBeenCalled();
   });
   it.each([
@@ -422,7 +422,7 @@ describe('CI completion queue handoff', () => {
     });
     await expect(f.execute()).rejects.toThrow(refusal);
     expect(f.liveReads()).toBe(2);
-    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(10_000);
+    expect(f.pauseMergeability).toHaveBeenCalledExactlyOnceWith(15_000);
     expect(f.enqueue).not.toHaveBeenCalled();
   });
   it.each([
@@ -457,14 +457,14 @@ describe('CI completion queue handoff', () => {
   it('bounds pauses independently across both mergeability checks', async () => {
     const f = handoffFixture();
     f.state.getHook = path => {
-      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 7 ? 'MERGEABLE' : 'UNKNOWN';
+      if (path.startsWith('/graphql?')) f.queuePr.mergeable = f.liveReads() === 13 ? 'MERGEABLE' : 'UNKNOWN';
     };
     const pausedAfterReads: number[] = [];
     f.pauseMergeability.mockImplementation(async () => { pausedAfterReads.push(f.liveReads()); });
-    await expect(f.execute()).rejects.toThrow('PR mergeability is still unknown after 7 reads; re-run the Queue Handoff job');
-    expect(f.liveReads()).toBe(14);
-    expect(pausedAfterReads).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13]);
-    expect(f.pauseMergeability.mock.calls).toEqual(Array.from({ length: 12 }, () => [10_000]));
+    await expect(f.execute()).rejects.toThrow('PR mergeability is still unknown after 13 reads; re-run the Queue Handoff job');
+    expect(f.liveReads()).toBe(26);
+    expect(pausedAfterReads).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]);
+    expect(f.pauseMergeability.mock.calls).toEqual(Array.from({ length: 24 }, () => [15_000]));
     expect(f.enqueue).not.toHaveBeenCalled();
   });
   it('does not retry a GitHub enqueue refusal', async () => {
@@ -648,16 +648,16 @@ describe('hosted review decisions', () => {
     expect((await readReceipts(api, '/repos/o/r', 12, receipt.head, time)).map(item => item.reviewers)).toEqual([['new'], ['reviewer']]);
     expect(api.get).toHaveBeenCalledTimes(3);
   });
-  it.each(['newer bad base', 'equal-tree group', 'live head changed', 'main moved'])('wait checks %s with fake API and Git', async scenario => {
+  it.each(['newer bad base', 'equal-tree group', 'live head changed', 'main moved', 'main moved in group'])('wait checks %s with fake API and Git', async scenario => {
     let clock = time; let mainReads = 0;
-    const group = scenario === 'equal-tree group'; const groupHead = 'f'.repeat(40);
+    const group = scenario === 'equal-tree group' || scenario === 'main moved in group'; const groupHead = 'f'.repeat(40);
     const event = { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } }, action: 'checks_requested', merge_group: { base_ref: 'refs/heads/main', head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${groupHead}`, base_sha: receipt.base, head_sha: groupHead } };
     const api = { get: vi.fn(async path => {
       if (path.includes('/collaborators/')) return { permission: 'admin' };
       if (path.includes('/issues/')) return scenario === 'newer bad base' ? [comment(), comment({ id: 2, body: body({ ...receipt, base: 'e'.repeat(40) }) })] : [comment()];
       if (path.includes('/pulls/')) return { number: 12, state: 'open', draft: false, base: { ref: 'main' }, head: { sha: scenario === 'live head changed' ? groupHead : receipt.head } };
       mainReads += 1;
-      return { object: { sha: mainReads === 2 && scenario === 'main moved' ? groupHead : receipt.base } };
+      return { object: { sha: mainReads === 2 && (scenario === 'main moved' || scenario === 'main moved in group') ? groupHead : receipt.base } };
     }) };
     const runGit = vi.fn(async (_cwd, ...args) => {
       if (args.includes('fetch') && args.includes('e'.repeat(40))) throw new Error('unknown base');
@@ -673,6 +673,7 @@ describe('hosted review decisions', () => {
       else {
         await expect(wait).resolves.toEqual(receipt); expect(log).toHaveBeenLastCalledWith(expect.stringContaining(group ? 'unchanged tree' : 'reviewed PR head'));
         expect(runGit.mock.calls).toContainEqual([expect.any(String), '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', receipt.base, receipt.head, ...(group ? [groupHead] : [])]);
+        if (scenario === 'main moved in group') expect(mainReads).toBe(1);
       }
     } finally { log.mockRestore(); }
   });

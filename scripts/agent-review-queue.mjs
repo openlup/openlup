@@ -157,7 +157,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
-      demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
+      if (!group) demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
@@ -212,7 +212,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   };
   const eligible = pr => pr.state === 'OPEN' && pr.isDraft === false && pr.merged === false && pr.baseRefName === 'main' && pr.headRefOid === source.head_sha;
   const readMergeable = async (checkIntent, beforeRead) => {
-    const maxReads = 7;
+    const maxReads = 13;
     for (let reads = 1; ; reads += 1) {
       if (beforeRead) await beforeRead();
       const pr = await live();
@@ -222,7 +222,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
       demand(pr.mergeable !== 'CONFLICTING', 'PR conflicts with main; merge main into the branch and push; auto-merge stays armed');
       demand(pr.mergeable === 'UNKNOWN', 'invalid PR mergeability response');
       demand(reads < maxReads, `PR mergeability is still unknown after ${reads} reads; re-run the Queue Handoff job`);
-      await pauseMergeability(10_000);
+      await pauseMergeability(15_000);
     }
   };
   const skipped = { status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' };
