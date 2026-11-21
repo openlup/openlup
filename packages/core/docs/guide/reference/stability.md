@@ -41,10 +41,12 @@ stability from a namespace’s name.
 
 Stable subpaths follow SemVer from 1.0.0. Status, event, reason, command and
 capability unions and literal sets are open: adding a value is a minor change.
-Consumers must keep a default branch for unknown values. Removing, renaming or
-narrowing an export, value or type requires a major release. Symbols tagged
-`@experimental` inside a stable subpath are outside that promise. Experimental
-subpaths may change in any minor release; testing subpaths are test support only.
+Consumers must keep a default branch for unknown values. Ordered registries
+tagged `@appendOnly` may grow by tail appends in a minor release; consumers must
+not pin their length or index positions. Removing, renaming or narrowing an
+export, value or type requires a major release. Symbols tagged `@experimental`
+inside a stable subpath are outside that promise. Experimental subpaths may
+change in any minor release; testing subpaths are test support only.
 
 ## Version numbers
 

@@ -38,8 +38,10 @@ describe("provider-recorded renewal retry timing", () => {
     const definition = (signature: string) => statements.filter(statement =>
       /^CREATE (?:OR REPLACE )?FUNCTION /u.test(statement)
       && nativeStoreFunctionDefinitions(Buffer.from(statement), [signature], true).has(signature)).at(-1);
-    const provider = definition("public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)");
-    expect(provider).toMatch(/retry_result:=public\.subscription_retry_apply_failure\(renewal\.id,p_idempotency_key\|\|':truth',\s*jsonb_build_object\([\s\S]*?'firstRecordedAt',COALESCE\(e\.created_at,a\.updated_at\)\)\);/u);
+    const provider11 = definition("public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)");
+    expect(provider11).toMatch(/RETURN public\.payment_provider_result_apply\([\s\S]*?,NULL::jsonb\);/u);
+    const provider12 = definition("public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text,jsonb)");
+    expect(provider12).toMatch(/retry_result:=public\.subscription_retry_apply_failure\(renewal\.id,p_idempotency_key\|\|':truth',\s*jsonb_build_object\([\s\S]*?'firstRecordedAt',COALESCE\(e\.created_at,a\.updated_at\)\),\s*COALESCE\(p_cadence,'\{"backoffHours":\[24,72,168\]\}'::jsonb\)\);/u);
     const failure = definition("public.subscription_retry_apply_failure(uuid,text,jsonb)");
     expect(failure).toMatch(/RETURN public\.subscription_retry_apply_failure\(p_operation_id,p_key,p_input,'\{"backoffHours":\[24,72,168\]\}'::jsonb\);/u);
   });

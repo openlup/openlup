@@ -3228,19 +3228,55 @@ const deferredTriggerForm = new RegExp(`^${deferredTriggerSql("<name>", deferred
 const isAsciiSearchPathList = (value: string): boolean => /^[A-Za-z_][A-Za-z0-9_]*(?:, [A-Za-z_][A-Za-z0-9_]*)*$/u.test(value);
 const hasPgTempSchema = (schemaList: string): boolean => schemaList.toLowerCase().split(", ").some(schema => schema === "pg_temp" || /^pg_temp_\d+$/u.test(schema));
 
+function parseAsciiSearchPath(value: string): string[] | null {
+  const schemas = value.split(",").map(nativeStoreTrim);
+  return isAsciiSearchPathList(schemas.join(", ")) ? schemas : null;
+}
+
+function appendsPgTemp(prior: readonly string[], next: readonly string[]): boolean {
+  return next.length === prior.length + 1 && next.at(-1) === "pg_temp"
+    && prior.every((schema, index) => schema === next[index]) && !hasPgTempSchema(prior.join(", "));
+}
+
+const normalizeNativeStoreHeader = (value: string): string => nativeStoreTrim(value.replace(/[ \t\n]+/gu, " "));
+
+function nativeStoreSearchPathClause(header: string) {
+  const { tokens, complete } = platformSqlTokens(header, false, true);
+  // The lexer skips comments, which must not disappear from a header comparison.
+  if (!complete || /--|\/\*/u.test(header)) return null;
+  const rawToken = (token: PlatformSqlToken) => header.slice(token.start, token.end);
+  let depth = 0;
+  let clause: { before: string; after: string; schemas: string[] } | null = null;
+  for (const [index, token] of tokens.entries()) {
+    if (nativeSymbol(tokens, index, "(")) depth++;
+    if (nativeSymbol(tokens, index, ")")) depth--;
+    if (depth !== 0) continue;
+    const searchPath = nativeWord(tokens, index + 1, "SEARCH_PATH");
+    if (nativeWord(tokens, index, "RESET") && (searchPath || nativeWord(tokens, index + 1, "ALL"))) return null;
+    if (!nativeWord(tokens, index, "SET") || !searchPath) continue;
+    // Read the raw clause so skipped comments and partial identifiers cannot join the list.
+    const match = /^SET[ \t\n]+search_path(?:[ \t\n]*=[ \t\n]*|[ \t\n]+TO[ \t\n]+)([A-Za-z_][A-Za-z0-9_]*(?:[ \t\n]*,[ \t\n]*[A-Za-z_][A-Za-z0-9_]*)*)(?=$|[ \t\n]+[^, \t\n])/iu.exec(header.slice(token.start));
+    const schemas = match && parseAsciiSearchPath(match[1]!);
+    if (clause || !match || !schemas) return null;
+    const clauseEnd = token.start + match[0].length;
+    clause = {
+      before: tokens.slice(0, index).map(rawToken).join(" "),
+      after: tokens.filter(entry => entry.start >= clauseEnd).map(rawToken).join(" "),
+      schemas,
+    };
+  }
+  return depth === 0 ? clause : null;
+}
+
 /**
- * A native-store replacement header must stay byte-identical to its predecessor,
- * except it may append exact trailing `, pg_temp` to an existing ASCII
- * `SET search_path` clause that does not already name `pg_temp` or `pg_temp_<N>`.
+ * A native-store replacement keeps its header or appends a final `pg_temp` to
+ * its single ASCII search_path list while preserving the surrounding clauses.
  */
-function isAllowedNativeStoreReplacementHeader(priorHeader: string, nextHeader: string): boolean {
+function isAllowedNativeStoreReplacementHeader(priorHeader: string, nextHeader: string, nextPath: ReturnType<typeof nativeStoreSearchPathClause>): boolean {
   if (nextHeader === priorHeader) return true;
-  if (nextHeader !== `${priorHeader}, pg_temp`) return false;
-  const priorNormalized = nativeStoreTrim(priorHeader.replace(/[ \t\n]+/gu, " "));
-  const priorPathHeader = priorNormalized.replace(/ SET search_path=/iu, " SET search_path = ");
-  const priorRawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(priorPathHeader)?.[1] ?? null;
-  if (priorRawSearchPath === null || !nativeStoreAscii(priorRawSearchPath)) return false;
-  return !hasPgTempSchema(priorRawSearchPath);
+  const priorPath = nativeStoreSearchPathClause(priorHeader);
+  return Boolean(priorPath && nextPath && priorPath.before === nextPath.before && priorPath.after === nextPath.after
+    && appendsPgTemp(priorPath.schemas, nextPath.schemas));
 }
 
 /**
@@ -3256,10 +3292,10 @@ export function expectedReplacedFunctionAttrs(oldAttrs: Record<string, unknown>,
   const searchPathEntries = oldConfig.filter((item): item is string => typeof item === "string" && item.startsWith("search_path="));
   if (searchPathEntries.length !== 1) return oldAttrs;
   const oldEntry = searchPathEntries[0]!;
-  const oldSchemasRaw = oldEntry.slice("search_path=".length);
-  if (!isAsciiSearchPathList(oldSchemasRaw) || hasPgTempSchema(oldSchemasRaw)) return oldAttrs;
-  const target = `search_path=${searchPath.replace(/\s+/gu, " ").trim()}`;
-  if (target !== `${oldEntry}, pg_temp`) return oldAttrs;
+  const prior = parseAsciiSearchPath(oldEntry.slice("search_path=".length));
+  const next = parseAsciiSearchPath(searchPath);
+  if (!prior || !next || !appendsPgTemp(prior, next)) return oldAttrs;
+  const target = `search_path=${next.join(", ")}`;
   return { ...oldAttrs, proconfig: oldConfig.map(item => item === oldEntry ? target : item) };
 }
 
@@ -3317,8 +3353,16 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
       const target = functionIndex + 1, name = nativeQualified(tokens, target);
       if (!name || (names.has(name.name) && !nativeWord(tokens, 0, "CREATE"))) {
-        const args = tokens.find((_, index) => index > target && nativeSymbol(tokens, index, "("));
-        const functionName = name?.name ?? statement.slice(tokens[target]?.start ?? statement.length, args?.start ?? -1).trim();
+        const start = nativeWord(tokens, target, "IF") && nativeWord(tokens, target + 1, "EXISTS") ? target + 2 : target;
+        const args = tokens.find((_, index) => index > start && nativeSymbol(tokens, index, "("));
+        let functionName = name?.name ?? nativeStoreTrim(statement.slice(tokens[start]?.start ?? statement.length, args?.start ?? tokens.at(-1)?.start));
+        for (let index = start; !name && index < tokens.length; index++) {
+          const listed = nativeQualified(tokens, index);
+          if (listed && names.has(listed.name) && nativeSymbol(tokens, listed.next, "(")) {
+            functionName = listed.name;
+            break;
+          }
+        }
         throw new Error(`reviewed native store unsupported preceding function DDL in ${source.path} for ${functionName || "<missing function name>"}`);
       }
     }
@@ -3461,13 +3505,15 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (sqlSha256(statement) !== forward.functions.find(pin => pin.signature === signature)?.afterSha256) throw new Error("reviewed native store unlisted, missing or drifted function definition");
       if (!fixed || replacement !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
       const nextHeader = nativeStoreTrim(headerAttributes(statement));
-      const header = nativeStoreTrim(nextHeader.replace(/[ \t\n]+/gu, " "));
-      if (fixed.beforeSha256 !== null && !isAllowedNativeStoreReplacementHeader(nativeStoreTrim(headerAttributes(priorStatements.get(signature)!)), nextHeader)) throw new Error("reviewed native store replacement header drifted");
-      const pathHeader = fixed.beforeSha256 !== null ? header.replace(/ SET search_path=/iu, " SET search_path = ") : header;
-      const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(pathHeader)?.[1] ?? null;
+      const header = normalizeNativeStoreHeader(nextHeader);
+      const priorHeader = fixed.beforeSha256 === null ? null : nativeStoreTrim(headerAttributes(priorStatements.get(signature)!));
+      const nextPath = priorHeader !== null && nextHeader !== priorHeader ? nativeStoreSearchPathClause(nextHeader) : null;
+      if (priorHeader !== null && !isAllowedNativeStoreReplacementHeader(priorHeader, nextHeader, nextPath)) throw new Error("reviewed native store replacement header drifted");
+      const pathHeader = priorHeader !== null ? header.replace(/ SET search_path=/iu, " SET search_path = ") : header;
+      const rawSearchPath = nextPath?.schemas.join(", ") ?? / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(pathHeader)?.[1] ?? null;
       if (rawSearchPath && !nativeStoreAscii(rawSearchPath)) throw new Error("reviewed native store non-ASCII search_path refused");
       const searchPath = rawSearchPath?.toLowerCase() ?? null;
-      if (/--|\/\*|["\\]/u.test(header) || searchPath !== fixed.searchPath || (header.match(/\bSET search_path\b/giu)?.length ?? 0) > 1) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
+      if (/--|\/\*|["\\]/u.test(header) || searchPath !== fixed.searchPath || (!nextPath && (header.match(/\bSET search_path\b/giu)?.length ?? 0) > 1)) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
       if (!grandfatheredSecurityDefiner) assertSecurityDefinerSearchPath(statement, path);
       if (/\bSECURITY DEFINER\b/iu.test(header) && !searchPath) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
       defined.set(signature, /^CREATE FUNCTION public\.[a-z_][a-z0-9_]* *\( *\) RETURNS trigger /iu.test(header)

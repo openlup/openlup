@@ -1191,5 +1191,9 @@ export type PostgresPaymentTruthOptions = {
     dunningTemplateSlug: string;
     recoveryUrlPath: string;
     recoveryTemplateSlug: string;
+    /** Optional 3-rung retry backoff schedule in whole positive hours (defaults to `[24, 72, 168]`). */
+    retryCadence?: {
+        readonly backoffHours: readonly number[];
+    };
 };
 ```

@@ -43,6 +43,13 @@ function fixture() {
   const directories = config.packages.filter((entry: { publish: boolean }) => entry.publish).map((entry: { directory: string }) => entry.directory);
   const files = ["config/openlup-packages.json", "config/ci-images.json", "scripts/ci-image-pull.mjs", "scripts/ci-image-mirror.mjs", ...directories.map((directory: string) => `${directory}/package.json`), "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
   for (const file of files) { mkdirSync(dirname(join(target, file)), { recursive: true }); cpSync(join(root, file), join(target, file)); }
+  // The minimal consumer-proof fixture omits Vitest/source; keep the real ci:required chain while stubbing test:coverage.
+  const outboxManifestPath = join(target, "packages/outbox/package.json");
+  const outboxManifest = JSON.parse(readFileSync(outboxManifestPath, "utf8")) as { scripts?: Record<string, string> };
+  if (outboxManifest.scripts?.["test:coverage"]) {
+    outboxManifest.scripts["test:coverage"] = "node -e \"\"";
+    writeFileSync(outboxManifestPath, JSON.stringify(outboxManifest, null, 2) + "\n");
+  }
   writeFileSync(join(target, "package.json"), JSON.stringify({ type: "module", workspaces: directories }) + "\n"); mkdirSync(join(target, "node_modules"));
   for (const name of ["typescript", "pg"]) symlinkSync(join(root, "node_modules", name), join(target, "node_modules", name), "dir");
   return { target, packs };

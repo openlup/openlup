@@ -111,7 +111,7 @@ it("reports a pinned pending definer, an unpinned definer and a stale pending en
     { signature: "public.temp_repeated()", search_path: 'pg_temp, "pg_temp", "schema, name", public' },
     { signature: "public.temp_duplicated()", search_path: '"pg_temp", pg_catalog, pg_temp' },
     { signature: "public.temp_numbered()", search_path: '"pg_temp_12", pg_catalog, pg_temp' },
-    { signature: "public.quoted_comma()", search_path: '"schema, pg_temp_12", pg_temp' },
+    { signature: "public.quoted_comma()", search_path: '"schema, pg_temp, name", pg_temp' },
     { signature: "public.pinned()", search_path: 'pg_catalog, "pg_temp"' },
   ], ["public.pending_pinned()", "public.missing()"])).toEqual([
     "remove public.pending_pinned() from DEFINER_SEARCH_PATH_PENDING",

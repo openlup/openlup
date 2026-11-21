@@ -1550,6 +1550,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5039,6 +5043,10 @@
     },
     {
       "path": "packages/platform/sql/20261124140000_catalog_publication_readiness.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124150000_native_provider_retry_cadence.sql",
       "class": "public-output"
     },
     {
@@ -31639,11 +31647,11 @@
     },
     {
       "path": "packages/outbox/package.json",
-      "digest": "sha256-53aa375f4bc21965d8fd3735b2aa60980c2fec0d43411611c1574b5f30d7b16d"
+      "digest": "sha256-a360b29145594eb1e103130637c52225910ff5ea07a41d46d9db34bc43279dfa"
     },
     {
       "path": "packages/platform/package.json",
-      "digest": "sha256-6f7e3e0ae256691c0860d7abd8b133b458d974b46f647075ae8435487e90aed3"
+      "digest": "sha256-782411925db131f063378b285055974b019b58f518c7ca9602346012a00a17d4"
     },
     {
       "path": "packages/ui/package.json",

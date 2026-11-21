@@ -69,8 +69,8 @@ export const PUBLIC_PACKAGE_EXECUTION_SURFACES: PublicPackageExecutionSurface[] 
   { path: "examples/neutral-store/package.json", digest: "sha256-c30f60b239d95d16513deb232dc384112c279837aa3e0c13363dba086d0da31d" },
   { path: "package.json", digest: packageExecutionDigest({ scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) },
   { path: "packages/core/package.json", digest: "sha256-4f6bcde0848f6c84669b06720154b12e47a3f73d75a1cfd7f54fd7802bc745ca" },
-  { path: "packages/outbox/package.json", digest: "sha256-53aa375f4bc21965d8fd3735b2aa60980c2fec0d43411611c1574b5f30d7b16d" },
-  { path: "packages/platform/package.json", digest: "sha256-6f7e3e0ae256691c0860d7abd8b133b458d974b46f647075ae8435487e90aed3" },
+  { path: "packages/outbox/package.json", digest: "sha256-a360b29145594eb1e103130637c52225910ff5ea07a41d46d9db34bc43279dfa" },
+  { path: "packages/platform/package.json", digest: "sha256-782411925db131f063378b285055974b019b58f518c7ca9602346012a00a17d4" },
   { path: "packages/ui/package.json", digest: "sha256-e57b14ab2c433bd03ae8e71aebf8c3b4eedafcc3177bf373230d45f84bccdb0b" },
 ];
 

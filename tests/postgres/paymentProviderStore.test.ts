@@ -792,3 +792,67 @@ it.each([false, true])("processes the first recoverable decline notice through t
   expect(await result(f, `notice-duplicate:${f.intent}`)).toMatchObject({ kind: "ignored_duplicate_terminal_failure" });
   expect(await business(f)).toEqual(before);
 });
+
+it("forwards 3-rung retryCadence through payment_provider_result_apply, preserves immutable replay, and rejects invalid cadences", async () => {
+  const f = await providerRenewal();
+  const e = await event(f, f.a.paymentAttemptId);
+  const key = `cadence-failure:${f.a.paymentAttemptId}`;
+  const customControl = createPostgresProviderPaymentControlPort(env.owner, {
+    dunningTemplateSlug: "dunning",
+    recoveryUrlPath: "/recover",
+    recoveryTemplateSlug: "recovered",
+    retryCadence: { backoffHours: [12, 48, 96] },
+  });
+
+  // Invalid cadences fail closed at both TypeScript and SQL boundaries.
+  for (const invalid of [[], [12, 48], [12, 48, 96, 192], [0, 48, 96], [-1, 48, 96], [12.5, 48, 96]]) {
+    expect(() => createPostgresProviderPaymentControlPort(env.owner, {
+      dunningTemplateSlug: "dunning",
+      recoveryUrlPath: "/recover",
+      recoveryTemplateSlug: "recovered",
+      retryCadence: { backoffHours: invalid },
+    })).toThrow("subscription_retry_cadence_invalid");
+    await expect(env.owner.query(
+      "SELECT public.payment_provider_result_apply($1,$2::uuid,$3::uuid,$4,$5::timestamptz,$6,$7,$8,$9,$10,$11,$12::jsonb)",
+      [`invalid-cadence:${randomUUID()}`, f.intent, e.paymentEventId, "failed", AT, "declined", "soft_retryable", null, "dunning", "/recover", "recovered", JSON.stringify({ backoffHours: invalid })],
+    )).rejects.toThrow("subscription_retry_cadence_invalid");
+  }
+
+  const applied = await customControl.applyPaymentResult({
+    idempotencyKey: key,
+    paymentIntentId: f.intent,
+    paymentEventId: e.paymentEventId,
+    resultStatus: "failed",
+    occurredAt: AT,
+    failureReason: "declined",
+    failureClass: "soft_retryable",
+  });
+  expect(applied).toMatchObject({ status: "failed", kind: "state_changed", replayed: false });
+
+  const obligation = (await env.owner.query(
+    "SELECT retry_attempt, next_retry_at FROM public.subscription_retry_obligations WHERE renewal_operation_id = $1",
+    [f.r.operation],
+  )).rows[0];
+  expect(obligation.retry_attempt).toBe(1);
+  // First rung is +12h from AT (not default +24h).
+  expect(new Date(String(obligation.next_retry_at)).getTime()).toBe(Date.parse(AT) + 12 * 3_600_000);
+
+  // Replay with a different cadence preserves the originally pinned +12h receipt without rescheduling.
+  const otherControl = createPostgresProviderPaymentControlPort(env.owner, {
+    dunningTemplateSlug: "dunning",
+    recoveryUrlPath: "/recover",
+    recoveryTemplateSlug: "recovered",
+    retryCadence: { backoffHours: [6, 24, 72] },
+  });
+  const before = await business(f);
+  expect(await otherControl.applyPaymentResult({
+    idempotencyKey: key,
+    paymentIntentId: f.intent,
+    paymentEventId: e.paymentEventId,
+    resultStatus: "failed",
+    occurredAt: AT,
+    failureReason: "declined",
+    failureClass: "soft_retryable",
+  })).toMatchObject({ status: "failed", kind: "state_changed", replayed: true });
+  expect(await business(f)).toEqual(before);
+});
