@@ -32,7 +32,9 @@ drain or either cleanup attempt are collected in an `AggregateError` with messag
 a clean stop; another call to the cached `stop()` does not retry cleanup.
 
 If you use `createNodeScheduler` from `@openlup/platform/scheduler` directly,
-await `stopAll(): Promise<void>`. A custom scheduler must preserve that asynchronous
+await `stopAll(): Promise<void>` and pass `lockMode: "cluster"` with a
+cluster-scoped `AdvisoryLock` (`durability: "cluster"`) whenever multiple
+instances can overlap. A custom scheduler must preserve that asynchronous
 drain contract. The adapter permits new registrations after `stopAll()`, so your
 host must prevent registration during shutdown; stopping current timers is not
 a permanent admission barrier.

@@ -2,7 +2,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createNodeHost } from "@openlup/platform/composition";
 import { getBundleDescriptor } from "@openlup/platform/kernel";
-import { createPgAdvisoryLock, createNodeScheduler, type AdvisoryLockQuerier, type CronScheduler } from "@openlup/platform/scheduler";
+import { createNoopAdvisoryLock, createPgAdvisoryLock, createNodeScheduler, type AdvisoryLockQuerier, type CronScheduler } from "@openlup/platform/scheduler";
 import {
   closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer,
@@ -120,6 +120,39 @@ describe("Node callback ownership on real dedicated PostgreSQL sessions", () => 
       await completed;
       await Promise.allSettled([oldHost.stop(), newHost.stop()]);
       await Promise.all([owner.close(), replacement.close()]);
+    }
+  });
+
+  it("enforces cluster lockMode across two dedicated Postgres sessions and refuses process-only fallback", async () => {
+    const first = await dedicatedSession();
+    const second = await dedicatedSession();
+    const entered = latch();
+    const finish = latch();
+    const firstTimers = timers();
+    const secondTimers = timers();
+    const secondBody = vi.fn();
+
+    expect(() => createNodeScheduler({ cron: firstTimers.cron, env: {}, jobs, lock: createNoopAdvisoryLock(), lockMode: "cluster" }))
+      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+
+    const firstScheduler = createNodeScheduler({ cron: firstTimers.cron, env: {}, jobs, lock: first.lock, lockMode: "cluster" });
+    const secondScheduler = createNodeScheduler({ cron: secondTimers.cron, env: {}, jobs, lock: second.lock, lockMode: "cluster" });
+    firstScheduler.register({ ...jobs[0], handler: async () => { entered.resolve(); await finish.promise; } });
+    secondScheduler.register({ ...jobs[0], handler: secondBody });
+
+    const running = firstTimers.callbacks[0]();
+    await entered.promise;
+    try {
+      await secondTimers.callbacks[0]();
+      expect(secondBody).not.toHaveBeenCalled();
+      finish.resolve();
+      await running;
+      await secondTimers.callbacks[0]();
+      expect(secondBody).toHaveBeenCalledTimes(1);
+    } finally {
+      finish.resolve();
+      await Promise.allSettled([running, firstScheduler.stopAll(), secondScheduler.stopAll()]);
+      await Promise.all([first.close(), second.close()]);
     }
   });
 });

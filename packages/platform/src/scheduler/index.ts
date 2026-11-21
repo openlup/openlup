@@ -20,6 +20,7 @@ export {
   type CreateNodeSchedulerOptions,
   type CronScheduler,
   type NodeSchedulerAdapter,
+  type SchedulerLockMode,
 } from "./nodeScheduler.js";
 export {
   bearerToken,

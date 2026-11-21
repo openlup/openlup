@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HttpRequest } from "../../src/http/types.js";
-import type { AdvisoryLock } from "../../src/scheduler/advisoryLock.js";
+import { createNoopAdvisoryLock, type AdvisoryLock } from "../../src/scheduler/advisoryLock.js";
 import {
   createNodeScheduler,
   withAdvisoryLock,
@@ -308,5 +308,22 @@ describe("Node scheduler", () => {
     expect(adapter.verifyInvocation(request("Bearer other-key"))).toBe(false);
     expect(adapter.verifyInvocation(request())).toBe(false);
     expect(createNodeScheduler({ cron, jobs, env: {} }).verifyInvocation(request("Bearer timer-key"))).toBe(false);
+  });
+
+  it("enforces cluster lockMode fail-closed while preserving process default for direct callers", () => {
+    const { cron } = timers();
+    const clusterLock: AdvisoryLock = { ...mutex(), durability: "cluster" };
+    const unlabelledLock: AdvisoryLock = mutex();
+
+    expect(() => createNodeScheduler({ cron, jobs, env: {} })).not.toThrow();
+    expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: createNoopAdvisoryLock(), lockMode: "process" })).not.toThrow();
+    expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: clusterLock, lockMode: "cluster" })).not.toThrow();
+
+    expect(() => createNodeScheduler({ cron, jobs, env: {}, lockMode: "cluster" }))
+      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+    expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: createNoopAdvisoryLock(), lockMode: "cluster" }))
+      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+    expect(() => createNodeScheduler({ cron, jobs, env: {}, lock: unlabelledLock, lockMode: "cluster" }))
+      .toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
   });
 });
