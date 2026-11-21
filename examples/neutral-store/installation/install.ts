@@ -6,7 +6,7 @@ import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
 import type { FulfillmentStockSyncPort } from '@openlup/platform/fulfillment/contracts';
 import { editorProducts, readStarterCatalogueRules, stageStarterCatalogueBuild, starterCataloguePack } from '../host/editor-catalogue.ts';
-import { randomBytes } from 'node:crypto';
+import { createHash, createHmac, pbkdf2Sync, randomBytes } from 'node:crypto';
 import { installCatalogDefinitions } from '@openlup/platform/catalog';
 import { constants } from 'node:fs';
 import { link, lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
@@ -64,7 +64,13 @@ export async function provisionDemonstrationPublicationPassword(connection: Inst
     password = (await handle.readFile('utf8')).trim();
     if (!/^[a-f0-9]{64}$/u.test(password)) throw new Error('starter_catalogue_publication_password_invalid');
   } finally { await handle.close(); }
-  await connection.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${password}'`);
+  const salt = randomBytes(16);
+  const salted = pbkdf2Sync(password, salt, 4096, 32, 'sha256');
+  const clientKey = createHmac('sha256', salted).update('Client Key').digest();
+  const storedKey = createHash('sha256').update(clientKey).digest('base64');
+  const serverKey = createHmac('sha256', salted).update('Server Key').digest('base64');
+  const verifier = `SCRAM-SHA-256$4096:${salt.toString('base64')}$${storedKey}:${serverKey}`;
+  await connection.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${verifier}'`);
   return password;
 }
 
