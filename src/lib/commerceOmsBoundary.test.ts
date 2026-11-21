@@ -66,7 +66,7 @@ describe("commerce OMS hidden boundary", () => {
   });
 
   it("keeps the live admin OMS queue aggregate read model service-role-only", () => {
-    expect(liveQueueMigration).toContain("CREATE FUNCTION public.commerce_oms_admin_list_queue");
+    expect(liveQueueMigration).toMatch(/CREATE (?:OR REPLACE )?FUNCTION public\.commerce_oms_admin_list_queue/);
     expect(liveQueueMigration).toContain("STABLE");
     expect(liveQueueMigration).toContain("SECURITY DEFINER");
     expect(liveQueueMigration).toContain("summaryCounts");
@@ -90,10 +90,9 @@ describe("commerce OMS hidden boundary", () => {
 
   it("keeps admin dashboard summary totals paid-only in the live queue RPC", () => {
     expect(liveQueueMigration).toContain("summaryTotals");
-    // The paid set is now selected through latest_summary_payment, so the live
-    // predicate reads `payment.payment_status`, not the `operational.` column
-    // the superseded migration named.
-    expect(liveQueueMigration).toContain("payment.payment_status = 'succeeded'");
+    // The paid set is selected from succeeded/paid payment intents rather than
+    // all base_orders.
+    expect(liveQueueMigration).toContain("payment.status IN ('succeeded', 'paid')");
     expect(liveQueueMigration).not.toContain("'orderCount', (SELECT count(*) FROM base_orders)");
   });
 

@@ -57,8 +57,7 @@ export const OMS_OPERATIONAL_LADDER: readonly OmsOperationalRung[] = [
   },
   {
     id: "missing_shipping_address",
-    sqlPredicate:
-      "EXISTS ( SELECT 1 FROM base_orders orders WHERE orders.id = derived.id AND orders.shipping_address_id IS NULL )",
+    sqlPredicate: "shipping_address_id IS NULL",
     attentionReason: "missing_shipping_address",
     nextAction: "review_address",
     matches: (input) => !input.hasShippingAddress,

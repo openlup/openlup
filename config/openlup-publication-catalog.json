@@ -28934,6 +28934,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261123152000_managed_oms_queue_performance.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
