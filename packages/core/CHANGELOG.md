@@ -18,16 +18,22 @@ in the source repository.
 ### Compatibility exception
 
 This minor release includes a fail-closed payment change outside the SemVer
-promise. Provider success now needs authenticated evidence of the money actually
-captured before it can settle a payment.
+promise. The native rail now needs authenticated evidence of captured money
+before it can settle a payment.
 
-- Update custom reconciliation providers to return the provider-collected
-  `amountMinor` and `currency` on success. Update custom native renewal adapters
-  to return that money in `observedMoney`. Both must set
-  `capturedAmountBasis: "provider_capture_v1"` on success with verified captured
-  money. Without it, the worker, verify-now and checkout recovery require manual
-  review, renewal cannot apply the success, and the native rail refuses fresh
-  success evidence. The payment stays unpaid.
+- Return provider-collected `amountMinor` and `currency` with
+  `capturedAmountBasis: "provider_capture_v1"` on verified success readbacks.
+  The packaged reconciliation worker, verify-now and checkout recovery send
+  a success without the basis to manual review. The managed reference cron
+  can still take a matching success without the basis to terminal application.
+- Custom native renewal adapters supply the collected money in `observedMoney`
+  with the same basis. A dated success with matching amount and currency
+  returns `unknown` without the basis and is left unapplied. A money mismatch
+  raises `subscription_renewal_provider_money_mismatch` first.
+- For custom native webhook adapters, set the basis on verified success
+  evidence backed by the provider-collected amount. Keep it outside the event
+  fingerprint. Fresh native settlement requires the basis. See
+  [Dispatch and settlement](docs/guide/concepts/payments.md#dispatch-and-settlement).
 - `@openlup/platform/payments/stripe` and `@openlup/platform/payments/tpay` success readbacks use the collected amount. If collected money is
   missing, the readback may report the configured amount separately for invoice
   comparison.

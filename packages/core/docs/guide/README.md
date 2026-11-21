@@ -73,6 +73,7 @@ Pin exact versions and upgrade all `@openlup/*` packages together.
 - [Upgrading to 0.43.0](upgrade/v0-43-0.md)
 - [Upgrading to 1.0.0](upgrade/v1-0-0.md)
 - [Upgrading to 1.2.0](upgrade/v1-2-0.md)
+- [Upgrading to 1.3.0](upgrade/v1-3-0.md)
 
 ### Concepts
 

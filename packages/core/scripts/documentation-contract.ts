@@ -85,7 +85,7 @@ export function assertDocumentationContract(
     const scanned = guideFiles.includes(file) ? source.replace(releaseUrlPattern(), "") : source;
     // Keep the report headings recognized by openlup-context in versioned upgrade pages.
     const pathSource = /^docs\/guide\/upgrade\/v[^/]*\.md$/.test(label)
-      ? source.replace(/^### `packages\/core\/api\/[a-z0-9-]+\.api\.md`$/gm, "").replace(releaseUrlPattern(), "")
+      ? withoutGeneratedCoreReportHeadings(source).replace(releaseUrlPattern(), "")
       : scanned;
     if (monorepoPackagePath.test(pathSource)) violations.push(`${label}: monorepo package path`);
     for (const [pattern, description] of forbiddenExtractedRootReferences) {
@@ -142,6 +142,20 @@ export function assertDocumentationContract(
 
   assert(violations.length === 0, `documentation contract violations:\n${violations.join("\n")}`);
   console.log("extracted-root documentation contract ok");
+}
+
+// Match the physical lines and fence boundaries used by openlup-context's Markdown reader.
+function withoutGeneratedCoreReportHeadings(source: string): string {
+  let fence: string | undefined;
+  return source.split("\n").map((line) => {
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})/u)?.[1];
+    if (fence) {
+      if (marker?.[0] === fence[0] && marker.length >= fence.length && /^ {0,3}(?:`+|~+)\s*$/u.test(line)) fence = undefined;
+      return line;
+    }
+    if (marker) fence = marker;
+    return /^### `packages\/core\/api\/[a-z0-9-]+\.api\.md`$/u.test(line) ? "" : line;
+  }).join("\n");
 }
 
 // Every tarball carries an agent guide stating the package's kind, the

@@ -103,17 +103,24 @@ Migration: Apply the ordered PostgreSQL catalogue through
 `20261123149000_native_durable_capture_evidence.sql` and upgrade the payment
 runtime together.
 
-- In custom payment reconciliation providers, return the verified
-  provider-collected `amountMinor` and `currency` for `status: "succeeded"`.
-  In custom native renewal adapters, return them as `observedMoney` for
-  `kind: "succeeded"` and keep the actual provider occurrence time when
-  available. Set `capturedAmountBasis: "provider_capture_v1"` on both success
-  readbacks only when the provider verifies the capture.
-- With captured money but no basis, the reconciliation worker, verify-now and
-  checkout recovery require manual review. A dated native renewal observation
-  returns `unknown` and does not apply. An undated success stays ambiguous and
-  cannot settle. The native rail refuses fresh success evidence without the
-  basis. These paths leave the payment unpaid.
+- Custom reconciliation providers return verified provider-collected
+  `amountMinor` and `currency` for `status: "succeeded"` and set
+  `capturedAmountBasis: "provider_capture_v1"`. Without the basis the packaged
+  worker, verify-now and checkout recovery require manual review. The managed
+  reference cron checks amount and currency and can reach terminal application
+  for a matching success without the basis.
+- Custom native renewal adapters return the same collected money as
+  `observedMoney` for `kind: "succeeded"`, supply the same basis, and keep the
+  actual provider occurrence time when available. The binding first throws
+  `subscription_renewal_provider_money_mismatch` on an amount or currency
+  mismatch. With matching money and a provider time, a success without the
+  basis returns `unknown` without applying. An undated success stays ambiguous
+  and cannot settle.
+- Custom native webhook adapters set the same basis on verified success
+  evidence backed by the provider-collected amount. Keep this field outside
+  the event fingerprint. The native rail refuses fresh settlement
+  without the basis. See
+  [Dispatch and settlement](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/concepts/payments.md#dispatch-and-settlement).
 - `@openlup/platform/payments/stripe` reconciliation uses `amount_received` and the PaymentIntent
   currency. It supplies the basis for a positive collected amount. `@openlup/platform/payments/tpay`
   reconciliation uses the provider's paid-amount fields and transaction

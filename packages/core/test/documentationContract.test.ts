@@ -462,6 +462,16 @@ describe("reader guide contract", { timeout: 60_000 }, () => {
     expect(() => checkGuide(roots)).not.toThrow();
   });
 
+  it.each([
+    ["inside a fence", "```text\n### `packages/core/api/example-contracts.api.md`\n```"],
+    ["after a Unicode line separator", "Literal text\u2028### `packages/core/api/example-contracts.api.md`"],
+  ])("rejects a heading-shaped Core report path %s", (_description, source) => {
+    const roots = guideFixture("# Guide\n", {
+      "upgrade/v1-2-3.md": "# Upgrade\n\n" + source + "\n",
+    });
+    expect(() => checkGuide(roots)).toThrow("docs/guide/upgrade/v1-2-3.md: monorepo package path");
+  });
+
   it("rejects a Core report path in an annotated upgrade heading or a general guide page", () => {
     const heading = "### `packages/core/api/example-contracts.api.md`";
     const roots = guideFixture("# Guide\n", {
