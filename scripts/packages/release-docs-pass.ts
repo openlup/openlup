@@ -10,8 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { documentationGit, documentationLinkTargets, parseDocumentationRouting, resolveDocumentationOwner, type DocumentationOwner } from "../documentation-routing.ts";
 // eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check runs before workspace install and reuses core's owning release-note audit
 import { assertReleaseNotePackagedContent, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
-import { readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
-import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackagesConfig } from "./package-manifest-policy.ts";
+import { isChangelogFragment, readChangelogFragments, validateChangelogFragment, type ChangelogFragment } from "./changelog-fragments.ts";
+import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackagesConfig, releaseVersionAbove } from "./package-manifest-policy.ts";
 export { assertReleaseNotePackagedContent, findReleaseNotePackagedContentViolations };
 
 const GUIDE = "packages/core/docs/guide";
@@ -320,9 +320,12 @@ function apiSections(root: string, since: string): string[] {
   return sections;
 }
 
-/** Upper bound (128 KiB) on a simulated upgrade page: headroom over real releases, catches runaway API diffs early. */
+/** Upper bound (128 KiB) on a simulated or prepared upgrade page: headroom over real releases, catches runaway API diffs early. */
 export const UPGRADE_PAGE_MAX_BYTES = 128 * 1024;
-export type SimulatedUpgradePageAudit = { version: string; since: string; path: string; bytes: number; maxBytes: number; text: string };
+export const RELEASE_NOTE_PACKAGED_CONTENT_REMEDY =
+  "wrap approved adapter subpaths in inline code (for example `@openlup/platform/<family>/<adapter>`) "
+  + "or remove downstream/provider terms from the offending changelog fragment or API declaration";
+export type SimulatedUpgradePageAudit = { version: string; since: string; path: string; bytes: number; maxBytes: number; prepared: boolean; text: string };
 
 /** Render the upgrade page Markdown in memory without spawning the TypeScript guide planner. */
 export function renderUpgradePage({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }): string {
@@ -349,47 +352,121 @@ export function assembleUpgradePage({ root, version, since, fragments }: { root:
   return { text, violations: [...planned.violations, ...planned.pageViolations[file]!] };
 }
 
-function nextCandidateVersion(root: string, since: string): string {
+function readCoreManifestVersion(root: string): string | undefined {
   const manifestPath = join(root, "packages/core/package.json");
-  let manifestVersion: string | undefined;
-  if (existsSync(manifestPath)) {
-    try {
-      const value = (JSON.parse(readFileSync(manifestPath, "utf8")) as { version?: unknown }).version;
-      if (typeof value === "string") manifestVersion = value;
-    } catch { /* fall through to tag version */ }
+  if (!existsSync(manifestPath)) return undefined;
+  try {
+    const value = (JSON.parse(readFileSync(manifestPath, "utf8")) as { version?: unknown }).version;
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
   }
-  const baseVersion = manifestVersion ?? /^openlup-core-v(\d+\.\d+\.\d+)$/u.exec(since)?.[1];
+}
+
+function nextCandidateVersion(root: string, since: string): { version: string; bumpedAboveTag: boolean } {
+  const manifestVersion = readCoreManifestVersion(root);
+  const tagVersion = /^openlup-core-v(\d+\.\d+\.\d+)$/u.exec(since)?.[1];
+  if (manifestVersion && tagVersion && releaseVersionAbove(manifestVersion, tagVersion) === true) {
+    return { version: manifestVersion, bumpedAboveTag: true };
+  }
+  const baseVersion = manifestVersion ?? tagVersion;
   const parsed = baseVersion ? /^(\d+)\.(\d+)\.(\d+)$/u.exec(baseVersion) : null;
-  return parsed ? `${parsed[1]}.${Number(parsed[2]) + 1}.0` : "0.1.0";
+  return { version: parsed ? `${parsed[1]}.${Number(parsed[2]) + 1}.0` : "0.1.0", bumpedAboveTag: false };
+}
+
+function findOffendingUpgradeSections(path: string, text: string): string[] {
+  const sections: Array<{ heading: string; lines: string[] }> = [];
+  let current = { heading: "# (preamble)", lines: [] as string[] };
+  let fenced = false;
+  for (const line of text.split(/\r?\n/u)) {
+    if (line.startsWith("```")) {
+      fenced = !fenced;
+      current.lines.push(line);
+      continue;
+    }
+    if (!fenced && /^#{2,3}\s+/u.test(line)) {
+      if (current.lines.length) sections.push(current);
+      current = { heading: line.trim(), lines: [line] };
+      continue;
+    }
+    current.lines.push(line);
+  }
+  if (current.lines.length) sections.push(current);
+  return sections
+    .filter(({ lines }) => findReleaseNotePackagedContentViolations(path, lines.join("\n")).length > 0)
+    .map(({ heading }) => heading);
 }
 
 /**
- * Dry-run upgrade page assembly in memory (no writes, bare Node 24 compatible):
- * enforces the size cap and packed core release-note neutrality audit.
+ * Dry-run upgrade page audit in memory (no writes, bare Node 24 compatible):
+ * when the core manifest is already bumped above the previous core tag and the
+ * prepared upgrade page exists on disk, audits that prepared page; otherwise
+ * renders the candidate upgrade page in memory from current fragments + API diffs.
+ * Enforces the size cap and packed core release-note neutrality audit.
  * Returns null when no ancestor core release tag exists to diff against.
  */
 export function assertSimulatedUpgradePage(
   root: string,
-  options: { maxBytes?: number; since?: string; version?: string; fragments?: readonly ChangelogFragment[] } = {},
+  options: { maxBytes?: number; since?: string; version?: string; fragments?: readonly ChangelogFragment[]; trackedPaths?: readonly string[] } = {},
 ): SimulatedUpgradePageAudit | null {
   const since = options.since ?? previousCoreTag(root);
   if (!since) return null;
   const maxBytes = options.maxBytes ?? UPGRADE_PAGE_MAX_BYTES;
-  const version = options.version ?? nextCandidateVersion(root, since);
-  const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
-  const fragments = options.fragments
-    ?? config.packages.filter(({ publish }) => publish).flatMap(({ directory }) => readChangelogFragments(root, directory));
+  const candidate = nextCandidateVersion(root, since);
+  const version = options.version ?? candidate.version;
   const path = upgradePagePath(version);
-  const text = renderUpgradePage({ root, version, since, fragments });
+  const prepared = options.version === undefined && options.fragments === undefined && candidate.bumpedAboveTag && existsSync(join(root, path));
+  let fragments: readonly ChangelogFragment[] = [];
+  let text: string;
+  if (prepared) {
+    text = readFileSync(join(root, path), "utf8");
+  } else {
+    const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
+    const publishableDirs = new Set(config.packages.filter(({ publish }) => publish).map(({ directory }) => directory));
+    fragments = options.fragments
+      ?? (options.trackedPaths
+        ? [...options.trackedPaths]
+            .filter((entry) => isChangelogFragment(entry) && publishableDirs.has(entry.split("/").slice(0, 2).join("/")))
+            .sort(bytewise)
+            .map((entry) => {
+              const stat = lstatSync(join(root, entry));
+              return { path: entry, contents: validateChangelogFragment(entry, readFileSync(join(root, entry)), stat.mode & 0o111 ? "100755" : "100644") };
+            })
+        : config.packages.filter(({ publish }) => publish).flatMap(({ directory }) => readChangelogFragments(root, directory)));
+    text = renderUpgradePage({ root, version, since, fragments });
+  }
   const bytes = Buffer.byteLength(text, "utf8");
+  const label = prepared
+    ? `prepared upgrade page ${path} (since ${since})`
+    : `simulated upgrade page ${path} (in-memory since ${since})`;
   if (bytes > maxBytes) {
     throw new Error(
-      `simulated upgrade page ${path} is ${bytes} bytes, exceeding the ${maxBytes}-byte cap (since ${since}); `
-      + "trim verbose fragments or fix accidental API snapshot churn before release:bump",
+      `${label} is ${bytes} bytes, exceeding the ${maxBytes}-byte cap; `
+      + (prepared
+        ? "trim verbose release notes or fix accidental API snapshot churn in the prepared upgrade page"
+        : "trim verbose fragments or fix accidental API snapshot churn before release:bump"),
     );
   }
-  assertReleaseNotePackagedContent(path, text);
-  return { version, since, path, bytes, maxBytes, text };
+  const violations = findReleaseNotePackagedContentViolations(path, text);
+  if (violations.length > 0) {
+    const offendingSections = findOffendingUpgradeSections(path, text);
+    const offendingFragments = prepared
+      ? []
+      : fragments
+          .filter((fragment) => findReleaseNotePackagedContentViolations(fragment.path, fragment.contents).length > 0)
+          .map((fragment) => fragment.path);
+    const attribution = [
+      ...(offendingFragments.length > 0 ? [`offending fragment(s): ${offendingFragments.join(", ")}`] : []),
+      ...(offendingSections.length > 0 ? [`offending section(s): ${offendingSections.join(", ")}`] : []),
+    ];
+    throw new Error(
+      `${label} contains downstream leakage that would fail packed core audit:\n`
+      + `${violations.join("\n")}`
+      + (attribution.length > 0 ? `\n${attribution.join("\n")}` : "")
+      + `\nFix: ${RELEASE_NOTE_PACKAGED_CONTENT_REMEDY}.`,
+    );
+  }
+  return { version, since, path, bytes, maxBytes, prepared, text };
 }
 
 export function formatReleaseDocumentation(listing: ReleaseDocumentationListing): string {

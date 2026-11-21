@@ -35,7 +35,7 @@ import {
   selfCheckVerdict,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
-import { assertSimulatedUpgradePage } from "./packages/release-docs-pass.ts";
+import { assertSimulatedUpgradePage, previousCoreTag } from "./packages/release-docs-pass.ts";
 import { validateGuidePage, PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 
@@ -1596,10 +1596,14 @@ describe("shift-left release-note fragment audit and bare-Node dependency bounda
   it("accepts this repository's tracked changelog fragments and simulated upgrade page", () => {
     const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
     expect(() => assertChangelogFragmentsPackagedContent(ROOT, tracked)).not.toThrow();
-    const audit = assertSimulatedUpgradePage(ROOT);
-    expect(audit).not.toBeNull();
-    expect(audit!.bytes).toBeGreaterThan(0);
-    expect(audit!.bytes).toBeLessThanOrEqual(audit!.maxBytes);
+    const audit = assertSimulatedUpgradePage(ROOT, { trackedPaths: tracked });
+    if (previousCoreTag(ROOT)) {
+      expect(audit).not.toBeNull();
+      expect(audit!.bytes).toBeGreaterThan(0);
+      expect(audit!.bytes).toBeLessThanOrEqual(audit!.maxBytes);
+    } else {
+      expect(audit).toBeNull();
+    }
   });
 
   it("accepts allowlisted adapter subpaths and refuses unmasked vendor mentions in fragments", () => {
@@ -1613,9 +1617,10 @@ describe("shift-left release-note fragment audit and bare-Node dependency bounda
       expect(() => assertChangelogFragmentsPackagedContent(root, [okPath])).not.toThrow();
 
       writeFileSync(join(root, badPath), `- Calls bare ${providerName} API directly.\n`);
-      expect(() => assertChangelogFragmentsPackagedContent(root, [okPath, badPath])).toThrow(
-        `${badPath}: downstream provider dependency`,
-      );
+      let message = "";
+      try { assertChangelogFragmentsPackagedContent(root, [okPath, badPath]); } catch (error) { message = (error as Error).message; }
+      expect(message).toContain(`${badPath}: downstream provider dependency`);
+      expect(message).toContain("Fix: wrap approved adapter subpaths in inline code");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -1698,32 +1703,49 @@ describe("shift-left release-note fragment audit and bare-Node dependency bounda
   it("keeps oss-published-tree-check.ts free of external node_modules imports for bare Node 24 CI self-check", () => {
     const visited = new Set<string>();
     const external: Array<{ file: string; specifier: string }> = [];
+    const missingRelative: Array<{ file: string; specifier: string }> = [];
+    const forbiddenRequire: Array<{ file: string; kind: string }> = [];
     const queue = [join(ROOT, "scripts/oss-published-tree-check.ts")];
     while (queue.length > 0) {
       const current = queue.pop()!;
       if (visited.has(current)) continue;
       visited.add(current);
+      const rel = current.slice(ROOT.length + 1);
       const sourceFile = ts.createSourceFile(current, readFileSync(current, "utf8"), ts.ScriptTarget.Latest, true);
       const record = (specifier: string) => {
         if (!specifier || specifier.startsWith("node:")) return;
         if (specifier.startsWith(".")) {
           const target = resolve(dirname(current), specifier);
-          if (existsSync(target) && !visited.has(target)) queue.push(target);
+          if (!existsSync(target)) missingRelative.push({ file: rel, specifier });
+          else if (!visited.has(target)) queue.push(target);
         } else {
-          external.push({ file: current.slice(ROOT.length + 1), specifier });
+          external.push({ file: rel, specifier });
         }
       };
       const visit = (node: ts.Node) => {
         if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
           record(node.moduleSpecifier.text);
-        } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
-          record(node.arguments[0].text);
+          if (ts.isImportDeclaration(node) && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
+            for (const element of node.importClause.namedBindings.elements) {
+              if ((element.propertyName?.text ?? element.name.text) === "createRequire") {
+                forbiddenRequire.push({ file: rel, kind: "createRequire-import" });
+              }
+            }
+          }
+        } else if (ts.isCallExpression(node)) {
+          if (node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
+            record(node.arguments[0].text);
+          } else if (ts.isIdentifier(node.expression) && (node.expression.text === "require" || node.expression.text === "createRequire")) {
+            forbiddenRequire.push({ file: rel, kind: node.expression.text });
+          }
         }
         ts.forEachChild(node, visit);
       };
       visit(sourceFile);
     }
     expect(visited.size).toBeGreaterThan(10);
+    expect(missingRelative).toEqual([]);
+    expect(forbiddenRequire).toEqual([]);
     expect(external).toEqual([]);
   });
 });

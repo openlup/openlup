@@ -405,6 +405,7 @@ describe("shift-left simulated upgrade-page audit", () => {
       since: "openlup-core-v0.4.0",
       path: "packages/core/docs/guide/upgrade/v0-5-0.md",
       maxBytes: UPGRADE_PAGE_MAX_BYTES,
+      prepared: false,
     });
     expect(audit!.bytes).toBe(Buffer.byteLength(audit!.text, "utf8"));
     expect(audit!.text).toContain(allowlistedSubpath);
@@ -414,6 +415,12 @@ describe("shift-left simulated upgrade-page audit", () => {
       since: "openlup-core-v0.4.0",
       fragments: [{ path: "packages/core/changes/allowlisted.md", contents: `- Documented ${allowlistedSubpath} contract update.\n` }],
     }));
+
+    // Untracked scratch files in changes/ are ignored when trackedPaths is supplied.
+    f.write("packages/core/changes/.DS_Store", "junk\0bytes");
+    const tracked = f.git("ls-files", "-z").split("\0").filter(Boolean);
+    expect(assertSimulatedUpgradePage(f.root, { trackedPaths: tracked })?.text).toBe(audit!.text);
+    rmSync(join(f.root, "packages/core/changes/.DS_Store"));
     expect(f.git("status", "--porcelain")).toBe("");
   });
 
@@ -422,11 +429,11 @@ describe("shift-left simulated upgrade-page audit", () => {
     f.write("packages/core/changes/huge.md", `- ${"x".repeat(2048)}\n`);
     f.commit();
     expect(() => assertSimulatedUpgradePage(f.root, { maxBytes: 512 })).toThrow(
-      /simulated upgrade page packages\/core\/docs\/guide\/upgrade\/v0-5-0\.md is \d+ bytes, exceeding the 512-byte cap \(since openlup-core-v0\.4\.0\)/u,
+      /simulated upgrade page packages\/core\/docs\/guide\/upgrade\/v0-5-0\.md \(in-memory since openlup-core-v0\.4\.0\) is \d+ bytes, exceeding the 512-byte cap/u,
     );
   });
 
-  it("refuses forbidden packaged content in both fragments and API diffs while accepting allowlisted subpaths", () => {
+  it("refuses forbidden packaged content in fragments and API diffs with section attribution and concrete remedy", () => {
     expect(() => assertReleaseNotePackagedContent("packages/core/changes/ok.md", `- Uses ${allowlistedSubpath}.\n`)).not.toThrow();
     expect(() => assertReleaseNotePackagedContent("packages/core/changes/bad.md", `- Mentions bare ${providerName}.\n`)).toThrow(
       /downstream provider dependency/u,
@@ -435,12 +442,70 @@ describe("shift-left simulated upgrade-page audit", () => {
     const f = fixture();
     f.write("packages/core/changes/leak.md", `- Mentions bare ${providerName} outside inline subpath code.\n`);
     f.commit();
-    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(/downstream provider dependency/u);
+    let fragmentError = "";
+    try { assertSimulatedUpgradePage(f.root); } catch (error) { fragmentError = (error as Error).message; }
+    expect(fragmentError).toContain("simulated upgrade page packages/core/docs/guide/upgrade/v0-5-0.md (in-memory since openlup-core-v0.4.0)");
+    expect(fragmentError).toContain("downstream provider dependency");
+    expect(fragmentError).toContain("offending fragment(s): packages/core/changes/leak.md");
+    expect(fragmentError).toContain("offending section(s): ## @openlup/core");
+    expect(fragmentError).toContain("Fix: wrap approved adapter subpaths in inline code");
 
     f.git("rm", "packages/core/changes/leak.md");
     f.write(api, report(`export declare const bad: "${providerName}";\nexport declare const kept: string;\n`));
     f.commit();
-    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(/downstream provider dependency/u);
+    let apiError = "";
+    try { assertSimulatedUpgradePage(f.root); } catch (error) { apiError = (error as Error).message; }
+    expect(apiError).toContain("simulated upgrade page packages/core/docs/guide/upgrade/v0-5-0.md (in-memory since openlup-core-v0.4.0)");
+    expect(apiError).toContain("downstream provider dependency");
+    expect(apiError).toContain(`offending section(s): ### \`${api}\``);
+    expect(apiError).toContain("Fix: wrap approved adapter subpaths in inline code");
+  });
+
+  it("audits the prepared upgrade page on disk for release-prep PRs whose manifest is already bumped above the tag", () => {
+    const f = fixture();
+    f.write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version: "1.3.0" }));
+    f.commit();
+    f.git("tag", "openlup-core-v1.3.0");
+    f.write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version: "1.4.0" }));
+    f.commit();
+
+    // Before upgrade/v1-4-0.md exists on disk, simulate 1.4.0 directly (not 1.5.0).
+    const prePrepared = assertSimulatedUpgradePage(f.root);
+    expect(prePrepared).toMatchObject({
+      version: "1.4.0",
+      since: "openlup-core-v1.3.0",
+      path: "packages/core/docs/guide/upgrade/v1-4-0.md",
+      prepared: false,
+    });
+
+    // Once release:bump writes upgrade/v1-4-0.md (and consumes fragments), audit the prepared file on disk.
+    const preparedPath = "packages/core/docs/guide/upgrade/v1-4-0.md";
+    const cleanPrepared = `# Upgrading to 1.4.0\n\n## Highlights\n\n- Updated ${allowlistedSubpath} contract.\n`;
+    f.write(preparedPath, cleanPrepared);
+    f.commit();
+    const cleanAudit = assertSimulatedUpgradePage(f.root);
+    expect(cleanAudit).toMatchObject({
+      version: "1.4.0",
+      since: "openlup-core-v1.3.0",
+      path: preparedPath,
+      bytes: Buffer.byteLength(cleanPrepared, "utf8"),
+      prepared: true,
+    });
+
+    // Refuses prepared upgrade page exceeding byte cap.
+    f.write(preparedPath, `# Upgrading to 1.4.0\n\n- ${"x".repeat(1024)}\n`);
+    expect(() => assertSimulatedUpgradePage(f.root, { maxBytes: 256 })).toThrow(
+      /prepared upgrade page packages\/core\/docs\/guide\/upgrade\/v1-4-0\.md \(since openlup-core-v1\.3\.0\) is \d+ bytes, exceeding the 256-byte cap/u,
+    );
+
+    // Refuses prepared upgrade page with unmasked vendor text and attributes the offending section.
+    f.write(preparedPath, `# Upgrading to 1.4.0\n\n### Highlights\n\n- Mentions bare ${providerName}.\n`);
+    let preparedError = "";
+    try { assertSimulatedUpgradePage(f.root); } catch (error) { preparedError = (error as Error).message; }
+    expect(preparedError).toContain("prepared upgrade page packages/core/docs/guide/upgrade/v1-4-0.md (since openlup-core-v1.3.0)");
+    expect(preparedError).toContain("downstream provider dependency");
+    expect(preparedError).toContain("offending section(s): ### Highlights");
+    expect(preparedError).toContain("Fix: wrap approved adapter subpaths in inline code");
   });
 
   it("returns null when no ancestor core release tag exists", () => {

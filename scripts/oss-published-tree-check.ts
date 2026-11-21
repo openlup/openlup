@@ -19,7 +19,7 @@ import { assertMaterializedOutputInventory } from "./oss-published-tree-output.t
 import { isChangelogFragment } from "./packages/changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH } from "./packages/package-manifest-policy.ts";
 import { assertMigrationBlocks } from "./packages/packages-check.ts";
-import { assertSimulatedUpgradePage, findReleaseNotePackagedContentViolations } from "./packages/release-docs-pass.ts";
+import { RELEASE_NOTE_PACKAGED_CONTENT_REMEDY, assertSimulatedUpgradePage, findReleaseNotePackagedContentViolations } from "./packages/release-docs-pass.ts";
 export { assertMaterializedOutputInventory, materializedOutputPaths } from "./oss-published-tree-output.ts";
 
 /** Append-only migration history at the PR or merge-group boundary. */
@@ -142,7 +142,11 @@ export function assertChangelogFragmentsPackagedContent(root: string, paths: Ite
     violations.push(...findReleaseNotePackagedContentViolations(path, readFileSync(join(root, path), "utf8")));
   }
   if (violations.length > 0) {
-    throw new Error(`changelog fragments contain downstream leakage that would fail packed core audit:\n${violations.join("\n")}`);
+    throw new Error(
+      `changelog fragments contain downstream leakage that would fail packed core audit:\n`
+      + `${violations.join("\n")}\n`
+      + `Fix: ${RELEASE_NOTE_PACKAGED_CONTENT_REMEDY}.`,
+    );
   }
 }
 
@@ -417,8 +421,11 @@ function assertDocumentationAndMigrations(root: string, options: ReadonlyMap<str
   const base = resolveDocumentationBase(root, { base: options.get("--docs-base") });
   log(`- documentation comparison: ${base.base} (${base.provenance})`);
   if (existsSync(join(root, PACKAGES_CONFIG_PATH))) {
-    const simulated = assertSimulatedUpgradePage(root);
-    if (simulated) log(`- simulated upgrade page: ${simulated.path} (${simulated.bytes}/${simulated.maxBytes} bytes since ${simulated.since})`);
+    const audit = assertSimulatedUpgradePage(root, { trackedPaths: trackedFiles(root) });
+    if (audit) {
+      const kind = audit.prepared ? "prepared" : "simulated";
+      log(`- ${kind} upgrade page: ${audit.path} (${audit.bytes}/${audit.maxBytes} bytes since ${audit.since})`);
+    }
   }
   if (base.provenance === "pull-request" || base.provenance === "merge-group") {
     const head = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
