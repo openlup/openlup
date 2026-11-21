@@ -24,7 +24,7 @@ CREATE OR REPLACE FUNCTION public.commerce_payment_control_apply_reconciliation_
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog
+SET search_path = public, pg_catalog, pg_temp
 AS $$
 DECLARE
   v_apply jsonb;
