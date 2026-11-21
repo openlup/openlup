@@ -3043,6 +3043,13 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       const required = cataloguePublicationAuthorityDefiners().has(fn.signature);
       if (required && !marked) throw new Error(`reviewed native store ${fn.signature}: set qualifiedSecurityDefiner: true and put this statement immediately after its CREATE OR REPLACE FUNCTION:\n${renderQualifiedSecurityDefiner(fn.signature)}`);
       if (marked && !required) throw new Error(`reviewed native store ${fn.signature}: the qualified authority migration leaves its SECURITY mode unchanged. Remove qualifiedSecurityDefiner and omit this statement:\n${renderQualifiedSecurityDefiner(fn.signature)}`);
+      if (marked) {
+        const schemas = typeof fn.searchPath === "string" ? parseAsciiSearchPath(fn.searchPath) : null;
+        if (schemas?.at(-1) !== "pg_temp" || hasPgTempSchema(schemas.slice(0, -1).join(", "))) {
+          const expected = schemas?.filter(schema => !hasPgTempSchema(schema)).join(", ") || "pg_catalog";
+          throw new Error(`reviewed native store ${fn.signature}: qualifiedSecurityDefiner must pin SET search_path = ${expected}, pg_temp`);
+        }
+      }
     }
     for (const fn of slot.createdFunctions) {
       if (Object.hasOwn(fn, "qualifiedSecurityDefiner")) throw new Error(`reviewed native store ${fn.signature}: remove qualifiedSecurityDefiner from createdFunctions; it applies only to replacements`);
@@ -3430,8 +3437,6 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if (qualifiedCatalogueReadGrant && !bytes.equals(Buffer.from(qualifiedCatalogueReadSql))) throw new Error("reviewed native store qualified catalogue read forward must contain exactly the EXECUTE grant guarded by role existence and the authority ledger path and hash");
   const qualifiedSecurityStatements = new Map(slot.replacedFunctions.filter(fn => fn.qualifiedSecurityDefiner)
     .map(fn => [fn.signature, renderQualifiedSecurityDefiner(fn.signature)]));
-  const landedQualifiedSecurity = new Map(earlierSlots.map(earlier => [earlier.path, new Set(earlier.replacedFunctions
-    .filter(fn => fn.qualifiedSecurityDefiner).map(fn => renderQualifiedSecurityDefiner(fn.signature)))]));
   const definitionSources = qualifiedCatalogueReadGrant ? new Map<string, string>() : undefined;
   const triggerFunctions = new Set<string>(), granted = new Set<string>();
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
@@ -3442,7 +3447,6 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const allowedSignatures = new Set(signatures);
   for (const source of preceding) for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
     if (landedSettings.get(source.path)?.has(statement)) continue;
-    if (landedQualifiedSecurity.get(source.path)?.has(statement)) continue;
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
     if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
       const target = functionIndex + 1, name = nativeQualified(tokens, target);

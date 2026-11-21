@@ -1124,13 +1124,15 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   const qualifiedSearchPath = "pg_catalog, pg_temp";
   const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
   const authorityHash = sqlSha256(readFileSync(authorityPath));
+  const authorityLedger = "CREATE TABLE public.platform_schema_migrations (catalog_path text PRIMARY KEY, sha256 text NOT NULL, position integer NOT NULL UNIQUE);";
+  const authorityRow = `INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ('${authorityPath}', '${authorityHash}', 0);`;
   const securityPreimage = `CREATE FUNCTION ${qualifiedSignature} RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path = ${qualifiedSearchPath} AS $$ SELECT 'before' $$;`;
   const securityReplacement = securityPreimage.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'before'", "'after'");
   const securityForward = `${securityReplacement}\n${renderQualifiedSecurityDefiner(qualifiedSignature)}`;
-  const nativeSecuritySetup = `CREATE TABLE public.platform_schema_migrations (catalog_path text PRIMARY KEY, sha256 text NOT NULL, position integer NOT NULL UNIQUE);
+  const nativeSecuritySetup = `${authorityLedger}
     ${securityPreimage}`;
   const qualifiedSecuritySetup = `${nativeSecuritySetup}
-    INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ('${authorityPath}', '${authorityHash}', 0);
+    ${authorityRow}
     ALTER FUNCTION ${qualifiedSignature} SECURITY DEFINER;`;
   const securitySlot: CatalogSlot = {
     ...storageSlot,
@@ -1141,6 +1143,23 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   });
   it("preserves installed SECURITY DEFINER with the exact qualified authority row", async () => {
     await checkForward(pool, securitySlot, securityForward, false, qualifiedSecuritySetup);
+  });
+  it("preserves SECURITY DEFINER and the search_path rewritten by the qualified authority", async () => {
+    const signature = "public.catalog_publication_record_command(jsonb)";
+    const nativeSearchPath = "pg_catalog, public";
+    const searchPath = `${nativeSearchPath}, pg_temp`;
+    const preimage = `CREATE FUNCTION ${signature} RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path = ${nativeSearchPath} AS $$ SELECT 'before' $$;`;
+    const setup = `${authorityLedger}
+      ${preimage}
+      ALTER FUNCTION ${signature} SET search_path = ${searchPath};
+      ALTER FUNCTION ${signature} SECURITY DEFINER;
+      ${authorityRow}`;
+    const replacement = preimage.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace(nativeSearchPath, searchPath).replace("'before'", "'after'");
+    const slot: CatalogSlot = {
+      ...storageSlot,
+      replacedFunctions: [{ signature, beforeSha256: sqlSha256(preimage), searchPath, qualifiedSecurityDefiner: true }],
+    };
+    await checkForward(pool, slot, `${replacement}\n${renderQualifiedSecurityDefiner(signature)}`, false, setup);
   });
   it("detects loss of SECURITY DEFINER if the qualified statement is omitted", async () => {
     await expect(checkForward(pool, securitySlot, securityReplacement, false, qualifiedSecuritySetup))

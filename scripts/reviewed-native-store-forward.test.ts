@@ -475,7 +475,6 @@ REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 describe("grant-only existing functions", () => {
   it("admits the original qualified catalogue read grant byte for byte against the issued function pins", () => {
     expect(production.qualifiedInstallations).toContainEqual({ path: authorityPath, sha256: authoritySha256 });
-    expect(sqlSha256(readFileSync(authorityPath))).toBe(authoritySha256);
     const path = "db/platform/migrations/20261124180000_catalogue_read_grant.sql";
     expect(sqlSha256(catalogueReadSql)).toBe("bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a");
     const directory = "db/platform/migrations";
@@ -1142,10 +1141,9 @@ describe("native replacements of qualified SECURITY DEFINER functions", () => {
   const definition = prior.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'before'", "'after'");
   const guard = renderQualifiedSecurityDefiner(signature);
   const text = `${definition}\n${guard}`;
-  const valueFor = (candidate = text, target = signature) => {
-    const preimage = prior.replace(signature, target);
+  const valueFor = (candidate = text, target = signature, preimage = prior.replace(signature, target), pinnedSearchPath: string | null = searchPath) => {
     const value = registry(), slot = emptySlot(path);
-    slot.replacedFunctions = [{ signature: target, beforeSha256: sqlSha256(preimage), searchPath, qualifiedSecurityDefiner: true }];
+    slot.replacedFunctions = [{ signature: target, beforeSha256: sqlSha256(preimage), searchPath: pinnedSearchPath, qualifiedSecurityDefiner: true }];
     value.nativeStoreForwardClass = { sealed: true, slots: [slot] };
     bind(value, 0, candidate);
     return { value, slot, prefix: [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.from(preimage) }] };
@@ -1156,7 +1154,6 @@ describe("native replacements of qualified SECURITY DEFINER functions", () => {
       const { value } = valueFor();
       const baseRegistry = { ...value, nativeStoreForwardClass: { sealed: true, slots: [] }, nativeStoreForwards: [] };
       put(PLATFORM_BASELINE_FILE, prior);
-      put(authorityPath, readFileSync(authorityPath));
       put("config/reviewed-platform-forwards.json", encode(baseRegistry));
       const base = commit();
       put(path, text);
@@ -1186,12 +1183,49 @@ describe("native replacements of qualified SECURITY DEFINER functions", () => {
     expect(admit).toThrow(guard);
   });
 
-  it.each([true, false])("refuses an unmarked replacement of a qualified DEFINER with statement present = %s", withGuard => {
-    const candidate = withGuard ? text : definition;
-    const { value, slot, prefix } = valueFor(candidate);
+  it.each([
+    "public.catalog_publication_record_command(jsonb)",
+    "public.catalog_publication_admit()",
+    "public.catalog_price_setup_region_code()",
+    "public.catalog_price_setup_settlement_currency()",
+    "public.platform_human_membership_is_administrator(uuid)",
+    "public.catalog_publication_assert_receipt(uuid,text)",
+  ])("refuses an unmarked replacement of qualified DEFINER %s", target => {
+    const candidate = definition.replace(signature, target);
+    const { value, slot, prefix } = valueFor(candidate, target);
     delete slot.replacedFunctions[0]!.qualifiedSecurityDefiner;
     expect(() => assertNativeStoreForward(value, path, Buffer.from(candidate), prefix))
+      .toThrow(`${target}: set qualifiedSecurityDefiner: true and put this statement immediately after its CREATE OR REPLACE FUNCTION:\n${renderQualifiedSecurityDefiner(target)}`);
+  });
+
+  it("refuses an unmarked replacement even with the exact statement", () => {
+    const { value, slot, prefix } = valueFor();
+    delete slot.replacedFunctions[0]!.qualifiedSecurityDefiner;
+    expect(() => assertNativeStoreForward(value, path, Buffer.from(text), prefix))
       .toThrow(`${signature}: set qualifiedSecurityDefiner: true and put this statement immediately after its CREATE OR REPLACE FUNCTION:\n${guard}`);
+  });
+
+  it.each([
+    ["pg_catalog, public", false],
+    ["pg_catalog, public, pg_temp", true],
+  ] as const)("admits a marked record_command replacement with search_path %s = %s", (pinnedPath, admitted) => {
+    const target = "public.catalog_publication_record_command(jsonb)";
+    const nativePath = "pg_catalog, public";
+    const source = readFileSync("db/platform/migrations/20261123191000_catalog_publication_commands.sql", "utf8");
+    const preimage = sqlStatements(source, false, false, true).find(statement => statement.startsWith("CREATE FUNCTION public.catalog_publication_record_command("))!;
+    const replacement = preimage.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace(`SET search_path = ${nativePath} AS`, `SET search_path = ${pinnedPath} AS`);
+    const candidate = `${replacement}\n${renderQualifiedSecurityDefiner(target)}`;
+    const { value, prefix } = valueFor(candidate, target, preimage, pinnedPath);
+    const admit = () => assertNativeStoreForward(value, path, Buffer.from(candidate), prefix);
+    if (admitted) expect(admit).not.toThrow();
+    else expect(admit).toThrow(`${target}: qualifiedSecurityDefiner must pin SET search_path = pg_catalog, public, pg_temp`);
+  });
+
+  it.each([null, "pg_catalog, pg_temp, pg_temp", "pg_catalog, pg_temp_42, pg_temp", "pg_catalog, pg_temp_42"])("refuses a marked replacement with search_path %j", pinnedPath => {
+    const { value, slot } = valueFor();
+    slot.replacedFunctions[0]!.searchPath = pinnedPath;
+    expect(() => readReviewedForwardRegistry(encode(value)))
+      .toThrow(`${signature}: qualifiedSecurityDefiner must pin SET search_path = pg_catalog, pg_temp`);
   });
 
   it.each([true, false])("refuses a guard for a function outside the qualified set with mark present = %s", marked => {
@@ -1216,7 +1250,7 @@ describe("native replacements of qualified SECURITY DEFINER functions", () => {
     expect(() => readReviewedForwardRegistry(encode(value))).toThrow(`${signature}: qualifiedSecurityDefiner must be true when present`);
   });
 
-  it("admits a later marked replacement after the earlier guarded statement", () => {
+  it("admits a later marked replacement with the chained before-hash", () => {
     const { value, slot, prefix } = valueFor();
     const later = emptySlot("db/platform/migrations/20990102000000_qualified_security.sql", "Later");
     later.replacedFunctions = [{ ...slot.replacedFunctions[0]!, beforeSha256: sqlSha256(definition) }];

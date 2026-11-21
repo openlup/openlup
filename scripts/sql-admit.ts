@@ -2,7 +2,9 @@
 // required self-check and the merge queue run and reimplements none of them. Hosted CI and the merge
 // queue remain authoritative; this command only shows a refusal before a push.
 //
-// The checks read Git objects only. A throwaway bare repository borrows this repository's objects
+// The checks read Git objects, except for the issued qualified authority migration. Its bytes come
+// from the code checkout and are hash-pinned so a mismatch fails closed.
+// A throwaway bare repository borrows this repository's objects
 // through `objects/info/alternates` and holds the pull-request merge objects this command writes.
 // This repository's object content, refs,
 // index and worktree stay unchanged, but Git may refresh existing objects' timestamps.
