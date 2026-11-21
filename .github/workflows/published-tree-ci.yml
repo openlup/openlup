@@ -465,15 +465,15 @@ jobs:
           tar -xzf "$archive" -C "$install_dir" gitleaks
           echo "$install_dir" >> "$GITHUB_PATH"
           "$install_dir/gitleaks" version
-      # Pull requests and merge groups scan only the commits they add; main pushes and every other
-      # event keep the complete-history scan. Merge-group ranges cover everything that reaches main
-      # only while the main ruleset's merge queue is ALLGREEN, merges one entry per group with the
-      # MERGE method and has no bypass actor; a change to those settings needs this scope reviewed
-      # again. A range that changes config/gitleaks.toml or .gitleaksignore scans the complete
-      # history instead, so a tightened rule or a removed fingerprint re-checks history before
-      # landing. Event SHAs arrive through the environment and must be full digests of commits in
-      # this checkout with at least one commit between them: gitleaks itself passes an unreadable
-      # or empty range as zero commits scanned.
+      # Pull requests and merge groups scan only the commits they add. Pushes and other events scan
+      # the event commit's complete history, excluding unrelated branches. Merge-group ranges cover
+      # everything that reaches main only while the main ruleset's merge queue is ALLGREEN, merges one
+      # entry per group with the MERGE method and has no bypass actor; a change to those settings
+      # needs this scope reviewed again. A range that changes config/gitleaks.toml or .gitleaksignore
+      # scans the complete history instead, so a tightened rule or a removed fingerprint re-checks
+      # history before landing. Range SHAs arrive through the environment and must be full digests of
+      # commits in this checkout with at least one commit between them: gitleaks itself passes an
+      # unreadable or empty range as zero commits scanned.
       - name: Scan the event range, or the complete available history
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -484,7 +484,17 @@ jobs:
           case "$GITHUB_EVENT_NAME" in
             pull_request) range_base="$PR_BASE"; range_head="$PR_HEAD" ;;
             merge_group) range_base="$GROUP_BASE"; range_head="$GROUP_HEAD" ;;
-            *) exec gitleaks git . --config config/gitleaks.toml --redact --no-banner ;;
+            *)
+              if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "The $GITHUB_EVENT_NAME scan needs a full event commit SHA." >&2
+                exit 1
+              fi
+              if [[ "$(git cat-file -t "$GITHUB_SHA" 2>/dev/null)" != commit ]]; then
+                echo "Event commit $GITHUB_SHA is missing from this checkout." >&2
+                exit 1
+              fi
+              exec gitleaks git . --config config/gitleaks.toml --redact --no-banner --log-opts="$GITHUB_SHA"
+              ;;
           esac
           if [[ ! "$range_base" =~ ^[0-9a-f]{40}$ || ! "$range_head" =~ ^[0-9a-f]{40}$ ]]; then
             echo "The $GITHUB_EVENT_NAME scan needs full base and head commit SHAs." >&2
