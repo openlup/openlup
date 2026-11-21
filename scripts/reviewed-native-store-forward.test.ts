@@ -1038,7 +1038,6 @@ describe("settings-only native forwards", () => {
     return value;
   };
   const prefix = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
-  const exactError = /exactly its ordered ALTER FUNCTION search_path statements/u;
 
   it("admits exact settings statements from committed base through PR, queue and release checks", () => {
     nativeGitFixture(({ folder, put, commit }) => {
@@ -1059,11 +1058,38 @@ describe("settings-only native forwards", () => {
   });
 
   it.each([
-    ["an extra ALTER", `${text}\nALTER FUNCTION public.fixture_existing(uuid) COST 10;`],
-    ["reordered entries", [...statements].reverse().join("\n")],
-    ["non-ALTER SQL", `${statements[0]}\nSELECT 1;`],
-  ])("refuses %s even with a matching file hash", (_label, candidate) => {
-    expect(() => assertNativeStoreForward(valueFor(candidate), path, Buffer.from(candidate), prefix)).toThrow(exactError);
+    ["an extra ALTER", `${text}\nALTER FUNCTION public.fixture_existing(uuid) COST 10;`, "Expected 2 statements, found 3."],
+    ["reordered entries", [...statements].reverse().join("\n"), `At index 0 (zero-based), expected: ${statements[0]}`],
+    ["non-ALTER SQL", `${statements[0]}\nSELECT 1;`, `At index 1 (zero-based), expected: ${statements[1]}`],
+  ])("locates %s even with a matching file hash", (_label, candidate, message) => {
+    expect(() => assertNativeStoreForward(valueFor(candidate), path, Buffer.from(candidate), prefix)).toThrow(message);
+  });
+
+  it("admits a later replacement and grant-only change after the pinned settings ALTERs", () => {
+    const grant = settings[0]!, replace = settings[1]!;
+    // Keep the replacement header already pinned so this exercises the prefix scan independently.
+    const prior = `CREATE FUNCTION public.fixture_existing(p_id uuid) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = ${replace.searchPath} AS $$ SELECT 'before'; $$;`;
+    const after = prior.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'before'", "'after'");
+    const next = emptySlot("db/platform/migrations/20261124140000_fixture_followup.sql", "Followup");
+    next.replacedFunctions.push({ ...replace, beforeSha256: sqlSha256(prior) });
+    next.grantOnlyFunctions.push({ signature: grant.signature, grantTo: ["authenticated"], revokeFrom: [] });
+    const value = valueFor();
+    value.nativeStoreForwardClass!.slots.push(next);
+    const candidate = `${after}\n${block("authenticated", "GRANT EXECUTE", grant.signature)}`;
+    bind(value, 1, candidate);
+    const baseline = before.toString("utf8").replace(/^CREATE FUNCTION public\.fixture_existing\(.*$/mu, () => prior);
+    const history = [
+      { path: PLATFORM_BASELINE_FILE, bytes: Buffer.from(baseline) },
+      { path, bytes: Buffer.from(text) },
+    ];
+    expect(() => assertNativeStoreForward(value, next.path, Buffer.from(candidate), history)).not.toThrow();
+
+    const unrelated = "db/platform/migrations/20261124133000_fixture_history.sql";
+    for (const statement of [render(replace), `ALTER FUNCTION ${replace.signature} COST 10;`]) {
+      const sources = [...history, { path: unrelated, bytes: Buffer.from(statement) }];
+      expect(() => assertNativeStoreForward(value, next.path, Buffer.from(candidate), sources))
+        .toThrow(`unsupported preceding function DDL in ${unrelated} for public.fixture_existing`);
+    }
   });
 
   it.each([
@@ -1073,6 +1099,32 @@ describe("settings-only native forwards", () => {
     ["an unqualified signature", [{ ...settings[0]!, signature: "fixture_grant(text[])" }], /canonical qualified signatures/u],
   ] as const)("refuses %s in the registry reader", (_label, functions, message) => {
     expect(() => readReviewedForwardRegistry(encode(valueFor(text, [...functions])))).toThrow(message);
+  });
+
+  it.each([
+    { createdFunctions: [settings[0]!] },
+    { replacedFunctions: [{ ...settings[0]!, beforeSha256: sqlSha256(before) }] },
+    { grantOnlyFunctions: [{ signature: settings[0]!.signature, grantTo: ["authenticated"], revokeFrom: [] }] },
+    { dataStatements: ["DELETE FROM public.fixture_row;"] },
+  ])("refuses a non-empty ordinary list in a settings-only slot (%j)", lists => {
+    const value = valueFor();
+    Object.assign(value.nativeStoreForwardClass!.slots[0]!, lists);
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow("settings-only slot requires empty function definition, grant and data lists");
+  });
+
+  it("refuses to reserve an unknown settings target without SQL", () => {
+    nativeGitFixture(({ folder, put, commit }) => {
+      const functions = [{ signature: "public.fixture_missing()", searchPath: "pg_catalog, pg_temp" }];
+      const value = valueFor(render(functions[0]!), functions);
+      value.nativeStoreForwards = [];
+      put(PLATFORM_BASELINE_FILE, before);
+      put("config/reviewed-platform-forwards.json", encode({ ...value, nativeStoreForwardClass: { sealed: true, slots: [] } }));
+      const base = commit();
+      put("config/reviewed-platform-forwards.json", encode(value));
+      const head = commit();
+      expect(() => assertCoLocatedForwardApproval(folder, base, head))
+        .toThrow("settings-only function absent from base migrations: public.fixture_missing()");
+    });
   });
 
   it.each([false, true])("refuses an unknown function introduced with the SQL (previously reserved slot: %s)", (reserved) => {
@@ -1259,7 +1311,7 @@ describe("closed created row triggers on prefix tables", () => {
   it("refuses conditional prefix function drops for ordinary and deferred triggers", () => {
     const deferred = triggerBefore.replace("CREATE TRIGGER fixture_trigger_guard BEFORE INSERT OR DELETE OR UPDATE OF id, extra", "CREATE CONSTRAINT TRIGGER fixture_trigger_guard AFTER INSERT")
       .replace("FOR EACH ROW", "DEFERRABLE INITIALLY DEFERRED FOR EACH ROW");
-    const refusal = new Error("reviewed native store unsupported preceding function DDL");
+    const refusal = "reviewed native store unsupported preceding function DDL";
     for (const history of ["DROP FUNCTION IF EXISTS public.fixture_retired_guard();", "DROP FUNCTION IF EXISTS public.other(), public.fixture_existing(uuid);"]) {
       for (const statement of [triggerBefore, deferred]) expect(() => triggerForward(statement, "", slot => {
         if (statement === deferred) slot.createdTriggers = [{ name: "fixture_trigger_guard", relation: "public.fixture_parameters",
@@ -2026,7 +2078,7 @@ describe("closed successor storage RESTRICT tables", () => {
   });
 });
 
-describe("CD-SEC-1 SECURITY DEFINER trailing pg_temp search_path", () => {
+describe("SECURITY DEFINER trailing pg_temp rule", () => {
   const fnSql = (clauses: string, body = "AS $$ SELECT 'ok'; $$", kind = "CREATE") =>
     `${kind} FUNCTION public.fixture_definer(p_id uuid) RETURNS text LANGUAGE sql ${clauses} ${body};`;
 

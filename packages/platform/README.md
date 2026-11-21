@@ -1330,6 +1330,25 @@ returns evidence for each emitted SKU and a cursor when more entries match.
 Pass back that cursor with the same offer and mode. Start again at the first
 page when the head moves. A PostgreSQL serialization failure is retryable.
 
+### Read activation readiness
+
+Install the complete PostgreSQL catalogue through
+`20261124140000_catalog_publication_readiness.sql`. Call the experimental
+`readPostgresCatalogActivationReadiness(transactions, installed, input)` from
+`@openlup/platform/catalog` with up to 100 distinct SKU codes and the expected
+head digest from a membership page. Only the service role can execute the SQL
+entry point. Use a transaction lane that runs as `service_role`.
+The read waits for an in-flight publication, then reads the sealed head, SKU
+evidence and price readiness in one snapshot. It writes nothing. A moved head
+is a retryable conflict and a legacy catalogue is `unsupported`. A code with no
+sealed or governed live SKU is `sku_not_materialized`; damaged evidence refuses
+the whole batch. SQL alone reports `price_readiness_missing` and
+`price_shape_invalid`, at one evaluation instant; overlapping effective price
+lists refuse the batch. After the transaction closes, `installed.assess`
+receives a copy of each certified subject and may add other reasons. Pass
+`assess: () => []` when there are no installed rules. An item is ready when it
+has no reasons.
+
 Run `openlup catalogue project --trusted-packs ./owned/catalogue.ts --json`
 to check trusted pack definitions and fixtures with their content validators.
 The module executes with the operator's permissions. The report identifies the

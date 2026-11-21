@@ -6,7 +6,7 @@ import {
 } from "../../server/adapters/supabase/dataGatewayClientFactory.js";
 import {
   runPaymentProviderReconciliationWorker,
-} from "../../server/domains/payment/paymentProviderReconciliationWorker.js";
+} from "@openlup/platform/payments";
 import { createSupabasePaymentProviderReconciliationPort } from "../../server/adapters/supabase/payment/paymentProviderReconciliation.js";
 import { createSupabasePaidActivationGapPort } from "../../server/adapters/supabase/payment/paidActivationGap.js";
 import { createSupabaseAccountingControlPort } from "../../server/adapters/supabase/accounting/accountingControl.js";

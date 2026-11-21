@@ -6210,8 +6210,29 @@
         "dataStatements": []
       },
       {
+        "row": "catalog-activation-readiness",
+        "path": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_publication_price_reasons(uuid[],timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_activation_readiness(text[],text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "native-provider-retry-cadence",
-        "path": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+        "path": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
         "replacedFunctions": [
           {
             "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
@@ -8952,7 +8973,28 @@
       "functions": []
     },
     {
-      "path": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+      "path": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+      "sha256": "fab8a08a2f542f9164c424681325ecb1ad38e6e86908a435fa2bd700f4be8909",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_price_reasons(uuid[],timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "c363cfd663b991fbf2d5e5bbc3e756243a44f98957b07405f54b08da6ae78568"
+        },
+        {
+          "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "6ceafd6951ec946092411dca5997b3c1e79587e4171e69ec057795695f41a70c"
+        },
+        {
+          "signature": "public.catalog_publication_activation_readiness(text[],text)",
+          "beforeSha256": null,
+          "afterSha256": "aa28da6fb9c8cdb7a5e588eb8c9d53164fd717adc24c1dad7f7b221c0739d40e"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
       "sha256": "2dafd53c5f0c3abe5d7e19b6476680567b6a271b58bbe32de6f816a9f79c86ee",
       "functions": [
         {

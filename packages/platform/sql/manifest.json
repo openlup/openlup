@@ -684,10 +684,15 @@
         "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
       },
       {
-        "file": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+        "file": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+        "sha256": "fab8a08a2f542f9164c424681325ecb1ad38e6e86908a435fa2bd700f4be8909"
+      },
+      {
+        "file": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
         "sha256": "2dafd53c5f0c3abe5d7e19b6476680567b6a271b58bbe32de6f816a9f79c86ee"
       }
     ],
+    "objectInventorySha256": "41588ea179243e76b7bbc3ff803276a9fc54a14fe76b569a265c343a11fff7f4",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1395,16 +1400,20 @@
           "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
         },
         {
-          "file": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+          "file": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+          "sha256": "fab8a08a2f542f9164c424681325ecb1ad38e6e86908a435fa2bd700f4be8909"
+        },
+        {
+          "file": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
           "sha256": "2dafd53c5f0c3abe5d7e19b6476680567b6a271b58bbe32de6f816a9f79c86ee"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "b9b9764bbea3c9709fa4e9b5c7e42bb325e4314136655df00e8ebe6cac680c7b"
+          "withRestore": "ce331b63194002991d28efd430bcbfd87d1a5df43614b6ca77e6596c86363b12"
         },
         "separateMigrator": {
-          "withRestore": "71e5350d3135445db9ca4a446df1e2fc7a64f82351ad2c2f8cb71638f1934b27"
+          "withRestore": "a7430912c68ee9624e4227d3270c0810ed1cd2641178778540c386ad022b556a"
         }
       }
     },
@@ -2107,16 +2116,19 @@
           "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
         },
         {
-          "file": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+          "file": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+          "sha256": "fab8a08a2f542f9164c424681325ecb1ad38e6e86908a435fa2bd700f4be8909"
+        },
+        {
+          "file": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
           "sha256": "2dafd53c5f0c3abe5d7e19b6476680567b6a271b58bbe32de6f816a9f79c86ee"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "281bf2b383d91d9823de5f97ccb791f1405797e327883f7442c1dbc378ae953f",
-        "operatorProvisioned": "fa6e3699306fbcb8e5372651522cd02af8e2585e5675a22640f94d09476b625e"
+        "installerManaged": "93aa68788354a42cbede69d6bbcfc6a327d351cde1be76ad73b04a80562867c6",
+        "operatorProvisioned": "164c7151e704a2cabbdfe446b011b05c289caba0aeb494b9cf267f3b557be3c8"
       }
-    },
-    "objectInventorySha256": "d9cf8fd12eba6227a84e20122d171569278f6dd5253b76259a79a877fe893ddb"
+    }
   },
   "migrations": [
     {
@@ -2970,8 +2982,13 @@
       "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
     },
     {
-      "file": "20261124140000_native_provider_retry_cadence.sql",
-      "source": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+      "file": "20261124140000_catalog_publication_readiness.sql",
+      "source": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+      "sha256": "fab8a08a2f542f9164c424681325ecb1ad38e6e86908a435fa2bd700f4be8909"
+    },
+    {
+      "file": "20261124150000_native_provider_retry_cadence.sql",
+      "source": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
       "sha256": "2dafd53c5f0c3abe5d7e19b6476680567b6a271b58bbe32de6f816a9f79c86ee"
     },
     {

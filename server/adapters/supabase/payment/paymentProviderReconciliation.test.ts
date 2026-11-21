@@ -5,13 +5,11 @@ const providerForTransaction = (transaction: Record<string, unknown>) =>
     status: "pending", transactionPaymentUrl: null, amount: null, currency: null, requestId: null, payments: {}, ...transaction }) });
 const normalizeTpayTransaction = (transaction: Record<string, unknown>) =>
   providerForTransaction(transaction).readPayment({ providerPaymentId: String(transaction.transactionId) });
-import { classificationOf } from "../../../domains/payment/paymentProviderReconciliationEvidence.js";
+import { classificationOf, runPaymentProviderReconciliationWorker, verifyPaymentAttemptNow } from "@openlup/platform/payments";
 // Aliased at the import site: the factory is constructed in a dozen cases, and
 // the adapter's vendor name is a fact about the import, not about each case.
 import { createSupabasePaymentProviderReconciliationPort as createPort } from "./paymentProviderReconciliation.js";
-import { runPaymentProviderReconciliationWorker } from "../../../domains/payment/paymentProviderReconciliationWorker.js";
 import { createCheckoutRecoveryPaymentResolver } from "../../../domains/payment/checkoutRecoveryPaymentResolver.js";
-import { verifyPaymentAttemptNow } from "@openlup/platform/payments";
 import type { VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
 
 import { runAccountingInvoiceIssueJob } from "../../../domains/accounting/accountingJobService.js";

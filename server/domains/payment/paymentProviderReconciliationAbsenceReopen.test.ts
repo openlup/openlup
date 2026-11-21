@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runPaymentProviderReconciliationWorker } from "./paymentProviderReconciliationWorker.js";
+import { runPaymentProviderReconciliationWorker } from "@openlup/platform/payments";
 import type {
   ClaimedPaymentAttempt,
   PaymentProviderReconciliationPort,

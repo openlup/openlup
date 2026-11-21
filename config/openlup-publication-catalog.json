@@ -1546,7 +1546,11 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+      "path": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
       "class": "public-output"
     },
     {
@@ -5038,7 +5042,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261124140000_native_provider_retry_cadence.sql",
+      "path": "packages/platform/sql/20261124140000_catalog_publication_readiness.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124150000_native_provider_retry_cadence.sql",
       "class": "public-output"
     },
     {
@@ -20578,15 +20586,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/payment/paymentProviderReconciliationEvidence.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/payment/paymentProviderReconciliationWorker.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/payment/paymentProviderReconciliationWorker.ts",
       "class": "public-output"
     },
     {
@@ -28966,6 +28966,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261123153000_managed_reconciliation_replay_strip.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -30231,6 +30235,10 @@
     },
     {
       "path": "tests/postgres/catalogPublicationFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublicationReadiness.test.ts",
       "class": "public-output"
     },
     {
@@ -31639,11 +31647,11 @@
     },
     {
       "path": "packages/outbox/package.json",
-      "digest": "sha256-53aa375f4bc21965d8fd3735b2aa60980c2fec0d43411611c1574b5f30d7b16d"
+      "digest": "sha256-a360b29145594eb1e103130637c52225910ff5ea07a41d46d9db34bc43279dfa"
     },
     {
       "path": "packages/platform/package.json",
-      "digest": "sha256-6f7e3e0ae256691c0860d7abd8b133b458d974b46f647075ae8435487e90aed3"
+      "digest": "sha256-782411925db131f063378b285055974b019b58f518c7ca9602346012a00a17d4"
     },
     {
       "path": "packages/ui/package.json",

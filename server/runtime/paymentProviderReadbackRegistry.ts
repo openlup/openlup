@@ -5,7 +5,7 @@ import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payme
 import type {
   PaymentProviderReconciliationProvider,
   ReconciliationProviderKind,
-} from "../domains/payment/paymentProviderReconciliationWorker.js";
+} from "../domains/payment/paymentProviderReconciliationContracts.js";
 import type {
   PaymentProviderRecoveryProvider,
 } from "../domains/payment/checkoutRecoveryPaymentResolver.js";

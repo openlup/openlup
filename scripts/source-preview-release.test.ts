@@ -296,7 +296,8 @@ const OUTBOX_SCRIPTS = {
   "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
   ci: "npm run build && npm run test && npm run api:check && npm run docs:check",
   "docs:check": "node --experimental-strip-types ../core/scripts/documentation-contract.ts --package .",
-  "ci:required": "npm run test:consumer",
+  "ci:required": "npm run test:coverage && npm run test:consumer",
+  "test:coverage": "vitest run --config vitest.config.ts --coverage",
   "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts",
 };
 const PLATFORM_SCRIPTS = {
@@ -306,7 +307,8 @@ const PLATFORM_SCRIPTS = {
   "docs:check": "node --experimental-strip-types ../core/scripts/documentation-contract.ts --package .",
   "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
   "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts",
-  "ci:required": "npm run test:consumer",
+  "ci:required": "npm run test:coverage && npm run test:consumer",
+  "test:coverage": "vitest run test/payments test/subscriptions --config vitest.config.ts --coverage",
   prepack: "npm run build",
   prepublishOnly: "node -e \"throw new Error('PLATFORM_DIRECTORY_PUBLISH_REFUSED')\"",
   "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",

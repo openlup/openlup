@@ -94,7 +94,13 @@ export declare function recoverPreparedExternalAttempt(input: {
     settlement: RenewalSettlementPort;
     occurredAt: string;
 }): Promise<string | null>;
-export declare function runRenewalBatchRows(due: RenewalDue[], run: (row: RenewalDue) => Promise<AutomaticRenewalRunResult>, policy: Pick<AutomaticRenewalPolicy, "identityKey">): Promise<AutomaticRenewalRunResult[]>;
+export declare const MAX_RENEWAL_CONCURRENCY = 16;
+export interface RunRenewalBatchOptions {
+    /** Bounded per-batch concurrency for normal due renewals (default `1`, max `16`). */
+    concurrency?: number;
+}
+export declare function normalizeRenewalConcurrency(concurrency: number | undefined): number;
+export declare function runRenewalBatchRows(due: RenewalDue[], run: (row: RenewalDue) => Promise<AutomaticRenewalRunResult>, policy: Pick<AutomaticRenewalPolicy, "identityKey">, options?: RunRenewalBatchOptions): Promise<AutomaticRenewalRunResult[]>;
 export declare function refuseRenewalBeforePayment(input: {
     store: RenewalStorePort;
     operation: RenewalReadback;
@@ -572,7 +578,7 @@ export declare const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES: Readonly<{
     readonly stockAvailabilitySurface: "sql";
     readonly defaultEnabled: false;
 }>;
-export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
+export { runRenewalBatchRows, type RunRenewalBatchOptions } from "./automaticRenewalExecution.js";
 export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
 export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
 export { createPostgresLifecycleMessages, type NativeLifecycleMessagesOptions, type NativeLifecycleNotice } from "./postgresLifecycleMessages.js";
@@ -760,6 +766,8 @@ import { type NativeRetryDriverOptions } from "./nativeRetryDriver.js";
 export declare function createNativeSubscriptionBinding(input: {
     enabled?: boolean;
     batchLimit?: number;
+    /** Optional bounded concurrency for normal due renewals (default `1`, max `16`). Requires a pool-backed executor when `> 1`. */
+    concurrency?: number;
     population: string;
     executor: SubscriptionQueryExecutor;
     withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
