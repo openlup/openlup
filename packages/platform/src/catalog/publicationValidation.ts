@@ -52,7 +52,7 @@ function assertCatalogAction(payload: PublicationIntent, action: "create" | "rev
   need(payload.product.sharedContent.catalogAction === action, "catalog_action_conflict");
 }
 const authoredSlug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
-function exactNetContent(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): CatalogQuantity {
+export function resolveCatalogPublicationNetContent(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): CatalogQuantity {
   need(catalogQuantitySchema.safeParse(quantity).success && definition.netContentUnits.includes(quantity.unit)
     && validateCatalogQuantity(quantity, definition), "catalog_publication_net_content_invalid");
   if (quantity.dimension === "mass" && quantity.unit === "openlup:g" && quantity.scale === 0) {
@@ -66,7 +66,7 @@ type AmountBinding = { definition: CatalogProductTypeDefinition;
   rules: Pick<CatalogPublicationRulesModule, "validateSkuAmounts" | "validateSkuQuantities"> };
 function assertPublicationQuantities(sku: { code: string; netContent: CatalogQuantity; grossMass?: CatalogQuantity | null },
   { definition, rules }: AmountBinding): void {
-  exactNetContent(sku.netContent, definition);
+  resolveCatalogPublicationNetContent(sku.netContent, definition);
   if (sku.grossMass) assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, definition);
   assertPublicationAmountRules(sku, { definition, rules });
 }
@@ -133,7 +133,7 @@ export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: C
   try { mass = canonicalizeCatalogQuantity(gross, units); }
   catch { return publicationRefuse("catalog_publication_gross_mass_invalid"); }
   if (net.dimension === "mass") {
-    need(compareCatalogQuantities(mass, exactNetContent(net, definition)) >= 0, "catalog_publication_gross_below_net");
+    need(compareCatalogQuantities(mass, resolveCatalogPublicationNetContent(net, definition)) >= 0, "catalog_publication_gross_below_net");
   }
 }
 

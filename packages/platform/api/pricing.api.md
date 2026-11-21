@@ -832,9 +832,10 @@ export interface CommerceQuoteCatalogItem {
     };
 }
 export interface CommerceQuoteCatalogReadPort {
-    listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
+    /** Refuse an explicitly requested SKU whose typed content requires V2. */
+    listQuoteCatalogItems(requestedSkuCodes?: readonly string[]): Promise<CommerceQuoteCatalogItem[]>;
 }
-export type CommerceQuoteCatalogReadRefusalCode = "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
+export type CommerceQuoteCatalogReadRefusalCode = "quantity_requires_v2" | "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
 export declare class CommerceQuoteCatalogReadError extends Error {
     readonly code: CommerceQuoteCatalogReadRefusalCode;
     constructor(code: CommerceQuoteCatalogReadRefusalCode);
@@ -1394,8 +1395,8 @@ export interface SkuIndexEntry<Item = CommerceQuoteCatalogItem> {
     item: Item;
 }
 export declare function buildSkuIndex<Item extends CommerceQuoteCatalogItem>(quoteCatalogReadPort: {
-    listQuoteCatalogItems(): Promise<Item[]>;
-}): Promise<Map<string, SkuIndexEntry<Item>>>;
+    listQuoteCatalogItems(requestedSkuCodes?: readonly string[]): Promise<Item[]>;
+}, requestedSkuCodes?: readonly string[]): Promise<Map<string, SkuIndexEntry<Item>>>;
 export declare function eligibleQtyForMode(request: CreateQuoteRequest, mode: Exclude<PricingMode, "any">): number;
 export declare function resolveOneTimeComparison(input: {
     pricingResolverPort: PricingResolverPort;
@@ -1480,7 +1481,7 @@ export interface QuotePromotionResult {
 }
 export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext> {
     quoteCatalogReadPort: {
-        listQuoteCatalogItems(): Promise<Item[]>;
+        listQuoteCatalogItems(requestedSkuCodes?: readonly string[]): Promise<Item[]>;
     };
     isStrictD1Quote: boolean;
     commercePriceAuthorityPort?: CommercePriceAuthorityPort;

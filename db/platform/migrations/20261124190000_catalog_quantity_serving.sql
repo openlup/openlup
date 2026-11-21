@@ -2,9 +2,10 @@
 -- compare stored projections with sealed facts using their existing privileges.
 ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;
 
--- The row can check canonical whole grams without consulting a definition.
+-- Preserve unsealed legacy zero while requiring exact evidence for publication.
 ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_legacy_net_grams_check CHECK (
  CASE
+  WHEN net_weight_g = 0 AND publication_facts IS NULL THEN true
   WHEN net_content_dimension IS NULL THEN net_weight_g IS NOT NULL AND net_weight_g BETWEEN 0 AND 2147483647
   WHEN net_content_dimension = 'mass' AND net_content_unit = 'openlup:g' AND net_content_scale = 0
    THEN net_weight_g IS NOT NULL AND net_weight_g = net_content_unscaled
@@ -16,7 +17,7 @@ CREATE OR REPLACE FUNCTION public.catalog_publication_sku_projection(p_sku uuid,
 LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE canonical text; installed jsonb; quantity jsonb; declared jsonb; dimension text; unit text; canonical_unit text;
  coefficient numeric; quantity_scale integer; factor numeric; factor_scale integer; exact numeric; net_amount numeric;
- grams integer; rejected_constraint text;
+ grams integer; builtin_integral boolean; invalid_amount text; rejected_constraint text;
 BEGIN
  IF jsonb_typeof(body) IS DISTINCT FROM 'object'
    OR NOT (body ?& ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
@@ -117,21 +118,29 @@ BEGIN
    IF quantity='null'::jsonb THEN CONTINUE; END IF;
    dimension := quantity->>'dimension';
    unit := quantity->>'unit';
-   canonical_unit := CASE dimension WHEN 'mass' THEN 'openlup:g' WHEN 'volume' THEN 'openlup:ml' ELSE 'openlup:piece' END;
    SELECT entry INTO declared FROM jsonb_array_elements(installed->'units') entry WHERE entry->>'code'=unit;
    IF declared->>'dimension' IS DISTINCT FROM dimension THEN
     RAISE EXCEPTION 'catalog_publication_quantity_unit_unregistered' USING ERRCODE='23514', CONSTRAINT='catalog_publication_quantity_unit_unregistered';
    END IF;
    coefficient := (quantity->>'unscaled')::numeric;
    quantity_scale := (quantity->>'scale')::integer;
-   IF (dimension='count' OR declared->'integral'='true'::jsonb)
-     AND mod(coefficient,power(10::numeric,quantity_scale))<>0 THEN
-    RAISE EXCEPTION 'catalog_publication_net_content_invalid' USING ERRCODE='23514', CONSTRAINT='catalog_publication_net_content_invalid';
-   END IF;
+   -- Mirrored from Core's CATALOG_QUANTITY_UNITS. The parity witness checks every tuple.
+   SELECT basis.target, basis.multiplier, basis.multiplier_scale, basis.integral
+    INTO canonical_unit, factor, factor_scale, builtin_integral
+    FROM (VALUES
+     ('openlup:g', 'mass', 'openlup:g', 1, 0, false),
+     ('openlup:kg', 'mass', 'openlup:g', 1000, 0, false),
+     ('openlup:ml', 'volume', 'openlup:ml', 1, 0, false),
+     ('openlup:l', 'volume', 'openlup:ml', 1000, 0, false),
+     ('openlup:piece', 'count', 'openlup:piece', 1, 0, true)
+    ) AS basis(code, quantity_dimension, target, multiplier, multiplier_scale, integral)
+    WHERE (basis.code,basis.quantity_dimension)=(unit,dimension);
    IF declared->'factor' IS NULL THEN
-    factor := CASE unit WHEN canonical_unit THEN 1 WHEN 'openlup:kg' THEN 1000 WHEN 'openlup:l' THEN 1000 END;
-    factor_scale := 0;
+    IF NOT FOUND THEN
+     RAISE EXCEPTION 'catalog_publication_quantity_unit_unregistered' USING ERRCODE='23514', CONSTRAINT='catalog_publication_quantity_unit_unregistered';
+    END IF;
    ELSE
+    canonical_unit := coalesce(canonical_unit, CASE dimension WHEN 'mass' THEN 'openlup:g' WHEN 'volume' THEN 'openlup:ml' ELSE 'openlup:piece' END);
     IF (declared #>> '{factor,canonicalUnit}'=canonical_unit
       AND declared #>> '{factor,unscaled}' ~ '^[1-9][0-9]{0,39}$'
       AND declared #>> '{factor,scale}' ~ '^([0-9]|1[0-2])$') IS DISTINCT FROM true THEN
@@ -139,6 +148,11 @@ BEGIN
     END IF;
     factor := (declared #>> '{factor,unscaled}')::numeric;
     factor_scale := (declared #>> '{factor,scale}')::integer;
+   END IF;
+   IF (dimension='count' OR builtin_integral OR declared->'integral'='true'::jsonb)
+     AND mod(coefficient,power(10::numeric,quantity_scale))<>0 THEN
+    invalid_amount := CASE WHEN net_amount IS NULL THEN 'catalog_publication_net_content_invalid' ELSE 'catalog_publication_gross_mass_invalid' END;
+    RAISE EXCEPTION USING MESSAGE=invalid_amount, ERRCODE='23514', CONSTRAINT=invalid_amount;
    END IF;
    exact := trim_scale(coefficient * factor * ('1e-' || (quantity_scale + factor_scale))::numeric);
    IF (exact>0 AND exact<1e40 AND scale(exact)<=12) IS DISTINCT FROM true THEN
@@ -338,6 +352,18 @@ BEGIN
  IF EXISTS (SELECT 1 FROM public.catalog_publication_heads WHERE product_id=p_product AND publication_id=p_issue) THEN
   PERFORM public.catalog_publication_assert_head(p_product,true);
   IF NOT public.catalog_publication_live_matches(p_product,product,roster) THEN
+   IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(roster) member
+    JOIN public.catalog_sku_revisions r ON r.id=(member->>'revisionId')::uuid AND r.product_id=p_product
+    JOIN public.catalog_skus s ON (s.id,s.product_id)=(r.sku_id,r.product_id)
+    CROSS JOIN LATERAL (SELECT r.full_facts::jsonb AS facts) f
+    WHERE s.net_weight_g::text IS DISTINCT FROM coalesce(f.facts->>'netWeightG', CASE
+     WHEN f.facts #> '{netContent,dimension}'='"mass"'::jsonb
+      AND f.facts #> '{netContent,unit}'='"openlup:g"'::jsonb AND f.facts #> '{netContent,scale}'='0'::jsonb
+      AND pg_input_is_valid(f.facts #>> '{netContent,unscaled}','integer') THEN f.facts #>> '{netContent,unscaled}' END)
+   ) THEN
+    RAISE EXCEPTION 'catalog_publication_gram_bridge_mismatch' USING ERRCODE='23514', CONSTRAINT='catalog_publication_gram_bridge_mismatch';
+   END IF;
    RAISE EXCEPTION 'catalog_publication_live_drift' USING ERRCODE='23514', CONSTRAINT='catalog_publication_live_drift';
   END IF;
  END IF;

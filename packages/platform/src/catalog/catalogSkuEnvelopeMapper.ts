@@ -25,6 +25,7 @@ export interface PostgresCatalogSkuEnvelopeRow {
   sku_product_id: string | null;
   sku_code: string | null;
   net_content_unscaled: number | null;
+  has_typed_content?: boolean;
   sku_status: "draft" | "active" | "archived" | null;
   sellable_one_time: boolean | null;
   sellable_subscription: boolean | null;

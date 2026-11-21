@@ -4,7 +4,7 @@ import {
   type CommerceQuoteCatalogItem,
   type CommerceQuoteCatalogReadPort,
 } from "../pricing/index.js";
-import { createPostgresCatalogSkuEnvelopeReadPort } from "./catalogSkuEnvelope.js";
+import { listPostgresQuoteSkuEnvelopes } from "./catalogSkuEnvelope.js";
 import { CatalogSkuAuthorityError, type NeutralSkuEnvelopeV1 } from "./foundationSchemas.js";
 
 const PAGE_SIZE = 100;
@@ -49,11 +49,14 @@ export function createPostgresCommerceQuoteCatalogReadPort(
   if (typeof verifyDocument !== "function") {
     throw new CommerceQuoteCatalogReadError("catalog_read_not_configured");
   }
-  const envelopes = createPostgresCatalogSkuEnvelopeReadPort(executor);
   return {
-    async listQuoteCatalogItems() {
+    async listQuoteCatalogItems(requestedSkuCodes) {
       try {
         const items: CommerceQuoteCatalogItem[] = [];
+        const requested = new Set(requestedSkuCodes);
+        const refuseQuantity = (skuCode: string) => {
+          if (requested.has(skuCode)) throw new CommerceQuoteCatalogReadError("quantity_requires_v2");
+        };
         const seenCursors = new Set<string>();
         const seenIds = new Set<string>();
         const seenCodes = new Set<string>();
@@ -65,7 +68,7 @@ export function createPostgresCommerceQuoteCatalogReadPort(
             throw new CommerceQuoteCatalogReadError("catalog_cardinality_exceeded");
           }
           pageCount += 1;
-          const page = await envelopes.listActiveSkuEnvelopes({ cursor, limit: PAGE_SIZE });
+          const page = await listPostgresQuoteSkuEnvelopes(executor, { cursor, limit: PAGE_SIZE }, refuseQuantity);
           const documents = await readCurrentDocuments(executor, page.items);
           const active = page.items.filter((envelope, index) => documents[index]!.product_status === "active");
           if (items.length + active.length > maxItems) {

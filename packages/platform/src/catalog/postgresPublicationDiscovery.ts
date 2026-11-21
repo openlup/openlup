@@ -8,7 +8,8 @@ import { catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
 import type { CatalogSkuRevisionRef } from "./publicationContracts.js";
 import { canonicalCatalogPublicationJson, catalogPublishedProductSchema, catalogPublishedSkuSchema, publicationReadinessVerdict } from "./publicationCodec.js";
 import { CatalogPublicationError } from "./publicationError.js";
-import { assertCatalogPublicationGrossMass } from "./publicationValidation.js";
+import { asLegacyIntegralGrams } from "./physicalQuantity.js";
+import { assertCatalogPublicationGrossMass, resolveCatalogPublicationNetContent } from "./publicationValidation.js";
 import { z } from "./validation.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
@@ -187,6 +188,17 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
       const { product, sku, ...references } = observed;
       const definition = installed.registry.resolve(structuredClone(product.type));
       if (!definition || definition.key !== product.type.key || definition.version !== product.type.version) return installedInvalid;
+      try {
+        const net = resolveCatalogPublicationNetContent(sku.netContent, definition);
+        const bridge = asLegacyIntegralGrams(net);
+        const expectedGrams = bridge.outcome === "converted" ? bridge.grams : null;
+        const authored = sku.netContent;
+        const implicitGrams = authored.unit === "openlup:g" && authored.scale === 0 ? Number(authored.unscaled) : null;
+        if ((sku.netWeightG ?? implicitGrams) !== expectedGrams) return unavailable;
+      } catch (error) {
+        if (!(error instanceof CatalogPublicationError)) throw error;
+        return unavailable;
+      }
       const reasons: string[] = [];
       if (!primaryPresent) reasons.push("primary_sku_missing");
       if (!sku.logisticsRef) reasons.push("logistics_reference_missing");

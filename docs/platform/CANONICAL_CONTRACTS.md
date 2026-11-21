@@ -1320,8 +1320,10 @@ then guards the current payload against the product/slug/pointer and complete
 revision tuple before excluding inactive products. Included products then undergo
 required host schema, semantic identity and canonical digest verification.
 Bounded keyset scanning refuses excess cardinality/pages, duplicate variant or
-code and repeated cursor without partial success. Known quote catalog errors
-retain their class; unexpected failures become authority unavailable. This is
+code and repeated cursor without partial success. Typed SKUs without exact
+legacy grams are omitted from the V1 scan. A quote that requests one of them
+receives `quantity_requires_v2`. Known quote catalog errors retain their class;
+unexpected failures become authority unavailable. This is
 current-direct authority, without a publication-wide snapshot or head-qualified
 publication. See the [catalog package contract](../../packages/platform/README.md#catalog)
 for the callback, limits and existing runtime SELECT capability.

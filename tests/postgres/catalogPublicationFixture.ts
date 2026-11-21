@@ -114,7 +114,9 @@ type Head = { publicationId: string; revision: number; documentDigest: string };
 
 export async function graph(db: PoolClient, data: Fixture, before: Head | null = null, stageProduct = true,
   options: { draftRevision?: number; registerExisting?: boolean; registrationText?: string | Record<string, never>; documentText?: string;
-    retainedSource?: CatalogPublishedProduct["source"]; authoredDocument?: Record<string, unknown> } = {}) {
+    retainedSource?: CatalogPublishedProduct["source"]; authoredDocument?: Record<string, unknown>;
+    definition?: { type: CatalogPublishedProduct["type"]; digest: string } } = {}) {
+  const bound = options.definition ?? { type, digest: definitionDigest };
   const { productId, skuId, draftId, documentId } = data;
   const revision = (before?.revision ?? 0) + 1;
   const draftRevision = options.draftRevision ?? revision;
@@ -132,7 +134,7 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
     sourceRef: document.sourceRef, documentRef: document.documentRef, canonicalText: options.registrationText ?? canonicalText,
     digest: document.digest, provenance };
   const sharedContent = options.authoredDocument ? { ...content, document: options.authoredDocument } : content;
-  const payload = { schemaVersion: 3, product: { id: productId, slug, type, dimensions: [], primarySkuId: skuId, documentRevision: document, sharedContent },
+  const payload = { schemaVersion: 3, product: { id: productId, slug, type: bound.type, dimensions: [], primarySkuId: skuId, documentRevision: document, sharedContent },
     skus: [{ id: skuId, productId, code, options: {}, netContent: quantity }],
     publication: { kind: "release", evidence: retained ? { drafts: [retained] } : {}, operations: before ? (options.registerExisting ? [registerDocument] : []) : [
       { op: "create_product", productId, productSlug: slug, name: "Article" },
@@ -143,7 +145,7 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
     ] } };
   const draftKey = `draft:${draftRevision}`;
   const source = { draftId, revision: draftRevision, commandKey: draftKey, fingerprint: hash(json(payload)) };
-  if (!before && stageProduct) await stageProductRows(db, data, slug, code);
+  if (!before && stageProduct) await stageProductRows(db, data, slug, code, bound.type);
   if (draftRevision === 1) {
     await db.query("INSERT INTO public.catalog_draft_heads(draft_id,product_id,revision,status) VALUES($1,$2,1,'open')", [draftId, productId]);
   } else {
@@ -154,14 +156,14 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   await db.query("INSERT INTO public.catalog_draft_command_receipts(draft_id,command_key,fingerprint,revision) VALUES($1,$2,$3,$4)",
     [draftId, draftKey, source.fingerprint, draftRevision]);
   const candidateRef = `v1:${draftId}@${draftRevision}/${before ? `${before.publicationId}@${before.revision}` : "unpublished"}`;
-  const candidateDigest = hash(json(["catalog-candidate", 1, payload, [{ ...type, definitionDigest }], before]));
+  const candidateDigest = hash(json(["catalog-candidate", 1, payload, [{ ...bound.type, definitionDigest: bound.digest }], before]));
   const commandKey = `issue:${revision}`, fingerprint = hash(commandKey);
   const decisionKey = `approve:${revision}`;
   const time = (await db.query<{ now: string }>(`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS now`)).rows[0]!.now;
   const decision: { schemaVersion: number; productId: string; candidateRef: string; candidateDigest: string;
     commandKey: string; action: "approve" | "revoke"; reason: string | null } =
     { schemaVersion: 2, productId, candidateRef, candidateDigest, commandKey: decisionKey, action: "approve", reason: null };
-  const product: CatalogPublishedProduct = { id: productId, slug, name: "Article", status: "draft", type, axes: [], attributes: {},
+  const product: CatalogPublishedProduct = { id: productId, slug, name: "Article", status: "draft", type: bound.type, axes: [], attributes: {},
     primarySkuId: skuId, document, presentation: {}, source, content };
   const facts: CatalogPublishedSku = { id: skuId, productId, code, title: before ? `Article ${revision}` : "Article", status: "draft", minQuantity: 1, isAddon: false, sellableStandalone: false,
     sellableInSubscription: false, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
@@ -199,9 +201,9 @@ export async function publishMaximumRoster(pool: Pool) {
 }
 
 export async function stageProductRows(db: PoolClient, data: Fixture,
-  slug = `article-${data.productId}`, code = data.skuCode ?? `sku-${data.skuId}`) {
+  slug = `article-${data.productId}`, code = data.skuCode ?? `sku-${data.skuId}`, boundType = type) {
   await db.query("INSERT INTO public.catalog_products(id,slug,name,status,type_key,type_version) VALUES ($1,$2,'Article','draft',$3,$4)",
-    [data.productId, slug, type.key, type.version]);
+    [data.productId, slug, boundType.key, boundType.version]);
   await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,net_weight_g) VALUES($1,$2,$3,'Article','draft',100)",
     [data.skuId, data.productId, code]);
 }

@@ -1,10 +1,13 @@
+import { CATALOG_CANONICAL_UNITS, CATALOG_QUANTITY_UNITS, type CatalogQuantity } from "@openlup/core/catalog";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { installCatalogDefinitions, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV3, createPostgresCatalogPublicationCommands,
-  readPostgresCatalogActivationReadiness, withCatalogPublicationRules, type CatalogHeadRef, type CatalogInstalledReadiness } from "@openlup/platform/catalog";
+  asLegacyIntegralGrams, readPostgresCatalogActivationReadiness, withCatalogPublicationRules, type CatalogHeadRef, type CatalogInstalledReadiness } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog/contracts";
+import type { CatalogProductTypeDefinition } from "@openlup/platform/catalog/contracts";
+import { resolveCatalogPublicationNetContent } from "@openlup/platform/catalog/testing";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { actorId, authoredPublicationDocument, catalogueReadGrant, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json,
@@ -146,6 +149,106 @@ it("returns a structured read refusal for a malformed count from the executor", 
     .resolves.toEqual(unavailable);
   expect(assess).not.toHaveBeenCalled();
 });
+
+type QuantityParityCase = {
+  label: string;
+  net: CatalogQuantity;
+  unit: CatalogProductTypeDefinition["units"][number];
+  refusal?: string;
+  admitted?: false;
+};
+
+const unitRefusal = "catalog_publication_quantity_unit_unregistered";
+const valueRefusal = "catalog_publication_net_content_invalid";
+const conversionRefusal = "catalog_publication_quantity_conversion_inexact";
+const parityCases: QuantityParityCase[] = CATALOG_QUANTITY_UNITS.flatMap(({ code, dimension, integral, factor }) => {
+  const net = { unit: code, dimension, unscaled: "50", scale: 0 };
+  return [
+    ...(Object.keys(CATALOG_CANONICAL_UNITS) as CatalogQuantity["dimension"][]).map(declaredDimension => ({
+      label: code + " as " + declaredDimension,
+      net: { ...net, dimension: declaredDimension },
+      unit: { code, dimension: declaredDimension, integral },
+      ...(declaredDimension === dimension ? {} : { refusal: unitRefusal }),
+    })),
+    { label: code + " with a fraction", net: { ...net, unscaled: "15", scale: 1 },
+      unit: { code, dimension, integral }, ...(integral ? { refusal: valueRefusal } : {}) },
+    ...(BigInt(factor.unscaled) > 10n ** BigInt(factor.scale)
+      ? [{ label: code + " overflows the canonical range", net: { ...net, unscaled: "9".repeat(40) },
+        unit: { code, dimension, integral }, refusal: conversionRefusal }] : []),
+  ];
+});
+const grams = { code: "openlup:g", dimension: "mass", integral: false } as const;
+const gramQuantity = { unit: grams.code, dimension: grams.dimension, unscaled: "100", scale: 0 };
+const fluidOunce = { code: "example:us-fl-oz", dimension: "volume", integral: false,
+  factor: { canonicalUnit: "openlup:ml", unscaled: "295735295625", scale: 10 } } as const;
+parityCases.push(
+  { label: "undeclared fallback", net: { ...gramQuantity, unit: "example:unknown" },
+    unit: { ...grams, code: "example:unknown" }, refusal: unitRefusal },
+  { label: "unit excluded from net content", net: gramQuantity, unit: grams, admitted: false, refusal: unitRefusal },
+  { label: "declared dimension differs from the quantity", net: { ...gramQuantity, dimension: "volume" }, unit: grams, refusal: unitRefusal },
+  { label: "invalid coefficient", net: { ...gramQuantity, unscaled: "1/2" }, unit: grams, refusal: valueRefusal },
+  { label: "zero coefficient", net: { ...gramQuantity, unscaled: "0" }, unit: grams, refusal: valueRefusal },
+  { label: "invalid scale", net: { ...gramQuantity, scale: 13 }, unit: grams, refusal: valueRefusal },
+  { label: "integral gram declaration with a fraction", net: { ...gramQuantity, unscaled: "15", scale: 1 },
+    unit: { ...grams, integral: true }, refusal: valueRefusal },
+  { label: "whole-gram bridge overflow", net: { ...gramQuantity, unscaled: "2147483648" }, unit: grams,
+    refusal: "catalog_publication_gram_bridge_mismatch" },
+  { label: "configured factor at the precision limit", net: { unit: fluidOunce.code, dimension: "volume", unscaled: "1", scale: 2 },
+    unit: fluidOunce },
+  { label: "configured factor past the precision limit", net: { unit: fluidOunce.code, dimension: "volume", unscaled: "1", scale: 3 },
+    unit: fluidOunce, refusal: conversionRefusal },
+);
+
+it("mirrors the Core built-in tuples and keeps resolver, SQL seal and readiness verdicts in parity", async () => {
+  const expectedRows = CATALOG_QUANTITY_UNITS.map(({ code, dimension, integral, factor }) =>
+    `('${code}', '${dimension}', '${factor.canonicalUnit}', ${factor.unscaled}, ${factor.scale}, ${integral})`);
+  const rows = /FROM \(VALUES\n([\s\S]*?)\n {4}\) AS basis\(code/u.exec(readFileSync(forward, "utf8"))?.[1];
+  expect(rows?.split("\n").map(row => row.trim().replace(/,$/u, ""))).toEqual(expectedRows);
+
+  const { code, digest, template } = await rolledBack(async db => {
+    const issue = await seed(db);
+    const digest = await headDigest(db);
+    return { code: issue.facts.code, digest, template: await direct(db, [issue.facts.code], digest) };
+  });
+  const type = { key: "example:quantity-parity", version: 1 };
+  expect(template.kind).toBe("batch");
+  for (const { label, net, unit, refusal, admitted } of parityCases) {
+    const definition: CatalogProductTypeDefinition = { ...type, units: [unit],
+      netContentUnits: admitted === false ? ["openlup:ml"] : [unit.code], dimensions: [], validateContent: () => [] };
+    const resolve = () => resolveCatalogPublicationNetContent(net, definition);
+    if (refusal) expect(resolve, label).toThrow();
+    const canonical = refusal ? null : resolve();
+    const bridge = canonical && asLegacyIntegralGrams(canonical);
+    const sealedBridge = bridge?.outcome === "converted" && (net.unit !== "openlup:g" || net.scale !== 0)
+      ? { netWeightG: bridge.grams } : {};
+
+    const seal = rolledBack(async db => {
+      const installed = hash("parity definition");
+      const { validateContent: _validator, ...metadata } = definition;
+      await db.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
+        VALUES($1,$2,$3,$4,$5)`, [type.key, type.version, metadata, installed, "sha256:" + installed]);
+      const issue = await graph(db, fixture(), null, false, { definition: { type, digest: installed } });
+      const facts = { ...issue.facts, netContent: net, ...sealedBridge };
+      const { rows } = await db.query("SELECT public.catalog_publication_sku_projection($1,$2,$3,$4,true) AS sealed",
+        [issue.skuId, issue.productId, facts.code, facts]);
+      return JSON.parse(rows[0]!.sealed);
+    });
+    if (refusal) await expect(seal, label).rejects.toMatchObject({ code: "23514", constraint: refusal });
+    else await expect(seal, label).resolves.toMatchObject({ netContent: net, ...sealedBridge });
+
+    const response = structuredClone(template);
+    const { evidence } = response.value.items[0];
+    evidence.product.type = type;
+    evidence.sku.netContent = net;
+    Object.assign(evidence.sku, sealedBridge);
+    const assess = vi.fn(() => []);
+    const result = await read({ registry: { resolve: () => definition }, assess }, [code], digest,
+      { run: work => work({ query: async sql => ({ rows: sql.startsWith("SET TRANSACTION") ? [] : [{ result: response }] }) }) });
+    if (refusal) expect(result, label).toEqual(unavailable);
+    else expect(result, label).toMatchObject({ protocol: "governed", items: [{ skuCode: code }] });
+    expect(assess, label).toHaveBeenCalledTimes(refusal ? 0 : 1);
+  }
+}, 30_000);
 
 it("validates the request and transaction mode before taking the fence", async () => {
   await transaction(pool, db => seed(db));

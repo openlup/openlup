@@ -19,10 +19,12 @@ export interface CommerceQuoteCatalogItem {
 }
 
 export interface CommerceQuoteCatalogReadPort {
-  listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
+  /** Refuse an explicitly requested SKU whose typed content requires V2. */
+  listQuoteCatalogItems(requestedSkuCodes?: readonly string[]): Promise<CommerceQuoteCatalogItem[]>;
 }
 
 export type CommerceQuoteCatalogReadRefusalCode =
+  | "quantity_requires_v2"
   | "catalog_read_not_configured"
   | "catalog_authority_unavailable"
   | "catalog_authority_changed"

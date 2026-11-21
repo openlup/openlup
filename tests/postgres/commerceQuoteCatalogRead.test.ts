@@ -63,6 +63,40 @@ it("reads exactly 500 facts in UUID order, using pages of 100 and deduped payloa
   expect(verifyDocument).toHaveBeenCalledWith(documentFor(0), expect.objectContaining({ sku: expect.objectContaining({ id: seed.skus[0]!.id }) }));
 }, 30_000);
 
+it("quotes other SKUs on a page containing a sellable 50 mL SKU and refuses that SKU alone", async () => {
+  const sorted = [...seed.skus].slice(0, 500).sort((a, b) => a.id.localeCompare(b.id));
+  const [first, volume, last] = sorted.slice(0, 100).filter(sku => sku.sellable_standalone).slice(0, 3);
+  const catalog = make();
+  const taxProfile = { included: true as const, country: "ZZ", category: "example", vatRateBps: 0, legalBasis: "example" };
+  const quote = fixture.pricing.createDbBackedCommerceQuotePort({
+    quoteCatalogReadPort: catalog, isStrictD1Quote: false,
+    pricingResolverPort: { resolvePrice: async ({ variantId, atTime }) => ({
+      variantId, resolvedAt: atTime ?? new Date(0).toISOString(), mode: "one_time", unitPriceMinor: 250, amountKind: "gross",
+      priceListId: "synthetic-list", priceEntryId: "synthetic-price", matchedMinQty: 1,
+    }) },
+    taxProfile, supportedTaxProfiles: [taxProfile], regionCode: "ZZ", currency: "XXX",
+    hasPromotionCodePort: false, lineContext: () => ({}),
+    quoteContext: request => () => ({ mode: request.mode, promoCodes: request.promoCodes }),
+    resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
+    applyPromotionCodesV2: async input => ({ discounts: input.discounts, codeRejections: input.codeRejections, codeRejectionDetails: [] }),
+  });
+  await update(`UPDATE public.catalog_skus SET net_weight_g=NULL,net_content_dimension='volume',
+    net_content_unit='openlup:ml',net_content_unscaled=50,net_content_scale=0 WHERE id=$1`,
+  [volume!.id], async () => {
+    const items = await catalog.listQuoteCatalogItems();
+    expect(items).toHaveLength(499);
+    expect(items.map(item => item.skuCode)).not.toContain(volume!.sku);
+    const mode = "one_time";
+    const priced = await quote.createServerAuthoritativeQuote({ mode, promoCodes: [],
+      lines: [first!, last!].map(sku => ({ sku: sku.sku, quantity: 1 })) });
+    expect(priced.quote.lines.map(line => line.sku)).toEqual([first!.sku, last!.sku]);
+    await expect(quote.createServerAuthoritativeQuote({ mode, promoCodes: [], lines: [{ sku: volume!.sku, quantity: 1 }] }))
+      .rejects.toMatchObject({ code: "quantity_requires_v2" });
+  }, `UPDATE public.catalog_skus SET net_weight_g=$2,net_content_dimension=NULL,
+    net_content_unit=NULL,net_content_unscaled=NULL,net_content_scale=NULL WHERE id=$1`,
+  [volume!.id, seed.skus.findIndex(sku => sku.id === volume!.id) + 1]);
+}, 30_000);
+
 it("excludes inactive and unsellable SKUs, validates inactive products before exclusion, and retains secondary/addon facts", async () => {
   const db = fixture.owner;
   await db.query("UPDATE public.catalog_skus SET status='draft' WHERE id=$1", [seed.skus[0]!.id]);

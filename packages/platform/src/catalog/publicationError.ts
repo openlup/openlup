@@ -265,7 +265,7 @@ const publicationRefusals = {
   catalog_publication_quantity_conversion_inexact: { fix: "Choose an amount and unit whose installed factor converts within 12 decimal places and the supported range." },
   catalog_publication_quantity_unit_unregistered: { fix: "Choose an installed unit for the quantity dimension and make sure the product type admits its net unit." },
   catalog_publication_gross_below_net: { fix: "Supply a gross mass at least as large as the net content." },
-  catalog_publication_gross_mass_invalid: { fix: "Supply a positive gross mass in an installed mass unit." },
+  catalog_publication_gross_mass_invalid: { fix: "Supply an exact positive gross mass in an installed mass unit. Use a whole amount when the unit requires it." },
   catalog_publication_gross_mass_required: { fix: "supply the gross mass for this SKU" },
   catalog_publication_identifier_effect_missing: { fix: "Match the identifier operation to the identifier saved for this SKU." },
   catalog_publication_identifier_primary_invalid: { fix: "Use a valid unit GTIN as the primary trade identifier." },

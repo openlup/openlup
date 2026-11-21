@@ -23,9 +23,10 @@ export interface SkuIndexEntry<Item = CommerceQuoteCatalogItem> {
 }
 
 export async function buildSkuIndex<Item extends CommerceQuoteCatalogItem>(
-  quoteCatalogReadPort: { listQuoteCatalogItems(): Promise<Item[]> },
+  quoteCatalogReadPort: { listQuoteCatalogItems(requestedSkuCodes?: readonly string[]): Promise<Item[]> },
+  requestedSkuCodes?: readonly string[],
 ): Promise<Map<string, SkuIndexEntry<Item>>> {
-  const items = await quoteCatalogReadPort.listQuoteCatalogItems();
+  const items = await quoteCatalogReadPort.listQuoteCatalogItems(requestedSkuCodes);
   return new Map(
     items.map((item) => [item.skuCode, { item }] as const),
   );

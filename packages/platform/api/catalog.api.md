@@ -1367,13 +1367,14 @@ export declare function loadCatalogRules(artifact: Uint8Array, evaluation?: Cata
 ## dist/catalog/catalogSkuEnvelope.d.ts
 
 ```ts
-import type { PublicCatalogSkuEnvelopeReadPort } from "./readPorts.js";
+import type { CatalogSkuEnvelopeListQuery, CatalogSkuEnvelopePage, PublicCatalogSkuEnvelopeReadPort } from "./readPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 /**
  * Portable W2a envelope reader. It reads only product/SKU/revision references
  * and neutral identifiers; application document content never crosses this seam.
  */
 export declare function createPostgresCatalogSkuEnvelopeReadPort(executor: PgQueryExecutor): PublicCatalogSkuEnvelopeReadPort;
+export declare function listPostgresQuoteSkuEnvelopes(executor: PgQueryExecutor, query: CatalogSkuEnvelopeListQuery, refuseQuantity: (skuCode: string) => void): Promise<CatalogSkuEnvelopePage>;
 ```
 ## dist/catalog/commerceQuoteCatalogRead.d.ts
 
@@ -5467,7 +5468,7 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly id: "20261124190000_catalog_quantity_serving";
         readonly catalogPath: "db/platform/migrations/20261124190000_catalog_quantity_serving.sql";
         readonly position: number;
-        readonly sha256: "43329ff5134966e6efac9732a9dbdc1f2e769d8fc0c73956369d6eb7a233e790";
+        readonly sha256: "0b9101e3b07572e46537a1dd2847b6ca6fef4b8f5361fd81afc5e16f82c89240";
         readonly url: URL;
     }
 ];

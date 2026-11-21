@@ -40,17 +40,17 @@ Installed readers follow the
 
 The native [quantity serving forward](../../db/platform/migrations/20261124190000_catalog_quantity_serving.sql)
 allows NULL in `catalog_skus.net_weight_g`. It keeps existing rows, defaults
-and sealed revisions. The SKU CHECK requires a nonnegative legacy value for
-untyped rows and the exact value for canonical scale-zero grams. Other typed
-rows may carry NULL or a positive value before sealing. The existing deferred
+and sealed revisions. The SKU CHECK preserves zero on unsealed legacy rows, including existing rows
+with typed content. The migration validates rows in place without rewriting
+them. Other untyped rows require positive grams. Canonical scale-zero grams
+match their coefficient. Other typed rows may carry NULL or positive grams
+before sealing. The existing deferred
 publication checks verify each sealed revision against its installed definition,
 including revisions superseded in the same transaction. Only an exact positive
 whole mass up to 2,147,483,647 grams yields a legacy value. A positive
 conversion from a different mass representation adds optional sealed gram
 evidence. Readers compare the live columns with those sealed facts using
-existing privileges. Historical zero still means unknown for untyped rows.
-The migration validates existing rows. Before applying it, reconcile any
-pre-issuance typed rows that still use a legacy zero.
+existing privileges. The issuing path and seal refuse zero grams.
 
 A scoped membership page that selects content without a gram value refuses on
 V1. The owner can use the bounded V2 SQL entry for authored `netContent` and

@@ -6345,7 +6345,7 @@
         "dataStatements": [],
         "existingTableStatements": [
           "ALTER TABLE public.catalog_skus ALTER COLUMN net_weight_g DROP NOT NULL;",
-          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_legacy_net_grams_check CHECK (\n CASE\n  WHEN net_content_dimension IS NULL THEN net_weight_g IS NOT NULL AND net_weight_g BETWEEN 0 AND 2147483647\n  WHEN net_content_dimension = 'mass' AND net_content_unit = 'openlup:g' AND net_content_scale = 0\n   THEN net_weight_g IS NOT NULL AND net_weight_g = net_content_unscaled\n  ELSE net_weight_g IS NULL OR net_weight_g BETWEEN 1 AND 2147483647\n END\n);"
+          "ALTER TABLE public.catalog_skus ADD CONSTRAINT catalog_skus_legacy_net_grams_check CHECK (\n CASE\n  WHEN net_weight_g = 0 AND publication_facts IS NULL THEN true\n  WHEN net_content_dimension IS NULL THEN net_weight_g IS NOT NULL AND net_weight_g BETWEEN 0 AND 2147483647\n  WHEN net_content_dimension = 'mass' AND net_content_unit = 'openlup:g' AND net_content_scale = 0\n   THEN net_weight_g IS NOT NULL AND net_weight_g = net_content_unscaled\n  ELSE net_weight_g IS NULL OR net_weight_g BETWEEN 1 AND 2147483647\n END\n);"
         ]
       }
     ]
@@ -9142,17 +9142,17 @@
     },
     {
       "path": "db/platform/migrations/20261124190000_catalog_quantity_serving.sql",
-      "sha256": "43329ff5134966e6efac9732a9dbdc1f2e769d8fc0c73956369d6eb7a233e790",
+      "sha256": "0b9101e3b07572e46537a1dd2847b6ca6fef4b8f5361fd81afc5e16f82c89240",
       "functions": [
         {
           "signature": "public.catalog_publication_sku_projection(uuid,uuid,text,jsonb,boolean)",
           "beforeSha256": "b73afa7b2aaed3fe2f615f0276c5c653e519ad798225be6c37d1df9b135cd9d5",
-          "afterSha256": "b52262eb50241ba719a0c87a42e03e2c736494e3b510e1c0b1d65b9727b76b56"
+          "afterSha256": "748626d6c4760da6f77bfd1b7fd5b4116b330502b159d4beb5a40088f303e7bd"
         },
         {
           "signature": "public.catalog_publication_assert_issued(uuid,uuid)",
           "beforeSha256": "7ffe422e1f64dfaaf0f10fabc949a2d3aa632f6f9db29d23f1a996e363144c38",
-          "afterSha256": "1ae6bf7601de77affb2102677ebdbbd0a984a980700cd5c5819edc5f4c8d574d"
+          "afterSha256": "9c6e078e52270dd15c1a38c067e2e7417bd38cbafa4fede3ab81cc02c81af659"
         },
         {
           "signature": "public.catalog_publication_live_matches(uuid,jsonb,jsonb)",

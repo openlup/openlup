@@ -1385,6 +1385,28 @@ it("refuses canonical whole grams outside the bridge range and prepares the same
   expect(sku).not.toHaveProperty("netWeightG");
 });
 
+it("uses the configured US fluid-ounce factor at the Prepare and compile precision boundary", async () => {
+  const unit = "example:us-fl-oz";
+  const data = { ...input(), ...setupRules(artifact, {
+    units: [{ code: unit, dimension: "volume", integral: false,
+      factor: { canonicalUnit: "openlup:ml", unscaled: "295735295625", scale: 10 } }],
+    netContentUnits: [unit],
+  }) };
+  const sku = data.payload.skus[0]!;
+  const valid = { dimension: "volume", unit, unscaled: "1", scale: 2 } as const;
+  const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null };
+  sku.netContent = valid;
+  expect((await facade(data).prepareCandidate(query)).preparation?.structural.issues).toEqual([]);
+  expect((await compileCatalogPublication(data)).skus[0]?.netContent).toEqual(valid);
+
+  sku.netContent = { ...valid, scale: 3 };
+  const code = "catalog_publication_net_content_invalid";
+  expect((await facade(data).prepareCandidate(query)).preparation?.structural.issues)
+    .toContainEqual(expect.objectContaining({ code }));
+  for (const mode of ["first-decision", "compile"] as const)
+    await expect(compileCatalogPublication(data, mode)).rejects.toMatchObject({ code });
+});
+
 it("keeps integral grams without an explicit factor valid in Prepare and compile", async () => {
   const legacy = setupRules(artifact + "\nmodule.exports.validateSkuAmounts = ({netGrams}) => netGrams === '100';", {
     units: [{ code: "openlup:g", dimension: "mass", integral: true }], netContentUnits: ["openlup:g"],
@@ -1473,6 +1495,7 @@ it("refuses malformed, cross-dimension and fractional count evidence in preparat
     units: [...data.definition.units, { code: "openlup:piece", dimension: "count" as const, integral: true }] }, rules: {} };
   for (const netContent of [
     { dimension: "mass", unit: "openlup:g", unscaled: "1/2", scale: 0 },
+    { dimension: "mass", unit: "openlup:g", unscaled: "0", scale: 0 },
     { dimension: "volume", unit: "openlup:g", unscaled: "10", scale: 0 },
     { dimension: "count", unit: "openlup:piece", unscaled: "15", scale: 1 },
     { dimension: "mass", unit: "openlup:g", unscaled: "1".repeat(41), scale: 0 },
