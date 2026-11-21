@@ -4050,8 +4050,8 @@ export { nativeCatalogPublication } from "./publicationCodec.js";
 export type { CatalogFullPublicationV2, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
 export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCommands.js";
 export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt, PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
-export { readPostgresCatalogMembershipPage } from "./postgresPublicationDiscovery.js";
-export type { CatalogDiscoveryEvidence, CatalogDiscoveryRefusal, CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";
+export { readPostgresCatalogActivationReadiness, readPostgresCatalogMembershipPage } from "./postgresPublicationDiscovery.js";
+export type { CatalogActivationReadinessInput, CatalogActivationReadinessItem, CatalogActivationReadinessResult, CatalogDiscoveryEvidence, CatalogDiscoveryRefusal, CatalogInstalledReadiness, CatalogMembershipCursor, CatalogMembershipItem, CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";
 ```
 ## dist/catalog/installCatalogDefinitions.d.ts
 
@@ -4144,10 +4144,12 @@ export declare function createPostgresBundleAdminWriteStore(env: PostgresDataGat
 ## dist/catalog/postgresPublicationDiscovery.d.ts
 
 ```ts
-import type { PgQueryExecutor } from "../data/index.js";
+import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from "../data/index.js";
 import type { CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
+import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import type { CatalogSkuRevisionRef } from "./publicationContracts.js";
 /** @experimental */
 export type CatalogMembershipCursor = {
@@ -4199,10 +4201,49 @@ export type CatalogDiscoveryRefusal = {
     reason: string;
     retryable?: true;
 };
+/** @experimental */
+export type CatalogActivationReadinessInput = {
+    skuCodes: readonly string[];
+    expectedHeadDigest: string;
+};
+/** @experimental */
+export type CatalogActivationReadinessItem = {
+    skuCode: string;
+    skuId: string | null;
+    logisticsRef: string | null;
+    evidence: CatalogDiscoveryEvidence | null;
+    ready: boolean;
+    reasons: string[];
+};
+/** @experimental */
+export type CatalogActivationReadinessResult = {
+    protocol: "governed";
+    headDigest: string;
+    items: CatalogActivationReadinessItem[];
+} | CatalogDiscoveryRefusal | {
+    outcome: "unsupported";
+    reason: "catalog_publication_not_adopted";
+};
+/** Installed definitions and trusted host rules. They receive detached certified data after the owner transaction closes.
+ * A host without rules passes `assess: () => []`.
+ * @experimental
+ */
+export type CatalogInstalledReadiness = {
+    registry: CatalogProductTypeRegistry;
+    assess(subject: {
+        product: RulesProduct;
+        sku: RulesSku;
+        evidence: CatalogDiscoveryEvidence;
+    }): readonly string[];
+};
 /** Read one governed page in the caller's statement snapshot.
  * @experimental
  */
 export declare function readPostgresCatalogMembershipPage(db: PgQueryExecutor, input: CatalogMembershipPageInput): Promise<CatalogMembershipPageResult>;
+/** Wait behind publication, read activation readiness on the named owner lane, then apply installed rules.
+ * @experimental
+ */
+export declare function readPostgresCatalogActivationReadiness(transactions: Pick<PostgresRoleFreeTransactionLane<PgQueryExecutor>, "run">, installed: CatalogInstalledReadiness, input: CatalogActivationReadinessInput): Promise<CatalogActivationReadinessResult>;
 ```
 ## dist/catalog/productTypeIssues.d.ts
 

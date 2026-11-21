@@ -152,8 +152,8 @@ it("sets the owner transaction mode first and maps refusal values separately fro
     [batch([subject, absentItem]), sqlError("40001"), transactionConflict],
     [sqlError("55P03"), undefined, { outcome: "conflict", reason: "catalog_publication_read_busy", retryable: true }],
     [sqlError("42501", entryDenied), undefined, { outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" }],
-    [sqlError("42501", entryDenied, "PL/pgSQL function"), undefined, readUnavailable],
-    [sqlError("42501", "permission denied for function catalog_publication_readiness_snapshot", "PL/pgSQL function"), undefined, readUnavailable],
+    [sqlError("42501", entryDenied, "internal SQL"), undefined, readUnavailable],
+    [sqlError("42501", "permission denied for function catalog_publication_readiness_snapshot", "internal SQL"), undefined, readUnavailable],
   ];
   for (const [outcome, after, expected] of cases) {
     const { lane, query } = owner(outcome, after);
