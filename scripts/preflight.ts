@@ -358,12 +358,13 @@ function neutrality(base: string): CheckResult {
   return neutralityVerdict(result.code, result.output, result.seconds);
 }
 
-function changedTestLines(base: string, changes: readonly Change[], untracked: ReadonlySet<string>): AddedLine[] | null {
+function changedTestLines(base: string, changes: readonly Change[], untracked: ReadonlySet<string>, target?: string): AddedLine[] | null {
   const files = changes.filter(({ path, deleted }) => !deleted && isTestFile(path)).map(({ path }) => path);
   if (files.length === 0) return null;
+  const range = target ? [base, target] : [base];
   return files.flatMap((path) => untracked.has(path)
     ? readFileSync(path, "utf8").split("\n").map((text, index) => ({ path, line: index + 1, text }))
-    : addedLines(path, git(["diff", "-U0", "--no-color", "--no-ext-diff", base, "--", path])));
+    : addedLines(path, git(["diff", "-U0", "--no-color", "--no-ext-diff", ...range, "--", path], "stdout")));
 }
 
 function print(result: CheckResult): void {
@@ -373,7 +374,7 @@ function print(result: CheckResult): void {
   if (notes.length > 40) console.log(`    ... ${notes.length - 40} more`);
 }
 
-const STACK_BASE_SHA = /^[0-9a-f]{40}$/iu;
+const STACK_BASE_SHA = /^[0-9a-f]{40}$/u;
 const GUIDE_TRIGGER = /^(?:packages\/core\/docs\/guide\/|AGENTS\.md$|CONTRIBUTING\.md$|packages\/[^/]+\/(?:AGENTS|README)\.md$)/u;
 const PACKAGE_MANIFEST_TRIGGER = /^(?:packages\/[^/]+\/package\.json|config\/openlup-packages\.json)$/u;
 
@@ -385,9 +386,18 @@ const AREA_EXCLUDED_TESTS = new Set([
   "scripts/packages/reference-delegation-consumer.test.ts",
 ]);
 const CATALOG_BOUNDARY_TEST = "scripts/catalog-document-boundary.test.ts";
-const CATALOG_BOUNDARY_PREFIXES = ["packages/platform/src/catalog/", "packages/core/src/catalog/", "scripts/", "docs/"];
+const CATALOG_BOUNDARY_PREFIXES = [
+  "packages/platform/src/catalog/",
+  "packages/core/src/catalog/",
+  "src/domains/catalog/",
+  "server/domains/catalog/",
+  "db/platform/",
+  "server/adapters/postgres/",
+  "scripts/",
+  "docs/",
+];
 
-/** Docker-free, pack-free area tooling guard tests triggered by `changedPaths`. */
+/** Docker-free, consumer-pack-free area tooling guard tests triggered by `changedPaths`. */
 export function areaGuardTests(changedPaths: readonly string[]): string[] {
   if (changedPaths.length === 0) return [];
   const excluded = new Set(excludedToolingTests(changedPaths));
@@ -435,8 +445,9 @@ function fastPreflight(now: Date): number {
     ["merge-clean", () => {
       const stackBase = processEnvironment.OPENLUP_STACK_BASE;
       if (stackBase !== undefined && STACK_BASE_SHA.test(stackBase)
-        && execute("git", ["merge-base", "--is-ancestor", stackBase, "origin/main"]).code !== 0) {
-        return { check: "merge-clean", status: "PASS", detail: "stacked base is not an ancestor of origin/main" };
+        && execute("git", ["merge-base", "--is-ancestor", stackBase, "HEAD"]).code === 0
+        && execute("git", ["merge-base", "--is-ancestor", stackBase, "origin/main"]).code === 1) {
+        return { check: "merge-clean", status: "SKIP", detail: "unlanded OPENLUP_STACK_BASE; merge-tree skipped" };
       }
       return command("merge-clean", "git", ["merge-tree", "--write-tree", "origin/main", "HEAD"]);
     }],
@@ -449,7 +460,7 @@ function fastPreflight(now: Date): number {
       ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
     ], offlineNpm)],
     ["fragments", () => fragments(fastChanges())],
-    ["test-lines", () => testLineChecks(changedTestLines(forkPoint(), fastChanges(), new Set()), now)],
+    ["test-lines", () => testLineChecks(changedTestLines(forkPoint(), fastChanges(), new Set(), "HEAD"), now)],
     ["gitleaks", () => gitleaks(forkPoint(), [])],
     ["guide-check", () => fastChanges().some(({ path }) => GUIDE_TRIGGER.test(path))
       ? command("guide-check", process.execPath, ["--experimental-strip-types", "packages/core/scripts/documentation-contract.ts", "--check-guide", "packages/core"])
@@ -556,7 +567,7 @@ export function main(now: Date, args: readonly string[] = []): number {
     console.error("preflight: --fast and --area are mutually exclusive");
     return 2;
   }
-  process.chdir(git(["rev-parse", "--show-toplevel"], fast ? "stdout" : "output").trim());
+  process.chdir(git(["rev-parse", "--show-toplevel"], "stdout").trim());
   if (fast) return fastPreflight(now);
   if (area) return areaPreflight();
   const started = Date.now();

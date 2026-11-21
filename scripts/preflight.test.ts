@@ -152,7 +152,7 @@ describe("fast preflight", () => {
 
   it("handles OPENLUP_STACK_BASE for publication and merge-clean ancestry", () => {
     const head = "a".repeat(40), fork = "b".repeat(40), upstream = "c".repeat(40), stackBase = "d".repeat(40);
-    const runWithStackBase = (value: string, isAncestor: boolean) => {
+    const runWithStackBase = (value: string, headCode: number, mainCode: number) => {
       vi.stubEnv("OPENLUP_STACK_BASE", value);
       const calls: string[] = [];
       vi.mocked(spawnSync).mockImplementation(((bin, args) => {
@@ -161,7 +161,8 @@ describe("fast preflight", () => {
         if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
         if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
         if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
-        if (call === `git merge-base --is-ancestor ${value} origin/main`) return { status: isAncestor ? 0 : 1, stdout: "", stderr: "" };
+        if (call === `git merge-base --is-ancestor ${value} HEAD`) return { status: headCode, stdout: "", stderr: "" };
+        if (call === `git merge-base --is-ancestor ${value} origin/main`) return { status: mainCode, stdout: "", stderr: "" };
         if (call === "git rev-parse origin/main") return { status: 0, stdout: upstream, stderr: "" };
         if (bin === "gitleaks") return { status: null, stdout: "", stderr: "", error: Object.assign(new Error("missing"), { code: "ENOENT" }) };
         return { status: 0, stdout: "", stderr: "" };
@@ -174,23 +175,34 @@ describe("fast preflight", () => {
       return { exit, calls, lines };
     };
 
-    const unlanded = runWithStackBase(stackBase, false);
+    const unlanded = runWithStackBase(stackBase, 0, 1);
     expect(unlanded.exit).toBe(0);
+    expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} HEAD`);
     expect(unlanded.calls).toContain(`git merge-base --is-ancestor ${stackBase} origin/main`);
     expect(unlanded.calls).not.toContain("git merge-tree --write-tree origin/main HEAD");
     expect(unlanded.calls).toContain("npm run oss:published-tree -- --self-check");
     expect(unlanded.calls.some((call) => call.includes("--docs-base"))).toBe(false);
-    expect(unlanded.lines).toContain("merge-clean: ok");
+    expect(unlanded.lines).toContain("merge-clean: skip unlanded OPENLUP_STACK_BASE; merge-tree skipped");
 
-    const landed = runWithStackBase(stackBase, true);
+    const landed = runWithStackBase(stackBase, 0, 0);
     expect(landed.exit).toBe(0);
     expect(landed.calls).toContain(`git merge-base --is-ancestor ${stackBase} origin/main`);
     expect(landed.calls).toContain("git merge-tree --write-tree origin/main HEAD");
 
-    const invalid = runWithStackBase("not-a-sha", false);
-    expect(invalid.exit).toBe(0);
-    expect(invalid.calls.some((call) => call.includes("--is-ancestor"))).toBe(false);
-    expect(invalid.calls).toContain("git merge-tree --write-tree origin/main HEAD");
+    const fatalMainCheck = runWithStackBase(stackBase, 0, 128);
+    expect(fatalMainCheck.exit).toBe(0);
+    expect(fatalMainCheck.calls).toContain("git merge-tree --write-tree origin/main HEAD");
+
+    const notHeadAncestor = runWithStackBase(stackBase, 1, 1);
+    expect(notHeadAncestor.exit).toBe(0);
+    expect(notHeadAncestor.calls).toContain("git merge-tree --write-tree origin/main HEAD");
+
+    for (const bad of ["D".repeat(40), "not-a-sha"]) {
+      const rejected = runWithStackBase(bad, 0, 1);
+      expect(rejected.exit).toBe(0);
+      expect(rejected.calls.some((call) => call.includes("--is-ancestor"))).toBe(false);
+      expect(rejected.calls).toContain("git merge-tree --write-tree origin/main HEAD");
+    }
   });
 
   it("surfaces WARN/SKIP without failing --fast and runs conditional guide/manifest checks", () => {
@@ -212,7 +224,7 @@ describe("fast preflight", () => {
       if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
       if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
       if (call === `git diff --name-status --no-renames -z ${fork} HEAD`) return { status: 0, stdout: nameStatus, stderr: "" };
-      if (call === `git diff -U0 --no-color --no-ext-diff ${fork} -- scripts/example.test.ts`) {
+      if (call === `git diff -U0 --no-color --no-ext-diff ${fork} HEAD -- scripts/example.test.ts`) {
         return { status: 0, stdout: '@@ -1,0 +7,1 @@\n+const at = "2040-03-01";', stderr: "" };
       }
       if (call === "git rev-list --count bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..HEAD") return { status: 0, stdout: "1\n", stderr: "" };
@@ -251,14 +263,23 @@ describe("area preflight", () => {
     "tests/postgres/reviewedBatchForwards.test.ts",
   ];
 
-  it("selects Docker-free, pack-free area tooling guards from ci-test-scope and catalog boundary triggers", () => {
+  it("selects Docker-free, consumer-pack-free area tooling guards from ci-test-scope and catalog boundary triggers", () => {
     expect(areaGuardTests([])).toEqual([]);
     expect(areaGuardTests(["tests/unit/example.test.ts"])).toEqual([]);
     expect(areaGuardTests(["src/app.tsx"])).toEqual(["scripts/packages/eslint-import-map.test.ts"]);
     expect(areaGuardTests(["docs/platform/README.md"])).toEqual(["scripts/catalog-document-boundary.test.ts"]);
+    for (const path of [
+      "src/domains/catalog/example.ts",
+      "server/domains/catalog/example.ts",
+      "db/platform/schema.sql",
+      "server/adapters/postgres/example.ts",
+    ]) {
+      expect(areaGuardTests([path])).toContain("scripts/catalog-document-boundary.test.ts");
+    }
 
     const sqlGuards = areaGuardTests(["db/platform/migrations/20400101000000_example.sql"]);
     expect(sqlGuards).toEqual([
+      "scripts/catalog-document-boundary.test.ts",
       "scripts/qualified-migration-admission.test.ts",
       "scripts/reviewed-batch-forward.test.ts",
       "scripts/reviewed-native-store-forward.test.ts",
@@ -288,7 +309,7 @@ describe("area preflight", () => {
         const call = `${command} ${(args ?? []).join(" ")}`;
         calls.push(call);
         if (command === "git") {
-          if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "" };
+          if (args?.includes("--show-toplevel")) return { status: 0, stdout: process.cwd(), stderr: "warning: git warning\n" };
           if (args?.includes("merge-base")) return { status: 0, stdout: "a".repeat(40), stderr: "" };
           if (args?.includes("--name-status")) return { status: 0, stdout: options.nameStatus ?? "", stderr: "" };
           if (args?.includes("--others")) return { status: 0, stdout: options.untracked ?? "", stderr: "" };
@@ -313,7 +334,7 @@ describe("area preflight", () => {
     expect(triggered.exit).toBe(0);
     expect(triggered.calls).toContain("npx --no -- eslint -- src/example.ts");
     expect(triggered.calls).toContain(
-      `${process.execPath} scripts/test-hosted.mjs scripts/packages/eslint-import-map.test.ts scripts/qualified-migration-admission.test.ts scripts/reviewed-batch-forward.test.ts scripts/reviewed-native-store-forward.test.ts`,
+      `${process.execPath} scripts/test-hosted.mjs scripts/catalog-document-boundary.test.ts scripts/packages/eslint-import-map.test.ts scripts/qualified-migration-admission.test.ts scripts/reviewed-batch-forward.test.ts scripts/reviewed-native-store-forward.test.ts`,
     );
     expect(triggered.calls).toContain("npm run sql:admit");
     expect(triggered.calls.some((call) => call.includes("prelint") || call.includes("docker") || call.includes("inventory"))).toBe(false);

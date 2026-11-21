@@ -979,7 +979,7 @@ The fast tier does not replace full preflight or hosted CI.
 
 Run `npm run preflight -- --area` for a Docker-free, area-scoped check over changes since
 `git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
-triggered Docker-free/pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
+triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
 `scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
 and `sql admit` when SQL under `db/` or `packages/*/sql/` changed. `--fast` and `--area` are
 mutually exclusive.
