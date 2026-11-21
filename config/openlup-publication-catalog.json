@@ -28878,6 +28878,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261123151000_managed_inventory_atp_aggregate_credits.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
