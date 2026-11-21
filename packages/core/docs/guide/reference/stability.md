@@ -61,6 +61,7 @@ whole public contract:
 - **Minor:** adds contracts or deprecates existing ones without breaking them.
 - **Patch:** fixes defects without intentionally changing the public contract.
 
+See the [release cadence](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/VERSIONING_AND_EOL.md#release-cadence).
 A deprecation must keep the old behavior working, name its replacement and
 explain the upgrade action. Keep the compatibility bridge for the period
 required by the versioning policy, with explicit upgrade notes before removal.

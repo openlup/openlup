@@ -12,9 +12,6 @@ npm installation.
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#version-numbers).
 
-Keep a deprecation bridge through at least one supported stable minor, and
-remove it no earlier than the next major with explicit upgrade notes.
-
 ## Support window
 
 Moved to [Versioning and stability](../packages/core/docs/guide/reference/stability.md#support-window).
@@ -24,6 +21,16 @@ Earlier minors receive no fixes; upgrade to the latest minor before reporting a
 defect. There are no LTS or maintenance branches and no previous-major backport
 commitment. The project maintainer remains accountable through [SECURITY.md](../SECURITY.md).
 Release-evidence retention is owned by [distribution evidence](../docs/platform/DISTRIBUTION_EVIDENCE.md#exact-published-set-qualification).
+
+## Release cadence
+
+- Major releases are planned and ship at most once a year. No major release
+  ships in 2026. A major release removes only previously deprecated contracts,
+  after a compatibility bridge through at least one supported minor release.
+- Minor releases ship about every four weeks. A minor release ships earlier only
+  for a security or money defect whose fix requires a database (SQL) or public
+  API change.
+- Patch releases contain fixes only.
 
 ## Exceptional cessation
 
@@ -510,7 +517,7 @@ The `@openlup/*` packages are released as one coherent set:
 - Each package has its own tag `openlup-<package>-v<set version>`, and every tag
   of a set points at that commit.
 - Every package is republished in each set, changed or not.
-- A patch set only restores documented behaviour, with no API or schema change.
+- Patch sets carry no API or schema changes.
   Compatible API, behaviour or additive schema changes require at least a minor
   set, as does a new package or any shipped SQL. Breaking changes follow the
   [stable API policy](../packages/core/docs/guide/reference/stability.md#public-api)
