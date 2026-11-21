@@ -72,6 +72,7 @@ const searchTerms: Record<string, string> = {
   savedAddressValidation: "postal format, phone normalization, delivery address checks",
   "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
   "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
+  "market.fiscalProfile": "fiscal jurisdiction, tax category, VAT rate, basis points, statutory citation, inclusive VAT",
   "market.settlementProfile": "settlement currency, settlement region, commerce settings mirror, market profile",
   "inventory.offerLowStockThreshold": "low stock threshold, availability status, stock badge cutoff, sellable threshold",
   "catalog.bundleAvailabilityPolicy": "bundle low stock, bundle availability, add-on stock, limiting component",

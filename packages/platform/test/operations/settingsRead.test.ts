@@ -172,7 +172,7 @@ it("finds inventory buffer in the packaged settings list", () => {
 describe("settings goal search", () => {
   const catalogue = loadSettingsCatalogue();
 
-  it.each(["配送", "!!!", "vat"])("returns no entries without a matching token for %s", goal => {
+  it.each(["配送", "!!!", "qzx"])("returns no entries without a matching token for %s", goal => {
     expect(catalogue.listResult.parse(listSettings({ goal })).entries).toEqual([]);
   });
 
@@ -181,6 +181,7 @@ describe("settings goal search", () => {
     ["inventory buffer", "inventory_renewal_protection"],
     ["renewal retry policy", "subscriptions.retrySchedule"],
     ["skus", "catalog.optionalGtin"],
+    ["VAT rate", "market.fiscalProfile"],
   ])("includes %s matches such as %s", (goal, key) => {
     const { entries } = catalogue.listResult.parse(listSettings({ goal }));
     expect(entries.map(entry => entry.key)).toContain(key);

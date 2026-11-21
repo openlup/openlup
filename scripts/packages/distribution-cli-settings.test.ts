@@ -814,7 +814,7 @@ const newPackagedInstalledKeys = [
 const newPackagedCodeKeys = [
   "catalog.bundleAvailabilityPolicy", "checkout.resumeWindowMinutes",
   "communications.terminalPayloadRetentionDays", "inventory.offerLowStockThreshold",
-  "market.settlementProfile",
+  "market.fiscalProfile", "market.settlementProfile",
 ];
 const newPackagedCheckKeys = [...newPackagedInstalledKeys, ...newPackagedCodeKeys];
 const newCheckKeys = [...newStarterCheckKeys, ...newPackagedCheckKeys];
