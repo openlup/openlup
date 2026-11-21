@@ -234,12 +234,18 @@ export function phaseIndexForStep(step: CustomerFulfillmentStep): number {
   return STAGE_BY_STEP[step].phaseIndex;
 }
 
-/** i18n key for a step's short label (progress bar + cards). */
+/**
+ * i18n key for a step's short label (progress bar + cards).
+ * @deprecated Scheduled for removal in 2.0.0; use `FULFILLMENT_STATUS_EFFECTS` and application-owned i18n.
+ */
 export function stepLabelKey(step: CustomerFulfillmentStep): string {
   return STAGE_BY_STEP[step].stepLabelKey;
 }
 
-/** Server-emitted Polish milestone label for the order-detail timeline. */
+/**
+ * Server-emitted Polish milestone label for the order-detail timeline.
+ * @deprecated Scheduled for removal in 2.0.0; use `FULFILLMENT_STATUS_EFFECTS` and application-owned i18n.
+ */
 export function timelineLabelForStep(step: CustomerFulfillmentStep): string {
   return STAGE_BY_STEP[step].timelineLabel;
 }

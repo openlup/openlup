@@ -7404,6 +7404,7 @@ type LedgerStore = {
  * Expired claimed work becomes queued; expired submitting/accepted work becomes
  * uncertain. Only authoritative scoped absence may admit uncertain work to retry.
  * Claim respects availability/retry budget; finalization cannot invent absence.
+ * @deprecated Scheduled for removal in 2.0.0; use `createPostgresFulfillmentDispatchStore` directly (underlying `fulfillment_dispatch_refs` table remains active).
  */
 export declare function createFulfillmentCommandLedger(store: LedgerStore): LedgerStore;
 export {};

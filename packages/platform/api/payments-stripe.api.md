@@ -184,26 +184,31 @@ export declare const stripePaymentCapabilities: Readonly<PaymentAdapterCapabilit
 export declare function createStripePaymentAdapter(config: StripePaymentAdapterConfig): PaymentAdapter;
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/adapters/stripe/stripeAdapterFactory.ts`.
  */
 export { createStripeSandboxPaymentExecutionAdapter } from "./stripeSandboxPaymentExecutionAdapter.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/runtime/paymentProviderReadbackRegistry.ts`.
  */
 export { createStripePaymentReconciliationProvider } from "./stripePaymentReconciliationProvider.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/infra/stripe/stripeApiClient.ts`.
  */
 export { mapStripeIntent } from "./intentMapper.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/infra/stripe/stripeApiClient.ts`.
  */
 export { mapSetupIntent } from "./intentMapper.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/adapters/paymentRecoveryGuidance.ts`.
  */
 export { normalizeStripeFailureEvidence } from "./stripeFailureEvidence.js";

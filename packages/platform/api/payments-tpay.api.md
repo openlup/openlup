@@ -314,31 +314,37 @@ export interface TpayPaymentAdapterConfig {
 export declare function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter;
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/adapters/tpay/tpayAdapterFactory.ts`.
  */
 export { createTpayPaymentExecutionAdapter } from "./tpayPaymentExecutionAdapter.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/runtime/paymentProviderReadbackRegistry.ts`.
  */
 export { createTpayPaymentReconciliationProvider } from "./tpayPaymentReconciliationProvider.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/bff/commerce/tpay-channels.ts`.
  */
 export { createTpayHttpClient } from "./tpayHttpClient.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/adapters/paymentRecoveryGuidance.ts`.
  */
 export { normalizeTpayFailureEvidence } from "./tpayFailureEvidence.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/adapters/supabase/payment/tpaySubscriptionActivation.ts`.
  */
 export { aliasValue } from "./tpayCreateTransactionInput.js";
 /**
  * @experimental Reference-application support surface; may change.
+ * @deprecated Scheduled for removal in 2.0.0; compose via `PaymentAdapter` and `PaymentProviderRegistry` from `@openlup/platform/payments`.
  * Reference consumer: `server/shared/preparedProviderAttempt.ts`.
  */
 export { ProviderAttemptPreDispatchError } from "./preparedProviderAttempt.js";
