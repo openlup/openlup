@@ -87,8 +87,8 @@ caller-supplied numbers. It certifies neither a real database upgrade or
 backfill nor dependency provenance, runtime behavior or a rollback path.
 Perform [database migration](./database-migrations.md) and application checks
 separately before resuming service. After reconciling application files, run
-`npm --silent run settings -- check` (or
-`./node_modules/.bin/openlup settings check --app ./owned/settings-host.ts`)
+`./node_modules/.bin/openlup settings check --app ./owned/settings-host.ts`
+(or pass `check` to your starter's `settings` script)
 to validate owned business settings offline before running full tests and
 starting the application.
 

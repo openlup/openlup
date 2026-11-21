@@ -31,8 +31,9 @@ retains the historical 0.43.0 recipe and input pair. Local candidate archives
 are a contributor workflow.
 
 After installing dependencies, discover store settings by goal with
-`npm --silent run settings -- list --goal "<goal>"` (or `npx --no -- openlup settings list`
-for packaged settings without a starter script) and read
+`./node_modules/.bin/openlup settings list --goal "<goal>"` (or pass
+`list --goal "<goal>"` to your starter's `settings` script to include
+app-declared settings) and read
 [Configure settings](../how-to/operate/configure-settings.md).
 
 ## Keep application ownership
