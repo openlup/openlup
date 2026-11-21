@@ -1526,6 +1526,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4975,6 +4979,10 @@
     },
     {
       "path": "packages/platform/sql/20261123192000_subscription_price_policy_close_provenance.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "class": "public-output"
     },
     {

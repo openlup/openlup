@@ -36,6 +36,20 @@ rather than requiring any particular textual spelling of the clamp.
 Installed readers follow the
 [package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
 
+## Native fulfillment shipment lock order
+
+The [shipment lock-order forward](../../db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql)
+replaces `public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)`
+in place with the same signature, `SECURITY INVOKER` posture, ACLs and pinned
+`public, pg_catalog` search path. When a shipment belongs to a subscription
+cycle, it acquires `FOR UPDATE` on the parent `public.subscriptions` row before
+locking `public.fulfillment_shipments`, matching the canonical delivery-alignment
+lock order (`subscriptions` -> `fulfillment_shipments` ->
+`subscription_delivery_alignment_cases`) and preventing `40P01` deadlocks against
+concurrent renewal admission. One-time shipments (`subscription_cycle_id IS NULL`)
+skip the subscription lock and retain identical transition, refusal and
+idempotency behavior.
+
 ## Native activation edit window
 
 The native `20261123120000_subscription_edit_window_activation.sql` forward adds

@@ -314,3 +314,53 @@ it('native renewal preparation under auto_align requires explicit admission and 
  expect((await h.pool.query('SELECT id FROM public.subscription_cycles WHERE renewal_operation_id=$1',[operation])).rows).toEqual([{id:prepared.cycleId}]);
  await expect(h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'payment_pending')",[f.subscription,at])).rejects.toThrow('subscription_delivery_alignment_admission_required');
 });
+
+it('fulfillment_advance_shipment locks subscriptions before fulfillment_shipments to prevent 40P01 deadlocks and still advances one-time shipments',async()=>{
+ const f=await fixture(h.pool);await openCase(h.pool,f);
+ await h.pool.query("UPDATE public.fulfillment_shipments SET status='in_transit' WHERE id=$1",[f.shipment]);
+ const key=`advance-lock-order-${f.shipment}`;
+ const deliveredAt='2026-09-04T12:00:00.000Z';
+ const txA=await h.pool.connect();
+ const txB=await h.pool.connect();
+ let pending:Promise<{rows:{response:Record<string,unknown>}[]}>|undefined;
+ try {
+  await txA.query('BEGIN');
+  await txA.query('SELECT id FROM public.subscriptions WHERE id=$1 FOR UPDATE',[f.subscription]);
+  pending=txB.query("SELECT public.fulfillment_advance_shipment($1,$2,'delivered','{}'::jsonb,$3) AS response",[key,f.shipment,deliveredAt]);
+  await expect.poll(async()=>Number((await h.pool.query("SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE 'SELECT public.fulfillment_advance_shipment(%'")).rows[0].count)).toBe(1);
+  // txA acquires fulfillment_shipments while holding subscriptions; canonical lock order prevents 40P01.
+  const lockedShipment=await txA.query('SELECT id FROM public.fulfillment_shipments WHERE id=$1 FOR UPDATE',[f.shipment]);
+  expect(lockedShipment.rows).toEqual([{id:f.shipment}]);
+  await txA.query('COMMIT');
+  const advanced=(await pending).rows[0].response;
+  expect(advanced).toMatchObject({outcome:'advanced',replayed:false,shipment:{id:f.shipment,status:'delivered'}});
+ } finally {
+  await txA.query('ROLLBACK').catch(()=>{});
+  txA.release();
+  await pending?.catch(()=>{});
+  txB.release();
+ }
+ expect((await cases(f.order))[0].state).toBe('aligned');
+ expect((await schedule(h.pool,f.subscription)).next_cycle_at.toISOString()).toBe('2026-10-02T12:00:00.000Z');
+ const replayed=(await h.pool.query("SELECT public.fulfillment_advance_shipment($1,$2,'delivered','{}'::jsonb,$3) AS response",[key,f.shipment,deliveredAt])).rows[0].response;
+ expect(replayed).toMatchObject({outcome:'advanced',replayed:true,shipment:{id:f.shipment,status:'delivered'}});
+
+ // One-time shipment (subscription_cycle_id IS NULL) advances cleanly without a parent subscription row.
+ const oneTimeClient=randomUUID(),oneTimeOrder=randomUUID(),oneTimeShipment=randomUUID();
+ await h.pool.query('INSERT INTO public.clients(id,email) VALUES($1,$2)',[oneTimeClient,`${oneTimeClient}@example.invalid`]);
+ const oneTimeTx=await h.pool.connect();
+ try {
+  await oneTimeTx.query('BEGIN');
+  await oneTimeTx.query("INSERT INTO public.commerce_orders(id,client_id,subscription_cycle_id,status,currency_code,total_amount_minor) VALUES($1,$2,NULL,'paid','XXX',900)",[oneTimeOrder,oneTimeClient]);
+  await oneTimeTx.query('INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,900,900)',[oneTimeOrder]);
+  await oneTimeTx.query('COMMIT');
+ } finally {
+  oneTimeTx.release();
+ }
+ await h.pool.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,status,create_idempotency_key) VALUES($1,$2,'fixture-port','3pl','in_transit',$3)",[oneTimeShipment,oneTimeOrder,`create-${oneTimeShipment}`]);
+ const oneTimeKey=`advance-onetime-${oneTimeShipment}`;
+ const oneTimeFirst=(await h.pool.query("SELECT public.fulfillment_advance_shipment($1,$2,'delivered','{}'::jsonb,$3) AS response",[oneTimeKey,oneTimeShipment,deliveredAt])).rows[0].response;
+ expect(oneTimeFirst).toMatchObject({outcome:'advanced',replayed:false,shipment:{id:oneTimeShipment,status:'delivered'}});
+ const oneTimeReplay=(await h.pool.query("SELECT public.fulfillment_advance_shipment($1,$2,'delivered','{}'::jsonb,$3) AS response",[oneTimeKey,oneTimeShipment,deliveredAt])).rows[0].response;
+ expect(oneTimeReplay).toMatchObject({outcome:'advanced',replayed:true,shipment:{id:oneTimeShipment,status:'delivered'}});
+});
