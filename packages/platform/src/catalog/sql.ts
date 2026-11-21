@@ -6,7 +6,10 @@ export const BUNDLE_MIGRATIONS = [
   { id: "20260812210000_bundle_operator_write_boundary", catalogPath: "db/platform/migrations/20260812210000_bundle_operator_write_boundary.sql", position: 19, sha256: "d0ec6674d7eedf4cd3ce0d8ccd7345ebe2f93da635316a68a6bd178ec55b2679", url: new URL("../../sql/20260812210000_bundle_operator_write_boundary.sql", import.meta.url) },
 ] as const;
 
-/** Catalog foundation projections; install the complete canonical catalogue. */
+/**
+ * Catalog foundation projections; install the complete canonical catalogue.
+ * @appendOnly
+ */
 export const CATALOG_MIGRATIONS: readonly [
   { readonly id: "20260807140000_read_parity_catalog"; readonly catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql"; readonly position: 1; readonly sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea"; readonly url: URL; },
   { readonly id: "20260810120000_storefront_catalog_attributes"; readonly catalogPath: "db/platform/migrations/20260810120000_storefront_catalog_attributes.sql"; readonly position: 8; readonly sha256: "2bf938f5d0076193557bea834f86dbd9bcb7f3e2de00f99fb91cc1229b93a14b"; readonly url: URL; },

@@ -7,6 +7,8 @@ tuples. No data rewrite is needed. Use the updated restore implementation for
 targets that have applied the forward. An earlier restore implementation
 refuses the new INSERT trigger.
 
+Migration: `CATALOG_MIGRATIONS` gains `20261123192000_subscription_price_policy_close_provenance` as its last entry. Code that pins the registry's length or index positions must stop doing so.
+
 Managed divergence design: a managed twin could add the same INSERT guard to
 the policy revision table and use a transaction-keyed capability table with
 RLS. A trusted restore role could hold the narrow table grants and policies
