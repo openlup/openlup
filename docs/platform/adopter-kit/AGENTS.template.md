@@ -67,19 +67,19 @@ Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogu
 
 ## Change a business setting
 
-From the extracted application root, run `npm --silent run settings -- list` to find a
-key by goal (or `npx --no -- openlup settings list` in an application without the starter's
-`settings` script; pass `--app ./owned/settings-host.ts` to include app-declared settings).
-For example, start with `npm --silent run settings -- list --goal "renewal stock protection horizon"`
-and inspect `npm --silent run settings -- show inventory_renewal_protection --json` before
-changing a value. The `--silent` flag keeps npm's banner out of JSON output.
+From the application root, run `npx --no -- openlup settings list` (pass `--app ./owned/settings-host.ts`
+to include app-declared settings, or use the application's `settings` script as shown in the starter's
+`AGENTS.md` with `--silent` to keep npm banners out of JSON output) to find a key by goal.
+For example, start with `npx --no -- openlup settings list --goal "renewal stock protection horizon"`
+and inspect `npx --no -- openlup settings show inventory_renewal_protection --json` before
+changing a value.
 See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md` for the read
 path, check loop and refusal guidance.
 
-After editing owned configuration, run `npm --silent run settings -- check --configuration <id>`
-(or `npx --no -- openlup settings check --app ./owned/settings-host.ts`) and verify `npm run typecheck`.
+After editing owned configuration, run `npx --no -- openlup settings check --app ./owned/settings-host.ts`
+(with `--configuration <id>` when applicable) and verify `npm run typecheck`.
 
-`npm --silent run settings -- mcp` (or `npx --no -- openlup settings mcp`) starts a read-only
+`npx --no -- openlup settings mcp --app ./owned/settings-host.ts` starts a read-only
 MCP server with the same operations.
 
 For a proposed installed policy such as renewal stock protection, run a connected, read-only
