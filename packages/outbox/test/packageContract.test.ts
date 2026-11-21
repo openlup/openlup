@@ -53,9 +53,11 @@ it("packs within declared budgets, binds public SQL, imports exact exports and c
       expect(files).toContain(target.types.slice(2)); expect(files).toContain(target.import.slice(2));
     }
     const sqlManifest = JSON.parse(readFileSync(join(directory, "sql/manifest.json"), "utf8"));
-    const entry = sqlManifest.migrations[0];
-    expect(createHash("sha256").update(readFileSync(join(directory, "sql", entry.file))).digest("hex")).toBe(entry.sha256);
-    expect(readFileSync(join(directory, "sql", entry.file))).toEqual(readFileSync(join(root, entry.source)));
+    expect(sqlManifest.migrations.length).toBeGreaterThanOrEqual(2);
+    for (const entry of sqlManifest.migrations) {
+      expect(createHash("sha256").update(readFileSync(join(directory, "sql", entry.file))).digest("hex")).toBe(entry.sha256);
+      expect(readFileSync(join(directory, "sql", entry.file))).toEqual(readFileSync(join(root, entry.source)));
+    }
     const guide = readFileSync(join(directory, "AGENTS.md"), "utf8");
     const example = /```ts\n([\s\S]*?)\n```/.exec(guide)![1];
     const readme = readFileSync(join(directory, "README.md"), "utf8");

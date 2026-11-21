@@ -103,7 +103,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     const updated = await f.port.upsertAddress(f.principal, { ...input(), addressId: id, line1: 'Different Street', kind: 'billing' });
     expect(updated?.addresses[0]).toMatchObject({ addressId: id, kind: 'billing', line1: 'Different Street' }); expect(await events(f.client)).toHaveLength(3);
   });
-  it('clears defaults by exact kind including both, and preserves the committed clear when a later write fails', async () => {
+  it('clears defaults by exact kind including both, and rolls back the clear atomically when a later write fails', async () => {
     const f = await customer();
     for (const kind of ['shipping','billing','both'] as const) {
       await f.port.upsertAddress(f.principal, { ...input(), kind, line1: `${kind} First`, isDefault: true });
@@ -112,7 +112,7 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     expect((await f.port.getAddressBook(f.principal))?.addresses.filter(row => row.isDefault).map(row => row.kind).sort()).toEqual(['billing','both','shipping']);
     const foreign = await customer(), other = addressId(await foreign.port.upsertAddress(foreign.principal, input()));
     await expect(f.port.upsertAddress(f.principal, { ...input(), addressId: other, isDefault: true })).rejects.toMatchObject({ code: 'address_not_found' });
-    expect((await f.port.getAddressBook(f.principal))?.addresses.filter(row => row.isDefault).map(row => row.kind).sort()).toEqual(['billing','both']);
+    expect((await f.port.getAddressBook(f.principal))?.addresses.filter(row => row.isDefault).map(row => row.kind).sort()).toEqual(['billing','both','shipping']);
   });
   it('refuses active or paused shipping/billing use and clears dormant pointers on deletion', async () => {
     const f = await customer(), id = addressId(await f.port.upsertAddress(f.principal, input()));
@@ -136,19 +136,20 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     for (const target of [id, randomUUID()]) expect((await other.port.deleteAddress(other.principal, { idempotencyKey: randomUUID(), addressId: target }))?.addresses).toEqual([]);
     expect(await rows(f.client)).toEqual(before); expect(await events(other.client)).toHaveLength(2);
   });
-  it('replays current state without a second write or event and does not roll back a write when append fails', async () => {
+  it('replays current state without a second write or event and rolls back atomically on failure', async () => {
     const f = await customer(), request = input(), id = addressId(await f.port.upsertAddress(f.principal, request));
     await f.port.upsertAddress(f.principal, { ...input(), addressId: id, label: 'Later value' }); const before = await rows(f.client), history = await events(f.client);
     expect((await f.port.upsertAddress(f.principal, { ...request, line1: 'Ignored replay payload' }))?.addresses[0]?.label).toBe('Later value'); expect(await rows(f.client)).toEqual(before); expect(await events(f.client)).toEqual(history);
-    const broken = savedAddressPort({ query: async (sql, values) => { if (sql.includes('customer_account_event_append')) throw new Error('synthetic_append_failure'); return db.runtime.query(sql, values); } }, f.principal, f.client);
-    await expect(broken.upsertAddress(f.principal, { ...input(), addressId: id, label: 'Write survived' })).rejects.toThrow('synthetic_append_failure');
-    expect((await f.port.getAddressBook(f.principal))?.addresses[0]?.label).toBe('Write survived'); expect(await events(f.client)).toEqual(history);
+    const broken = savedAddressPort({ query: async (sql, values) => { if (sql.includes('customer_saved_address_upsert_atomic')) throw new Error('customer_saved_address_event_append_failed'); return db.runtime.query(sql, values); } }, f.principal, f.client);
+    await expect(broken.upsertAddress(f.principal, { ...input(), addressId: id, label: 'Must not persist' })).rejects.toMatchObject({ code: 'address_event_append_failed' });
+    expect((await f.port.getAddressBook(f.principal))?.addresses[0]?.label).toBe('Later value'); expect(await events(f.client)).toEqual(history);
   });
   it('refuses malformed requests and denies raw tables and routines to browser roles', async () => {
     const f = await customer(); await expect(f.port.upsertAddress(f.principal, { ...input(), idempotencyKey: 'bad' })).rejects.toMatchObject({ code: 'address_invalid_input' });
     for (const role of ['anon','authenticated']) { const connection = await db.owner.connect(); try { await connection.query(`SET ROLE ${role}`);
       await expect(connection.query('SELECT * FROM public.customer_saved_addresses')).rejects.toMatchObject({ code: '42501' });
       await expect(connection.query('SELECT public.customer_saved_addresses_read($1,$2)', [f.principal,f.client])).rejects.toMatchObject({ code: '42501' });
+      await expect(connection.query('SELECT public.customer_saved_address_upsert_atomic($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)', [f.principal,f.client,'customer.address_upserted',randomUUID(),false,'shipping',null,null,'{}','{}',at])).rejects.toMatchObject({ code: '42501' });
     } finally { await connection.query('RESET ROLE'); connection.release(); } }
   });
   it('blocks absorption for address rows while an empty lead still absorbs and replays', async () => {

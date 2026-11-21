@@ -364,3 +364,42 @@ it('fulfillment_advance_shipment locks subscriptions before fulfillment_shipment
  const oneTimeReplay=(await h.pool.query("SELECT public.fulfillment_advance_shipment($1,$2,'delivered','{}'::jsonb,$3) AS response",[oneTimeKey,oneTimeShipment,deliveredAt])).rows[0].response;
  expect(oneTimeReplay).toMatchObject({outcome:'advanced',replayed:true,shipment:{id:oneTimeShipment,status:'delivered'}});
 });
+
+it('recordLabel advances atomically via fulfillment_record_label_atomic, preserves step keys, rolls back on archetype refusal, and outbox active partial indexes exist',async()=>{
+ const activeIndexes=(await h.pool.query("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='outbox_events' AND indexname LIKE 'idx_outbox_events_active_%' ORDER BY indexname")).rows.map(row=>row.indexname);
+ expect(activeIndexes).toEqual(['idx_outbox_events_active_aggregate_order','idx_outbox_events_active_claim','idx_outbox_events_active_event_type']);
+
+ // Archetype that owns label creation (direct-carrier) succeeds atomically and records label evidence.
+ await h.pool.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('label-carrier-port','direct-carrier',true) ON CONFLICT DO NOTHING");
+ const carrierFixture=await fixture(h.pool);
+ const carrierShipment=carrierFixture.shipment;
+ await h.pool.query("UPDATE public.fulfillment_shipments SET port_key='label-carrier-port',provider_type='direct-carrier' WHERE id=$1",[carrierShipment]);
+ const carrierSpine=createPostgresFulfillmentShipmentSpinePort(executor(h.pool),{portKey:'label-carrier-port',evidenceChannel:'poll'});
+ const labelKey=`label-atomic-${carrierShipment}`;
+ const first=await carrierSpine.recordLabel({idempotencyKey:labelKey,shipmentId:carrierShipment,externalRef:'LBL-ATOMIC-1',metadata:{source:'test'}});
+ expect(first).toMatchObject({shipmentId:carrierShipment,orderId:carrierFixture.order,status:'label_created',replayed:false});
+ const stepKeys=(await h.pool.query('SELECT idempotency_key FROM public.fulfillment_shipment_operations WHERE shipment_id=$1 ORDER BY idempotency_key',[carrierShipment])).rows.map(row=>row.idempotency_key);
+ expect(stepKeys).toEqual([`${labelKey}:label-created`,`${labelKey}:label-evidence`,`${labelKey}:label-pending`,`${labelKey}:packed`]);
+ const replayed=await carrierSpine.recordLabel({idempotencyKey:labelKey,shipmentId:carrierShipment,externalRef:'LBL-ATOMIC-1',metadata:{source:'test'}});
+ expect(replayed).toMatchObject({shipmentId:carrierShipment,orderId:carrierFixture.order,status:'label_created',replayed:true});
+
+ // Archetype that forbids label creation (3pl) rolls back the entire transaction (never stays half-advanced in 'packed').
+ const houseFixture=await fixture(h.pool);
+ const houseSpine=createPostgresFulfillmentShipmentSpinePort(executor(h.pool),{portKey:'fixture-port'});
+ await expect(houseSpine.recordLabel({idempotencyKey:`label-refuse-${houseFixture.shipment}`,shipmentId:houseFixture.shipment})).rejects.toThrow();
+ const afterRefusal=(await h.pool.query('SELECT status FROM public.fulfillment_shipments WHERE id=$1',[houseFixture.shipment])).rows[0];
+ expect(afterRefusal.status).toBe('created');
+ expect((await h.pool.query('SELECT count(*)::int n FROM public.fulfillment_shipment_operations WHERE shipment_id=$1',[houseFixture.shipment])).rows[0].n).toBe(0);
+
+ // Browser roles cannot execute fulfillment_record_label_atomic.
+ for(const role of ['anon','authenticated']) {
+  const actor=await h.pool.connect();
+  try {
+   await actor.query(`SET ROLE ${role}`);
+   await expect(actor.query('SELECT public.fulfillment_record_label_atomic($1,$2)',['denied-key-1234',carrierShipment])).rejects.toMatchObject({code:'42501'});
+  } finally {
+   await actor.query('RESET ROLE');
+   actor.release();
+  }
+ }
+});

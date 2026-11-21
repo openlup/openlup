@@ -54,6 +54,12 @@ const RECORD_EVIDENCE_SQL = `
     COALESCE($7::timestamptz, now())
   ) AS response`;
 
+const RECORD_LABEL_ATOMIC_SQL = `
+  SELECT public.fulfillment_record_label_atomic(
+    $1::text, $2::uuid, $3::text, $4::text, $5::jsonb,
+    COALESCE($6::timestamptz, now())
+  ) AS response`;
+
 const CANCEL_SHIPMENT_SQL = `
   SELECT public.fulfillment_cancel_shipment(
     $1::text, $2::uuid, $3::text, $4::jsonb, COALESCE($5::timestamptz, now())
@@ -131,36 +137,15 @@ export function createPostgresFulfillmentShipmentSpinePort(
       ]);
     },
 
-    async recordLabel(request) {
-      await advance(
-        `${request.idempotencyKey}:packed`,
+    recordLabel(request) {
+      return call(executor, RECORD_LABEL_ATOMIC_SQL, [
+        request.idempotencyKey,
         request.shipmentId,
-        "packed",
-        request.metadata,
-        request.requestedAt,
-      );
-      await advance(
-        `${request.idempotencyKey}:label-pending`,
-        request.shipmentId,
-        "label_pending",
-        request.metadata,
-        request.requestedAt,
-      );
-      const labelled = await advance(
-        `${request.idempotencyKey}:label-created`,
-        request.shipmentId,
-        "label_created",
-        request.metadata,
-        request.requestedAt,
-      );
-      return await evidence(
-        `${request.idempotencyKey}:label-evidence`,
-        request.shipmentId,
-        "label",
-        request.externalRef,
-        request.metadata,
-        request.requestedAt,
-      ) ?? labelled;
+        evidenceChannel ?? null,
+        request.externalRef ?? null,
+        request.metadata ?? {},
+        request.requestedAt ?? null,
+      ]);
     },
 
     handOff(request) {

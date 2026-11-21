@@ -22,6 +22,13 @@ export async function prove(pool, observer) {
   const sqlHash=createHash("sha256").update(sql).digest("hex");
   assert.equal(sqlHash,sqlManifest.migrations[0].sha256);
   await pool.query(sql);
+  for (const migration of sqlManifest.migrations.slice(1)) {
+    const forwardSql = await readFile(join(outboxRoot, "sql", migration.file), "utf8");
+    assert.equal(createHash("sha256").update(forwardSql).digest("hex"), migration.sha256);
+    await pool.query(forwardSql);
+  }
+  const activeIndexes = (await pool.query("select indexname from pg_indexes where schemaname='public' and tablename='outbox_events' and indexname like 'idx_outbox_events_active_%' order by indexname")).rows.map((r) => r.indexname);
+  assert.deepEqual(activeIndexes, ["idx_outbox_events_active_aggregate_order", "idx_outbox_events_active_claim", "idx_outbox_events_active_event_type"]);
   await proveGroupedSchema(pool, POSTGRES_OUTBOX_SCHEMA.objects);
   await pool.query("create table public.synthetic_migration_ledger (version text not null, hash text not null)");
   await pool.query("insert into public.synthetic_migration_ledger values ($1,$2)",[sqlManifest.version,sqlHash]);

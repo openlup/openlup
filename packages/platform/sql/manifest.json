@@ -666,9 +666,17 @@
       {
         "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
         "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+      },
+      {
+        "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+        "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+      },
+      {
+        "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+        "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284"
       }
     ],
-    "objectInventorySha256": "43700a782ac4c4820a76ac0c31b51b85c03bc9f4f1304d6c21f8839c40191ddb",
+    "objectInventorySha256": "3e80623bd109b2243ffdf6a4adfecca466978b36bbbf478660792e2fe376eb95",
     "qualified": {
       "baseline": {
         "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1354,14 +1362,22 @@
         {
           "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
           "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+        },
+        {
+          "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+          "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+        },
+        {
+          "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+          "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "ca5735e35111670ead92f51b2b6a77277fed1abaed6589559388385016053f86"
+          "withRestore": "b4e7b4c377fda86ebe1a4e3225199666f6b055c50ef3befc249de7ec0237c1b0"
         },
         "separateMigrator": {
-          "withRestore": "813a7f3bbff9e5626edec579dcbbcfd8ebbc0b2982c499f9cbe3428362c47842"
+          "withRestore": "4d1016c1662fc37311bcacc1ce52d7fbe62ec936dba179d87433c878a4fc8bf4"
         }
       }
     },
@@ -2046,11 +2062,19 @@
         {
           "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
           "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+        },
+        {
+          "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+          "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+        },
+        {
+          "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+          "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284"
         }
       ],
       "objectInventorySha256": {
-        "installerManaged": "9e8041eb4934130fd355d8bf439ab548ae9d770e256ebc2b4c5f7b6910922de4",
-        "operatorProvisioned": "69c12c922f4715b08addc2d442e0462e7d9f89582abb1981695045ffab544c8e"
+        "installerManaged": "bb29e3ea084b332691183a7d2bb7b41e8f5409250ea9beb7cdf332af476bc16a",
+        "operatorProvisioned": "5f6798e9a362961215bc0d4b511d4f9da6e2027505c8e668552e3cbd2e950fe4"
       }
     }
   },
@@ -2884,6 +2908,16 @@
       "file": "20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "source": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+    },
+    {
+      "file": "20261124100000_outbox_active_partial_indexes.sql",
+      "source": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+      "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+    },
+    {
+      "file": "20261124110000_shipment_label_and_address_upsert_atomic.sql",
+      "source": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+      "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284"
     },
     {
       "file": "q2_00000000000000_platform_baseline.sql",
