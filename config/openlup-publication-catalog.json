@@ -1526,6 +1526,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123194500_catalog_publication_readiness.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -4975,6 +4979,10 @@
     },
     {
       "path": "packages/platform/sql/20261123193000_catalog_publication_reads.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261123194500_catalog_publication_readiness.sql",
       "class": "public-output"
     },
     {
@@ -30163,6 +30171,10 @@
     },
     {
       "path": "tests/postgres/catalogPublicationFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublicationReadiness.test.ts",
       "class": "public-output"
     },
     {

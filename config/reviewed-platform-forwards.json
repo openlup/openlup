@@ -6067,6 +6067,27 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-activation-readiness",
+        "path": "db/platform/migrations/20261123194500_catalog_publication_readiness.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_publication_price_reasons(uuid[],timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_activation_readiness(text[],text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8740,6 +8761,27 @@
           "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
           "beforeSha256": null,
           "afterSha256": "4a43e9a8e2bca28d0d619a24aefcce70c89ecee49b0d0e4db5e3c4f7b89836a3"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123194500_catalog_publication_readiness.sql",
+      "sha256": "1cf71b8fc57f1c6f2b5b5375b05326dfe4f89743999a7d1b1462d9d9c737b229",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_price_reasons(uuid[],timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "c363cfd663b991fbf2d5e5bbc3e756243a44f98957b07405f54b08da6ae78568"
+        },
+        {
+          "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "bea2cb4f4c38ba6c5c51f1e20bfddece5f339d099f215bc035eb06a1b54a1b67"
+        },
+        {
+          "signature": "public.catalog_publication_activation_readiness(text[],text)",
+          "beforeSha256": null,
+          "afterSha256": "aa28da6fb9c8cdb7a5e588eb8c9d53164fd717adc24c1dad7f7b221c0739d40e"
         }
       ]
     }
