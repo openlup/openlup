@@ -12,6 +12,7 @@ import { installAccountMutations } from "./customerAccountMutations.fixture.js";
 
 const original = "db/platform/migrations/20261123190000_catalog_publication.sql";
 const forward = "db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql";
+const perfForward = "db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql";
 const canonical = "public.catalog_publication_canonical";
 const originalCanonical = "public.catalog_publication_canonical_before_ascii";
 const pinnedPath = ["search_path=pg_catalog, public, pg_temp"];
@@ -39,6 +40,7 @@ beforeAll(async () => {
   await pool.query(sql.slice(start, end + "\n$$;".length).replaceAll(`${canonical}(`, `${originalCanonical}(`));
   expect((await pool.query(settingsSql)).rows).toEqual([{ session_user: "postgres", proconfig: ["search_path=pg_catalog, public"] }]);
   await pool.query(readFileSync(forward, "utf8"));
+  await pool.query(readFileSync(perfForward, "utf8"));
   await installPublicationActors(pool);
 }, postgresSetupTimeoutMs);
 

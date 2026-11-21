@@ -36,6 +36,7 @@ beforeAll(async () => {
     throw new Error('Publication forward ' + (error.position ? 'line ' + line : 'setup') + ': ' + error.message + (error.where ? ' (' + error.where + ')' : ''), { cause: error });
   });
   await pool.query(readFileSync("db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql", "utf8"));
+  await pool.query(readFileSync("db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql", "utf8"));
   await installPublicationActors(pool);
 }, postgresSetupTimeoutMs);
 
@@ -259,6 +260,107 @@ it("binds canonical key order and number spelling to the retained wire", async (
   const text = json({ "10": true, "2": true, a: { "\uE000": 1e-7, "𐀀": 1e20, sample: 1e-6 }, z: 1e21 });
   const result = await pool.query("SELECT public.catalog_publication_canonical($1::jsonb,0) AS value", [text]);
   expect(result.rows).toEqual([{ value: text }]);
+});
+
+it("preserves exact canonical key ordering across ASCII fast path and UTF-16 fallback", async () => {
+  // Pure-ASCII object exercises the COLLATE "C" fast path (array indices 0..4294967294 before string keys).
+  const asciiInput = '{"a":1,"A":2,"_":"😀","4294967295":3,"01":4,"":5,"4294967294":6,"10":7,"2":8,"0":9}';
+  const asciiExpected = '{"0":9,"2":8,"10":7,"4294967294":6,"":5,"01":4,"4294967295":3,"A":2,"_":"😀","a":1}';
+  expect((await pool.query("SELECT public.catalog_publication_canonical($1::jsonb,0) AS value", [asciiInput])).rows)
+    .toEqual([{ value: asciiExpected }]);
+  expect(json(JSON.parse(asciiInput))).toBe(asciiExpected);
+
+  // Mixed non-ASCII object exercises the UTF-16 code-unit fallback: U+1F600 (0xD83D 0xDE00) sorts BEFORE U+E000.
+  const utf16Input = '{"\\uE000":1,"\\uD83D\\uDE00":2,"\\u00e9":3,"a":4,"":5,"4294967295":6,"01":7,"4294967294":8,"10":9,"2":10,"0":11}';
+  const utf16Expected = '{"0":11,"2":10,"10":9,"4294967294":8,"":5,"01":7,"4294967295":6,"a":4,"é":3,"😀":2,"\uE000":1}';
+  expect((await pool.query("SELECT public.catalog_publication_canonical($1::jsonb,0) AS value", [utf16Input])).rows)
+    .toEqual([{ value: utf16Expected }]);
+  expect(json(JSON.parse(utf16Input))).toBe(utf16Expected);
+});
+
+it("preserves exact canonical number formatting across safe-integer inlining, float fallback, and overflow", async () => {
+  const raw = '{"zero":0,"negZero":-0,"safePos":999999999999999,"safeNeg":-999999999999999,'
+    + '"edge1e15":1000000000000000,"maxSafeInt":9007199254740991,"large20":1e20,"large21":1e21,"negLarge21":-1e21,'
+    + '"small6":0.000001,"small7":0.0000001,"negSmall7":-0.0000001,"negFloat":-123.456,"trailingZero":1.0,'
+    + '"arr":[0,-0,42,-42,999999999999999,-999999999999999,1000000000000000,1e21,1e-7,-12.5,true,false,null,"ok"]}';
+  const expected = json(JSON.parse(raw));
+  expect((await pool.query("SELECT public.catalog_publication_canonical($1::jsonb,0) AS value", [raw])).rows)
+    .toEqual([{ value: expected }]);
+  expect(expected).toContain('"negZero":0');
+  expect(expected).toContain('"arr":[0,0,42,-42,999999999999999,-999999999999999,1000000000000000,1e+21,1e-7,-12.5,true,false,null,"ok"]');
+
+  // Overflow (numeric_value_out_of_range) is still mapped to 23514 at root, inside flat-inlined child objects, and in arrays.
+  for (const overflow of ["1e400", '{"a":{"n":1e400}}', "[1e400]"]) {
+    await expect(pool.query("SELECT public.catalog_publication_canonical($1::jsonb,0)", [overflow]))
+      .rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_wire_invalid" });
+  }
+});
+
+it("enforces the canonical max depth boundary for empty containers and leaf scalars", async () => {
+  expect((await pool.query("SELECT public.catalog_publication_canonical('{}'::jsonb,48) AS obj, public.catalog_publication_canonical('[]'::jsonb,48) AS arr")).rows)
+    .toEqual([{ obj: "{}", arr: "[]" }]);
+  expect((await pool.query("SELECT public.catalog_publication_canonical('{\"a\":{},\"b\":[]}'::jsonb,47) AS obj, public.catalog_publication_canonical('[{\"a\":1},{}]'::jsonb,46) AS arr")).rows)
+    .toEqual([{ obj: '{"a":{},"b":[]}', arr: '[{"a":1},{}]' }]);
+  for (const [payload, depth] of [
+    ['{"a":1}', 48], ['{"a":"x"}', 48], ['{"a":true}', 48], ['{"a":null}', 48],
+    ["[1]", 48], ['["x"]', 48], ["[true]", 48], ["[null]", 48],
+    ['{"a":{"b":1}}', 47], ['[{"a":1}]', 47], ['{"a":{"b":{"c":1}}}', 46],
+  ] as const) {
+    await expect(pool.query("SELECT public.catalog_publication_canonical($1::jsonb,$2)", [payload, depth]))
+      .rejects.toMatchObject({ code: "22023" });
+  }
+  for (const payload of ['{"__proto__":1}', '{"a":{"__proto__":1}}', '[{"constructor":1}]']) {
+    await expect(pool.query("SELECT public.catalog_publication_canonical($1::jsonb,0)", [payload]))
+      .rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_wire_invalid" });
+  }
+});
+
+it("validates root and nested forbidden carrier keys, scalar/null roots, benign values, and top-level document refs", async () => {
+  const productId = randomUUID();
+  const validDocument = {
+    id: randomUUID(),
+    productId,
+    revisionNo: 1,
+    schemaId: "example:schema",
+    documentRef: "example:doc",
+    sourceRef: "example:source",
+    digest: hash("carrier-doc"),
+  };
+  const valid = async (value: unknown, product: string | null = null) =>
+    (await pool.query("SELECT public.catalog_publication_carriers_valid($1::jsonb,$2::uuid) AS ok", [value === undefined ? null : JSON.stringify(value), product])).rows[0].ok;
+
+  // Forbidden keys at root and nested inside objects/arrays are refused regardless of case or underscores.
+  for (const forbidden of [
+    { document: 1 },
+    { nested: { document: 1 } },
+    { nested: { Do_Cu_MeNt: "x" } },
+    { nested: { document_payload: {} } },
+    { nested: { canonical_text: "abc" } },
+    [{ items: [{ document: 1 }] }],
+    [{ items: [{ Do_Cu_MeNt: 1 }] }],
+    [{ document_payload: 1 }],
+    [{ canonical_text: 1 }],
+  ]) {
+    expect(await valid(forbidden)).toBe(false);
+  }
+  // Mixed-case root "Document" is not stripped by p_value - 'document' and remains refused even when p_product is set.
+  expect(await valid({ Document: 1 }, productId)).toBe(false);
+
+  // SQL NULL and JSON scalar roots preserve exact behavior.
+  expect(await valid(undefined, null)).toBe(true);
+  expect(await valid(42, null)).toBe(true);
+  expect(await valid(null, null)).toBe(true);
+  expect(await valid("document", null)).toBe(true);
+  expect(await valid("document", productId)).toBe(false);
+
+  // String values containing "document" stay on the fast path, and an escaped-quote key containing "document": exercises the jsonb_path_query fallback.
+  expect(await valid({ title: 'Read the "document" carefully' })).toBe(true);
+  expect(await valid({ title: "document", list: ["document_payload", "canonical_text"] })).toBe(true);
+  expect(await valid({ 'x"document': 1 })).toBe(true);
+
+  // Valid top-level document is accepted with p_product, while a nested forbidden key alongside it is still refused.
+  expect(await valid({ document: validDocument, title: "ok" }, productId)).toBe(true);
+  expect(await valid({ document: validDocument, nested: { Do_Cu_MeNt: 1 } }, productId)).toBe(false);
 });
 
 it.each([2_097_152, 2_097_153])("enforces the exact SKU wire boundary at %i UTF-8 bytes", async bytes => {
@@ -1183,7 +1285,8 @@ it.each([
 });
 
 // Run the 10,000-SKU stress test last so earlier whole-DB checks (assertConnectedCatalogPublications) do not scan its leftover SKUs.
-// Retain the hosted budget until the faster canonical path has hosted timing evidence.
+// 20261124170000_catalog_publication_commit_perf.sql optimizes canonical JSON formatting and carrier scans at COMMIT,
+// keeping this stress test well within the 240 s bound.
 it("admits the maximum inherited observation roster and refuses one more SKU", async () => {
   const { data, latest } = await publishMaximumRoster(pool);
   const reader = publicationReader();
@@ -1211,4 +1314,4 @@ it("admits the maximum inherited observation roster and refuses one more SKU", a
     return issue;
   });
   expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: replacement.head });
-}, 600_000);
+}, 240_000);

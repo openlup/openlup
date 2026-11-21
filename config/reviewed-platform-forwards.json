@@ -6264,6 +6264,25 @@
         "dataStatements": []
       },
       {
+        "row": "catalog-publication-commit-perf",
+        "path": "db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_publication_canonical(jsonb,integer)",
+            "beforeSha256": "b8fcf5ca1144119ac1d319da7dd09d5393ca64d7764de5037415f222cf5c6172",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_carriers_valid(jsonb,uuid)",
+            "beforeSha256": "1bcaa9519744310fdfe362f361f56779d4854762729efa25c1faf664c1fab75d",
+            "searchPath": "pg_catalog, public, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalogue-read-grant",
         "path": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
         "replacedFunctions": [],
@@ -9054,6 +9073,22 @@
           "signature": "public.catalog_publication_canonical(jsonb,integer)",
           "beforeSha256": "f89d2e3ff5b78b1c03b9c4818a341f26c1370634f8915c6dd45c35644b3acd1a",
           "afterSha256": "b8fcf5ca1144119ac1d319da7dd09d5393ca64d7764de5037415f222cf5c6172"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql",
+      "sha256": "4c637c843b12a777e78eaf74b82460a4f3f20f0e0200ff4217d7d69f8a6301bd",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_canonical(jsonb,integer)",
+          "beforeSha256": "b8fcf5ca1144119ac1d319da7dd09d5393ca64d7764de5037415f222cf5c6172",
+          "afterSha256": "fca5ec9065c34bb6d65ed04b85fc14279e160f123a0939e80f72385f069dfac8"
+        },
+        {
+          "signature": "public.catalog_publication_carriers_valid(jsonb,uuid)",
+          "beforeSha256": "1bcaa9519744310fdfe362f361f56779d4854762729efa25c1faf664c1fab75d",
+          "afterSha256": "97e7dc6dfa13ecc069dffaebfeb06cc49ec9089825c9d11731962a24c89631bc"
         }
       ]
     },
