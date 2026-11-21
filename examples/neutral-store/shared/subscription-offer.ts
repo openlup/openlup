@@ -75,7 +75,8 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
     if (!skus.includes(sku)) invalid(`${path}: SKU must be in the editor catalogue`);
     if (!rules.length) invalid(`${path}: at least one rule is required`);
     const seen = new Set<number>();
-    for (const [index, rule] of rules.entries()) {
+    let index = 0;
+    for (const rule of rules) {
       const days = `${path}.${index}.days`;
       numbers(rule.days, days);
       numbers(rule.quantities, `${path}.${index}.quantities`);
@@ -86,6 +87,7 @@ export function assertSubscriptionOffer(offer: SubscriptionOffer, skus: readonly
         if (seen.has(day)) invalid(`${days}: cadence cannot repeat across rules for this SKU`);
         seen.add(day);
       }
+      index += 1;
     }
   }
 }

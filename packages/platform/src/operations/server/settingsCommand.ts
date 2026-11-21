@@ -200,7 +200,9 @@ function checkErrorMessage(error: unknown): string {
   const message = errorMessage(error);
   try {
     const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
-    if (typeof cause === "string" && cause.length > 0 && cause.length <= 300) return `${message} (${cause})`;
+    if (typeof cause === "string" && cause.length > 0 && cause.length <= 300 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(cause)) {
+      return `${message} (${cause})`;
+    }
   } catch { /* A thrown value need not have a readable cause. */ }
   return message;
 }

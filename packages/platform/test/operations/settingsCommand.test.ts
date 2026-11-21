@@ -520,6 +520,7 @@ it.each([
   ["empty string", new Error("x_invalid", { cause: "" }), "x_invalid"],
   ["non-string cause", new Error("x_invalid", { cause: 42 }), "x_invalid"],
   ["301-character string", new Error("x_invalid", { cause: "a".repeat(301) }), "x_invalid"],
+  ["string with a line feed", new Error("x_invalid", { cause: "a.b: must be positive\nsecond line" }), "x_invalid"],
 ] as const)("reports a %s cause on check load and validation failures", async (_, error, message) => {
   const fail = () => { throw error; };
   const loaded = await run(checkArgs, { host: checks(async () => fail()) });
