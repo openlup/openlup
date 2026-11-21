@@ -16,8 +16,8 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 const git = (root: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, env: isolatedConsumerEnv(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
-type FixtureOptions = { names?: string[]; missing?: string; nonWorkspace?: boolean; failingApi?: boolean; damagedExport?: boolean };
-type Observation = { phase: string; name: string; commit?: string; manifest?: string; installed?: string[]; value?: string };
+type FixtureOptions = { names?: string[]; peerDependencies?: Record<string, Record<string, string>>; missing?: string; nonWorkspace?: boolean; failingApi?: boolean; damagedExport?: boolean };
+type Observation = { phase: string; name: string; commit?: string; manifest?: string; installed?: string[]; value?: string; distReady?: string };
 
 /** Mechanical neutral input, not a task checkout or an exact-task-candidate receipt. */
 function fixture(options: FixtureOptions = {}) {
@@ -25,7 +25,7 @@ function fixture(options: FixtureOptions = {}) {
   roots.push(root);
   const names = options.names ?? ["alpha"];
   const write = (path: string, text: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), text); };
-  write(".gitignore", "dist/\nout/\ntrace.jsonl\nscratch/\n");
+  write(".gitignore", "dist/\nout/\ntrace.jsonl\nbuilds.jsonl\nscratch/\n");
   write("config/openlup-packages.json", JSON.stringify({ schemaVersion: 2, packages: names.map(name => ({ name: `@openlup/${name}`, directory: `packages/${name}`, publish: true })), unreleased: [] }));
   write("package.json", JSON.stringify({ private: true, type: "module", workspaces: options.nonWorkspace ? [] : names.map(name => `packages/${name}`), scripts: {
     "packages:check": `${shellQuote(process.execPath)} --experimental-strip-types ${shellQuote(join(source, "packages-check.ts"))}`,
@@ -38,7 +38,9 @@ function fixture(options: FixtureOptions = {}) {
       "test:consumer": "node ../../tools/consumer.mjs",
     };
     if (options.missing) delete scripts[options.missing];
+    const peerDeps = options.peerDependencies?.[name];
     write(`packages/${name}/package.json`, JSON.stringify({ name: `@openlup/${name}`, version: "0.4.0", type: "module", license: "Apache-2.0", files: ["dist/**"],
+      ...(peerDeps ? { peerDependencies: peerDeps } : {}),
       publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: `packages/${name}` },
       exports: { ".": "./dist/index.js" }, scripts }));
     write(`packages/${name}/release-gates.json`, JSON.stringify({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.4.0", packedBytes: 1000000 }, browserEntries: {} } }));
@@ -51,12 +53,14 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
+import { env as processEnvironment } from 'node:process';
 const phase = process.argv[2], name = basename(process.cwd()), root = resolve('../..');
 if (phase === 'build') {
+  appendFileSync(join(root, 'builds.jsonl'), JSON.stringify({ phase, name }) + '\\n');
   mkdirSync('dist', { recursive: true });
   writeFileSync('dist/index.js', readFileSync('src/index.ts'));
 } else {
-  appendFileSync(join(root, 'trace.jsonl'), JSON.stringify({ phase, name }) + '\\n');
+  appendFileSync(join(root, 'trace.jsonl'), JSON.stringify({ phase, name, ...(phase === 'required' ? { distReady: processEnvironment.OPENLUP_DIST_READY } : {}) }) + '\\n');
   if (phase === 'api') {
     assert.equal(readFileSync('dist/index.js', 'utf8'), readFileSync('src/index.ts', 'utf8'));
     if (${Boolean(options.failingApi)}) throw new Error('synthetic API failure');
@@ -114,6 +118,11 @@ try {
 
 function observations(root: string): Observation[] {
   const path = join(root, "trace.jsonl");
+  return existsSync(path) ? readFileSync(path, "utf8").trim().split("\n").map(line => JSON.parse(line)) : [];
+}
+
+function builds(root: string): Observation[] {
+  const path = join(root, "builds.jsonl");
   return existsSync(path) ? readFileSync(path, "utf8").trim().split("\n").map(line => JSON.parse(line)) : [];
 }
 
@@ -187,6 +196,75 @@ describe("inventory-driven required package gates", () => {
     const input = fixture({ damagedExport: true }), result = invoke(input);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("does not provide an export named 'value'");
-    expect(observations(input.root)).toEqual([{ phase: "api", name: "alpha" }, { phase: "required", name: "alpha" }]);
+    expect(observations(input.root)).toEqual([{ phase: "api", name: "alpha" }, { phase: "required", name: "alpha", distReady: "1" }]);
+  }, 60_000);
+
+  it("reuses freshly built dist in @openlup/core build:cached only when OPENLUP_DIST_READY=1 and dist exists", () => {
+    const coreManifest = JSON.parse(readFileSync(join(source, "../../packages/core/package.json"), "utf8")) as { scripts: Record<string, string> };
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "core-build-cached-")));
+    roots.push(root);
+    mkdirSync(join(root, "scripts"), { recursive: true });
+    writeFileSync(
+      join(root, "scripts/build-if-missing.ts"),
+      readFileSync(join(source, "../../packages/core/scripts/build-if-missing.ts")),
+    );
+    writeFileSync(join(root, "package.json"), JSON.stringify({
+      name: "synthetic-core-build-cached",
+      private: true,
+      scripts: {
+        build: "node -e \"const fs=require('node:fs'); fs.mkdirSync('dist',{recursive:true}); fs.appendFileSync('build-count.log','built\\n');\"",
+        "build:cached": coreManifest.scripts["build:cached"],
+      },
+    }));
+    const runCached = (env: Record<string, string | undefined>) => spawnSync("npm", ["run", "build:cached"], {
+      cwd: root, env: { ...isolatedConsumerEnv(), ...env }, encoding: "utf8", timeout: 15_000,
+    });
+    const buildCount = () => existsSync(join(root, "build-count.log")) ? readFileSync(join(root, "build-count.log"), "utf8").trim().split("\n").length : 0;
+
+    // 1. OPENLUP_DIST_READY=1 without dist/ still builds (fail-safe).
+    expect(runCached({ OPENLUP_DIST_READY: "1" }).status).toBe(0);
+    expect(buildCount()).toBe(1);
+    expect(existsSync(join(root, "dist"))).toBe(true);
+
+    // 2. OPENLUP_DIST_READY=1 with existing dist/ skips redundant rebuild.
+    expect(runCached({ OPENLUP_DIST_READY: "1" }).status).toBe(0);
+    expect(buildCount()).toBe(1);
+
+    // 3. Standalone invocation without OPENLUP_DIST_READY always runs build.
+    expect(runCached({}).status).toBe(0);
+    expect(buildCount()).toBe(2);
+  }, 30_000);
+
+  it("restores shared prerequisites once in topological order after cold packing and signals OPENLUP_DIST_READY to ci:required", () => {
+    const input = fixture({
+      names: ["alpha", "beta", "gamma"],
+      peerDependencies: {
+        beta: { "@openlup/alpha": "0.4.0" },
+        gamma: { "@openlup/alpha": "0.4.0" },
+      },
+    });
+    for (const name of ["alpha", "beta", "gamma"]) {
+      mkdirSync(join(input.root, "packages", name, "dist"));
+      writeFileSync(join(input.root, "packages", name, "dist/stale.js"), "export const stale = true;\n");
+    }
+    const result = invoke(input);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    // Cold pack builds: [alpha], [alpha, beta], [alpha, gamma] (5 builds, 3 for alpha).
+    // Single topological restoration before api:check: [alpha, beta, gamma] (3 builds, 1 for alpha).
+    expect(builds(input.root).map(({ name }) => name)).toEqual([
+      "alpha",
+      "alpha", "beta",
+      "alpha", "gamma",
+      "alpha", "beta", "gamma",
+    ]);
+    for (const name of ["alpha", "beta", "gamma"]) {
+      expect(existsSync(join(input.root, "packages", name, "dist/stale.js"))).toBe(false);
+    }
+    const calls = observations(input.root);
+    expect(calls.map(({ phase, name }) => `${phase}:${name}`)).toEqual([
+      "api:alpha", "api:beta", "api:gamma", "required:alpha", "consumer:alpha", "required:beta", "consumer:beta", "required:gamma", "consumer:gamma",
+    ]);
+    const requiredCalls = calls.filter(({ phase }) => phase === "required");
+    expect(requiredCalls.map(({ distReady }) => distReady)).toEqual(["1", "1", "1"]);
   }, 60_000);
 });

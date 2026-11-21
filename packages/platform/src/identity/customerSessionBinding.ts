@@ -47,7 +47,7 @@ export interface CustomerSessionBinding {
     expiresAt: string;
     user: { id: string; email: string };
   } | null>;
-  /** Releases an owned store/pool; guaranteed no-op for borrowed or shared stores. */
+  /** Releases a binding-owned store or pool. No-op for borrowed, shared and per-operation stores. */
   close?(): Promise<void>;
 }
 
@@ -63,9 +63,10 @@ export type PostgresCustomerSessionBindingOptions = {
   | { connectionString: string; poolFactory?: PostgresDataGatewayOptions["poolFactory"]; store?: undefined; pool?: undefined }
 );
 
-function buildCustomerSessionBinding(input: {
-  getStore: () => CustomerChallengeStore;
+function buildCustomerSessionBinding<Store extends CustomerChallengeStore>(input: {
+  getStore: () => Store;
   closeStore: () => Promise<void>;
+  closeOperationStore?: (store: Store) => Promise<void>;
   issuer: CustomerSessionIssuerPort;
   delivery: CustomerChallengeDeliveryPort;
   challengeTtlSeconds: number;
@@ -79,18 +80,26 @@ function buildCustomerSessionBinding(input: {
       const requestedAt = input.now();
       const expiresAt = new Date(requestedAt.getTime() + input.challengeTtlSeconds * 1000).toISOString();
       const store = input.getStore();
-      const result = await store.issue({ email: normalizedEmail, tokenHash: hash(token), expiresAt });
-      if (result.deliverable) await input.delivery.deliver({ email: normalizedEmail, token, expiresAt });
+      try {
+        const result = await store.issue({ email: normalizedEmail, tokenHash: hash(token), expiresAt });
+        if (result.deliverable) await input.delivery.deliver({ email: normalizedEmail, token, expiresAt });
+      } finally {
+        if (input.closeOperationStore) await input.closeOperationStore(store);
+      }
     },
     async verifyChallenge(token) {
       const store = input.getStore();
-      const redeemed = await store.redeem({ tokenHash: hash(token), now: input.now().toISOString() });
-      if (!redeemed) return null;
-      const session = await input.issuer.issue(redeemed);
-      return {
-        ...session,
-        user: { id: redeemed.principalId, email: redeemed.email },
-      };
+      try {
+        const redeemed = await store.redeem({ tokenHash: hash(token), now: input.now().toISOString() });
+        if (!redeemed) return null;
+        const session = await input.issuer.issue(redeemed);
+        return {
+          ...session,
+          user: { id: redeemed.principalId, email: redeemed.email },
+        };
+      } finally {
+        if (input.closeOperationStore) await input.closeOperationStore(store);
+      }
     },
     close: input.closeStore,
   };
@@ -215,12 +224,11 @@ export function resolveCustomerSessionBinding(
 
   if (options.createStore) {
     const createStore = options.createStore;
-    let lazyStore: (CustomerChallengeStore & { close(): Promise<void> }) | null = null;
-    let closePromise: Promise<void> | null = null;
     return {
       binding: buildCustomerSessionBinding({
-        getStore: () => (lazyStore ??= createStore(connectionString)),
-        closeStore: () => (closePromise ??= lazyStore ? lazyStore.close() : Promise.resolve()),
+        getStore: () => createStore(connectionString),
+        closeStore: async () => {},
+        closeOperationStore: store => store.close(),
         issuer,
         delivery,
         challengeTtlSeconds,

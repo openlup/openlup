@@ -52,9 +52,12 @@ function runStarterSettings(app: string, args: string[]) {
 }
 
 function applyDocumentedHostEdit(legacy: string, target: string) {
-  const fragment = readFileSync("packages/core/changes/settings-check-starter.md", "utf8");
+  const upgrade = readFileSync(new URL("../../packages/core/docs/guide/upgrade/v1-3-0.md", import.meta.url), "utf8");
+  const notes = /^### Discover and check the starter's owned settings\n[\s\S]*?(?=^#{2,3} )/mu.exec(upgrade)?.[0];
+  const diff = notes && /^```diff\n([\s\S]+?)\n```$/mu.exec(notes)?.[1];
+  if (!diff) throw new Error("Missing released starter settings host diff");
   const [poolImport, zodImport, oldType, newType, oldEntries, newEntries, oldFilter, newFilter] =
-    /```diff\n([\s\S]+?)\n```/u.exec(fragment)![1]!.split("\n").map(line => line.slice(1));
+    diff.split("\n").map(line => line.slice(1));
   const changes = [[poolImport!, poolImport! + "\n" + zodImport], [oldType!, newType!],
     [oldEntries!, newEntries!], [oldFilter!, newFilter!]];
   let edited = legacy;

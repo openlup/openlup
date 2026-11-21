@@ -462,8 +462,10 @@ describe("maintainer-controlled source preview workflow", () => {
 describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
-    expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8"]);
+    expect(workflowCommands(workflowJob("reuse-gate"))).toEqual(["node scripts/public-ci-reuse.mjs"]);
+    expect(workflowCommands(typecheck)).toEqual(["npm ci --prefer-offline --no-audit --fund=false", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
+    expect(workflowCommands(workflowJob("test-prep"))).toEqual(["npm ci --prefer-offline --no-audit --fund=false", "mkdir -p .context/scratch && node scripts/ci-test-scope.mjs", "node scripts/build-packages-incremental.mjs"]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -482,7 +484,7 @@ describe("complete public CI", () => {
       const job = workflowJob(name);
       expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
       const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
-      const reuse = name === "install-browser" ? "needs.install-packages" : "steps.reused";
+      const reuse = name === "install-browser" ? "needs.install-packages" : "needs.reuse-gate";
       expect(login).toContain(`        if: ${reuse}.outputs.reuse != 'true'\n`);
       expect(login).toContain("        env:\n          GH_TOKEN: ${{ github.token }}\n          GH_ACTOR: ${{ github.actor }}\n");
       expect(login.split("run:")[1]).not.toContain("${{");
@@ -506,7 +508,6 @@ describe("complete public CI", () => {
     expect(manifest.scripts).not.toHaveProperty("test:required");
     expect(manifest.scripts).not.toHaveProperty("pretest:required");
     expect(workflowCommands(workflowJob("install-packages"))).toEqual([
-      "node scripts/public-ci-reuse.mjs",
       "node scripts/public-ci-dependencies.mjs",
       "npm ci --prefer-offline --no-audit --fund=false",
       "npm run build",
@@ -518,28 +519,43 @@ describe("complete public CI", () => {
     ]);
   });
   it("partitions complete root discovery across exactly eight independent runners and fails closed", () => {
+    const prep = workflowJob("test-prep");
     const shard = workflowJob("test-full-shard");
     expect(shard).toContain("name: test-full-shard (${{ matrix.shard }}/8)");
-    const eventFence = workflowJob("typecheck").split("\n").find(line => line.startsWith("    if:"))!;
-    expect(shard).toContain(eventFence);
+    const eventFence = workflowJob("dco").split("\n").find(line => line.startsWith("    if:"))!;
+    const reuseFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && ");
+    const prepFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && needs.reuse-gate.outputs.reuse != 'true' && ");
+    const shardFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && (needs.test-prep.result == 'success' || (needs.reuse-gate.outputs.reuse == 'true' && needs.test-prep.result == 'skipped')) && ");
+    expect(prep).toContain("needs: [reuse-gate]");
+    expect(prep.split("\n").find(line => line.startsWith("    if:"))).toBe(prepFence);
+    expect(prep).toContain("          fetch-depth: 0\n");
+    expect(prep).toContain("          cache: npm\n");
+    expect(prep).toContain("        env:\n          OPENLUP_VITEST_EXCLUDE_FILE: ${{ github.workspace }}/.context/scratch/ci-test-exclude.txt");
+    expect(prep).toContain("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
+    expect(prep).toContain("name: test-prep\n");
+    expect(prep).toContain("path: |\n            .context/scratch/ci-test-exclude.txt\n            packages/core/dist\n            packages/outbox/dist\n            packages/platform/dist\n");
+    expect(prep).toContain("include-hidden-files: true\n          if-no-files-found: error\n          retention-days: 1");
+    expect(shard).toContain("needs: [reuse-gate, test-prep]");
+    expect(shard.split("\n").find(line => line.startsWith("    if:"))).toBe(shardFence);
     expect(workflowJob("test").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(shard).toContain("    strategy:\n      fail-fast: false\n      max-parallel: 8\n      matrix:\n        shard: [1, 2, 3, 4, 5, 6, 7, 8]\n");
     expect(shard).not.toMatch(/include:|exclude:|continue-on-error|--(?:maxWorkers|pool|retry|testTimeout|hookTimeout|bail)/u);
     expect(shard).toContain("    runs-on: ubuntu-latest\n    timeout-minutes: 20\n");
     expect(shard).toContain("          fetch-depth: 0\n");
     expect(shard).toContain("          cache: npm\n");
-    const scopedSteps = shard.split(/(?=^ {6}- )/mu).filter(step => /run: node scripts\/(?:ci-test-scope|ci-vitest-shard)\.mjs/u.test(step));
-    expect(scopedSteps).toHaveLength(2);
-    for (const step of scopedSteps) expect(step).toContain("        env:\n          OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt");
+    expect(shard).toContain("uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
+    expect(shard).toContain("name: test-prep\n");
+    const scopedStep = shard.split(/(?=^ {6}- )/mu).find(step => /run: node scripts\/ci-vitest-shard\.mjs/u.test(step));
+    expect(scopedStep).toContain("        env:\n          OPENLUP_VITEST_EXCLUDE_FILE: ${{ github.workspace }}/.context/scratch/ci-test-exclude.txt");
     expect(shard).not.toMatch(/^ {4}env:/mu);
-    expect(shard.indexOf("run: node scripts/ci-test-scope.mjs")).toBeLessThan(shard.indexOf("run: node scripts/ci-vitest-shard.mjs"));
+    expect(shard.indexOf("uses: actions/download-artifact@")).toBeLessThan(shard.indexOf("run: node scripts/ci-vitest-shard.mjs"));
     expect(workflow).not.toMatch(/^ {2}test-full:$/mu);
     const aggregate = workflowJob("test");
     expect(aggregate).toContain("    name: test\n");
     expect(aggregate).toContain("    needs: [test-full-shard, pgtap]\n");
     expect(aggregate).toContain("\n    timeout-minutes: 2\n");
     expect(aggregate).toContain("SHARD_RESULT: ${{ needs.test-full-shard.result }}");
-    expect(workflowJob("pgtap").split("\n").find(line => line.startsWith("    if:"))).toBe(shard.split("\n").find(line => line.startsWith("    if:")));
+    expect(workflowJob("pgtap").split("\n").find(line => line.startsWith("    if:"))).toBe(reuseFence);
     expect(aggregate).toContain("PGTAP_RESULT: ${{ needs.pgtap.result }}");
     expect(workflowCommands(aggregate)).toEqual(['test "$SHARD_RESULT" = "success" && test "$PGTAP_RESULT" = "success"']);
     for (const result of ["success", "failure", "cancelled", "skipped", "", "unknown"]) for (const pgtap of ["success", "failure", "cancelled", "skipped", "", "unknown"]) {
@@ -551,12 +567,14 @@ describe("complete public CI", () => {
   });
   it("requires package proof and all browser shards, including on main-push reuse", () => {
     const browser = workflowJob("install-browser"), aggregate = workflowJob("install-proof");
-    const eventFence = workflowJob("typecheck").split("\n").find(line => line.startsWith("    if:"))!;
-    expect(workflowJob("install-packages").split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence);
-    expect(browser.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence);
+    const eventFence = workflowJob("dco").split("\n").find(line => line.startsWith("    if:"))!;
+    const reuseFence = eventFence.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && ");
+    const browserFence = eventFence.replace("${{ ", "${{ always() && needs.install-packages.result == 'success' && ");
+    expect(workflowJob("install-packages").split("\n").find(line => line.startsWith("    if:"))).toBe(reuseFence);
+    expect(browser.split("\n").find(line => line.startsWith("    if:"))).toBe(browserFence);
     expect(aggregate.split("\n").find(line => line.startsWith("    if:"))).toBe(eventFence.replace("${{ ", "${{ always() && "));
     expect(browser).toContain("needs: [install-packages]");
-    expect(workflowJob("install-packages")).toContain("outputs:\n      reuse: ${{ steps.reused.outputs.reuse }}");
+    expect(workflowJob("install-packages")).toContain("outputs:\n      reuse: ${{ needs.reuse-gate.outputs.reuse }}");
     expect(browser).toContain("if: needs.install-packages.outputs.reuse != 'true'");
     expect(browser).not.toContain("scripts/public-ci-reuse.mjs");
     expect(browser).toContain("fail-fast: false\n      max-parallel: 4");
@@ -579,7 +597,7 @@ describe("complete public CI", () => {
     const packages = workflowJob("install-packages"), browser = workflowJob("install-browser");
     expect(browser).toContain("run: npm ci --ignore-scripts --prefer-offline --no-audit --fund=false");
     const upload = packages.split("      - name: Share verified candidate packages\n")[1]!;
-    expect(upload).toContain("if: steps.reused.outputs.reuse != 'true'");
+    expect(upload).toContain("if: needs.reuse-gate.outputs.reuse != 'true'");
     expect(upload).toContain("uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
     expect(upload).toContain("name: install-packages\n");
     expect(upload).toContain("path: |\n            ${{ runner.temp }}/package-gates/packages-manifest.json\n            ${{ runner.temp }}/package-gates/*.tgz\n");
@@ -590,13 +608,14 @@ describe("complete public CI", () => {
     expect(browser).toContain('--manifest "$RUNNER_TEMP/package-gates/packages-manifest.json" --expected-commit "$(git rev-parse HEAD)" --groups "$BROWSER_GROUPS"');
   });
   it("runs package proof, root shards and database diagnostics independently", () => {
-    for (const name of ["install-packages", "test-full-shard", "pgtap"]) expect(workflowJob(name)).not.toMatch(/^ {4}needs:/mu);
-    for (const [name, timeoutMinutes] of [["install-packages", 12], ["install-browser", 8], ["test-full-shard", 20]] as const) {
+    for (const name of ["install-packages", "test-prep", "pgtap"]) expect(workflowJob(name)).toContain("    needs: [reuse-gate]\n");
+    expect(workflowJob("test-full-shard")).toContain("    needs: [reuse-gate, test-prep]\n");
+    for (const [name, timeoutMinutes] of [["install-packages", 12], ["install-browser", 8], ["test-prep", 10], ["test-full-shard", 20]] as const) {
       const job = workflowJob(name);
       expect(job).toContain(`    runs-on: ubuntu-latest\n    timeout-minutes: ${timeoutMinutes}\n`);
       expect(job).toContain("      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n");
       expect(job).toContain("      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6\n        with:\n          node-version: 24.21.0\n          cache: npm\n");
-      const unconditionalPrGroup = job.replace(/^ {8}if: (?:github\.event_name == 'push'|steps\.reused\.outputs\.reuse != 'true'|needs\.install-packages\.outputs\.reuse != 'true'|always\(\) && steps\.postgres\.outcome != 'skipped')\n/gmu, "");
+      const unconditionalPrGroup = job.replace(/^ {8}if: (?:needs\.reuse-gate\.outputs\.reuse != 'true'|needs\.install-packages\.outputs\.reuse != 'true'|always\(\) && steps\.postgres\.outcome != 'skipped')\n/gmu, "");
       expect(unconditionalPrGroup).not.toMatch(/^ {6}(?:- | {2})if:|^ {10}ref:|continue-on-error/mu);
       expect(job.indexOf("      - name: Assert Node and npm contract\n")).toBeGreaterThan(0);
       expect(job.indexOf("      - run: npm ci")).toBeGreaterThan(job.indexOf("      - name: Assert Node and npm contract\n"));
@@ -612,7 +631,7 @@ describe("complete public CI", () => {
     expect(packages).toContain("run: docker rm --force install-proof-postgres");
     expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
     // Stock PostgreSQL with the managed-compat adapter needs no CLI and no npm dependencies.
-    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
+    expect(workflowCommands(workflowJob("pgtap"))).toEqual(['echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
 
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
@@ -725,22 +744,32 @@ describe("what the workflow may not contain", () => {
 
 describe("the workflow stays in step with what it claims to run", () => {
   it("allows only expensive main-push work to reuse exact-commit group proof", () => {
+    const gate = workflowJob("reuse-gate");
+    expect(gate).toContain("    if: ${{ github.event.repository.private == false && github.event_name == 'push' }}\n");
+    expect(gate).toContain("    outputs:\n      reuse: ${{ steps.reused.outputs.reuse }}\n");
+    expect(gate).toContain("id: reused\n");
+    expect(gate).toContain("run: node scripts/public-ci-reuse.mjs\n");
+    expect(workflow.match(/node scripts\/public-ci-reuse\.mjs/gu)).toHaveLength(1);
     for (const name of ["typecheck", "install-packages", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
-      expect(job).toContain("id: reused\n        if: github.event_name == 'push'");
+      expect(job).not.toContain("scripts/public-ci-reuse.mjs");
       const steps = job.split(/(?=^ {6}- )/mu).filter(step => step.startsWith("      - "));
-      let probeSeen = false;
+      let contractSeen = false;
       for (const step of steps) {
-        if (step.includes("id: reused")) { probeSeen = true; continue; }
-        if (probeSeen && !step.startsWith("      - name: Assert Node and npm contract") && !step.startsWith("      - name: Remove the package-proof PostgreSQL service")) expect(step).toContain("if: steps.reused.outputs.reuse != 'true'");
+        if (step.startsWith("      - name: Assert Node and npm contract")) { contractSeen = true; continue; }
+        if (contractSeen && !step.startsWith("      - name: Remove the package-proof PostgreSQL service")) expect(step).toContain("if: needs.reuse-gate.outputs.reuse != 'true'");
       }
-      expect(probeSeen).toBe(true);
+      expect(contractSeen).toBe(true);
     }
+    const prep = workflowJob("test-prep");
+    expect(prep).toContain("needs: [reuse-gate]");
+    expect(prep).toContain("needs.reuse-gate.outputs.reuse != 'true'");
+    expect(prep).not.toContain("scripts/public-ci-reuse.mjs");
     const browser = workflowJob("install-browser");
     const expensive = browser.split(/(?=^ {6}- )/mu).filter(step => /npm ci|download-artifact|docker login|starter-browser-ci\.mjs/u.test(step));
     expect(expensive).toHaveLength(4);
     for (const step of expensive) expect(step).toContain("if: needs.install-packages.outputs.reuse != 'true'");
-    for (const name of ["dco", "self-check", "gitleaks", "native-review"]) expect(workflowJob(name)).not.toContain("steps.reused");
+    for (const name of ["dco", "self-check", "gitleaks", "native-review"]) expect(workflowJob(name)).not.toMatch(/reuse-gate|steps\.reused/u);
   });
 
   it("runs every required context for main merge groups and isolates their concurrency by event and SHA", () => {
@@ -754,11 +783,17 @@ describe("the workflow stays in step with what it claims to run", () => {
   });
   it("exposes six required contexts, one raw diagnostic and optional native admission with trusted event fences", () => {
     const jobs = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z][a-z-]*):$/gm)].map((match) => match[1]);
-    expect(jobs).toEqual(["dco", "typecheck", "install-packages", "install-browser", "install-proof", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "native-review"]);
+    expect(jobs).toEqual(["dco", "reuse-gate", "typecheck", "install-packages", "install-browser", "install-proof", "test-prep", "test-full-shard", "test", "self-check", "gitleaks", "pgtap", "native-review"]);
     expect(workflow).not.toContain("needs: applies");
     const predicate = "    if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}";
-    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(8);
-    for (const job of jobs.filter((name) => !["native-review", "test", "test-full-shard", "install-browser", "install-proof"].includes(name))) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
+    const reusePredicate = predicate.replace("${{ ", "${{ always() && (needs.reuse-gate.result == 'success' || needs.reuse-gate.result == 'skipped') && ");
+    const browserPredicate = predicate.replace("${{ ", "${{ always() && needs.install-packages.result == 'success' && ");
+    expect(workflow.split("\n").filter((line) => line === predicate)).toHaveLength(3);
+    expect(workflow.split("\n").filter((line) => line === browserPredicate)).toHaveLength(1);
+    expect(workflow.split("\n").filter((line) => line === reusePredicate)).toHaveLength(3);
+    for (const job of ["dco", "self-check", "gitleaks"]) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n${predicate}\n`);
+    for (const job of ["typecheck", "install-packages", "pgtap"]) expect(workflow).toContain(`  ${job}:\n    name: ${job}\n    needs: [reuse-gate]\n${reusePredicate}\n`);
+    expect(workflow).toContain("  reuse-gate:\n    name: reuse-gate\n    if: ${{ github.event.repository.private == false && github.event_name == 'push' }}\n");
     expect(workflow.replace("    name: dco", "    name: dco-renamed")).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
     expect(workflow.replace(predicate, `${predicate.slice(0, -3)} && false }}`)).not.toContain(`  dco:\n    name: dco\n${predicate}\n`);
   });
@@ -770,10 +805,11 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(admission).toContain("github.event_name == 'pull_request' && github.event.pull_request.draft == false");
     expect(admission).toContain("github.event.pull_request.user.login != 'dependabot[bot]'");
     expect(admission).toContain("needs: [dco, typecheck, install-proof, test, self-check, gitleaks]");
-    expect(admission).toContain("timeout-minutes: 25");
+    expect(admission).toContain("timeout-minutes: 8");
     expect(admission).toContain("issues: read\n      contents: read\n      pull-requests: read");
     expect(admission).not.toMatch(/(?:actions|contents|issues|pull-requests): write/u);
     expect(admission).toContain("ref: main\n          fetch-depth: 0\n          persist-credentials: false");
+    expect(admission).toContain("package-manager-cache: false");
     expect(admission).toContain("run: node scripts/agent-review-queue.mjs wait");
     expect(admission).not.toContain("npm ci");
     const command = admission.split("        run: |\n")[1]?.split("      - uses:")[0]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
@@ -802,7 +838,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     const root = mkdtempSync(join(tmpdir(), "public-main-dco-"));
     const environment = gitFixtureEnvironment;
     const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=A Contributor", "-c", "user.email=contributor@example.com", ...args], { cwd: root, env: environment, encoding: "utf8" }).trim();
-    const step = workflow.split("      - name: Sign-off on every main push\n")[1]?.split("\n  typecheck:")[0];
+    const step = workflowJob("dco").split("      - name: Sign-off on every main push\n")[1];
     const command = step?.split("        run: |\n")[1]?.split("\n").map((line) => line.replace(/^ {10}/u, "")).join("\n");
     expect(command).toBeTruthy();
     try {
@@ -895,7 +931,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(uses.length).toBeGreaterThan(0);
     expect(uses.every((sha) => /^[a-f0-9]{40}$/u.test(sha))).toBe(true);
     expect(readFileSync(join(ROOT, ".nvmrc"), "utf8").trim()).toBe("24.21.0");
-    for (const name of ["typecheck", "install-packages", "install-browser", "test-full-shard", "pgtap"]) {
+    for (const name of ["typecheck", "install-packages", "install-browser", "test-prep", "test-full-shard", "pgtap"]) {
       const job = workflowJob(name);
       expect(job).toContain('test "$(node -p \'process.versions.node.split(".")[0]\')" = "24"');
       expect(job).toContain('test "$(npm --version)" = "11.19.0"');
@@ -982,7 +1018,7 @@ describe("the workflow stays in step with what it claims to run", () => {
   it("scopes the test run to directories that still exist", () => {
     const scope = [...PUBLIC_TEST_SCOPE];
     expect(workflow).toContain("run: node scripts/ci-vitest-shard.mjs");
-    expect(workflow.match(/run: node scripts\/ci-vitest-shard\.mjs[^\n]*/gu)).toEqual(["run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8"]);
+    expect(workflow.match(/run: node scripts\/ci-vitest-shard\.mjs[^\n]*/gu)).toEqual(["run: node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(scope).toEqual(["api", "mcp", "scripts", "server", "src", "tests"]);
     const tracked = execFileSync("git", ["ls-files", "-z", ...scope], { cwd: ROOT, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }).split("\0").filter(Boolean);

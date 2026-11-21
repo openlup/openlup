@@ -12,6 +12,7 @@ export {
   type PostgresTransactionRunner,
 } from "./postgresGateway.js";
 export {
+  asPostgresSqlExecutor,
   PgGatewayClient,
   PgQueryBuilder,
   type PgQueryExecutor,

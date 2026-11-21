@@ -36,6 +36,13 @@ export const journeyFacts: NativeRenewalPurchaseFacts = {
   acquisitionRef: "acquisition:001",
 };
 export type JourneyInstallation = { owner: Pool; runtime: Pool; runtimeUrl: string };
+export type JourneyTargetInstallation = JourneyInstallation & { ownerUrl: string; restore: Pool };
+export type JourneyTargetTemplate = {
+  /** Clone a fresh migrated database on this cluster, closing and dropping the previous target database if any. */
+  nextTarget(dbLabel?: string): Promise<JourneyTargetInstallation>;
+  /** Clone an additional migrated database on this cluster that remains open until resources.close(). */
+  clone(dbLabel?: string): Promise<JourneyTargetInstallation>;
+};
 
 /** Own resources per suite; no ambient database, owner fallback or extra runtime grants. */
 export function storeJourneyResources() {
@@ -75,7 +82,76 @@ export function storeJourneyResources() {
       if (zone) for (const db of [owner, runtime]) expect((await db.query("SHOW TimeZone")).rows).toEqual([{ TimeZone: zone }]);
       return { owner, runtime, runtimeUrl };
     },
-    close: () => closePostgres(containers, pools),
+    async targetTemplate(label: string): Promise<JourneyTargetTemplate> {
+      if (!await dockerAvailable()) throw new Error("Store journey requires disposable PostgreSQL; Docker absence is missing proof");
+      const container = await runPostgresContainer({ name: `store-journey-${label}-${process.pid}`, password: "synthetic-journey",
+        ...(zone ? { command: ["postgres", "-c", `timezone=${zone}`] } : {}) });
+      containers.push(container);
+      if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Store journey PostgreSQL TCP unavailable");
+      const bootstrap = pool(container.connectionString);
+      await bootstrap.query(`CREATE ROLE transfer_owner LOGIN INHERIT SUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey';
+        CREATE ROLE transfer_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey';
+        CREATE ROLE transfer_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-journey'`);
+      await bootstrap.query("CREATE DATABASE template_migrated OWNER transfer_owner");
+      const urlFor = (database: string, login: string, migration = false) => {
+        const value = new URL(container.connectionStringFor(database)); value.username = login;
+        if (migration) value.searchParams.set("options", qualifiedPostgresStartupOptions(journeySelection));
+        return value.toString();
+      };
+      // Migrate and verify template_migrated once, then close its setup pools so
+      // PostgreSQL permits CREATE DATABASE ... TEMPLATE template_migrated.
+      const templateOwner = new Pool({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin, true) });
+      const templateRuntime = new Pool({ connectionString: urlFor("template_migrated", journeySelection.runtimeLogin) });
+      try {
+        const runner = createPostgresMigrationRunner({ connectionString: urlFor("template_migrated", journeySelection.migrationLogin) },
+          { installation: journeySelection, poolFactory: () => templateOwner });
+        expect(await runner.apply()).toEqual({ applied: [manifest.baseline, ...manifest.forward].map(unit => unit.file) });
+        expect((await runner.status()).pending).toEqual([]);
+        expect((await templateOwner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
+          .toEqual([manifest.baseline, ...manifest.forward].map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
+        await assertJourneyRuntime(templateRuntime);
+        if (zone) for (const db of [templateOwner, templateRuntime]) expect((await db.query("SHOW TimeZone")).rows).toEqual([{ TimeZone: zone }]);
+      } finally {
+        await Promise.all([templateOwner.end(), templateRuntime.end()]);
+      }
+      let sequence = 0;
+      let active: { dbName: string; owner: Pool; runtime: Pool; restore: Pool } | undefined;
+      const openClone = async (dbLabel?: string) => {
+        const suffix = dbLabel ? `_${dbLabel.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 32)}` : "";
+        const dbName = `target_${++sequence}${suffix}`;
+        await bootstrap.query(`CREATE DATABASE "${dbName}" TEMPLATE template_migrated OWNER transfer_owner`);
+        const ownerUrl = urlFor(dbName, journeySelection.migrationLogin, true);
+        const runtimeUrl = urlFor(dbName, journeySelection.runtimeLogin);
+        const restoreUrl = urlFor(dbName, journeySelection.restoreLogin!);
+        return { dbName, owner: pool(ownerUrl), ownerUrl, runtime: pool(runtimeUrl), restore: pool(restoreUrl), runtimeUrl };
+      };
+      return {
+        async nextTarget(dbLabel?: string): Promise<JourneyTargetInstallation> {
+          if (active) {
+            const previous = active;
+            active = undefined;
+            const toClose = [previous.owner, previous.runtime, previous.restore];
+            // Suppress expected 57P01 errors if DROP DATABASE WITH (FORCE) races
+            // with a backend still exiting after Pool.end().
+            for (const value of toClose) value.on("error", () => {});
+            await Promise.all(toClose.map(value => value.ended ? Promise.resolve() : value.end()));
+            for (const value of toClose) {
+              const index = pools.indexOf(value);
+              if (index >= 0) pools.splice(index, 1);
+            }
+            await bootstrap.query(`DROP DATABASE IF EXISTS "${previous.dbName}" WITH (FORCE)`);
+          }
+          const next = await openClone(dbLabel);
+          active = { dbName: next.dbName, owner: next.owner, runtime: next.runtime, restore: next.restore };
+          return { owner: next.owner, ownerUrl: next.ownerUrl, runtime: next.runtime, restore: next.restore, runtimeUrl: next.runtimeUrl };
+        },
+        async clone(dbLabel?: string): Promise<JourneyTargetInstallation> {
+          const next = await openClone(dbLabel);
+          return { owner: next.owner, ownerUrl: next.ownerUrl, runtime: next.runtime, restore: next.restore, runtimeUrl: next.runtimeUrl };
+        },
+      };
+    },
+    close: (additionalClosers: (() => Promise<unknown>)[] = []) => closePostgres(containers, pools, additionalClosers),
   };
 }
 

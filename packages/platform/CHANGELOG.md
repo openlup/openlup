@@ -10,6 +10,252 @@ in the source repository.
 
 ## [Unreleased]
 
+## [1.3.0]
+
+- Publishable on the npm `latest` dist-tag as `1.3.0`, from tag
+  `openlup-platform-v1.3.0`.
+
+- Keep lower-maturity declarations referenced by stable `@openlup/platform` APIs in the stable snapshots so maintainers can detect type narrowing. The snapshot tool also checks that every reachable declaration appears in a report and that entrypoint directories have a single owner.
+
+  Migration: No adopter action is required. Installed exports and runtime behavior are unchanged.
+
+- Scope `@openlup/platform` `.api.md` declaration snapshots by subpath.
+
+  Migration: Snapshot scoping does not alter runtime or type exports. Snapshots omit import-only declarations owned by equally or more mature sibling subpaths unless another retained edge includes them.
+
+- Prepare catalogue candidates through one ordered evaluator with actionable preparation and pricing diagnostics. Product rule builds attach to the existing definition installation. Published product content carries neutral facts and a document reference.
+- Migration: Existing candidate-service construction and v1 references and digests remain supported. For definition installation, attach the rules build to the pack and compose the host registry from the same pack types. Run your rule tests and install the updated product type through the existing install flow.
+
+Native installations can preserve product publication and revision history when transferring a store.
+Migration: Apply the complete native database update before transferring a store that already has publication history. The managed rail does not supply this feature. Publication read refusals keep their released reasons and now carry an optional `message` that names the fix, which callers can display; an invalid history cursor or publication head returns `candidate_invalid`.
+Migration: In 1.3.0, `CATALOG_MIGRATIONS` grows from 14 to 16 entries with `20261123190000_catalog_publication` and `20261123191000_catalog_publication_commands`. Update code that pins the tuple length.
+
+### Explain invalid catalogue attribute definitions
+
+- The `definition_attribute_invalid` remedy directs readers to the reported field, explains the attribute key length, character rules and reserved names with `recycled_cover` as a valid example, and retains guidance on kind, cardinality and bounds.
+
+Apply the reminder episode pin migration before using the updated producers.
+A pinned episode retains its starting timing. A changed schedule supplies
+timing for episodes whose first wave is created after the change.
+
+Older episodes with preexisting waves and no pin read the live schedule
+and can block changes with `checkout_recovery_schedule_change_blocked_open_episodes`.
+See **Install reminder stages and hours** for the blocker conditions and
+when to retry. Use
+`READ COMMITTED` for changes and producers to avoid
+`checkout_recovery_schedule_isolation_unsupported`.
+
+If your legacy cart reminder job runs under its own database role, grant that
+role EXECUTE on `public.commerce_enqueue_abandoned_cart_reminder_episodes(integer)`
+once after applying the migration. If the grant is missing, the job reports
+`checkout_recovery_cart_runtime_grant_required` with the exact command to run.
+The built-in runtime role already has the grant.
+
+- Create each reminder stage at most once per order. Pinned episodes keep
+  their timing and are exempt from the schedule-change guard. An older pending
+  checkout order with a wave and no pin blocks a change regardless of age
+  with `checkout_recovery_schedule_change_blocked_open_episodes`. The same
+  refusal applies to unpinned pending abandoned carts with a wave, a valid
+  draft receipt and no settlement intent. Changed installs and producers at
+  `REPEATABLE READ` or `SERIALIZABLE` refuse with
+  `checkout_recovery_schedule_isolation_unsupported`.
+  With an installed schedule, a compacted checkout wave consumes both stages
+  and the later stage is skipped. With no schedule installed, the historical
+  hour rule applies.
+
+- `resolveCustomerSessionBinding` reuses one PostgreSQL challenge store on the `store`, `pool` and default shared-store paths. `createStore` keeps its per-operation lifecycle. The env-free `createPostgresCustomerSessionBinding` accepts a borrowed `store`, a borrowed `pool` or an owned `connectionString`.
+- Downgrade the challenge-table lock in `createPostgresCustomerChallengeStore` (`issue` and `redeem`) from `EXCLUSIVE MODE` to `ROW EXCLUSIVE MODE` so concurrent customer logins do not serialize globally while retaining mutual exclusion with `EXCLUSIVE MODE` privacy erasures.
+
+- Add additive default policy factories (`createDefaultRenewalFailurePolicy`, `createDefaultRenewalPreflightPolicy`, `createDefaultRenewalCyclePolicy`) to `@openlup/platform/subscriptions` with overridable canonical renewal key dialects and refusal defaults.
+- Unify internal capability contribution construction across `@openlup/platform/composition` factories without changing any exported contract or runtime behavior.
+
+- Add optional `prepareCandidate` on `FulfillmentStorePort` (wired in `createPostgresFulfillmentDispatchStore` and native fulfillment preparation) so dispatch workers run one advisory-locked prepare+candidate transaction instead of two while retaining `readCandidate` for `contact_stale` remaps.
+- Batch candidate hydration in `createPostgresFulfillmentDispatchComposition().listCandidates` using a single `unnest ... WITH ORDINALITY` query with per-row `22023` refusal isolation fallback.
+- Add optional `readLocalState` on `reconcileFulfillmentObservations` (wired in native provider intake) to collapse repeated `fulfillment_intake_read_state` reads to one per row while invalidating `latestOccurredAt` after `recordStatusEvidence` and clearing cached state before `applyFulfillmentObservationEffects`.
+
+- Read native stock availability for a batch of SKUs using the installed
+  renewal protection horizon through `createPostgresStockAvailability(...).readInstalled(skus)`.
+  The read uses one PostgreSQL statement for stock and the installed horizon.
+
+Migration: Apply the complete native catalogue through
+`20261123142000_inventory_renewal_protection_validation.sql`. The existing
+horizon reader calls the extracted validator with its existing privileges.
+The explicit-horizon TypeScript port and the 14-day fallback keep their
+established behavior.
+
+- Managed checkout uses the verified account when a submitted e-mail belongs to
+  a linked profile. A first guest checkout can still use an unlinked e-mail.
+  Apply the managed ownership migration before installing the updated reference
+  adapter. The receipt reader uses the current account link on replays.
+
+- Add the opt-in PostgreSQL catalogue commands binding for approving, revoking, publishing and replaying a receipted v3 draft. Enable the approval seal on candidate preparation and apply the complete native migration chain before binding the owner transaction.
+- Publication refusals identify the affected field when available and explain how to correct the draft or recover a sealed publication. Adopter rule refusals name the rule, its code and the field. The released refusal contract adds an optional path. `catalog-contracts.api.md`
+- In 1.3.0, `CATALOG_MIGRATIONS` grows from 14 to 16 entries with `20261123190000_catalog_publication` and `20261123191000_catalog_publication_commands`.
+
+Added additive PostgreSQL host ports for native checkout (`createPostgresNativeCheckoutHostPort` on `@openlup/platform/commerce/server/native-checkout`, optional `readExpiry` on `PostgresCheckoutRecoveryTokenPort` in `@openlup/platform/commerce/server`, and `createPostgresNativeCheckoutSubscriptionPort` on `@openlup/platform/subscriptions`) and migrated `examples/neutral-store/host/` checkout modules onto those ports without raw internal-table SQL.
+
+Migration: Apply the full selected 1.3.0 PostgreSQL catalogue, including `20261123149000_native_durable_capture_evidence.sql`, with the upgraded payment runtime.
+
+- On successful custom reconciliation readbacks, return provider-collected `amountMinor` and `currency` with `capturedAmountBasis: "provider_capture_v1"`.
+- On successful custom native renewal observations, return the collected money in `observedMoney`, the same basis and the actual provider occurrence time when available.
+- For custom native webhook adapters, set `capturedAmountBasis: "provider_capture_v1"` outside the event fingerprint on verified success evidence backed by the provider-collected amount.
+- For successful invoice readbacks missing captured money with only a configured-amount mismatch against the claim, handle `providerEvidence.unavailableReason` as `provider_configured_amount_mismatch` and `providerStatus` as `unknown`.
+- Find recorded native capture reviews via `captureReviewRequired` or `readCaptureReview` and confirm and resolve the transaction with the provider before charging again.
+
+- Fresh cycles and expired claims both get space in a normal Native PostgreSQL
+  renewal batch when both have eligible work.
+
+Migration: Apply the ordered Native PostgreSQL catalogue through
+`20261123150000_subscription_renewal_due_fairness.sql`.
+
+- Recover `createEnvAdvisoryLock` after transient connect errors or idle client disconnects when zero locks are held while preserving fail-closed session-affinity refusals on active locks, and report lock acquisition/release errors to `onError` in `withAdvisoryLock`.
+- Add optional `readbackMaxPages` (default `1`) to the warehouse fulfillment adapter so hosts can opt into bounded multi-page whole-collection readback verification beyond 100 fulfilments.
+- Honor `dispatch.maxAttempts` in `createPostgresLifecycleMessages` source queries instead of a hardcoded limit of 6, and add an optional non-throwing `onError` callback for per-notice delivery failures.
+
+- Harden payment adapter webhook normalization, OAuth token handling, detached JWS verification, readback status translation, and verified ingress projection without changing 1.x public exports:
+  - Restrict dispute webhook normalization to active dispute events (`charge.dispute.created`, `charge.dispute.funds_withdrawn`) so closed or reinstated dispute events are acknowledged as unsupported rather than recorded as new disputes, and remove the over-broad `status === "requires_action"` fallback on unrecognized event types.
+  - Eliminate per-call reconciliation provider allocation in payment adapter `readbackPort.readPayment`.
+  - Thread the injected `now()` clock into HTTP client deadline checks, deduplicate concurrent OAuth token requests (single-flight), and invalidate stale bearer tokens on HTTP `401` (retrying idempotent `GET` requests once without silently double-dispatching `POST /transactions`).
+  - Enforce strict 3-part detached JWS format (`parts.length === 3 && parts[1] === ""`), canonical `new URL(...)` `x5u` certificate URL validation, and bounded `X509Certificate` parse caching during webhook signature verification.
+  - Avoid projecting verified webhook evidence twice in `createVerifiedPaymentIngress` when attaching a host-resolved reusable method owner.
+
+- Export canonical payment failure evidence helpers (`evidenceToken`, `evidenceRecord`, `serializeFailureEvidence`, `failureEvidencePayload`), attempt silence-window and reconciliation evidence helpers, prepared-absence reopen helper, `DEFAULT_STALE_AFTER_SECONDS`, `paymentVerifyRequestSchema`, `hasCommittedCaptureReview`, `sameCanonicalAttempt`, `toClaimedAttemptShape`, payment method lifecycle snapshot helpers, and webhook refusal handoff types from `@openlup/platform/payments`.
+- Export payment execution and durable-event conformance contract types (`ExecutionCapability`, `ExecutionSubject`, `ExecutionProviderIdentity`, `ExecutionEvidence`, `DurableEventCounts`, `DurableEventAggregate`, `DurableEventFixtureCardinality`, `DurableEventWriteCardinality`, `DurableEventCardinalityExpectations`, `DurableEventSnapshot`, `EventReceipt`, `DurableEventCapability`, `DurableEventEvidence`) from `@openlup/platform/payments/contracts`.
+
+- Accept all `v1` signatures in a webhook signature header during signing secret rotation instead of retaining only the last `v1` entry, while failing closed on conflicting timestamps or stale payloads.
+
+- Attach a non-throwing `'error'` listener once per lazily created PostgreSQL `Pool` or dedicated advisory-lock `Client` across data, marketing acquisition, migrations and scheduler adapters, preventing idle disconnects from terminating the host process.
+- Add optional `onPoolError` and `onClientError` callbacks to `PostgresDataGatewayOptions`, marketing Postgres adapter options, migration runner options and `EnvAdvisoryLockOptions` (`createEnvAdvisoryLock`).
+
+Review successful `@openlup/platform/payments/tpay` readbacks flagged `provider_amount_mismatch` before retrying or issuing an invoice.
+
+Review a verified `@openlup/platform/payments/stripe` success webhook answered with HTTP 409 and reason `provider_amount_mismatch` before settling.
+
+- Add `PaymentProviderRegistry`, `createPaymentProviderRegistry`, `toCoreCaptureHandoff`, `fromCoreCaptureHandoff`, and `toCorePaymentProviderCapability` to `@openlup/platform/payments` and `@openlup/platform/payments/contracts` as a single source of truth over composed payment adapters.
+- Add named `FulfillmentProviderAdapter`, `FulfillmentProviderRegistry`, and `createFulfillmentProviderRegistry` to `@openlup/platform/fulfillment` and `@openlup/platform/fulfillment/contracts`, re-export `FULFILLMENT_STATUS_EFFECTS`, and derive `observationStatusPolicy` directly from `FULFILLMENT_STATUS_EFFECTS`.
+
+### Discover application-defined settings
+
+- Declare an application setting in the settings binding with its file, symbol, goal and effect. The experimental settings command can list, show, explain and check those declarations when the app is supplied. Check uses the app's Zod schema when provided and reports the original value.
+
+### Slim capability and invariant descriptors
+
+- Capability gaps and invariants now have one reason and a reference. Read their `runtime.reason` for the explanation.
+
+### Discover starter-owned settings
+
+- The starter's settings binding declares the free-shipping threshold,
+  subscription discount, delivery intervals, edit window, checkout reservation
+  duration and lifecycle notice retry budget. Use the starter's settings script
+  to discover them alongside the packaged platform catalogue.
+- The currency and date entries describe starter display fixes. The stock-wait
+  entry identifies the fixed 15-minute native hold lifetime during stock-wait
+  recovery.
+
+### Check loaded settings after editing owned configuration
+
+- The experimental `openlup settings check --app <module>` command checks reported file values offline. It reports the app's startup assertion separately from the per-key catalogue schema checks. Connected drift remains a startup check.
+
+### Experimental settings command
+
+- The package binary now provides the experimental settings command for discovery and read-only preview. For preview, pass JSON with `--value` or read it from stdin with `--value -`.
+
+### Connected settings require an explicit PostgreSQL target
+
+- For connected `openlup settings show` and `preview`, supply a canonical PostgreSQL URL with one TCP host, a username and one non-empty database path segment. For the exact URL rules, see the reader guide, Configure settings, section “Read the effective behavior”.
+- The URL alone sets the host, port, username, password, database and TLS mode. An omitted `sslmode` selects plaintext. `PG`-prefixed environment variables and password files cannot change those settings. Other driver variables still apply. Both commands refuse when the driver loads the native client. Unset `NODE_PG_FORCE_NATIVE` to use the JavaScript client.
+- The experimental settings host's `bind` input now carries the admitted connection options in `database`, replacing the raw `databaseUrl` string.
+
+- Discover platform settings, capability gaps and invariants from the installed catalogue
+  and refusal vocabulary. The read-only settings API and the domain discovery
+  exports are experimental.
+
+Migration: Existing operations and installed-policy APIs keep their current
+behavior. To opt into connected settings discovery, inject a reader for each
+installed key you want to inspect. The reader reports row presence separately
+from its value.
+
+### Settings goal search
+
+- Match goal words at the start of catalogue words, including acronyms in camelCase keys. A nonblank goal with no letters or decimal digits returns an empty list. The command still refuses blank goals with exit code 64. When no setting matches every word, the list shows up to ten partial matches ranked by the number of matching words.
+
+### Settings MCP launch and required inputs
+
+- Pass `mcp` to the starter's settings script to launch the read-only settings
+  server from the application root. If the application module cannot load,
+  launch stops and reports the reason on stderr.
+- Provide `key` to `settings_show`, `keyOrCode` to `settings_explain`, and both
+  `key` and the proposed JSON `value` to `settings_preview`. The JSON-RPC
+  argument error names a missing field when that omission is the only issue.
+
+### Settings over MCP
+
+- Use the experimental `openlup settings mcp` command to connect a read-only stdio client. The Configure settings guide shows the extracted starter client configuration.
+- The server uses the existing settings commands. The unreleased experimental `settingsReadTools`, `listSettings`, `showSetting`, `explainSetting`, `previewSetting`, `invalidSettingsCommand` and `refuseSettingsPreview` exports have been removed from `@openlup/platform/operations/server`.
+
+### Read-only preview for renewal stock protection
+
+- The experimental settings preview command and `settings_preview` tool report one validation outcome, the
+  current installed policy, current availability by SKU, and an estimate of
+  proposed availability at the same instant and in the same snapshot. Existing
+  reservations keep their quantities and expiry times. Apply
+  `20261123152000_inventory_new_purchase_stock_preview.sql` for the proposed
+  estimate in CLI JSON, MCP, and library results.
+- The explicit-horizon reader still requires a horizon that matches the
+  installed value.
+
+- Add optional batch persistence methods (`recordStockSnapshotBatch`, `recordProviderStockCurrentBatch`, `recordLowStockEvidenceBatch`, `resolveLowStockEvidenceBatch`) to `FulfillmentStockSyncPort` and `createPostgresFulfillmentStockSyncPort`, and use them in `runFulfillmentStockSyncWorker` with PostgreSQL collation-aligned lock ordering and per-item fallback on stock batch errors.
+- Skip the `SAVEPOINT` and `subscription_command_preview` no-op probe in `createPostgresSubscriptionCommandStore` for lifecycle actions whose preview path never returns `noop` (`pause`, `resume`, `cancel`, `skip_next_cycle`, `order_now`, `reactivate`).
+
+- Add optional `snapshot?: RenewalFrozenSnapshot` forwarding on `AutomaticRenewalRunDeps["inventory"]["reserve"]` so `runOneAutomaticSubscriptionRenewal` passes the claimed snapshot directly to inventory reservation without re-reading renewal state.
+- Reduce database round-trips on the subscription renewal and retry hot paths: lightweight SQL for `readMandateEvidence` and `admitDeliveryAlignment`, single snapshot read in `buildCycleSnapshots`, batched stock-wait candidate loading, direct stock-wait recovery snapshot reuse, and `failure_propagation_pending` guarding in `createNativeRetryDriver`.
+- Reduce redundant serialization and parsing in `createNativeRenewalCodec` and replace the indirect `requires_action` replay wrapper in `createPostgresProviderRenewalBinding` with a direct helper preserving exact retry-rung and idempotency semantics.
+
+- Return redacted `persistence` facts from `createTpayPaymentAdapter().attemptPort.execute` and synthesize safe, redacted fallback persistence in `createPostgresProviderPaymentRail` when an adapter omits optional `execution.persistence`, preventing post-dispatch throws that stranded live provider attempts.
+
+- Unify direct-PostgreSQL executor and pool-sharing contracts across `@openlup/platform`:
+  - Re-export `SqlExecutor` and add `PostgresTransactionRunner` / `createPostgresTransactionRunner(pool)` in `@openlup/platform/data`.
+  - Accept a non-owning borrowed `{ pool }` option across `PostgresDataGatewayOptions`, direct-PostgreSQL identity/communications/account-support/marketing stores, and `createPostgresMigrationRunner` (rejecting `{ pool, poolFactory }` fail-closed and never calling `pool.end()` on borrowed pools).
+  - Parameterize `PostgresRoleFreeTransactionLane<G = unknown>` covariantly and add a typed overload on `createPostgresRoleFreeTransactionLane<G>(...)` (retaining `PostgresRoleFreeTransactionLane<unknown>` when unparameterized for 1.x compatibility, while accepting supertypes such as `PgGatewayClient`, `SqlExecutor`, or `PgQueryExecutor` for typed callbacks without unchecked casts) plus a runtime `isPgQueryExecutor` check in checkout recovery token storage.
+  - Make `DataBindingDependencies.createSupabaseClient` optional so direct-PostgreSQL hosts can call `createDataBindings()` without a hosted-client stub while still failing closed (`OPENLUP_E_DATA_BINDING_SUPABASE_CLIENT_REQUIRED`) when the hosted capability is bound without a client factory.
+  - Convert `@openlup/platform/marketing/server/postgres` from eager `pg` imports to lazy peer loading with `OPENLUP_E_PEER_MISSING` preservation.
+
+Migration:
+
+Code that reads `DataBindingDependencies.createSupabaseClient` must handle
+`undefined`. Existing `PgGatewayClient.query` implementations keep their 1.2.0
+signature. For typed rows or readonly query values, wrap the client with
+`asPostgresSqlExecutor` from `@openlup/platform/data`.
+
+`createStore` keeps its per-operation lifecycle; pass `pool` or `store` to reuse one store per binding.
+
+Before (separate pools per store and stubbed hosted client factory):
+```ts
+import { createDataBindings, type SupabaseCreateClient } from "@openlup/platform/data";
+import { createPostgresAccountLinkStore } from "@openlup/platform/identity";
+
+declare const stubClient: SupabaseCreateClient;
+declare const connectionString: string;
+
+const bindings = createDataBindings({ createSupabaseClient: stubClient });
+const store = createPostgresAccountLinkStore({ connectionString });
+```
+
+After (the transaction runner and account-link store borrow the application's pool):
+```ts
+import type { Pool } from "pg";
+import { createDataBindings, createPostgresTransactionRunner } from "@openlup/platform/data";
+import { createPostgresAccountLinkStore } from "@openlup/platform/identity";
+
+declare const sharedPool: Pool;
+
+const bindings = createDataBindings();
+const runner = createPostgresTransactionRunner(sharedPool);
+const store = createPostgresAccountLinkStore({ connectionString: "" }, { pool: sharedPool });
+```
+
+- Distinguish the three `openlup verify --app` CLI stages (module load, `createVerificationInput` export check and observation factory execution) with constant diagnostic messages while withholding application error details.
+
 ## [1.2.0]
 
 - Publishable on the npm `latest` dist-tag as `1.2.0`, from tag
