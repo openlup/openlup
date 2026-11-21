@@ -501,12 +501,8 @@ for (const locale of market.locales) test(`${locale}: default-ON winback records
 
 });
 test('operator escalation uses configured recipients and narrow captured fields', async ({ page }) => {
-  const email = `operator-${randomUUID()}@example.test`;
-  const identity = createPostgresOperatorIdentityStore({ connectionString: material.ownerUrl });
-  let operator: string;
-  try { operator = (await identity.bootstrapFirstAdministrator({ email })).principalId; } finally { await identity.close(); }
-  await signIn(page, email, market.defaultLocale, undefined, true);
-  await owner.query('INSERT INTO public.platform_communication_operators(principal_id,active) VALUES($1,true)', [operator]);
+  const operator = await portalOperator(page, market.defaultLocale);
+  const { email } = (await owner.query('SELECT email FROM public.platform_human_principals WHERE principal_id=$1', [operator])).rows[0];
   const recipients = createPostgresNotificationRecipientsPort({ connectionString: material.runtimeUrl }, { operatorId: operator });
   try {
     for (const address of [email, `second-${email}`]) await recipients.createNotificationRecipient({ email: address, name: null, notification_type: 'commerce_payment_critical', active: true });
