@@ -83,6 +83,8 @@ export function createStripeConformanceFixture() {
         ...(outcome === "succeeded" && observedMoney ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
         providerAuditPayload: { provider: "stripe", eventId, eventType: sourceType, providerPaymentId: fixture.remote,
           amountMinor: amount ?? null, currency: currency?.toUpperCase() ?? null,
+          ...(outcome === "succeeded" && rawAmount === 0 && configuredAmount !== 0
+            ? { configuredAmountMinor: configuredAmount, paidAmountMinor: 0 } : {}),
           ...(outcome === "refunded" ? { stripeRefundSnapshot: { chargeId: `ch_${fixture.remote}`, amountRefundedMinor: 500 } } : {}),
         },
       };

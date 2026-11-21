@@ -1,13 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payments/tpay";
-const normalizeTpayTransaction = (transaction: Record<string, unknown>) =>
+const providerForTransaction = (transaction: Record<string, unknown>) =>
   createTpayPaymentReconciliationProvider({ getTransaction: async () => ({ transactionId: "01HX", title: null,
-    status: "pending", transactionPaymentUrl: null, amount: null, currency: null, requestId: null, payments: {}, ...transaction }) })
-    .readPayment({ providerPaymentId: String(transaction.transactionId) });
+    status: "pending", transactionPaymentUrl: null, amount: null, currency: null, requestId: null, payments: {}, ...transaction }) });
+const normalizeTpayTransaction = (transaction: Record<string, unknown>) =>
+  providerForTransaction(transaction).readPayment({ providerPaymentId: String(transaction.transactionId) });
 import { classificationOf } from "../../../domains/payment/paymentProviderReconciliationEvidence.js";
 // Aliased at the import site: the factory is constructed in a dozen cases, and
 // the adapter's vendor name is a fact about the import, not about each case.
 import { createSupabasePaymentProviderReconciliationPort as createPort } from "./paymentProviderReconciliation.js";
+import { runPaymentProviderReconciliationWorker } from "../../../domains/payment/paymentProviderReconciliationWorker.js";
+import { createCheckoutRecoveryPaymentResolver } from "../../../domains/payment/checkoutRecoveryPaymentResolver.js";
+import { verifyPaymentAttemptNow } from "@openlup/platform/payments";
+import type { VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
+
+import { runAccountingInvoiceIssueJob } from "../../../domains/accounting/accountingJobService.js";
+import { readAccountingRuntimeConfig } from "../../../domains/accounting/accountingRuntimeConfig.js";
+import { createTestAccountingProvider } from "../../accounting/testAccountingProvider.js";
+import { createSupabaseAccountingInvoicePort } from "../accountingInvoicePort.js";
+import type { ClaimedAccountingInvoiceIssue } from "../../../../src/domains/accounting/ports.js";
+
+const transactionProvider = "tpay" as const;
+
 
 describe("createSupabasePaymentProviderReconciliationPort", () => {
   it("claims prepared attempts through the service-role RPC and permits missing provider payment ids", async () => {
@@ -92,6 +106,95 @@ describe("createSupabasePaymentProviderReconciliationPort", () => {
       limit: 5,
       claimKey: "claim-invalid-context",
     })).rejects.toThrow("invalid payment context");
+  });
+
+  it.each([
+    ["configured amount", { amount: 13.99 }, 1399],
+    ["paid fields", { amount: 12.99, paidAmount: "13.99" }, 1299],
+  ] as const)("retains a success with conflicting %s for review across the managed payment paths", async (_, fields, configuredAmountMinor) => {
+    const remote = "01HX";
+    const row = claimedRow({ provider: transactionProvider, amount_cents: 1299,
+      provider_payment_id: remote, provider_attempt_id: remote, provider_session_id: remote });
+    const provider = providerForTransaction({ status: "correct", currency: row.currency, payments: { amountPaid: "12.99" }, ...fields });
+    const providers = { [transactionProvider]: provider };
+    const client = fakeClient();
+    client.rpc.mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: [row], error: null })
+      .mockResolvedValueOnce({ data: { paymentReconciliation: { id: "rec-1" } }, error: null });
+    const port = createPort(client);
+    const now = () => new Date(row.local_updated_at);
+    expect(await runPaymentProviderReconciliationWorker({ port, providers, now: now().toISOString() }))
+      .toMatchObject({ checked: 1, manualReview: 1, corrected: 0 });
+    expect(client.rpc).toHaveBeenCalledWith("commerce_payment_control_record_reconciliation", expect.objectContaining({
+      p_correction_status: "failed",
+      p_payload: expect.objectContaining({ failureReason: "provider_amount_mismatch",
+        providerPayload: expect.objectContaining({ amountEvidence: [
+          { field: "amount", amountMinor: configuredAmountMinor },
+          { field: "payments.amountPaid", amountMinor: 1299 },
+          ...("paidAmount" in fields ? [{ field: "paidAmount", amountMinor: 1399 }] : []),
+        ] }) }),
+    }));
+    const snapshot: VerifiableAttemptSnapshot = {
+      orderId: row.order_id, orderClientId: "client-1", orderMode: "one_time_order",
+      paymentIntentId: row.payment_intent_id, intentStatus: "processing", intentProviderPaymentId: remote,
+      paymentAttemptId: row.payment_attempt_id, paymentId: row.payment_id, attemptStatus: "processing",
+      provider: transactionProvider, providerAttemptId: remote, providerSessionId: remote,
+      amountMinor: row.amount_cents, currency: row.currency, localUpdatedAt: row.local_updated_at,
+    };
+    await expect(verifyPaymentAttemptNow({ snapshot, applyPort: port, providers, now }))
+      .resolves.toMatchObject({ status: "manual_review", verified: true, applied: false });
+    const recovery = createCheckoutRecoveryPaymentResolver({ providers, applyPort: port, now,
+      readPort: { readVerifiableAttempt: async () => snapshot } });
+    await expect(recovery.resolve({ orderId: snapshot.orderId, paymentIntentId: snapshot.paymentIntentId }))
+      .resolves.toEqual({ kind: "manual_review" });
+    expect(client.rpc).not.toHaveBeenCalledWith("commerce_payment_control_apply_reconciliation_result", expect.anything());
+  });
+
+  it("blocks managed invoice issuance when a settled readback reports conflicting collected amounts", async () => {
+    const row = claimedRow({ amount_cents: 1299 });
+    const currency = row.currency;
+    const claim: ClaimedAccountingInvoiceIssue = {
+      outboxId: "invoice-outbox", attemptCount: 1, providerKind: "host-fiscal",
+      payment: { intentId: row.payment_intent_id, provider: transactionProvider, providerPaymentId: "01HX",
+        amountCents: 1299, currency, localSettlementState: "unavailable" },
+      invoice: {
+        id: "invoice-1", orderId: row.order_id, orderRef: "order-1", invoiceRef: "order-1:base",
+        documentKind: "b2c_named", ksefRequired: false, currency,
+        buyerSnapshot: { name: "Buyer", taxId: null }, orderSnapshot: {}, taxSnapshot: {},
+        linesSnapshot: [{ name: "Item", quantity: 1, totalGrossMinor: 1299, vatRate: "8" }],
+        totalGrossCents: 1299, totalNetCents: 1203, paymentCompletedAt: row.local_updated_at,
+        packageShippedAt: row.local_updated_at, providerPaymentId: "01HX", metadata: { paymentProvider: transactionProvider },
+      },
+    };
+    const paymentProvider = providerForTransaction({
+      status: "correct", amount: "12.99", payments: { amountPaid: "11.99" }, paidAmount: "12.49", currency,
+    });
+    const client = fakeClient();
+    client.rpc.mockImplementation(async (name, args: Record<string, unknown>) => {
+      expect(name).toBe("accounting_invoice_issue_payment_preflight");
+      const providerStatus = args.p_provider_status;
+      const providerAmount = args.p_provider_amount_cents;
+      // The managed preflight permits unavailable evidence and blocks a status mismatch.
+      const ok = providerStatus === "unavailable" || (providerStatus === "succeeded"
+        && (providerAmount === null || providerAmount === claim.payment.amountCents));
+      return { data: { ok, code: ok ? null : "accounting_invoice_provider_settlement_status_mismatch",
+        providerReadbackState: ok ? "unavailable" : "mismatch", paymentIntentId: row.payment_intent_id }, error: null };
+    });
+    const markInvoiceIssueSucceeded = vi.fn();
+    const port = { ...createSupabaseAccountingInvoicePort(client), claimInvoiceIssues: async () => [claim],
+      markInvoiceIssueSucceeded, markInvoiceIssueFailed: vi.fn(), blockInvoiceIssueCanonicalMapper: vi.fn() };
+    const invoiceProvider = createTestAccountingProvider();
+    const createInvoice = vi.spyOn(invoiceProvider, "createInvoice");
+    await expect(runAccountingInvoiceIssueJob({
+      port, provider: invoiceProvider, config: readAccountingRuntimeConfig({ ACCOUNTING_CREATE_ENABLED: "true" }),
+      env: {}, paymentProviders: { [transactionProvider]: paymentProvider },
+    })).resolves.toMatchObject({ ok: false, checked: 1, updated: 0, failures: 1 });
+    expect(client.rpc).toHaveBeenNthCalledWith(2, "accounting_invoice_issue_payment_preflight", expect.objectContaining({
+      p_provider_status: "unknown", p_provider_amount_cents: null,
+      p_provider_evidence: expect.objectContaining({ unavailableReason: "provider_amount_mismatch" }),
+    }));
+    expect(createInvoice).not.toHaveBeenCalled();
+    expect(markInvoiceIssueSucceeded).not.toHaveBeenCalled();
   });
 
   it("records reconciliation evidence through payment-control", async () => {
@@ -554,7 +657,7 @@ it("carries diagnostics to the existing atomic persistence input without changin
   const normalized = await normalizeTpayTransaction({ transactionId: "01HX", status: "pending", payments: { attempts: [{ paymentErrorCode: "105" }] } });
   const result = await createPort({ rpc }).applyTerminalResult({
     idempotencyKey: "reconcile:attempt", expectedOrderId: "order", expectedPaymentIntentId: "intent",
-    expectedPaymentAttemptId: "attempt", expectedPaymentId: "payment", provider: "tpay", providerPaymentId: "01HX",
+    expectedPaymentAttemptId: "attempt", expectedPaymentId: "payment", provider: transactionProvider, providerPaymentId: "01HX",
     localStatus: "processing", providerStatus: "pending", resultStatus: "failed", occurredAt: "2026-09-11T10:00:00Z",
     failureReason: normalized.failureReason, checkedAt: "2026-09-11T10:00:00Z", ...classificationOf("failed", normalized),
     payload: { providerPayload: normalized.rawPayload },

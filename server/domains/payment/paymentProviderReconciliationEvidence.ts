@@ -51,6 +51,9 @@ export function terminalAmountMismatch(
   attempt: ClaimedPaymentAttempt,
   status: ProviderReconciliationStatus,
 ): string | null {
+  if (status.status === "succeeded" && status.failureReason === "provider_amount_mismatch") {
+    return "provider_amount_mismatch";
+  }
   if (status.status === "succeeded" && status.amountMinor === null) {
     return "provider_amount_missing";
   }

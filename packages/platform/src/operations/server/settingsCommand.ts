@@ -73,7 +73,7 @@ function text(result: Result, host?: SettingsHost): string {
       ...((kind === "cap" || kind === "invariant") && "reason" in runtime ? [`  ${runtime.reason}`] : []),
       `  Change: ${Object.values(change).join(" ")}`,
     ].join("\n")).join("\n")
-    : "No settings matched the goal.";
+    : "No settings matched the goal.\nTry fewer or different words, or run list without --goal.";
   if (!("setting" in result)) return host?.formatPreview?.(result) ?? JSON.stringify(result, null, 2);
   const { setting, observation } = result;
   return [setting.key + " — " + setting.goal, `Owner: ${setting.domain}`,
@@ -470,6 +470,20 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     try { proposed = JSON.parse(value === "-" ? await io.readStdin() : value); }
     catch (error) {
       return emit(refuseSettingsPreview("commerce_setting_preview_json_invalid"), error instanceof SyntaxError ? 64 : 74);
+    }
+    if (key && values.app && host?.loadCheck && !loadSettingsCatalogue().entries.some(entry => entry.key === key)) {
+      let bindings;
+      try { bindings = await loadApp(); }
+      catch { /* Continue with ordinary preview dispatch when the app cannot load. */ }
+      if (bindings && !("configurationIds" in bindings)) {
+        const admitted = declaredSettings(bindings.file);
+        if ("declarations" in admitted && admitted.declarations.has(key)) {
+          return emit(refuseSettingsPreview("commerce_setting_preview_unsupported", {
+            path: ["key"],
+            hint: `${key} is an application setting without a preview. Read it with settings show ${key} and validate an edit with settings check.`,
+          }));
+        }
+      }
     }
   }
   const input = { key, proposed, skus: values.sku, asOf: values["as-of"] };

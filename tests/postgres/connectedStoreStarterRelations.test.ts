@@ -5,14 +5,14 @@ import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
-  type JourneyInstallation } from "../helpers/storeJourney.js";
+  type JourneyInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const resources = storeJourneyResources();
 const at = "2026-09-01T00:00:00Z", closedAt = "2026-10-01T00:00:00Z";
 const carried = ["catalog_sku_identifiers", "subscription_price_policy_revisions", "commerce_promotion_definitions"] as const;
 const list = randomUUID(), skus = [randomUUID(), randomUUID()];
-let source: JourneyInstallation, empty: JourneyInstallation, target: JourneyInstallation;
+let source: JourneyInstallation, empty: JourneyInstallation, target: JourneyInstallation, targets: JourneyTargetTemplate;
 let packet: ConnectedNativeStoreCapture, emptyPacket: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture;
 let targetNumber = 0;
 
@@ -28,8 +28,11 @@ async function parents(store: JourneyInstallation) {
 }
 
 beforeAll(async () => {
-  source = await resources.installation("starter-source");
-  empty = await resources.installation("starter-empty");
+  [source, empty, targets] = await Promise.all([
+    resources.installation("starter-source"),
+    resources.installation("starter-empty"),
+    resources.targetTemplate("starter-target"),
+  ]);
   await parents(source); await parents(empty);
   for (const [index, sku] of skus.entries()) await source.owner.query(`INSERT INTO public.catalog_sku_identifiers
     (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,created_at)
@@ -71,7 +74,7 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 
 beforeEach(async () => {
-  target = await resources.installation(`starter-target-${++targetNumber}`);
+  target = await targets.nextTarget(`starter-target-${++targetNumber}`);
   freshTarget = await captureStoreJourney(target.owner, "starter-relations-target");
 }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
@@ -162,3 +165,30 @@ it("carries a reminder episode pin byte-exactly and replays restore", async () =
     await source.owner.query("DELETE FROM public.commerce_reminder_episodes WHERE order_id=$1", [id]);
   }
 }, 105_000);
+
+it("admits the policy INSERT guard before importing any policy rows", async () => {
+  expect(emptyPacket.owned.find(value => value.table === "subscription_price_policy_revisions")?.rows).toEqual([]);
+  await expect(restore(emptyPacket)).resolves.toMatchObject({ replayed: false });
+});
+
+it("limits the restore capability to policy row copies", async () => {
+  const seen: [table: string, active: unknown][] = [];
+  const owner = observedOwner(async (sql, query) => {
+    const table = /^INSERT INTO public\."(price_lists|subscription_price_policy_revisions|commerce_promotion_definitions)"/u.exec(sql)?.[1];
+    if (!table) return;
+    const { rows } = await query(`SELECT EXISTS (
+      SELECT 1 FROM public.subscription_price_policy_restore_capabilities
+      WHERE transaction_id = pg_catalog.pg_current_xact_id()
+    ) AS active`);
+    seen.push([table, rows[0].active]);
+  });
+
+  expect(await restore(packet, owner)).toMatchObject({ replayed: false });
+  expect(seen).toEqual([
+    ["price_lists", false],
+    ["subscription_price_policy_revisions", true],
+    ["subscription_price_policy_revisions", true],
+    ["commerce_promotion_definitions", false],
+    ["commerce_promotion_definitions", false],
+  ]);
+});

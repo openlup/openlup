@@ -9,7 +9,7 @@ import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualificat
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest,
   reminderInstallationTest, starterLifecycle, starterOptionalCatalogueFiles, starterUpgradeSnapshot,
-  starterDisplayFiles, reconcileDisplayCustomization } from "./distribution-cli-proof.ts";
+  starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -183,6 +183,38 @@ it("migrates the pristine catalogue after the 1.2.0 starter release", () => {
   migrateStarterOwned(app, target, from, to);
   expect(readFileSync(join(app, path), "utf8")).toBe(next);
   expect(readFileSync(join(app, pack), "utf8")).toBe(packBytes);
+});
+
+it.each([false, true])("upgrades the 1.3.0 starter agent guide, customized=%s", customized => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const path = "AGENTS.md";
+  const previous = execFileSync("git", ["show", "openlup-core-v1.3.0:examples/neutral-store/AGENTS.template.md"], { encoding: "utf8" });
+  const next = readFileSync(resolve("examples/neutral-store/AGENTS.template.md"), "utf8");
+  const ownership = { managed: ["z.ts"], owned: [path, starterSettingsHost], generated: [] };
+  write("ownership.json", ownership); candidate("ownership.json", ownership);
+  write(path, previous); candidate(path, next);
+  write(starterSettingsHost, ""); candidate(starterSettingsHost, "");
+  candidate("z.ts", "candidate bytes");
+  const from = starterUpgradeSnapshot(app, "1.3.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
+  migrateStarterOwned(app, target, from, to);
+  expect(from.files[path]).toBe(previous);
+  expect(to.files[path]).toBe(next);
+  const apply = (status: number) => {
+    candidate("from.json", from); candidate("to.json", to);
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply",
+      "--root", app, "--from", join(target, "from.json"), "--to", join(target, "to.json"), "--schema-version", "0", "--json"], { encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  const local = customized ? reconcileStarterAgentGuide(app, from, to, () => {
+    const report = apply(1);
+    expect(readFileSync(join(app, "z.ts"), "utf8")).toBe("previous bytes");
+    return report;
+  }) : undefined;
+  expect(apply(0).applied).toEqual(customized ? ["z.ts"] : [path, "z.ts"]);
+  expect(readFileSync(join(app, path))).toEqual(local?.bytes ?? Buffer.from(next));
+  if (customized) expect(readFileSync(join(app, path), "utf8")).toContain("Record local acceptance results in the test log.");
+  expect(apply(0).applied).toEqual([]);
 });
 
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {

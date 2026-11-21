@@ -54,7 +54,7 @@ to prepare, approve, issue and read the exact saved facts.
 
 ## New vertical
 
-Copy [the static skeleton](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/catalogue.json):
+Copy [the static skeleton](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/catalogue.json):
 
 ```sh
 cp node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-pack-skeleton/catalogue.json owned/catalogue.json

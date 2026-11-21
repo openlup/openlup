@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createTpayHttpClient } from "../../../src/payments/tpay/tpayHttpClient.js";
 import {
   createTpayPaymentReconciliationProvider,
   normalizeTpayTransaction,
@@ -12,13 +13,13 @@ const normalize = normalizeTpayTransaction;
 
 describe("normalizeTpayTransaction", () => {
   const attempt = { amountMinor: 14_900, currency: "PLN" } as never;
-  it("maps Tpay correct/paid states to succeeded", () => {
-    expect(normalizeTpayTransaction({
+  it("attests capture when the configured and collected amounts agree", () => {
+    expect(normalize({
       transactionId: "tr_1",
       title: "TR-1",
       status: "correct",
-      amount: "13.99",
-      amountMinor: 1399,
+      amount: "12.99",
+      amountMinor: 1299,
       payments: { amountPaid: "12.99" },
       currency: "pln",
     })).toMatchObject({
@@ -29,6 +30,65 @@ describe("normalizeTpayTransaction", () => {
       capturedAmountBasis: "provider_capture_v1",
       failureReason: null,
     });
+  });
+
+  const readWire = async (fields: Record<string, unknown>) => {
+    const client = createTpayHttpClient({ baseUrl: "https://example.test", clientId: "fixture", clientSecret: "fixture",
+      fetchImpl: async url => ({ ok: true, status: 200, text: async () => "",
+        json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 3600 }
+          : { transactionId: "tr_1", status: "correct", currency: "PLN", ...fields },
+      }),
+    });
+    return createTpayPaymentReconciliationProvider(client).readPayment({ providerPaymentId: "tr_1" });
+  };
+  const money = (field: string, amountMinor: number) => ({ field, amountMinor });
+  const malformed = (field: string) => ({ field, malformed: true });
+
+  it.each([
+    { amount: "12.990", payments: { amountPaid: "12.99" } },
+    { amount: 12.99, payments: { amountPaid: "12.99", paidAmount: null } },
+    { amount: null, amountMinor: 1299, payments: { amountPaid: "12.99" } },
+    { payments: { amountPaid: "12.99" } },
+  ])("attests eligible wire amounts for %j", async fields => {
+    await expect(readWire(fields)).resolves.toMatchObject({ status: "succeeded", failureReason: null,
+      amountMinor: 1299, currency: "PLN", capturedAmountBasis: "provider_capture_v1" });
+  });
+
+  it.each([
+    { label: "configured amount", fields: { amount: 13.99, payments: { amountPaid: "12.99" } },
+      amountMinor: 1299, evidence: [money("amount", 1399), money("payments.amountPaid", 1299)] },
+    { label: "configured aliases (4)", fields: { amount: 13.99, amountMinor: 1299, payments: { amountPaid: "12.99" } },
+      amountMinor: 1299, evidence: [money("amountMinor", 1299), money("amount", 1399), money("payments.amountPaid", 1299)] },
+    { label: "paid fields (2)", fields: { amount: 12.99, paidAmount: "13.99", payments: { amountPaid: "12.99" } },
+      amountMinor: null, evidence: [money("amount", 1299), money("payments.amountPaid", 1299), money("paidAmount", 1399)] },
+    { label: "fractional minor-unit text", fields: { amount: "12.99", payments: { amountPaid: "12.99" },
+      paidAmountMinor: "1299.00000000000001" }, amountMinor: 1299,
+      evidence: [money("amount", 1299), money("payments.amountPaid", 1299), malformed("paidAmountMinor")] },
+    { label: "malformed leading paid field (3)", fields: { amount: 12.99, paidAmount: "13.99",
+      payments: { amountPaid: "", paidAmount: "12.99" } }, amountMinor: null,
+      evidence: [money("amount", 1299), malformed("payments.amountPaid"), money("payments.paidAmount", 1299), money("paidAmount", 1399)] },
+    { label: "null leading paid field with disagreeing aliases", fields: { amount: 12.99, paidAmount: "13.99",
+      payments: { amountPaid: null, paidAmount: "12.99" } }, amountMinor: null,
+      evidence: [money("amount", 1299), money("payments.paidAmount", 1299), money("paidAmount", 1399)] },
+    { label: "malformed configured alias", fields: { amount: 12.99, tr_amount: "13,99", tr_amount_minor: "1299",
+      payments: { amountPaid: "12.99" } }, amountMinor: 1299,
+      evidence: [money("tr_amount_minor", 1299), money("amount", 1299), malformed("tr_amount"), money("payments.amountPaid", 1299)] },
+    { label: "nested object", fields: { amount: 12.99, amountPaid: "12.99", paidAmountMinor: "1299",
+      tr_paid_minor: { data: "synthetic-private-value" }, tr_paid: "12.99", payments: { amountPaid: "12.99" } },
+      amountMinor: 1299, evidence: [money("amount", 1299), money("payments.amountPaid", 1299), money("paidAmountMinor", 1299),
+        malformed("tr_paid_minor"), money("amountPaid", 1299), money("tr_paid", 1299)] },
+    { label: "free text", fields: { amount: "synthetic-private-value", amountMinor: 1299, payments: { amountPaid: "12.99" } },
+      amountMinor: 1299, evidence: [money("amountMinor", 1299), malformed("amount"), money("payments.amountPaid", 1299)] },
+    { label: "malformed with no valid paid (1)", fields: { amount: 12.99, payments: { amountPaid: { data: "synthetic-private-value" } } },
+      amountMinor: null, evidence: [money("amount", 1299), malformed("payments.amountPaid")] },
+    { label: "equal paid zero (2)", fields: { amount: 0, payments: { amountPaid: 0 }, paidAmount: "0.00" },
+      amountMinor: null, evidence: [money("amount", 0), money("payments.amountPaid", 0), money("paidAmount", 0)] },
+  ])("keeps bounded review evidence for $label", async ({ fields, amountMinor, evidence }) => {
+    const result = await readWire(fields);
+    expect(result).toMatchObject({ status: "succeeded", failureReason: "provider_amount_mismatch", amountMinor,
+      rawPayload: { amountEvidence: evidence } });
+    expect(result).not.toHaveProperty("capturedAmountBasis");
+    expect(JSON.stringify(result.rawPayload)).not.toContain("synthetic-private-value");
   });
 
   it("uses official nested realization date and raw paidAmount from transaction readback", () => {
@@ -49,21 +109,22 @@ describe("normalizeTpayTransaction", () => {
     });
   });
 
-  it.each([undefined, "12.991", ""])("does not infer paid money from the requested amount when paid money is %s", amountPaid => {
+  it.each([undefined, null])("leaves absent paid evidence unchanged for %s", amountPaid => {
     const observed = normalizeTpayTransaction({
       transactionId: "tx_partial", status: "correct", amount: "12.99",
       amountMinor: 1299, payments: { amountPaid }, currency: "PLN",
     });
     expect(observed).toMatchObject({ status: "succeeded", amountMinor: null,
-      configuredAmountMinor: 1299, rawPayload: { amountMinorPresent: false } });
+      failureReason: null, configuredAmountMinor: 1299, rawPayload: { amountMinorPresent: false } });
     expect(observed).not.toHaveProperty("capturedAmountBasis");
   });
 
-  it.each([0, "0.00"])("retains an authoritative zero (%s) without falling back to a paid alias", amountPaid => {
+  it.each([0, "0.00"])("refuses conflicting zero (%s) and positive paid aliases", amountPaid => {
     const observed = normalizeTpayTransaction({
       transactionId: "tx_partial", status: "correct", payments: { amountPaid }, paidAmount: "12.99",
     });
-    expect(observed).toMatchObject({ status: "succeeded", amountMinor: 0, rawPayload: { amountMinorPresent: true } });
+    expect(observed).toMatchObject({ status: "succeeded", failureReason: "provider_amount_mismatch", amountMinor: null,
+      rawPayload: { amountEvidence: [money("payments.amountPaid", 0), money("paidAmount", 1299)] } });
     expect(observed).not.toHaveProperty("capturedAmountBasis");
   });
 

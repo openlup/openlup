@@ -123,6 +123,14 @@ export function createVerifiedPaymentIngress({
   refundEvidencePolicy?: RefundEvidencePolicy;
   operationalEvents?: OperationalEventRecorder;
 }): PaymentIngressPort {
+  function recordReviewDiagnostic(event: Parameters<OperationalEventRecorder>[0]): void {
+    try {
+      void Promise.resolve(operationalEvents(event)).catch(() => {});
+    } catch {
+      // Preserve the payment response when diagnostics fail.
+    }
+  }
+
   return { async receive(input) {
     let evidence;
     try { evidence = await verifyPort.verifyAndNormalize(input); }
@@ -156,9 +164,37 @@ export function createVerifiedPaymentIngress({
           provider, providerEventId, providerPaymentId: providerPaymentRef, legacyFingerprint: historicalCaptureFingerprint,
         });
         if (paymentEventId) {
-          operationalEvents({ name: "provider_payment_historical_capture_replay", domain: "payment", surface: "webhook",
+          recordReviewDiagnostic({ name: "provider_payment_historical_capture_replay", domain: "payment", surface: "webhook",
             details: { provider, providerPaymentId: providerPaymentRef, eventType: "payment.succeeded" } });
           sendSuccess(res, { provider, providerEventId, paymentEventId, replayed: true });
+          return;
+        }
+      }
+      if (verifiedEvidence.kind === "money" && verifiedEvidence.provider === provider
+        && verifiedEvidence.outcome === "succeeded" && verifiedEvidence.money === null) {
+        const { configuredAmountMinor, paidAmountMinor, currency, malformedAmounts } = verifiedEvidence.providerAuditPayload ?? {};
+        const configuredValid = typeof configuredAmountMinor === "number" && Number.isSafeInteger(configuredAmountMinor)
+          && configuredAmountMinor >= 0;
+        const paidValid = typeof paidAmountMinor === "number" && Number.isSafeInteger(paidAmountMinor) && paidAmountMinor >= 0;
+        const malformed = Array.isArray(malformedAmounts) ? malformedAmounts.flatMap((value: unknown) =>
+          value !== null && typeof value === "object" && "field" in value && typeof value.field === "string"
+            && "malformed" in value && value.malformed === true ? [{ field: value.field, malformed: true }] : []) : [];
+        if (malformed.length > 0 || (configuredValid && paidValid && configuredAmountMinor !== paidAmountMinor)) {
+          const amounts = { reason: "provider_amount_mismatch",
+            ...(configuredValid ? { configuredAmountMinor } : {}),
+            ...(paidValid ? { paidAmountMinor } : {}),
+            ...(malformed.length ? { malformedAmounts: malformed } : {}),
+            currency: typeof currency === "string" ? currency : null,
+          };
+          recordReviewDiagnostic({
+            name: "provider_payment_amount_mismatch",
+            domain: "payment",
+            surface: "webhook",
+            details: { provider, providerEventId: verifiedEvidence.providerEventId,
+              providerPaymentId: verifiedEvidence.providerPaymentRef, ...amounts, outcome: "review_required" },
+          });
+          sendBffError(res, "CONFLICT", "Provider payment amounts disagree. Review the payment before settling.");
+          Object.assign(res.data, amounts);
           return;
         }
       }

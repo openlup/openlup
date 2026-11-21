@@ -1789,6 +1789,7 @@ export declare function readInvoicePaymentEvidence(payment: {
         amountMinor: number | null;
         currency: string | null;
         configuredAmountMinor?: number;
+        failureReason?: string | null;
     }>;
 } | undefined): Promise<PaymentEvidence>;
 export {};

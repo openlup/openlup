@@ -212,7 +212,6 @@ export function paidMajorToMinor(value: unknown): number | null {
   return minor !== null && minor > 0 ? minor : null;
 }
 
-/** Keep explicit zero in authenticated readback and preserve the rail's precision. */
 function readPaidMajor(value: unknown): number | null {
   if (typeof value !== "number" && typeof value !== "string") return null;
   const match = /^([0-9]+)(?:[.,]([0-9]{1,2}))?$/u.exec(String(value).trim());
@@ -221,25 +220,65 @@ function readPaidMajor(value: unknown): number | null {
   return Number.isSafeInteger(minor) ? minor : null;
 }
 
-function readPaidMinor(value: unknown): number | null {
-  const minor = typeof value === "string" && /^[0-9]+$/u.test(value.trim()) ? Number(value) : value;
-  return typeof minor === "number" && Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
+export function readNullableTransactionAmount(raw: unknown): number | null {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+type TransactionAmountField = { field: string; amountMinor: number } | { field: string; malformed: true };
+
+function amountField(field: string, value: unknown, unit: "major" | "minor"): TransactionAmountField | null {
+  if (value == null) return null;
+  let amountMinor: unknown = value;
+  if (unit === "major") {
+    const amount = readNullableTransactionAmount(value);
+    amountMinor = amount === null ? null : Math.round(amount * 100);
+  } else if (typeof value === "string") {
+    const text = value.trim();
+    amountMinor = /^[0-9]+$/.test(text) ? Number(text) : null;
+  }
+  return typeof amountMinor === "number" && Number.isSafeInteger(amountMinor) && (unit === "major" || amountMinor >= 0)
+    ? { field, amountMinor }
+    : { field, malformed: true };
+}
+
+function readPaidAmounts(transaction: Record<string, unknown>, payments: Record<string, unknown>) {
+  return [
+    amountField("payments.amountPaid", payments.amountPaid, "major"),
+    amountField("payments.paidAmount", payments.paidAmount, "major"),
+    amountField("paidAmountMinor", transaction.paidAmountMinor, "minor"),
+    amountField("tr_paid_minor", transaction.tr_paid_minor, "minor"),
+    amountField("paidAmount", transaction.paidAmount, "major"),
+    amountField("amountPaid", transaction.amountPaid, "major"),
+    amountField("tr_paid", transaction.tr_paid, "major"),
+  ].filter(field => field !== null);
 }
 
 export function readPaidAmountMinor(
   transaction: Record<string, unknown>,
   payments: Record<string, unknown>,
 ): number | null {
-  // The authenticated transaction DTO reports paid money in payments.amountPaid.
-  // Preserve older explicitly paid aliases when that DTO field is absent.
-  for (const key of ["amountPaid", "paidAmount"]) {
-    if (Object.hasOwn(payments, key)) return readPaidMajor(payments[key]);
-  }
-  for (const key of ["paidAmountMinor", "tr_paid_minor"]) {
-    if (Object.hasOwn(transaction, key)) return readPaidMinor(transaction[key]);
-  }
-  for (const key of ["paidAmount", "amountPaid", "tr_paid"]) {
-    if (Object.hasOwn(transaction, key)) return readPaidMajor(transaction[key]);
-  }
-  return null;
+  const amount = readPaidAmounts(transaction, payments)[0];
+  return amount && "amountMinor" in amount ? amount.amountMinor : null;
+}
+
+export const malformedConfiguredTransactionAmount = Symbol("malformedConfiguredTransactionAmount");
+
+export function readTransactionAmountEvidence(
+  transaction: Record<string, unknown> & { [malformedConfiguredTransactionAmount]?: true },
+  payments: Record<string, unknown>,
+) {
+  const configured = [
+    amountField("amountMinor", transaction.amountMinor, "minor"),
+    amountField("tr_amount_minor", transaction.tr_amount_minor, "minor"),
+    transaction[malformedConfiguredTransactionAmount]
+      ? { field: "amount", malformed: true as const }
+      : amountField("amount", transaction.amount, "major"),
+    amountField("tr_amount", transaction.tr_amount, "major"),
+  ].filter(field => field !== null);
+  return { configured, paid: readPaidAmounts(transaction, payments) };
 }

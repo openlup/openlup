@@ -21,6 +21,7 @@
 // DataGatewayPort), so every query here runs inside that request's transaction with its RLS GUCs set.
 
 import type { PoolClient } from "pg";
+import type { SqlExecutor } from "@openlup/core/readiness";
 
 import {
   ParamAccumulator,
@@ -272,11 +273,8 @@ export class PgQueryBuilder<T = unknown> implements PromiseLike<PgShimResult<T>>
 export class PgGatewayClient {
   constructor(private readonly client: PgQueryExecutor) {}
 
-  query<Row extends Record<string, unknown> = Record<string, unknown>>(
-    text: string,
-    values?: readonly unknown[],
-  ): Promise<{ rows: Row[] }> {
-    return this.client.query(text, values ? [...values] : undefined) as Promise<{ rows: Row[] }>;
+  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> {
+    return this.client.query(text, values ? [...values] : undefined);
   }
 
   from<T = Record<string, unknown>>(table: string): PgQueryBuilder<T> {
@@ -301,6 +299,15 @@ export class PgGatewayClient {
       return { data: null, error: toShimError(error) };
     }
   }
+}
+
+/** Adapt an existing query implementation for typed rows. The caller supplies the SQL row shape. */
+export function asPostgresSqlExecutor(client: PgQueryExecutor): SqlExecutor {
+  return {
+    query<Row extends Record<string, unknown>>(text: string, values?: readonly unknown[]) {
+      return client.query(text, values ? [...values] : undefined) as Promise<{ rows: Row[] }>;
+    },
+  };
 }
 
 export type { PoolClient };

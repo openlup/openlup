@@ -307,12 +307,12 @@ sources, such as the starter browser image's, are mirror inputs only: that image
 is pulled from the organization mirror alone, with no upstream fallback.
 Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
 the existing 300-second cold image pull and schema installation, and
-`postgresTeardownTimeoutMs` (45 seconds). These are explicit integration-hook
+`postgresTeardownTimeoutMs` (75 seconds). These are explicit integration-hook
 budgets; ordinary test deadlines remain unchanged. The shared helper bounds
-Docker availability to five seconds, each start/removal command to 30 seconds,
+Docker availability to five seconds, each start/removal command to 60 seconds,
 and TCP readiness to 60 seconds of wall-clock time, including connect/query
 attempts and waits. After image resolution, port-conflict retries share a
-60-second startup budget; failed-start cleanup still gets its 30-second removal
+90-second startup budget; failed-start cleanup still gets its 60-second removal
 budget before reporting failure. Readiness destroys its throwaway client after each probe.
 `closePostgres` gives all fixture pools and adapter/store close callbacks one
 shared five-second close phase, then attempts every owned container removal even
@@ -723,9 +723,11 @@ node --experimental-strip-types scripts/packages/required-package-gates.ts \
   --out "$GATE_PACKS" --expected-commit "$(git rev-parse HEAD)"
 # test: omit bounded tooling fixtures whose inputs are untouched, including dirty files.
 npm run test:scoped
-# Hosted test-full-shard runs eight parallel independent installations, each with:
-# node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE points to runner temp)
-# node scripts/ci-vitest-shard.mjs --shard N --total 8 (N = 1, 2, 3, 4, 5, 6, 7, 8)
+# Hosted test-prep runs once before the eight test-full-shard jobs:
+# node scripts/ci-test-scope.mjs (OPENLUP_VITEST_EXCLUDE_FILE -> .context/scratch/ci-test-exclude.txt)
+# node scripts/build-packages-incremental.mjs (shared as the test-prep artifact)
+# Hosted test-full-shard runs eight parallel independent installations with that artifact:
+# node scripts/ci-vitest-shard.mjs --shard N --total 8 --skip-pretest (N = 1, 2, 3, 4, 5, 6, 7, 8)
 # pgtap (Docker required; no Supabase CLI or npm install)
 node scripts/public-ci-pgtap.mjs
 ```
@@ -1027,7 +1029,7 @@ only after the original callback drains. Missing Docker or PostgreSQL fails the
 witness rather than skipping it; this focused run does not replace the required
 package, coverage or full verification gates.
 
-Hosted `test-full-shard` jobs run `node scripts/ci-vitest-shard.mjs --shard N --total 8` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`) in eight independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
+Hosted `test-prep` runs `node scripts/ci-test-scope.mjs` and `node scripts/build-packages-incremental.mjs` once and uploads the exclusion list and built workspace `dist/` outputs as the `test-prep` artifact. Hosted `test-full-shard` jobs download that artifact and run `node scripts/ci-vitest-shard.mjs --shard N --total 8 --skip-pretest` (deterministic weighted LPT sharding over `config/vitest-shard-weights.json`, bypassing redundant per-shard `pretest` builds) in eight independent installations. Required `test` accepts only success from the whole matrix and from the `pgtap` job; failure, cancellation or a skipped dependency job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 Channel preservation tests live in `packages/platform/test/channels` and are
 discovered by the existing root Node project. The reference's adjacent guard
@@ -1863,7 +1865,7 @@ entry. Observe an existing request instead of repeatedly arming it.
 
 Where activated, trusted `Queue Handoff` can insert a still-armed exact head once
 after the required source successes and current native proof. At each of its two
-mergeability checks, it re-reads `UNKNOWN` up to six times, 10 seconds apart.
+mergeability checks, it re-reads `UNKNOWN` up to twelve times, 15 seconds apart.
 Persistent `UNKNOWN` requires re-running the job. It does not arm an unarmed PR
 or automatically requeue an evicted head. Its App is scoped
 to this repository with no bypass; its private key stays in the main-only
@@ -1871,7 +1873,7 @@ to this repository with no bypass; its private key stays in the main-only
 Handoff's built-in workflow token is read-only. Activation and settings remain
 maintainer actions.
 
-Admission waits up to twenty minutes for a receipt after the six mechanical
+Admission waits up to three minutes for a receipt after the six mechanical
 checks pass. Where it is activated, a new receipt comment from an owner, member
 or collaborator with write, maintain or admin permission starts the trusted
 [receipt rerun](.github/workflows/native-review-receipt-rerun.yml). It reruns the
