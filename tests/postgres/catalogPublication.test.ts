@@ -7,7 +7,9 @@ import { createPostgresCatalogPublicationReads } from "../../server/adapters/pos
 import { publicationWireVectors } from "@openlup/platform/catalog/testing";
 import { nativeCatalogPublication, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { actorId, hash, json, installPublicationActors, transaction, fixture, graph, insertGraph, decisionRow,
-  decisionReceipt, documentRow, skuRow, sealedState, stageProductRows, invalidReceiptResults, type Graph } from "./catalogPublicationFixture.js";
+  decisionReceipt, documentRow, skuRow, sealedState, stageProductRows, invalidReceiptResults,
+  publicationDocuments, publicationDocumentAtDraftDepth, publicationManifestText, publishMaximumRoster,
+  type Graph } from "./catalogPublicationFixture.js";
 import { assertConnectedCatalogPublications, captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { installOmsHuman } from "./omsHumanAdmission.fixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -33,6 +35,7 @@ beforeAll(async () => {
     const line = sql.slice(0, Number(error.position) - 1).split("\n").length;
     throw new Error('Publication forward ' + (error.position ? 'line ' + line : 'setup') + ': ' + error.message + (error.where ? ' (' + error.where + ')' : ''), { cause: error });
   });
+  await pool.query(readFileSync("db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql", "utf8"));
   await installPublicationActors(pool);
 }, postgresSetupTimeoutMs);
 
@@ -111,7 +114,7 @@ it.each([false, true])("binds issuing document provenance even with an older reg
 it.each(["origin registration bytes", "authored document"] as const)("refuses contradictory %s even when the issuing registration matches", async kind => {
   const data = fixture();
   const origin = await transaction(pool, async db => {
-    const contradiction = { label: "different authored bytes" };
+    const contradiction = publicationDocuments.contradictory;
     const older = await graph(db, data, null, true, kind === "origin registration bytes"
       ? { registrationText: json(contradiction) } : { authoredDocument: contradiction });
     await documentRow(db, older);
@@ -150,11 +153,7 @@ const jsonDepth = (value: unknown, depth = 0): number => value !== null && typeo
 
 it.each([48, 49])("starts the candidate at the released draft's own depth for a deepest value at %i", async deepest => {
   const data = fixture();
-  // The authored document sits at depth 3 and its value at 4; each array adds one level.
-  // The deepest value is an empty object, which the released draft encoder accepts at depth 48.
-  let nested: unknown = {};
-  for (let level = 4; level < deepest; level++) nested = [nested];
-  const document = { value: nested };
+  const document = publicationDocumentAtDraftDepth(deepest);
   let staged = false;
   const error = await transaction(pool, async db => {
     const issue = await graph(db, data, null, true, { documentText: json(document), authoredDocument: document });
@@ -627,7 +626,7 @@ it("retains one document value and refuses a different value with the same recor
   expect(result.rows).toEqual([{ attname: "document_payload" }]);
   await expect(transaction(pool, async db => {
     const issue = await graph(db, fixture());
-    await documentRow(db, issue, json({ label: "different content" }));
+    await documentRow(db, issue, json(publicationDocuments.different));
     await insertGraph(db, issue, { existingDocument: true });
   })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_document_invalid" });
 });
@@ -1183,29 +1182,10 @@ it.each([
   }
 });
 
-async function referencesFor(head: Graph["head"]) {
-  return (JSON.parse((await pool.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [head.publicationId]))
-    .rows[0].canonical_state) as CatalogPublicationManifestV2).skus;
-}
 // Run the 10,000-SKU stress test last so earlier whole-DB checks (assertConnectedCatalogPublications) do not scan its leftover SKUs.
-// Temporary 600 s bound: on slower hosted runners this case exceeds 240 s, although it takes about 25 s locally.
-// Most of its time is canonical JSON key ordering during publication admission at COMMIT. Restore 240_000 when
-// the faster canonical JSON path for publication admission lands.
+// Retain the hosted budget until the faster canonical path has hosted timing evidence.
 it("admits the maximum inherited observation roster and refuses one more SKU", async () => {
-  const data = { ...fixture(), skuCode: randomUUID().padEnd(160, "x") };
-  const first = await transaction(pool, async db => {
-    const issue = await graph(db, data);
-    issue.facts.status = "archived";
-    await insertGraph(db, issue, { extraSkuCount: 9_998, maxCodes: true });
-    return issue;
-  });
-  const inherited = await referencesFor(first.head);
-  const latest = await transaction(pool, async db => {
-    const issue = await graph(db, data, first.head);
-    issue.facts.status = "archived";
-    await insertGraph(db, issue, { inherited, onlyNew: true, extraSkuCount: 1, maxCodes: true });
-    return issue;
-  });
+  const { data, latest } = await publishMaximumRoster(pool);
   const reader = publicationReader();
   const current = await reader.reads.current(data.productId);
   expect(current.outcome).toBe("found");
@@ -1221,7 +1201,7 @@ it("admits the maximum inherited observation roster and refuses one more SKU", a
   expect(await reader.reads.readback(latest.head)).toEqual(current);
   expect(await reader.readbackV2(latest.head)).toMatchObject({ outcome: "page",
     items: [{ reference: { skuId: current.observations[0]!.variantId } }, ...Array.from({ length: 99 }, () => expect.any(Object))] });
-  const atLimit = await referencesFor(latest.head);
+  const atLimit = (JSON.parse(await publicationManifestText(pool, latest.head)) as CatalogPublicationManifestV2).skus;
   const error = await transaction(pool, async db => insertGraph(db, await graph(db, data, latest.head),
     { inherited: atLimit, onlyNew: true, extraSkuCount: 1, maxCodes: true })).catch(error => error);
   expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_roster_limit" });

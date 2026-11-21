@@ -11,7 +11,7 @@ import { publicationWireVectors } from "@openlup/platform/catalog/testing";
 import type { CatalogPublishedSku } from "@openlup/platform/catalog";
 import { canonicalCatalogPriceSetupCommand } from "@openlup/platform/pricing";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { hash, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
+import { authoredPublicationDocument, hash, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -91,7 +91,7 @@ function authored(sequence: number) {
   const barcodePrefix = String(590123412340 + sequence);
   const checksum = [...barcodePrefix].reduce((sum, digit, i) => sum + Number(digit) * (i % 2 === 0 ? 1 : 3), 0);
   const barcode = barcodePrefix + String((10 - checksum % 10) % 10);
-  const document = { schemaVersion: 1, id: "example:document", productSlug: slug, revisionNo: 1, name: "Example article" };
+  const document = authoredPublicationDocument(slug);
   const canonicalText = canonicalCatalogDraftJson(document), digest = hash(canonicalText);
   const ref = { id: documentId, productId, revisionNo: 1, schemaId: "example:document.v1",
     sourceRef: "example:source", documentRef: document.id, digest };

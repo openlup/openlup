@@ -22,6 +22,24 @@ export function malformedPublicationPackets(canonicalText: string) {
 }
 export const sealedPublicationRemedy = "Recover the sealed publication or re-export it from a verified copy.";
 
+export const publicationDocuments = {
+  retained: { label: "retained immutable bytes" },
+  contradictory: { label: "different authored bytes" },
+  different: { label: "different content" },
+  second: { label: "second document" },
+};
+
+export function authoredPublicationDocument(productSlug: string) {
+  return { schemaVersion: 1, id: "example:document", productSlug, revisionNo: 1, name: "Example article" };
+}
+
+export function publicationDocumentAtDraftDepth(deepest: number) {
+  // The document sits at depth 3 in the draft. Its value starts at depth 4.
+  let nested: unknown = {};
+  for (let level = 4; level < deepest; level++) nested = [nested];
+  return { value: nested };
+}
+
 const type = { key: "example:article", version: 1 };
 const definitionDigest = hash("synthetic installed definition");
 export const actorId = randomUUID();
@@ -66,7 +84,7 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   const draftRevision = options.draftRevision ?? revision;
   const issueId = randomUUID(), skuRevisionId = randomUUID(), approvalId = randomUUID();
   const slug = `article-${productId}`, code = data.skuCode ?? `sku-${skuId}`;
-  const canonicalText = options.documentText ?? json({ label: "retained immutable bytes" });
+  const canonicalText = options.documentText ?? json(publicationDocuments.retained);
   const document = { id: documentId, productId, revisionNo: 1, schemaId: "example:document", documentRef: "example:ref", sourceRef: "example:source", digest: hash(canonicalText) };
   const content: CatalogPublishedProduct["content"] = { schemaVersion: 1, catalogAction: before ? "revise" : "create", presentation: {},
     requestedModes: [], offerMemberships: [], publicationSkus: [] };
@@ -118,6 +136,31 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   return base;
 }
 export type Graph = Awaited<ReturnType<typeof graph>>;
+
+export async function publicationManifestText(pool: Pool, head: Graph["head"]): Promise<string> {
+  const { rows } = await pool.query<{ canonical_state: string }>(
+    "SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [head.publicationId],
+  );
+  return rows[0]!.canonical_state;
+}
+
+export async function publishMaximumRoster(pool: Pool) {
+  const data = { ...fixture(), skuCode: randomUUID().padEnd(160, "x") };
+  const first = await transaction(pool, async db => {
+    const issue = await graph(db, data);
+    issue.facts.status = "archived";
+    await insertGraph(db, issue, { extraSkuCount: 9_998, maxCodes: true });
+    return issue;
+  });
+  const inherited = (JSON.parse(await publicationManifestText(pool, first.head)) as CatalogPublicationManifestV2).skus;
+  const latest = await transaction(pool, async db => {
+    const issue = await graph(db, data, first.head);
+    issue.facts.status = "archived";
+    await insertGraph(db, issue, { inherited, onlyNew: true, extraSkuCount: 1, maxCodes: true });
+    return issue;
+  });
+  return { data, latest };
+}
 
 export async function stageProductRows(db: PoolClient, data: Fixture,
   slug = `article-${data.productId}`, code = data.skuCode ?? `sku-${data.skuId}`) {

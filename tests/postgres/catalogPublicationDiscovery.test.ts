@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { readPostgresCatalogMembershipPage, type CatalogMembershipPageInput } from "@openlup/platform/catalog";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { documentRow, fixture, graph, hash, insertGraph, installPublicationActors, json, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
+import { documentRow, fixture, graph, hash, insertGraph, installPublicationActors, json, publicationDocuments, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
 
 const forward = "db/platform/migrations/20261124120000_catalog_publication_reads.sql";
 const membershipSql = "SELECT public.catalog_offer_memberships_page($1,$2::jsonb,$3,$4) AS result";
@@ -210,7 +210,7 @@ it("rejects cross-offer and cross-mode cursors in adapter and SQL before authori
 async function moveDocument(db: PoolClient, first: Graph) {
   const second = await graph(db, { productId: first.productId, skuId: first.skuId, draftId: first.draftId,
     skuCode: first.facts.code, documentId: randomUUID() }, first.head, false,
-    { registerExisting: true, documentText: json({ label: "second document" }) });
+    { registerExisting: true, documentText: json(publicationDocuments.second) });
   second.document.revisionNo = 2;
   second.product.status = first.product.status;
   const payload = (await db.query("SELECT payload FROM public.catalog_draft_revisions WHERE draft_id=$1 AND revision=2", [first.draftId])).rows[0]!.payload;
