@@ -141,7 +141,7 @@ async function benchmarkReads(db: PoolClient, scope: BenchScope, samples: number
   const available = async (renewal: boolean) => {
     const values = [scope.sku, scope.asOf, renewal];
     const result = await measure(samples, async () => (await db.query<AtpOutput>(atp, values)).rows[0]);
-    return { ...result, plan: await nestedPlan(db, atp, values, "WITH components AS") };
+    return { ...result, plan: await nestedPlan(db, atp, values, "FROM components") };
   };
   const purchase = await available(false);
   const renewal = await available(true);

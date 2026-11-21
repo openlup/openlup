@@ -866,7 +866,7 @@ export declare class CustomerSavedAddressRefused extends Error {
     readonly code: CustomerSavedAddressRefusalCode;
     constructor(code: CustomerSavedAddressRefusalCode, message?: string);
 }
-/** Each query call commits separately, matching default-clear/write/event failure and replay behavior. */
+/** Upserts commit atomically through `customer_saved_address_upsert_atomic`; deletes retain per-query semantics. */
 export declare function createPostgresCustomerSavedAddressPort(executor: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope, options: CustomerSavedAddressOptions): CustomerSavedAddressPort;
 ```
 ## dist/shipping/postgresCustomerPreferences.d.ts
