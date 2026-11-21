@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 
@@ -69,7 +70,7 @@ type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding
 export type BatchedForwardBinding = ForwardBinding & { statements: { sha256: string; sql?: string }[] };
 export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraints?: { table: string; name: string; beforeSha256: string; beforeSql: string }[] };
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
-type NativeStoreFunction = { signature: string; beforeSha256: string | null; searchPath: string | null };
+type NativeStoreFunction = { signature: string; beforeSha256: string | null; searchPath: string | null; qualifiedSecurityDefiner?: true };
 type NativeStoreFunctionSetting = { signature: string; searchPath: string };
 type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[] };
 export type NativeStoreCheck = { table: string; constraint: string; column: string } & (
@@ -2622,11 +2623,13 @@ const qualifiedCatalogueReadTargets = [
   ["db/platform/migrations/20261124120000_catalog_publication_reads.sql", "public.catalog_offer_memberships_page(text,jsonb,integer,text)"],
   ["db/platform/migrations/20261124140000_catalog_publication_readiness.sql", "public.catalog_publication_activation_readiness(text[],text)"],
 ] as const;
+const cataloguePublicationAuthoritySha256 = "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8";
+const cataloguePublicationAuthorityLedgerCondition = `EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+    WHERE catalog_path OPERATOR(pg_catalog.=) '${cataloguePublicationAuthorityPath}'::pg_catalog.text
+      AND sha256 OPERATOR(pg_catalog.=) '${cataloguePublicationAuthoritySha256}'::pg_catalog.text)`;
 const qualifiedCatalogueReadSql = `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='${cataloguePublicationRole}')
-    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
-      WHERE catalog_path OPERATOR(pg_catalog.=) '${cataloguePublicationAuthorityPath}'::pg_catalog.text
-        AND sha256 OPERATOR(pg_catalog.=) 'baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8'::pg_catalog.text)
+    AND ${cataloguePublicationAuthorityLedgerCondition.replaceAll("\n", "\n  ")}
   THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION ${qualifiedCatalogueReadTargets[0][1]},
       ${qualifiedCatalogueReadTargets[1][1]} TO ${cataloguePublicationRole};';
@@ -2634,6 +2637,31 @@ const qualifiedCatalogueReadSql = `DO $$ BEGIN
 END; $$;
 `;
 const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
+
+export function renderQualifiedSecurityDefiner(signature: string): string {
+  return `DO $qualified_security_definer$
+BEGIN
+  IF ${cataloguePublicationAuthorityLedgerCondition}
+  THEN
+    ALTER FUNCTION ${signature} SECURITY DEFINER;
+  END IF;
+END
+$qualified_security_definer$;`;
+}
+
+const qualifiedSecurityDefinerAlter = /^ALTER FUNCTION (.+) SECURITY DEFINER;$/u;
+let qualifiedSecurityDefiners: ReadonlySet<string> | undefined;
+function cataloguePublicationAuthorityDefiners(): ReadonlySet<string> {
+  if (!qualifiedSecurityDefiners) {
+    const authority = readFileSync(new URL(`../${cataloguePublicationAuthorityPath}`, import.meta.url));
+    if (sqlSha256(authority) !== cataloguePublicationAuthoritySha256) throw new Error(`reviewed native store: restore the issued bytes of ${cataloguePublicationAuthorityPath}`);
+    qualifiedSecurityDefiners = new Set(sqlStatements(authority.toString("utf8")).flatMap(statement => {
+      const signature = qualifiedSecurityDefinerAlter.exec(statement)?.[1];
+      return signature ? [signature] : [];
+    }));
+  }
+  return qualifiedSecurityDefiners;
+}
 
 // PostgreSQL treats non-ASCII separator lookalikes as identifier characters.
 // Do not erase them as JavaScript whitespace or fold them into an ASCII name.
@@ -3008,7 +3036,19 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       continue;
     }
     const functions = nativeStoreFunctions(slot);
-    if (slot.replacedFunctions.some(fn => !keysAre(fn, "beforeSha256,searchPath,signature") || !hash(fn.beforeSha256)) || slot.createdFunctions.some(fn => !keysAre(fn, "searchPath,signature")) || functions.some(fn => nativeStoreSignature(fn.signature) !== fn.signature || (fn.searchPath !== null && !/^[a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*$/u.test(fn.searchPath)))) throw new Error("reviewed native store closed signature, preimage or search_path drifted");
+    for (const fn of slot.replacedFunctions) {
+      const marked = Object.hasOwn(fn, "qualifiedSecurityDefiner");
+      if (marked && fn.qualifiedSecurityDefiner !== true) throw new Error(`reviewed native store ${fn.signature}: qualifiedSecurityDefiner must be true when present`);
+      if (!keysAre(fn, marked ? "beforeSha256,qualifiedSecurityDefiner,searchPath,signature" : "beforeSha256,searchPath,signature") || !hash(fn.beforeSha256)) throw new Error("reviewed native store closed signature, preimage or search_path drifted");
+      const required = cataloguePublicationAuthorityDefiners().has(fn.signature);
+      if (required && !marked) throw new Error(`reviewed native store ${fn.signature}: set qualifiedSecurityDefiner: true and put this statement immediately after its CREATE OR REPLACE FUNCTION:\n${renderQualifiedSecurityDefiner(fn.signature)}`);
+      if (marked && !required) throw new Error(`reviewed native store ${fn.signature}: the qualified authority migration leaves its SECURITY mode unchanged. Remove qualifiedSecurityDefiner and omit this statement:\n${renderQualifiedSecurityDefiner(fn.signature)}`);
+    }
+    for (const fn of slot.createdFunctions) {
+      if (Object.hasOwn(fn, "qualifiedSecurityDefiner")) throw new Error(`reviewed native store ${fn.signature}: remove qualifiedSecurityDefiner from createdFunctions; it applies only to replacements`);
+      if (!keysAre(fn, "searchPath,signature")) throw new Error("reviewed native store closed signature, preimage or search_path drifted");
+    }
+    if (functions.some(fn => nativeStoreSignature(fn.signature) !== fn.signature || (fn.searchPath !== null && !/^[a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*$/u.test(fn.searchPath)))) throw new Error("reviewed native store closed signature, preimage or search_path drifted");
     for (const fn of slot.grantOnlyFunctions) {
       if (!keysAre(fn, "grantTo,revokeFrom,signature") || nativeStoreSignature(fn.signature) !== fn.signature || !Array.isArray(fn.grantTo) || !Array.isArray(fn.revokeFrom) || fn.grantTo.length + fn.revokeFrom.length === 0 || fn.grantTo.includes("anon") || [...fn.grantTo, ...fn.revokeFrom].some(role => !nativeStoreRoles.includes(role)) || new Set(fn.grantTo).size !== fn.grantTo.length || new Set(fn.revokeFrom).size !== fn.revokeFrom.length) throw new Error("reviewed native store invalid grant-only signature or role capability");
     }
@@ -3388,6 +3428,10 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   }
   const qualifiedCatalogueReadGrant = isQualifiedCatalogueReadGrant(slot);
   if (qualifiedCatalogueReadGrant && !bytes.equals(Buffer.from(qualifiedCatalogueReadSql))) throw new Error("reviewed native store qualified catalogue read forward must contain exactly the EXECUTE grant guarded by role existence and the authority ledger path and hash");
+  const qualifiedSecurityStatements = new Map(slot.replacedFunctions.filter(fn => fn.qualifiedSecurityDefiner)
+    .map(fn => [fn.signature, renderQualifiedSecurityDefiner(fn.signature)]));
+  const landedQualifiedSecurity = new Map(earlierSlots.map(earlier => [earlier.path, new Set(earlier.replacedFunctions
+    .filter(fn => fn.qualifiedSecurityDefiner).map(fn => renderQualifiedSecurityDefiner(fn.signature)))]));
   const definitionSources = qualifiedCatalogueReadGrant ? new Map<string, string>() : undefined;
   const triggerFunctions = new Set<string>(), granted = new Set<string>();
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
@@ -3398,6 +3442,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const allowedSignatures = new Set(signatures);
   for (const source of preceding) for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
     if (landedSettings.get(source.path)?.has(statement)) continue;
+    if (landedQualifiedSecurity.get(source.path)?.has(statement)) continue;
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
     if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
       const target = functionIndex + 1, name = nativeQualified(tokens, target);
@@ -3451,7 +3496,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   let pending: string | undefined;
   const baselineActions = new Set<number>();
   let droppedCheck = false, addedCheck = false, existingTablePosition = 0, insertSelectPolicy = false;
-  for (const statement of statements) {
+  for (let index = 0; index < statements.length; index++) {
+    const statement = statements[index]!;
     const parsed = platformSqlTokens(statement, false, true), { tokens } = parsed, head = nativeTableHead(tokens);
     const word = (i: number, value: string) => nativeWord(tokens, i, value);
     const create = word(0, "CREATE"), drop = word(0, "DROP"), changing = word(0, "ALTER");
@@ -3557,6 +3603,8 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       const header = normalizeNativeStoreHeader(nextHeader);
       const priorHeader = fixed.beforeSha256 === null ? null : nativeStoreTrim(headerAttributes(priorStatements.get(signature)!));
       const nextPath = priorHeader !== null && nextHeader !== priorHeader ? nativeStoreSearchPathClause(nextHeader) : null;
+      const qualifiedSecurity = qualifiedSecurityStatements.get(signature);
+      if (qualifiedSecurity && /\bSECURITY DEFINER\b/iu.test(header)) throw new Error(`reviewed native store ${signature}: keep the native SECURITY INVOKER header and put this statement immediately after its CREATE OR REPLACE FUNCTION:\n${qualifiedSecurity}`);
       if (priorHeader !== null && !isAllowedNativeStoreReplacementHeader(priorHeader, nextHeader, nextPath)) throw new Error("reviewed native store replacement header drifted");
       const pathHeader = priorHeader !== null ? header.replace(/ SET search_path=/iu, " SET search_path = ") : header;
       const rawSearchPath = nextPath?.schemas.join(", ") ?? / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(pathHeader)?.[1] ?? null;
@@ -3567,7 +3615,17 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (/\bSECURITY DEFINER\b/iu.test(header) && !searchPath) throw new Error("reviewed native store unpinned SECURITY DEFINER or search_path");
       defined.set(signature, /^CREATE FUNCTION public\.[a-z_][a-z0-9_]* *\( *\) RETURNS trigger /iu.test(header)
         && /\bSECURITY INVOKER\b/iu.test(header) && !/\bSECURITY DEFINER\b/iu.test(header) && Boolean(fixed.searchPath));
+      if (qualifiedSecurity) {
+        if (statements[index + 1] !== qualifiedSecurity) throw new Error(`reviewed native store ${signature}: expected this exact statement immediately after its CREATE OR REPLACE FUNCTION:\n${qualifiedSecurity}`);
+        index++;
+      }
       continue;
+    }
+    if (/^DO[ \t\n]+\$qualified_security_definer\$/iu.test(statement)) {
+      const signature = statement.split("\n").map(line => qualifiedSecurityDefinerAlter.exec(nativeStoreTrim(line))?.[1]).find(Boolean);
+      const expected = signature && qualifiedSecurityStatements.get(signature);
+      if (expected) throw new Error(`reviewed native store ${signature}: put this exact statement only immediately after its CREATE OR REPLACE FUNCTION:\n${expected}`);
+      throw new Error(`reviewed native store ${signature ?? "<unknown function>"}: remove this statement. It is allowed only immediately after a replacement marked qualifiedSecurityDefiner:\n${statement}`);
     }
     const privilege = nativeStorePrivilege(statement, tables, slot.insertSelectTables ?? [], views, triggerFunctions, censusTables, block);
     if (privilege) {

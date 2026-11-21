@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
@@ -356,7 +356,11 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
       const expected = { ...old, attrs: { ...old.attrs, proconfig } };
       if (JSON.stringify(now) !== JSON.stringify(expected)) fail(`settings-only function ${old.name} must change only to the pinned ${searchPath}`);
     } else if (replaced.has(old.oid)) {
-      const expectedAttrs = expectedReplacedFunctionAttrs(old.attrs, replaced.get(old.oid)!.searchPath);
+      const replacement = replaced.get(old.oid)!;
+      const expectedAttrs = expectedReplacedFunctionAttrs(old.attrs, replacement.searchPath);
+      if (replacement.qualifiedSecurityDefiner && now.attrs.prosecdef !== expectedAttrs.prosecdef) {
+        fail(`replaced function ${old.name} must preserve its installed SECURITY ${expectedAttrs.prosecdef ? "DEFINER" : "INVOKER"} mode; use the rendered qualifiedSecurityDefiner statement immediately after its replacement`);
+      }
       if (JSON.stringify(now.attrs) !== JSON.stringify(expectedAttrs) || JSON.stringify(now.acl) !== JSON.stringify(old.acl)) fail(`replaced function ${old.name} changed attributes or ACL`);
     } else if (grantOnly.has(old.oid)) {
       const entry = grantOnly.get(old.oid)!;
@@ -1115,6 +1119,34 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     INSERT INTO public.client_absorption_policy VALUES ('subscription_successor_proposals','block',NULL),('subscription_successor_wait_cases_v2','block',NULL);`;
   const storageCreate = storageEntries.map(([name, statement]) => `${statement}\nALTER TABLE ${name} ENABLE ROW LEVEL SECURITY;\nREVOKE ALL ON TABLE ${name} FROM PUBLIC;`).join("\n");
   it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
+
+  const qualifiedSignature = "public.catalog_price_setup_region_code()";
+  const qualifiedSearchPath = "pg_catalog, pg_temp";
+  const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+  const authorityHash = sqlSha256(readFileSync(authorityPath));
+  const securityPreimage = `CREATE FUNCTION ${qualifiedSignature} RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path = ${qualifiedSearchPath} AS $$ SELECT 'before' $$;`;
+  const securityReplacement = securityPreimage.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'before'", "'after'");
+  const securityForward = `${securityReplacement}\n${renderQualifiedSecurityDefiner(qualifiedSignature)}`;
+  const nativeSecuritySetup = `CREATE TABLE public.platform_schema_migrations (catalog_path text PRIMARY KEY, sha256 text NOT NULL, position integer NOT NULL UNIQUE);
+    ${securityPreimage}`;
+  const qualifiedSecuritySetup = `${nativeSecuritySetup}
+    INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ('${authorityPath}', '${authorityHash}', 0);
+    ALTER FUNCTION ${qualifiedSignature} SECURITY DEFINER;`;
+  const securitySlot: CatalogSlot = {
+    ...storageSlot,
+    replacedFunctions: [{ signature: qualifiedSignature, beforeSha256: sqlSha256(securityPreimage), searchPath: qualifiedSearchPath, qualifiedSecurityDefiner: true }],
+  };
+  it("preserves installed SECURITY INVOKER without the qualified authority row", async () => {
+    await checkForward(pool, securitySlot, securityForward, false, nativeSecuritySetup);
+  });
+  it("preserves installed SECURITY DEFINER with the exact qualified authority row", async () => {
+    await checkForward(pool, securitySlot, securityForward, false, qualifiedSecuritySetup);
+  });
+  it("detects loss of SECURITY DEFINER if the qualified statement is omitted", async () => {
+    await expect(checkForward(pool, securitySlot, securityReplacement, false, qualifiedSecuritySetup))
+      .rejects.toThrow(`replaced function ${qualifiedSignature} must preserve its installed SECURITY DEFINER mode`);
+  });
+
   it("admits only the named new table runtime ACL and policy", async () => { await checkForward(pool, NOTICE_SLOT, forward(CREATED_OK, NOTICE_SQL)); });
   it("proves successor storage keeps the listed absorption census exception", async () => {
     const tables = ["public.subscription_successor_proposals", "public.subscription_successor_wait_cases_v2"];

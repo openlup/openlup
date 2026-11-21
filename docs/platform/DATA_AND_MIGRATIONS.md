@@ -2486,6 +2486,13 @@ The slot's pinned `searchPath` must match the tightened list. The PostgreSQL
 catalog preserves owner and ACL. Issued contents, positions and the sealed-prefix
 rule stay fixed.
 
+A replacement keeps the native function header under the rules above.
+The `qualifiedSecurityDefiner: true` entry requires the rendered ledger-guarded
+`ALTER FUNCTION` block immediately after the replacement, so qualified
+installations keep `SECURITY DEFINER` and other installations keep
+`SECURITY INVOKER`. A replacement requires this entry when the qualified
+catalogue publication authority migration sets the function to `SECURITY DEFINER`.
+
 The class-local identity reader normalizes scalar aliases, schema-qualified composite/table arguments and
 arrays against exact listed signatures; earlier identity readers stay unchanged.
 Token separators and case folding for closed object/type identities follow ASCII
