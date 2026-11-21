@@ -87,6 +87,15 @@ it("names publication-role ownership of a committed large object outside the sel
   }
 });
 
+it("names the publication login's replication startup default", async () => {
+  await admin.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT");
+  try {
+    await admin.query("ALTER ROLE openlup_catalog_publication SET session_replication_role=replica");
+    await admittedSession(client => expect(assertQualifiedPostgresSession(client, [], selection, lockName)).rejects
+      .toThrow(/catalog_publication_login_invalid.*reset session_replication_role for openlup_catalog_publication/u));
+  } finally { await admin.query("DROP ROLE openlup_catalog_publication"); }
+});
+
 const methods = ["status", "dry-run", "apply"] as const;
 const moments = ["before-facts", "after-facts"] as const;
 it.each(moments.flatMap(moment => methods.map(method => ({ moment, method }))))(

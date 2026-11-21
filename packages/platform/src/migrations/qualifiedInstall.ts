@@ -61,6 +61,12 @@ export function qualifiedPostgresStartupOptions(value: QualifiedPostgresInstalla
 }
 
 const SESSION_FACTS_SQL = String.raw`
+WITH unsafe_replication_defaults AS (
+  SELECT s.setrole FROM pg_catalog.pg_db_role_setting s CROSS JOIN LATERAL pg_catalog.unnest(s.setconfig) setting
+  WHERE (s.setdatabase OPERATOR(pg_catalog.=) 0 OR s.setdatabase OPERATOR(pg_catalog.=)
+    (SELECT oid FROM pg_catalog.pg_database WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database()))
+    AND setting OPERATOR(pg_catalog.~~) 'session_replication_role=%' AND setting OPERATOR(pg_catalog.<>) 'session_replication_role=origin'
+)
 SELECT current_user::pg_catalog.text AS current_user,session_user::pg_catalog.text AS session_user,
   pg_catalog.current_schemas(true)::pg_catalog.text[] AS effective_search_path,
   (SELECT rolname::pg_catalog.text FROM pg_catalog.pg_roles WHERE oid OPERATOR(pg_catalog.=) 10) AS bootstrap_login,
@@ -96,17 +102,18 @@ SELECT current_user::pg_catalog.text AS current_user,session_user::pg_catalog.te
     OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.left(n.nspname,3) OPERATOR(pg_catalog.<>) 'pg_' AND n.nspname OPERATOR(pg_catalog.<>) 'information_schema' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
     OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM')
     FROM pg_catalog.pg_roles r WHERE r.rolname OPERATOR(pg_catalog.=) $2),true) END AS restore_unsafe,
-  EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s CROSS JOIN LATERAL pg_catalog.unnest(s.setconfig) setting
-    WHERE (s.setdatabase OPERATOR(pg_catalog.=) 0 OR s.setdatabase OPERATOR(pg_catalog.=) (SELECT oid FROM pg_catalog.pg_database WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database()))
-      AND (s.setrole OPERATOR(pg_catalog.=) 0 OR s.setrole OPERATOR(pg_catalog.=) ANY(SELECT oid FROM pg_catalog.pg_roles WHERE rolname OPERATOR(pg_catalog.=) $1 OR rolname OPERATOR(pg_catalog.=) $2 OR rolname OPERATOR(pg_catalog.=) 'openlup_catalog_publication'))
-      AND setting OPERATOR(pg_catalog.~~) 'session_replication_role=%' AND setting OPERATOR(pg_catalog.<>) 'session_replication_role=origin') AS unsafe_replication_default`;
+  EXISTS (SELECT 1 FROM unsafe_replication_defaults
+    WHERE setrole OPERATOR(pg_catalog.=) 0 OR setrole OPERATOR(pg_catalog.=) ANY(SELECT oid FROM pg_catalog.pg_roles
+      WHERE rolname OPERATOR(pg_catalog.=) $1 OR rolname OPERATOR(pg_catalog.=) $2)) AS unsafe_replication_default,
+  EXISTS (SELECT 1 FROM unsafe_replication_defaults WHERE setrole OPERATOR(pg_catalog.=)
+    (SELECT oid FROM pg_catalog.pg_roles WHERE rolname OPERATOR(pg_catalog.=) 'openlup_catalog_publication')) AS publication_replication_default_unsafe`;
 
 type SessionFacts = {
   current_user: unknown; session_user: unknown; bootstrap_login: unknown; database_owner: unknown;
   server_version_num: unknown; replication_role: unknown; runtime_setting: unknown; restore_setting: unknown;
   mode_setting: unknown; ledger_exists: unknown; ledger_owner: unknown; session_lock_held: unknown;
   runtime_unsafe: unknown; restore_unsafe: unknown; unsafe_replication_default: unknown; default_privileges_exist: unknown;
-  effective_search_path: unknown; publication_unsafe: unknown; publication_owns: unknown;
+  effective_search_path: unknown; publication_unsafe: unknown; publication_owns: unknown; publication_replication_default_unsafe: unknown;
 };
 type CheckedCatalog = { rows: readonly CatalogRow[]; protectedNames: ReadonlySet<string> };
 
@@ -128,6 +135,8 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
     || facts.effective_search_path[1] !== "public") fail("qualified_profile_requires_canonical_search_path");
   if (facts.publication_owns === true)
     fail("catalog_publication_login_invalid. Transfer or drop objects owned by openlup_catalog_publication in every database.");
+  if (facts.publication_replication_default_unsafe === true)
+    fail("catalog_publication_login_invalid. Use ALTER ROLE to reset session_replication_role for openlup_catalog_publication.");
   if (!facts || facts.current_user !== selection.migrationLogin || facts.session_user !== selection.migrationLogin
     || facts.bootstrap_login !== selection.bootstrapLogin || facts.database_owner !== selection.migrationLogin) fail("actual_login_or_database_owner_mismatch");
   if (typeof facts.server_version_num !== "number" || Math.trunc(facts.server_version_num / 10_000) !== 16) fail("requires_qualified_postgresql_16_profile");

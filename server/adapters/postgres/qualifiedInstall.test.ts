@@ -46,7 +46,10 @@ it("provisions the reserved restricted login only in installer-managed mode", ()
   expect(() => assertQualifiedPostgresSelection({ ...selection, runtimeLogin: "openlup_catalog_publication" })).toThrow("invalid_principal_name");
 });
 
-it("names the missing publication login and how to restore it after the forward", async () => {
+it.each([
+  { unsafe: false, diagnostic: /catalog_publication_login_missing.*Provision openlup_catalog_publication/u },
+  { unsafe: true, diagnostic: /catalog_publication_login_invalid.*reset session_replication_role for openlup_catalog_publication/u },
+])("gives the publication login its own refusal ($diagnostic)", async ({ unsafe, diagnostic }) => {
   const applied = [
     { file: "db/platform/migrations/q2_00000000000000_platform_baseline.sql", position: 0, sha256: "0".repeat(64) },
     { file: publicationForward, position: 1, sha256: "1".repeat(64) },
@@ -60,10 +63,12 @@ it("names the missing publication login and how to restore it after the forward"
     effective_search_path: ["pg_catalog", "public"], current_user: selection.migrationLogin, session_user: selection.migrationLogin,
     bootstrap_login: selection.bootstrapLogin, database_owner: selection.migrationLogin, server_version_num: 160014,
     replication_role: "origin", session_lock_held: true, runtime_unsafe: false, restore_unsafe: false,
-    unsafe_replication_default: false, default_privileges_exist: false, runtime_setting: selection.runtimeLogin,
+    publication_replication_default_unsafe: unsafe, unsafe_replication_default: false,
+    default_privileges_exist: false, runtime_setting: selection.runtimeLogin,
     restore_setting: selection.restoreLogin, mode_setting: "installer-managed", ledger_exists: true, ledger_owner: selection.migrationLogin,
   }] } : { rows: [role(selection.bootstrapLogin, true, true), role(selection.migrationLogin, true, false),
-    role(selection.runtimeLogin, false, false), role(selection.restoreLogin, false, false)] }; } } as PoolClient;
+    role(selection.runtimeLogin, false, false), role(selection.restoreLogin, false, false),
+    ...(unsafe ? [role("openlup_catalog_publication", false, false)] : [])] }; } } as PoolClient;
   await expect(assertQualifiedPostgresSession(client, applied, selection, "fixture"))
-    .rejects.toThrow(/catalog_publication_login_missing.*Provision openlup_catalog_publication/u);
+    .rejects.toThrow(diagnostic);
 });
