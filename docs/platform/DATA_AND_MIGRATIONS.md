@@ -938,6 +938,14 @@ across governed products. See the installed
 [catalogue entry](../../packages/platform/README.md#read-governed-offer-memberships)
 for paging and refusal behavior.
 
+The [readiness forward](../../db/platform/migrations/20261123194500_catalog_publication_readiness.sql)
+adds a service-executable batch read and owner-only snapshot and price helpers.
+Outside a `READ COMMITTED` read-write transaction it refuses before locking.
+Otherwise it takes `SHARE` on `catalog_products`, which conflicts with the
+publication writer's first lock, and reads in a separate statement snapshot.
+It writes nothing. See the
+[catalogue entry](../../packages/platform/README.md#read-activation-readiness).
+
 The [`catalog_publication` forward](../../db/platform/migrations/20261123190000_catalog_publication.sql)
 adds native publication history.
 The publication, SKU revisions, operator receipts, and candidate decisions are

@@ -1328,6 +1328,24 @@ returns evidence for each emitted SKU and a cursor when more entries match.
 Pass back that cursor with the same offer and mode. Start again at the first
 page when the head moves. A PostgreSQL serialization failure is retryable.
 
+### Read activation readiness
+
+Install the complete PostgreSQL catalogue through
+`20261123194500_catalog_publication_readiness.sql`. Call the experimental
+`readPostgresCatalogActivationReadiness(owner, installed, input)` from
+`@openlup/platform/catalog` with the named catalogue owner lane, up to 100
+distinct SKU codes and the expected head digest from a membership page. The
+read waits for an in-flight publication, then reads the sealed head, SKU
+evidence and price readiness in one snapshot. It writes nothing. A moved head
+is a retryable conflict and a legacy catalogue is `unsupported`. A code with no
+sealed or governed live SKU is `sku_not_materialized`; damaged evidence refuses
+the whole batch. SQL alone reports `price_readiness_missing` and
+`price_shape_invalid`, at one evaluation instant; overlapping effective price
+lists refuse the batch. After the transaction closes, `installed.assess`
+receives a copy of each certified subject and may add other reasons. Pass
+`assess: () => []` when there are no installed rules. An item is ready when it
+has no reasons.
+
 Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
 `runCatalogExtensionConformance`. The existing bin runs
 `npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.

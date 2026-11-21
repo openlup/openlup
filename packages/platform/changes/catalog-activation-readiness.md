@@ -1,0 +1,2 @@
+- Added the experimental `readPostgresCatalogActivationReadiness` catalogue export. It reads activation readiness for published SKUs after any in-flight publication; SQL decides price readiness and installed rules add other reasons afterwards.
+- Apply the complete catalogue through `20261123194500_catalog_publication_readiness.sql` before calling the reader.
