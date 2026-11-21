@@ -19,13 +19,13 @@ in the source repository.
 
 This minor release tightens native payment settlement outside the SemVer promise.
 
-- (a) In custom payment reconciliation readbacks and native renewal bindings that report success, supply provider-collected amount and currency (`amountMinor` and `currency` in readbacks, `observedMoney` in renewals) with `capturedAmountBasis: "provider_capture_v1"`, and set the same basis outside the event fingerprint on verified custom native webhook success evidence backed by the collected amount.
+- (a) Contract: success results of custom payment reconciliation readbacks, native renewal bindings and native webhook adapters. Action: return the provider-collected amount and currency (`amountMinor` and `currency` in readbacks, `observedMoney` in renewals) with `capturedAmountBasis: "provider_capture_v1"`; on webhook evidence, keep the basis outside the event fingerprint.
   Behaviour is specified by “records the exact amount and provenance of a %s readback before settling” and “makes replay fingerprints independent of receipt time and never invents provider occurrence time”.
-- (b) For successful `@openlup/platform/payments/stripe` and `@openlup/platform/payments/tpay` readbacks, use the provider-collected amount without substituting the configured amount, and review `provider_amount_mismatch` readbacks or verified `@openlup/platform/payments/stripe` webhooks that return HTTP 409 before proceeding.
+- (b) Contract: amount selection in `@openlup/platform/payments/stripe` and `@openlup/platform/payments/tpay`. Action: before settling, retrying or invoicing, review readbacks flagged `provider_amount_mismatch` and webhooks answered with HTTP 409 and reason `provider_amount_mismatch`.
   Behaviour is specified by “keeps a provider success with zero collected money out of capture readback”, “records a provider success with conflicting %s without settling native payment”, “records and refuses a signed success with conflicting collected amount %s on each delivery” and “acknowledges a completed legacy receipt for $object”.
-- (c) Replay completed 1.2.0 native reconciliations with the original key and evidence.
+- (c) Contract: replay of completed 1.2.0 native reconciliations. Action: replay with the original key and evidence.
   Behaviour is specified by “records the exact amount and provenance of a %s readback before settling”.
-- (d) For native late captures on a cancelled intent or a cancelled or expired order, use `captureReviewRequired` or `readCaptureReview` to find a recorded review and resolve the transaction with the provider before charging again.
+- (d) Contract: native late captures on a cancelled intent or a cancelled or expired order. Action: find them with `captureReviewRequired` or `readCaptureReview`, and resolve the transaction with the provider before charging again.
   Behaviour is specified by “retains a %s order's late %s capture without paying it”.
 
 If your legacy cart reminder job runs under its own database role, run this

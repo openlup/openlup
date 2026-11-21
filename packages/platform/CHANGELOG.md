@@ -19,7 +19,7 @@ in the source repository.
 
   Migration: No adopter action is required. Installed exports and runtime behavior are unchanged.
 
-- Scope `@openlup/platform` `.api.md` declaration snapshots to each subpath's own directory, unowned internal helpers, and explicit re-exports (including local `import`/`export` re-exports) instead of duplicating pure type/value imports from sibling declared subpaths.
+- Scope `@openlup/platform` `.api.md` declaration snapshots by subpath.
 
   Migration: Snapshot scoping does not alter runtime or type exports. Snapshots omit import-only declarations owned by equally or more mature sibling subpaths unless another retained edge includes them.
 
@@ -129,7 +129,7 @@ Migration: Apply the ordered Native PostgreSQL catalogue through
 
 Review successful `@openlup/platform/payments/tpay` readbacks flagged `provider_amount_mismatch` before retrying or issuing an invoice.
 
-For a verified `@openlup/platform/payments/stripe` success webhook that returns HTTP 409, use the response details and the original webhook, when available, to review the discrepancy before settling.
+Review a verified `@openlup/platform/payments/stripe` success webhook answered with HTTP 409 and reason `provider_amount_mismatch` before settling.
 
 - Add `PaymentProviderRegistry`, `createPaymentProviderRegistry`, `toCoreCaptureHandoff`, `fromCoreCaptureHandoff`, and `toCorePaymentProviderCapability` to `@openlup/platform/payments` and `@openlup/platform/payments/contracts` as a single source of truth over composed payment adapters.
 - Add named `FulfillmentProviderAdapter`, `FulfillmentProviderRegistry`, and `createFulfillmentProviderRegistry` to `@openlup/platform/fulfillment` and `@openlup/platform/fulfillment/contracts`, re-export `FULFILLMENT_STATUS_EFFECTS`, and derive `observationStatusPolicy` directly from `FULFILLMENT_STATUS_EFFECTS`.
