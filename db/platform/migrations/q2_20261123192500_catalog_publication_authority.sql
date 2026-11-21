@@ -117,6 +117,7 @@ DO $publication_search_paths$
 DECLARE signature text;
 BEGIN
   FOREACH signature IN ARRAY ARRAY[
+    'auth.uid()',
     'public.catalog_publication_record_command(jsonb)',
     'public.channel_purchase_guard()', -- The recorder's outbox INSERT runs this trigger.
     'public.catalog_publication_admit()',

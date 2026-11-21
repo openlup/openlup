@@ -732,7 +732,7 @@ describe("publication activation prices", () => {
 });
 
 
-it("commits deferred publication checks through the restricted login", async () => {
+const publicationTest = it.extend("publicationUrl", { scope: "file" }, async () => {
   const forward = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
   await transaction(pool, async db => {
     await db.query("SET LOCAL openlup.qualified.role_mode = 'installer-managed'");
@@ -743,7 +743,11 @@ it("commits deferred publication checks through the restricted login", async () 
   const url = new URL(container.connectionString);
   url.username = "openlup_catalog_publication";
   url.password = password;
-  const publisher = new Pool({ connectionString: url.href, max: 1 });
+  return url.href;
+});
+
+publicationTest("commits deferred publication checks through the restricted login", async ({ publicationUrl }) => {
+  const publisher = new Pool({ connectionString: publicationUrl, max: 1 });
   try {
     expect((await publisher.query(`SELECT session_user,current_user,rolsuper,rolinherit,rolbypassrls,
       EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE roleid=oid OR member=oid) AS memberships,
@@ -929,5 +933,30 @@ it("commits deferred publication checks through the restricted login", async () 
     expect(await api.execute(currentCompensation.approve, who), sqlFailure).toMatchObject({ outcome: "committed" });
     expect(await api.execute(currentCompensation.publish, who), sqlFailure)
       .toMatchObject({ outcome: "committed", receipt: { previousHead: head, head: { revision: 2 }, changes: [] } });
+  } finally { await publisher.end(); }
+});
+
+publicationTest("commits approval and publication with a session temporary uuid type", async ({ publicationUrl }) => {
+  const data = authored(27);
+  await save(data, 1);
+  const prepared = await prepare(data, 1, null);
+  const publisher = new Pool({ connectionString: publicationUrl, max: 1, idleTimeoutMillis: 0 });
+  try {
+    await publisher.query("CREATE TYPE pg_temp.uuid AS (value text)");
+    // Caller-side casts use the built-in type. The functions' own paths must protect their casts.
+    await publisher.query("SET search_path = pg_catalog, public, pg_temp");
+    let sqlFailure: string | undefined;
+    const api = native(async (db, sql, args) => db.query(sql, args).catch((error: Error) => {
+      sqlFailure = error.message;
+      throw error;
+    }), publisher);
+    const who = (await api.authorize(actor))!;
+    expect(await api.execute(prepared.approve, who), sqlFailure).toMatchObject({
+      outcome: "committed", receipt: { productId: data.productId, postStateDigest: prepared.approve.postStateDigest },
+    });
+    expect(await api.execute(prepared.publish, who), sqlFailure).toMatchObject({
+      outcome: "committed", receipt: { productId: data.productId, head: { revision: 1 },
+        changes: [{ variantId: data.skuId, sku: data.code, variantRevision: 1 }] },
+    });
   } finally { await publisher.end(); }
 });
