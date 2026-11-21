@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, seededIntroductions, storeTermCounts, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
+import { allowedPaymentAdapterWords, allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, seededIntroductions, storeTermCounts, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -933,6 +933,21 @@ describe("neutrality scan reuse", () => {
     }
   }, 35_000);
 
+});
+
+it("admits only the exact published adapter import in each native money witness", () => {
+  const vendor = ["tp", "ay"].join("");
+  const worker = "tests/postgres/paymentReconciliationStore.test.ts";
+  const renewal = "tests/postgres/stripePortableRail.test.ts";
+  const importFor = (symbol: string) => `import { ${symbol} } from "@openlup/platform/payments/${vendor}";`;
+  const readback = importFor("createTpayPaymentReconciliationProvider");
+  const adapter = importFor("createTpayPaymentAdapter");
+  expect(allowedPaymentAdapterWords(worker, [readback, readback, vendor].join("\n"), "ui-14")).toBe(1);
+  expect(allowedPaymentAdapterWords(renewal, adapter, "ui-14")).toBe(1);
+  expect(allowedPaymentAdapterWords(worker, adapter, "ui-14")).toBe(0);
+  expect(allowedPaymentAdapterWords(renewal, readback, "ui-14")).toBe(0);
+  expect(allowedPaymentAdapterWords(renewal, adapter, "ui-13")).toBe(0);
+  expect(allowedPaymentAdapterWords("tests/postgres/another.test.ts", readback, "ui-14")).toBe(0);
 });
 
 it("keeps the payment and managed pins closed at exactly 27 paths and 38 tuples", () => {

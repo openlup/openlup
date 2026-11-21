@@ -187,6 +187,15 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   }
   if (paymentAdapterPaths.test(path) || path === `packages/platform/api/payments-${name}.api.md`
     || path === paymentAdapterLedger) return [...contents.matchAll(word)].length;
+  // Native regression witnesses use these published imports with neutral fixture data.
+  const nativeImports = {
+    "tests/postgres/paymentReconciliationStore.test.ts": "createTpayPaymentReconciliationProvider",
+    "tests/postgres/stripePortableRail.test.ts": "createTpayPaymentAdapter",
+  };
+  if (category === "ui-14" && Object.hasOwn(nativeImports, path)) {
+    const adapterImport = `import { ${nativeImports[path]} } from "@openlup/platform/payments/${name}";`;
+    return contents.split("\n").includes(adapterImport) ? 1 : 0;
+  }
   if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;
   const tokens = [...contents.matchAll(paymentAdapterSubpath)];
   if (["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"].includes(path)) {
