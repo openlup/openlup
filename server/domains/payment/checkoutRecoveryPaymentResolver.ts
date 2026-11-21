@@ -146,6 +146,9 @@ async function resolveSnapshot(
       providerStatus: recovery.status,
       now,
     });
+    if (verified.status === "manual_review") {
+      return { kind: "manual_review" };
+    }
     if (verified.status !== "succeeded" && verified.status !== "failed") {
       return { kind: "awaiting_provider" };
     }

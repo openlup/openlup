@@ -260,6 +260,25 @@ describe("checkout recovery payment resolver", () => {
     await expect(resolver.resolve({ orderId, paymentIntentId })).resolves.toEqual({ kind: expected });
     expect(applyTerminalResult).toHaveBeenCalledTimes(1);
   });
+
+  it("preserves manual_review when verifyPaymentAttemptNow rejects unconfirmed capture basis", async () => {
+    const provider = recoveryProvider({
+      read: {
+        status: status({
+          status: "succeeded",
+          providerStatus: "succeeded",
+          failureReason: null,
+        }),
+        identityMatches: true,
+        manualReviewRequired: false,
+        clientAction: null,
+      },
+    });
+    const { resolver, applyTerminalResult } = subject({ provider });
+
+    await expect(resolver.resolve({ orderId, paymentIntentId })).resolves.toEqual({ kind: "manual_review" });
+    expect(applyTerminalResult).not.toHaveBeenCalled();
+  });
 });
 
 describe("checkout recovery payment resolver read purpose", () => {
