@@ -1,5 +1,23 @@
 [
   {
+    "key": "checkout.offerAdmission",
+    "domain": "commerce",
+    "kind": "callback",
+    "goal": "Admit, bind, and verify server offer evidence for checkout intents carrying offerVersion or minimumUnits (offer admission, offer policy, checkout offer review).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "absentMeans": {"description": "Checkout intents without offerVersion or minimumUnits proceed unbound; intents carrying either field are refused with offer_version_unsupported.", "source": "CheckoutOfferPolicyPort absent", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Standard checkouts proceed without an offer policy while explicit offer-bound intents fail closed unless the host binds CheckoutOfferPolicyPort from @openlup/platform/commerce/server.",
+    "effect": {"appliesTo": "New checkout quotes and order guards evaluate the bound CheckoutOfferPolicyPort from @openlup/platform/commerce/server during resolve, evidence minting, and optional quote-acceptance verification.", "frozenOn": ["Saved checkout quotes, accepted orders, and persisted quote-context offer evidence retain their recorded offer version and evidence."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The callback is executable host code implementing CheckoutOfferPolicyPort from @openlup/platform/commerce/server."},
+    "change": {"reference": "docs/guide/concepts/checkout.md"},
+    "rules": []
+  },
+  {
     "key": "checkout_recovery_reminders",
     "domain": "commerce",
     "kind": "installed",

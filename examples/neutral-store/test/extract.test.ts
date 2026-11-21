@@ -87,7 +87,6 @@ const starterSettingLocations = [
   ['legal.returnsDays', 'owned/store.config.ts', 'legal.returnsDays'],
   ['offer.subscriptionRoundingQuantumMinor', 'owned/store.config.ts', 'offer.subscriptionRoundingQuantumMinor'],
   ['market', 'owned/store.config.ts', 'market'],
-  ['shipping.rateResolver', 'owned/quote-shipping.ts', 'createQuoteShipping'],
   ['market.localePolicy', 'owned/market.config.ts', 'market'],
   ['purchase.contact', 'owned/store.config.ts', 'purchase.contact'],
   ['returns.reasons', 'owned/store.config.ts', 'returns.reasons'],
@@ -103,6 +102,8 @@ const starterSettingLocations = [
   ['subscriptionEditing.sizedPreferences', 'owned/subscription-editing.ts', 'subscriptionEditing'],
   ['quote.acquisition.graduationCadenceDays', 'owned/quote.config.ts', 'quoteConfigurations'],
   ['pricing.minimumProductPayableMinor', 'owned/quote.config.ts', 'quoteConfigurations'],
+  ['subscription_minimum_base_units', 'owned/store.config.ts', 'subscriptionOffers.classic.minimumBaseUnits'],
+  ['subscription_sized_intro_phase', 'owned/subscription-editing.ts', 'subscriptionEditing'],
 ] as const;
 
 test('settings check includes all new declarations and their edit locations in both configurations', async () => {
@@ -111,22 +112,21 @@ test('settings check includes all new declarations and their edit locations in b
     assert.equal(checked.configuration, configuration);
     assert.equal(checked.state, 'checked');
     assert.equal(checked.appValidation.state, 'passed');
+    assert.equal(checked.rows.some((entry: { key: string }) => entry.key === 'shipping.rateResolver'), false);
     for (const [key, file, symbol] of starterSettingLocations) {
       const row = checked.rows.find((entry: { key: string }) => entry.key === key);
       assert.ok(row, key);
-      assert.equal(row.takesEffect, `${file} ${symbol}`, key);
-      if (key === 'shipping.rateResolver') {
-        assert.deepEqual(row.file, { state: 'not-reported' });
-      } else {
-        assert.equal(row.file.state, 'present', key);
-        assert.deepEqual(row.file.location, { file, symbol }, key);
-      }
+      assert.equal(row.takesEffect, row.kind === 'installed' ? 'No settings write operation is available for this key.' : `${file} ${symbol}`, key);
+      assert.equal(row.file.state, 'present', key);
+      assert.deepEqual(row.file.location, { file, symbol }, key);
       if (key === 'market') {
         const { country, currency, timezone } = configurations[configuration]!.market;
         assert.deepEqual(row.file.value, { country, currency, timezone });
       }
-      assert.equal(row.validation.state, key === 'legal.returnsDays' || key === 'shipping.rateResolver' ? 'not-validated' : 'valid', key);
+      assert.equal(row.validation.state, key === 'legal.returnsDays' ? 'not-validated' : 'valid', key);
     }
+    const rateResolver = await starterSettings(configuration, ['show', 'shipping.rateResolver']);
+    assert.equal(rateResolver.setting.kind, 'callback');
   }
 });
 

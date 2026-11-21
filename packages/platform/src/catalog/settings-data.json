@@ -1,5 +1,22 @@
 [
   {
+    "key": "bundles.compositionRules",
+    "domain": "catalog",
+    "kind": "callback",
+    "goal": "Validate and resize bundle core and add-on compositions against opaque CompositionConstraint envelopes (bundle rules, composition constraints, resizing).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform stores CompositionConstraint envelopes without interpreting them; bundle writes skip constraint validation when no CompositionRulesPort from @openlup/core/bundle is supplied or the constraint is empty.",
+    "effect": {"appliesTo": "New bundle composition writes and subscription package edits evaluate the bound CompositionRulesPort from @openlup/core/bundle when validating or resizing constrained compositions.", "frozenOn": ["Saved bundle versions, active product facts, and existing subscription templates retain their stored compositions until edited."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The callbacks are executable server code implementing CompositionRulesPort from @openlup/core/bundle."},
+    "change": {"reference": "docs/guide/how-to/build/bundles.md"},
+    "rules": []
+  },
+  {
     "key": "catalog.additionalMediaFormats",
     "domain": "catalog",
     "goal": "Accept additional catalogue media formats.",

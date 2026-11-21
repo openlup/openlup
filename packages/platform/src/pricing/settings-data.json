@@ -1,5 +1,22 @@
 [
   {
+    "key": "pricing.acquisitionFinancialPolicy",
+    "domain": "pricing",
+    "kind": "callback",
+    "goal": "Supply host classification, metadata validation, and initial discount predicates for introductory acquisition promotion rows (acquisition pricing, starter pack discount, financial policy).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform infers no financial predicates or introductory discount schedules on its own; hosts supply an explicit AcquisitionFinancialPolicy implementation from @openlup/platform/pricing.",
+    "effect": {"appliesTo": "Acquisition readiness validation and new checkout quotes using acquisition promotions evaluate the bound AcquisitionFinancialPolicy from @openlup/platform/pricing.", "frozenOn": ["Saved checkout quotes, accepted orders, and activated subscription starter-pack terms retain their recorded pricing."], "impact": "money"},
+    "runtime": {"level": "read-only", "reason": "The policy is executable server code implementing AcquisitionFinancialPolicy from @openlup/platform/pricing."},
+    "change": {"reference": "docs/guide/how-to/build/quote-prices.md#resolve-prices-and-adjustments"},
+    "rules": []
+  },
+  {
     "key": "pricing.indivisibleOfferTotals",
     "domain": "pricing",
     "goal": "Quote an offer total that cannot be divided evenly by quantity.",

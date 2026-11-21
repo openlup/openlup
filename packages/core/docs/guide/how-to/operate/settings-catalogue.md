@@ -14,6 +14,18 @@ Search terms include operator permissions, administrative access.
 
 Show offline: `show account-support.recoverableAdministration --json`.
 
+## bundles.compositionRules
+
+Validate and resize bundle core and add-on compositions against opaque CompositionConstraint envelopes (bundle rules, composition constraints, resizing).
+Search terms include bundle composition, composition constraint, core lines, addon lines, resize.
+
+- Owner **catalog** · kind **callback** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The platform stores CompositionConstraint envelopes without interpreting them; bundle writes skip constraint validation when no CompositionRulesPort from @openlup/core/bundle is supplied or the constraint is empty.
+
+Show offline: `show bundles.compositionRules --json`.
+
 ## catalog.additionalMediaFormats
 
 Accept additional catalogue media formats.
@@ -43,6 +55,19 @@ Search terms include product assortment, SKU records.
 - Native catalogue identities require a GTIN.
 
 Show offline: `show catalog.optionalGtin --json`.
+
+## checkout.offerAdmission
+
+Admit, bind, and verify server offer evidence for checkout intents carrying offerVersion or minimumUnits (offer admission, offer policy, checkout offer review).
+Search terms include offer policy, offer version, checkout admission, quote acceptance.
+
+- Owner **commerce** · kind **callback** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- Standard checkouts proceed without an offer policy while explicit offer-bound intents fail closed unless the host binds CheckoutOfferPolicyPort from @openlup/platform/commerce/server.
+- When absent, checkout intents without offerVersion or minimumUnits proceed unbound; intents carrying either field are refused with offer_version_unsupported.
+
+Show offline: `show checkout.offerAdmission --json`.
 
 ## checkout_recovery_reminders
 
@@ -261,6 +286,18 @@ Search terms include charge handling, settlement.
 
 Show offline: `show payments.verifiedPaymentEvidence --json`.
 
+## pricing.acquisitionFinancialPolicy
+
+Supply host classification, metadata validation, and initial discount predicates for introductory acquisition promotion rows (acquisition pricing, starter pack discount, financial policy).
+Search terms include acquisition promotion, starter pack discount, financial policy, initial discount.
+
+- Owner **pricing** · kind **callback** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The platform infers no financial predicates or introductory discount schedules on its own; hosts supply an explicit AcquisitionFinancialPolicy implementation from @openlup/platform/pricing.
+
+Show offline: `show pricing.acquisitionFinancialPolicy --json`.
+
 ## pricing.indivisibleOfferTotals
 
 Quote an offer total that cannot be divided evenly by quantity.
@@ -374,6 +411,30 @@ Search terms include delivery destination, address details.
 
 Show offline: `show shipping.paymentMethodPreferences --json`.
 
+## shipping.rateResolver
+
+Change how checkout shipping rates and quote promotions are calculated or connect a shipping carrier (carrier, shipping provider, courier, rate calculation).
+Search terms include carrier, shipping provider, courier, shipping rate calculation, quote shipping promotions.
+
+- Owner **shipping** · kind **callback** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- When the optional resolveQuoteShippingPromotions callback property on DbBackedCommerceQuotePortDeps from @openlup/platform/pricing is omitted, createDbBackedCommerceQuotePort uses shippingFlatMinor if supplied (omitting quote shipping fields when shippingFlatMinor is also absent) and still runs resolveAutomaticQuotePromotions and applyPromotionCodesV2 (including shipping discounts).
+
+Show offline: `show shipping.rateResolver --json`.
+
+## shipping_flat_minor
+
+Set the legacy flat shipping fee in currency minor units when threshold shipping policy is absent (flat shipping, legacy shipping rate, delivery fee).
+Search terms include flat shipping, legacy delivery rate, shipping cost, minor units.
+
+- Owner **shipping** · kind **installed** · runtime **read-only**
+- Default is `0`.
+- Basis `neutral`.
+- Zero minor units preserves the historical absent-row fallback in commerce_settings and quoteShippingPolicy when neither a flat rate nor a threshold shipping policy is configured.
+
+Show offline: `show shipping_flat_minor --json`.
+
 ## subscriber_winback_policy
 
 Find the cancellation age window for subscriber winback messages.
@@ -386,6 +447,32 @@ Search terms include cancelled subscriber outreach, retention messaging, reactiv
 
 Show offline: `show subscriber_winback_policy --json`.
 
+## subscription_minimum_base_units
+
+Set the minimum base unit count required when editing a classic subscription (minimum base units, subscription edit floor, package minimum).
+Search terms include classic subscription minimum, base units, package edit floor, repricing.
+
+- Owner **subscriptions** · kind **installed** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The platform provides no implicit floor for classic subscription edits; stores must explicitly install a positive 32-bit integer row in commerce_settings.
+- When absent, both TypeScript (createPostgresPackageEditReadPort) and SQL subscription edit paths fail closed with subscription_reprice_minimum_base_units_unavailable when no valid positive 32-bit integer is stored in commerce_settings.value_text.
+
+Show offline: `show subscription_minimum_base_units --json`.
+
+## subscription_sized_intro_phase
+
+Set the introductory fixed-cycle and graduation-cycle boundaries for sized subscription editing (intro phase, graduation cycle, starter pack editing).
+Search terms include sized editing, intro phase, fixed cycle, graduation cycle, starter pack.
+
+- Owner **subscriptions** · kind **installed** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The platform provides no implicit introductory phase cutoff; stores must explicitly install fixedThroughCycle and graduationCycle (positive 32-bit integers with graduationCycle > fixedThroughCycle) in commerce_settings when introductory subscriptions use sized editing.
+- When absent, introductory starter-pack subscriptions fail closed in SQL with subscription_edit_invalid_sized_configuration when no valid JSON row is installed in commerce_settings.value_text. In the starter, owned/subscription-editing.ts holds the code copy while owned/demo-seed.ts installs the matching database copy; keep both aligned.
+
+Show offline: `show subscription_sized_intro_phase --json`.
+
 ## subscriptions.addressBasedRenewalShipping
 
 Reprice renewal shipping from the current address.
@@ -395,6 +482,18 @@ Search terms include recurring orders, renewals.
 - Retained native terms carry one shipping threshold profile.
 
 Show offline: `show subscriptions.addressBasedRenewalShipping --json`.
+
+## subscriptions.afterRenewal
+
+Customize renewal execution input, failure classification, and post-renewal or exhaustion outcome handling (after renewal, renewal policy, dunning exhaustion, failure classification).
+Search terms include renewal policy, renewal outcome, failure classification, dunning exhaustion.
+
+- Owner **subscriptions** · kind **callback** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The platform supplies neutral failure-key defaults via createDefaultRenewalFailurePolicy and leaves post-exhaustion actions unconfigured so hosts compose AutomaticRenewalPolicy, RenewalOutcomePolicy, and RenewalFailurePolicy from @openlup/platform/subscriptions explicitly.
+
+Show offline: `show subscriptions.afterRenewal --json`.
 
 ## subscriptions.calendarCadence
 
@@ -426,6 +525,18 @@ Search terms include recurring orders, renewals.
 
 Show offline: `show subscriptions.deliveryAlignmentEvidence --json`.
 
+## subscriptions.editTermsAdmission
+
+Admit or refuse proposed subscription lines, quantities, and cadences before pricing a subscription edit (edit terms admission, offer admission, cadence validation).
+Search terms include subscription edit terms, offer admission, cadence rules, package editing.
+
+- Owner **subscriptions** · kind **callback** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- Omitting admitSubscriptionTerms (SubscriptionTermsAdmission from @openlup/platform/subscriptions) preserves native subscription editing behavior with no application-specific offer filter beyond platform minimums and representation bounds.
+
+Show offline: `show subscriptions.editTermsAdmission --json`.
+
 ## subscriptions.introductoryPhases
 
 Schedule introductory discounts by renewal cycle.
@@ -435,6 +546,18 @@ Search terms include recurring orders, renewals.
 - Native terms support one introductory phase before the retained terms take over.
 
 Show offline: `show subscriptions.introductoryPhases --json`.
+
+## subscriptions.lifecycleCommandAdmission
+
+Admit or refuse fresh customer subscription lifecycle commands such as skip, slide, pause, resume, cancel, order_now, and reactivate (command admission, pause presets, account actions).
+Search terms include account commands, pause presets, skip, slide, cancel, reactivate.
+
+- Owner **subscriptions** · kind **callback** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- Omitting admitSubscriptionCommand on NativeSubscriptionCommandBinding from @openlup/platform/subscriptions (typed as SubscriptionCommandAdmission from @openlup/platform/subscriptions/contracts) preserves native command behavior across all supported lifecycle actions subject to platform state and payment fences.
+
+Show offline: `show subscriptions.lifecycleCommandAdmission --json`.
 
 ## subscriptions.prepaidCycles
 
@@ -485,6 +608,18 @@ Search terms include recurring orders, renewals.
 - Managed and native delivery paths use separate controls.
 
 Show offline: `show subscriptions.sharedDeliveryControls --json`.
+
+## subscriptions.sizedPortionProposal
+
+Compute target variant quantities from daily need, cadence, and portion factor during sized subscription portion changes (portion proposal, resize bundle, sized editor).
+Search terms include sized portion, portion mode, daily need, bundle resize.
+
+- Owner **subscriptions** · kind **callback** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The platform provides no default demand-to-quantity sizing formula; hosts supply SizedHostPorts.proposePortion from @openlup/platform/subscriptions, or refuse demand-driven resizing when unconfigured.
+
+Show offline: `show subscriptions.sizedPortionProposal --json`.
 
 ## subscriptions.stockWaitHoldLifetime
 
