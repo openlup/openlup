@@ -139,7 +139,11 @@ it.each(profiles)("account newsletter withdrawal on $name", async profile => {
         await seed(historic.email!, state, purpose, at);
       }
     const beforeForward = (await owner.query("SELECT to_jsonb(c) AS row FROM public.communication_recipient_consents c ORDER BY recipient_fingerprint,purpose")).rows;
-    if (existsSync(file)) await makeRunner().apply();
+    if (existsSync(file)) {
+      if (profile.generation === "qualified-v2" && profile.mode === "operator-provisioned")
+        await owner.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
+      await makeRunner().apply();
+    }
     expect((await owner.query("SELECT to_jsonb(c) AS row FROM public.communication_recipient_consents c ORDER BY recipient_fingerprint,purpose")).rows).toEqual(beforeForward);
     // Observe exact canonical replay before fixture-only runtime ACL composition.
     if (existsSync(file)) {

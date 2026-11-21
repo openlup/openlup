@@ -193,6 +193,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`q2_20261028100000_runtime_capability_completion.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20261028100000_runtime_capability_completion.sql) |
 | [`q2_20261029100000_owner_path_name_resolution.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20261029100000_owner_path_name_resolution.sql) |
 | [`q2_20261103200000_runtime_lock_and_conflict_completion.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20261103200000_runtime_lock_and_conflict_completion.sql) |
+| [`q2_20261123192500_catalog_publication_authority.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20261123192500_catalog_publication_authority.sql) |
 | [`qa_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/qa_00000000000000_platform_baseline.sql) |
 | [`qb_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/qb_20260810180001_self_host_actor_auth.sql) |
 | [`qb_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/qb_20260816140000_acquisition_case_foundation.sql) |

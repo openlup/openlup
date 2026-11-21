@@ -61,7 +61,10 @@ export async function runStarterImageCanary(application, archive, imageDigest, e
           const port = 4319 + index, baseURL = `http://127.0.0.1:${port}`;
           const project = `canary-${randomBytes(6).toString('hex')}`, override = join(scratch, `${id}.yaml`);
           const { applicationHealthcheck } = await import(pathToFileURL(join(application, 'host/healthcheck.ts')).href);
-          await writeFile(override, `services:\n  database:\n    image: ${reference}\n    pull_policy: never\n  installation:\n    image: ${imageDigest}\n    pull_policy: never\n  application:\n    image: ${imageDigest}\n    pull_policy: never\n    ports: !override ["127.0.0.1:${port}:${port}"]\n    command: ${JSON.stringify(['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo', '--configuration', id, '--port', String(port), '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store'])}\n    healthcheck: ${JSON.stringify(applicationHealthcheck(baseURL, port))}\n`);
+          const hostCommand = ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo', '--configuration', id,
+            '--port', String(port), '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
+            '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password'];
+          await writeFile(override, `services:\n  database:\n    image: ${reference}\n    pull_policy: never\n  installation:\n    image: ${imageDigest}\n    pull_policy: never\n  application:\n    image: ${imageDigest}\n    pull_policy: never\n    ports: !override ["127.0.0.1:${port}:${port}"]\n    command: ${JSON.stringify(hostCommand)}\n    healthcheck: ${JSON.stringify(applicationHealthcheck(baseURL, port))}\n`);
           const compose = (args, input) => run('docker', ['compose', '--project-name', project, '--project-directory', application,
             '-f', join(application, 'compose.yaml'), '-f', override, ...args], input);
           defer(() => compose(['down', '--volumes', '--remove-orphans']));
@@ -326,7 +329,7 @@ export async function runStarterBrowser(options) {
       await command('npm', ['run', 'build'], app, env);
       const installed = createRequire(join(app, 'package.json'));
       const migrations = await import(pathToFileURL(installed.resolve('@openlup/platform/migrations')).href);
-      const { applyDemoSeed, demonstrationMarker } = await import(pathToFileURL(join(app, 'installation/install.ts')).href);
+      const { applyDemoSeed, demonstrationMarker, provisionDemonstrationPublicationPassword } = await import(pathToFileURL(join(app, 'installation/install.ts')).href);
       const { readStarterCatalogueRules } = await import(pathToFileURL(join(app, 'host/editor-catalogue.ts')).href);
       const catalogueRules = readStarterCatalogueRules();
       const { selectConfiguration } = await import(pathToFileURL(join(app, 'owned/store.config.ts')).href);
@@ -361,9 +364,11 @@ export async function runStarterBrowser(options) {
               const first = await runner.apply(), repeat = await runner.apply(), status = await runner.status();
               if (repeat.applied.length || status.pending.length) throw new Error('starter_browser_migration_replay_failed');
               console.log(`Starter ${configuration} migrations: ${first.applied.length}; repeat: ${repeat.applied.length}; elapsed: ${Math.round(performance.now() - started)} ms`);
+              const publicationPasswordFile = join(scratch, `${groupIndex}-${configuration}-publication-password`);
               const installer = guard(new pg.Client({ connectionString: installUrl, connectionTimeoutMillis: 5000 }));
               await installer.connect();
               try {
+                privateValues.push(await provisionDemonstrationPublicationPassword(installer, publicationPasswordFile));
                 const seed = { connection: installer, installRole, runtimeRole, catalogueRules };
                 phase = `seed_${configuration}`;
                 await applyDemoSeed(selectConfiguration(configuration), seed);
@@ -386,7 +391,8 @@ export async function runStarterBrowser(options) {
               const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
               phase = `host_${configuration}`;
               const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
-                '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile],
+                '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile,
+                '--catalogue-publication-password-file', publicationPasswordFile],
               { cwd: state, env: { ...env, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
               const exited = watchStarterHost(child, configuration, defer, recordLoss);
               let hostOutput = '';

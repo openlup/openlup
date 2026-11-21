@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import type { PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
-import { assertQualifiedAdminPostgresSelection, assertQualifiedPostgresSelection, qualifiedPostgresStartupOptions,
+import { assertQualifiedAdminPostgresSelection, assertQualifiedPostgresSelection, assertQualifiedPostgresSession, qualifiedPostgresStartupOptions,
   type QualifiedAdminPostgresInstallation } from "./qualifiedInstall.js";
 
 const selection = {
@@ -33,4 +35,40 @@ describe("qualified PostgreSQL role input transport", () => {
     expect(() => assertQualifiedPostgresSelection({ ...selection, roleMode: "automatic" } as unknown as typeof selection)).toThrow("invalid_selection");
     expect(() => assertQualifiedPostgresSelection({ ...selection, options: "-c role=cluster_root" } as unknown as typeof selection)).toThrow("invalid_selection");
   });
+});
+
+const publicationForward = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+it("provisions the reserved restricted login only in installer-managed mode", () => {
+  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+  expect(manifest.qualified.forward).toContainEqual({ file: publicationForward, sha256: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+  expect(readFileSync(publicationForward, "utf8")).toContain(
+    "IF current_setting('openlup.qualified.role_mode', true) = 'installer-managed' THEN\n    CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;");
+  expect(() => assertQualifiedPostgresSelection({ ...selection, runtimeLogin: "openlup_catalog_publication" })).toThrow("invalid_principal_name");
+});
+
+it.each([
+  { unsafe: false, diagnostic: /catalog_publication_login_missing.*Provision openlup_catalog_publication/u },
+  { unsafe: true, diagnostic: /catalog_publication_login_invalid.*reset session_replication_role for openlup_catalog_publication/u },
+])("gives the publication login its own refusal ($diagnostic)", async ({ unsafe, diagnostic }) => {
+  const applied = [
+    { file: "db/platform/migrations/q2_00000000000000_platform_baseline.sql", position: 0, sha256: "0".repeat(64) },
+    { file: publicationForward, position: 1, sha256: "1".repeat(64) },
+  ];
+  const role = (name: string, inherit: boolean, elevated: boolean) => ({
+    kind: "role", schema: null, name, arguments: [], definition: null,
+    attributes: JSON.stringify({ login: true, inherit, superuser: inherit, createRole: elevated, createDb: elevated,
+      replication: elevated, bypassRls: elevated, connectionLimit: -1, validUntil: null }),
+  });
+  const client = { async query(sql: string | object) { return typeof sql === "string" ? { rows: [{
+    effective_search_path: ["pg_catalog", "public"], current_user: selection.migrationLogin, session_user: selection.migrationLogin,
+    bootstrap_login: selection.bootstrapLogin, database_owner: selection.migrationLogin, server_version_num: 160014,
+    replication_role: "origin", session_lock_held: true, runtime_unsafe: false, restore_unsafe: false,
+    publication_replication_default_unsafe: unsafe, unsafe_replication_default: false,
+    default_privileges_exist: false, runtime_setting: selection.runtimeLogin,
+    restore_setting: selection.restoreLogin, mode_setting: "installer-managed", ledger_exists: true, ledger_owner: selection.migrationLogin,
+  }] } : { rows: [role(selection.bootstrapLogin, true, true), role(selection.migrationLogin, true, false),
+    role(selection.runtimeLogin, false, false), role(selection.restoreLogin, false, false),
+    ...(unsafe ? [role("openlup_catalog_publication", false, false)] : [])] }; } } as PoolClient;
+  await expect(assertQualifiedPostgresSession(client, applied, selection, "fixture"))
+    .rejects.toThrow(diagnostic);
 });

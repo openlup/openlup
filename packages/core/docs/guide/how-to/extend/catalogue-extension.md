@@ -48,6 +48,10 @@ JSON stdout is one `formatVersion: 1` object. Findings retain exact owner codes
 and paths, sort by JSON pointer, code and fixture, and include cause, fix, recipe,
 identical recheck command and evidence.
 
+
+For the installed starter, follow [Publish a saved catalogue draft](../build/customize-the-starter.md#publish-a-saved-catalogue-draft)
+to prepare, approve, issue and read the exact saved facts.
+
 ## New vertical
 
 Copy [the static skeleton](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/how-to/extend/catalogue-pack-skeleton/catalogue.json):

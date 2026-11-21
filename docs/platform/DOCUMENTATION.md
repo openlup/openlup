@@ -300,8 +300,9 @@ Delivery, review and same-PR documentation updates follow
 [Deliver a change](../../CONTRIBUTING.md#deliver-a-change).
 The policy self-check validates owner paths and anchors, ordinary local Markdown
 links and generated navigation/source-map freshness. Local Markdown links may
-also target content-validated, pattern-admitted package changelog fragments in
-the effective publication catalogue. It checks structure; the
+also target content-validated, pattern-admitted package changelog fragments
+(`packages/{core,outbox,platform}/changes/*.md`) and reader guide pages
+(`packages/core/docs/guide/**/*.md`) in the effective publication catalogue. It checks structure; the
 reviewer checks whether the explanation remains true against source and contracts.
 
 The root [`AGENTS.md`](../../AGENTS.md) is the single agent guide for this

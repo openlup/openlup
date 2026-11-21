@@ -70,11 +70,11 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 afterAll(() => closePostgres(container, pool), postgresTeardownTimeoutMs);
 
-function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>) {
+function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>, connection = pool) {
   let allowed = true;
   const api = createPostgresCatalogPublicationCommands({
     authorizeHuman: async (userId: string) => ({ ok: true, userId, role: "admin", isMachineActor: false }),
-    catalogPublicationOwner: { run: work => transaction(pool, async db => {
+    catalogPublicationOwner: { run: work => transaction(connection, async db => {
       await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
       return work({ query: (sql, args) => query ? query(db, sql, args) : db.query(sql, args) });
     }) },
@@ -407,7 +407,8 @@ it.each([[6, "inactive"], [15, "missing"], [16, "expired"], [17, "wrong settleme
   expect(await api.execute(commands.approve, who)).toMatchObject({ outcome: "committed" });
   expect(await api.execute(commands.publish, who), sqlFailure).toMatchObject(problem === "missing"
     ? { outcome: "validation_issue", reason: "price_list_not_found",
-      message: "Select an installed, effective price list for the settlement region and currency, then prepare the draft again." }
+      message: "Select an installed, effective price list for the settlement region and currency, then prepare the draft again.",
+      path: "skus.priceOperations.priceListId", subject: inactiveList }
     : { outcome: "validation_issue", reason: "price_list_not_active",
       message: "Activate the intended price list or select an effective list for the settlement region and currency." });
   expect(changed).toBe(1);
@@ -728,4 +729,234 @@ describe("publication activation prices", () => {
     expect(await api.execute(next.publish, who)).toMatchObject({ outcome: "committed", receipt: { changes: [] } });
     expect((await state()).rows[0]?.sellable_standalone).toBe(true);
   });
+});
+
+
+const publicationTest = it.extend("publicationUrl", { scope: "file" }, async () => {
+  const forward = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+  await transaction(pool, async db => {
+    await db.query("SET LOCAL openlup.qualified.role_mode = 'installer-managed'");
+    await db.query(readFileSync(forward, "utf8"));
+  });
+  const password = randomUUID();
+  await pool.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${password}'`);
+  const url = new URL(container.connectionString);
+  url.username = "openlup_catalog_publication";
+  url.password = password;
+  return url.href;
+});
+
+publicationTest("commits deferred publication checks through the restricted login", async ({ publicationUrl }) => {
+  const publisher = new Pool({ connectionString: publicationUrl, max: 1 });
+  try {
+    expect((await publisher.query(`SELECT session_user,current_user,rolsuper,rolinherit,rolbypassrls,
+      EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE roleid=oid OR member=oid) AS memberships,
+      has_column_privilege('public.catalog_publications','canonical_state','SELECT') AS issue_read,
+      has_table_privilege('public.catalog_publications','INSERT') AS issue_insert,
+      has_table_privilege('public.catalog_publications','UPDATE,DELETE,TRUNCATE') AS issue_mutation,
+      has_any_column_privilege('public.catalog_product_document_revisions','UPDATE') AS document_mutation,
+      has_any_column_privilege('public.catalog_attribute_projection','UPDATE') AS projection_mutation,
+      has_any_column_privilege('public.outbox_events','SELECT,UPDATE') AS outbox_read_or_update,
+      has_column_privilege('public.catalog_draft_heads','revision','UPDATE') AS draft_fence,
+      has_column_privilege('public.catalog_draft_heads','status','UPDATE') AS draft_status_update,
+      has_function_privilege('public.catalog_publication_record_command(jsonb)','EXECUTE') AS recorder,
+      has_function_privilege('public.catalog_draft_apply(text,text,text)','EXECUTE') AS draft_writer
+      FROM pg_catalog.pg_roles WHERE rolname=current_user`)).rows).toEqual([{
+      session_user: "openlup_catalog_publication", current_user: "openlup_catalog_publication", rolsuper: false,
+      rolinherit: false, rolbypassrls: false, memberships: false, issue_read: true, issue_insert: false, issue_mutation: false,
+      document_mutation: false, projection_mutation: false, outbox_read_or_update: false, draft_fence: true,
+      draft_status_update: false, recorder: true, draft_writer: false,
+    }]);
+    const refuseStatement = (sql: string, args?: unknown[]) => transaction(publisher, async db => {
+      await db.query("SAVEPOINT permission_probe");
+      await expect(db.query(sql, args)).rejects.toMatchObject({ code: "42501" });
+      await db.query("ROLLBACK TO SAVEPOINT permission_probe");
+    });
+    for (const sql of [
+      "INSERT INTO public.catalog_publication_decisions(actor_id) SELECT NULL::uuid WHERE false",
+      "INSERT INTO public.catalog_operator_receipts(actor_id) SELECT NULL::uuid WHERE false",
+      "INSERT INTO public.outbox_events(event_type) SELECT NULL::text WHERE false",
+      "INSERT INTO public.price_entries(mode) SELECT NULL::text WHERE false",
+      "INSERT INTO public.catalog_price_setup_receipts(status) SELECT NULL::text WHERE false",
+      "SELECT public.catalog_price_setup_claim(NULL,NULL)",
+      "SELECT public.catalog_price_setup_apply_claimed(NULL,NULL)",
+      "SELECT value_text FROM public.commerce_settings",
+      "SELECT principal_id FROM public.platform_human_memberships",
+      "SELECT description FROM public.catalog_products",
+      "SELECT created_at FROM public.catalog_sku_identifiers",
+    ]) await refuseStatement(sql);
+    await refuseStatement("SELECT public.catalog_publication_record_command('{}'::jsonb)");
+    await pool.query("INSERT INTO public.catalog_tax_classes VALUES ('example:standard','Standard','active')");
+    expect(await transaction(publisher, db => db.query("SELECT status FROM public.catalog_tax_classes FOR SHARE")))
+      .toMatchObject({ rows: [{ status: "active" }] });
+    await expect(publisher.query("UPDATE public.catalog_tax_classes SET status='retired'")).rejects.toMatchObject({ code: "42501" });
+    const data = authored(26), priceListId = randomUUID();
+    data.payload.skus[0]!.attributes = { finish: "matte" };
+    await pool.query(`INSERT INTO public.price_lists(id,name,region_code,currency,status,valid_from)
+      VALUES($1,'Publication list','ZZ','XXX','active',statement_timestamp()-interval '1 hour')`, [priceListId]);
+    data.payload.skus[0]!.priceOperations = [{ schemaVersion: 1, commandKey: randomUUID(), variantId: data.skuId, priceListId,
+      mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1733, expected: { entryId: null, unitPriceMinor: null } }];
+    await save(data, 1);
+    await refuseStatement("UPDATE public.catalog_draft_heads SET revision=revision+1 WHERE draft_id=$1", [data.draftId]);
+    const prepared = await prepare(data, 1, null);
+    let sqlFailure: string | undefined;
+    const api = native(async (db, sql, args) => db.query(sql, args).catch((error: Error) => {
+      sqlFailure = error.message;
+      throw error;
+    }), publisher);
+    const who = (await api.authorize(actor))!;
+    const readers = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(publisher, work) },
+      authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+    await publisher.query("CREATE TEMP TABLE publication_session_fixture (id pg_catalog.uuid)");
+    const { rows: paths } = await publisher.query(`SELECT expected.signature, p.proconfig
+      FROM unnest($1::text[]) WITH ORDINALITY AS expected(signature, position)
+      LEFT JOIN pg_catalog.pg_proc p ON p.oid=expected.signature::pg_catalog.regprocedure
+      ORDER BY expected.position`, [[
+      "public.catalog_publication_record_command(jsonb)",
+      "public.catalog_publication_admit()",
+      "public.catalog_publication_assert_receipt(uuid,text)",
+      "public.catalog_publication_assert_issued(uuid,uuid)",
+      "public.catalog_publication_candidate_source(uuid,text,text)",
+      "public.platform_human_membership_is_administrator(uuid)",
+      "public.catalog_price_setup_region_code()",
+      "public.catalog_price_setup_settlement_currency()",
+    ]]);
+    expect(paths).toHaveLength(8);
+    for (const { signature, proconfig } of paths)
+      expect(proconfig, signature).toContainEqual(expect.stringMatching(/^search_path=pg_catalog, (?:public, )?pg_temp$/u));
+    expect(await readers.reads.current(data.productId)).toEqual({ outcome: "unpublished" });
+    expect(await api.prepareCandidate({ draftId: data.draftId, draftRevision: 1, expectedHead: null }, who), sqlFailure)
+      .toMatchObject({ candidateDigest: prepared.approve.candidateDigest, preparation: { postStateDigest: expect.any(String) } });
+    const approved = await api.execute(prepared.approve, who);
+    expect(approved, sqlFailure).toMatchObject({ outcome: "committed" });
+
+    const otherProduct = randomUUID();
+    await pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES ($1,'unrelated-publication','Unrelated product')", [otherProduct]);
+    const bindingRefusal = { code: "42501", message: "catalog_publication_write_binding_required" };
+    let mixedError: unknown;
+    const mixed = createPostgresCatalogPublicationCommands({ registry,
+      authorizeHuman: async (userId: string) => ({ ok: true, userId, role: "admin", isMachineActor: false }),
+      catalogPublicationOwner: { run: work => transaction(publisher, async db => {
+        const receipt = await work(db);
+        expect(await db.query("UPDATE public.catalog_products SET name='Unbound edit' WHERE id=$1", [otherProduct])).toMatchObject({ rowCount: 1 });
+        return receipt;
+      }).catch(error => { mixedError = error; throw error; }) },
+    });
+    await mixed.execute(prepared.publish, (await mixed.authorize(actor))!);
+    expect(mixedError).toMatchObject(bindingRefusal);
+    expect((await pool.query("SELECT name FROM public.catalog_products WHERE id=$1", [otherProduct])).rows).toEqual([{ name: "Unrelated product" }]);
+    expect((await pool.query("SELECT id FROM public.catalog_publications WHERE product_id=$1", [data.productId])).rows).toEqual([]);
+
+    const published = await api.execute(prepared.publish, who);
+    expect(published, sqlFailure).toMatchObject({ outcome: "committed", receipt: { head: { revision: 1 } } });
+    if (!("receipt" in published) || !("head" in published.receipt)) throw new Error("publication receipt required");
+    const { head, commandKey } = published.receipt;
+    await refuseStatement("INSERT INTO pg_temp.catalog_publication_issued_products SELECT NULL::uuid WHERE false");
+    expect(await readers.reads.current(data.productId)).toMatchObject({ outcome: "found", head });
+    expect(await readers.readbackV2(head)).toMatchObject({ outcome: "page", head, schemaVersion: 2 });
+    expect(await readers.reads.history(data.productId, null)).toMatchObject({ outcome: "page", receipts: [{ head }] });
+    expect(await readers.receipt({ productId: data.productId, commandKey }, (await readers.authorize(actor))!))
+      .toEqual({ outcome: "found", receipt: published.receipt });
+    expect((await pool.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows)
+      .toEqual([{ revision: 1 }]);
+    expect((await pool.query("SELECT mode,min_qty,amount_kind,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows)
+      .toEqual([{ mode: "one_time", min_qty: 1, amount_kind: "gross", unit_price_minor: 1733 }]);
+    const priceBefore = (await pool.query("SELECT id,active,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows;
+    const priceKey = randomUUID();
+    const replacement = canonicalCatalogPriceSetupCommand({ ...data.payload.skus[0]!.priceOperations![0]!,
+      commandKey: priceKey, unitPriceMinor: 1999, expected: { entryId: priceBefore[0]!.id, unitPriceMinor: 1733 } });
+    await expect(transaction(publisher, async db => {
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);
+      expect((await db.query("SELECT public.catalog_price_setup_apply($1,$2) AS result", [replacement, hash(replacement)])).rows[0]?.result)
+        .toMatchObject({ outcome: "committed", receipt: { current: { unitPriceMinor: 1999 } } });
+    })).rejects.toMatchObject(bindingRefusal);
+    expect((await pool.query("SELECT id,active,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows).toEqual(priceBefore);
+    expect((await pool.query("SELECT 1 FROM public.catalog_price_setup_receipts WHERE idempotency_key=$1", [priceKey])).rowCount).toBe(0);
+    expect((await pool.query("SELECT attribute_key,text_value FROM public.catalog_attribute_projection WHERE sku_id=$1", [data.skuId])).rows)
+      .toEqual([{ attribute_key: "finish", text_value: "matte" }]);
+    expect((await pool.query(`SELECT e.event_type, e.idempotency_key=h.publication_id::text AS matches
+      FROM public.outbox_events e JOIN public.catalog_publication_heads h ON h.product_id=e.aggregate_id
+      WHERE e.aggregate_id=$1`, [data.productId])).rows).toEqual([{ event_type: "catalog.publication.committed", matches: true }]);
+
+    // Every statement succeeds. The real COMMIT on the publishing connection refuses it.
+    for (const [sql, args] of [
+      ["UPDATE public.catalog_products SET name='Unbound product' WHERE id=$1", [data.productId]],
+      ["UPDATE public.catalog_skus SET status='archived' WHERE id=$1", [data.skuId]],
+      ["DELETE FROM public.catalog_sku_identifiers WHERE catalog_sku_id=$1", [data.skuId]],
+      [`INSERT INTO public.catalog_product_document_revisions
+        (product_id,revision_no,schema_id,document_ref,document_payload,source_ref,provenance,digest)
+        VALUES ($1,2,'example:document.v1','unbound','{}','example:source','{}',$2)`, [data.productId, "0".repeat(64)]],
+      [`INSERT INTO public.catalog_attribute_projection
+        (sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
+        VALUES ($1,2,'finish',1,1,'enum','matte')`, [data.skuId]],
+    ] as const) {
+      let wrote = false;
+      await expect(transaction(publisher, async db => {
+        expect(await db.query(sql, [...args])).toMatchObject({ rowCount: 1 });
+        wrote = true;
+      })).rejects.toMatchObject(bindingRefusal);
+      expect(wrote).toBe(true);
+    }
+
+    const repaired = structuredClone(data.payload);
+    delete repaired.skus[0]!.priceOperations;
+    repaired.product.sharedContent.catalogAction = "revise";
+    repaired.publication = { kind: "compensation", evidence: {},
+      operations: [{ op: "set_product_presentation", productSlug: data.slug, presentation: {} }] };
+    await save(data, 2, repaired);
+    const compensation = await prepare(data, 2, head);
+    expect(await api.execute(compensation.approve, who), sqlFailure).toMatchObject({ outcome: "committed" });
+    // Keep the runner's approved write set so the next attempt exercises the SQL check at COMMIT.
+    const recorder = "SELECT public.catalog_publication_record_command($1::jsonb) AS result";
+    const projection: { sql: string; args: unknown[] | undefined }[] = [];
+    let recorded: unknown[] | undefined;
+    const preview = native((db, sql, args) => {
+      if (sql === recorder) {
+        recorded = args;
+        throw new Error("Discard the tentative compensation");
+      }
+      if (/^(INSERT|UPDATE|DELETE) /u.test(sql)) projection.push({ sql, args });
+      return db.query(sql, args);
+    }, publisher);
+    await preview.execute(compensation.publish, (await preview.authorize(actor))!);
+    expect(recorded).toHaveLength(1);
+    await save(data, 3, repaired);
+    await expect(transaction(publisher, async db => {
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);
+      for (const { sql, args } of projection) await db.query(sql, args);
+      expect((await db.query(recorder, recorded)).rows[0]?.result).toEqual(expect.any(String));
+    })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_draft_advanced" });
+    expect(await readers.reads.current(data.productId)).toMatchObject({ outcome: "found", head });
+
+    await pool.query("UPDATE public.catalog_products SET name='Unpublished drift' WHERE id=$1", [data.productId]);
+    const currentCompensation = await prepare(data, 3, head);
+    expect(await api.execute(currentCompensation.approve, who), sqlFailure).toMatchObject({ outcome: "committed" });
+    expect(await api.execute(currentCompensation.publish, who), sqlFailure)
+      .toMatchObject({ outcome: "committed", receipt: { previousHead: head, head: { revision: 2 }, changes: [] } });
+  } finally { await publisher.end(); }
+});
+
+publicationTest("commits approval and publication with a session temporary uuid type", async ({ publicationUrl }) => {
+  const data = authored(27);
+  await save(data, 1);
+  const prepared = await prepare(data, 1, null);
+  const publisher = new Pool({ connectionString: publicationUrl, max: 1, idleTimeoutMillis: 0 });
+  try {
+    await publisher.query("CREATE TYPE pg_temp.uuid AS (value text)");
+    // Caller-side casts use the built-in type. The functions' own paths must protect their casts.
+    await publisher.query("SET search_path = pg_catalog, public, pg_temp");
+    let sqlFailure: string | undefined;
+    const api = native(async (db, sql, args) => db.query(sql, args).catch((error: Error) => {
+      sqlFailure = error.message;
+      throw error;
+    }), publisher);
+    const who = (await api.authorize(actor))!;
+    expect(await api.execute(prepared.approve, who), sqlFailure).toMatchObject({
+      outcome: "committed", receipt: { productId: data.productId, postStateDigest: prepared.approve.postStateDigest },
+    });
+    expect(await api.execute(prepared.publish, who), sqlFailure).toMatchObject({
+      outcome: "committed", receipt: { productId: data.productId, head: { revision: 1 },
+        changes: [{ variantId: data.skuId, sku: data.code, variantRevision: 1 }] },
+    });
+  } finally { await publisher.end(); }
 });

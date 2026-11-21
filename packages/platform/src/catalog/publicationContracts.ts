@@ -43,4 +43,5 @@ export interface CatalogPublicationFailure {
   reason: string;
   message?: string;
   path?: string;
+  subject?: string;
 }

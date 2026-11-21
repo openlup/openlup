@@ -29,7 +29,7 @@ services:
         condition: service_healthy
   application:
     build: .
-    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0']
+    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0', '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password']
     environment:
       DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
     volumes:
@@ -53,6 +53,7 @@ configs:
     content: |
       # Only the one-shot installer receives the Unix socket volume.
       local all all trust
-      # No secrets or keys are required for this isolated fictional database.
+      host neutral_store openlup_catalog_publication all scram-sha-256
+      # Runtime access is limited to this isolated fictional database.
       host neutral_store starter_runtime all trust
       host all all all reject

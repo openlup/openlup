@@ -1935,6 +1935,10 @@
     {
       "path": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
       "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
+      "sha256": "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8"
     }
   ],
   "channelIngestForwards": [
