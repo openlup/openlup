@@ -12,7 +12,9 @@ const entry = { name: "@openlup/platform", directory: "packages/platform", publi
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(path => rmSync(path, { recursive: true, force: true })));
 
-function fixturePack(declarations: string, version = "1.3.0", runtime?: string, peer?: Record<string, string>): Pack {
+function fixturePack(
+  declarations: string, version = "1.3.0", runtime?: string, peer?: Record<string, string>, subpath = runtime === undefined ? "." : "./payments",
+): Pack {
   const path = mkdtempSync(join(tmpdir(), "released-api-fixture-"));
   roots.push(path);
   const write = (file: string, text: string) => {
@@ -20,14 +22,14 @@ function fixturePack(declarations: string, version = "1.3.0", runtime?: string, 
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, text);
   };
-  const subpath = runtime === undefined ? "." : "./payments";
+  const base = subpath === "./catalog" ? "dist/catalog/sql" : "dist/index";
   write("package.json", JSON.stringify({
     name: entry.name, version, type: "module", peerDependencies: peer,
-    exports: { [subpath]: { types: "./dist/index.d.ts", import: "./dist/index.js" } },
+    exports: { [subpath]: { types: `./${base}.d.ts`, import: `./${base}.js` } },
   }));
   write("release-gates.json", JSON.stringify({ packageSurface: { [subpath]: { maturity: "stable" } } }));
-  write("dist/index.d.ts", declarations);
-  write("dist/index.js", runtime ?? "export {};");
+  write(`${base}.d.ts`, declarations);
+  write(`${base}.js`, runtime ?? "export {};");
   const archive = join(path, "fixture.tgz");
   execFileSync("tar", ["-czf", archive, "-C", path, "package"]);
   return { path: archive };
@@ -89,6 +91,61 @@ describe("released TypeScript surface", () => {
       /@openlup\/platform@1\.2\.0 — @openlup\/platform\/payments → terminalAmountMismatch: released readback outcome changed from null to "provider_capture_amount_unconfirmed"/u,
     );
     await expect(checkReleasedApi(root, [entry], [released], [released])).resolves.toBeGreaterThan(0);
+  });
+});
+
+describe("append-only registry", () => {
+  const row = (id: string, value: number) => `{ readonly id: "${id}"; readonly value: ${value} }`;
+  const first = row("first", 1), second = row("second", 2), third = row("third", 3);
+  const declaration = (entries: string[], tagged = true) =>
+    `${tagged ? "/** @appendOnly */\n" : ""}export declare const CATALOG_MIGRATIONS: readonly [${entries.join(", ")}];`;
+  const pack = (text: string, version: string) => fixturePack(text, version, undefined, undefined, "./catalog");
+
+  function check(entries: string[], note = "", version = "1.4.0", tagged = true, releasedTagged = true) {
+    const directory = mkdtempSync(join(tmpdir(), "released-api-registry-"));
+    roots.push(directory);
+    mkdirSync(join(directory, entry.directory, "changes"), { recursive: true });
+    mkdirSync(join(directory, "node_modules"));
+    writeFileSync(join(directory, entry.directory, "CHANGELOG.md"), "## [Unreleased]\n");
+    if (note) writeFileSync(join(directory, entry.directory, "changes/registry.md"), note);
+    return checkReleasedApi(directory, [entry], [pack(declaration(entries, tagged), version)],
+      [pack(declaration([first, second], releasedTagged), "1.3.0")]);
+  }
+
+  it("allows a documented tail append in a minor and before the minor bump", async () => {
+    const note = "Migration: In 1.4.0, append `third` to `CATALOG_MIGRATIONS`.";
+    await expect(check([first, second, third], note)).resolves.toBeGreaterThan(0);
+    await expect(check([first, second, third], note, "1.3.0", true, false)).resolves.toBeGreaterThan(0);
+  });
+
+  it("requires a Migration line naming every new entry and an explicit pre-bump target", async () => {
+    await expect(check([first, second, third], "Added `third`."))
+      .rejects.toThrow(/appended third without a Migration: line/u);
+    await expect(check([first, second, third, row("fourth", 4)], "Migration: Add `third`."))
+      .rejects.toThrow(/appended fourth without a Migration: line/u);
+    await expect(check([first, second, third], "Migration: Add `third`.", "1.3.0"))
+      .rejects.toThrow(/starting with In 1\.4\.0/u);
+  });
+
+  it.each([
+    ["reorder", [second, first, third], /changed or removed released entry at index 0/u],
+    ["removal", [first], /changed or removed released entry at index 1/u],
+    ["edit", [first, row("second", 9), third], /changed or removed released entry at index 1/u],
+    ["incompatible new entry", [first, second, '{ readonly id: "third" }'], /incompatible value field/u],
+  ])("refuses a registry %s", async (_, entries, message) => {
+    await expect(check(entries, "Migration: Add `third`.")).rejects.toThrow(message);
+  });
+
+  it("refuses patch appends and removing a released tag", async () => {
+    await expect(check([first, second, third], "Migration: In 1.4.0, append `third`.", "1.3.1"))
+      .rejects.toThrow(/appended entries in 1\.3\.1; move the append to a minor release/u);
+    await expect(check([first, second], "", "1.4.0", false)).rejects.toThrow(/must keep its tagged readonly tuple/u);
+  });
+
+  it("refuses an append-only tag on a candidate-only unlisted declaration", async () => {
+    const before = pack(declaration([first, second]), "1.3.0");
+    const after = pack(declaration([first, second]) + "\n/** @appendOnly */\nexport declare const OTHER: readonly [];", "1.4.0");
+    await expect(checkReleasedApi(root, [entry], [after], [before])).rejects.toThrow(/@appendOnly is reserved for @openlup\/platform\/catalog → CATALOG_MIGRATIONS/u);
   });
 });
 

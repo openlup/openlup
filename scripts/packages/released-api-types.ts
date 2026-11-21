@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import ts from "typescript";
+import { appendOnlyChange, isAppendOnlyRegistry } from "./released-api-registries.ts";
 
 export type Surface = { name: string; version: string; subpath: string; candidate: boolean };
-export type Finding = Surface & { symbol: string; change: string; deprecated?: boolean };
+export type Finding = Surface & { symbol: string; change: string; deprecated?: boolean; appendOnly?: boolean };
 type Check = (symbol: string, change: string, from: string, to?: string) => void;
 
 const options: ts.CompilerOptions = {
@@ -160,7 +161,7 @@ function unchangedDeclarations(
   };
 }
 
-export function compareTypes(scratch: string, surfaces: Surface[]): Finding[] {
+export function compareTypes(scratch: string, surfaces: Surface[], candidateVersion: string, migrationNotes: (name: string) => string[]): Finding[] {
   const files = new Map<string, string>();
   const host = ts.createCompilerHost(options, true);
   const brands = new Map<string, string>(), brandFile = join(scratch, "brands.mts");
@@ -224,17 +225,25 @@ export function compareTypes(scratch: string, surfaces: Surface[]): Finding[] {
     const candidate = modules[1]!.get(surface.subpath);
     for (const before of released.symbols) {
       const name = before.name;
-      if (tagged(before, "experimental")) continue;
       const old = target(before);
-      if (!old.declarations?.length) throw new Error(`Released API: cannot resolve ${surface.name}@${surface.version} ${surface.subpath} → ${name}`);
       const after = candidate?.symbols.find(symbol => symbol.name === name);
       const next = after && target(after);
+      const candidateValue = Boolean(candidate?.values.getProperty(name));
+      const taggedRegistry = isAppendOnlyRegistry(surface.subpath, name)
+        && (tagged(before, "appendOnly") || (after && tagged(after, "appendOnly")));
+      if (taggedRegistry) {
+        const change = appendOnlyChange(checker, old.valueDeclaration, candidateValue ? next?.valueDeclaration : undefined,
+          surface.version, candidateVersion, () => migrationNotes(surface.name));
+        if (change) findings.push({ ...surface, symbol: name, change, appendOnly: true });
+        continue;
+      }
+      if (tagged(before, "experimental")) continue;
+      if (!old.declarations?.length) throw new Error(`Released API: cannot resolve ${surface.name}@${surface.version} ${surface.subpath} → ${name}`);
       if (!next?.declarations?.length) {
         findings.push({ ...surface, symbol: name, change: candidate ? "removed the released export" : "removed its released subpath", deprecated: tagged(before, "deprecated") });
         continue;
       }
       const releasedValue = Boolean(released.values.getProperty(name));
-      const candidateValue = Boolean(candidate?.values.getProperty(name));
       if (releasedValue === candidateValue && before.flags === after?.flags && old.flags === next.flags && unchanged(old, next)) continue;
       const check: Check = (symbol, change, from, to = "true") => {
         byLine.set(proof.length, { ...surface, symbol, change });
