@@ -1,3 +1,4 @@
+import type { CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import { createHash } from "node:crypto";
 import { CATALOG_DRAFT_MAX_BYTES } from "./contracts/draft.js";
 import { z } from "./validation.js";
@@ -5,7 +6,7 @@ import { catalogPublicationContentSchema } from "./draftV3Schemas.js";
 import { catalogDraftSkuV2Schema } from "./draftV2Schemas.js";
 import { isValidGtin, catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
 import { catalogProductTypeRefSchema, catalogQuantitySchema, catalogOptionValueSchema, catalogDimensionKeySchema } from "./productTypeSchemas.js";
-import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2 } from "./publicationContracts.js";
+import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3, CatalogPublicationManifestV3 } from "./publicationContracts.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
 import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
 import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationIssue, publicationReadFailure, publicationRefuse, publicationRemedy, type Issue, type PlatformCode, type PlatformIssue } from "./publicationError.js";
@@ -61,7 +62,7 @@ export function publicationApprovalState(product: CatalogPublishedProduct, skus:
   assertNativeProductReferences(product);
   if (skus.length > 10_000) publicationRefuse("catalog_publication_roster_limit");
   if (!skus.some(sku => sku.id === product.primarySkuId)) publicationRefuse("catalog_publication_primary_sku_required");
-  const state = { schemaVersion: 2, product, skus: skus.map(sku => ({
+  const state = { schemaVersion: product.schemaVersion ?? 2, product, skus: skus.map(sku => ({
     skuId: sku.id, digest: publicationDigest(sku, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH),
   })).sort((a, b) => a.skuId < b.skuId ? -1 : a.skuId > b.skuId ? 1 : 0) };
   return { canonicalText: publicationJson(state), digest: publicationDigest(state) };
@@ -141,14 +142,23 @@ const identifierSchema = z.object({ scheme: ref, issuer: ref, value: z.string().
   .refine(value => value.packagingLevel === "unit" ? value.quantity === 1 : value.quantity >= 2)
   .refine(value => !value.isPrimary || value.scheme === "gs1:gtin" && value.packagingLevel === "unit")
   .refine(value => value.scheme !== "gs1:gtin" || isValidGtin(value.value));
-export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.object({
+const lifecycleState = z.enum(["draft", "active", "withdrawn", "archived"]);
+const lifecycleProjection = (state: z.infer<typeof lifecycleState>) => state === "withdrawn" ? "active" : state;
+const skuShape = z.object({
   id, productId: id, code, title: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), sellableStandalone: z.boolean(), sellableInSubscription: z.boolean(),
   netContent: catalogQuantitySchema, grossMass: catalogQuantitySchema.nullable(), options: z.record(catalogDimensionKeySchema, catalogOptionValueSchema),
   attributes, facts: publishedFactsSchema, identifiers: z.array(identifierSchema), assetRefs: z.array(ref).max(32),
   logisticsRef: z.string().min(1).max(500).refine(value => value.trim() === value).nullable(),
   memberships: z.array(z.object({ offerVersion: ref, admitted: z.boolean() }).strict()), source: claimSchema,
-}).strict().superRefine((sku, context) => {
+}).strict();
+const governedSkuShape = skuShape.extend({
+  schemaVersion: z.literal(3), lifecycleState, optionDigest: digest, demandPolicyRef: ref.optional(),
+}).strict();
+export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.discriminatedUnion("schemaVersion", [skuShape.extend({ schemaVersion: z.undefined().optional() }), governedSkuShape]).superRefine((sku, context) => {
+  if ("lifecycleState" in sku && (sku.status !== lifecycleProjection(sku.lifecycleState)
+    || sku.lifecycleState !== "active" && (sku.sellableStandalone || sku.sellableInSubscription)))
+    context.addIssue({ code: "custom", path: ["lifecycleState"], message: "SKU flags and status must match their lifecycle" });
   if (!sku.memberships.every((row, index) => index === 0 || comparePublicationText(sku.memberships[index - 1]!.offerVersion, row.offerVersion) < 0)
     || sku.identifiers.filter(row => row.isPrimary).length > 1)
     context.addIssue({ code: "custom", message: "membership roster and primary identifier must be unique" });
@@ -167,12 +177,16 @@ function copiedDocumentPath(value: unknown, digests: ReadonlySet<string>): strin
     if (found) return [key, ...found];
   }
 }
-export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.object({
+const productShape = z.object({
   id, slug: z.string().min(1), name: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   type: catalogProductTypeRefSchema, axes: z.array(catalogDimensionKeySchema).max(16).refine(values => new Set(values).size === values.length), attributes, primarySkuId: id.nullable(),
   document: catalogDocumentRevisionRefSchema.nullable(), presentation: presentationSchema.nullable(), source: claimSchema,
   content: contentSchema,
 }).strict();
+const governedProductShape = productShape.extend({
+  schemaVersion: z.literal(3), lifecycleState, definitionDigest: digest,
+}).strict().refine(product => product.status === lifecycleProjection(product.lifecycleState));
+export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.discriminatedUnion("schemaVersion", [productShape.extend({ schemaVersion: z.undefined().optional() }), governedProductShape]);
 export function assertNativeProductDocument(product: CatalogPublishedProduct): void {
   if (product.document === null) invalidAt("catalog_publication_document_required", "product.document", product.type.key);
 }
@@ -221,10 +235,13 @@ function assertDocumentExclusion(value: unknown, digests: ReadonlySet<string>, f
   const path = copiedDocumentPath(value, digests);
   if (path) throw new CatalogPublicationError(publicationIssue(copiedDocument, "structural", [field, ...path].join("."), subject));
 }
-const manifestShape = z.object({
-  schemaVersion: z.literal(2), product: catalogPublishedProductSchema,
+const manifestV2Shape = z.object({
+  schemaVersion: z.literal(2), product: productShape,
   skus: z.array(z.object({ skuId: id, revisionId: id, revision, digest }).strict()).max(10_000),
-}).strict().superRefine((manifest, context) => {
+}).strict();
+const manifestShape = z.discriminatedUnion("schemaVersion", [manifestV2Shape, manifestV2Shape.extend({
+  schemaVersion: z.literal(3), product: governedProductShape,
+}).strict()]).superRefine((manifest, context) => {
   const misplaced = manifest.skus.findIndex((sku, index) => index > 0 && manifest.skus[index - 1]!.skuId >= sku.skuId);
   if (misplaced >= 0) context.addIssue({ code: "custom", path: ["skus", misplaced, "skuId"], message: "SKU roster must be sorted and unique" });
   if (!manifest.skus.some(sku => sku.skuId === manifest.product.primarySkuId))
@@ -232,7 +249,7 @@ const manifestShape = z.object({
 });
 
 /** Refuses exact copies of canonical values or raw text using the selected and caller-supplied revision digests. */
-export function catalogPublicationManifestSchema(documentDigests: ReadonlySet<string> = new Set()): z.ZodType<CatalogPublicationManifestV2> {
+export function catalogPublicationManifestSchema(documentDigests: ReadonlySet<string> = new Set()): z.ZodType<CatalogPublicationManifestV2 | CatalogPublicationManifestV3> {
   return manifestShape.superRefine((manifest, context) => {
     const selected = manifest.product.document?.digest;
     const path = copiedDocumentPath(manifest.product, selected ? new Set([...documentDigests, selected]) : documentDigests);
@@ -255,12 +272,17 @@ export function publicationContent(content: CatalogDraftSharedContentV3, subject
 }
 
 const publicationHead = z.object({ publicationId: id, revision, documentDigest: digest }).strict();
+const receiptChange = z.object({ productId: id, variantId: id, sku: code, state: z.enum(["draft", "active", "withdrawn"]),
+  variantRevision: revision, publicationHead, draftRef: z.object({ draftId: id, revision }).strict() }).strict();
 const publicationReceipt = z.object({
   schemaVersion: z.literal(2), productId: id, commandKey: z.string().min(1).refine(key => Buffer.byteLength(key) <= 200),
   fingerprint: digest, actorId: id, previousHead: publicationHead.nullable(), head: publicationHead,
   publicationDigest: digest, committedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u),
-  changes: z.array(z.object({ productId: id, variantId: id, sku: code, state: z.enum(["draft", "active", "withdrawn"]),
-    variantRevision: revision, publicationHead, draftRef: z.object({ draftId: id, revision }).strict() }).strict()).max(10_000),
+  changes: z.array(receiptChange).max(10_000),
+}).strict();
+
+const publicationReceiptV3 = publicationReceipt.extend({
+  schemaVersion: z.literal(3), changes: z.array(receiptChange.extend({ state: lifecycleState }).strict()).max(10_000),
 }).strict();
 
 function boundedJson(text: unknown, bytes: number): unknown {
@@ -299,7 +321,7 @@ function storedField(code: PlatformCode, path: string): Decoded<never> {
   return { ok: false, issue: { ...publicationIssue(code, "structural", path), stored: true } };
 }
 
-export function decodePublicationPacket(input: { manifest: unknown }): Decoded<CatalogPublicationManifestV2>;
+export function decodePublicationPacket(input: { manifest: unknown }): Decoded<CatalogPublicationManifestV2 | CatalogPublicationManifestV3>;
 export function decodePublicationPacket(input: PacketRows): Decoded<void>;
 export function decodePublicationPacket(input: { manifest: unknown } | PacketRows): Decoded<unknown> {
   if ("manifest" in input) {
@@ -326,6 +348,7 @@ export function decodePublicationPacket(input: { manifest: unknown } | PacketRow
     if (!source || !parsed.success || revisions.has(parsed.data)) return storedField(revisionCode, `catalog_sku_revisions.${index}.id`);
     revisions.set(parsed.data, source);
   }
+  const governedRevisions = new Set<string>();
   for (const row of input.publications) {
     const decoded = decodePublicationPacket({ manifest: packetRow(row)?.canonical_state });
     if (!decoded.ok) return decoded;
@@ -334,6 +357,17 @@ export function decodePublicationPacket(input: { manifest: unknown } | PacketRow
       if (!revision || revision.product_id !== decoded.value.product.id || revision.sku_id !== ref.skuId
         || revision.revision !== ref.revision || revision.digest !== ref.digest)
         return storedField(revisionCode, `skus.${index}.revisionId`);
+      if (decoded.value.schemaVersion === 3 && !governedRevisions.has(ref.revisionId)) {
+        try {
+          const facts = decodeStoredPublicationSku(revision.full_facts);
+          if (facts.schemaVersion !== 3 || facts.id !== ref.skuId || facts.productId !== decoded.value.product.id
+            || facts.code !== revision.sku_code || publicationDigest(facts, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH) !== ref.digest)
+            return storedField(revisionCode, `skus.${index}.facts`);
+        } catch {
+          return storedField(revisionCode, `skus.${index}.facts`);
+        }
+        governedRevisions.add(ref.revisionId);
+      }
     }
   }
   return { ok: true, value: undefined };
@@ -356,9 +390,9 @@ export function decodeStoredPublicationSku(text: unknown): CatalogPublishedSku {
     "catalog_publication_sku_revision_invalid", input => decodePublishedSku(input, "sku"));
 }
 
-export function decodeStoredPublicationReceipt(text: unknown): CatalogPublicationReceiptV2 {
+export function decodeStoredPublicationReceipt(text: unknown): CatalogPublicationReceiptV2 | CatalogPublicationReceiptV3 {
   return decodeStored(text, CATALOG_PUBLICATION_LIMITS.receiptBytes, 1,
-    "catalog_publication_receipt_invalid", input => publicationReceipt.parse(input), "catalog_publication_receipt_input_invalid");
+    "catalog_publication_receipt_invalid", input => z.union([publicationReceipt, publicationReceiptV3]).parse(input), "catalog_publication_receipt_input_invalid");
 }
 
 export function assertPublicationRegistration(text: string, path: string): void {
@@ -371,9 +405,17 @@ export function assertPublicationRegistration(text: string, path: string): void 
   }
 }
 
+export function legacyPublicationReceipt(receipt: CatalogPublicationReceiptV2 | CatalogPublicationReceiptV3): CatalogPublicationReceipt {
+  const { commandKey, fingerprint, actorId, previousHead, head } = receipt;
+  const changes = receipt.schemaVersion === 2 ? receipt.changes : receipt.changes.map(change => ({
+    ...change, state: change.state === "archived" ? "withdrawn" as const : change.state,
+  }));
+  return { commandKey, fingerprint, actorId, previousHead, head, changes };
+}
+
 /** @internal Shared by native PostgreSQL adapters and catalogue preparation. */
 export const nativeCatalogPublication = {
-  assertPublishedSkuIdentity,
+  assertPublishedSkuIdentity, legacyPublicationReceipt,
   decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
   publicationJson, publicationDigest, SKU_PAGE_DEPTH, limits: CATALOG_PUBLICATION_LIMITS,
   catalogPublicationAdmissionRefusal, publicationReadFailure, publicationRefuse, publicationRemedy,

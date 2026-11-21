@@ -1,7 +1,7 @@
 import { z } from "./validation.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import type { CatalogDraftPayloadV3, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
-import { catalogPublicationDraftPayloadSchema } from "./draftV3Schemas.js";
+import { catalogDraftPayloadV3Schema, catalogPublicationDraftPayloadSchema } from "./draftV3Schemas.js";
 import { catalogDraftSummarySchema } from "./draftSchemas.js";
 import { catalogDraftProductV2Schema, catalogDraftSkuV2Schema } from "./draftV2Schemas.js";
 
@@ -29,8 +29,11 @@ export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "p
   skus: IntentSku[];
   publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & { operations: PublicationOperation[] };
 };
+/** @experimental */
+export type CatalogDraftPayloadV4 = PublicationIntent & { schemaVersion: 4 };
+/** @experimental */
 export type PublicationDraftRecord = Omit<CatalogDraftPublicationStoredRecord, "payload"> & {
-  payload: CatalogDraftPublicationStoredRecord["payload"] | (PublicationIntent & { schemaVersion: 4 });
+  payload: CatalogDraftPublicationStoredRecord["payload"] | CatalogDraftPayloadV4;
 };
 
 export function lifecycleWithdrawalOnly(payload: PublicationIntent): boolean {
@@ -56,7 +59,7 @@ export function isLifecycleOperation(operation: PublicationOperation): operation
 }
 
 /** Preserve the original wire for identity. Lower both inputs once into a single ordered intent. */
-export function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean, fix?: string) => never): PublicationIntent | null {
+export function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean, fix?: string) => never, stored = false): PublicationIntent | null {
   function invalid(issue: z.core.$ZodIssue, indexes?: readonly number[]) {
     const path = [...issue.path];
     if (indexes && path[0] === "publication" && path[1] === "operations" && typeof path[2] === "number")
@@ -74,7 +77,7 @@ export function publicationIntent(input: unknown, onInvalid?: (path: string, uns
   const { publication, skus } = wire.data;
   const lifecycle = publication.operations.map(operation => lifecycleOperation.safeParse(operation));
   const commonIndexes = lifecycle.flatMap((op, index) => op.success ? [] : [index]);
-  const common = catalogPublicationDraftPayloadSchema.safeParse({ ...wire.data, schemaVersion: 3,
+  const common = (stored ? catalogDraftPayloadV3Schema : catalogPublicationDraftPayloadSchema).safeParse({ ...wire.data, schemaVersion: 3,
     skus: skus.map(({ demandPolicyRef: _policy, ...sku }) => sku),
     publication: { ...publication, operations: publication.operations.filter((_operation, index) => !lifecycle[index]!.success) },
   });
@@ -113,8 +116,13 @@ export function readPublicationDraftEnvelope(input: unknown): PublicationDraftRe
 export function readPublicationDraftRecord(input: unknown): PublicationDraftRecord | null {
   const row = readPublicationDraftEnvelope(input);
   if (!row) return null;
-  const payload = publicationIntent(row.payload);
+  const payload = row.payload?.schemaVersion === 4 ? readStoredLifecycleDraftPayload(row.payload) : publicationIntent(row.payload);
   return payload?.product.id === row.productId ? row : null;
+}
+
+/** Validate the storage dialect without returning the lowered interpreter view. */
+export function readStoredLifecycleDraftPayload(input: unknown): CatalogDraftPayloadV4 | null {
+  return publicationIntent(input, undefined, true)?.schemaVersion === 4 ? input as CatalogDraftPayloadV4 : null;
 }
 
 export function lifecycleTransition(from: PublicationLifecycleState, to: PublicationLifecycleState, restore: boolean): boolean {

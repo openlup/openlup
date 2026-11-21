@@ -10,7 +10,7 @@ const { catalogPublicationAdmissionRefusal, assertPublishedSkuIdentity, decodePu
 
 export async function assertConnectedCatalogPublications(db: PgQueryExecutor) {
   await assertPublishedSkuIdentity(db);
-  // Evaluate both decoders in PostgreSQL without returning the projections.
+  // Verify the live projections against the sealed dialect, including the governed option identity.
   await db.query(`SELECT count(public.catalog_publication_product_facts(id,publication_facts,true))
     FROM public.catalog_products WHERE publication_facts IS NOT NULL`);
   await db.query(`SELECT count(public.catalog_publication_sku_projection(id,product_id,sku,publication_facts,true))

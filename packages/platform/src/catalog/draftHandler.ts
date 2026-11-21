@@ -10,6 +10,9 @@ import { catalogDraftStoredApplyResultSchema, catalogDraftStoredCommandSchema, c
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredCommand, CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import { catalogDraftPublicationStoredApplyResultSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftV3ValidationPayload } from "./draftV3Schemas.js";
+import { lifecycleStoredCommandSchema, lifecycleStoredPageSchema, lifecycleStoredRecordSchema, lifecycleStoredResultSchema,
+  type CatalogDraftCommandV4, type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
+import type { PublicationDraftRecord } from "./publicationIntent.js";
 import type { z } from "./validation.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { validateCatalogDraftV2 } from "./draftV2Validation.js";
@@ -20,8 +23,8 @@ import {
 import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./productTypeSchemas.js";
 import { validateCatalogDraft, type CatalogDraftReadiness } from "./draftValidation.js";
 
-export interface CatalogDraftHandlerDeps<Context, Record extends CatalogDraftPublicationStoredRecord = CatalogDraftRecord> {
-  store: CatalogDraftStorePort<Record>;
+export interface CatalogDraftHandlerDeps<Context, Record extends PublicationDraftRecord = CatalogDraftRecord, Page extends CatalogDraftPage = CatalogDraftPage> {
+  store: CatalogDraftStorePort<Record, Page>;
   registry: CatalogProductTypeRegistry;
   /** @experimental */
   attributeReferences?: CatalogAttributeReferencePort;
@@ -41,11 +44,11 @@ function failure(error: unknown): CatalogDraftRefusal {
 }
 
 /** Dark use case: mounting requires a verified operator authorizer at composition. */
-function draftHandler<Context, Record extends CatalogDraftPublicationStoredRecord>(deps: CatalogDraftHandlerDeps<Context, Record>, schemas: {
-  command: z.ZodType<CatalogDraftPublicationStoredCommand>; record: z.ZodType<Record>;
+function draftHandler<Context, Record extends PublicationDraftRecord, Page extends CatalogDraftPage>(deps: CatalogDraftHandlerDeps<Context, Record, Page>, schemas: {
+  command: z.ZodType<CatalogDraftPublicationStoredCommand | CatalogDraftCommandV4>; page: z.ZodType<Page>; record: z.ZodType<Record>;
   result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
 }) {
-  const { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema } = schemas;
+  const { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema, page: parsePage } = schemas;
   async function actor(context: Context): Promise<CatalogDraftOperator | CatalogDraftRefusal> {
     try {
       const operator = await deps.authorizeOperator(context);
@@ -80,7 +83,8 @@ function draftHandler<Context, Record extends CatalogDraftPublicationStoredRecor
         let readiness: CatalogDraftReadiness | undefined;
         if (command.payload) {
           const validation = command.payload.schemaVersion !== 1
-            ? await validateCatalogDraftV2(command.payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(command.payload) : command.payload, deps.registry, deps.attributeReferences)
+            ? await validateCatalogDraftV2(command.payload.schemaVersion === 4 ? { product: command.payload.product, schemaVersion: 2, skus: command.payload.skus.map(({ demandPolicyRef: _policy, ...sku }) => sku) }
+              : command.payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(command.payload) : command.payload, deps.registry, deps.attributeReferences)
             : validateCatalogDraft(command.payload, deps.registry);
           if (!validation.valid) return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: validation.issues };
           readiness = validation.readiness;
@@ -114,13 +118,13 @@ function draftHandler<Context, Record extends CatalogDraftPublicationStoredRecor
         return { outcome: "found", record };
       } catch (error) { return failure(error); }
     },
-    async list(input: unknown, context: Context): Promise<{ outcome: "listed"; page: CatalogDraftPage } | CatalogDraftRefusal> {
+    async list(input: unknown, context: Context): Promise<{ outcome: "listed"; page: Page } | CatalogDraftRefusal> {
       const operator = await actor(context);
       if ("outcome" in operator) return operator;
       const parsed = catalogDraftListQuerySchema.safeParse(input);
       if (!parsed.success) return invalid();
       try {
-        const page = catalogDraftPageSchema.parse(await deps.store.list(parsed.data, operator.actorId));
+        const page = parsePage.parse(await deps.store.list(parsed.data, operator.actorId));
         if (page.items.length > parsed.data.limit || (parsed.data.afterDraftId
           && page.items.some(({ draftId }) => draftId <= parsed.data.afterDraftId!))) return unavailable();
         return { outcome: "listed", page };
@@ -131,18 +135,26 @@ function draftHandler<Context, Record extends CatalogDraftPublicationStoredRecor
 
 /** Existing v1 composition and wire admission stay unchanged. */
 export function createCatalogDraftHandler<Context>(deps: CatalogDraftHandlerDeps<Context>) {
-  return draftHandler(deps, { command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema });
+  return draftHandler(deps, { page: catalogDraftPageSchema, command: catalogDraftCommandSchema, record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema });
 }
 /** Explicit opt-in v1/v2 reader and versioned command admission; no binding is installed.
  * @experimental
  */
 export function createCatalogDraftHandlerV2<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftStoredRecord>) {
-  return draftHandler(deps, { command: catalogDraftStoredCommandSchema, record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema });
+  return draftHandler(deps, { page: catalogDraftPageSchema, command: catalogDraftStoredCommandSchema, record: catalogDraftStoredRecordSchema, result: catalogDraftStoredApplyResultSchema });
 }
 
 /** Opt-in publication inputs, with the same draft authorization and receipt-first replay.
  * @experimental
  */
 export function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftHandlerDeps<Context, CatalogDraftPublicationStoredRecord>) {
-  return draftHandler(deps, { command: catalogDraftPublicationStoredCommandSchema, record: catalogDraftPublicationStoredRecordSchema, result: catalogDraftPublicationStoredApplyResultSchema });
+  return draftHandler(deps, { page: catalogDraftPageSchema, command: catalogDraftPublicationStoredCommandSchema, record: catalogDraftPublicationStoredRecordSchema, result: catalogDraftPublicationStoredApplyResultSchema });
+}
+
+/** Opt in to governed drafts.
+ * @experimental
+ */
+export function createCatalogDraftHandlerV4<Context>(deps: CatalogDraftHandlerDeps<Context, PublicationDraftRecord, CatalogLifecycleDraftPage>) {
+  return draftHandler(deps, { command: lifecycleStoredCommandSchema, page: lifecycleStoredPageSchema,
+    record: lifecycleStoredRecordSchema, result: lifecycleStoredResultSchema });
 }

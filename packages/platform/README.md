@@ -1452,7 +1452,7 @@ extraction nor a claim grants publication authority or proves external readiness
 the composed registry and an optional price-owner validator. `prepareCandidate`
 returns issues and an impact summary without writes. Its self-contained reference
 is `v1:<draftId>@<revision>/<publicationId>@<headRevision>`, or `/unpublished`.
-The same reference resolves v1, v2 and v3 immutable payloads. The released
+The same reference resolves v1 through v4 immutable payloads. The released
 reader order, refusal codes, issues and digest stay the same with ordinary
 wiring. Its preparation report is unknown because it has no publication
 observations. `validate(candidateRef)` reconstructs the preview and
@@ -1513,6 +1513,17 @@ or expected head changed, prepare the current draft again.
 To repair live drift, save a `compensation` revision against the current head
 and approve it under a fresh key. Publishing it appends another revision. An
 issued candidate's approval remains effective for its history.
+
+For a new governed lineage, compose `createCatalogDraftHandlerV4` with
+`createPostgresCatalogDraftStoreV4` and save a payload with
+`schemaVersion: 4`. Governed v3 publication facts carry the authoritative
+lifecycle. Withdraw a product with its exact child roster. This clears both
+purchase eligibility flags while retaining the SKU, its physical facts and
+offer memberships. Restore the product independently, then explicitly restore
+and enable each SKU offered for fresh sales. Read the exact governed issue
+with `readbackV3` and retain the returned schema version on original receipts.
+An older predecessor requires explicit adoption. Archive remains unavailable
+until the commerce barrier supports it.
 
 Descriptor fields are closed, including nested metadata. Unit dimensions and
 axis attribute references resolve within the selected type. Referenced keys,

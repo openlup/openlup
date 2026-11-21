@@ -6,7 +6,7 @@ import { afterAll, beforeAll, expect, expectTypeOf, it } from "vitest";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
 import { publicationWireVectors } from "@openlup/platform/catalog/testing";
 import { nativeCatalogPublication, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
-import { actorId, hash, json, installPublicationActors, transaction, fixture, graph, insertGraph, decisionRow,
+import { actorId, hash, json, installPublicationActors, installAfter, transaction, fixture, graph, insertGraph, decisionRow,
   decisionReceipt, documentRow, skuRow, sealedState, stageProductRows, invalidReceiptResults,
   publicationDocuments, publicationDocumentAtDraftDepth, publicationManifestText, publishMaximumRoster,
   type Graph } from "./catalogPublicationFixture.js";
@@ -1315,3 +1315,29 @@ it("admits the maximum inherited observation roster and refuses one more SKU", a
   });
   expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: replacement.head });
 }, 600_000);
+
+it("retains mixed issue dialects and rejects an incomplete governed final state at COMMIT", async () => {
+  await pool.query(readFileSync("db/platform/migrations/20261124120000_catalog_publication_reads.sql", "utf8"));
+  await pool.query(readFileSync("db/platform/migrations/20261124140000_catalog_publication_readiness.sql", "utf8"));
+  await installAfter(pool, "db/platform/migrations/20261124170000_catalog_publication_commit_perf.sql");
+  const result = await transaction(pool, async db => {
+    const old = await graph(db, fixture());
+    await insertGraph(db, old);
+    const governed = await graph(db, fixture(), null, true, { lifecycle: "draft" });
+    const receipt = await insertGraph(db, governed);
+    return { old, governed, receipt };
+  });
+  expect(JSON.parse(await publicationManifestText(pool, result.old.head)).schemaVersion).toBe(2);
+  const { canonical_state: manifest, full_facts: facts, result: savedReceipt } = (await pool.query(`SELECT p.canonical_state,r.full_facts,c.result
+    FROM public.catalog_publications p JOIN public.catalog_sku_revisions r ON r.publication_id=p.id
+    JOIN public.catalog_operator_receipts c ON c.publication_id=p.id WHERE p.id=$1`, [result.governed.issueId])).rows[0]!;
+  expect(manifest).toBe(publicationJson(JSON.parse(manifest)));
+  expect(facts).toBe(publicationJson(result.governed.facts));
+  expect(savedReceipt).toBe(publicationJson(result.receipt));
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query("UPDATE public.catalog_products SET status='active' WHERE id=$1", [result.governed.productId]);
+    await expect(db.query("COMMIT")).rejects.toMatchObject({ constraint: "catalog_lifecycle_raw_status_fenced" });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+});

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { readPostgresCatalogMembershipPage, type CatalogMembershipPageInput } from "@openlup/platform/catalog";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { documentRow, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json, membershipSignature,
-  publicationDocuments, publicFunctionGrants, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
+  publicationDocuments, publicFunctionGrants, installAfter, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
 
 const forward = "db/platform/migrations/20261124120000_catalog_publication_reads.sql";
 const membershipSql = "SELECT public.catalog_offer_memberships_page($1,$2::jsonb,$3,$4) AS result";
@@ -504,4 +504,24 @@ it("preserves a PostgreSQL serialization failure at commit", async () => {
     first.release();
     second.release();
   }
+});
+
+it("excludes withdrawn governed members before paginating fresh-sale rights", async () => {
+  await installAfter(pool, "db/platform/migrations/20261124140000_catalog_publication_readiness.sql");
+  const offerVersion = "test:governed-member";
+  await transaction(pool, async db => {
+    const firstProduct = { ...fixture(), skuId: fixedId(700) };
+    const first = await graph(db, firstProduct, null, true, { lifecycle: "active" });
+    first.facts.memberships = [{ offerVersion, admitted: true }];
+    await insertGraph(db, first);
+    const withdrawn = await graph(db, firstProduct, first.head, true, { lifecycle: "withdrawn" });
+    withdrawn.facts.memberships = first.facts.memberships;
+    await insertGraph(db, withdrawn);
+    const live = await graph(db, { ...fixture(), skuId: fixedId(701) }, null, true, { lifecycle: "active" });
+    live.facts.memberships = first.facts.memberships;
+    await insertGraph(db, live);
+  });
+  expect(await page(byOffer(offerVersion, "one_time"))).toMatchObject({
+    items: [{ skuId: fixedId(701) }], nextCursor: null,
+  });
 });

@@ -677,8 +677,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
     // Publication guards validate restored facts and the complete ledger. The
     // live-write binding triggers are scoped to the dedicated publication login.
-    catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write"],
-    catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write"],
+    catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write", "catalog_products_lifecycle_projection_final"],
+    catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write", "catalog_skus_lifecycle_write_fence"],
     catalog_sku_identifiers: ["catalog_publication_live_write"],
     catalog_product_document_revisions: ["catalog_publication_live_write"],
     catalog_publications: ["catalog_publications_issued", "catalog_publication_record_write_binding", "catalog_publications_open_draft"],

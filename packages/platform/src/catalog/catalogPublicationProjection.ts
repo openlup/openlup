@@ -30,7 +30,7 @@ const same = (a: unknown, b: unknown) => publicationJson(a) === publicationJson(
 export async function readNativeDraftEvidence(db: PgQueryExecutor, reference: Reference) {
   const current = readPublicationDraftRecord((await db.query("SELECT public.catalog_draft_record($1,$2) AS record",
     [reference.draftId, reference.draftRevision])).rows[0]?.record);
-  const publication = current?.payload.schemaVersion === 3 ? current.payload.publication : undefined;
+  const publication = current && "publication" in current.payload ? current.payload.publication : undefined;
   const claimed = (publication?.evidence.drafts ?? []).map(({ draftId, revision }) => ({ draftId, revision }));
   const origins = (publication?.operations ?? []).flatMap(operation => operation.op === "register_document_revision"
     && operation.provenance.source === "retained_draft"
@@ -60,7 +60,7 @@ export async function readNativeDraftEvidence(db: PgQueryExecutor, reference: Re
       JOIN public.catalog_draft_command_receipts r
         ON (r.draft_id,r.command_key,r.revision,r.fingerprint)=(d.draft_id,d.command_key,d.revision,d.fingerprint)
       JOIN public.catalog_draft_heads h ON h.draft_id=d.draft_id
-      WHERE h.product_id=$4 AND d.status='open' AND d.payload->'schemaVersion'='3'::jsonb
+      WHERE h.product_id=$4 AND d.status='open' AND d.payload->'schemaVersion' IN ('3'::jsonb,'4'::jsonb)
       ORDER BY s.issued DESC,s.draft_id,s.revision DESC`,
       [reference.draftId, reference.draftRevision, JSON.stringify([...claimed, ...origins]), current.productId]);
       return rows.flatMap(row => {
@@ -125,6 +125,7 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
     const row = retained.get(ref.revisionId);
     const sku = decodeStoredPublicationSku(row?.full_facts);
     requireProjection(row && ref.skuId === row.sku_id && ref.revision === row.revision && ref.digest === row.digest
+      && (sku.schemaVersion ?? 2) === manifest?.schemaVersion
       && ref.skuId === sku.id && sku.productId === productId && publicationDigest(sku, undefined, SKU_PAGE_DEPTH) === ref.digest,
     "catalog_publication_sku_revision_invalid", "validation_issue");
     return sku;
@@ -146,6 +147,13 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
     ) origin ON true WHERE d.product_id=$1 ORDER BY d.revision_no`, [productId]);
   const evidence: Omit<CatalogPublicationEvidence, "drafts"> = {
     head, product: manifest?.product ?? null, skus,
+    ...(manifest?.schemaVersion === 3 ? { lifecycle: {
+      product: manifest.product.lifecycleState,
+      skus: Object.fromEntries(skus.map(sku => [sku.code, {
+        state: sku.lifecycleState!,
+        ...(sku.demandPolicyRef === undefined ? {} : { demandPolicyRef: sku.demandPolicyRef }),
+      }])),
+    } } : {}),
     documents: documents.map(row => ({ reference: row.reference as CatalogPublicationDocument["reference"],
       canonicalText: typeof row.canonical === "string" ? row.canonical : "", provenance: row.provenance as CatalogPublicationDocument["provenance"] })),
     documentRevisionHighWater: (documents.at(-1)?.reference as CatalogPublicationDocument["reference"] | undefined)?.revisionNo ?? 0,
@@ -365,8 +373,9 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
   const versions = new Map(previous.manifest?.skus.map(ref => [ref.skuId, ref.revision]));
   const transitions = skus.flatMap(sku => {
     const before = prior.get(sku.id);
-    if (!before || before.status === sku.status || sku.status === "draft") return [];
-    return [{ variantId: sku.id, expectedRevision: versions.get(sku.id), state: sku.status === "archived" ? "withdrawn" : sku.status }];
+    const status = sku.lifecycleState ?? sku.status;
+    if (!before || (before.lifecycleState ?? before.status) === status || status === "draft") return [];
+    return [{ variantId: sku.id, expectedRevision: versions.get(sku.id), state: status === "archived" ? "withdrawn" : status }];
   });
   const expected = new Map(transitions.map(item => [item.variantId, item]));
   requireProjection(command.changes.every(item => expected.has(item.variantId) && same(item, expected.get(item.variantId))),
@@ -431,6 +440,11 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     } else if (operation.op === "create_sku") {
       const sku = plan.creations.get(index);
       requireProjection(sku, "catalog_publication_sku_revision_invalid");
+      if (product.schemaVersion === 3) {
+        const final = skus.find(row => row.id === sku.id)!;
+        Object.assign(sku, { schemaVersion: 3, lifecycleState: "draft", optionDigest: final.optionDigest,
+          ...(final.demandPolicyRef === undefined ? {} : { demandPolicyRef: final.demandPolicyRef }) });
+      }
       await storeSku(db, sku, definition, product.axes, true);
     }
   }

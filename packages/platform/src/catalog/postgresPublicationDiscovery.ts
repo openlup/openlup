@@ -190,6 +190,8 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
       if (!primaryPresent) reasons.push("primary_sku_missing");
       if (!sku.logisticsRef) reasons.push("logistics_reference_missing");
       if (sku.status === "archived") reasons.push("sku_archived");
+      if (product.schemaVersion === 3 && (product.lifecycleState !== "active" || sku.lifecycleState !== "active"
+        || (!sku.sellableStandalone && !sku.sellableInSubscription))) reasons.push("catalog_lifecycle_fresh_sale_refused");
       if (!sku.identifiers.some(i => i.scheme === "gs1:gtin" && i.isPrimary && i.packagingLevel === "unit")) reasons.push("unit_gtin_missing");
       try { assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, definition); }
       catch (error) { if (!(error instanceof CatalogPublicationError)) throw error; reasons.push(error.code); }

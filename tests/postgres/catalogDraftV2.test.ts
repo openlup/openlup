@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { canonicalCatalogDraftJson, createCatalogDraftHandlerV2, createCatalogDraftHandlerV3, createCatalogDraftHandler, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV2, createPostgresCatalogDraftStoreV3, createPostgresCatalogDraftStore,
-  type CatalogDraftPayload, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3, type CatalogDraftStoredCommand, type CatalogDraftStoredApplyResult } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, createCatalogDraftHandlerV2, createCatalogDraftHandlerV3, createCatalogDraftHandlerV4, createCatalogDraftHandler, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV2, createPostgresCatalogDraftStoreV3, createPostgresCatalogDraftStoreV4, createPostgresCatalogDraftStore,
+  type CatalogDraftPayload, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3, type CatalogDraftPayloadV4, type CatalogDraftStoredCommand, type CatalogDraftStoredApplyResult } from "@openlup/platform/catalog";
 import { journeyCensus } from "../helpers/storeJourney.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -239,4 +239,46 @@ it("catalog_draft_v3_refuses_unknown_fields_and_rolls_back_without_live_effects"
   const store = createPostgresCatalogDraftStoreV2(owner), canonicalCommand = canonicalCatalogDraftJson(command), fingerprint = createHash("sha256").update(canonicalCommand).digest("hex");
   expect(await store.apply({ canonicalCommand, fingerprint, actorId })).toMatchObject({ outcome: "validation_issue", reason: "command_invalid" });
   expect(await journeyCensus(owner)).toEqual(before);
+});
+
+it("preserves raw v4 revisions across save, abandon, resume, list and receipt replay", async () => {
+  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { forward: { file: string }[] };
+  for (const { file } of manifest.forward.slice(manifest.forward.findIndex(unit => unit.file === v3Forward) + 1))
+    await owner.query(readFileSync(file, "utf8"));
+  const draftId = randomUUID(), legacy = v3(), skuCode = legacy.skus[0]!.code!;
+  const payload: CatalogDraftPayloadV4 = { ...legacy, schemaVersion: 4,
+    skus: legacy.skus.map(sku => ({ ...sku, demandPolicyRef: "example:policy" })),
+    publication: { ...legacy.publication, operations: [
+      { op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false },
+      { op: "restore_sku", skuCode, expectedState: "withdrawn" },
+    ] } };
+  const command = { schemaVersion: 4, action: "create", draftId, commandKey: "v4:first", expectedRevision: 0, payload };
+  const store = createPostgresCatalogDraftStoreV4(owner);
+  const handler = createCatalogDraftHandlerV4({ store, registry, authorizeOperator: async () => ({ actorId }) });
+  const base = { ...command, draftId: randomUUID() };
+  for (const operations of [
+    [{ op: "set_sku_status", skuCode, status: "active" }],
+    payload.publication.operations.slice(1),
+    [{ op: "set_product_lifecycle", productSlug: "synthetic", expectedState: "active", state: "withdrawn",
+      children: [{ skuCode, expectedState: "active" }, { skuCode, expectedState: "draft" }] }],
+  ]) {
+    const invalid = { ...base, payload: { ...payload, publication: { ...payload.publication, operations } } };
+    expect(await handler.execute(invalid, null)).toMatchObject({ outcome: "validation_issue" });
+    expect(await apply(owner, invalid)).toMatchObject({ outcome: "validation_issue" });
+  }
+  expect(await apply(owner, { ...base, schemaVersion: 3 })).toMatchObject({ outcome: "validation_issue" });
+  const result = await handler.execute(command, null);
+  if (result.outcome !== "committed") throw Error(JSON.stringify(result));
+  const reconnect = new Pool({ connectionString }); pools.push(reconnect);
+  const reader = createPostgresCatalogDraftStoreV4(reconnect);
+  const abandon = { schemaVersion: 4, action: "abandon", draftId, commandKey: "v4:abandon", expectedRevision: 1 };
+  expect(await apply(reconnect, { ...abandon, schemaVersion: 3 })).toMatchObject({ outcome: "validation_issue" });
+  expect(await handler.execute(abandon, null)).toMatchObject({ outcome: "committed", record: { status: "abandoned", payload } });
+  expect(await handler.execute({ ...abandon, action: "resume", commandKey: "v4:resume", expectedRevision: 2 }, null))
+    .toMatchObject({ outcome: "committed", record: { status: "open", payload } });
+  expect((await reader.list({ limit: 100 }, actorId)).items.find(row => row.draftId === draftId)?.payload).toEqual(payload);
+  const original = await reader.get({ draftId, revision: 1 }, actorId);
+  expect(canonicalCatalogDraftJson(original?.payload)).toBe(canonicalCatalogDraftJson(payload));
+  expect(await handler.execute(command, null)).toEqual({ outcome: "replayed", record: result.record });
+  await expect(createPostgresCatalogDraftStoreV3(reconnect).get({ draftId }, actorId)).rejects.toThrow("invalid_store_response");
 });

@@ -538,3 +538,25 @@ it("accepts the pinned predecessor packet shape and refuses a packet with an unk
   expect((await target.owner.query("SELECT scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
     .toEqual([{ scheme: null }]);
 }, 105_000);
+
+it("transfers same-SKU governed revisions and preserves legacy NULL facts", async () => {
+  if (!(await source.owner.query("SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1", [actorId])).rowCount)
+    await installPublicationActors(source.owner);
+  const data = fixture();
+  const { first, second } = await transaction(source.owner, async db => {
+    const first = await graph(db, data, null, true, { lifecycle: "active" });
+    await insertGraph(db, first);
+    const second = await graph(db, data, first.head, true, { lifecycle: "withdrawn" });
+    await insertGraph(db, second);
+    return { first, second };
+  });
+  const captured = await captureStoreJourney(source.owner, "governed-lifecycle-source");
+  await expect(restore(target.owner, captured)).resolves.toMatchObject({ replayed: false });
+  const rows = await target.owner.query(`SELECT id,revision,sku_id,full_facts FROM public.catalog_sku_revisions
+    WHERE sku_id=$1 ORDER BY revision`, [data.skuId]);
+  expect(rows.rows).toEqual([first, second].map(entry => ({
+    id: entry.skuRevisionId, revision: entry.revision, sku_id: data.skuId, full_facts: json(entry.facts),
+  })));
+  expect((await target.owner.query("SELECT publication_facts FROM public.catalog_products WHERE id=$1", [products[0]])).rows)
+    .toEqual([{ publication_facts: null }]);
+});

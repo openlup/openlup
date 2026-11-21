@@ -147,7 +147,7 @@ export function createCatalogCandidateServiceWithPublication(deps: Omit<CatalogC
       const preparation: CatalogCandidatePreview["preparation"] = { structural: { outcome: outcome(result.completed.structural, blocked, structural, "staged"), issues: structural },
         activation: { outcome: outcome(result.completed.activation, blocked || activationBlocked, activation, result.activating ? "ready" : "pending"),
           issues: [...activation, ...result.pending] } };
-      if (publication.includeApprovalSeal && payload.schemaVersion === 3 && result.structuralPlan) {
+      if (publication.includeApprovalSeal && result.structuralPlan) {
         const { product, skus } = result.structuralPlan;
         preparation.postStateDigest = publicationApprovalState(product, skus).digest;
       }
