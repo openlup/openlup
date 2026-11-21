@@ -7,7 +7,7 @@ import { catalogDefinitionDigest, createCatalogProductTypeRegistry, createPostgr
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, json, stageProductRows, transaction } from "./catalogPublicationFixture.js";
+import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installPublicationActors, json, stageProductRows, transaction } from "./catalogPublicationFixture.js";
 
 const forward = "db/platform/migrations/20261124140000_catalog_publication_readiness.sql";
 const readinessSql = "SELECT public.catalog_publication_activation_readiness($1::text[],$2) AS result";
@@ -441,7 +441,7 @@ function draft(sequence: number) {
   const productId = randomUUID(), draftId = randomUUID(), skuId = randomUUID(), documentId = randomUUID();
   const slug = `writer-${sequence}`, code = `WRITER-${sequence}`, prefix = String(590123412340 + sequence);
   const barcode = prefix + String((10 - [...prefix].reduce((sum, digit, i) => sum + Number(digit) * (i % 2 === 0 ? 1 : 3), 0) % 10) % 10);
-  const document = { schemaVersion: 1, id: "example:document", productSlug: slug, revisionNo: 1, name: "Example article" };
+  const document = authoredPublicationDocument(slug);
   const canonicalText = canonicalCatalogDraftJson(document);
   const ref = { id: documentId, productId, revisionNo: 1, schemaId: "example:document.v1", sourceRef: "example:source", documentRef: document.id, digest: hash(canonicalText) };
   const facts = { skuCode: code, title: "Example article", minQuantity: 1, isAddon: false, facts: { derived: 12 } };

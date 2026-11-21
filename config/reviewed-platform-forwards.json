@@ -6248,6 +6248,20 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-canonical-ascii-order",
+        "path": "db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_publication_canonical(jsonb,integer)",
+            "beforeSha256": "f89d2e3ff5b78b1c03b9c4818a341f26c1370634f8915c6dd45c35644b3acd1a",
+            "searchPath": "pg_catalog, public, pg_temp"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -9006,6 +9020,17 @@
           "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text,jsonb)",
           "beforeSha256": null,
           "afterSha256": "fc92b8758ebc0341ef935f4108400aefe611806db3d7421319699cabd82826c8"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124160000_catalog_canonical_ascii_order.sql",
+      "sha256": "28e5d5f16011c42291e35a840cd64bd4a873a851d77a51c78b6406085e775e5b",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_canonical(jsonb,integer)",
+          "beforeSha256": "f89d2e3ff5b78b1c03b9c4818a341f26c1370634f8915c6dd45c35644b3acd1a",
+          "afterSha256": "b8fcf5ca1144119ac1d319da7dd09d5393ca64d7764de5037415f222cf5c6172"
         }
       ]
     }
