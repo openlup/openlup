@@ -183,6 +183,52 @@ function assertPublishablePackageAudit({
   assert(!packFiles.some((file) => file.startsWith("scripts/")), "packed core tarball must not include repo scripts");
 }
 
+function scanPackagedTextViolations(
+  path: string,
+  source: string,
+  { packageName = "@openlup/core", releaseNote }: { packageName?: string; releaseNote: boolean },
+): string[] {
+  const normalizedSource = normalizeSimpleLiteralCompositions(
+    source
+      .replaceAll(packageName, "PACKAGE_NAME")
+      .replaceAll(approvedPublicSecurityContact, "APPROVED_SECURITY_CONTACT"),
+  );
+  const auditableSource = releaseNote
+    ? normalizedSource.replace(packagedAdapterReference, "APPROVED_ADAPTER_REFERENCE")
+    : normalizedSource;
+  const semanticViolations = Object.entries(scanNeutralitySource(auditableSource, packagedNeutralityPolicy))
+    .filter(([, count]) => count > 0)
+    .map(([category]) => `${path}: downstream ${category}`);
+  return [
+    ...semanticViolations,
+    ...forbiddenPackagedContent
+      .filter(({ pattern, releaseNotePattern }) => pattern.test(auditableSource) || (releaseNote && releaseNotePattern?.test(auditableSource)))
+      .map(({ description }) => `${path}: ${description}`),
+  ];
+}
+
+/** Return packed-core neutrality violations for a release-note carrier (changelog fragment, CHANGELOG, or upgrade page). */
+export function findReleaseNotePackagedContentViolations(
+  relativePath: string,
+  contents: string,
+  packageName = "@openlup/core",
+): string[] {
+  return scanPackagedTextViolations(relativePath, contents, { packageName, releaseNote: true });
+}
+
+/** Refuse a release-note carrier whose text would fail the packed core tarball audit after release:bump. */
+export function assertReleaseNotePackagedContent(
+  relativePath: string,
+  contents: string,
+  packageName = "@openlup/core",
+): void {
+  const violations = findReleaseNotePackagedContentViolations(relativePath, contents, packageName);
+  assert(
+    violations.length === 0,
+    `release note contains downstream leakage that would fail packed core audit:\n${violations.join("\n")}`,
+  );
+}
+
 function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInput): void {
   const textFiles = packFiles.filter((path) => {
     const isKnownText = extensionlessTextPackFiles.has(path) || /\.(d\.ts(?:\.map)?|js|json|md|ts)$/.test(path);
@@ -197,17 +243,7 @@ function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInp
       ? normalizeApprovedDogfoodEvidence(source)
       : source;
     const releaseNote = path === "CHANGELOG.md" || /^docs\/guide\/upgrade\/v[0-9-]+\.md$/.test(path);
-    const normalizedSource = normalizeSimpleLiteralCompositions(approvedSource);
-    const auditableSource = releaseNote ? normalizedSource.replace(packagedAdapterReference, "APPROVED_ADAPTER_REFERENCE") : normalizedSource;
-    const semanticViolations = Object.entries(scanNeutralitySource(auditableSource, packagedNeutralityPolicy))
-      .filter(([, count]) => count > 0)
-      .map(([category]) => `${path}: downstream ${category}`);
-    return [
-      ...semanticViolations,
-      ...forbiddenPackagedContent
-      .filter(({ pattern, releaseNotePattern }) => pattern.test(auditableSource) || (releaseNote && releaseNotePattern?.test(auditableSource)))
-      .map(({ description }) => `${path}: ${description}`),
-    ];
+    return scanPackagedTextViolations(path, approvedSource, { packageName, releaseNote });
   });
 
   assert(violations.length === 0, `packed core tarball contains downstream leakage:\n${violations.join("\n")}`);

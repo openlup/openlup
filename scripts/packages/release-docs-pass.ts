@@ -8,8 +8,11 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { documentationGit, documentationLinkTargets, parseDocumentationRouting, resolveDocumentationOwner, type DocumentationOwner } from "../documentation-routing.ts";
-import type { ChangelogFragment } from "./changelog-fragments.ts";
+// eslint-disable-next-line no-restricted-imports -- bare Node 24 self-check runs before workspace install and reuses core's owning release-note audit
+import { assertReleaseNotePackagedContent, findReleaseNotePackagedContentViolations } from "../../packages/core/scripts/core-package-consumer-audit.ts";
+import { readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, parsePackagesConfig } from "./package-manifest-policy.ts";
+export { assertReleaseNotePackagedContent, findReleaseNotePackagedContentViolations };
 
 const GUIDE = "packages/core/docs/guide";
 const API_REPORT = /^packages\/[^/]+\/api\/[^/]+\.api\.md$/u;
@@ -317,10 +320,14 @@ function apiSections(root: string, since: string): string[] {
   return sections;
 }
 
-/** Assemble from the caller's exact consumed fragments, without reading or deleting fragment files. */
-export function assembleUpgradePage({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }): { text: string; violations: string[] } {
+/** Upper bound (128 KiB) on a simulated upgrade page: headroom over real releases, catches runaway API diffs early. */
+export const UPGRADE_PAGE_MAX_BYTES = 128 * 1024;
+export type SimulatedUpgradePageAudit = { version: string; since: string; path: string; bytes: number; maxBytes: number; text: string };
+
+/** Render the upgrade page Markdown in memory without spawning the TypeScript guide planner. */
+export function renderUpgradePage({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }): string {
   if (!RELEASE_VERSION.test(version) && !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/u.test(version)) throw new Error(`${version} is not a MAJOR.MINOR.PATCH release version or prerelease`);
-  const guideRoot = join(resolve(root), GUIDE), file = join(resolve(root), upgradePagePath(version));
+  const guideRoot = join(resolve(root), GUIDE);
   const procedure = existsSync(join(guideRoot, "upgrade/README.md")) ? "; see the [upgrade procedure](README.md)" : "";
   const sections = [`# Upgrading to ${version}`, `This page lists what changed since the previous release${procedure}.`];
   const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
@@ -331,9 +338,58 @@ export function assembleUpgradePage({ root, version, since, fragments }: { root:
   sections.push("## API changes");
   if (since) sections.push(...apiSections(root, since));
   else sections.push("The previous release could not be determined: no core release tag is an ancestor of HEAD.");
-  const text = `${sections.join("\n\n")}\n`;
+  return `${sections.join("\n\n")}\n`;
+}
+
+/** Assemble from the caller's exact consumed fragments, without reading or deleting fragment files. */
+export function assembleUpgradePage({ root, version, since, fragments }: { root: string; version: string; since: string | undefined; fragments: readonly ChangelogFragment[] }): { text: string; violations: string[] } {
+  const file = join(resolve(root), upgradePagePath(version));
+  const text = renderUpgradePage({ root, version, since, fragments });
   const planned = planReleaseGuide(root, version, { [file]: text });
   return { text, violations: [...planned.violations, ...planned.pageViolations[file]!] };
+}
+
+function nextCandidateVersion(root: string, since: string): string {
+  const manifestPath = join(root, "packages/core/package.json");
+  let manifestVersion: string | undefined;
+  if (existsSync(manifestPath)) {
+    try {
+      const value = (JSON.parse(readFileSync(manifestPath, "utf8")) as { version?: unknown }).version;
+      if (typeof value === "string") manifestVersion = value;
+    } catch { /* fall through to tag version */ }
+  }
+  const baseVersion = manifestVersion ?? /^openlup-core-v(\d+\.\d+\.\d+)$/u.exec(since)?.[1];
+  const parsed = baseVersion ? /^(\d+)\.(\d+)\.(\d+)$/u.exec(baseVersion) : null;
+  return parsed ? `${parsed[1]}.${Number(parsed[2]) + 1}.0` : "0.1.0";
+}
+
+/**
+ * Dry-run upgrade page assembly in memory (no writes, bare Node 24 compatible):
+ * enforces the size cap and packed core release-note neutrality audit.
+ * Returns null when no ancestor core release tag exists to diff against.
+ */
+export function assertSimulatedUpgradePage(
+  root: string,
+  options: { maxBytes?: number; since?: string; version?: string; fragments?: readonly ChangelogFragment[] } = {},
+): SimulatedUpgradePageAudit | null {
+  const since = options.since ?? previousCoreTag(root);
+  if (!since) return null;
+  const maxBytes = options.maxBytes ?? UPGRADE_PAGE_MAX_BYTES;
+  const version = options.version ?? nextCandidateVersion(root, since);
+  const config = parsePackagesConfig(readFileSync(join(root, PACKAGES_CONFIG_PATH), "utf8"));
+  const fragments = options.fragments
+    ?? config.packages.filter(({ publish }) => publish).flatMap(({ directory }) => readChangelogFragments(root, directory));
+  const path = upgradePagePath(version);
+  const text = renderUpgradePage({ root, version, since, fragments });
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes > maxBytes) {
+    throw new Error(
+      `simulated upgrade page ${path} is ${bytes} bytes, exceeding the ${maxBytes}-byte cap (since ${since}); `
+      + "trim verbose fragments or fix accidental API snapshot churn before release:bump",
+    );
+  }
+  assertReleaseNotePackagedContent(path, text);
+  return { version, since, path, bytes, maxBytes, text };
 }
 
 export function formatReleaseDocumentation(listing: ReleaseDocumentationListing): string {

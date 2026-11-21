@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { assembleUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, summarizeApiDiff, upgradePagePath } from "./release-docs-pass.ts";
+import { UPGRADE_PAGE_MAX_BYTES, assembleUpgradePage, assertReleaseNotePackagedContent, assertSimulatedUpgradePage, formatReleaseDocumentation, listReleaseDocumentation, previousCoreTag, renderUpgradePage, summarizeApiDiff, upgradePagePath } from "./release-docs-pass.ts";
 import { isGuidePage, validateGuidePage } from "../oss-publication-policy.ts";
 
 const report = (source: string) => `# API report\n\n\`\`\`ts\n${source}\`\`\`\n`;
@@ -383,5 +383,69 @@ describe("upgrade page assembly", () => {
     }
     for (const mode of ["100755", "120000"]) expect(() => validateGuidePage(upgradePagePath("0.5.0"), "# Upgrade\n", mode)).toThrow(/guide pages must/u);
     for (const source of ["", "bad\0bytes", "<<<<<<< conflict\n"]) expect(() => validateGuidePage(upgradePagePath("0.5.0"), source, "100644")).toThrow(/empty or malformed|conflict markers/u);
+  });
+});
+
+describe("shift-left simulated upgrade-page audit", () => {
+  const providerName = ["st", "ri", "pe"].join("");
+  const allowlistedSubpath = `\`@openlup/platform/payments/${providerName}\``;
+
+  it("exposes a 128 KiB default byte cap and accepts a valid simulated upgrade page without writing files", () => {
+    expect(UPGRADE_PAGE_MAX_BYTES).toBe(128 * 1024);
+    const f = fixture();
+    f.write("packages/core/package.json", JSON.stringify({ name: "@openlup/core", version: "0.4.0" }));
+    f.write("packages/core/changes/allowlisted.md", `- Documented ${allowlistedSubpath} contract update.\n`);
+    f.write(api, report("export declare const nextName: string;\nexport declare const kept: string;\n"));
+    f.commit();
+
+    const audit = assertSimulatedUpgradePage(f.root);
+    expect(audit).not.toBeNull();
+    expect(audit).toMatchObject({
+      version: "0.5.0",
+      since: "openlup-core-v0.4.0",
+      path: "packages/core/docs/guide/upgrade/v0-5-0.md",
+      maxBytes: UPGRADE_PAGE_MAX_BYTES,
+    });
+    expect(audit!.bytes).toBe(Buffer.byteLength(audit!.text, "utf8"));
+    expect(audit!.text).toContain(allowlistedSubpath);
+    expect(audit!.text).toBe(renderUpgradePage({
+      root: f.root,
+      version: "0.5.0",
+      since: "openlup-core-v0.4.0",
+      fragments: [{ path: "packages/core/changes/allowlisted.md", contents: `- Documented ${allowlistedSubpath} contract update.\n` }],
+    }));
+    expect(f.git("status", "--porcelain")).toBe("");
+  });
+
+  it("refuses a simulated upgrade page exceeding the byte cap with actual bytes and limit", () => {
+    const f = fixture();
+    f.write("packages/core/changes/huge.md", `- ${"x".repeat(2048)}\n`);
+    f.commit();
+    expect(() => assertSimulatedUpgradePage(f.root, { maxBytes: 512 })).toThrow(
+      /simulated upgrade page packages\/core\/docs\/guide\/upgrade\/v0-5-0\.md is \d+ bytes, exceeding the 512-byte cap \(since openlup-core-v0\.4\.0\)/u,
+    );
+  });
+
+  it("refuses forbidden packaged content in both fragments and API diffs while accepting allowlisted subpaths", () => {
+    expect(() => assertReleaseNotePackagedContent("packages/core/changes/ok.md", `- Uses ${allowlistedSubpath}.\n`)).not.toThrow();
+    expect(() => assertReleaseNotePackagedContent("packages/core/changes/bad.md", `- Mentions bare ${providerName}.\n`)).toThrow(
+      /downstream provider dependency/u,
+    );
+
+    const f = fixture();
+    f.write("packages/core/changes/leak.md", `- Mentions bare ${providerName} outside inline subpath code.\n`);
+    f.commit();
+    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(/downstream provider dependency/u);
+
+    f.git("rm", "packages/core/changes/leak.md");
+    f.write(api, report(`export declare const bad: "${providerName}";\nexport declare const kept: string;\n`));
+    f.commit();
+    expect(() => assertSimulatedUpgradePage(f.root)).toThrow(/downstream provider dependency/u);
+  });
+
+  it("returns null when no ancestor core release tag exists", () => {
+    const f = fixture();
+    f.git("tag", "-d", "openlup-core-v0.4.0");
+    expect(assertSimulatedUpgradePage(f.root)).toBeNull();
   });
 });

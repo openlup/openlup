@@ -8,6 +8,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { availableParallelism, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { runPublicTypecheckProjects } from "./oss-public-typecheck.ts";
@@ -23,6 +24,7 @@ import {
 } from "./oss-publication-contract.ts";
 import {
   assertAgentGuidancePlacement,
+  assertChangelogFragmentsPackagedContent,
   assertMaterializedOutputInventory,
   assertNoAbsoluteFilesystemPaths,
   assertMaterializedPublicationCatalog,
@@ -33,6 +35,7 @@ import {
   selfCheckVerdict,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
+import { assertSimulatedUpgradePage } from "./packages/release-docs-pass.ts";
 import { validateGuidePage, PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 
@@ -1584,4 +1587,143 @@ it("admits only the closed non-executable catalogue documentation skeleton", () 
   }
   for (const file of ["registry.ts", "tsconfig.json", "extra.ts", "install.mjs", "nested/pack.ts", "../pack.ts"]) expect(() => validateGuidePage(base + file, "sample", "100644")).toThrow();
   expect(() => validateGuidePage("packages/core/docs/guide/other.ts", "sample", "100644")).toThrow();
+});
+
+describe("shift-left release-note fragment audit and bare-Node dependency boundary", () => {
+  const providerName = ["st", "ri", "pe"].join("");
+  const allowlistedSubpath = `\`@openlup/platform/payments/${providerName}\``;
+
+  it("accepts this repository's tracked changelog fragments and simulated upgrade page", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
+    expect(() => assertChangelogFragmentsPackagedContent(ROOT, tracked)).not.toThrow();
+    const audit = assertSimulatedUpgradePage(ROOT);
+    expect(audit).not.toBeNull();
+    expect(audit!.bytes).toBeGreaterThan(0);
+    expect(audit!.bytes).toBeLessThanOrEqual(audit!.maxBytes);
+  });
+
+  it("accepts allowlisted adapter subpaths and refuses unmasked vendor mentions in fragments", () => {
+    const root = mkdtempSync(join(tmpdir(), "openlup-fragment-audit-"));
+    try {
+      const okPath = "packages/platform/changes/ok.md";
+      const badPath = "packages/core/changes/bad.md";
+      mkdirSync(dirname(join(root, okPath)), { recursive: true });
+      mkdirSync(dirname(join(root, badPath)), { recursive: true });
+      writeFileSync(join(root, okPath), `- Updated ${allowlistedSubpath} error handling.\n`);
+      expect(() => assertChangelogFragmentsPackagedContent(root, [okPath])).not.toThrow();
+
+      writeFileSync(join(root, badPath), `- Calls bare ${providerName} API directly.\n`);
+      expect(() => assertChangelogFragmentsPackagedContent(root, [okPath, badPath])).toThrow(
+        `${badPath}: downstream provider dependency`,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a tracked changelog fragment with unmasked vendor text during policyVerdict and selfCheckVerdict", () => {
+    const root = mkdtempSync(join(tmpdir(), "openlup-fragment-policy-"));
+    const digest = (contents: string) => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
+    try {
+      const policy = `${JSON.stringify({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "entrypoint", owners: ["README.md"] }] }, null, 2)}\n`;
+      const baselinePath = "db/platform/migrations/00000000000000_platform_baseline.sql", baseline = "CREATE TABLE example(id integer);\n";
+      const packageManifestPaths = PUBLIC_PACKAGE_EXECUTION_SURFACES.map(({ path }) => path);
+      const fragmentPath = "packages/core/changes/leaked-vendor.md";
+      const paths = [...new Set([
+        baselinePath, "README.md", "docs/platform/README.md", "docs/platform/AGENT_GUIDE.md",
+        "docs/platform/adopter-kit/dependabot.template.yml", "config/openlup-policy-registry.json",
+        "config/openlup-publication-catalog.json", "config/openlup-source-release-contract.json",
+        "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts",
+        "package-lock.json", "packages/core/package-lock.json", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS,
+      ])].sort();
+      const catalogue = createPublicPublicationCatalog(paths.map((path) => ({ path, class: "public-output" })), []).contents;
+      const manifest = JSON.stringify({
+        name: "openlup",
+        private: true,
+        workspaces: ["packages/core", "packages/outbox", "packages/platform"],
+        scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])),
+      });
+      const lock = "{}\n";
+      const migration = JSON.stringify({ schemaVersion: 1, baseline: { file: baselinePath, sha256: digest(baseline).slice(7) }, forward: [], objectInventorySha256: digest("objects").slice(7) });
+      const types = "export type Database = Record<string, any>;\n";
+      const contract = createSourceReleaseContract({
+        inventoryDigest: publicPublicationCatalogDigests(catalogue).inventoryDigest,
+        classDigest: digest(JSON.stringify(paths)),
+        packageDigest: digest(manifest),
+        rootLockDigest: digest(lock),
+        coreLockDigest: digest(lock),
+        migrationManifestDigest: digest(migration),
+        databaseTypesDigest: digest(types),
+        policyRegistryDigest: digest(policy),
+        publicationCatalogDigest: digest(catalogue),
+      }).contents;
+      const files = new Map([
+        ["README.md", "# Public\n"],
+        ["docs/platform/README.md", "[Guide](AGENT_GUIDE.md)\n"],
+        ["docs/platform/AGENT_GUIDE.md", "# Guide\n"],
+        ["docs/platform/adopter-kit/dependabot.template.yml", 'groups:\n  openlup:\n    patterns:\n      - "@openlup/*"\n'],
+        ["package.json", manifest],
+        ["package-lock.json", lock],
+        ["packages/core/package-lock.json", lock],
+        ["config/platform-migration-manifest.json", migration],
+        ["src/integrations/supabase/types.ts", types],
+        ["config/openlup-policy-registry.json", policy],
+        ["config/openlup-publication-catalog.json", catalogue],
+        ["config/openlup-source-release-contract.json", contract],
+        [baselinePath, baseline],
+        [fragmentPath, `- Mentions ${allowlistedSubpath} safely.\n`],
+      ]);
+      for (const [path, contents] of files) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); }
+      for (const path of PUBLIC_EXECUTION_ENTRYPOINTS) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), "public\n"); }
+      for (const surface of PUBLIC_PACKAGE_EXECUTION_SURFACES) {
+        if (surface.path === "package.json") continue;
+        const source = readFileSync(join(ROOT, surface.path), "utf8");
+        mkdirSync(dirname(join(root, surface.path)), { recursive: true });
+        writeFileSync(join(root, surface.path), source);
+      }
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["add", "."], { cwd: root });
+
+      expect(policyVerdict(root, () => undefined)).toBe(true);
+      expect(selfCheckVerdict(root, () => undefined)).toBe(true);
+
+      writeFileSync(join(root, fragmentPath), `- Mentions bare ${providerName} outside allowlist.\n`);
+      expect(() => policyVerdict(root, () => undefined)).toThrow(`${fragmentPath}: downstream provider dependency`);
+      expect(() => selfCheckVerdict(root, () => undefined)).toThrow(`${fragmentPath}: downstream provider dependency`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps oss-published-tree-check.ts free of external node_modules imports for bare Node 24 CI self-check", () => {
+    const visited = new Set<string>();
+    const external: Array<{ file: string; specifier: string }> = [];
+    const queue = [join(ROOT, "scripts/oss-published-tree-check.ts")];
+    while (queue.length > 0) {
+      const current = queue.pop()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const sourceFile = ts.createSourceFile(current, readFileSync(current, "utf8"), ts.ScriptTarget.Latest, true);
+      const record = (specifier: string) => {
+        if (!specifier || specifier.startsWith("node:")) return;
+        if (specifier.startsWith(".")) {
+          const target = resolve(dirname(current), specifier);
+          if (existsSync(target) && !visited.has(target)) queue.push(target);
+        } else {
+          external.push({ file: current.slice(ROOT.length + 1), specifier });
+        }
+      };
+      const visit = (node: ts.Node) => {
+        if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+          record(node.moduleSpecifier.text);
+        } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
+          record(node.arguments[0].text);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sourceFile);
+    }
+    expect(visited.size).toBeGreaterThan(10);
+    expect(external).toEqual([]);
+  });
 });
