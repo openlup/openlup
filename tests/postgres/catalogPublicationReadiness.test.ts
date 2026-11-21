@@ -9,7 +9,7 @@ import type { PgQueryExecutor } from "@openlup/platform/data";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { actorId, fixture, graph, hash, insertGraph, installPublicationActors, json, stageProductRows, transaction } from "./catalogPublicationFixture.js";
 
-const forward = "db/platform/migrations/20261123194500_catalog_publication_readiness.sql";
+const forward = "db/platform/migrations/20261124121000_catalog_publication_readiness.sql";
 const readinessSql = "SELECT public.catalog_publication_activation_readiness($1::text[],$2) AS result";
 const entry = "public.catalog_publication_activation_readiness(text[],text)";
 const helpers = ["public.catalog_publication_readiness_snapshot(text[],text,timestamptz)", "public.catalog_publication_price_reasons(uuid[],timestamptz)"];

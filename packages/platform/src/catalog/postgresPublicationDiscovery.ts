@@ -161,7 +161,7 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
       return rows.length === 1 ? rows[0]?.result : undefined;
     });
   } catch (error) {
-    return readError(error, "catalog_publication_activation_readiness");
+    return readError(error);
   }
   const decoded = batchWire.safeParse(result);
   if (!decoded.success) return unavailable;

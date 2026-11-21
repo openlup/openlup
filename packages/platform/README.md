@@ -1333,7 +1333,7 @@ page when the head moves. A PostgreSQL serialization failure is retryable.
 ### Read activation readiness
 
 Install the complete PostgreSQL catalogue through
-`20261123194500_catalog_publication_readiness.sql`. Call the experimental
+`20261124121000_catalog_publication_readiness.sql`. Call the experimental
 `readPostgresCatalogActivationReadiness(owner, installed, input)` from
 `@openlup/platform/catalog` with the named catalogue owner lane, up to 100
 distinct SKU codes and the expected head digest from a membership page. The

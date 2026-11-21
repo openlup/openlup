@@ -125,7 +125,7 @@ function owner(outcome: unknown, after?: Error) {
   });
   return { lane: { run } as unknown as Parameters<typeof readPostgresCatalogActivationReadiness>[0], run, query, isOpen: () => open };
 }
-const sqlError = (code: string, message = code, where?: string) => Object.assign(new Error(message), { code, ...(where ? { where } : {}) });
+const sqlError = (code: string, message = code) => Object.assign(new Error(message), { code });
 const transactionConflict = { outcome: "conflict", reason: "catalog_publication_transaction_conflict", retryable: true };
 const readUnavailable = { outcome: "dependency_unavailable", reason: "catalog_publication_read_unavailable" };
 
@@ -162,9 +162,10 @@ it("sets the owner transaction mode first and maps refusal values separately fro
     [sqlError("40001"), undefined, transactionConflict],
     [batch([subject, absentItem]), sqlError("40001"), transactionConflict],
     [sqlError("55P03"), undefined, { outcome: "conflict", reason: "catalog_publication_read_busy", retryable: true }],
-    [sqlError("42501", entryDenied), undefined, { outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" }],
-    [sqlError("42501", entryDenied, "internal SQL"), undefined, readUnavailable],
-    [sqlError("42501", "permission denied for function catalog_publication_readiness_snapshot", "internal SQL"), undefined, readUnavailable],
+    [Object.assign(new Error(entryDenied), aclError), undefined, { outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" }],
+    [Object.assign(new Error(entryDenied), { ...aclError, where: "internal SQL" }), undefined, readUnavailable],
+    [Object.assign(new Error("permission denied for function catalog_publication_readiness_snapshot"), { ...aclError, where: "internal SQL" }), undefined, readUnavailable],
+    [Object.assign(new Error("permission denied for schema public"), { ...aclError, position: "8" }), undefined, readUnavailable],
   ];
   for (const [outcome, after, expected] of cases) {
     const { lane, query } = owner(outcome, after);
