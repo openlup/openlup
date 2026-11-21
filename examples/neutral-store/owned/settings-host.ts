@@ -676,11 +676,11 @@ export function createSettingsBindings({ db, configuration }: {
       descriptor: {
         domain: 'pricing',
         goal: "Set the minimum payable product amount in currency minor units after discounts (minimum product price, payable floor, discount floor).",
-        schema: z.number().int().min(1).max(2147483647).describe(
-          "assertQuoteConfiguration checks a positive whole amount in currency minor units (1 through 2147483647).",
+        schema: z.number().int().min(1).describe(
+          "assertQuoteConfiguration checks a positive safe integer in currency minor units (>= 1).",
         ),
         effect: {
-          appliesTo: "Starter acquisition quote installation seeds the minimum payable product floor from this value. The platform quote path reads COMMERCE_MIN_PRODUCT_PAYABLE_MINOR (defaulting to one major unit when unset), while SQL pricing functions read the database mirror row commerce_settings.min_product_payable_minor; keep the deployed value, environment variable, and database mirror aligned.",
+          appliesTo: "The starter quote service reads this deployed floor at runtime when composing new quotes and renewal terms. Outside the starter, the platform fiscal profile reads COMMERCE_MIN_PRODUCT_PAYABLE_MINOR (defaulting to one major unit when unset), and public.commerce_settings defines a mirror row key min_product_payable_minor; keep the deployed value, environment variable, and any database mirror aligned.",
           frozenOn: ["Saved quotes, orders, and recorded invoice amounts keep the payable amounts already computed."],
           impact: 'money',
         },
