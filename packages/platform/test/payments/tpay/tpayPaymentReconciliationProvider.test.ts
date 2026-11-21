@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readInvoicePaymentEvidence } from "@openlup/platform/invoicing";
 import { createTpayHttpClient } from "../../../src/payments/tpay/tpayHttpClient.js";
 import {
   createTpayPaymentReconciliationProvider,
@@ -131,10 +132,25 @@ describe("normalizeTpayTransaction", () => {
   it("refuses a successful readback for a different provider transaction", async () => {
     const provider = createTpayPaymentReconciliationProvider({ getTransaction: async () => ({
       transactionId: "tx_other", title: null, status: "correct", transactionPaymentUrl: null,
-      amount: 12.99, payments: { amountPaid: 12.99 }, currency: "PLN", requestId: null,
+      amount: 42.38, payments: { amountPaid: 42.38 }, currency: "PLN", requestId: null,
     }) });
-    await expect(provider.readPayment({ providerPaymentId: "tx_requested" }))
-      .rejects.toThrow("tpay_readback_payment_identity_mismatch");
+    const payment = { provider: "tpay", providerPaymentId: "tx_paid_3", amountCents: 4239 };
+    await expect(provider.readPayment(payment))
+      .rejects.toMatchObject({
+        message: "tpay_readback_payment_identity_mismatch",
+        code: "provider_payment_identity_mismatch",
+      });
+    await expect(readInvoicePaymentEvidence(payment, provider)).resolves.toEqual({
+      providerStatus: "unknown",
+      providerAmountCents: null,
+      providerCurrency: null,
+      providerEvidence: {
+        source: "provider_api",
+        provider: payment.provider,
+        providerPaymentId: payment.providerPaymentId,
+        unavailableReason: "provider_payment_identity_mismatch",
+      },
+    });
   });
 
   it("maps Tpay failed boolean-like states to failed", () => {

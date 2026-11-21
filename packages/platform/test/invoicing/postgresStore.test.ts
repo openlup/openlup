@@ -1,3 +1,4 @@
+import type { PaymentReadbackIdentityMismatch } from "@openlup/platform/payments/contracts";
 import { expect, it, vi } from "vitest";
 import { createPostgresInvoiceStore, INVOICING_MIGRATIONS, runNativeInvoiceIssueJob } from "../../src/invoicing/index.js";
 import type { InvoiceFacts, InvoiceProviderPort, InvoiceStorePort } from "../../src/invoicing/contracts/index.js";
@@ -216,6 +217,19 @@ it.each(["blocked", "mismatch", "unavailable"] as const)("native fresh %s settle
     ...(kind === "unavailable" ? { kind: "retryable", phase: "before_send" } : { kind: "blocked" }) });
   expect(f.provider.issue).not.toHaveBeenCalled();
 });
+it("keeps a native money reader identity refusal before dispatch", async () => {
+  const f = issueFixture();
+  f.money.read.mockRejectedValueOnce({ code: "provider_payment_identity_mismatch" } satisfies PaymentReadbackIdentityMismatch);
+
+  expect(await f.run()).toEqual({ checked: 1, updated: 0, failures: 1, ok: false });
+  expect(f.store.preflight).toHaveBeenCalledOnce();
+  expect(f.provider.issue).not.toHaveBeenCalled();
+  expect(f.store.finish).not.toHaveBeenCalled();
+  expect(f.store.fail).toHaveBeenCalledExactlyOnceWith({
+    claim: { ...f.claim, attemptCount: 4 }, retrySeconds: 1200, kind: "retryable", phase: "before_send", proof: null,
+  });
+});
+
 it.each(["local", "fresh", "finish"] as const)("native stale %s is a claim fence: zero updates and no failure write", async phase => {
   const f = issueFixture();
   if (phase === "local") f.store.preflight.mockResolvedValueOnce({ kind: "stale" });

@@ -400,6 +400,28 @@ export function sqlStatements(sql: string, dump = false, creation = false, ascii
   return statements;
 }
 
+// Memoize immutable prefix Buffer splits by Buffer identity, with a bounded content-addressed
+// fallback so identical Git blobs read across calls (e.g. the baseline dump) are parsed once.
+const dumpSqlStatementsCache = new WeakMap<Buffer, readonly string[]>();
+const asciiDumpSqlStatementsCache = new WeakMap<Buffer, readonly string[]>();
+const dumpSqlStatementsByHash = new Map<string, readonly string[]>();
+const MAX_SQL_STATEMENT_CACHE_ENTRIES = 1024;
+function cachedDumpSqlStatements(bytes: Buffer, asciiStructure = false): readonly string[] {
+  const cache = asciiStructure ? asciiDumpSqlStatementsCache : dumpSqlStatementsCache;
+  let statements = cache.get(bytes);
+  if (!statements) {
+    const key = `${asciiStructure ? "a" : "d"}:${sqlSha256(bytes)}`;
+    statements = dumpSqlStatementsByHash.get(key);
+    if (!statements) {
+      statements = sqlStatements(bytes.toString("utf8"), true, false, asciiStructure);
+      if (dumpSqlStatementsByHash.size >= MAX_SQL_STATEMENT_CACHE_ENTRIES) dumpSqlStatementsByHash.clear();
+      dumpSqlStatementsByHash.set(key, statements);
+    }
+    cache.set(bytes, statements);
+  }
+  return statements;
+}
+
 function qualifiedFunctionIdentity(statement: string): string | null {
   const header = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|acquisition_private)\.[a-z_][a-z0-9_]*)\(([\s\S]*?)\)\s+RETURNS\s/iu.exec(statement);
   if (!header) return null;
@@ -453,7 +475,7 @@ const identityHeaderSql = (statement: string) => statement.replace(/(public\.sub
 
 export function reviewedFunctionDefinitions(bytes: Buffer, names?: Set<string>): Map<string, string> {
   const result = new Map<string, string>();
-  for (const statement of sqlStatements(bytes.toString("utf8"), names !== undefined)) {
+  for (const statement of names !== undefined ? cachedDumpSqlStatements(bytes) : sqlStatements(bytes.toString("utf8"), false)) {
     const prefix = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(/iu.exec(statement);
     if (!prefix || (names && !names.has(prefix[1]!.toLowerCase()))) continue;
     const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+/iu.exec(identityHeaderSql(statement));
@@ -871,7 +893,7 @@ function expandOnlyPlatformForward(sql: string, reviewedCreationTable: boolean, 
 export function assertPortableCreationStatements(bytes: Buffer, preceding: Buffer[]): void {
   const relations = new Set<string>(), functions = new Set<string>(), triggers = new Set<string>(), priorTables = new Set<string>();
   for (const source of preceding) {
-    for (const statement of sqlStatements(source.toString("utf8"), true)) {
+    for (const statement of cachedDumpSqlStatements(source)) {
       const relation = /^CREATE (?:(?:OR REPLACE|UNIQUE|MATERIALIZED|UNLOGGED) )?(?:TABLE|INDEX|VIEW|SEQUENCE|TYPE) (?:IF NOT EXISTS )?(?:public\.)?"?([a-z_][a-z0-9_]*)"?(?:\s|\()/iu.exec(statement);
       if (relation) relations.add(`public.${relation[1]!.toLowerCase()}`);
       if (relation && /^CREATE (?:UNLOGGED )?TABLE /iu.test(statement)) priorTables.add(`public.${relation[1]!.toLowerCase()}`);
@@ -1151,7 +1173,7 @@ export function reviewedPolicyDefinitions(bytes: Buffer): Map<string, string> {
   return policies;
 }
 function updatePolicyDefinitions(policies: Map<string, string>, bytes: Buffer): void {
-  for (const statement of sqlStatements(bytes.toString("utf8"), true)) {
+  for (const statement of cachedDumpSqlStatements(bytes)) {
     const create = /^CREATE POLICY ([a-z_]+) ON public\.([a-z_]+) /u.exec(statement);
     if (create) policies.set(`${create[2]}.${create[1]}`, sqlSha256(statement));
     const changed = /^(?:ALTER|DROP) POLICY ([a-z_]+) ON public\.([a-z_]+)(?: |;)/u.exec(statement);
@@ -1167,12 +1189,24 @@ function headerAttributes(statement: string): string {
   return statement.slice(0, opening.index).replace(/^CREATE OR REPLACE /u, "CREATE ");
 }
 
+function readPrecedingBlobs(root: string, revision: string, directory: string, beforePath: string, sqlOnly: boolean): { path: string; bytes: Buffer }[] {
+  const entries = git(root, ["ls-tree", "-rz", "--full-tree", revision, "--", directory]).toString("utf8").split("\0").filter(Boolean);
+  const preceding = entries.flatMap(entry => {
+    const priorPath = entry.slice(entry.indexOf("\t") + 1);
+    if ((sqlOnly && !priorPath.endsWith(".sql")) || priorPath >= beforePath) return [];
+    const regular = /^100644 blob ([a-f0-9]{40})\t/u.exec(entry);
+    if (!regular) throw new Error(`reviewed replacement requires a regular file: ${priorPath}`);
+    return [{ path: priorPath, oid: regular[1]! }];
+  }).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+  const sources = readDocumentationObjects(root, preceding.map(source => source.oid));
+  return preceding.map((source, index) => ({ path: source.path, bytes: sources[index]! }));
+}
+
 /** Bind the full managed prefix, including companion table ACLs and DDL. */
 export function managedForwardPrefixSha256(root: string, revision: string, path: string): string {
-  const paths = git(root, ["ls-tree", "-rz", "--name-only", revision, "--", "supabase/migrations/"])
-    .toString("utf8").split("\0").filter(item => item.endsWith(".sql") && item < path).sort();
-  if (paths[0] !== MANAGED_BASELINE) throw new Error("exact managed forward requires the managed baseline");
-  return sqlSha256(JSON.stringify(paths.map(item => [item, sqlSha256(blob(root, revision, item)!)])));
+  const preceding = readPrecedingBlobs(root, revision, "supabase/migrations/", path, true);
+  if (preceding[0]?.path !== MANAGED_BASELINE) throw new Error("exact managed forward requires the managed baseline");
+  return sqlSha256(JSON.stringify(preceding.map(item => [item.path, sqlSha256(item.bytes)])));
 }
 
 export function hasExactManagedForward(root: string, revision: string, path: string): boolean {
@@ -1247,39 +1281,29 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const baseline = blob(root, approval, baselinePath);
   if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");
   if (registry.supportAuthorityForwards?.includes(forward as SupportAuthorityForwardBinding) || registry.channelIngestForwards?.includes(forward as BatchedForwardBinding) || registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
-    const entries = git(root, ["ls-tree", "-rz", "--full-tree", head, "--", portable ? "db/platform/migrations/" : "supabase/migrations/"]).toString("utf8").split("\0").filter(Boolean);
-    const preceding = entries.flatMap(entry => {
-      const priorPath = entry.slice(entry.indexOf("\t") + 1);
-      if (!priorPath.endsWith(".sql") || priorPath >= path) return [];
-      const regular = /^100644 blob ([a-f0-9]{40})\t/u.exec(entry);
-      if (!regular) throw new Error(`reviewed replacement requires a regular file: ${priorPath}`);
-      return [{ path: priorPath, oid: regular[1]! }];
-    }).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-    const sources = readDocumentationObjects(root, preceding.map(source => source.oid));
-    const prefix = preceding.map((source, index) => ({ path: source.path, bytes: sources[index]! }));
+    const prefix = readPrecedingBlobs(root, head, portable ? "db/platform/migrations/" : "supabase/migrations/", path, true);
     if (registry.nativeStoreForwards?.includes(forward as ForwardBinding)) assertNativeStoreForward(registry, path, bytes, prefix);
     else if (registry.channelIngestForwards?.includes(forward as BatchedForwardBinding)) assertChannelIngestForward(registry, path, bytes, prefix);
     else assertSupportAuthorityForward(registry, path, bytes, prefix);
     return;
   }
   if (registry.managedCommerceForwards?.includes(forward as ManagedCommerceForwardBinding)) {
-    const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", "supabase/migrations/"]).toString("utf8").trim().split("\n").filter(item => item.endsWith(".sql") && item < path).sort();
-    assertManagedCommerceForward(registry, path, bytes, paths.map(path => ({ path, bytes: blob(root, head, path)! })));
+    assertManagedCommerceForward(registry, path, bytes, readPrecedingBlobs(root, head, "supabase/migrations/", path, true));
     return;
   }
   if (registry.batchedForwards?.includes(forward as BatchedForwardBinding)) {
+    const prefix = readPrecedingBlobs(root, head, portable ? "db/platform/migrations/" : "supabase/migrations/", path, false);
+    const byPath = new Map(prefix.map(source => [source.path, source.bytes]));
     for (const prior of registry.batchedForwards!) {
       if (prior.path >= path || prior.path.startsWith("db/") !== portable) continue;
-      const landed = blob(root, head, prior.path);
+      const landed = byPath.get(prior.path);
       if (!landed || sqlSha256(landed) !== prior.sha256) throw new Error("reviewed batch requires every earlier same-rail pin landed first");
     }
-    const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", portable ? "db/platform/migrations/" : "supabase/migrations/"]).toString("utf8").trim().split("\n").filter((item) => item < path).sort();
-    assertBatchedForward(forward as BatchedForwardBinding, bytes, paths.map((priorPath) => blob(root, head, priorPath)!));
+    assertBatchedForward(forward as BatchedForwardBinding, bytes, prefix.map(source => source.bytes));
     return;
   }
   if (registry.portableCreationForwards?.includes(forward)) {
-    const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", "db/platform/migrations/"]).toString("utf8").trim().split("\n").filter((item) => item < path).sort();
-    assertPortableCreationStatements(bytes, paths.map((priorPath) => blob(root, head, priorPath)!));
+    assertPortableCreationStatements(bytes, readPrecedingBlobs(root, head, "db/platform/migrations/", path, false).map(source => source.bytes));
     return;
   }
   // Creation-only entries returned above; existing classes retain their function bindings.
@@ -1289,7 +1313,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const priorPolicies = reviewedPolicyDefinitions(baseline);
   const priorStatements = new Map<string, string>();
   const collectPriorStatements = (source: Buffer) => {
-    for (const statement of sqlStatements(source.toString("utf8"), true)) {
+    for (const statement of cachedDumpSqlStatements(source)) {
       const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+/iu.exec(identityHeaderSql(statement));
       if (header && names.has(header[1]!.toLowerCase())) priorStatements.set(functionSignature(header[1]!, header[2]!), statement);
     }
@@ -1298,9 +1322,8 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   // The portable manifest validator requires strict filename order and exact catalogue coverage.
   // Thus path order below is the same as portable installation order; never read the managed rail.
   const directory = portable ? "db/platform/migrations/" : "supabase/migrations/";
-  const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", directory]).toString("utf8").trim().split("\n").filter((item) => item !== baselinePath && item < path).sort();
-  for (const priorPath of paths) {
-    const source = blob(root, head, priorPath)!;
+  for (const { path: priorPath, bytes: source } of readPrecedingBlobs(root, head, directory, path, false)) {
+    if (priorPath === baselinePath) continue;
     for (const [signature, sha256] of reviewedFunctionDefinitions(source, names)) prior.set(signature, sha256);
     collectPriorStatements(source);
     updatePolicyDefinitions(priorPolicies, source);
@@ -1379,20 +1402,26 @@ const batchIdentity = (name: string, args: string): string => {
   return `${name.toLowerCase()}(${types.join(",")})`;
 };
 
+function batchedFunctionDefinitionFromStatement(statement: string, names?: Set<string>): [string, string] | null {
+  const prefix = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+  if (names && (!prefix || !names.has(prefix[1]!.toLowerCase()))) return null;
+  const header = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(([\s\S]*?)\)\s*RETURNS\s/iu.exec(statement);
+  if (!header) {
+    if (/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) throw new Error("reviewed batch refuses unsupported function header");
+    return null;
+  }
+  return [batchIdentity(header[1]!, header[2]!), sqlSha256(statement)];
+}
+
 /** Separate identity reader; raw CREATE bytes, including defaults, stay hashed. */
 export function batchedFunctionDefinitions(bytes: Buffer, names?: Set<string>): Map<string, string> {
   const result = new Map<string, string>();
-  for (const statement of sqlStatements(bytes.toString("utf8"), true)) {
-    const prefix = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
-    if (names && (!prefix || !names.has(prefix[1]!.toLowerCase()))) continue;
-    const header = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(([\s\S]*?)\)\s*RETURNS\s/iu.exec(statement);
-    if (!header) {
-      if (/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) throw new Error("reviewed batch refuses unsupported function header");
-      continue;
-    }
-    const signature = batchIdentity(header[1]!, header[2]!);
+  for (const statement of cachedDumpSqlStatements(bytes)) {
+    const definition = batchedFunctionDefinitionFromStatement(statement, names);
+    if (!definition) continue;
+    const [signature, digest] = definition;
     if (result.has(signature)) throw new Error(`reviewed batch duplicate signature: ${signature}`);
-    result.set(signature, sqlSha256(statement));
+    result.set(signature, digest);
   }
   return result;
 }
@@ -1507,7 +1536,10 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
   if (nativeReplacement) {
     const statement = statements[0]!;
     const name = forward.functions[0]!.signature;
-    const previous = preceding.flatMap(source => sqlStatements(source.toString("utf8"), true)).filter(sql => batchedFunctionDefinitions(Buffer.from(sql), names).has(name)).at(-1);
+    let previous: string | undefined;
+    for (const source of preceding) for (const sql of cachedDumpSqlStatements(source)) {
+      if (batchedFunctionDefinitionFromStatement(sql, names)?.[0] === name) previous = sql;
+    }
     if (statements.length !== 1 || !/^CREATE OR REPLACE FUNCTION /u.test(statement) || !previous || headerAttributes(statement) !== headerAttributes(previous)) throw new Error("reviewed batch portable replacement attributes drifted");
   }
 }
@@ -1609,12 +1641,13 @@ export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, 
   const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
   const prior = new Map<string, string>();
   for (const source of preceding) {
-    for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
+    for (const statement of cachedDumpSqlStatements(source.bytes)) {
       // The immutable dump is bound by its hash. Later function DDL must use the
       // existing reader's supported spelling, rather than silently hiding a
       // replacement behind comments, quoted names or keyword whitespace.
       if (source.path !== MANAGED_BASELINE && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M11 commerce refuses unsupported preceding function DDL");
-      for (const [signature, digest] of batchedFunctionDefinitions(Buffer.from(statement), names)) prior.set(signature, digest);
+      const definition = batchedFunctionDefinitionFromStatement(statement, names);
+      if (definition) prior.set(definition[0], definition[1]);
     }
   }
   if (definitions.size !== forward.functions.length || forward.functions.some(fn => definitions.get(fn.signature) !== fn.afterSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256)) throw new Error("reviewed M11 commerce function preimage or definition drifted");
@@ -1646,7 +1679,7 @@ export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, 
   }
   if (audit) {
     let beforeSql: string | undefined;
-    for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
+    for (const source of preceding) for (const statement of cachedDumpSqlStatements(source.bytes)) {
       if (/^CREATE TABLE public\.admin_audit_events\s*\(/u.test(statement)) {
         if (beforeSql !== undefined) throw new Error("reviewed M11 commerce audit CHECK preimage is ambiguous");
         beforeSql = /^\s*(CONSTRAINT admin_audit_events_action_check CHECK .+)$/mu.exec(statement)?.[1];
@@ -1804,9 +1837,10 @@ export function assertSupportAuthorityForward(registry: ReviewedForwardRegistry,
   const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
   const prior = new Map<string, string>();
   const checks = new Map<string, string>();
-  for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
+  for (const source of preceding) for (const statement of cachedDumpSqlStatements(source.bytes)) {
     if (source.path !== baseline && [...names].some(name => statement.includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M12 support refuses unsupported preceding function DDL");
-    for (const [signature, digest] of batchedFunctionDefinitions(Buffer.from(statement), names)) prior.set(signature, digest);
+    const definition = batchedFunctionDefinitionFromStatement(statement, names);
+    if (definition) prior.set(definition[0], definition[1]);
     if (!portable) for (const binding of forward.constraints!) {
       if (statement === binding.beforeSql) checks.set(binding.name, statement);
       // The baseline is immutable. Outside it, only M11's exact audit pair
@@ -2120,9 +2154,10 @@ export function assertChannelIngestForward(registry: ReviewedForwardRegistry, pa
   }
   const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
   const prior = new Map<string, string>();
-  for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
+  for (const source of preceding) for (const statement of cachedDumpSqlStatements(source.bytes)) {
     if (source.path !== baseline && [...names].some(name => statement.includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M17 channel refuses unsupported preceding function DDL");
-    for (const [signature, digest] of batchedFunctionDefinitions(Buffer.from(statement), names)) prior.set(signature, digest);
+    const definition = batchedFunctionDefinitionFromStatement(statement, names);
+    if (definition) prior.set(definition[0], definition[1]);
   }
   for (const fn of forward.functions) if ((prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed M17 channel actual function preimage drifted");
 }
@@ -2196,29 +2231,70 @@ const nativeStoreSignature = (signature: string): string | null => {
 };
 const nativeStoreFunctions = (slot: NativeStoreSlot): NativeStoreFunction[] => [...slot.replacedFunctions, ...slot.createdFunctions.map(fn => ({ ...fn, beforeSha256: null }))];
 
+const nativePrefixStatementsCache = new WeakMap<Buffer, readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[]>();
+const nativePrefixStatementsByHash = new Map<string, readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[]>();
+function cachedNativePrefixStatements(bytes: Buffer): readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[] {
+  let parsed = nativePrefixStatementsCache.get(bytes);
+  if (!parsed) {
+    const key = sqlSha256(bytes);
+    parsed = nativePrefixStatementsByHash.get(key);
+    if (!parsed) {
+      parsed = cachedDumpSqlStatements(bytes, true).map(statement => {
+        const { tokens, complete } = platformSqlTokens(statement, false, true);
+        return { statement, tokens, complete };
+      });
+      if (nativePrefixStatementsByHash.size >= MAX_SQL_STATEMENT_CACHE_ENTRIES) nativePrefixStatementsByHash.clear();
+      nativePrefixStatementsByHash.set(key, parsed);
+    }
+    nativePrefixStatementsCache.set(bytes, parsed);
+  }
+  return parsed;
+}
+
+function nativeStoreFunctionDefinitionFromTokens(
+  statement: string,
+  tokens: readonly PlatformSqlToken[],
+  complete: boolean,
+  allowed: ReadonlySet<string>,
+  names: ReadonlySet<string>,
+  preceding: boolean,
+): [string, string] | null {
+  const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
+  if (!nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, functionIndex, "FUNCTION")) return null;
+  const name = nativeQualified(tokens, functionIndex + 1);
+  if (preceding && name && !names.has(name.name)) return null;
+  if (!complete || !name || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted" || !nativeSymbol(tokens, name.next, "(")) throw new Error(preceding ? "reviewed native store unsupported preceding function DDL" : "reviewed native store unsupported function header");
+  let close = name.next, depth = 0;
+  for (; close < tokens.length; close++) {
+    if (nativeSymbol(tokens, close, "(")) depth++;
+    if (nativeSymbol(tokens, close, ")") && --depth === 0) break;
+  }
+  if (close >= tokens.length || !nativeWord(tokens, close + 1, "RETURNS")) throw new Error("reviewed native store unsupported function header");
+  const signature = nativeStoreIdentity(name.name, statement.slice(tokens[name.next]!.end, tokens[close]!.start));
+  if (!allowed.has(signature)) {
+    if (preceding) return null;
+    throw new Error(`reviewed native store unlisted signature: ${signature}`);
+  }
+  return [signature, sqlSha256(statement)];
+}
+
 /** Raw statement hashes, with normalized types and exact class-list membership. */
 export function nativeStoreFunctionDefinitions(bytes: Buffer, signatures: readonly string[], preceding = false): Map<string, string> {
   const allowed = new Set(signatures), names = new Set(signatures.map(signature => signature.split("(")[0]!)), result = new Map<string, string>();
-  for (const statement of sqlStatements(bytes.toString("utf8"), preceding, false, true)) {
+  if (preceding) {
+    for (const { statement, tokens, complete } of cachedNativePrefixStatements(bytes)) {
+      const definition = nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowed, names, true);
+      if (definition) result.set(definition[0], definition[1]);
+    }
+    return result;
+  }
+  for (const statement of sqlStatements(bytes.toString("utf8"), false, false, true)) {
     const { tokens, complete } = platformSqlTokens(statement, false, true);
-    const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
-    if (!nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, functionIndex, "FUNCTION")) continue;
-    const name = nativeQualified(tokens, functionIndex + 1);
-    if (preceding && name && !names.has(name.name)) continue;
-    if (!complete || !name || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted" || !nativeSymbol(tokens, name.next, "(")) throw new Error(preceding ? "reviewed native store unsupported preceding function DDL" : "reviewed native store unsupported function header");
-    let close = name.next, depth = 0;
-    for (; close < tokens.length; close++) {
-      if (nativeSymbol(tokens, close, "(")) depth++;
-      if (nativeSymbol(tokens, close, ")") && --depth === 0) break;
-    }
-    if (close >= tokens.length || !nativeWord(tokens, close + 1, "RETURNS")) throw new Error("reviewed native store unsupported function header");
-    const signature = nativeStoreIdentity(name.name, statement.slice(tokens[name.next]!.end, tokens[close]!.start));
-    if (!allowed.has(signature)) {
-      if (preceding) continue;
-      throw new Error(`reviewed native store unlisted signature: ${signature}`);
-    }
-    if (!preceding && result.has(signature)) throw new Error("reviewed native store duplicate function definition");
-    result.set(signature, sqlSha256(statement));
+    const definition = nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowed, names, false);
+    if (!definition) continue;
+    const [signature, digest] = definition;
+    if (result.has(signature)) throw new Error("reviewed native store duplicate function definition");
+    result.set(signature, digest);
   }
   return result;
 }
@@ -2670,14 +2746,16 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const replacements = [...slot.checkSupersets ?? [], ...slot.uniqueSupersets ?? []], droppedIndexes = slot.droppedIndexes ?? [];
   const indexCreates = new Set<string>();
   let checkSource: string | undefined;
-  for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true, false, true)) {
-    const { tokens, complete } = platformSqlTokens(statement, false, true);
+  const allowedSignatures = new Set(signatures);
+  for (const source of preceding) for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
     if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
       const name = nativeQualified(tokens, functionIndex + 1);
       if (!name || (names.has(name.name) && (!nativeWord(tokens, 0, "CREATE") || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted"))) throw new Error("reviewed native store unsupported preceding function DDL");
     }
-    for (const [signature, digest] of nativeStoreFunctionDefinitions(Buffer.from(statement), signatures, true)) {
+    const definition = nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowedSignatures, names, true);
+    if (definition) {
+      const [signature, digest] = definition;
       prior.set(signature, digest); priorStatements.set(signature, statement);
       if (source.path < `db/platform/migrations/${nativeStoreTime(control!.slots[0]!.path)}_`) baseDefinitions.set(signature, digest);
     }

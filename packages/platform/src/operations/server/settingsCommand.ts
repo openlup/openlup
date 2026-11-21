@@ -196,6 +196,17 @@ function errorMessage(error: unknown, fallback = "Application validation failed.
   return fallback;
 }
 
+function checkErrorMessage(error: unknown): string {
+  const message = errorMessage(error);
+  try {
+    const cause = error && typeof error === "object" && "cause" in error ? error.cause : undefined;
+    if (typeof cause === "string" && cause.length > 0 && cause.length <= 300 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(cause)) {
+      return `${message} (${cause})`;
+    }
+  } catch { /* A thrown value need not have a readable cause. */ }
+  return message;
+}
+
 async function checkApp(file?: FileBinding): Promise<AppValidation> {
   if (!file) return { state: "not-provided", hint: "Add file: { configuration, entries } to your existing createSettingsBindings return value, then rerun settings check." };
   if (!file.validate) return { state: "not-provided" };
@@ -203,7 +214,7 @@ async function checkApp(file?: FileBinding): Promise<AppValidation> {
     await file.validate();
     return { state: "passed" };
   } catch (error) {
-    return { state: "failed", message: errorMessage(error) };
+    return { state: "failed", message: checkErrorMessage(error) };
   }
 }
 
@@ -376,7 +387,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     try {
       bindings = await loadApp();
     } catch (error) {
-      return report(undefined, { state: "failed", phase: "load", message: errorMessage(error) });
+      return report(undefined, { state: "failed", phase: "load", message: checkErrorMessage(error) });
     }
     if (!bindings) {
       const refusal = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;

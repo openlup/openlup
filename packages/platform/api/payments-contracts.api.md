@@ -490,7 +490,7 @@ export type { PaymentRefundObservation, RefundEvidencePolicy, VerifiedPaymentEvi
 export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidence, ExecutionCapability, ExecutionSubject, ExecutionProviderIdentity, ExecutionEvidence, DurableEventCounts, DurableEventAggregate, DurableEventFixtureCardinality, DurableEventWriteCardinality, DurableEventCardinalityExpectations, DurableEventSnapshot, EventReceipt, DurableEventCapability, DurableEventEvidence, } from "./conformance.js";
 export type { PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource, } from "./truth.js";
 export type { PaymentIngressPort } from "./evidence.js";
-export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
+export type { PaymentReadbackIdentityMismatch, ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
 export type { PostgresPaymentTruthOptions } from "./truth.js";
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
 export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
@@ -604,6 +604,10 @@ export interface PaymentProviderProfile {
 import type { ProviderReadPurpose } from "./evidence.js";
 export type ReconciliationProviderKind = string;
 export type ProviderReconciliationStatusKind = "succeeded" | "failed" | "pending" | "unknown";
+/** Throw an error or object with this code when the provider returns a different payment identity. */
+export type PaymentReadbackIdentityMismatch = {
+    readonly code: "provider_payment_identity_mismatch";
+};
 export interface ProviderReconciliationStatus {
     status: ProviderReconciliationStatusKind;
     providerStatus: string;

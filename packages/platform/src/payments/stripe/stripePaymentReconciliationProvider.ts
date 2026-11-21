@@ -1,3 +1,4 @@
+import type { PaymentReadbackIdentityMismatch } from "../contracts/reconciliation.js";
 import { capturedAmountMinor } from "./intentMapper.js";
 import { failureEvidencePayload } from "./paymentFailureEvidence.js";
 import type {
@@ -104,7 +105,9 @@ export function readStripeIntentStatus(
 ): ProviderReconciliationStatus {
   const status = normalizeStripeIntent(intent);
   if (status.status === "succeeded" && intent.id !== providerPaymentId) {
-    throw new Error("stripe_readback_payment_identity_mismatch");
+    throw Object.assign(new Error("stripe_readback_payment_identity_mismatch"), {
+      code: "provider_payment_identity_mismatch",
+    } satisfies PaymentReadbackIdentityMismatch);
   }
   // Same rule as the recovery read above, on the rail the buyer's own
   // "check it now" travels: an intent no issuer has been asked about is
