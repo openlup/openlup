@@ -272,6 +272,14 @@ test('host arguments have a non-secret loopback default and explicit configurati
     { configuration: 'harbor-objects', port: 4321, listen: '0.0.0.0' });
 });
 
+test('host arguments accept both private file paths', () => {
+  assert.deepEqual(parseHostArguments(['--quote-acceptance-key-file', '/private/quote-key.json',
+    '--catalogue-publication-password-file', '/private/publication-password']), {
+    configuration: undefined, port: 4319, listen: '127.0.0.1', quoteAcceptanceKeyFile: '/private/quote-key.json',
+    cataloguePublicationPasswordFile: '/private/publication-password',
+  });
+});
+
 for (const [args, code] of [
   [['--unknown', 'value'], 'starter_argument_unknown'],
   [['--port'], 'starter_argument_value_required'],

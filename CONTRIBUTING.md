@@ -193,7 +193,7 @@ Start from the question you need to answer during implementation:
 | Change | Contributor files |
 | --- | --- |
 | Edit existing behavior | Edit the owning source and its nearest behavior tests. Update reader guidance if the public contract changes. |
-| Add or remove a tracked public file | Update the [publication inventory](config/openlup-publication-catalog.json) unless the [publication policy](docs/platform/DOCUMENTATION.md) already admits the file by pattern. |
+| Add or remove a tracked public file | Update the [publication inventory](config/openlup-publication-catalog.json) unless the [publication policy](docs/platform/DOCUMENTATION.md) already admits the file by pattern (`packages/{core,outbox,platform}/changes/*.md` or `packages/core/docs/guide/**/*.md`). |
 | Change an exported contract or add a migration | Follow the owning [package checks](#package-policy-and-release-checks) or [migration workflow](docs/platform/DATA_AND_MIGRATIONS.md) to regenerate affected files. |
 | Prepare a release or change repository controls | See [release and repository controls](docs/platform/DEVELOPMENT_AND_RELEASE.md). These are maintainer tasks. |
 
@@ -1865,7 +1865,7 @@ entry. Observe an existing request instead of repeatedly arming it.
 
 Where activated, trusted `Queue Handoff` can insert a still-armed exact head once
 after the required source successes and current native proof. At each of its two
-mergeability checks, it re-reads `UNKNOWN` up to six times, 10 seconds apart.
+mergeability checks, it re-reads `UNKNOWN` up to twelve times, 15 seconds apart.
 Persistent `UNKNOWN` requires re-running the job. It does not arm an unarmed PR
 or automatically requeue an evicted head. Its App is scoped
 to this repository with no bypass; its private key stays in the main-only

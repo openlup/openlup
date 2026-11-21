@@ -261,7 +261,15 @@ it("uses the same dispatcher bytes for offline results and refusals", async () =
 });
 
 it.each([
-  ["empty result", ["list", "--goal", "qzxunique"], "No settings matched the goal."],
+  ["text", [], "No settings matched the goal.\nTry fewer or different words, or run list without --goal.\n"],
+  ["json", ["--json"], '{"schemaVersion":1,"entries":[]}\n'],
+] as const)("renders an empty list in %s", async (_, flags, expected) => {
+  const { exit, output } = await run(["list", "--goal", "qzxunique", ...flags]);
+  expect(exit).toBe(0);
+  expect(output).toBe(expected);
+});
+
+it.each([
   ["list result", ["list", "--goal", "inventory buffer"], "inventory_renewal_protection (installed, preview)"],
   ["compact list reason", ["list", "--goal", "shipping.addressRegions"],
     "\n  The native address contract requires a postal code and has no region field.\n  Change: docs/guide/"],
@@ -507,6 +515,27 @@ it.each([
 });
 
 it.each([
+  ["short string", new Error("x_invalid", { cause: "a.b: must be positive" }), "x_invalid (a.b: must be positive)"],
+  ["no cause", new Error("x_invalid"), "x_invalid"],
+  ["empty string", new Error("x_invalid", { cause: "" }), "x_invalid"],
+  ["non-string cause", new Error("x_invalid", { cause: 42 }), "x_invalid"],
+  ["301-character string", new Error("x_invalid", { cause: "a".repeat(301) }), "x_invalid"],
+  ["string with a line feed", new Error("x_invalid", { cause: "a.b: must be positive\nsecond line" }), "x_invalid"],
+] as const)("reports a %s cause on check load and validation failures", async (_, error, message) => {
+  const fail = () => { throw error; };
+  const loaded = await run(checkArgs, { host: checks(async () => fail()) });
+  const validated = await run(checkArgs, { host: checks(async () => ({ file: { ...minimumFile, validate: fail } })) });
+  expect(loaded.exit).toBe(1);
+  expect(validated.exit).toBe(1);
+  expect(JSON.parse(loaded.output)).toMatchObject({
+    state: "invalid", appValidation: { state: "failed", phase: "load", message },
+  });
+  expect(JSON.parse(validated.output)).toMatchObject({
+    state: "invalid", appValidation: { state: "failed", message },
+  });
+});
+
+it.each([
   [["check"], "app"], [["check", "--database-url", url], "database-url"],
   [[...checkArgs, "--database-url", url], "database-url"],
   [[...checkArgs, "--database-url="], "database-url"], [[...checkArgs, "--value", "{}"], "value"],
@@ -598,6 +627,10 @@ const giftPath = "owned/gift.config.ts";
 const feeEffect = "New gift quotes use this fee after deployment.";
 const missingApp = "Check the --app path and the createSettingsBindings export.";
 const appArgs = ["--app", "./app.ts"];
+const appPreviewRefusal = refuseSettingsPreview("commerce_setting_preview_unsupported", {
+  path: ["key"],
+  hint: `${feeKey} is an application setting without a preview. Read it with settings show ${feeKey} and validate an edit with settings check.`,
+});
 
 function appFixture(readFee: () => unknown = () => "150", schema: ZodType = z.coerce.number().int().refine(n => n !== 151)) {
   return {
@@ -629,6 +662,40 @@ function appFixture(readFee: () => unknown = () => "150", schema: ZodType = z.co
     },
   } satisfies SettingsAppBindings;
 }
+
+it.each(["text", "json"])("refuses preview of a declared application setting in %s", async format => {
+  const loadCheck = vi.fn(async () => appFixture());
+  const host = checks(loadCheck);
+  const argv = ["preview", feeKey, "--value", "150", ...appArgs];
+  const { exit, output } = await run(format === "json" ? [...argv, "--json"] : argv, { host });
+  const { code, rule, hint, remediation } = appPreviewRefusal.refusal;
+  expect(exit).toBe(1);
+  expect(output).toBe(format === "json" ? document(appPreviewRefusal)
+    : [code, rule, hint, remediation.action, remediation.command, ""].join("\n"));
+  expect(loadCheck).toHaveBeenCalledExactlyOnceWith({ app: "./app.ts", configuration: undefined });
+  expect(host.bind).not.toHaveBeenCalled();
+});
+
+it("keeps the unknown refusal for an application key without --app", async () => {
+  const loadCheck = vi.fn(async () => appFixture());
+  const { exit, output } = await run(["preview", feeKey, "--value", "150", "--json"], { host: checks(loadCheck) });
+  expect(exit).toBe(1);
+  expect(output).toBe(document(refuseSettingsPreview("commerce_setting_unknown")));
+  expect(loadCheck).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["checkout_recovery_reminders", "commerce_setting_preview_unsupported"],
+  [key, "commerce_setting_preview_connection_required"],
+] as const)("keeps the packaged %s preview refusal without loading the app", async (packagedKey, code) => {
+  const loadCheck = vi.fn(async () => appFixture());
+  const host = checks(loadCheck);
+  const { exit, output } = await run(["preview", packagedKey, "--value", "{}", "--json", ...appArgs], { host });
+  expect(exit).toBe(1);
+  expect(output).toBe(document(refuseSettingsPreview(code)));
+  expect(loadCheck).not.toHaveBeenCalled();
+  expect(host.bind).not.toHaveBeenCalled();
+});
 
 const parityModes = ["no app", "healthy app", "throwing app"] as const;
 const parityValue = { revision: "local", renewalProtectionDays: 14 };
@@ -690,9 +757,10 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
       expect(app.warnings).toEqual(list && load === loadBroken ? ["Settings app: rejected edit\n"] : []);
     }
   }
-  // N3a bytes with the six starter keys removed, the callback guide reference and the unknown-key guidance.
+  // N3a bytes with the six starter keys removed, the callback guide reference,
+  // the unknown-key guidance and the text hint for an empty list.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("cf3cfe41b9aea2a3c2d574ac566701dc9029e587997ccfb84429cbeb4871de32");
+    .toBe("1c92a6efacb40f32a1e9a2704d12b43ede780ee60658a5b4ad8487ab1f524945");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {
@@ -924,6 +992,7 @@ it.each([
   ["P07 check unknown", "check", {}, [], { app: "unknown" }, 2],
   ["P07 check missing factory", "check", {}, [], { app: "missing" }, 74],
   ["P08 offline preview", "preview", { key, value: nativeProposal }, [key, "--value", JSON.stringify(nativeProposal)], fixedApp, 1],
+  ["P08 declared application preview refusal", "preview", { key: feeKey, value: 150 }, [feeKey, "--value", "150"], fixedApp, 1],
   ["P09 preview missing key", "preview", { value: null }, ["--value", "null"], fixedApp, 64],
   ["P09 preview empty key", "preview", { key: "", value: null }, ["--value", "null", "--", ""], fixedApp, 64],
   ["P09 preview missing proposal", "preview", { key }, [key], fixedApp, 64],

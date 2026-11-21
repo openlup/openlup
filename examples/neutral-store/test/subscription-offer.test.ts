@@ -57,6 +57,8 @@ test('invalid defaults, overlapping cadence rules and malformed or unsupported d
   invalid(value => { value.days = set(14,14); });
   invalid(value => { value.bySku = { 'SAMPLE-A': [{ days: set(28),quantities: set(1) },{ days: set(28),quantities: set(2) }] }; });
   invalid(value => { value.bySku = { UNKNOWN: [{ days: set(28),quantities: set(1) }] }; });
+  invalid(value => { Object.assign(value.bySku, { 'SAMPLE-A': 'x' }); });
+  invalid(value => { Object.assign(value.bySku, { 'SAMPLE-A': [{ days: set(28) }] }); });
   invalid(value => { value.days = range(1,MAX_CADENCE_DAYS+1,1); });
   invalid(value => { value.days = set(0); });
 });

@@ -36,6 +36,20 @@ rather than requiring any particular textual spelling of the clamp.
 Installed readers follow the
 [package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
 
+## Native fulfillment shipment lock order
+
+The [shipment lock-order forward](../../db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql)
+replaces `public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)`
+in place with the same signature, `SECURITY INVOKER` posture, ACLs and pinned
+`public, pg_catalog` search path. When a shipment belongs to a subscription
+cycle, it acquires `FOR UPDATE` on the parent `public.subscriptions` row before
+locking `public.fulfillment_shipments`, matching the canonical delivery-alignment
+lock order (`subscriptions` -> `fulfillment_shipments` ->
+`subscription_delivery_alignment_cases`) and preventing `40P01` deadlocks against
+concurrent renewal admission. One-time shipments (`subscription_cycle_id IS NULL`)
+skip the subscription lock and retain identical transition, refusal and
+idempotency behavior.
+
 ## Native activation edit window
 
 The native `20261123120000_subscription_edit_window_activation.sql` forward adds
@@ -830,6 +844,18 @@ foreign key or absorption duty. The parameterized
 [round-trip witness](../../tests/postgres/policyCloseDigest.test.ts) compares full
 rows and commerce continuity through restore and replay.
 
+The native `20261123192000_subscription_price_policy_close_provenance.sql`
+forward rejects direct inserts of finite revisions marked `closed_from_open`
+with `55000 subscription_price_policy_revision_close_provenance_requires_restore`.
+An open revision with the marker set still fails the existing window check.
+Use the matching connected-store restore implementation on upgraded targets.
+It enables the exception only while copying policy rows in the restore
+transaction and removes it before commit. The capability table must be empty
+at capture and restore boundaries and is excluded from the transfer packet.
+Catalogue document pointer capabilities authorize only their pointer updates.
+The forward requires no backfill and the stored digest and native reader
+contracts remain the same. The managed rail does not supply this guard.
+
 Managed divergence design: the managed rail does not supply this feature.
 A future twin adds the same marker and validated CHECK to the managed policy
 revision table, preserves existing RLS and grants, and updates the managed
@@ -1611,6 +1637,26 @@ positions. Its approval binds the exact file and nine function preimages
 and definitions. The active forward pins name resolution on those definitions;
 the issued qualified prefix has 92 units. Earlier qualified units and their approvals
 remain immutable.
+
+Position 18 is reserved for `q2_20261123192500_catalog_publication_authority.sql`.
+Its `qualifiedInstallations` entry is exactly `{ path, sha256 }`, with the full
+catalogue path and a SHA-256 digest of the exact SQL bytes. The forward appends
+to the `qualified-v2` plan after lock and conflict completion and preserves
+the order of shared forwards. The SQL introduction can add the approval and
+manifest entry together. The reservation by itself grants no database privileges.
+
+The restricted publication login can write live products, SKUs, SKU identifiers,
+product-document revisions and attribute projections, and apply base prices with
+their receipts. At commit, each write must match a publication for the same
+product recorded by the definer recorder in that transaction. The issue must
+reference the current revision of an open draft for that product. Column values
+inside an approved publication are trusted to the native runner, as on the owner
+path.
+
+As in other runtime paths, the human-admin and actor checks trust the host to
+bind actor claims to the transaction. The publication credential authenticates
+the host, and the database cannot verify the human identity behind claims
+supplied by a holder of that credential.
 
 Historically, delivery used three separately landed checkpoints: reader support,
 then an exact pin-only approval, then the identical active SQL and its selected

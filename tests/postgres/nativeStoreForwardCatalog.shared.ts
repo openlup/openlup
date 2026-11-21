@@ -987,6 +987,11 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     await closePostgres(container, pool);
   }, postgresTeardownTimeoutMs);
 
+  // The full real-forward replay chain (all bound nativeStoreForwards + reminderCreationProbes)
+  // and every service_role-sensitive synthetic test (CONFORMING, BASELINE_SQL, CENSUS_SQL,
+  // NOTICE_SQL, successor storage absorption census) run in BOTH serviceRole modes.
+  // Purely service_role-independent synthetic DDL comparator matrices run once under serviceRole: true.
+  if (serviceRole) {
   it("admits the fresh assignment default switch and preserves historical rows", async () => {
     await checkForward(pool, ASSIGNMENT_SLOT, forward(CREATED_OK, ASSIGNMENT_ADD + ASSIGNMENT_SWITCH));
     const db = await pool.connect();
@@ -1009,6 +1014,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   ])("refuses assignment switch with %s in PostgreSQL", async (_label, sql, setup) => {
     await expect(checkForward(pool, ASSIGNMENT_SLOT, forward(CREATED_OK, sql), false, setup)).rejects.toThrow(/assignment default switch/u);
   });
+  }
   it("admits only the pinned baseline service grant and SELECT/INSERT policies", async () => {
     await checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL));
   });
@@ -1072,6 +1078,27 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     expect(replay.creationOutcomes.get(change)).toBeInstanceOf(Error);
     expect(replay.creationOutcomes.get(change)?.message).toMatch(/catalog:/u);
   });
+  const storageSlot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [] };
+  const storageEntries = Object.entries(NATIVE_SUCCESSOR_TABLE_SQL);
+  const storageBase = `ALTER TABLE public.subscriptions ALTER COLUMN id TYPE uuid USING NULL::uuid;
+    ${["catalog_skus", "catalog_publications", "subscription_stock_wait_cases", "subscription_renewal_operations", "subscription_cycles", "commerce_orders", "commerce_settlement_intents", "fulfillment_shipments"].map(name => `CREATE TABLE public.${name}(id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id,other_id));`).join("\n")}
+    INSERT INTO public.client_absorption_policy VALUES ('subscription_successor_proposals','block',NULL),('subscription_successor_wait_cases_v2','block',NULL);`;
+  const storageCreate = storageEntries.map(([name, statement]) => `${statement}\nALTER TABLE ${name} ENABLE ROW LEVEL SECURITY;\nREVOKE ALL ON TABLE ${name} FROM PUBLIC;`).join("\n");
+  it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
+  it("admits only the named new table runtime ACL and policy", async () => { await checkForward(pool, NOTICE_SLOT, forward(CREATED_OK, NOTICE_SQL)); });
+  it("proves successor storage keeps the listed absorption census exception", async () => {
+    const tables = ["public.subscription_successor_proposals", "public.subscription_successor_wait_cases_v2"];
+    const census = serviceRole ? tables.map(name => `GRANT SELECT(client_id) ON ${name} TO service_role; CREATE POLICY ${name.slice(7)}_absorption_census ON ${name} FOR SELECT TO service_role USING (true);`).join("\n") : "";
+    await checkForward(pool, { ...storageSlot, absorptionCensusTables: tables }, storageCreate + census, false, storageBase);
+  });
+  it.each(REFUSALS.filter(([label, , , needsServiceRole]) => serviceRole || (!needsServiceRole && label.includes("census"))))("refuses %s", async (_name, sql, message, _needsServiceRole, slot) => {
+    await expect(checkForward(pool, slot, sql)).rejects.toThrow(message);
+  });
+  it.each(bound)("holds the catalog boundary of $pin.path", ({ pin }) => {
+    expect(replay.outcomes.get(pin.path), pin.path).toBeNull();
+  });
+
+  if (serviceRole) {
   it("installs two replacement slots with pinned bodies and unchanged function attributes and ACL", async () => {
     const db = await pool.connect(), signature = "public.cat_replaced(text,boolean)";
     const definition = (body: string) => `CREATE OR REPLACE FUNCTION public.cat_replaced(p text, q boolean DEFAULT false) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$${body}$$;`;
@@ -1141,8 +1168,6 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     const slot = { ...SYNTHETIC_SLOT, droppedIndexes: [{ table: `public.${table}`, name, beforeSha256: "0".repeat(64) }] };
     await expect(checkForward(pool, slot, forward(CREATED_OK, `ALTER TABLE public.${table} DROP CONSTRAINT ${name} CASCADE;`), false, setup)).rejects.toThrow(/must be a removed standalone index/u);
   });
-  it("admits a conforming forward", async () => { await checkForward(pool, SYNTHETIC_SLOT, CONFORMING); });
-  it("admits only the named new table runtime ACL and policy", async () => { await checkForward(pool, NOTICE_SLOT, forward(CREATED_OK, NOTICE_SQL)); });
   it("admits a widened purpose CHECK that its slot lists", async () => { await checkForward(pool, PURPOSE_SLOT, forward(CREATED_OK, purposeCheck("CHECK (purpose IN ('a','b','c'))"))); });
   it("admits multiple named CHECK widenings after unrelated additive DDL", async () => {
     await checkForward(pool, PARAMETER_SLOT, forward(CREATED_OK, PARAMETER_CHECKS), false, "ALTER TABLE public.cat_parameters ADD COLUMN unrelated uuid; ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_unrelated CHECK (unrelated IS NULL) NOT VALID;");
@@ -1562,15 +1587,9 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   ])("refuses installed successor shape: %s", async (_label, statement, setup = successorBase) => {
     await expect(checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, statement), false, setup)).rejects.toThrow(/catalog:/u);
   });
-  const storageSlot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [] };
   it("preserves generic admission for a temporary relation named __proto__", async () => {
     await checkForward(pool, storageSlot, "CREATE TABLE pg_temp.__proto__ (id uuid);");
   });
-  const storageEntries = Object.entries(NATIVE_SUCCESSOR_TABLE_SQL);
-  const storageBase = `ALTER TABLE public.subscriptions ALTER COLUMN id TYPE uuid USING NULL::uuid;
-    ${["catalog_skus", "catalog_publications", "subscription_stock_wait_cases", "subscription_renewal_operations", "subscription_cycles", "commerce_orders", "commerce_settlement_intents", "fulfillment_shipments"].map(name => `CREATE TABLE public.${name}(id uuid PRIMARY KEY, other_id uuid UNIQUE, UNIQUE(id,other_id));`).join("\n")}
-    INSERT INTO public.client_absorption_policy VALUES ('subscription_successor_proposals','block',NULL),('subscription_successor_wait_cases_v2','block',NULL);`;
-  const storageCreate = storageEntries.map(([name, statement]) => `${statement}\nALTER TABLE ${name} ENABLE ROW LEVEL SECURITY;\nREVOKE ALL ON TABLE ${name} FROM PUBLIC;`).join("\n");
   it("proves the four successor storage shapes, owner ACLs and every RESTRICT target", async () => {
     await checkForward(pool, storageSlot, storageCreate, false, storageBase);
     const db = await pool.connect();
@@ -1598,11 +1617,6 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
         await db.query("ROLLBACK TO SAVEPOINT restricted");
       }
     } finally { await db.query("ROLLBACK"); db.release(); }
-  });
-  it("proves successor storage keeps the listed absorption census exception", async () => {
-    const tables = ["public.subscription_successor_proposals", "public.subscription_successor_wait_cases_v2"];
-    const census = serviceRole ? tables.map(name => `GRANT SELECT(client_id) ON ${name} TO service_role; CREATE POLICY ${name.slice(7)}_absorption_census ON ${name} FOR SELECT TO service_role USING (true);`).join("\n") : "";
-    await checkForward(pool, { ...storageSlot, absorptionCensusTables: tables }, storageCreate + census, false, storageBase);
   });
   const storageRefusals: [string, string, string?][] = [];
   for (const [name, create] of storageEntries) {
@@ -1794,9 +1808,6 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   // The deferrable unique constraint brings its own internal recheck trigger to the existing table; the forward added the constraint.
   it("admits a deferrable unique constraint on an existing table", async () => { await checkForward(pool, SYNTHETIC_SLOT, forward(CREATED_OK, "ALTER TABLE public.cat_existing_table ADD CONSTRAINT cat_unique UNIQUE (owner_ref) DEFERRABLE;")); });
   it("admits an invoker function that carries no SET", async () => { await checkForward(pool, INVOKER_SLOT, forward(invoker(""))); });
-  it.each(REFUSALS.filter(([, , , needsServiceRole]) => serviceRole || !needsServiceRole))("refuses %s", async (_name, sql, message, _needsServiceRole, slot) => {
-    await expect(checkForward(pool, slot, sql)).rejects.toThrow(message);
-  });
   // Every read that compares an OID with the floor, the three system digests included, must resolve to pg_catalog's own
   // operators: operators a forward creates for (oid, integer) in pg_catalog hide nothing from the snapshot.
   it("reads the OID floor through pg_catalog's own operators", async () => {
@@ -1830,7 +1841,5 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       await expect(assertSlotCatalog(db, { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [] }, before, after, "postgres")).rejects.toThrow(`catalog: ${id} `);
     } finally { db.release(); }
   });
-  it.each(bound)("holds the catalog boundary of $pin.path", ({ pin }) => {
-    expect(replay.outcomes.get(pin.path), pin.path).toBeNull();
-  });
+  }
 }

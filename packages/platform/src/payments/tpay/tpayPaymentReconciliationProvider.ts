@@ -1,3 +1,4 @@
+import type { PaymentReadbackIdentityMismatch } from "../contracts/reconciliation.js";
 import { readTransactionAmountEvidence } from "./tpayTransactionPayload.js";
 import type {
   ProviderReconciliationStatus,
@@ -39,7 +40,9 @@ export function createTpayPaymentReconciliationProvider(
       const transaction = await client.getTransaction(input.providerPaymentId);
       const status = normalizeTpayTransaction(transaction);
       if (status.status === "succeeded" && !tpayIdentityMatches(transaction, input.providerPaymentId)) {
-        throw new Error("tpay_readback_payment_identity_mismatch");
+        throw Object.assign(new Error("tpay_readback_payment_identity_mismatch"), {
+          code: "provider_payment_identity_mismatch",
+        } satisfies PaymentReadbackIdentityMismatch);
       }
       return status;
     },

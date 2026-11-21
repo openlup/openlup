@@ -21,8 +21,12 @@ export async function act(operation: Operation, input: ActionInput, commandKey: 
     if (isRecord(result) && result.ok === false && typeof result.code === 'string') {
       const issues = Array.isArray(result.issues) ? result.issues.flatMap(issue =>
         isRecord(issue) && typeof issue.path === 'string' && typeof issue.code === 'string'
-          ? [{ path: issue.path, code: issue.code, ...(typeof issue.message === 'string' ? { message: issue.message } : {}) }] : []) : [];
-      return { ok: false, code: result.code, ...(issues.length ? { issues } : {}) };
+          ? [{ path: issue.path, code: issue.code, ...(typeof issue.message === 'string' ? { message: issue.message } : {}),
+            ...(typeof issue.subject === 'string' ? { subject: issue.subject } : {}) }] : []) : [];
+      return { ok: false, code: result.code, ...(issues.length ? { issues } : {}),
+        ...(typeof result.message === 'string' ? { message: result.message } : {}),
+        ...(typeof result.path === 'string' ? { path: result.path } : {}),
+        ...(typeof result.subject === 'string' ? { subject: result.subject } : {}) };
     }
     if (response.ok && isRecord(result) && result.ok === true && 'value' in result) {
       return { ok: true, value: result.value, ...(result.replayed === true ? { replayed: true } : {}) };

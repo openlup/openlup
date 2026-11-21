@@ -39,6 +39,10 @@ recipe, recheck and evidence, ordered by path, code and fixture.
 An integrity failure such as `combination_identity_integrity_failed` exits 74.
 The CLI withholds raw errors when loading the module or running its validators.
 
+
+For the installed starter, follow [Publish a saved catalogue draft](../build/customize-the-starter.md#publish-a-saved-catalogue-draft)
+to prepare, approve, issue and read the exact saved facts.
+
 ## New vertical
 
 Copy the [TypeScript skeleton](./catalogue-pack-skeleton/catalogue.ts), rename its

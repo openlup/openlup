@@ -54,8 +54,23 @@ export async function readInvoicePaymentEvidence(
         currencyAvailable: currencyOrNull(readback.currency) !== null,
       },
     };
-  } catch {
+  } catch (error) {
+    if (isPaymentIdentityMismatch(error)) {
+      return {
+        ...unavailable(providerName, payment.providerPaymentId, "provider_payment_identity_mismatch"),
+        providerStatus: "unknown",
+      };
+    }
     return unavailable(providerName, payment.providerPaymentId, "provider_read_failed");
+  }
+}
+
+function isPaymentIdentityMismatch(error: unknown): boolean {
+  try {
+    return (error as { code?: unknown } | null)?.code === "provider_payment_identity_mismatch";
+  } catch {
+    // A throwing property accessor is not structured refusal evidence.
+    return false;
   }
 }
 

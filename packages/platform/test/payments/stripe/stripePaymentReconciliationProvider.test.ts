@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readInvoicePaymentEvidence } from "@openlup/platform/invoicing";
 import { PSP_PROVIDER_KINDS } from "./testConstants.js";
 
 // The shared classification seam is spied THROUGH to its real implementation:
@@ -60,10 +61,25 @@ describe("normalize", () => {
 
   it("refuses a successful readback for a different provider intent", async () => {
     const provider = createStripePaymentReconciliationProvider({ retrievePaymentIntent: async () => ({
-      id: "pi_other", status: "succeeded", amount: 1299, amount_received: 1299, currency: "eur",
+      id: "pi_other", status: "succeeded", amount: 4239, amount_received: 4238, currency: "pln",
     }) });
-    await expect(provider.readPayment({ providerPaymentId: "pi_requested" }))
-      .rejects.toThrow("stripe_readback_payment_identity_mismatch");
+    const payment = { provider: "stripe", providerPaymentId: "pi_paid_3", amountCents: 4239 };
+    await expect(provider.readPayment(payment))
+      .rejects.toMatchObject({
+        message: "stripe_readback_payment_identity_mismatch",
+        code: "provider_payment_identity_mismatch",
+      });
+    await expect(readInvoicePaymentEvidence(payment, provider)).resolves.toEqual({
+      providerStatus: "unknown",
+      providerAmountCents: null,
+      providerCurrency: null,
+      providerEvidence: {
+        source: "provider_api",
+        provider: payment.provider,
+        providerPaymentId: payment.providerPaymentId,
+        unavailableReason: "provider_payment_identity_mismatch",
+      },
+    });
   });
 
   it("maps off-session action-required states to terminal failure for dunning", () => {

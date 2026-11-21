@@ -11,8 +11,24 @@ import { configurations } from '../owned/store.config.ts';
 import { buildDemoSeed } from '../owned/demo-seed.ts';
 import { editorProducts, readStarterCatalogueRules, starterCatalogue } from '../host/editor-catalogue.ts';
 import { acquisitionAddresses } from '../owned/acquisition-addresses.ts';
-import { applyDemoSeed, demonstrationMarker, installDemonstration,
+import { applyDemoSeed, demonstrationMarker, installDemonstration, provisionDemonstrationPublicationPassword,
   type DemonstrationInstallation } from '../installation/install.ts';
+
+test('publication provisioning sends a verifier and keeps the password in the private file', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'starter-publication-'));
+  try {
+    const path = resolve(directory, 'password');
+    let statement = '';
+    const password = await provisionDemonstrationPublicationPassword({ async query(sql) {
+      statement = sql;
+      return { rows: [] };
+    } }, path);
+    assert.equal((await readFile(path, 'utf8')).trim(), password);
+    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    assert.equal(statement.includes(password), false);
+    assert.ok(/^ALTER ROLE openlup_catalog_publication PASSWORD 'SCRAM-SHA-256\$4096:[A-Za-z0-9+/]+=*\$[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*'$/u.test(statement));
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 test('container demo startup privately creates a key once, reuses it, and refuses a customer database', async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
@@ -267,7 +283,12 @@ for (const config of Object.values(configurations)) {
     }
     const protection = first.calls.filter(call => call.values?.[0] === 'inventory_renewal_protection');
     const reminders = first.calls.filter(call => call.values?.[0] === 'checkout_recovery_reminders');
-    const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call) && call.text.startsWith('INSERT INTO public.'));
+    const settlement = first.calls.filter(call => ['settlement_region', 'settlement_currency'].includes(String(call.values?.[0])));
+    assert.deepEqual(settlement.map(call => call.values), [
+      ['settlement_region', config.market.country], ['settlement_currency', config.market.currency],
+    ]);
+    const inserts = first.calls.filter(call => !protection.includes(call) && !reminders.includes(call)
+      && !settlement.includes(call) && call.text.startsWith('INSERT INTO public.'));
     assert.equal(inserts.length, buildDemoSeed(config).products.length + buildDemoSeed(config).skus.length * 2 + buildDemoSeed(config).documents.length + buildDemoSeed(config).settings.length + seedPriceCount(config) + 3);
     for (const call of inserts) {
       assert.match(call.text, /ON CONFLICT/);

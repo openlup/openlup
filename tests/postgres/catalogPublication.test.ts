@@ -1188,6 +1188,9 @@ async function referencesFor(head: Graph["head"]) {
     .rows[0].canonical_state) as CatalogPublicationManifestV2).skus;
 }
 // Run the 10,000-SKU stress test last so earlier whole-DB checks (assertConnectedCatalogPublications) do not scan its leftover SKUs.
+// Temporary 600 s bound: on slower hosted runners this case exceeds 240 s, although it takes about 25 s locally.
+// Most of its time is canonical JSON key ordering during publication admission at COMMIT. Restore 240_000 when
+// the faster canonical JSON path for publication admission lands.
 it("admits the maximum inherited observation roster and refuses one more SKU", async () => {
   const data = { ...fixture(), skuCode: randomUUID().padEnd(160, "x") };
   const first = await transaction(pool, async db => {
@@ -1228,4 +1231,4 @@ it("admits the maximum inherited observation roster and refuses one more SKU", a
     return issue;
   });
   expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: replacement.head });
-}, 240_000);
+}, 600_000);

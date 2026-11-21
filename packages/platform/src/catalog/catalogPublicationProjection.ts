@@ -72,8 +72,14 @@ export async function readNativeDraftEvidence(db: PgQueryExecutor, reference: Re
   };
 }
 
+async function restrictedPublicationLogin(db: PgQueryExecutor) {
+  const { rows } = await db.query("SELECT current_user = 'openlup_catalog_publication' AS restricted");
+  return rows[0]?.restricted === true;
+}
+
 export async function publicationRelationFence(db: PgQueryExecutor, productId: string) {
-  await db.query(`LOCK TABLE public.catalog_products, public.catalog_skus, public.catalog_sku_identifiers,
+  if (await restrictedPublicationLogin(db)) await db.query("SELECT public.catalog_publication_lock_projection()");
+  else await db.query(`LOCK TABLE public.catalog_products, public.catalog_skus, public.catalog_sku_identifiers,
     public.catalog_product_document_revisions, public.catalog_attribute_projection IN SHARE ROW EXCLUSIVE MODE NOWAIT`);
   await db.query("SELECT id FROM public.catalog_products WHERE id=$1 FOR NO KEY UPDATE NOWAIT", [productId]);
   await db.query("SELECT product_id FROM public.catalog_publication_heads WHERE product_id=$1 FOR NO KEY UPDATE NOWAIT", [productId]);
@@ -161,6 +167,8 @@ function refusePriceOperation(operation: Plan["priceOperations"][number], reason
   const parsed = publicationPriceRefusalReason.safeParse(reason);
   if (!parsed.success) return refusePublicationCommand("catalog_publication_price_unavailable", "dependency_unavailable");
   const code = parsed.data;
+  if (code === "price_list_not_found")
+    throw new CatalogPublicationError(publicationIssue(code, "pricing", "skus.priceOperations.priceListId", operation.priceListId), outcome);
   if (code !== "command_key_reused") return refusePublicationCommand(code, outcome);
   throw new CatalogPublicationError({
     ...publicationIssue(code, "pricing", "skus.priceOperations", operation.commandKey),
@@ -168,9 +176,8 @@ function refusePriceOperation(operation: Plan["priceOperations"][number], reason
   }, outcome);
 }
 
-async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperations"], priced: CatalogPublishedSku[]) {
+async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperations"]) {
   const claims = new Map<string, unknown>();
-  const contexts = new Map<string, { priceListId: string; variantId: string }>();
   for (const operation of [...operations].sort((a, b) => Buffer.compare(Buffer.from(a.commandKey), Buffer.from(b.commandKey)))) {
     requireProjection(!claims.has(operation.commandKey), "catalog_publication_price_key_reused", "validation_issue");
     const text = canonicalCatalogPriceSetupCommand(operation);
@@ -182,6 +189,13 @@ async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperation
         outcome === "conflict" || outcome === "unauthorized" || outcome === "validation_issue" ? outcome : "dependency_unavailable");
     }
     claims.set(operation.commandKey, result);
+  }
+  return claims;
+}
+
+async function lockPriceContexts(db: PgQueryExecutor, operations: Plan["priceOperations"], priced: CatalogPublishedSku[]) {
+  const contexts = new Map<string, { priceListId: string; variantId: string }>();
+  for (const operation of operations) {
     contexts.set(`${operation.priceListId}:${operation.variantId}`, operation);
   }
   const selectedId = priced.length ? (await db.query(effectivePriceList)).rows[0]?.id : undefined;
@@ -193,7 +207,7 @@ async function claimPrices(db: PgQueryExecutor, operations: Plan["priceOperation
     const operation = contexts.get(key)!;
     await db.query("SELECT public.catalog_price_setup_lock_context($1,$2)", [operation.priceListId, operation.variantId]);
   }
-  return { claims, listId };
+  return listId;
 }
 
 async function assertSkuPrices(db: PgQueryExecutor, priced: CatalogPublishedSku[], reservedList: string | undefined) {
@@ -244,11 +258,14 @@ async function assertSkuPrices(db: PgQueryExecutor, priced: CatalogPublishedSku[
   }
 }
 
-async function applyPrices(db: PgQueryExecutor, operations: Plan["priceOperations"], claims: Map<string, unknown>, actor: string) {
+async function applyPrices(db: PgQueryExecutor, operations: Plan["priceOperations"], claims: Map<string, unknown> | null, actor: string) {
   for (const operation of operations) {
-    const claim = claims.get(operation.commandKey) as { outcome: string };
-    const raw = claim.outcome === "replayed" ? claim : (await db.query(
-      "SELECT public.catalog_price_setup_apply_claimed($1::jsonb,statement_timestamp()) AS result", [JSON.stringify(claim)])).rows[0]?.result;
+    const claim = claims?.get(operation.commandKey) as { outcome: string } | undefined;
+    const raw = !claim ? (await db.query(
+      "SELECT public.catalog_price_setup_apply($1,encode(sha256(convert_to($1,'UTF8')),'hex')) AS result",
+      [canonicalCatalogPriceSetupCommand(operation)])).rows[0]?.result
+      : claim.outcome === "replayed" ? claim : (await db.query(
+        "SELECT public.catalog_price_setup_apply_claimed($1::jsonb,statement_timestamp()) AS result", [JSON.stringify(claim)])).rows[0]?.result;
     const result = catalogPriceSetupApplyResultSchema.safeParse(raw);
     requireProjection(result.success, "catalog_publication_price_unavailable", "dependency_unavailable");
     if (!("receipt" in result.data)) refusePriceOperation(operation, result.data.reason, result.data.outcome);
@@ -257,7 +274,9 @@ async function applyPrices(db: PgQueryExecutor, operations: Plan["priceOperation
       && receipt.priceListId === operation.priceListId && (receipt.previous?.entryId ?? null) === operation.expected.entryId
       && (receipt.previous?.unitPriceMinor ?? null) === operation.expected.unitPriceMinor && receipt.current.unitPriceMinor === operation.unitPriceMinor,
     "catalog_publication_price_changed");
-    const effective = (await db.query(`SELECT entry.id,entry.unit_price_minor FROM public.price_entries entry
+    const effective = (await db.query(claims === null
+      ? "SELECT id,unit_price_minor FROM public.catalog_publication_lock_effective_base_price($1,$2)"
+      : `SELECT entry.id,entry.unit_price_minor FROM public.price_entries entry
       JOIN public.price_lists list ON list.id=entry.price_list_id
       WHERE entry.variant_id=$1 AND entry.price_list_id=$2 AND entry.mode='one_time' AND entry.min_qty=1 AND entry.active
         AND entry.amount_kind='gross' AND entry.valid_from<=statement_timestamp()
@@ -375,7 +394,10 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     return sku.status === "active" && (sku.sellableStandalone && !(active && before?.sellable_standalone)
       || sku.sellableInSubscription && !(active && before?.sellable_in_subscription));
   });
-  const { claims, listId } = await claimPrices(db, plan.priceOperations, priced);
+  const restricted = await restrictedPublicationLogin(db);
+  // The restricted login uses the atomic writer. It cannot leave a pending claim or choose a write timestamp.
+  const claims = restricted ? null : await claimPrices(db, plan.priceOperations);
+  const listId = restricted ? undefined : await lockPriceContexts(db, plan.priceOperations, priced);
   const currentDocuments = new Map(plan.documents.map(doc => [doc.reference.id, doc]));
   const allDocuments = new Map([...previous.evidence.documents, ...plan.documents].map(doc => [doc.reference.revisionNo, doc.reference.id]));
   async function movePointer(id: string) {
@@ -431,7 +453,7 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     if (sql?.message === "catalog_price_setup_readiness_would_fail") refusePublicationCommand("catalog_publication_price_readiness", "validation_issue");
     throw error;
   }
-  await assertSkuPrices(db, priced, listId);
+  await assertSkuPrices(db, priced, restricted ? await lockPriceContexts(db, plan.priceOperations, priced) : listId);
   if (plan.activating || priced.length) {
     const { rows } = await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS result");
     const result = rows[0]?.result as { ready?: boolean } | undefined;

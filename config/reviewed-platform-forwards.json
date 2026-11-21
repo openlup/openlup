@@ -1935,6 +1935,10 @@
     {
       "path": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
       "sha256": "6f360a14e5e722a9930fb845e40c5c25aa4d5bf1a20fd9bb23d22b0c6b75f2b1"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
+      "sha256": "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8"
     }
   ],
   "channelIngestForwards": [
@@ -6034,6 +6038,40 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "subscription-price-policy-close-provenance",
+        "path": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.subscription_price_policy_revisions_guard_insert()",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "subscription_price_policy_revisions_00_guard_insert",
+            "table": "public.subscription_price_policy_revisions",
+            "sha256": "9fa24f3f4d45568256de379358c76d2d8f751492c06cfcc177767bf5e5453bea"
+          }
+        ]
+      },
+      {
+        "row": "fulfillment-advance-shipment-lock-order",
+        "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog",
+            "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8671,6 +8709,28 @@
           "signature": "public.catalog_price_setup_apply_claimed(jsonb,timestamptz)",
           "beforeSha256": null,
           "afterSha256": "3e1e509db061a9a32fa96f8173cee517b0f3ac246f6d19b021c0f2382d41573c"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",
+      "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96",
+      "functions": [
+        {
+          "signature": "public.subscription_price_policy_revisions_guard_insert()",
+          "beforeSha256": null,
+          "afterSha256": "e1c913dd167e61e420b0b8630608063891ab8a882fc75eacc962653f676fd0ce"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded",
+      "functions": [
+        {
+          "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416",
+          "afterSha256": "a2a2505f4b031e3ab3c20c8c0585a8bd1575cf0c7a3836410edbe125ed3f5b32"
         }
       ]
     }
