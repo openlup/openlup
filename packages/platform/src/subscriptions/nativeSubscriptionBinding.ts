@@ -6,6 +6,7 @@ import { createSubscriptionServices, NATIVE_SUBSCRIPTION_CAPABILITIES } from "./
 import { correlatedLogicalCycle, runOneAutomaticSubscriptionRenewal } from "./automaticRenewal.js";
 import type { AutomaticRenewalRunDeps, AutomaticRenewalRunResult } from "./automaticRenewal.js";
 import { runRenewalBatchRows } from "./index.js";
+import { normalizeRenewalConcurrency } from "./automaticRenewalExecution.js";
 import type { RenewalDue, RenewalFrozenSnapshot, RenewalSettlementPort } from "./contracts/renewal.js";
 import type { SubscriptionCapabilities } from "./contracts/commands.js";
 import type { ReadinessReport, RequiredSchema } from "@openlup/core/readiness";
@@ -17,6 +18,8 @@ import { nativeSubscriptionSchema } from "./nativeSubscriptionSchema.js";
 export function createNativeSubscriptionBinding(input: {
   enabled?: boolean;
   batchLimit?: number;
+  /** Optional bounded concurrency for normal due renewals (default `1`, max `16`). Requires a pool-backed executor when `> 1`. */
+  concurrency?: number;
   population: string;
   executor: SubscriptionQueryExecutor;
   withTransaction<T>(work: (db: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
@@ -37,6 +40,10 @@ export function createNativeSubscriptionBinding(input: {
   readiness(schema: RequiredSchema): Promise<ReadinessReport>;
 }) {
   if (!input.population.trim()) throw new Error("subscription_population_required");
+  const concurrency = normalizeRenewalConcurrency(input.concurrency);
+  if (concurrency > 1 && typeof (input.executor as { release?: unknown }).release === "function") {
+    throw new Error("subscription_renewal_concurrency_requires_pool");
+  }
   const schema = nativeSubscriptionSchema(input.catalogue);
   const native = createPostgresRenewalStore(input.executor, input.codec, input.withTransaction);
   const store = withNativeDeliveryAlignmentRenewalAdmission({ ...native,
@@ -133,7 +140,7 @@ export function createNativeSubscriptionBinding(input: {
           }, deps.policy));
         }
         const normalDue = (await stock.listNormalDue({ limit, asOf: now })).filter(row => !seen.has(row.subscriptionId));
-        renewals.push(...await runRenewalBatchRows(normalDue, row => runOneAutomaticSubscriptionRenewal(deps, row, now), deps.policy));
+        renewals.push(...await runRenewalBatchRows(normalDue, row => runOneAutomaticSubscriptionRenewal(deps, row, now), deps.policy, { concurrency }));
         return { retries, renewals };
       });
     },
