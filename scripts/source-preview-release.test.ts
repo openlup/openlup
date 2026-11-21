@@ -1883,6 +1883,7 @@ describe("expand-only platform SQL admission", () => {
       "20261018190000_identity_privacy_erasures.sql",
       "20261019200000_communications_native_operations.sql",
       "20261021200000_shipping_flat_rate_seed.sql",
+      "20261124100000_outbox_active_partial_indexes.sql",
     ]);
   });
   it.each([
