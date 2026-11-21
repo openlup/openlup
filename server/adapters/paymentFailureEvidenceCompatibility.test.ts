@@ -16,7 +16,7 @@ const normalizeTpayTransaction = (transaction: Record<string, unknown>) =>
 import { classifyDecline } from "../shared/finalizeDeclinedAttempt.js";
 import { createStripeSandboxPaymentExecutionAdapter } from "@openlup/platform/payments/stripe";
 import { displayReasonFor } from "./paymentFailureDisplay.js";
-import { classificationOf } from "../domains/payment/paymentProviderReconciliationEvidence.js";
+import { classificationOf } from "@openlup/platform/payments";
 
 describe("diagnostic enrichment leaves shared policy unchanged", () => {
   it.each(["insufficient_funds", "expired_card", "restricted_card", "lost_card", "generic_decline", "unpublished_code"])(

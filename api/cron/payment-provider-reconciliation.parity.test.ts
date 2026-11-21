@@ -199,6 +199,7 @@ describe("managed cron and installed PostgreSQL reconciliation", () => {
     const key = `payment-provider-reconciliation:${ATTEMPT}:apply:succeeded`;
     const success = {
       ...expectedEvidence, providerStatus: "paid", normalizedStatus: "succeeded", applied: true, resultStatus: "succeeded",
+      amountMinor: 1200, capturedAmountBasis: "provider_capture_v1",
     };
     expect(managed.calls.get(applyResult)).toEqual({
       p_idempotency_key: key, p_expected_order_id: ORDER, p_expected_payment_intent_id: INTENT,
@@ -212,8 +213,6 @@ describe("managed cron and installed PostgreSQL reconciliation", () => {
       key, ORDER, INTENT, ATTEMPT, PAYMENT, provider, remote, "processing", "paid", "succeeded", OLD,
       null, NOW, expect.any(String), null, null, "fixture-dunning", "/fixture/recovery", "fixture-recovery",
     ]);
-    expect(JSON.parse(String(nativeApply[13]))).toEqual({
-      ...success, amountMinor: 1200, capturedAmountBasis: "provider_capture_v1",
-    });
+    expect(JSON.parse(String(nativeApply[13]))).toEqual(success);
   });
 });
