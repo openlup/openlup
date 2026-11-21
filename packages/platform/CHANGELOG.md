@@ -116,11 +116,10 @@ runtime together.
   mismatch. With matching money and a provider time, a success without the
   basis returns `unknown` without applying. An undated success stays ambiguous
   and cannot settle.
-- Custom native webhook adapters set the same basis on verified success
-  evidence backed by the provider-collected amount. Keep this field outside
-  the event fingerprint. The native rail refuses fresh settlement
-  without the basis. See
-  [Dispatch and settlement](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/concepts/payments.md#dispatch-and-settlement).
+- For custom native webhook adapters, set
+  `capturedAmountBasis: "provider_capture_v1"` on verified success evidence
+  backed by the provider-collected amount. Keep the field outside the event
+  fingerprint. Fresh native settlement requires it.
 - `@openlup/platform/payments/stripe` reconciliation uses `amount_received` and the PaymentIntent
   currency. It supplies the basis for a positive collected amount. `@openlup/platform/payments/tpay`
   reconciliation uses the provider's paid-amount fields and transaction

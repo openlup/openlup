@@ -30,10 +30,10 @@ before it can settle a payment.
   with the same basis. A dated success with matching amount and currency
   returns `unknown` without the basis and is left unapplied. A money mismatch
   raises `subscription_renewal_provider_money_mismatch` first.
-- For custom native webhook adapters, set the basis on verified success
-  evidence backed by the provider-collected amount. Keep it outside the event
-  fingerprint. Fresh native settlement requires the basis. See
-  [Dispatch and settlement](docs/guide/concepts/payments.md#dispatch-and-settlement).
+- For custom native webhook adapters, set
+  `capturedAmountBasis: "provider_capture_v1"` on verified success evidence
+  backed by the provider-collected amount. Keep the field outside the event
+  fingerprint. Fresh native settlement requires it.
 - `@openlup/platform/payments/stripe` and `@openlup/platform/payments/tpay` success readbacks use the collected amount. If collected money is
   missing, the readback may report the configured amount separately for invoice
   comparison.
