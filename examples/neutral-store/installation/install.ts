@@ -11,6 +11,7 @@ import { installCatalogDefinitions } from '@openlup/platform/catalog';
 import { constants } from 'node:fs';
 import { link, lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readQuoteAcceptanceKeyring } from '../host/quote-secret.ts';
 
 export const demonstrationMarker = 'openlup-neutral-store-demo-v1';
@@ -234,8 +235,8 @@ export async function bootstrapDemonstration(config: StoreConfig): Promise<Demon
     const applied = await runner.apply();
     const status = await runner.status();
     if (status.pending.length) throw new Error('starter_installation_incomplete');
-    const publicationPasswordFile = process.env.STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE;
-    if (publicationPasswordFile) await provisionDemonstrationPublicationPassword(bootstrap, publicationPasswordFile);
+    await provisionDemonstrationPublicationPassword(bootstrap,
+      fileURLToPath(new URL('../.context/catalogue-builds/.publication-password', import.meta.url)));
     process.stdout.write(JSON.stringify({ migrations: status.applied.length, newlyApplied: applied.applied.length }) + '\n');
   } finally { await bootstrap.end(); }
   const catalogueRules = readStarterCatalogueRules();

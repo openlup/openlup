@@ -61,7 +61,10 @@ export async function runStarterImageCanary(application, archive, imageDigest, e
           const port = 4319 + index, baseURL = `http://127.0.0.1:${port}`;
           const project = `canary-${randomBytes(6).toString('hex')}`, override = join(scratch, `${id}.yaml`);
           const { applicationHealthcheck } = await import(pathToFileURL(join(application, 'host/healthcheck.ts')).href);
-          await writeFile(override, `services:\n  database:\n    image: ${reference}\n    pull_policy: never\n  installation:\n    image: ${imageDigest}\n    pull_policy: never\n  application:\n    image: ${imageDigest}\n    pull_policy: never\n    ports: !override ["127.0.0.1:${port}:${port}"]\n    command: ${JSON.stringify(['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo', '--configuration', id, '--port', String(port), '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store'])}\n    healthcheck: ${JSON.stringify(applicationHealthcheck(baseURL, port))}\n`);
+          const hostCommand = ['node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo', '--configuration', id,
+            '--port', String(port), '--listen', '0.0.0.0', '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
+            '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password'];
+          await writeFile(override, `services:\n  database:\n    image: ${reference}\n    pull_policy: never\n  installation:\n    image: ${imageDigest}\n    pull_policy: never\n  application:\n    image: ${imageDigest}\n    pull_policy: never\n    ports: !override ["127.0.0.1:${port}:${port}"]\n    command: ${JSON.stringify(hostCommand)}\n    healthcheck: ${JSON.stringify(applicationHealthcheck(baseURL, port))}\n`);
           const compose = (args, input) => run('docker', ['compose', '--project-name', project, '--project-directory', application,
             '-f', join(application, 'compose.yaml'), '-f', override, ...args], input);
           defer(() => compose(['down', '--volumes', '--remove-orphans']));
@@ -388,8 +391,9 @@ export async function runStarterBrowser(options) {
               const port = await freePort(), baseURL = `http://127.0.0.1:${port}`;
               phase = `host_${configuration}`;
               const child = spawn(process.execPath, ['--experimental-strip-types', join(app, 'host/server.ts'), '--configuration', configuration,
-                '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile],
-              { cwd: state, env: { ...env, PGPASSWORD: password, STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE: publicationPasswordFile }, stdio: ['ignore', 'pipe', 'pipe'] });
+                '--port', String(port), '--listen', '127.0.0.1', '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyFile,
+                '--catalogue-publication-password-file', publicationPasswordFile],
+              { cwd: state, env: { ...env, PGPASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'] });
               const exited = watchStarterHost(child, configuration, defer, recordLoss);
               let hostOutput = '';
               for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => { hostOutput += String(chunk); outputs.push(String(chunk)); });

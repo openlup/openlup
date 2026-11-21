@@ -293,22 +293,26 @@ export function assertPublicOrigin(config: Pick<StoreConfig, 'publicOrigin' | 'a
 /** Non-secret host arguments; the owned registry supplies the absent configuration. */
 export function parseHostArguments(args: readonly string[]): {
   configuration: string | undefined; port: number; listen: '127.0.0.1' | '0.0.0.0'; databaseUrl?: string; quoteAcceptanceKeyFile?: string;
+  cataloguePublicationPasswordFile?: string;
 } {
   let configuration: string | undefined;
   let databaseUrl: string | undefined;
   let quoteAcceptanceKeyFile: string | undefined;
+  let cataloguePublicationPasswordFile: string | undefined;
   let port = 4319;
   let listen: '127.0.0.1' | '0.0.0.0' = '127.0.0.1';
   const seen = new Set<string>();
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index]!;
-    if (!['--configuration', '--port', '--listen', '--database-url', '--quote-acceptance-key-file'].includes(flag)) throw new Error('starter_argument_unknown');
+    if (!['--configuration', '--port', '--listen', '--database-url', '--quote-acceptance-key-file', '--catalogue-publication-password-file'].includes(flag)) throw new Error('starter_argument_unknown');
     if (seen.has(flag)) throw new Error('starter_argument_duplicate');
     seen.add(flag);
     const value = args[index + 1];
     if (!value || value.startsWith('--')) throw new Error('starter_argument_value_required');
     if (flag === '--quote-acceptance-key-file') {
       quoteAcceptanceKeyFile = value;
+    } else if (flag === '--catalogue-publication-password-file') {
+      cataloguePublicationPasswordFile = value;
     } else if (flag === '--database-url') {
       let url: URL;
       try { url = new URL(value); } catch { throw new Error('starter_runtime_connection_required'); }
@@ -325,5 +329,6 @@ export function parseHostArguments(args: readonly string[]): {
       listen = value;
     }
   }
-  return { configuration, port, listen, ...(databaseUrl === undefined ? {} : { databaseUrl }), ...(quoteAcceptanceKeyFile ? { quoteAcceptanceKeyFile } : {}) };
+  return { configuration, port, listen, ...(databaseUrl === undefined ? {} : { databaseUrl }), ...(quoteAcceptanceKeyFile ? { quoteAcceptanceKeyFile } : {}),
+    ...(cataloguePublicationPasswordFile ? { cataloguePublicationPasswordFile } : {}) };
 }

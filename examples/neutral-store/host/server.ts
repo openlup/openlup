@@ -120,7 +120,7 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const publicationPasswordFile = process.env.STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE;
+  const publicationPasswordFile = options.cataloguePublicationPasswordFile;
   const publicationPassword = publicationPasswordFile
     ? (await readFile(publicationPasswordFile, 'utf8').catch(() => { throw new Error('starter_catalogue_publication_password_missing'); })).trim()
     : undefined;

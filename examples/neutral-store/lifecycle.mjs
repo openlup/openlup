@@ -76,6 +76,7 @@ if (command === 'candidate') {
       'node', '--experimental-strip-types', 'lifecycle.mjs', 'serve-demo',
       '--configuration', config.id, '--port', '4319', '--listen', '0.0.0.0',
       '--database-url', 'postgresql://starter_runtime@database:5432/neutral_store',
+      '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password',
     ] } } };
     const healthcheck = applicationHealthcheck(config.publicOrigin);
     if (healthcheck) override.services.application.healthcheck = healthcheck;
@@ -261,7 +262,8 @@ async function databaseBrowserRecipe(argv) {
       const port = address.port;
       await new Promise(done => probe.close(() => done()));
       const host = spawn(process.execPath, ['--experimental-strip-types', resolve(application, 'host/server.ts'),
-        '--configuration', config.id, '--port', String(port), '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyring], { cwd: state, env: { ...process.env, STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE: publicationPasswordFile }, stdio: ['ignore', 'pipe', 'pipe'] });
+        '--configuration', config.id, '--port', String(port), '--database-url', runtimeUrl, '--quote-acceptance-key-file', keyring,
+        '--catalogue-publication-password-file', publicationPasswordFile], { cwd: state, stdio: ['ignore', 'pipe', 'pipe'] });
       hosts.push(host);
       let logs = '';
       host.stdout?.on('data', value => { logs += value.toString(); });

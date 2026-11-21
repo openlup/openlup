@@ -21,8 +21,6 @@ services:
   installation:
     build: .
     command: ['node', 'lifecycle.mjs', 'install']
-    environment:
-      STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE: /application/.context/catalogue-builds/.publication-password
     volumes:
       - installation-socket:/var/run/postgresql
       - catalogue-builds:/application/.context/catalogue-builds
@@ -31,10 +29,9 @@ services:
         condition: service_healthy
   application:
     build: .
-    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0']
+    command: ['node', '--experimental-strip-types', 'host/server.ts', '--port', '4319', '--listen', '0.0.0.0', '--catalogue-publication-password-file', '/application/.context/catalogue-builds/.publication-password']
     environment:
       DATABASE_URL: postgresql://starter_runtime@database:5432/neutral_store
-      STARTER_CATALOGUE_PUBLICATION_PASSWORD_FILE: /application/.context/catalogue-builds/.publication-password
     volumes:
       - catalogue-builds:/application/.context/catalogue-builds:ro
     depends_on:
