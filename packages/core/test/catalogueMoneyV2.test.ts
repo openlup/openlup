@@ -20,9 +20,9 @@ const local = (...rateDecimals: string[]): CatalogueMoneyV2Tax => ({
     ({ positionRef: `position-${index}`, jurisdictionRef: "district-a", rateDecimal })) }],
 });
 
-function refuses(run: () => unknown, code: CatalogueMoneyV2ErrorCode, field: string): void {
+function refuses(run: () => unknown, code: CatalogueMoneyV2ErrorCode, field: string, remedy?: string): void {
   expect(run).toThrow(CatalogueMoneyV2Error);
-  expect(run).toThrow(expect.objectContaining({ code, field }));
+  expect(run).toThrow(expect.objectContaining(remedy === undefined ? { code, field } : { code, field, remedy }));
 }
 
 function permutations(values: readonly number[]): number[][] {
@@ -184,21 +184,34 @@ describe("catalogue money v2 tax evidence", () => {
   });
 
   it.each([
-    ["missing state", provider(states.slice(0, 2)), "money_tax_evidence_mismatch", "tax.components[0].states"],
+    ["missing state", provider(states.slice(0, 2)), "money_tax_evidence_mismatch", "tax.components[0].states",
+      "Provider evidence has missing states. Supply 3 states with an initial state and one per nonzero allocation."],
+    ["extra state", provider([...states, states[2]]), "money_tax_evidence_mismatch", "tax.components[0].states",
+      "Provider evidence has extra states. Supply 3 states with an initial state and one per nonzero allocation."],
+    ["misordered state", provider([states[0], states[2], states[1]]),
+      "money_tax_evidence_mismatch", "tax.components[0].states[1].afterSequence",
+      "Provider state sequence does not match the plan. Supply states in plan order with afterSequence 5 at this step."],
     ["stale sequence", provider([states[0], { ...states[1], afterSequence: 2 }, states[2]]),
-      "money_tax_evidence_mismatch", "tax.components[0].states[1].afterSequence"],
+      "money_tax_evidence_mismatch", "tax.components[0].states[1].afterSequence",
+      "Provider state sequence does not match the plan. Supply states in plan order with afterSequence 5 at this step."],
     ["stale amount", provider([states[0], { ...states[1], amountMinor: 8 }, states[2]]),
-      "money_tax_evidence_mismatch", "tax.components[0].states[1].amountMinor"],
+      "money_tax_evidence_mismatch", "tax.components[0].states[1].amountMinor",
+      "Provider state amount does not match the plan. Re-obtain the provider state for amountMinor 9 at this step."],
     ["increasing tax", provider([states[0], { ...states[1], taxPositions: [position(4)] }, states[2]]),
-      "money_tax_evidence_mismatch", "tax.components[0].states[1].taxPositions"],
-    ["missing component", { kind: "provider", payableMinor: 9, components: [] }, "money_tax_evidence_mismatch", "tax.components"],
+      "money_tax_evidence_mismatch", "tax.components[0].states[1].taxPositions",
+      "Provider tax increased on a discount step. Re-obtain tax positions for the plan amounts before and after that allocation."],
+    ["missing component", { kind: "provider", payableMinor: 9, components: [] }, "money_tax_evidence_mismatch", "tax.components",
+      "Tax evidence is missing a component row. Supply evidence for each missing component ref from the plan."],
     ["unmatched component", { kind: "provider", payableMinor: 9, components: [{ ref: line("other", 1), states }] },
-      "money_tax_evidence_mismatch", "tax.components[0].ref"],
+      "money_tax_evidence_mismatch", "tax.components[0].ref",
+      "This tax component ref does not match a required plan component. Use the matching component ref from the plan or remove the extra row."],
     ["duplicate component", { kind: "provider", payableMinor: 9, components: [{ ref: item, states }, { ref: item, states }] },
-      "money_tax_evidence_mismatch", "tax.components[1].ref"],
-    ["different payable", provider(states, 10), "money_payable_mismatch", "tax.payableMinor"],
-  ] as const)("refuses %s", (_name, tax, code, field) => {
-    refuses(() => calculateCatalogueMoneyV2(quote, tax), code, field);
+      "money_tax_evidence_mismatch", "tax.components[1].ref",
+      "This tax component ref duplicates an earlier row. Supply one row for each required component ref."],
+    ["different payable", provider(states, 10), "money_payable_mismatch", "tax.payableMinor",
+      "Provider payable does not match the final net, tax and fees. Re-obtain the provider payable for the same plan, including fees."],
+  ] as const)("refuses %s", (_name, tax, code, field, remedy) => {
+    refuses(() => calculateCatalogueMoneyV2(quote, tax), code, field, remedy);
   });
 
   it("assigns local residuals by raw quota remainder and rounds every state once", () => {
@@ -227,7 +240,7 @@ describe("catalogue money v2 tax evidence", () => {
 
   it.each([-1, 0.5, 10001, NaN, Infinity])("rejects inclusive basis points %s", rateBps => {
     refuses(() => calculateCatalogueMoneyV2(input({ sources: [source("item", 1, 1)] }), inclusive(rateBps)),
-      "money_rate_invalid", "tax.components[0].rateBps");
+      "money_rate_invalid", "tax.components[0].rateBps", "Supply an integer from 0 to 10000 basis points.");
   });
 });
 
@@ -236,14 +249,17 @@ describe("catalogue money v2 input and arithmetic limits", () => {
     ["negative amount", input({ sources: [source("item", 1, -1)] }), "money_amount_out_of_range", "sources[0].unitBasisMinor"],
     ["ordinal", input({ sources: [source("item", 0, 1)] }), "money_amount_out_of_range", "sources[0].sourceOrdinal"],
     ["quantity", input({ sources: [{ ...source("item", 1, 1), quantity: 1.5 }] }), "money_amount_out_of_range", "sources[0].quantity"],
+    ["zero quantity", input({ sources: [{ ...source("item", 1, 1), quantity: 0 }] }),
+      "money_amount_out_of_range", "sources[0].quantity", "Supply a safe integer of at least 1."],
     ["blank ref", input({ sources: [source("", 1, 1)] }), "money_input_invalid", "sources[0].lineKey"],
     ["oversized ref", input({ sources: [source("a".repeat(129), 1, 1)] }), "money_input_invalid", "sources[0].lineKey"],
     ["sparse sources", input({ sources: Array<never>(1) }), "money_input_invalid", "sources[0]"],
     ["oversized sources", input({ sources: Array.from({ length: 257 }, (_, i) => source(String(i), i + 1, 1)) }),
-      "money_input_invalid", "sources"],
+      "money_input_invalid", "sources", "Supply at most 256 entries."],
     ["second shipping charge", input({ delivery: [
       { bucketKey: "a", deliveryKind: "shipping", amountMinor: 0 }, { bucketKey: "b", deliveryKind: "shipping", amountMinor: 0 },
-    ] }), "money_input_invalid", "delivery[1].deliveryKind"],
+    ] }), "money_input_invalid", "delivery[1].deliveryKind",
+      "Use at most one shipping bucket for inclusive amounts. Combine shipping charges into that bucket."],
     ["sequence regression", input({ adjustments: [adjustment(2, 0), adjustment(1, 0)] }), "money_input_invalid", "adjustments[1].sequence"],
     ["unresolved line", input({ adjustments: [adjustment(1, 0, "missing")] }), "money_input_invalid", "adjustments[0].target.lineKeys[0]"],
     ["duplicate target", input({ sources: [source("item", 1, 1)], adjustments: [adjustment(1, 0, "item", "item")] }),
@@ -252,8 +268,8 @@ describe("catalogue money v2 input and arithmetic limits", () => {
       "money_input_invalid", "sources[0]"],
     ["duplicate fee", input({ fees: [{ feeKey: "fee", amountMinor: 0 }, { feeKey: "fee", amountMinor: 0 }] }),
       "money_input_invalid", "fees[1].feeKey"],
-  ] as const)("refuses %s", (_name, quote, code, field) => {
-    refuses(() => planCatalogueMoneyV2(quote), code, field);
+  ] as const)("refuses %s", (_name, quote, code, field, remedy?: string) => {
+    refuses(() => planCatalogueMoneyV2(quote), code, field, remedy);
   });
 
   it("range-checks component state and aggregate values before conversion", () => {

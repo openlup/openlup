@@ -35,7 +35,31 @@ export type CatalogueMoneyV2Plan = Readonly<{
 export type CatalogueMoneyV2Position = Readonly<{
   positionRef: string; jurisdictionRef: string; rateDecimal?: string; taxableMinor: number; taxMinor: number;
 }>;
-/** @beta @experimental */
+/**
+ * Tax inputs for a catalogue money calculation.
+ *
+ * @remarks
+ * In local mode, compute each position's exact tax quota as the component state
+ * amount times the position's rate divided by 100. Sum the quotas and round the
+ * combined tax half up once to a minor unit. Floor each position's exact quota,
+ * then assign the remaining minor units by descending fractional remainder,
+ * breaking ties by ascending `positionRef` in UTF-16 code-unit order.
+ *
+ * In provider mode, use one row per component ref from {@link planCatalogueMoneyV2}.
+ * Start each row with `afterSequence: 0` and `amountMinor` equal to the component's
+ * `preDiscountMinor`. Then add one state per nonzero allocation in plan order,
+ * using its `sequence` as `afterSequence` and its `afterMinor` as `amountMinor`.
+ * Sequence gaps are normal. The provider's `payableMinor` includes fees.
+ *
+ * @example
+ * A component starts at 100 and has one allocation at sequence 3 that leaves 80.
+ * Its states use `afterSequence` and `amountMinor` pairs `(0, 100)` and `(3, 80)`
+ * with the provider's tax positions for each amount. For a plan with just this
+ * component, final tax of 8 and a fee of 5, the provider payable is 93.
+ *
+ * @beta
+ * @experimental
+ */
 export type CatalogueMoneyV2Tax =
   | Readonly<{ kind: "inclusive"; components: readonly Readonly<{
       ref: CatalogueMoneyV2ComponentRef; rateBps: number;
@@ -90,13 +114,13 @@ const remedies: Record<CatalogueMoneyV2ErrorCode, string> = {
   money_source_ordinal_duplicate: "Supply a distinct positive ordinal for each source.",
   money_discount_exceeds_balance: "Reduce the adjustment or correct its eligibility.",
   shipping_tax_basis_empty: "Supply positive eligible product basis or a zero shipping charge.",
-  money_rate_invalid: "Supply supported integer basis points or exact decimal percent.",
-  money_tax_evidence_mismatch: "Supply complete matching evidence with supportable reductions.",
-  money_payable_mismatch: "Reconcile positions and fees against the same plan and obtain matching evidence.",
+  money_rate_invalid: "Supply a decimal percent string from 0 to 9007199254.740991 with up to six fractional digits and no extra leading zeros.",
+  money_tax_evidence_mismatch: "This tax component ref does not match a required plan component. Use the matching component ref from the plan or remove the extra row.",
+  money_payable_mismatch: "Provider payable does not match the final net, tax and fees. Re-obtain the provider payable for the same plan, including fees.",
 };
 
-function refuse(code: CatalogueMoneyV2ErrorCode, field: string): never {
-  throw new CatalogueMoneyV2Error(code, field, remedies[code]);
+function refuse(code: CatalogueMoneyV2ErrorCode, field: string, remedy = remedies[code]): never {
+  throw new CatalogueMoneyV2Error(code, field, remedy);
 }
 
 function shape(value: unknown, field: string, keys: readonly string[]): void {
@@ -111,7 +135,8 @@ function shape(value: unknown, field: string, keys: readonly string[]): void {
 }
 
 function list<T>(value: readonly T[], field: string, max = 256): readonly T[] {
-  if (!Array.isArray(value) || value.length > max) refuse("money_input_invalid", field);
+  if (!Array.isArray(value)) refuse("money_input_invalid", field);
+  if (value.length > max) refuse("money_input_invalid", field, `Supply at most ${max} entries.`);
   for (let index = 0; index < value.length; index++) {
     if (!Object.hasOwn(value, index)) refuse("money_input_invalid", `${field}[${index}]`);
   }
@@ -119,10 +144,14 @@ function list<T>(value: readonly T[], field: string, max = 256): readonly T[] {
 }
 
 function reference(value: string, field: string): void {
-  if (typeof value !== "string" || value.length < 1 || value.length > 128) refuse("money_input_invalid", field);
+  if (typeof value !== "string" || value.length < 1 || value.length > 128) {
+    refuse("money_input_invalid", field, "Supply a reference string of 1 to 128 UTF-16 code units.");
+  }
 }
 function integer(value: number, field: string, min = 0): bigint {
-  if (!Number.isSafeInteger(value) || value < min) refuse("money_amount_out_of_range", field);
+  if (!Number.isSafeInteger(value) || value < min) {
+    refuse("money_amount_out_of_range", field, `Supply a safe integer of at least ${min}.`);
+  }
   return BigInt(value);
 }
 
@@ -173,7 +202,12 @@ function discount(components: readonly WorkingComponent[], adjustment: Adjustmen
   });
 }
 
-/** Plan the exact bases and nonzero adjustments for each component. @beta @experimental */
+/**
+ * Plan the exact bases and nonzero adjustments for each component. Use the plan
+ * to request provider states as described in {@link CatalogueMoneyV2Tax}.
+ * @beta
+ * @experimental
+ */
 export function planCatalogueMoneyV2(input: CatalogueMoneyV2Input): CatalogueMoneyV2Plan {
   shape(input, "input", ["amountBasis", "sources", "delivery", "adjustments", "fees"]);
   const { amountBasis } = input;
@@ -202,7 +236,10 @@ export function planCatalogueMoneyV2(input: CatalogueMoneyV2Input): CatalogueMon
     if (deliveryKind !== "shipping" && deliveryKind !== "handling") refuse("money_input_invalid", `${field}.deliveryKind`);
     const amount = integer(amountMinor, `${field}.amountMinor`);
     if (amountBasis === "inclusive" && deliveryKind === "shipping") {
-      if (shipping) refuse("money_input_invalid", `${field}.deliveryKind`);
+      if (shipping) {
+        refuse("money_input_invalid", `${field}.deliveryKind`,
+          "Use at most one shipping bucket for inclusive amounts. Combine shipping charges into that bucket.");
+      }
       shipping = { bucketKey, field: `${field}.amountMinor`, amount };
     }
     buckets.set(bucketKey, [component({ kind: "delivery", bucketKey }, amountMinor)]);
@@ -300,7 +337,9 @@ function stateReader(tax: CatalogueMoneyV2Tax, item: PlanComponent, row: number)
   const field = `tax.components[${row}]`;
   if (tax.kind === "inclusive") {
     const rate = row === -1 ? 0 : tax.components[row].rateBps;
-    if (!Number.isInteger(rate) || rate < 0 || rate > 10_000) refuse("money_rate_invalid", `${field}.rateBps`);
+    if (!Number.isInteger(rate) || rate < 0 || rate > 10_000) {
+      refuse("money_rate_invalid", `${field}.rateBps`, "Supply an integer from 0 to 10000 basis points.");
+    }
     return amountMinor => {
       const netMinor = cataloguePositionNetFromGross(amountMinor, rate);
       return { amountMinor, netMinor, taxMinor: amountMinor - netMinor, totalMinor: amountMinor, taxPositions: [] };
@@ -330,15 +369,26 @@ function stateReader(tax: CatalogueMoneyV2Tax, item: PlanComponent, row: number)
   }
 
   const states = list(tax.components[row].states, `${field}.states`, 257);
-  if (states.length !== item.allocations.length + 1) refuse("money_tax_evidence_mismatch", `${field}.states`);
+  const expectedStates = item.allocations.length + 1;
+  if (states.length !== expectedStates) {
+    const condition = states.length < expectedStates ? "missing states" : "extra states";
+    refuse("money_tax_evidence_mismatch", `${field}.states`,
+      `Provider evidence has ${condition}. Supply ${expectedStates} states with an initial state and one per nonzero allocation.`);
+  }
   return (amountMinor, sequence, index) => {
     const path = `${field}.states[${index}]`;
     const state = states[index];
     shape(state, path, ["afterSequence", "amountMinor", "taxPositions"]);
     integer(state.afterSequence, `${path}.afterSequence`);
     integer(state.amountMinor, `${path}.amountMinor`);
-    if (state.afterSequence !== sequence) refuse("money_tax_evidence_mismatch", `${path}.afterSequence`);
-    if (state.amountMinor !== amountMinor) refuse("money_tax_evidence_mismatch", `${path}.amountMinor`);
+    if (state.afterSequence !== sequence) {
+      refuse("money_tax_evidence_mismatch", `${path}.afterSequence`,
+        `Provider state sequence does not match the plan. Supply states in plan order with afterSequence ${sequence} at this step.`);
+    }
+    if (state.amountMinor !== amountMinor) {
+      refuse("money_tax_evidence_mismatch", `${path}.amountMinor`,
+        `Provider state amount does not match the plan. Re-obtain the provider state for amountMinor ${amountMinor} at this step.`);
+    }
     positionRefs.clear();
     const positions = list(state.taxPositions, `${path}.taxPositions`, 32).map((position, positionIndex) => {
       const positionPath = `${path}.taxPositions[${positionIndex}]`;
@@ -355,7 +405,12 @@ function stateReader(tax: CatalogueMoneyV2Tax, item: PlanComponent, row: number)
   };
 }
 
-/** Calculate consecutive rounded states and reconcile the payable. @beta @experimental */
+/**
+ * Calculate rounded states and reconcile the payable. See {@link CatalogueMoneyV2Tax}
+ * for local rounding and the required provider states.
+ * @beta
+ * @experimental
+ */
 export function calculateCatalogueMoneyV2(input: CatalogueMoneyV2Input, tax: CatalogueMoneyV2Tax): CatalogueMoneyV2Result {
   const plan = planCatalogueMoneyV2(input);
   shape(tax, "tax", ["kind", "components", "payableMinor"]);
@@ -374,10 +429,18 @@ export function calculateCatalogueMoneyV2(input: CatalogueMoneyV2Input, tax: Cat
     shape(entry, field, ["ref", dataKey]);
     validateComponentRef(entry.ref, `${field}.ref`);
     const key = componentKey(entry.ref);
-    if (!expected.delete(key)) refuse("money_tax_evidence_mismatch", `${field}.ref`);
+    if (!expected.delete(key)) {
+      const remedy = rows.has(key)
+        ? "This tax component ref duplicates an earlier row. Supply one row for each required component ref."
+        : remedies.money_tax_evidence_mismatch;
+      refuse("money_tax_evidence_mismatch", `${field}.ref`, remedy);
+    }
     rows.set(key, index);
   });
-  if (expected.size > 0) refuse("money_tax_evidence_mismatch", "tax.components");
+  if (expected.size > 0) {
+    refuse("money_tax_evidence_mismatch", "tax.components",
+      "Tax evidence is missing a component row. Supply evidence for each missing component ref from the plan.");
+  }
   const merchandiseRows = new Map<number, number>();
   const components = plan.components.map(item => {
     const { ref } = item;
@@ -391,7 +454,8 @@ export function calculateCatalogueMoneyV2(input: CatalogueMoneyV2Input, tax: Cat
       const after = readState(allocation.afterMinor, allocation.sequence, index + 1);
       const taxReductionMinor = before.taxMinor - after.taxMinor;
       if (taxReductionMinor < 0 && tax.kind === "provider") {
-        refuse("money_tax_evidence_mismatch", `tax.components[${row}].states[${index + 1}].taxPositions`);
+        refuse("money_tax_evidence_mismatch", `tax.components[${row}].states[${index + 1}].taxPositions`,
+          "Provider tax increased on a discount step. Re-obtain tax positions for the plan amounts before and after that allocation.");
       }
       previous = after;
       return { ...allocation, before, after, netReductionMinor: before.netMinor - after.netMinor, taxReductionMinor };

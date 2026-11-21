@@ -100,7 +100,31 @@ export type CatalogueMoneyV2Position = Readonly<{
     taxableMinor: number;
     taxMinor: number;
 }>;
-/** @beta @experimental */
+/**
+ * Tax inputs for a catalogue money calculation.
+ *
+ * @remarks
+ * In local mode, compute each position's exact tax quota as the component state
+ * amount times the position's rate divided by 100. Sum the quotas and round the
+ * combined tax half up once to a minor unit. Floor each position's exact quota,
+ * then assign the remaining minor units by descending fractional remainder,
+ * breaking ties by ascending `positionRef` in UTF-16 code-unit order.
+ *
+ * In provider mode, use one row per component ref from {@link planCatalogueMoneyV2}.
+ * Start each row with `afterSequence: 0` and `amountMinor` equal to the component's
+ * `preDiscountMinor`. Then add one state per nonzero allocation in plan order,
+ * using its `sequence` as `afterSequence` and its `afterMinor` as `amountMinor`.
+ * Sequence gaps are normal. The provider's `payableMinor` includes fees.
+ *
+ * @example
+ * A component starts at 100 and has one allocation at sequence 3 that leaves 80.
+ * Its states use `afterSequence` and `amountMinor` pairs `(0, 100)` and `(3, 80)`
+ * with the provider's tax positions for each amount. For a plan with just this
+ * component, final tax of 8 and a fee of 5, the provider payable is 93.
+ *
+ * @beta
+ * @experimental
+ */
 export type CatalogueMoneyV2Tax = Readonly<{
     kind: "inclusive";
     components: readonly Readonly<{
@@ -166,9 +190,19 @@ export declare class CatalogueMoneyV2Error extends Error {
     readonly remedy: string;
     constructor(code: CatalogueMoneyV2ErrorCode, field: string, remedy: string);
 }
-/** Plan the exact bases and nonzero adjustments for each component. @beta @experimental */
+/**
+ * Plan the exact bases and nonzero adjustments for each component. Use the plan
+ * to request provider states as described in {@link CatalogueMoneyV2Tax}.
+ * @beta
+ * @experimental
+ */
 export declare function planCatalogueMoneyV2(input: CatalogueMoneyV2Input): CatalogueMoneyV2Plan;
-/** Calculate consecutive rounded states and reconcile the payable. @beta @experimental */
+/**
+ * Calculate rounded states and reconcile the payable. See {@link CatalogueMoneyV2Tax}
+ * for local rounding and the required provider states.
+ * @beta
+ * @experimental
+ */
 export declare function calculateCatalogueMoneyV2(input: CatalogueMoneyV2Input, tax: CatalogueMoneyV2Tax): CatalogueMoneyV2Result;
 ```
 ## dist/pricing/index.d.ts

@@ -40,10 +40,15 @@ const { payableMinor } = calculateCatalogueMoneyV2({
 // payableMinor === 1081
 ```
 
+Local tax rounds the sum of exact position quotas half up per component state.
+Floor each quota and assign leftover minor units by largest fractional remainder,
+with ties by ascending `positionRef` in UTF-16 code-unit order.
+
 For provider tax on exclusive amounts, call `planCatalogueMoneyV2` first. Supply
 the initial state and each nonzero adjustment state in order for each component,
-plus the provider payable including fees. For inclusive amounts, supply rates
-for merchandise and handling. Shipping inherits rates from its merchandise shares.
+plus the provider payable including fees. See `CatalogueMoneyV2Tax` for the state
+fields and an example. For inclusive amounts, supply rates for merchandise and
+handling. Shipping inherits rates from its merchandise shares.
 
 For promotion candidates, `evaluatePromos` from `@openlup/core/promo` checks
 active time windows, region and cart eligibility, including coupon codes and
