@@ -6208,6 +6208,27 @@
           }
         ],
         "dataStatements": []
+      },
+      {
+        "row": "catalog-activation-readiness",
+        "path": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_publication_price_reasons(uuid[],timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_publication_activation_readiness(text[],text)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8931,6 +8952,27 @@
       "path": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
       "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261124140000_catalog_publication_readiness.sql",
+      "sha256": "e2b6d89a7deee9e4524e77a6e19c588b99b958f434bbfc854f266a1e31d5d520",
+      "functions": [
+        {
+          "signature": "public.catalog_publication_price_reasons(uuid[],timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "c363cfd663b991fbf2d5e5bbc3e756243a44f98957b07405f54b08da6ae78568"
+        },
+        {
+          "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "42e478b1d8f254fe01f7aad8488a0db830a972f7d9aa0cfa8e25cc1643b05435"
+        },
+        {
+          "signature": "public.catalog_publication_activation_readiness(text[],text)",
+          "beforeSha256": null,
+          "afterSha256": "aa28da6fb9c8cdb7a5e588eb8c9d53164fd717adc24c1dad7f7b221c0739d40e"
+        }
+      ]
     }
   ],
   "managedExactForwards": [
