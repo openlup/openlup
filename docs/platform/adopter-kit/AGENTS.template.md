@@ -77,7 +77,7 @@ See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
 path, check loop and refusal guidance.
 
 After editing owned configuration, run `npx --no -- openlup settings check --app ./owned/settings-host.ts`
-(with `--configuration <id>` when applicable) and verify `npm run typecheck`.
+(with `--configuration <id>` when applicable) and run your application's typecheck.
 
 `npx --no -- openlup settings mcp --app ./owned/settings-host.ts` starts a read-only
 MCP server with the same operations.
