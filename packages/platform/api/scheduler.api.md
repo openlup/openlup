@@ -125,7 +125,7 @@ export declare function createScheduledJobHttpEntry(job: ScheduledJob, options: 
 ```ts
 export { jobIdFromPath, jobRegistryFromConfig, loadJobRegistry, type PlatformRuntimeConfig, type ScheduledJobDeclaration, } from "./jobRegistry.js";
 export { advisoryLockKey, createEnvAdvisoryLock, createNoopAdvisoryLock, createPgAdvisoryLock, type AdvisoryLock, type AdvisoryLockQuerier, type EnvAdvisoryLockOptions, } from "./advisoryLock.js";
-export { createNodeScheduler, withAdvisoryLock, type CreateNodeSchedulerOptions, type CronScheduler, type NodeSchedulerAdapter, } from "./nodeScheduler.js";
+export { createNodeScheduler, withAdvisoryLock, type CreateNodeSchedulerOptions, type CronScheduler, type NodeSchedulerAdapter, type SchedulerLockMode, } from "./nodeScheduler.js";
 export { bearerToken, createVercelScheduler, verifyCronAuth, type VercelSchedulerAdapter, } from "./vercelScheduler.js";
 export { authorizeCron, type CronAuthDenied } from "./cronGuard.js";
 export { cronSecretMatches } from "./cronSecret.js";
@@ -236,15 +236,21 @@ export interface NodeSchedulerAdapter extends SchedulerPort {
     /** Fence/stop current timers synchronously, then await admitted callbacks and lock release. Later registration remains supported. */
     stopAll(): Promise<void>;
 }
+export type SchedulerLockMode = "cluster" | "process";
 export interface CreateNodeSchedulerOptions {
     /** node-cron instance (inject `import("node-cron")` at the host boot site). */
     cron: CronScheduler;
     /**
      * Per-job lock capability; defaults to an always-granting no-op for
-     * single-instance/test use, which does not serialize concurrent callbacks.
-     * Supply a cluster-scoped lock when multiple instances must exclude one another.
+     * single-instance/test use when `lockMode` is `"process"`, which does not serialize concurrent callbacks.
+     * Supply a cluster-scoped lock (`durability: "cluster"`) when `lockMode` is `"cluster"`.
      */
     lock?: AdvisoryLock;
+    /**
+     * Lock enforcement mode: `"process"` (default for direct 1.x callers) falls back to a no-op lock
+     * when `lock` is omitted; `"cluster"` fails closed unless `lock?.durability === "cluster"`.
+     */
+    lockMode?: SchedulerLockMode;
     /** Environment whose CRON_SECRET verifies an invocation. */
     env: CronEnv;
     /** The deployment's declared jobs (see `loadJobRegistry`). */

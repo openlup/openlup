@@ -55,6 +55,7 @@ function cronFixture() {
 
 function lockFixture() {
   return {
+    durability: "cluster" as const,
     tryAcquire: vi.fn<AdvisoryLock["tryAcquire"]>().mockResolvedValue(true),
     release: vi.fn<AdvisoryLock["release"]>().mockResolvedValue(undefined),
     close: vi.fn<AdvisoryLock["close"]>().mockResolvedValue(undefined),
@@ -280,7 +281,7 @@ describe("host scheduled execution", () => {
     const { cron, callbacks } = cronFixture();
     const fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal("fetch", fetch);
-    const result = await host.serveNode({ env: {}, cron, listen: false });
+    const result = await host.serveNode({ env: {}, cron, listen: false, lockMode: "process" });
     await callbacks[0]();
     expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/cron/nightly-report", { method: "GET", headers: {} });
     await result.stop();
@@ -331,6 +332,7 @@ describe("host scheduled execution", () => {
   it("runs one overlapping replica and permits a later invocation after release", async () => {
     const held = new Set<string>();
     const lock: AdvisoryLock = {
+      durability: "cluster",
       async tryAcquire(id) { if (held.has(id)) return false; held.add(id); return true; },
       async release(id) { held.delete(id); }, async close() {},
     };
@@ -756,5 +758,32 @@ describe("capability readiness at the boot gate", () => {
   it("refuses an unknown PLATFORM_BUNDLE at the boot gate", () => {
     expect(() => hostFixture().host.assertBundleReady({ ...env, PLATFORM_BUNDLE: "edge-cluster" }))
       .toThrow('not ready: unknown PLATFORM_BUNDLE "edge-cluster"');
+  });
+
+  it("fails closed on node-cron bundles when given a process-only or unlabelled lock unless lockMode is process", async () => {
+    const { host, bundle } = hostFixture();
+    bundle.descriptor = { ...bundle.descriptor, readReadiness: () => ({ ok: true }) };
+    const { cron } = cronFixture();
+    const processLock: AdvisoryLock = {
+      durability: "process",
+      tryAcquire: vi.fn().mockResolvedValue(true),
+      release: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const unlabelledLock: AdvisoryLock = {
+      tryAcquire: vi.fn().mockResolvedValue(true),
+      release: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(host.serveNode({ env: {}, cron, listen: false }))
+      .rejects.toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+    await expect(host.serveNode({ env, cron, listen: false, advisoryLock: processLock }))
+      .rejects.toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+    await expect(host.serveNode({ env, cron, listen: false, advisoryLock: unlabelledLock }))
+      .rejects.toThrow('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+
+    const explicitProcess = await host.serveNode({ env, cron, listen: false, advisoryLock: processLock, lockMode: "process" });
+    await explicitProcess.stop();
   });
 });

@@ -22,6 +22,7 @@ import {
   type AdvisoryLock,
   type CronScheduler,
   type NodeSchedulerAdapter,
+  type SchedulerLockMode,
   type ScheduledJob,
   type ScheduledJobDeclaration,
   type ScheduledJobHandler,
@@ -110,6 +111,12 @@ export interface ServeNodeOptions {
    * host that runs more than one instance stops executing every timer once per instance.
    */
   advisoryLock?: AdvisoryLock;
+  /**
+   * Scheduler lock enforcement mode. Defaults to `"cluster"` for `node-cron` bundles so
+   * multi-instance hosts fail closed without a cluster-scoped lock (`durability: "cluster"`).
+   * Pass `"process"` only for deliberate single-instance or test hosts.
+   */
+  lockMode?: SchedulerLockMode;
   /** Skip binding the network listener (unit tests build the runtime without opening a socket). */
   listen?: boolean;
   port?: number;
@@ -203,11 +210,14 @@ export function createNodeHost(deps: NodeHostDependencies): NodeHost {
     let schedulerLock: AdvisoryLock | undefined;
     if (options.cron) {
       schedulerLock = options.advisoryLock ?? createEnvAdvisoryLock(env) ?? undefined;
+      const lockMode: SchedulerLockMode =
+        options.lockMode ?? (bundle.descriptor.capabilities.scheduler === "node-cron" ? "cluster" : "process");
       scheduler = createNodeScheduler({
         cron: options.cron,
         env,
         jobs: schedulerJobs,
         lock: schedulerLock,
+        lockMode,
       });
       profile?.validateSchedule?.({
         lock: schedulerLock,

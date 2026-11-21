@@ -292,7 +292,7 @@ export declare function createMarketingContribution(input: {
 ```ts
 import type { HttpRuntimePort, JobLeasePort } from "@openlup/core/platform-runtime";
 import type { StaticAssetReader } from "../http/index.js";
-import { type AdvisoryLock, type CronScheduler, type ScheduledJob, type ScheduledJobDeclaration, type ScheduledJobHandler, type ScheduledJobHandlerRegistry } from "../scheduler/index.js";
+import { type AdvisoryLock, type CronScheduler, type SchedulerLockMode, type ScheduledJob, type ScheduledJobDeclaration, type ScheduledJobHandler, type ScheduledJobHandlerRegistry } from "../scheduler/index.js";
 import type { ComposeBundle, PlatformBundlePorts } from "./composeBundle.js";
 type Env = Record<string, string | undefined>;
 /** What the host hands its admission check before it serves or schedules anything. */
@@ -371,6 +371,12 @@ export interface ServeNodeOptions {
      * host that runs more than one instance stops executing every timer once per instance.
      */
     advisoryLock?: AdvisoryLock;
+    /**
+     * Scheduler lock enforcement mode. Defaults to `"cluster"` for `node-cron` bundles so
+     * multi-instance hosts fail closed without a cluster-scoped lock (`durability: "cluster"`).
+     * Pass `"process"` only for deliberate single-instance or test hosts.
+     */
+    lockMode?: SchedulerLockMode;
     /** Skip binding the network listener (unit tests build the runtime without opening a socket). */
     listen?: boolean;
     port?: number;

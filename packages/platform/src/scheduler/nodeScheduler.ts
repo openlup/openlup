@@ -39,15 +39,22 @@ export interface NodeSchedulerAdapter extends SchedulerPort {
   stopAll(): Promise<void>;
 }
 
+export type SchedulerLockMode = "cluster" | "process";
+
 export interface CreateNodeSchedulerOptions {
   /** node-cron instance (inject `import("node-cron")` at the host boot site). */
   cron: CronScheduler;
   /**
    * Per-job lock capability; defaults to an always-granting no-op for
-   * single-instance/test use, which does not serialize concurrent callbacks.
-   * Supply a cluster-scoped lock when multiple instances must exclude one another.
+   * single-instance/test use when `lockMode` is `"process"`, which does not serialize concurrent callbacks.
+   * Supply a cluster-scoped lock (`durability: "cluster"`) when `lockMode` is `"cluster"`.
    */
   lock?: AdvisoryLock;
+  /**
+   * Lock enforcement mode: `"process"` (default for direct 1.x callers) falls back to a no-op lock
+   * when `lock` is omitted; `"cluster"` fails closed unless `lock?.durability === "cluster"`.
+   */
+  lockMode?: SchedulerLockMode;
   /** Environment whose CRON_SECRET verifies an invocation. */
   env: CronEnv;
   /** The deployment's declared jobs (see `loadJobRegistry`). */
@@ -103,6 +110,10 @@ export function withAdvisoryLock(
 export function createNodeScheduler(options: CreateNodeSchedulerOptions): NodeSchedulerAdapter {
   const env = options.env;
   const jobs = options.jobs;
+  const lockMode = options.lockMode ?? "process";
+  if (lockMode === "cluster" && options.lock?.durability !== "cluster") {
+    throw new Error('node-scheduler: cluster lockMode requires an AdvisoryLock with durability "cluster"');
+  }
   const lock = options.lock ?? createNoopAdvisoryLock();
   const onError =
     options.onError ??
