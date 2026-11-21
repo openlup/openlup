@@ -485,7 +485,7 @@ async function approved(data: ReturnType<typeof draft>, revision: number, head: 
 it("refuses committed owner-side product name drift before assessing published facts", async () => {
   const product = draft(4);
   expect(await publish(await approved(product, 1, null))).toMatchObject({ outcome: "committed" });
-  const code = product.payload.skus[0]!.code, digest = await headDigest();
+  const code = product.payload.skus[0]!.code!, digest = await headDigest();
   const assess = vi.fn(() => []);
   expect(await read({ registry, assess }, [code], digest)).toMatchObject({ protocol: "governed" });
   const originalName = (await pool.query("SELECT name FROM public.catalog_products WHERE id=$1", [product.productId])).rows[0]!.name;

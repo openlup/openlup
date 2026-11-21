@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { readPostgresCatalogActivationReadiness, readPostgresCatalogMembershipPage } from "../../src/catalog/index.js";
+import { readPostgresCatalogActivationReadiness, readPostgresCatalogMembershipPage, type CatalogInstalledReadiness } from "../../src/catalog/index.js";
 import type { CatalogProductTypeDefinition } from "../../src/catalog/contracts/index.js";
 
 const input = { offerVersion: "test:offer", limit: 1 };
@@ -193,11 +193,12 @@ it("rejects misaligned or uncertified batches", async () => {
 
 it("refuses a rejecting async assessor without an unhandled rejection", async () => {
   const { lane } = owner(batch([subject, absentItem]));
-  const installed = { registry, assess: async () => { throw new Error("installed assessor failed"); } };
+  const rejectAssessment = async () => { throw new Error("installed assessor failed"); };
+  const installed = { registry, assess: rejectAssessment as unknown as CatalogInstalledReadiness["assess"] };
   const unhandled = vi.fn();
   process.on("unhandledRejection", unhandled);
   try {
-    expect(await readPostgresCatalogActivationReadiness(lane, installed as never, readiness))
+    expect(await readPostgresCatalogActivationReadiness(lane, installed, readiness))
       .toEqual({ outcome: "dependency_unavailable", reason: "catalog_installed_readiness_invalid" });
     await new Promise<void>(resolve => setImmediate(resolve));
     expect(unhandled).not.toHaveBeenCalled();
