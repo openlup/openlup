@@ -19,7 +19,7 @@ export const bindStore = (executor: SqlExecutor) => createPostgresOutboxStore(ex
 ```
 
 This CI-compiled example binds a store; the executor must commit each operation
-before resolving. Read [installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions) before use.
+before resolving. Read [installation and transactions](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/core/docs/guide/how-to/build/outbox.md#postgresql-installation-and-transactions) before use.
 [AGENTS.md](AGENTS.md) explains application ownership and extension boundaries.
 Node 24 or newer is required. Declaration maps connect `dist/` declarations to
 shipped `src/`; JavaScript source maps are not shipped.

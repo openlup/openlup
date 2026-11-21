@@ -622,13 +622,13 @@ describe("tree-wide neutrality ratchet", () => {
     expect(cli(root, base).status).toBe(0);
   }, 30_000);
 
-  it("limits changelog and fragment vocabulary to complete adapter subpaths in the platform carriers", () => {
+  it("limits communications vocabulary to complete adapter subpaths in approved documentation carriers", () => {
     const { root, base } = installed();
     const vendor = String.fromCharCode(114, 101, 115, 101, 110, 100);
-    const carriers = ["packages/platform/CHANGELOG.md", "packages/platform/changes/a-one.md", "packages/platform/AGENTS.md"];
+    const carriers = ["packages/core/CHANGELOG.md", "packages/platform/CHANGELOG.md", "packages/platform/changes/a-one.md", "packages/platform/AGENTS.md"];
     for (const path of carriers) put(root, path, `- Add communications/${vendor}.\n`);
     expect(cli(root, base).status).toBe(0);
-    for (const wrong of ["packages/core/CHANGELOG.md", "packages/core/changes/a-one.md", "packages/platform/changes/nested/a.md", "packages/platform/changes/a.txt"]) {
+    for (const wrong of ["packages/outbox/CHANGELOG.md", "packages/core/changes/a-one.md", "packages/platform/changes/nested/a.md", "packages/platform/changes/a.txt"]) {
       put(root, wrong, `- Add communications/${vendor}.\n`);
       const refused = cli(root, base); expect(refused.status, refused.output).toBe(1); rmSync(join(root, wrong));
     }
@@ -948,6 +948,31 @@ it("admits only the exact published adapter import in each native money witness"
   expect(allowedPaymentAdapterWords(renewal, readback, "ui-14")).toBe(0);
   expect(allowedPaymentAdapterWords(renewal, adapter, "ui-13")).toBe(0);
   expect(allowedPaymentAdapterWords("tests/postgres/another.test.ts", readback, "ui-14")).toBe(0);
+});
+
+it("admits only approved adapter tokens for all three families in assembled release notes", () => {
+  const families = [
+    ["communications", ["res", "end"].join("")],
+    ["payments", ["tp", "ay"].join("")],
+    ["fulfillment", ["omni", "pack"].join("")],
+  ];
+  const tokens = families.map(([family, name]) => [
+    "### `packages/platform/api/" + family + "-" + name + ".api.md`",
+    "@openlup/platform/" + family + "/" + name,
+  ].join("\n")).join("\n");
+  const path = "packages/core/docs/guide/upgrade/v1-3-0.md";
+  const changelogs = ["packages/core/CHANGELOG.md", "packages/platform/CHANGELOG.md"];
+  expect(scanSnapshots(new Map([path, ...changelogs].map(file => [file, Buffer.from(tokens)]))).rows).toEqual({});
+
+  const bare = families.map(([, name]) => name).join(" ");
+  const outside = "packages/core/docs/guide/upgrade/README.md";
+  expect(scanSnapshots(new Map([
+    [path, Buffer.from(tokens + "\n" + bare)],
+    [outside, Buffer.from(tokens)],
+  ])).rows).toEqual({
+    [hash(path)]: { "ui-12": 1, "ui-14": 1, "ui-15": 1 },
+    [hash(outside)]: { "ui-12": 2, "ui-14": 2, "ui-15": 2 },
+  });
 });
 
 it("keeps the payment and managed pins closed at exactly 27 paths and 38 tuples", () => {

@@ -78,6 +78,16 @@ const adapterReportFiles = new Set([
   "config/openlup-publication-catalog.json",
 ]);
 const adapterReportToken = new RegExp(`(?<![\\w.-])communications-(?:${adapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
+// Assembled release notes may carry the same adapter identifiers as their inputs.
+const releaseAdapterTokenCarrier = /^packages\/(?:core\/(?:CHANGELOG|docs\/guide\/upgrade\/v[0-9-]+)|platform\/CHANGELOG)\.md$/;
+function adapterCarrierTokens(path, contents, subpathFiles, subpath, report) {
+  const releaseNotes = releaseAdapterTokenCarrier.test(path);
+  if (!releaseNotes && !subpathFiles.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return undefined;
+  const tokens = [...contents.matchAll(subpath)];
+  if (releaseNotes || adapterReportFiles.has(path)) tokens.push(...contents.matchAll(report));
+  return tokens;
+}
+
 const adapterRelativeEntry = new RegExp(`(?<![\\w./-])\\./(?:${adapterNames.join("|")})/index\\.js(?![\\w./-])`, "g");
 // Exact complete cold-proof lines, rather than a file-wide or arbitrary marked
 // block exemption. Editing a line requires another explicit policy review.
@@ -102,9 +112,8 @@ function allowedAdapterWords(path, contents) {
   // public provider matrix of shipped opt-in adapters requested by the project owner; the same names the package API and README already publish
   if (path === "ROADMAP.md") return Math.min(2, [...contents.matchAll(adapterWord)].length);
   if (adapterPaths.test(path) || adapterReports.has(path) || path === adapterLedger) return [...contents.matchAll(adapterWord)].length;
-  if (adapterSubpathFiles.has(path) || /^packages\/platform\/changes\/[^/]+\.md$/.test(path)) {
-    const tokens = [...contents.matchAll(adapterSubpath)];
-    if (adapterReportFiles.has(path)) tokens.push(...contents.matchAll(adapterReportToken));
+  const tokens = adapterCarrierTokens(path, contents, adapterSubpathFiles, adapterSubpath, adapterReportToken);
+  if (tokens) {
     if (path === "packages/platform/test/packageBoundary.test.ts") tokens.push(...contents.matchAll(adapterRelativeEntry));
     return tokens.reduce((count, [token]) => count + [...token.matchAll(adapterWord)].length, 0);
   }
@@ -196,12 +205,8 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
     const adapterImport = `import { ${nativeImports[path]} } from "@openlup/platform/payments/${name}";`;
     return contents.split("\n").includes(adapterImport) ? 1 : 0;
   }
-  if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;
-  const tokens = [...contents.matchAll(paymentAdapterSubpath)];
-  if (["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"].includes(path)) {
-    tokens.push(...contents.matchAll(paymentAdapterReport));
-  }
-  return tokens.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0);
+  const tokens = adapterCarrierTokens(path, contents, paymentAdapterCarriers, paymentAdapterSubpath, paymentAdapterReport);
+  return tokens?.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0) ?? 0;
 }
 
 // One vendor category, with exact paths and complete, case-sensitive carrier tokens.
@@ -215,12 +220,8 @@ export function allowedFulfillmentAdapterWords(path, contents) {
   if (path === "ROADMAP.md") return Math.min(2, [...contents.matchAll(fulfillmentAdapterWord)].length);
   if (fulfillmentAdapterPaths.test(path) || path === `packages/platform/api/fulfillment-${fulfillmentAdapterName}.api.md`
     || path === "docs/platform/plans/oss-a3-fulfillment-adapter.md") return [...contents.matchAll(fulfillmentAdapterWord)].length;
-  if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;
-  const tokens = [...contents.matchAll(fulfillmentAdapterSubpath)];
-  if (["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"].includes(path)) {
-    tokens.push(...contents.matchAll(fulfillmentAdapterReport));
-  }
-  return tokens.reduce((count, [token]) => count + [...token.matchAll(fulfillmentAdapterWord)].length, 0);
+  const tokens = adapterCarrierTokens(path, contents, paymentAdapterCarriers, fulfillmentAdapterSubpath, fulfillmentAdapterReport);
+  return tokens?.reduce((count, [token]) => count + [...token.matchAll(fulfillmentAdapterWord)].length, 0) ?? 0;
 }
 
 export function neutralityIncreases(baseline, current) {
