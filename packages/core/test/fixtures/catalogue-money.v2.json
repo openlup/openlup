@@ -1,0 +1,950 @@
+{
+  "version": "2",
+  "rows": [
+    {
+      "id": "mixed_tax_discount_shipping_golden",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "inclusive",
+            "sources": [
+              {"lineKey": "a", "sourceOrdinal": "1", "quantity": "2", "unitBasisMinor": "540"},
+              {"lineKey": "b", "sourceOrdinal": "2", "quantity": "3", "unitBasisMinor": "410"}
+            ],
+            "delivery": [
+              {"bucketKey": "ship", "deliveryKind": "shipping", "amountMinor": "100"}
+            ],
+            "adjustments": [
+              {
+                "adjustmentRef": "product",
+                "sequence": "1",
+                "amountMinor": "231",
+                "target": {
+                  "lineKeys": ["a", "b"]
+                }
+              },
+              {
+                "adjustmentRef": "delivery",
+                "sequence": "2",
+                "amountMinor": "10",
+                "target": {"bucketKey": "ship"}
+              }
+            ],
+            "fees": []
+          },
+          "tax": {
+            "kind": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "a", "sourceOrdinal": "1"},
+                "rateBps": "800"
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "b", "sourceOrdinal": "2"},
+                "rateBps": "2300"
+              }
+            ]
+          },
+          "expected": {
+            "amountBasis": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "a", "sourceOrdinal": "1"},
+                "initial": {"amountMinor": "1080", "netMinor": "1000", "taxMinor": "80", "totalMinor": "1080", "taxPositions": []},
+                "allocations": [
+                  {
+                    "adjustmentRef": "product",
+                    "sequence": "1",
+                    "basisReductionMinor": "108",
+                    "beforeMinor": "1080",
+                    "afterMinor": "972",
+                    "before": {"amountMinor": "1080", "netMinor": "1000", "taxMinor": "80", "totalMinor": "1080", "taxPositions": []},
+                    "after": {"amountMinor": "972", "netMinor": "900", "taxMinor": "72", "totalMinor": "972", "taxPositions": []},
+                    "netReductionMinor": "100",
+                    "taxReductionMinor": "8"
+                  }
+                ],
+                "final": {"amountMinor": "972", "netMinor": "900", "taxMinor": "72", "totalMinor": "972", "taxPositions": []}
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "b", "sourceOrdinal": "2"},
+                "initial": {"amountMinor": "1230", "netMinor": "1000", "taxMinor": "230", "totalMinor": "1230", "taxPositions": []},
+                "allocations": [
+                  {
+                    "adjustmentRef": "product",
+                    "sequence": "1",
+                    "basisReductionMinor": "123",
+                    "beforeMinor": "1230",
+                    "afterMinor": "1107",
+                    "before": {"amountMinor": "1230", "netMinor": "1000", "taxMinor": "230", "totalMinor": "1230", "taxPositions": []},
+                    "after": {"amountMinor": "1107", "netMinor": "900", "taxMinor": "207", "totalMinor": "1107", "taxPositions": []},
+                    "netReductionMinor": "100",
+                    "taxReductionMinor": "23"
+                  }
+                ],
+                "final": {"amountMinor": "1107", "netMinor": "900", "taxMinor": "207", "totalMinor": "1107", "taxPositions": []}
+              },
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship", "sourceOrdinal": "1"},
+                "initial": {"amountMinor": "47", "netMinor": "44", "taxMinor": "3", "totalMinor": "47", "taxPositions": []},
+                "allocations": [
+                  {
+                    "adjustmentRef": "delivery",
+                    "sequence": "2",
+                    "basisReductionMinor": "5",
+                    "beforeMinor": "47",
+                    "afterMinor": "42",
+                    "before": {"amountMinor": "47", "netMinor": "44", "taxMinor": "3", "totalMinor": "47", "taxPositions": []},
+                    "after": {"amountMinor": "42", "netMinor": "39", "taxMinor": "3", "totalMinor": "42", "taxPositions": []},
+                    "netReductionMinor": "5",
+                    "taxReductionMinor": "0"
+                  }
+                ],
+                "final": {"amountMinor": "42", "netMinor": "39", "taxMinor": "3", "totalMinor": "42", "taxPositions": []}
+              },
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship", "sourceOrdinal": "2"},
+                "initial": {"amountMinor": "53", "netMinor": "43", "taxMinor": "10", "totalMinor": "53", "taxPositions": []},
+                "allocations": [
+                  {
+                    "adjustmentRef": "delivery",
+                    "sequence": "2",
+                    "basisReductionMinor": "5",
+                    "beforeMinor": "53",
+                    "afterMinor": "48",
+                    "before": {"amountMinor": "53", "netMinor": "43", "taxMinor": "10", "totalMinor": "53", "taxPositions": []},
+                    "after": {"amountMinor": "48", "netMinor": "39", "taxMinor": "9", "totalMinor": "48", "taxPositions": []},
+                    "netReductionMinor": "4",
+                    "taxReductionMinor": "1"
+                  }
+                ],
+                "final": {"amountMinor": "48", "netMinor": "39", "taxMinor": "9", "totalMinor": "48", "taxPositions": []}
+              }
+            ],
+            "fees": [],
+            "netTotal": "1878",
+            "taxTotal": "291",
+            "feeTotal": "0",
+            "payableMinor": "2169"
+          }
+        }
+      ]
+    },
+    {
+      "id": "one_cent_tie_source_ordinal",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "inclusive",
+            "sources": [
+              {"lineKey": "a", "sourceOrdinal": "2", "quantity": "1", "unitBasisMinor": "3"},
+              {"lineKey": "z", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "3"}
+            ],
+            "delivery": [],
+            "adjustments": [
+              {
+                "adjustmentRef": "product",
+                "sequence": "1",
+                "amountMinor": "1",
+                "target": {
+                  "lineKeys": ["a", "z"]
+                }
+              }
+            ],
+            "fees": []
+          },
+          "tax": {
+            "kind": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "a", "sourceOrdinal": "2"},
+                "rateBps": "800"
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "z", "sourceOrdinal": "1"},
+                "rateBps": "2300"
+              }
+            ]
+          },
+          "expected": {
+            "amountBasis": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "z", "sourceOrdinal": "1"},
+                "initial": {"amountMinor": "3", "netMinor": "2", "taxMinor": "1", "totalMinor": "3", "taxPositions": []},
+                "allocations": [
+                  {
+                    "adjustmentRef": "product",
+                    "sequence": "1",
+                    "basisReductionMinor": "1",
+                    "beforeMinor": "3",
+                    "afterMinor": "2",
+                    "before": {"amountMinor": "3", "netMinor": "2", "taxMinor": "1", "totalMinor": "3", "taxPositions": []},
+                    "after": {"amountMinor": "2", "netMinor": "2", "taxMinor": "0", "totalMinor": "2", "taxPositions": []},
+                    "netReductionMinor": "0",
+                    "taxReductionMinor": "1"
+                  }
+                ],
+                "final": {"amountMinor": "2", "netMinor": "2", "taxMinor": "0", "totalMinor": "2", "taxPositions": []}
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "a", "sourceOrdinal": "2"},
+                "initial": {"amountMinor": "3", "netMinor": "3", "taxMinor": "0", "totalMinor": "3", "taxPositions": []},
+                "allocations": [],
+                "final": {"amountMinor": "3", "netMinor": "3", "taxMinor": "0", "totalMinor": "3", "taxPositions": []}
+              }
+            ],
+            "fees": [],
+            "netTotal": "5",
+            "taxTotal": "0",
+            "feeTotal": "0",
+            "payableMinor": "5"
+          }
+        }
+      ]
+    },
+    {
+      "id": "exclusive_two_state_golden",
+      "cases": [
+        {
+          "name": "state-a",
+          "input": {
+            "amountBasis": "exclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "1000"},
+              {"lineKey": "y", "sourceOrdinal": "2", "quantity": "1", "unitBasisMinor": "500"}
+            ],
+            "delivery": [
+              {"bucketKey": "ship", "deliveryKind": "shipping", "amountMinor": "100"}
+            ],
+            "adjustments": [],
+            "fees": []
+          },
+          "tax": {
+            "kind": "local",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rates": []
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "y", "sourceOrdinal": "2"},
+                "rates": [
+                  {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "10"}
+                ]
+              },
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship"},
+                "rates": [
+                  {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "10"}
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "amountBasis": "exclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "initial": {"amountMinor": "1000", "netMinor": "1000", "taxMinor": "0", "totalMinor": "1000", "taxPositions": []},
+                "allocations": [],
+                "final": {"amountMinor": "1000", "netMinor": "1000", "taxMinor": "0", "totalMinor": "1000", "taxPositions": []}
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "y", "sourceOrdinal": "2"},
+                "initial": {
+                  "amountMinor": "500",
+                  "netMinor": "500",
+                  "taxMinor": "50",
+                  "totalMinor": "550",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "10", "taxableMinor": "500", "taxMinor": "50"}
+                  ]
+                },
+                "allocations": [],
+                "final": {
+                  "amountMinor": "500",
+                  "netMinor": "500",
+                  "taxMinor": "50",
+                  "totalMinor": "550",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "10", "taxableMinor": "500", "taxMinor": "50"}
+                  ]
+                }
+              },
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship"},
+                "initial": {
+                  "amountMinor": "100",
+                  "netMinor": "100",
+                  "taxMinor": "10",
+                  "totalMinor": "110",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "10", "taxableMinor": "100", "taxMinor": "10"}
+                  ]
+                },
+                "allocations": [],
+                "final": {
+                  "amountMinor": "100",
+                  "netMinor": "100",
+                  "taxMinor": "10",
+                  "totalMinor": "110",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "10", "taxableMinor": "100", "taxMinor": "10"}
+                  ]
+                }
+              }
+            ],
+            "fees": [],
+            "netTotal": "1600",
+            "taxTotal": "60",
+            "feeTotal": "0",
+            "payableMinor": "1660"
+          }
+        },
+        {
+          "name": "state-b",
+          "input": {
+            "amountBasis": "exclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "1000"},
+              {"lineKey": "y", "sourceOrdinal": "2", "quantity": "1", "unitBasisMinor": "500"}
+            ],
+            "delivery": [
+              {"bucketKey": "ship", "deliveryKind": "shipping", "amountMinor": "100"}
+            ],
+            "adjustments": [],
+            "fees": []
+          },
+          "tax": {
+            "kind": "local",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rates": [
+                  {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8"}
+                ]
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "y", "sourceOrdinal": "2"},
+                "rates": [
+                  {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8"}
+                ]
+              },
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship"},
+                "rates": []
+              }
+            ]
+          },
+          "expected": {
+            "amountBasis": "exclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "initial": {
+                  "amountMinor": "1000",
+                  "netMinor": "1000",
+                  "taxMinor": "80",
+                  "totalMinor": "1080",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8", "taxableMinor": "1000", "taxMinor": "80"}
+                  ]
+                },
+                "allocations": [],
+                "final": {
+                  "amountMinor": "1000",
+                  "netMinor": "1000",
+                  "taxMinor": "80",
+                  "totalMinor": "1080",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8", "taxableMinor": "1000", "taxMinor": "80"}
+                  ]
+                }
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "y", "sourceOrdinal": "2"},
+                "initial": {
+                  "amountMinor": "500",
+                  "netMinor": "500",
+                  "taxMinor": "40",
+                  "totalMinor": "540",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8", "taxableMinor": "500", "taxMinor": "40"}
+                  ]
+                },
+                "allocations": [],
+                "final": {
+                  "amountMinor": "500",
+                  "netMinor": "500",
+                  "taxMinor": "40",
+                  "totalMinor": "540",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8", "taxableMinor": "500", "taxMinor": "40"}
+                  ]
+                }
+              },
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship"},
+                "initial": {"amountMinor": "100", "netMinor": "100", "taxMinor": "0", "totalMinor": "100", "taxPositions": []},
+                "allocations": [],
+                "final": {"amountMinor": "100", "netMinor": "100", "taxMinor": "0", "totalMinor": "100", "taxPositions": []}
+              }
+            ],
+            "fees": [],
+            "netTotal": "1600",
+            "taxTotal": "120",
+            "feeTotal": "0",
+            "payableMinor": "1720"
+          }
+        },
+        {
+          "name": "state-b-with-fee",
+          "input": {
+            "amountBasis": "exclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "1000"},
+              {"lineKey": "y", "sourceOrdinal": "2", "quantity": "1", "unitBasisMinor": "500"}
+            ],
+            "delivery": [
+              {"bucketKey": "ship", "deliveryKind": "shipping", "amountMinor": "100"}
+            ],
+            "adjustments": [],
+            "fees": [
+              {"feeKey": "fee", "amountMinor": "25"}
+            ]
+          },
+          "tax": {
+            "kind": "local",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rates": [
+                  {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8"}
+                ]
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "y", "sourceOrdinal": "2"},
+                "rates": [
+                  {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8"}
+                ]
+              },
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship"},
+                "rates": []
+              }
+            ]
+          },
+          "expected": {
+            "amountBasis": "exclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "initial": {
+                  "amountMinor": "1000",
+                  "netMinor": "1000",
+                  "taxMinor": "80",
+                  "totalMinor": "1080",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8", "taxableMinor": "1000", "taxMinor": "80"}
+                  ]
+                },
+                "allocations": [],
+                "final": {
+                  "amountMinor": "1000",
+                  "netMinor": "1000",
+                  "taxMinor": "80",
+                  "totalMinor": "1080",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8", "taxableMinor": "1000", "taxMinor": "80"}
+                  ]
+                }
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "y", "sourceOrdinal": "2"},
+                "initial": {
+                  "amountMinor": "500",
+                  "netMinor": "500",
+                  "taxMinor": "40",
+                  "totalMinor": "540",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8", "taxableMinor": "500", "taxMinor": "40"}
+                  ]
+                },
+                "allocations": [],
+                "final": {
+                  "amountMinor": "500",
+                  "netMinor": "500",
+                  "taxMinor": "40",
+                  "totalMinor": "540",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-b", "rateDecimal": "8", "taxableMinor": "500", "taxMinor": "40"}
+                  ]
+                }
+              },
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship"},
+                "initial": {"amountMinor": "100", "netMinor": "100", "taxMinor": "0", "totalMinor": "100", "taxPositions": []},
+                "allocations": [],
+                "final": {"amountMinor": "100", "netMinor": "100", "taxMinor": "0", "totalMinor": "100", "taxPositions": []}
+              }
+            ],
+            "fees": [
+              {"feeKey": "fee", "amountMinor": "25"}
+            ],
+            "netTotal": "1600",
+            "taxTotal": "120",
+            "feeTotal": "25",
+            "payableMinor": "1745"
+          }
+        }
+      ]
+    },
+    {
+      "id": "exclusive_residual_cent",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "exclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "5"}
+            ],
+            "delivery": [],
+            "adjustments": [],
+            "fees": []
+          },
+          "tax": {
+            "kind": "local",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rates": [
+                  {"positionRef": "p-b", "jurisdictionRef": "district-b", "rateDecimal": "10"},
+                  {"positionRef": "p-a", "jurisdictionRef": "district-a", "rateDecimal": "10"}
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "amountBasis": "exclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "initial": {
+                  "amountMinor": "5",
+                  "netMinor": "5",
+                  "taxMinor": "1",
+                  "totalMinor": "6",
+                  "taxPositions": [
+                    {"positionRef": "p-a", "jurisdictionRef": "district-a", "rateDecimal": "10", "taxableMinor": "5", "taxMinor": "1"},
+                    {"positionRef": "p-b", "jurisdictionRef": "district-b", "rateDecimal": "10", "taxableMinor": "5", "taxMinor": "0"}
+                  ]
+                },
+                "allocations": [],
+                "final": {
+                  "amountMinor": "5",
+                  "netMinor": "5",
+                  "taxMinor": "1",
+                  "totalMinor": "6",
+                  "taxPositions": [
+                    {"positionRef": "p-a", "jurisdictionRef": "district-a", "rateDecimal": "10", "taxableMinor": "5", "taxMinor": "1"},
+                    {"positionRef": "p-b", "jurisdictionRef": "district-b", "rateDecimal": "10", "taxableMinor": "5", "taxMinor": "0"}
+                  ]
+                }
+              }
+            ],
+            "fees": [],
+            "netTotal": "5",
+            "taxTotal": "1",
+            "feeTotal": "0",
+            "payableMinor": "6"
+          }
+        }
+      ]
+    },
+    {
+      "id": "exclusive_sub_basis_point",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "exclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "10000"}
+            ],
+            "delivery": [],
+            "adjustments": [],
+            "fees": []
+          },
+          "tax": {
+            "kind": "local",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rates": [
+                  {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "0.005"}
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "amountBasis": "exclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "initial": {
+                  "amountMinor": "10000",
+                  "netMinor": "10000",
+                  "taxMinor": "1",
+                  "totalMinor": "10001",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "0.005", "taxableMinor": "10000", "taxMinor": "1"}
+                  ]
+                },
+                "allocations": [],
+                "final": {
+                  "amountMinor": "10000",
+                  "netMinor": "10000",
+                  "taxMinor": "1",
+                  "totalMinor": "10001",
+                  "taxPositions": [
+                    {"positionRef": "p", "jurisdictionRef": "district-a", "rateDecimal": "0.005", "taxableMinor": "10000", "taxMinor": "1"}
+                  ]
+                }
+              }
+            ],
+            "fees": [],
+            "netTotal": "10000",
+            "taxTotal": "1",
+            "feeTotal": "0",
+            "payableMinor": "10001"
+          }
+        }
+      ]
+    },
+    {
+      "id": "exclusive_provider_positions",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "exclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "10"}
+            ],
+            "delivery": [],
+            "adjustments": [
+              {
+                "adjustmentRef": "product",
+                "sequence": "1",
+                "amountMinor": "1",
+                "target": {
+                  "lineKeys": ["x"]
+                }
+              }
+            ],
+            "fees": []
+          },
+          "tax": {
+            "kind": "provider",
+            "payableMinor": "11",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "states": [
+                  {
+                    "afterSequence": "0",
+                    "amountMinor": "10",
+                    "taxPositions": [
+                      {"positionRef": "p-b", "jurisdictionRef": "district-b", "taxableMinor": "10", "taxMinor": "2"},
+                      {"positionRef": "p-a", "jurisdictionRef": "district-a", "taxableMinor": "10", "taxMinor": "1"}
+                    ]
+                  },
+                  {
+                    "afterSequence": "1",
+                    "amountMinor": "9",
+                    "taxPositions": [
+                      {"positionRef": "p-b", "jurisdictionRef": "district-b", "taxableMinor": "9", "taxMinor": "2"},
+                      {"positionRef": "p-a", "jurisdictionRef": "district-a", "taxableMinor": "9", "taxMinor": "0"}
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "expected": {
+            "amountBasis": "exclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "initial": {
+                  "amountMinor": "10",
+                  "netMinor": "10",
+                  "taxMinor": "3",
+                  "totalMinor": "13",
+                  "taxPositions": [
+                    {"positionRef": "p-b", "jurisdictionRef": "district-b", "taxableMinor": "10", "taxMinor": "2"},
+                    {"positionRef": "p-a", "jurisdictionRef": "district-a", "taxableMinor": "10", "taxMinor": "1"}
+                  ]
+                },
+                "allocations": [
+                  {
+                    "adjustmentRef": "product",
+                    "sequence": "1",
+                    "basisReductionMinor": "1",
+                    "beforeMinor": "10",
+                    "afterMinor": "9",
+                    "before": {
+                      "amountMinor": "10",
+                      "netMinor": "10",
+                      "taxMinor": "3",
+                      "totalMinor": "13",
+                      "taxPositions": [
+                        {"positionRef": "p-b", "jurisdictionRef": "district-b", "taxableMinor": "10", "taxMinor": "2"},
+                        {"positionRef": "p-a", "jurisdictionRef": "district-a", "taxableMinor": "10", "taxMinor": "1"}
+                      ]
+                    },
+                    "after": {
+                      "amountMinor": "9",
+                      "netMinor": "9",
+                      "taxMinor": "2",
+                      "totalMinor": "11",
+                      "taxPositions": [
+                        {"positionRef": "p-b", "jurisdictionRef": "district-b", "taxableMinor": "9", "taxMinor": "2"},
+                        {"positionRef": "p-a", "jurisdictionRef": "district-a", "taxableMinor": "9", "taxMinor": "0"}
+                      ]
+                    },
+                    "netReductionMinor": "1",
+                    "taxReductionMinor": "1"
+                  }
+                ],
+                "final": {
+                  "amountMinor": "9",
+                  "netMinor": "9",
+                  "taxMinor": "2",
+                  "totalMinor": "11",
+                  "taxPositions": [
+                    {"positionRef": "p-b", "jurisdictionRef": "district-b", "taxableMinor": "9", "taxMinor": "2"},
+                    {"positionRef": "p-a", "jurisdictionRef": "district-a", "taxableMinor": "9", "taxMinor": "0"}
+                  ]
+                }
+              }
+            ],
+            "fees": [],
+            "netTotal": "9",
+            "taxTotal": "2",
+            "feeTotal": "0",
+            "payableMinor": "11"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fee_with_zero_shipping",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "inclusive",
+            "sources": [],
+            "delivery": [
+              {"bucketKey": "ship", "deliveryKind": "shipping", "amountMinor": "0"}
+            ],
+            "adjustments": [],
+            "fees": [
+              {"feeKey": "fee", "amountMinor": "25"}
+            ]
+          },
+          "tax": {"kind": "inclusive", "components": []},
+          "expected": {
+            "amountBasis": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "delivery", "bucketKey": "ship"},
+                "initial": {"amountMinor": "0", "netMinor": "0", "taxMinor": "0", "totalMinor": "0", "taxPositions": []},
+                "allocations": [],
+                "final": {"amountMinor": "0", "netMinor": "0", "taxMinor": "0", "totalMinor": "0", "taxPositions": []}
+              }
+            ],
+            "fees": [
+              {"feeKey": "fee", "amountMinor": "25"}
+            ],
+            "netTotal": "0",
+            "taxTotal": "0",
+            "feeTotal": "25",
+            "payableMinor": "25"
+          }
+        }
+      ]
+    },
+    {
+      "id": "tax_mode_basis_mismatch",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "inclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "1"}
+            ],
+            "delivery": [],
+            "adjustments": [],
+            "fees": []
+          },
+          "tax": {
+            "kind": "local",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rates": []
+              }
+            ]
+          },
+          "expected": {
+            "error": {"code": "money_amount_basis_mixed", "field": "tax.kind"}
+          }
+        }
+      ]
+    },
+    {
+      "id": "zero_weight_shipping",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "inclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "0"}
+            ],
+            "delivery": [
+              {"bucketKey": "ship", "deliveryKind": "shipping", "amountMinor": "1"}
+            ],
+            "adjustments": [],
+            "fees": []
+          },
+          "tax": {
+            "kind": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rateBps": "0"
+              }
+            ]
+          },
+          "expected": {
+            "error": {"code": "shipping_tax_basis_empty", "field": "delivery[0].amountMinor"}
+          }
+        }
+      ]
+    },
+    {
+      "id": "amount_out_of_range",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "inclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "2", "unitBasisMinor": "4503599627370496"}
+            ],
+            "delivery": [],
+            "adjustments": [],
+            "fees": []
+          },
+          "tax": {
+            "kind": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rateBps": "0"
+              }
+            ]
+          },
+          "expected": {
+            "error": {"code": "money_amount_out_of_range", "field": "sources[0].preDiscountMinor"}
+          }
+        }
+      ]
+    },
+    {
+      "id": "duplicate_source_ordinal",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "inclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "1"},
+              {"lineKey": "y", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "1"}
+            ],
+            "delivery": [],
+            "adjustments": [],
+            "fees": []
+          },
+          "tax": {
+            "kind": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rateBps": "0"
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "y", "sourceOrdinal": "1"},
+                "rateBps": "0"
+              }
+            ]
+          },
+          "expected": {
+            "error": {"code": "money_source_ordinal_duplicate", "field": "sources[1].sourceOrdinal"}
+          }
+        }
+      ]
+    },
+    {
+      "id": "discount_above_eligible_balance",
+      "cases": [
+        {
+          "name": "default",
+          "input": {
+            "amountBasis": "inclusive",
+            "sources": [
+              {"lineKey": "x", "sourceOrdinal": "1", "quantity": "1", "unitBasisMinor": "2"},
+              {"lineKey": "y", "sourceOrdinal": "2", "quantity": "1", "unitBasisMinor": "9"}
+            ],
+            "delivery": [],
+            "adjustments": [
+              {
+                "adjustmentRef": "product",
+                "sequence": "1",
+                "amountMinor": "3",
+                "target": {
+                  "lineKeys": ["x"]
+                }
+              }
+            ],
+            "fees": []
+          },
+          "tax": {
+            "kind": "inclusive",
+            "components": [
+              {
+                "ref": {"kind": "merchandise", "lineKey": "x", "sourceOrdinal": "1"},
+                "rateBps": "0"
+              },
+              {
+                "ref": {"kind": "merchandise", "lineKey": "y", "sourceOrdinal": "2"},
+                "rateBps": "0"
+              }
+            ]
+          },
+          "expected": {
+            "error": {"code": "money_discount_exceeds_balance", "field": "adjustments[0].amountMinor"}
+          }
+        }
+      ]
+    }
+  ]
+}

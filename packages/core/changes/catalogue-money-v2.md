@@ -1,0 +1,1 @@
+- Add the experimental `planCatalogueMoneyV2` and `calculateCatalogueMoneyV2` exports to `@openlup/core/pricing` for basis-aware catalogue amounts, adjustments, delivery, fees and tax. Provider mode requires consecutive tax states for each component and a payable that reconciles with the supplied fees.
