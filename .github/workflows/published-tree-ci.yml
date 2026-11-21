@@ -212,6 +212,7 @@ jobs:
       - name: Every publishable package API and installed-artifact proof
         if: needs.reuse-gate.outputs.reuse != 'true'
         env:
+          OPENLUP_AUTHORIZED_API_MAJOR: ${{ vars.OPENLUP_AUTHORIZED_API_MAJOR }}
           OPENLUP_PROOF_SERVICE_CONTAINER: ${{ steps.postgres.outputs.container }}
           OPENLUP_PROOF_SERVICE_PORT: ${{ steps.postgres.outputs.port }}
         run: node --experimental-strip-types scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"

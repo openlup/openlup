@@ -1218,7 +1218,7 @@ Unknown events, malformed metadata or unavailable Git history exclude nothing. S
 
 #### Separate DB, package and coverage proof
 
-[Required checks](#required-and-raw-checks) owns the full command sequence. `install-packages`, under the required `install-proof` aggregate, builds both profiles and runs [shared package gates](scripts/packages/required-package-gates.ts): cold-pack the publishable inventory once, all API checks first, then each `ci:required` with verified manifest/commit. Keep local package preparation before root tests because generated outputs are shared. New modules extend the owning package's consumer and required batch; do not add a workspace or job without a separate need.
+[Required checks](#required-and-raw-checks) owns the full command sequence. `install-packages`, under the required `install-proof` aggregate, builds both profiles and runs [shared package gates](scripts/packages/required-package-gates.ts): cold-pack the publishable inventory once, then run the [package checks](#package-policy-and-release-checks). Keep local package preparation before root tests because generated outputs are shared. New modules extend the owning package's consumer and required batch; do not add a workspace or job without a separate need.
 
 The [catalogue installed-consumer proof](scripts/packages/platform-cold-consumer.ts)
 evaluates the [catalogue SQL descriptor](packages/platform/src/catalog/sql.ts)
@@ -1295,6 +1295,18 @@ against those retained digest-verified local packs before release planning;
 post-publication provenance and qualification checks still run separately.
 [Package releases](.github/VERSIONING_AND_EOL.md#package-releases) describes how
 the protected release approval leads to direct OIDC publication.
+
+The shared package gate compares packed stable TypeScript APIs and a payment
+readback outcome with the latest coherent npm set. With two local pack sets,
+run `node scripts/packages/released-api-check.ts <released-dir> <candidate-dir> "$(git rev-parse HEAD)"`
+after retaining the candidate with `npm run packages:check -- --cold --out <candidate-dir>`.
+For a deliberate change, keep the old API working, add its replacement, mark the
+old API `@deprecated` and add a `Migration:` fragment. To remove a published
+deprecated export in a maintainer-authorized major, put a `### Stable API removal`
+entry in the package fragment with `Subpath:`, `Symbol:`, `Bridge minor:` (the
+released major and minor), `Target major:` and `Upgrade action:` on separate
+lines in that order. The maintainer sets the authorized major in the repository
+variable `OPENLUP_AUTHORIZED_API_MAJOR`.
 
 For managed pgTAP execution and its prerequisites, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).
