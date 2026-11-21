@@ -1,3 +1,4 @@
+import type { PaymentReadbackIdentityMismatch } from "@openlup/platform/payments/contracts";
 import { createTestAccountingProvider } from "../../adapters/accounting/testAccountingProvider.js";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -9,7 +10,7 @@ import {
 import { createFulfillmentHandoffInvoiceHandler } from "./fulfillmentHandoffInvoiceHandler.js";
 import { COMMERCE_FULFILLMENT_HANDED_OVER_EVENT_TYPE } from "../../../src/lib/fulfillmentHandoffOutboxContract.js";
 import type { AccountingRuntimeConfig } from "./accountingRuntimeConfig.js";
-import type { AccountingCorrectionOutboxTarget, ClaimedAccountingInvoiceIssue } from "../../../src/domains/accounting/ports.js";
+import type { AccountingCorrectionOutboxTarget, AccountingInvoiceRuntimePort, ClaimedAccountingInvoiceIssue } from "../../../src/domains/accounting/ports.js";
 import { AccountingInvoicePersistenceError } from "../../../src/domains/accounting/ports.js";
 
 const claim: ClaimedAccountingInvoiceIssue = {
@@ -145,6 +146,44 @@ describe("accounting job service", () => {
       providerStatus: "unavailable",
     }));
     expect(provider.createInvoice).not.toHaveBeenCalled();
+    expect(port.markInvoiceIssueFailed).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "an identity refusal", error: { code: "provider_payment_identity_mismatch" } satisfies PaymentReadbackIdentityMismatch,
+      status: "unknown", reason: "provider_payment_identity_mismatch", updated: 0 },
+    { name: "a provider outage", error: new Error("network unavailable"),
+      status: "unavailable", reason: "provider_read_failed", updated: 1 },
+  ])("runs managed preflight after $name", async ({ error, status, reason, updated }) => {
+    const port = portStub({ claims: [claim] });
+    // The managed preflight permits unavailable reads and rejects an unknown settlement status.
+    port.preflightInvoiceIssuePayment.mockImplementation(async ({ providerStatus }) => {
+      const ok = providerStatus === "unavailable";
+      return {
+        ok,
+        code: ok ? null : "accounting_invoice_provider_settlement_status_mismatch",
+        providerReadbackState: ok ? "unavailable" : "mismatch",
+        paymentIntentId: "intent-1",
+      };
+    });
+    const provider = providerStub();
+
+    await expect(runAccountingInvoiceIssueJob({
+      port,
+      provider,
+      config: config({ createEnabled: true }),
+      env: {},
+      paymentProviders: { [claim.payment.provider]: { readPayment: async () => { throw error; } } },
+    })).resolves.toMatchObject({ checked: 1, updated, failures: 1 - updated });
+
+    expect(port.preflightInvoiceIssuePayment).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      providerStatus: status,
+      providerAmountCents: null,
+      providerCurrency: null,
+      providerEvidence: expect.objectContaining({ unavailableReason: reason }),
+    }));
+    expect(provider.createInvoice).toHaveBeenCalledTimes(updated);
+    expect(port.markInvoiceIssueSucceeded).toHaveBeenCalledTimes(updated);
     expect(port.markInvoiceIssueFailed).not.toHaveBeenCalled();
   });
 
@@ -458,10 +497,10 @@ function portStub({
 } = {}) {
   return {
     claimInvoiceIssues: vi.fn(async () => claims),
-    preflightInvoiceIssuePayment: vi.fn(async () => ({
+    preflightInvoiceIssuePayment: vi.fn<AccountingInvoiceRuntimePort["preflightInvoiceIssuePayment"]>(async () => ({
       ok: true,
-      code: null as string | null,
-      providerReadbackState: "unavailable" as const,
+      code: null,
+      providerReadbackState: "unavailable",
       paymentIntentId: "intent-1",
     })),
     blockInvoiceIssueCanonicalMapper: vi.fn(async () => undefined),
