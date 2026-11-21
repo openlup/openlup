@@ -21,9 +21,16 @@ it("represents every domain data key and executable descriptor in the catalogue"
   expect(new Set(expected).size).toBe(expected.length);
   expect(entries.filter(({ kind }) => kind === "installed").map(({ key }) => key)).toEqual(expect.arrayContaining([
     "inventory_renewal_protection", "checkout_recovery_reminders", "subscriber_winback_policy",
+    "pricing.subscriptionPricePolicy", "communications.nativeDeliveryControls",
   ]));
   expect(entries.filter(({ kind }) => kind === "cap").length).toBeGreaterThanOrEqual(40);
-  expect(entries.filter(({ kind }) => kind === "code")).toEqual([]);
+  expect(entries.filter(({ kind }) => kind === "code").map(({ key }) => key)).toEqual([
+    "catalog.bundleAvailabilityPolicy",
+    "checkout.resumeWindowMinutes",
+    "communications.terminalPayloadRetentionDays",
+    "inventory.offerLowStockThreshold",
+    "market.settlementProfile",
+  ]);
   expect(entries.find(({ key }) => key === "savedAddressValidation")).toMatchObject({
     kind: "callback", change: { reference: "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences" },
   });

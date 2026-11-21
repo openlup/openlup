@@ -154,4 +154,15 @@ describe("deriveBundleAvailability", () => {
     expect(result.reasonCode).toBe("out_of_stock");
     expect(result.limitingSku).toBe("unit-a");
   });
+
+  it("accepts boundary integer thresholds 0 and 2147483647", () => {
+    expect(deriveBundleAvailability({ components: [component("unit-a", 1)], lowStockThreshold: 0 }).status).toBe("available");
+    expect(deriveBundleAvailability({ components: [component("unit-a", 1)], lowStockThreshold: 2147483647 }).status).toBe("low_stock");
+  });
+
+  it.each([-1, 1.5, NaN, Infinity, -Infinity, 2147483648, null as unknown as number])("rejects invalid lowStockThreshold=%p even for empty or unknown compositions", lowStockThreshold => {
+    expect(() => deriveBundleAvailability({ components: [], lowStockThreshold })).toThrow("bundle_low_stock_threshold_invalid");
+    expect(() => deriveBundleAvailability({ components: [component("unit-a", null)], lowStockThreshold })).toThrow("bundle_low_stock_threshold_invalid");
+    expect(() => deriveBundleAvailability({ components: [component("unit-a", 5)], lowStockThreshold })).toThrow("bundle_low_stock_threshold_invalid");
+  });
 });

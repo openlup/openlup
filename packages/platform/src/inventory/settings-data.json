@@ -1,5 +1,22 @@
 [
   {
+    "key": "inventory.offerLowStockThreshold",
+    "domain": "inventory",
+    "kind": "code",
+    "goal": "Set the sellable unit count at or below which single-SKU offer availability is reported as low_stock (low stock threshold, availability status, stock badge cutoff).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "integer", "minimum": 0, "maximum": 2147483647},
+    "previewSchema": null,
+    "examples": [{"value": 20}, {"value": 0}, {"value": 5}],
+    "fallback": 20,
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Twenty sellable units warns storefronts before an individual SKU hits zero while avoiding false low-stock warnings on normal replenishment buffers.",
+    "effect": {"appliesTo": "Passed as lowStockThreshold (default DEFAULT_LOW_STOCK_THRESHOLD = 20) to statusForSellableNow, deriveOfferAvailability, createOfferAvailabilityPort (@openlup/platform/commerce and /commerce/server), and createNewPurchaseStockAvailabilityPort (@openlup/platform/inventory). Positive stock <= threshold reports low_stock; 0 disables low_stock warnings. Non-integer or negative values reject at runtime.", "frozenOn": ["Placed orders, active reservations, and already computed availability responses are unaffected."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "Configured in server availability port composition (lowStockThreshold option) and applied on deployment."},
+    "change": {"reference": "docs/guide/concepts/catalogue-and-prices.md#sellability-and-availability"},
+    "rules": []
+  },
+  {
     "key": "inventory.reservationReplayExpiry",
     "domain": "inventory",
     "goal": "Preserve the original reservation expiry on replay.",

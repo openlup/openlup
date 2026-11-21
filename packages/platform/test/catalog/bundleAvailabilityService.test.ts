@@ -177,4 +177,12 @@ describe("createBundleAvailabilityService", () => {
 
     expect(seen).toEqual([{ currency: "XTS" }]);
   });
+
+  it.each([-1, 1.5, NaN, Infinity, 2147483648, null as unknown as number])("rejects invalid lowStockThreshold=%p when creating the bundle availability service", lowStockThreshold => {
+    expect(() => createBundleAvailabilityService({
+      bundleCatalogReadPort: readPort([]),
+      offerAvailabilityPort: availabilityPort({}),
+      lowStockThreshold,
+    })).toThrow("bundle_low_stock_threshold_invalid");
+  });
 });

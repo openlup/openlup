@@ -5,6 +5,16 @@ import type {
 } from "./contracts/availability.js";
 
 export const DEFAULT_LOW_STOCK_THRESHOLD = 20;
+const MAX_LOW_STOCK_THRESHOLD = 2147483647;
+
+function assertValidLowStockThreshold(threshold: number): number {
+  if (!Number.isInteger(threshold) || threshold < 0 || threshold > MAX_LOW_STOCK_THRESHOLD) {
+    throw new RangeError(
+      `offer_low_stock_threshold_invalid: expected an integer from 0 to ${MAX_LOW_STOCK_THRESHOLD}`,
+    );
+  }
+  return threshold;
+}
 
 export interface DeriveOfferAvailabilityInput
   extends CommerceOfferAvailabilityRequestItem {
@@ -60,9 +70,10 @@ export function statusForSellableNow(
   sellableNow: number | null,
   lowStockThreshold = DEFAULT_LOW_STOCK_THRESHOLD,
 ): CommerceOfferAvailabilityStatus {
+  const threshold = assertValidLowStockThreshold(lowStockThreshold);
   if (sellableNow == null) return "unknown";
   if (sellableNow <= 0) return "out_of_stock";
-  if (sellableNow <= lowStockThreshold) return "low_stock";
+  if (sellableNow <= threshold) return "low_stock";
   return "available";
 }
 

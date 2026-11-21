@@ -39,4 +39,26 @@ describe("saved acquisition continuation", () => {
     await expect(f.core.resolveSavedAcquisitionContinuation({ ...f.input, checkoutKind: "one_time" })).resolves.toBeNull();
     expect(f.findResumableOrderForClient).toHaveBeenCalledOnce();
   });
+  it.each([1, 30, 2147483647])("passes valid explicit resumeWindowMinutes=%i to lookup", async resumeWindowMinutes => {
+    const f = fixture();
+    await expect(f.core.resolveSavedAcquisitionContinuation({
+      ...f.input,
+      deps: { ...f.input.deps, resumeWindowMinutes },
+    })).resolves.toEqual({ status: "processing" });
+    expect(f.findResumableOrderForClient).toHaveBeenCalledWith({
+      clientId: CLIENT_ID, withinMinutes: resumeWindowMinutes, now: f.input.now(), journeyKey: f.input.intent.idempotencyKey,
+    });
+  });
+  it.each([0, -1, 1.5, NaN, Infinity, -Infinity, 2147483648, null as unknown as number])("rejects invalid explicit resumeWindowMinutes=%p", async resumeWindowMinutes => {
+    const f = fixture();
+    await expect(f.core.resolveSavedAcquisitionContinuation({
+      ...f.input,
+      deps: { ...f.input.deps, resumeWindowMinutes },
+    })).rejects.toThrow("checkout_resume_window_minutes_invalid");
+    await expect(f.core.resolveSavedAcquisitionContinuation({
+      ...f.input,
+      deps: { resumeWindowMinutes },
+    })).rejects.toThrow("checkout_resume_window_minutes_invalid");
+    expect(f.findResumableOrderForClient).not.toHaveBeenCalled();
+  });
 });

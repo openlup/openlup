@@ -11,6 +11,7 @@ import type { CheckoutQuoteSnapshot, ExpectedCheckoutQuote } from "./checkoutQuo
 import type { OrchestratedCheckoutResult, CheckoutStageRecorder } from "./commercePaidOrderOrchestration.js";
 import type { CheckoutExecutionProvider } from "./checkoutRuntimeTypes.js";
 import type { CheckoutResumeGuardDeps } from "./commerceCheckoutResumeGuard.js";
+import { resolveResumeWindowMinutes } from "./checkoutResumeWindowValidation.js";
 interface CheckoutHandlerDependencies {
   persistencePort: unknown; quotePort: unknown; orderDraftPort: unknown; runtimePort: unknown; compensationPort: unknown;
   savedPaymentMethodResolverPort?: unknown; customerDefaultsPort?: unknown;
@@ -69,6 +70,7 @@ const {
   isFirstOrderEligible,
   mintPaymentContinuationCookie,
 } = deps;
+  resolveResumeWindowMinutes(resumeWindowMinutes);
   return async function handler(req: HttpRequest, res: HttpResponse): Promise<void> {
     const timing = bindings.createCheckoutTimingLogger(req);
     let totalOutcome: CheckoutTimingOutcome = "error";

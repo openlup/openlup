@@ -5450,6 +5450,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/bundleThresholdValidation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/candidate.ts",
       "class": "public-output"
     },
@@ -6319,6 +6323,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/checkoutRefusalContinuation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutResumeWindowValidation.ts",
       "class": "public-output"
     },
     {

@@ -3,12 +3,11 @@ import type { CheckoutKind, CommerceResumableOrderReadPort, ResumableOrderSnapsh
 import { resolveDeliverySelectionEvidence } from "../../shipping/index.js";
 import { CHECKOUT_CONTRACT_VERSION } from "../checkoutSchemas.js";
 import { safeCommerceDiagnosticValue } from "./commerceDiagnostics.js";
+import { resolveResumeWindowMinutes } from "./checkoutResumeWindowValidation.js";
 export function subscriptionResponse(intent: { cadenceDays: number | null }, checkoutKind: CheckoutKind) {
   return checkoutKind === "one_time" ? { requested: false, cadenceDays: null, activationStatus: "not_applicable" as const }
     : { requested: true, cadenceDays: intent.cadenceDays, activationStatus: "pending_payment_success" as const };
 }
-
-const DEFAULT_RESUME_WINDOW_MINUTES = 60;
 
 export interface CheckoutResumeGuardDeps {
   resumableOrderPort?: CommerceResumableOrderReadPort;
@@ -131,12 +130,13 @@ async function resolveResumeOpenOrderResponse(input: {
   now: () => Date;
 }): Promise<Response | null> {
   const { deps, clientId, checkoutKind, intent, acceptedQuote, now } = input;
+  const withinMinutes = resolveResumeWindowMinutes(deps.resumeWindowMinutes);
   if (!deps.resumableOrderPort) return null;
 
   try {
     const resumable = await deps.resumableOrderPort.findResumableOrderForClient({
       clientId,
-      withinMinutes: deps.resumeWindowMinutes ?? DEFAULT_RESUME_WINDOW_MINUTES,
+      withinMinutes,
       now: now(),
       journeyKey: intent.idempotencyKey,
     });

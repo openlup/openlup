@@ -40,6 +40,28 @@ function refuse(exitCode, code, observed, fix, cause = exitCode === 64 ? "Invali
   emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding] }, `${renderFinding(finding)}\n${help}`);
 }
 
+function readSettingText(value, code) {
+  if (typeof value !== "string" || !value.length) throw new Error(code);
+  return value;
+}
+
+function readSettingInt(value, min, max, code) {
+  const parsed = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value) ? Number(value) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) throw new Error(code);
+  return parsed;
+}
+
+function readSettingTimestamp(value, code, nullable = false) {
+  if (nullable && (value === null || value === undefined)) return null;
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) throw new Error(code);
+    return value.toISOString();
+  }
+  return readSettingText(value, code);
+}
+
 async function bindSettings({ database, app, configuration }) {
   let db;
   if (database) {
@@ -106,6 +128,49 @@ async function bindSettings({ database, app, configuration }) {
             throw new Error("shipping_flat_minor_invalid");
           }
           return { present: true, value, revision: null };
+        },
+        "pricing.subscriptionPricePolicy": async () => {
+          const { rows } = await db.query(
+            "SELECT id, price_list_id, region_code, currency, channel, revision_no, discount_bps, rounding_quantum_minor, rounding_rule, effective_from, effective_to FROM public.subscription_price_policy_revisions ORDER BY price_list_id, region_code, currency, channel, revision_no",
+          );
+          if (!rows.length) return { present: false };
+          const code = "subscription_price_policy_invalid";
+          return {
+            present: true,
+            value: rows.map(row => ({
+              id: readSettingText(row.id, code),
+              price_list_id: readSettingText(row.price_list_id, code),
+              region_code: readSettingText(row.region_code, code),
+              currency: readSettingText(row.currency, code),
+              channel: readSettingText(row.channel, code),
+              revision_no: readSettingInt(row.revision_no, 1, 2147483647, code),
+              discount_bps: readSettingInt(row.discount_bps, 0, 10000, code),
+              rounding_quantum_minor: readSettingInt(row.rounding_quantum_minor, 1, 2147483647, code),
+              rounding_rule: readSettingText(row.rounding_rule, code),
+              effective_from: readSettingTimestamp(row.effective_from, code),
+              effective_to: readSettingTimestamp(row.effective_to, code, true),
+            })),
+            revision: null,
+          };
+        },
+        "communications.nativeDeliveryControls": async () => {
+          const { rows } = await db.query(
+            "SELECT control_key, enabled, revision FROM public.communication_delivery_controls ORDER BY control_key",
+          );
+          if (!rows.length) return { present: false };
+          const code = "communications_delivery_controls_invalid";
+          return {
+            present: true,
+            value: rows.map(row => {
+              if (typeof row.enabled !== "boolean") throw new Error(code);
+              return {
+                control_key: readSettingText(row.control_key, code),
+                enabled: row.enabled,
+                revision: readSettingInt(row.revision, 1, 2147483647, code),
+              };
+            }),
+            revision: null,
+          };
         },
         ...overrides.readers,
       },

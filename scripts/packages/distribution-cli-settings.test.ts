@@ -197,7 +197,7 @@ it("preserves and reconciles an existing value-only host after a manifest refusa
   const stripAddedInstalledRows = (stdout: string, expectedKeys: Set<string>) => {
     const document = JSON.parse(stdout);
     expect(document.rows.map((row: { key: string }) => row.key).toSorted())
-      .toEqual([...expectedKeys, ...newPackagedInstalledKeys].toSorted());
+      .toEqual([...expectedKeys, ...newPackagedCheckKeys].toSorted());
     document.rows = document.rows.filter((row: { key: string }) => expectedKeys.has(row.key));
     return JSON.stringify(document) + "\n";
   };
@@ -461,6 +461,93 @@ it.each([
   ["shipping_flat_minor", [], 0, { state: "fallback", value: 0 }],
   ["shipping_flat_minor", [{ value_minor: null }], 74, "commerce_setting_read_unavailable"],
   ["shipping_flat_minor", [{ value_minor: -1 }], 74, "commerce_setting_read_unavailable"],
+  ["pricing.subscriptionPricePolicy", [
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      price_list_id: "22222222-2222-4222-8222-222222222222",
+      region_code: "US",
+      currency: "USD",
+      channel: "web",
+      revision_no: 1,
+      discount_bps: 1000,
+      rounding_quantum_minor: 5,
+      rounding_rule: "FLOOR_TO_QUANTUM",
+      effective_from: "2026-01-01T00:00:00.000Z",
+      effective_to: "2026-06-01T00:00:00.000Z",
+    },
+    {
+      id: "33333333-3333-4333-8333-333333333333",
+      price_list_id: "22222222-2222-4222-8222-222222222222",
+      region_code: "US",
+      currency: "USD",
+      channel: "web",
+      revision_no: 2,
+      discount_bps: 1500,
+      rounding_quantum_minor: 10,
+      rounding_rule: "FLOOR_TO_QUANTUM",
+      effective_from: "2026-06-01T00:00:00.000Z",
+      effective_to: null,
+    },
+  ], 0, {
+    state: "override",
+    value: [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        price_list_id: "22222222-2222-4222-8222-222222222222",
+        region_code: "US",
+        currency: "USD",
+        channel: "web",
+        revision_no: 1,
+        discount_bps: 1000,
+        rounding_quantum_minor: 5,
+        rounding_rule: "FLOOR_TO_QUANTUM",
+        effective_from: "2026-01-01T00:00:00.000Z",
+        effective_to: "2026-06-01T00:00:00.000Z",
+      },
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        price_list_id: "22222222-2222-4222-8222-222222222222",
+        region_code: "US",
+        currency: "USD",
+        channel: "web",
+        revision_no: 2,
+        discount_bps: 1500,
+        rounding_quantum_minor: 10,
+        rounding_rule: "FLOOR_TO_QUANTUM",
+        effective_from: "2026-06-01T00:00:00.000Z",
+        effective_to: null,
+      },
+    ],
+    revision: null,
+  }],
+  ["pricing.subscriptionPricePolicy", [], 0, { state: "absent", value: null }],
+  ["pricing.subscriptionPricePolicy", [{
+    id: "11111111-1111-4111-8111-111111111111",
+    price_list_id: "22222222-2222-4222-8222-222222222222",
+    region_code: "US",
+    currency: "USD",
+    channel: "web",
+    revision_no: 1,
+    discount_bps: -1,
+    rounding_quantum_minor: 5,
+    rounding_rule: "FLOOR_TO_QUANTUM",
+    effective_from: "2026-01-01T00:00:00.000Z",
+    effective_to: null,
+  }], 74, "commerce_setting_read_unavailable"],
+  ["communications.nativeDeliveryControls", [
+    { control_key: "lifecycle_notice", enabled: true, revision: 2 },
+    { control_key: "transactional_receipt", enabled: false, revision: 1 },
+  ], 0, {
+    state: "override",
+    value: [
+      { control_key: "lifecycle_notice", enabled: true, revision: 2 },
+      { control_key: "transactional_receipt", enabled: false, revision: 1 },
+    ],
+    revision: null,
+  }],
+  ["communications.nativeDeliveryControls", [], 0, { state: "absent", value: null }],
+  ["communications.nativeDeliveryControls", [{ control_key: "lifecycle_notice", enabled: "yes", revision: 1 }],
+    74, "commerce_setting_read_unavailable"],
 ] as const)("reads built-in installed setting %s with rows %j", (settingKey, rows, expectedExit, expected) => {
   const { directory, write } = fixture();
   const pgModule = JSON.stringify(import.meta.resolve("pg"));
@@ -475,6 +562,70 @@ it.each([
   const parsed = JSON.parse(result.stdout);
   if (typeof expected === "string") expect(parsed.refusal.code).toBe(expected);
   else expect(parsed.observation).toMatchObject(expected);
+});
+
+it("normalizes Date timestamps for pricing.subscriptionPricePolicy and refuses on permission errors", () => {
+  const { directory, write } = fixture();
+  const pgModule = JSON.stringify(import.meta.resolve("pg"));
+  write("preload-dates.mjs", `import pg from ${pgModule};
+    pg.Pool.prototype.query = async (sql) => {
+      if (!sql.includes("FROM public.subscription_price_policy_revisions")
+        || !sql.includes("ORDER BY price_list_id, region_code, currency, channel, revision_no")) {
+        throw new Error("unexpected query: " + sql);
+      }
+      return {
+        rows: [{
+          id: "11111111-1111-4111-8111-111111111111",
+          price_list_id: "22222222-2222-4222-8222-222222222222",
+          region_code: "US",
+          currency: "USD",
+          channel: "web",
+          revision_no: 1,
+          discount_bps: 500,
+          rounding_quantum_minor: 1,
+          rounding_rule: "FLOOR_TO_QUANTUM",
+          effective_from: new Date("2026-01-01T00:00:00.000Z"),
+          effective_to: null,
+        }],
+      };
+    };
+    pg.Pool.prototype.end = async () => {};`);
+  const datesRun = spawnSync(process.execPath, ["--import", join(directory, "preload-dates.mjs"),
+    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", "pricing.subscriptionPricePolicy",
+    "--database-url", "postgresql://sample@unused.invalid/shop", "--json"], { cwd: directory, encoding: "utf8" });
+  expect(datesRun.status, datesRun.stderr || datesRun.stdout).toBe(0);
+  expect(JSON.parse(datesRun.stdout).observation).toEqual({
+    state: "override",
+    value: [{
+      id: "11111111-1111-4111-8111-111111111111",
+      price_list_id: "22222222-2222-4222-8222-222222222222",
+      region_code: "US",
+      currency: "USD",
+      channel: "web",
+      revision_no: 1,
+      discount_bps: 500,
+      rounding_quantum_minor: 1,
+      rounding_rule: "FLOOR_TO_QUANTUM",
+      effective_from: "2026-01-01T00:00:00.000Z",
+      effective_to: null,
+    }],
+    revision: null,
+  });
+
+  write("preload-denied.mjs", `import pg from ${pgModule};
+    pg.Pool.prototype.query = async () => {
+      throw Object.assign(new Error("permission denied for table communication_delivery_controls"), { code: "42501" });
+    };
+    pg.Pool.prototype.end = async () => {};`);
+  for (const settingKey of ["pricing.subscriptionPricePolicy", "communications.nativeDeliveryControls"]) {
+    const denied = spawnSync(process.execPath, ["--import", join(directory, "preload-denied.mjs"),
+      resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", settingKey,
+      "--database-url", "postgresql://sample@unused.invalid/shop", "--json"], { cwd: directory, encoding: "utf8" });
+    expect(denied.status, denied.stderr || denied.stdout).toBe(74);
+    expect(denied.stderr).toBe("");
+    expect(denied.stdout).not.toContain("permission denied for table");
+    expect(JSON.parse(denied.stdout).refusal.code).toBe("commerce_setting_read_unavailable");
+  }
 });
 
 it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {
@@ -657,9 +808,16 @@ const newStarterCheckKeys = [
   "subscriptionEditing.sizedPreferences",
 ];
 const newPackagedInstalledKeys = [
+  "communications.nativeDeliveryControls", "pricing.subscriptionPricePolicy",
   "shipping_flat_minor", "subscription_minimum_base_units", "subscription_sized_intro_phase",
 ];
-const newCheckKeys = [...newStarterCheckKeys, ...newPackagedInstalledKeys];
+const newPackagedCodeKeys = [
+  "catalog.bundleAvailabilityPolicy", "checkout.resumeWindowMinutes",
+  "communications.terminalPayloadRetentionDays", "inventory.offerLowStockThreshold",
+  "market.settlementProfile",
+];
+const newPackagedCheckKeys = [...newPackagedInstalledKeys, ...newPackagedCodeKeys];
+const newCheckKeys = [...newStarterCheckKeys, ...newPackagedCheckKeys];
 
 it.each(baseline.checks)("reports exactly the baseline and new starter check rows for $args", captured => {
   const { stdout, ...actual } = runStarterSettings(starter, captured.args);

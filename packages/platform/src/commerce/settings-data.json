@@ -18,6 +18,23 @@
     "rules": []
   },
   {
+    "key": "checkout.resumeWindowMinutes",
+    "domain": "commerce",
+    "kind": "code",
+    "goal": "Set how long checkout resumes an open unpaid order for the same customer instead of starting a new order (resume window, duplicate checkout guard, open order continuation).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "integer", "minimum": 1, "maximum": 2147483647},
+    "previewSchema": null,
+    "examples": [{"value": 60}, {"value": 15}],
+    "fallback": 60,
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Sixty minutes covers typical payment hand-offs and customer retries without keeping stale unpaid baskets resumable indefinitely.",
+    "effect": {"appliesTo": "CheckoutHandlerDependencies.resumeWindowMinutes (and CheckoutResumeGuardDeps) passes withinMinutes (default 60) to CommerceResumableOrderReadPort.findResumableOrderForClient during checkout resume and saved acquisition continuation checks. Values outside 1..2147483647 throw at runtime.", "frozenOn": ["Already created orders, payment intents, and settled checkouts retain their recorded state."], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "Passed in server checkout composition (CheckoutHandlerDependencies.resumeWindowMinutes from @openlup/platform/commerce/server) and applied on deployment."},
+    "change": {"reference": "docs/guide/concepts/checkout.md#attempts-and-payment-hand-off"},
+    "rules": []
+  },
+  {
     "key": "checkout_recovery_reminders",
     "domain": "commerce",
     "kind": "installed",
@@ -83,5 +100,23 @@
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path."},
     "change": {"reference": "docs/guide/concepts/orders.md#order-state-and-money"}
+  },
+  {
+    "key": "market.settlementProfile",
+    "domain": "commerce",
+    "kind": "code",
+    "goal": "Set the store's settlement currency and region via COMMERCE_SETTLEMENT_CURRENCY and COMMERCE_SETTLEMENT_REGION alongside their mandatory public.commerce_settings mirror (settlement currency, settlement region, market profile).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"currency": {"type": "string", "pattern": "^[A-Z]{3}$"}, "region": {"type": "string", "pattern": "^[A-Z]{2}$"}}, "required": ["currency", "region"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [{"value": {"currency": "USD", "region": "US"}}],
+    "fallback": null,
+    "absentMeans": {"description": "readSettlementProfile uses the caller-supplied SettlementProfileFallbacks when COMMERCE_SETTLEMENT_CURRENCY or COMMERCE_SETTLEMENT_REGION is blank or unset, and refuses malformed codes. SQL price-setup and readiness routines require non-null matching settlement_currency and settlement_region rows in public.commerce_settings (raising catalog_price_setup_settlement_context_unverified when absent or invalid).", "source": "caller-supplied SettlementProfileFallbacks (application code) and mandatory public.commerce_settings rows (SQL)", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform selects no settlement market or currency by default; each deployment must bind its own currency and region consistently in environment configuration and public.commerce_settings.",
+    "effect": {"appliesTo": "Environment variables COMMERCE_SETTLEMENT_CURRENCY (^[A-Z]{3}$) and COMMERCE_SETTLEMENT_REGION (^[A-Z]{2}$) drive readSettlementProfile (@openlup/platform/market-packs), while mandatory mirror rows key='settlement_currency' and key='settlement_region' in public.commerce_settings govern SQL price lists, base-price writes, and readiness gates. WARNING: Do NOT change settlement currency in a live store with existing orders, price lists, or active subscriptions; changing currency breaks historical price-list matching and financial integrity.", "frozenOn": ["Existing orders, invoices, payment intents, and active subscription renewal terms retain their recorded currency and region."], "impact": "money"},
+    "runtime": {"level": "read-only", "reason": "Configured at build/deploy via COMMERCE_SETTLEMENT_CURRENCY and COMMERCE_SETTLEMENT_REGION together with the mandatory public.commerce_settings mirror rows."},
+    "change": {"reference": "docs/guide/reference/configuration.md"},
+    "rules": []
   }
 ]

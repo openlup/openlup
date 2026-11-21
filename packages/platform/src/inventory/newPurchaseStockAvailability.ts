@@ -36,11 +36,24 @@ interface StockBindings {
   observe: Pick<Console, "warn">;
 }
 
+const MAX_LOW_STOCK_THRESHOLD = 2147483647;
+
+function validateLowStockThreshold(threshold: number): number {
+  if (!Number.isInteger(threshold) || threshold < 0 || threshold > MAX_LOW_STOCK_THRESHOLD) {
+    throw new RangeError(
+      `inventory_low_stock_threshold_invalid: expected an integer from 0 to ${MAX_LOW_STOCK_THRESHOLD}`,
+    );
+  }
+  return threshold;
+}
+
 export function createNewPurchaseStockAvailabilityPort(
   { readPort, functionMissingFallback, functionMissingError, defaultLowStockThreshold, defaultHorizonDays, deriveOfferAvailability, observe }: StockBindings,
   options: NewPurchaseStockAvailabilityOptions,
 ): BundleStockPort {
-  const lowStockThreshold = options.lowStockThreshold ?? defaultLowStockThreshold;
+  const lowStockThreshold = validateLowStockThreshold(
+    options.lowStockThreshold === undefined ? defaultLowStockThreshold : options.lowStockThreshold,
+  );
   const horizonDays = options.horizonDays ?? defaultHorizonDays;
 
   return {

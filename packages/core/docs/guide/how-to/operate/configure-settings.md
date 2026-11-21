@@ -43,13 +43,21 @@ Offline `show` for package keys returns catalogue metadata. For a declared
 app setting with a reported value, `show` also returns a file observation with
 the configuration selected by the binding and the value it reports. For
 `inventory_renewal_protection`, `subscription_minimum_base_units`,
-`subscription_sized_intro_phase`, `shipping_flat_minor`, and (with `--app`)
+`subscription_sized_intro_phase`, `shipping_flat_minor`,
+`pricing.subscriptionPricePolicy`, `communications.nativeDeliveryControls`, and (with `--app`)
 reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
-store. The existing installed row may be an explicit override. An absent
+store (connected reads of `communications.nativeDeliveryControls` require an explicit
+`SELECT` grant on `public.communication_delivery_controls`). The existing installed
+row or rows may be an explicit override. An absent
 `inventory_renewal_protection` or `shipping_flat_minor` row uses the platform fallback,
-whereas an absent `subscription_minimum_base_units` or `subscription_sized_intro_phase`
-row reports `absent` (fail-closed refusal until a valid row is installed). For unpinned reminder episodes, an
+whereas an absent `subscription_minimum_base_units`, `subscription_sized_intro_phase`,
+`pricing.subscriptionPricePolicy`, or `communications.nativeDeliveryControls`
+row reports `absent` (`subscription_minimum_base_units` and `subscription_sized_intro_phase`
+refuse fail-closed until a valid row is installed, `pricing.subscriptionPricePolicy` falls back
+to legacy subscription price entries when no policy rows exist, and
+`communications.nativeDeliveryControls` treats absent control keys as disabled in native
+control-plane delivery preparation). For unpinned reminder episodes, an
 absent row uses the host call parameters for checkout recovery and the 1, 24 and
 72 hour schedule for abandoned carts. The connected read shows the live setting
 or fallback. For a pinned order and reminder kind, [the pin supplies timing](../build/checkout-recovery.md#install-reminder-stages-and-hours).
@@ -273,9 +281,11 @@ The module must avoid starting the application, writing data or printing to
 stdout. Pass an explicit `--app` only for application code you trust.
 
 List, show and explain work for platform keys without an app or database. With a
-PostgreSQL URL, the built-in readers can show the installed row (or fallback or
+PostgreSQL URL, the built-in readers can show the installed row or rows (or fallback or
 absent state) for `inventory_renewal_protection`, `subscription_minimum_base_units`,
-`subscription_sized_intro_phase`, and `shipping_flat_minor`.
+`subscription_sized_intro_phase`, `shipping_flat_minor`,
+`pricing.subscriptionPricePolicy`, and `communications.nativeDeliveryControls`
+(requiring an explicit `SELECT` grant on `public.communication_delivery_controls`).
 A stock preview needs the application's stock source. A connected reminder
 show needs the application's checkout wave policy. A connected show of any
 installed setting requires a reader for that key. Supply `--app` to read app

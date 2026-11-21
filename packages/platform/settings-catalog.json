@@ -60,6 +60,70 @@
       }
     },
     {
+      "key": "catalog.bundleAvailabilityPolicy",
+      "domain": "catalog",
+      "kind": "code",
+      "goal": "Set the whole-bundle low-stock threshold and whether optional add-on components limit derived bundle stock (bundle low stock, bundle availability, add-on stock).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "lowStockThreshold": 3,
+            "includeAddonsInStock": false
+          }
+        },
+        {
+          "value": {
+            "lowStockThreshold": 5,
+            "includeAddonsInStock": true
+          }
+        }
+      ],
+      "fallback": {
+        "lowStockThreshold": 3,
+        "includeAddonsInStock": false
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "A three-bundle cutoff reflects multi-unit consumption per bundle, and excluding optional add-ons prevents optional extras from marking core bundles unsellable.",
+      "effect": {
+        "appliesTo": "BundleAvailabilityServiceDeps (lowStockThreshold default 3, includeAddonsInStock default false) and DeriveBundleAvailabilityInput in @openlup/platform/catalog. Controls derived bundle status and whether add-on components constrain sellableNow. Non-integer or negative lowStockThreshold values reject at runtime.",
+        "frozenOn": [
+          "Saved bundle compositions, placed orders, and active reservations retain their recorded stock state."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Passed in BundleAvailabilityServiceDeps / DeriveBundleAvailabilityInput (@openlup/platform/catalog) and applied on deployment."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/build/bundles.md"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "lowStockThreshold": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "includeAddonsInStock": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "lowStockThreshold",
+          "includeAddonsInStock"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": []
+    },
+    {
       "key": "catalog.netContentUnits",
       "domain": "catalog",
       "goal": "Represent product net contents in units other than grams.",
@@ -119,6 +183,48 @@
         "reference": "docs/guide/concepts/checkout.md"
       },
       "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "checkout.resumeWindowMinutes",
+      "domain": "commerce",
+      "kind": "code",
+      "goal": "Set how long checkout resumes an open unpaid order for the same customer instead of starting a new order (resume window, duplicate checkout guard, open order continuation).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": 60
+        },
+        {
+          "value": 15
+        }
+      ],
+      "fallback": 60,
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Sixty minutes covers typical payment hand-offs and customer retries without keeping stale unpaid baskets resumable indefinitely.",
+      "effect": {
+        "appliesTo": "CheckoutHandlerDependencies.resumeWindowMinutes (and CheckoutResumeGuardDeps) passes withinMinutes (default 60) to CommerceResumableOrderReadPort.findResumableOrderForClient during checkout resume and saved acquisition continuation checks. Values outside 1..2147483647 throw at runtime.",
+        "frozenOn": [
+          "Already created orders, payment intents, and settled checkouts retain their recorded state."
+        ],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Passed in server checkout composition (CheckoutHandlerDependencies.resumeWindowMinutes from @openlup/platform/commerce/server) and applied on deployment."
+      },
+      "change": {
+        "reference": "docs/guide/concepts/checkout.md#attempts-and-payment-hand-off"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 2147483647
+      },
       "previewSchema": null,
       "rules": []
     },
@@ -304,6 +410,107 @@
       }
     },
     {
+      "key": "communications.nativeDeliveryControls",
+      "domain": "communications",
+      "kind": "installed",
+      "goal": "Inspect installed native delivery control switches and revisions in public.communication_delivery_controls governing whether native delivery templates and notification controls are enabled (delivery controls, kill switch, email send gate).",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": null,
+      "absentMeans": {
+        "description": "When public.communication_delivery_controls has no row for a control key, native communications control-plane preparation treats absent control keys as disabled (false) and refuses delivery preparation with communications_delivery_disabled (the table column default is false; lifecycle notice checks via communications_notification_control_enabled only block explicitly false rows).",
+        "source": "no installed control row (absent control keys default to disabled / false in native control-plane delivery preparation)",
+        "value": null
+      },
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Native control-plane delivery starts disabled until an authorized operator creates and enables a control row and active template binding.",
+      "effect": {
+        "appliesTo": "Controls native communications delivery eligibility in public.communication_delivery_controls (control_key, enabled, revision), evaluated when preparing new delivery commands and lifecycle notification gates. Because public.communication_delivery_controls has REVOKE ALL from default roles (PUBLIC, anon, authenticated), connected reads require an explicit SELECT grant on public.communication_delivery_controls (otherwise returning commerce_setting_read_unavailable).",
+        "frozenOn": [
+          "Already accepted delivery commands, recorded delivery receipts, and append-only delivery events replay and retain their stored outcomes."
+        ],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Managed through operator-authorized database routine communications_set_delivery_control; connected CLI reads require explicit SELECT permission on public.communication_delivery_controls."
+      },
+      "change": {
+        "operation": "communications_set_delivery_control"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "communications.terminalPayloadRetentionDays",
+      "domain": "communications",
+      "kind": "code",
+      "goal": "Set how many days terminal processed and discarded outbox event payloads and errors are retained before compaction clears them (outbox retention, payload pruning, compaction days).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "processedDays": 30,
+            "discardedDays": 90
+          }
+        },
+        {
+          "value": {
+            "processedDays": 14,
+            "discardedDays": 60
+          }
+        }
+      ],
+      "fallback": {
+        "processedDays": 30,
+        "discardedDays": 90
+      },
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Thirty days for processed events and ninety days for discarded events preserve recent audit and troubleshooting evidence while bounding table payload growth.",
+      "effect": {
+        "appliesTo": "Passed as processedDays and discardedDays (integers 1..3650) to createOutbox(..., { prune: { enabled: true, processedDays, discardedDays, ... } }) or createPostgresOutboxCompactor().compact({ processedDays, discardedDays, limit }) from @openlup/outbox. Clears payload and error on processed rows older than processedDays and discarded rows with a valid metadata.discardedAt older than discardedDays while retaining the event row, unique enqueue key, and retentionCompacted* metadata.",
+        "frozenOn": [
+          "Already compacted event rows, pending/failed/processing events, and rows marked metadata.retainPayload=true keep their current state."
+        ],
+        "impact": "operations"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Configured in server outbox composition via createPostgresOutboxCompactor().compact({ processedDays, discardedDays, limit }) or createOutbox prune options from @openlup/outbox and applied on deployment."
+      },
+      "change": {
+        "reference": "docs/guide/how-to/build/outbox.md#retain-terminal-work-safely"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "processedDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650
+          },
+          "discardedDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650
+          }
+        },
+        "required": [
+          "processedDays",
+          "discardedDays"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": []
+    },
+    {
       "key": "fulfillment.additionalDeliveryMethods",
       "domain": "fulfillment",
       "goal": "Offer additional delivery methods.",
@@ -344,6 +551,51 @@
       "change": {
         "reference": "docs/guide/concepts/identity.md#customer-sign-in-and-email-trust"
       }
+    },
+    {
+      "key": "inventory.offerLowStockThreshold",
+      "domain": "inventory",
+      "kind": "code",
+      "goal": "Set the sellable unit count at or below which single-SKU offer availability is reported as low_stock (low stock threshold, availability status, stock badge cutoff).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": 20
+        },
+        {
+          "value": 0
+        },
+        {
+          "value": 5
+        }
+      ],
+      "fallback": 20,
+      "defaultBasis": {
+        "kind": "reference-code"
+      },
+      "whyThisDefault": "Twenty sellable units warns storefronts before an individual SKU hits zero while avoiding false low-stock warnings on normal replenishment buffers.",
+      "effect": {
+        "appliesTo": "Passed as lowStockThreshold (default DEFAULT_LOW_STOCK_THRESHOLD = 20) to statusForSellableNow, deriveOfferAvailability, createOfferAvailabilityPort (@openlup/platform/commerce and /commerce/server), and createNewPurchaseStockAvailabilityPort (@openlup/platform/inventory). Positive stock <= threshold reports low_stock; 0 disables low_stock warnings. Non-integer or negative values reject at runtime.",
+        "frozenOn": [
+          "Placed orders, active reservations, and already computed availability responses are unaffected."
+        ],
+        "impact": "customer-promise"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Configured in server availability port composition (lowStockThreshold option) and applied on deployment."
+      },
+      "change": {
+        "reference": "docs/guide/concepts/catalogue-and-prices.md#sellability-and-availability"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647
+      },
+      "previewSchema": null,
+      "rules": []
     },
     {
       "key": "inventory.reservationReplayExpiry",
@@ -545,6 +797,66 @@
       }
     },
     {
+      "key": "market.settlementProfile",
+      "domain": "commerce",
+      "kind": "code",
+      "goal": "Set the store's settlement currency and region via COMMERCE_SETTLEMENT_CURRENCY and COMMERCE_SETTLEMENT_REGION alongside their mandatory public.commerce_settings mirror (settlement currency, settlement region, market profile).",
+      "schemaVersion": 1,
+      "examples": [
+        {
+          "value": {
+            "currency": "USD",
+            "region": "US"
+          }
+        }
+      ],
+      "fallback": null,
+      "absentMeans": {
+        "description": "readSettlementProfile uses the caller-supplied SettlementProfileFallbacks when COMMERCE_SETTLEMENT_CURRENCY or COMMERCE_SETTLEMENT_REGION is blank or unset, and refuses malformed codes. SQL price-setup and readiness routines require non-null matching settlement_currency and settlement_region rows in public.commerce_settings (raising catalog_price_setup_settlement_context_unverified when absent or invalid).",
+        "source": "caller-supplied SettlementProfileFallbacks (application code) and mandatory public.commerce_settings rows (SQL)",
+        "value": null
+      },
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The platform selects no settlement market or currency by default; each deployment must bind its own currency and region consistently in environment configuration and public.commerce_settings.",
+      "effect": {
+        "appliesTo": "Environment variables COMMERCE_SETTLEMENT_CURRENCY (^[A-Z]{3}$) and COMMERCE_SETTLEMENT_REGION (^[A-Z]{2}$) drive readSettlementProfile (@openlup/platform/market-packs), while mandatory mirror rows key='settlement_currency' and key='settlement_region' in public.commerce_settings govern SQL price lists, base-price writes, and readiness gates. WARNING: Do NOT change settlement currency in a live store with existing orders, price lists, or active subscriptions; changing currency breaks historical price-list matching and financial integrity.",
+        "frozenOn": [
+          "Existing orders, invoices, payment intents, and active subscription renewal terms retain their recorded currency and region."
+        ],
+        "impact": "money"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Configured at build/deploy via COMMERCE_SETTLEMENT_CURRENCY and COMMERCE_SETTLEMENT_REGION together with the mandatory public.commerce_settings mirror rows."
+      },
+      "change": {
+        "reference": "docs/guide/reference/configuration.md"
+      },
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          }
+        },
+        "required": [
+          "currency",
+          "region"
+        ],
+        "additionalProperties": false
+      },
+      "previewSchema": null,
+      "rules": []
+    },
+    {
       "key": "payments.declineNoticeTiming",
       "domain": "payments",
       "goal": "Choose the delay and link lifetime for a payment decline notice.",
@@ -713,6 +1025,41 @@
       "change": {
         "reference": "docs/guide/how-to/build/quote-prices.md#preserve-the-price-history"
       }
+    },
+    {
+      "key": "pricing.subscriptionPricePolicy",
+      "domain": "pricing",
+      "kind": "installed",
+      "goal": "Inspect installed subscription price policy revisions governing recurring-price basis points and price rounding per price list, region, currency, and channel (recurring price policy, rounding quantum, policy revisions).",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": null,
+      "absentMeans": {
+        "description": "When no rows exist in public.subscription_price_policy_revisions for the requested price list, region, currency, and channel, subscription quote authority falls back to legacy subscription price entries if present, or refuses with subscription_price_policy_not_effective when policy history exists without an effective revision.",
+        "source": "no installed rows in public.subscription_price_policy_revisions",
+        "value": null
+      },
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "The platform ships no preinstalled subscription discount or rounding policy rows; each deployment installs its own versioned policy revisions per price list, region, currency, and channel.",
+      "effect": {
+        "appliesTo": "New subscription quotes and catalogue subscription price estimates resolve the active revision from public.subscription_price_policy_revisions (discount_bps, rounding_quantum_minor, rounding_rule, effective_from, effective_to) scoped by price list, region, currency, and channel.",
+        "frozenOn": [
+          "Frozen checkout quotes, accepted orders, and existing active subscription renewal prices retain their recorded prices until an accepted edit changes the subscription terms."
+        ],
+        "impact": "money"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Versioned policy revisions in public.subscription_price_policy_revisions are guarded against direct historical mutation and inspected read-only; policy changes add a new effective revision."
+      },
+      "change": {
+        "operation": "No settings write operation is available for this key."
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
     },
     {
       "key": "pricing.subscriptionPriceRounding",
@@ -1354,6 +1701,13 @@
     "shipping_flat_minor": "flat shipping, legacy delivery rate, shipping cost, minor units",
     "savedAddressValidation": "postal format, phone normalization, delivery address checks",
     "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
+    "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
+    "market.settlementProfile": "settlement currency, settlement region, commerce settings mirror, market profile",
+    "inventory.offerLowStockThreshold": "low stock threshold, availability status, stock badge cutoff, sellable threshold",
+    "catalog.bundleAvailabilityPolicy": "bundle low stock, bundle availability, add-on stock, limiting component",
+    "communications.nativeDeliveryControls": "delivery controls, communication kill switch, native email gate, control key",
+    "communications.terminalPayloadRetentionDays": "outbox retention, payload compaction, processed days, discarded days, terminal events",
+    "pricing.subscriptionPricePolicy": "recurring price policy, rounding quantum, price policy revisions, renewal rounding, price markdown",
     "shipping.rateResolver": "carrier, shipping provider, courier, shipping rate calculation, quote shipping promotions",
     "subscriptions.afterRenewal": "renewal policy, renewal outcome, failure classification, dunning exhaustion",
     "subscriptions.editTermsAdmission": "subscription edit terms, offer admission, cadence rules, package editing",
