@@ -1321,7 +1321,7 @@ compiles installed declarations without optional provider peers.
 ### Read governed offer memberships
 
 Install the complete PostgreSQL catalogue through
-`20261124093000_catalog_publication_reads.sql`. Call the experimental
+`20261124120000_catalog_publication_reads.sql`. Call the experimental
 `readPostgresCatalogMembershipPage(executor, input)` from `@openlup/platform/catalog`.
 It reads one page with one SELECT. The caller owns the transaction and savepoints.
 An expected refusal is returned as a value and leaves the transaction usable.

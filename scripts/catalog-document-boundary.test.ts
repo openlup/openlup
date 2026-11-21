@@ -31,7 +31,7 @@ const parsedProvenanceRefusal = "imports or reconstructs provider provenance";
 
 const OPAQUE_CARRIERS = new Map([
   ["db/platform/migrations/20261123190000_catalog_publication.sql", ["CROSS JOIN LATERAL (SELECT d.document_payload AS payload) stored"]],
-  ["db/platform/migrations/20261124093000_catalog_publication_reads.sql", [
+  ["db/platform/migrations/20261124120000_catalog_publication_reads.sql", [
     "AND coalesce(origin.payload #> '{product,sharedContent,document}',d.document_payload)=d.document_payload",
     "THEN public.catalog_publication_read_json(operation->>'canonicalText',d.digest,NULL)=d.document_payload END",
   ]],
