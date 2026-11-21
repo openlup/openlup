@@ -74,7 +74,10 @@ BEGIN
    OR EXISTS (SELECT 1 FROM requested q JOIN public.catalog_skus s ON s.sku COLLATE "C"=q.code COLLATE "C"
     JOIN public.catalog_publication_heads h ON h.product_id=s.product_id
     WHERE NOT EXISTS (SELECT 1 FROM claims c WHERE (c.position,c.product_id,c.sku_id)=(q.position,s.product_id,s.id)))
-  THEN invalid ELSE (SELECT coalesce(e,invalid) FROM selected WHERE sku_id IS NOT NULL AND e->>'kind' IS DISTINCT FROM 'evidence'
+  THEN invalid ELSE (SELECT CASE WHEN e->>'kind'='evidence'
+    THEN invalid || '{"detail":"catalog_publication_live_drift"}'::jsonb ELSE coalesce(e,invalid) END
+   FROM selected LEFT JOIN public.catalog_products p ON p.id=selected.product_id
+   WHERE sku_id IS NOT NULL AND (e->>'kind' IS DISTINCT FROM 'evidence' OR p.name IS DISTINCT FROM (e #>> '{product,name}'))
    ORDER BY position LIMIT 1) END,
   (SELECT jsonb_agg(jsonb_build_object('skuCode',code,'productId',product_id,'skuId',sku_id,'evidence',e-'kind') ORDER BY position) FROM selected)
  INTO failed,subjects;

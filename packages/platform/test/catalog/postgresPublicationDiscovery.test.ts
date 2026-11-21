@@ -191,6 +191,21 @@ it("rejects misaligned or uncertified batches", async () => {
   }
 });
 
+it("refuses a rejecting async assessor without an unhandled rejection", async () => {
+  const { lane } = owner(batch([subject, absentItem]));
+  const installed = { registry, assess: async () => { throw new Error("installed assessor failed"); } };
+  const unhandled = vi.fn();
+  process.on("unhandledRejection", unhandled);
+  try {
+    expect(await readPostgresCatalogActivationReadiness(lane, installed as never, readiness))
+      .toEqual({ outcome: "dependency_unavailable", reason: "catalog_installed_readiness_invalid" });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(unhandled).not.toHaveBeenCalled();
+  } finally {
+    process.off("unhandledRejection", unhandled);
+  }
+});
+
 it("assesses detached certified subjects after the owner lane closes and keeps price reasons in SQL", async () => {
   const { lane, isOpen } = owner(batch([{ ...subject, primaryPresent: false, priceReasons: ["price_readiness_missing", "price_shape_invalid"] }, absentItem]));
   const assess = vi.fn((...args: unknown[]) => {

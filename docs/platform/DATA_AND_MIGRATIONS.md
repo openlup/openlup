@@ -993,10 +993,12 @@ across governed products. See the installed
 for paging and refusal behavior.
 
 The [readiness forward](../../db/platform/migrations/20261124121000_catalog_publication_readiness.sql)
-adds a service-executable batch read and owner-only snapshot and price helpers.
+adds a batch read executable only by the service role. The snapshot and price
+helpers are owner-only.
 Outside a `READ COMMITTED` read-write transaction it refuses before locking.
 Otherwise it takes `SHARE` on `catalog_products`, which conflicts with the
 publication writer's first lock, and reads in a separate statement snapshot.
+A live product name that differs from the sealed evidence refuses the batch.
 It writes nothing. See the
 [catalogue entry](../../packages/platform/README.md#read-activation-readiness).
 

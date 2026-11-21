@@ -196,7 +196,14 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
       reasons.push(...priceReasons);
       if (!product.presentation) reasons.push("presentation_missing");
       if (!sku.memberships.some(row => row.admitted)) reasons.push("offer_membership_missing");
-      const extra = installedReasons.safeParse(installed.assess(structuredClone({ product, sku, evidence: references })));
+      const assessment: unknown = installed.assess(structuredClone({ product, sku, evidence: references }));
+      const then = (assessment as Partial<PromiseLike<unknown>> | null | undefined)?.then;
+      if (typeof then === "function") {
+        // The assessor contract is synchronous. Observe a returned thenable before refusing it.
+        void Promise.resolve({ then: then.bind(assessment) }).catch(() => undefined);
+        return installedInvalid;
+      }
+      const extra = installedReasons.safeParse(assessment);
       if (!extra.success) return installedInvalid;
       const combined = [...new Set([...reasons, ...extra.data])];
       const verdict = publicationReadinessVerdict.safeParse({ ready: combined.length === 0, reasons: combined });
