@@ -30,6 +30,9 @@ function append(slot: string) {
   runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean).concat([file, `packages/platform/sql/${slot}_landing_fixture.sql`]));
 }
 const CATALOGUE = 'config/openlup-publication-catalog.json';
+const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
+const SQL_HEADING = '# SQL catalogue';
+const MAIN_SQL_HEADING = '# Package SQL catalogue';
 // Main adds a package command after the reviewed head forked; main's own owner
 // writes its catalogue in a new process, as a contributor's generator run would.
 function addPackageCommand() {
@@ -55,7 +58,9 @@ beforeAll(async () => {
   git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
   append('20990101010000'); reviewed = commit();
-  git('checkout', '-q', '--detach', base); append('20990101020000'); addPackageCommand(); main = commit();
+  git('checkout', '-q', '--detach', base); append('20990101020000'); addPackageCommand();
+  write(SQL_REFERENCE, read(SQL_REFERENCE).replace(SQL_HEADING, MAIN_SQL_HEADING));
+  main = commit();
   git('update-ref', 'refs/remotes/origin/main', main); git('checkout', '-q', '--detach', reviewed);
   merged = (await landingMerge(root)).head;
 }, 180000);
@@ -64,10 +69,38 @@ async function proof(head = merged) {
   return proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, reviewed), await captureCommittedReviewCandidate(root, main, head));
 }
 it('lands two independently appended real forwards through the CLI as derived', async () => {
+  await expect(sourceGit(root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', reviewed, main))
+    .rejects.toMatchObject({ code: 1, stdout: expect.stringContaining(`${SQL_REFERENCE}\0`) });
+  const page = git('show', `${merged}:${SQL_REFERENCE}`);
+  expect(git('show', `${reviewed}:${SQL_REFERENCE}`)).toContain(SQL_HEADING);
+  expect(page).toContain(MAIN_SQL_HEADING);
+  expect(page).toContain('/packages/platform/sql/20990101010000_landing_fixture.sql)');
+  expect(page).toContain('/packages/platform/sql/20990101020000_landing_fixture.sql)');
   expect(await proof()).toMatchObject({ kind: 'derived', derived: true });
   expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
   expect(git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
 }, 50000);
+it('leaves the merge in place when both sides edit the SQL reference prose', async () => {
+  git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
+  try {
+    write(SQL_REFERENCE, read(SQL_REFERENCE).replace(SQL_HEADING, '# Reviewed SQL catalogue'));
+    const left = commit();
+    await expect(landingMerge(root)).rejects.toThrow(`landing: authored conflicts remain: ${SQL_REFERENCE}`);
+    expect(git('rev-parse', 'HEAD')).toBe(left);
+    expect(git('rev-parse', 'MERGE_HEAD')).toBe(main);
+    expect(git('diff', '--name-only', '--diff-filter=U')).toContain(SQL_REFERENCE);
+    expect(read(SQL_REFERENCE)).toContain('# Reviewed SQL catalogue');
+    expect(read(SQL_REFERENCE)).toContain(MAIN_SQL_HEADING);
+  } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); }
+}, 50000);
+it('refuses a non-SQL generated region on the SQL reference', () => {
+  git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+  try {
+    write(SQL_REFERENCE, read(SQL_REFERENCE).replaceAll('generated:sql:platform', 'generated:exports:platform'));
+    expect(() => runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean)))
+      .toThrow(`${SQL_REFERENCE}: unknown generated region exports:platform`);
+  } finally { git('reset', '--hard', merged); }
+});
 it('keeps a package command that main added after the reviewed head forked', () => {
   const names = (revision: string) => JSON.parse(git('show', `${revision}:${CATALOGUE}`)).packageCommands.map(({ name }) => name);
   expect(names(reviewed)).not.toContain('fixture:landing');
@@ -100,7 +133,7 @@ it('carries reviewed coverage through the derived edge and replays its recorded 
   await validateEconomySession(root, session);
 // Two full-tree generator passes plus receipt replay exceeded the 10 s unit default.
 }, 90000);
-it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
+it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'missing SQL reference row', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
   if (scenario === 'historical byte') write(INVENTORY_PATH, read(INVENTORY_PATH).replace('"historical": {}', '"historical": { }'));
   if (scenario === 'edited existing entry') {
@@ -110,13 +143,23 @@ it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong ge
     const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwardClass.slots.push(data.nativeStoreForwardClass.slots.at(-1)); write(path, json(data));
   }
   if (scenario === 'wrong generator bytes') write('packages/platform/sql/manifest.json', read('packages/platform/sql/manifest.json') + ' ');
+  if (scenario === 'missing SQL reference row') {
+    write(SQL_REFERENCE, read(SQL_REFERENCE).split('\n').filter(line => !line.startsWith('| [`20990101010000_landing_fixture.sql`]')).join('\n'));
+  }
   if (scenario === 'other byte') write('README.md', read('README.md') + '\nUnexpected edit\n');
   if (scenario === 'SQL byte') write('db/platform/migrations/20990101010000_landing_fixture.sql', 'SELECT 2;\n');
   git('add', '-A'); const tree = git('write-tree');
   const args = scenario === 'wrong lineage' ? ['-p', reviewed] : ['-p', reviewed, '-p', main];
   const head = git('commit-tree', tree, ...args, '-m', 'Synthetic refusal');
   if (scenario === 'wrong lineage') await expect(proof(head)).rejects.toThrow('integration parents differ');
-  else expect((await proof(head)).kind).toBe('resolution');
+  else {
+    const decision = await proof(head);
+    expect(decision.kind).toBe('resolution');
+    if (scenario === 'missing SQL reference row') {
+      expect(decision.derived).toBeUndefined();
+      expect(decision.resolution).toContain(SQL_REFERENCE);
+    }
+  }
 }, 50000);
 it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry union boundary', scenario => {
   const original = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`), side = JSON.parse(original);
@@ -126,6 +169,7 @@ it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry
 });
 
 it.each([
+  { path: SQL_REFERENCE, unresolved: true, expected: 'refusal' },
   { path: 'docs/platform/SOURCE_MAP.md', unresolved: true, expected: 'refusal' },
   { path: 'packages/platform/sql/manifest.json', unresolved: true, expected: 'refusal' },
   { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: true, expected: 'refusal' },
@@ -133,7 +177,8 @@ it.each([
   { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: false, expected: 'resolution' },
 ])('requires $expected for $path with unresolved=$unresolved despite other derived carriers', async ({ path, unresolved, expected }) => {
   try {
-    const original = await sourceGit(root, 'show', `${base}:${path}`);
+    // Use the same generated rows on both sides so the SQL page has only a prose conflict.
+    const original = await sourceGit(root, 'show', `${path === SQL_REFERENCE ? merged : base}:${path}`);
     git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
     write(path, 'Reviewed carrier variant\n' + original); const left = commit();
     git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
@@ -149,6 +194,11 @@ it.each([
     expect(prediction).toMatch(/^[a-f0-9]{40}$/);
     const markers = await sourceGit(root, 'show', `${prediction}:${path}`);
     expect(markers).toContain('<<<<<<<');
+    if (path === SQL_REFERENCE) {
+      expect(markers).toMatch(/^<<<<<<< .+\nReviewed carrier variant\n/mu);
+      const regions = '<!-- generated:sql:outbox -->';
+      expect(markers.slice(markers.indexOf(regions))).toBe(original.slice(original.indexOf(regions)));
+    }
     // Keep the correct measured inventory and exact registry unions from the
     // successful landing, changing only the selected carrier to Git's raw blob.
     git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);

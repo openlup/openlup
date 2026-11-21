@@ -15,6 +15,10 @@ import {
   type RenewalPreflightPolicy, type RenewalReplayPolicy, type RenewalOutcomePolicy,
 } from "./renewalCycleRefusalMechanism.js";
 
+/**
+ * @deprecated Scheduled for simplification in 2.0.0; prefer `createDefaultRenewalCyclePolicy`
+ * in 1.x instead of implementing the 7-generic policy surface directly.
+ */
 export interface RenewalCyclePolicy<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult,
   P extends string, I extends PaymentExecutionBaseInput, M extends string | null | undefined, F extends string> {
   validateProvider(due: D): string | null;

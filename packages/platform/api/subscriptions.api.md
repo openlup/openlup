@@ -1678,6 +1678,10 @@ import type { PaymentExecutionBaseInput, PaymentExecutionBaseResult, PaymentProv
 import type { RenewalPreparedAttemptPersistencePort } from "./contracts/renewal.js";
 import type { HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderResult, RenewalIntentResult, RenewalCycleDeps, RenewalExecutionContext, RenewalPrepareInput, RenewalAttemptResult, RenewalDeliveryClient, RenewalAllowedAdmission } from "./contracts/renewal.js";
 import { type RenewalPreflightPolicy, type RenewalReplayPolicy, type RenewalOutcomePolicy } from "./renewalCycleRefusalMechanism.js";
+/**
+ * @deprecated Scheduled for simplification in 2.0.0; prefer `createDefaultRenewalCyclePolicy`
+ * in 1.x instead of implementing the 7-generic policy surface directly.
+ */
 export interface RenewalCyclePolicy<D extends HostedRenewalDue, CI, IR extends RenewalIntentResult, P extends string, I extends PaymentExecutionBaseInput, M extends string | null | undefined, F extends string> {
     validateProvider(due: D): string | null;
     readTotal(snapshot: Record<string, unknown>): number | null;

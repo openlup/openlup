@@ -6,6 +6,11 @@
       "file": "0001_outbox.sql",
       "source": "db/platform/migrations/20260807190000_comms_outbox_rail.sql",
       "sha256": "dfb3e9808714846738222bb74a1bfdb38ceafdde2ca8a0c71ab835739fb333bd"
+    },
+    {
+      "file": "0002_outbox_active_partial_indexes.sql",
+      "source": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+      "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
     }
   ]
 }

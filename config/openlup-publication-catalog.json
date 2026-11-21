@@ -1530,6 +1530,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -3266,6 +3274,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/scripts/documentation-sql-inventory.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/scripts/neutrality-shell-fold.ts",
       "class": "public-output"
     },
@@ -3919,6 +3931,10 @@
     },
     {
       "path": "packages/outbox/sql/0001_outbox.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/sql/0002_outbox_active_partial_indexes.sql",
       "class": "public-output"
     },
     {
@@ -4987,6 +5003,14 @@
     },
     {
       "path": "packages/platform/sql/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124100000_outbox_active_partial_indexes.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124110000_shipment_label_and_address_upsert_atomic.sql",
       "class": "public-output"
     },
     {
@@ -28903,6 +28927,10 @@
     },
     {
       "path": "supabase/migrations/20261123144000_checkout_account_ownership.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261123151000_managed_inventory_atp_aggregate_credits.sql",
       "class": "public-output"
     },
     {

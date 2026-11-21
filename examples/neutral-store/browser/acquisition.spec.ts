@@ -96,6 +96,9 @@ test('publishes and recovers an installed catalogue issue under human authority'
     const prepared = await call(operatorPage, drafts, { action: 'prepare', draftId, expectedRevision });
     expect(prepared).toMatchObject({ ok: true, value: { expectedHead: head, candidateRef: expect.any(String),
       candidateDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), preparation: { postStateDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) } } });
+    if (expectedRevision === 1) expect(prepared.value.issues).toContainEqual({
+      path: 'skus.0.priceOperations.0.priceListId', code: 'price_list_not_found',
+    });
     const { candidateRef, candidateDigest, expectedHead, preparation } = prepared.value;
     const candidate = { productId, candidateRef, candidateDigest };
     expect(await call(operatorPage, operation, { action: 'approve', ...candidate, postStateDigest: preparation.postStateDigest }))
@@ -1625,7 +1628,7 @@ async function saveAddress(page: Page, input: Record<string, unknown> = savedAdd
   if (!address) throw new Error('starter_saved_address_witness_missing'); return address;
 }
 for (const locale of market.locales) {
-  test(`${locale}: account preferences address forms normalize, default, delete and retain separate-commit failure semantics`, async ({ page }) => {
+  test(`${locale}: account preferences address forms normalize, default, delete and roll back atomically on event failure`, async ({ page }) => {
     const f = await preferencesCustomer(page, locale); await page.goto(routes.account[locale]);
     const section = page.locator('#account-preferences'); await accessible(section);
     const form = section.locator('form').filter({ has: page.getByRole('heading', { name: copy[locale].addSavedAddress, exact: true }) });
@@ -1648,13 +1651,13 @@ for (const locale of market.locales) {
     const failedKey = randomUUID(), failedInput = { ...savedAddressInput('Committed before event failure'), isDefault: true };
     const events = async () => (await owner.query("SELECT count(*)::int AS n FROM public.customer_account_events WHERE client_id=$1 AND event_type='customer.address_upserted'", [f.clientId])).rows[0].n;
     const before = await events();
-    // Owner-only fault fixture: fail the final event statement, not the earlier committed address/default writes.
+    // Owner-only fault fixture: fail the final event statement and prove the address write and default clear roll back atomically.
     await owner.query("ALTER TABLE public.customer_account_events ADD CONSTRAINT starter_address_event_failure CHECK (event_type<>'customer.address_upserted') NOT VALID");
     try {
       expect((await call(page, 'account.addresses', failedInput, failedKey)).ok).toBe(false);
-      const partial = await call(page, 'account.addresses', { action: 'read' }); expect(partial.ok).toBe(true);
-      expect(partial.value.addresses.find((r: { line1: string }) => r.line1 === failedInput.line1).isDefault).toBe(true);
-      expect(partial.value.addresses.find((r: { addressId: string }) => r.addressId === first.addressId).isDefault).toBe(false);
+      const rolledBack = await call(page, 'account.addresses', { action: 'read' }); expect(rolledBack.ok).toBe(true);
+      expect(rolledBack.value.addresses.find((r: { line1: string }) => r.line1 === failedInput.line1)).toBeUndefined();
+      expect(rolledBack.value.addresses.find((r: { addressId: string }) => r.addressId === first.addressId).isDefault).toBe(true);
       expect(await events()).toBe(before);
     } finally { await owner.query('ALTER TABLE public.customer_account_events DROP CONSTRAINT starter_address_event_failure'); }
     expect((await call(page, 'account.addresses', failedInput, failedKey)).ok).toBe(true); expect(await events()).toBe(before + 1);

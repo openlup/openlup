@@ -664,9 +664,17 @@
     {
       "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+    },
+    {
+      "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+      "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
+    },
+    {
+      "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+      "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284"
     }
   ],
-  "objectInventorySha256": "43700a782ac4c4820a76ac0c31b51b85c03bc9f4f1304d6c21f8839c40191ddb",
+  "objectInventorySha256": "8661e7a79e07314e129ee6bcf85f0ff69eb050e21515121ff1801b6b2c5a00b4",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1356,14 +1364,22 @@
       {
         "file": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
         "sha256": "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8"
+      },
+      {
+        "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+        "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
+      },
+      {
+        "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+        "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "4ed59db458775285e512567169416a0d146626983dec6a6d0e65e5031bb60cde"
+        "withRestore": "5ebb125425514398567897c994cf198d93e426ae5863434926ee07d1009bba3a"
       },
       "separateMigrator": {
-        "withRestore": "02b5f7cfac35fde88f69d430b799fd4dfa6b71ce31758484583c3ef79d804686"
+        "withRestore": "53c3e1ea4a9f530ea935ca358c76378aaa6d03d72a5595e7442a2dbe1f44b908"
       }
     }
   },
@@ -2048,11 +2064,19 @@
       {
         "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
         "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+      },
+      {
+        "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+        "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
+      },
+      {
+        "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+        "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "9e8041eb4934130fd355d8bf439ab548ae9d770e256ebc2b4c5f7b6910922de4",
-      "operatorProvisioned": "69c12c922f4715b08addc2d442e0462e7d9f89582abb1981695045ffab544c8e"
+      "installerManaged": "4aee19ff9ae070a20dc159e996d9b558ed3b433868c6a60c94e9d071ede0a3f1",
+      "operatorProvisioned": "72cb6a48d33bd9f274c81146a4506fb48b0641d4a1e8b52a3c4820e39c5b7938"
     }
   }
 }

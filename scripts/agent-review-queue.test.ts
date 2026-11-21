@@ -1,8 +1,28 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
+import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MARKER, prepareCandidate, receiptBody, RECEIPT_DETAILS_HEADER, RECEIPT_MARKER, receiptSummary, recordReport } from './agent-review-decide.mjs';
 import { carryOverSourceReview, diagnoseReceipt, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
+
+it('keeps the native queue static import closure free of npm dependencies', () => {
+  const visited = new Set<string>();
+  const visit = (path: string) => {
+    if (visited.has(path)) return;
+    visited.add(path);
+    const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest);
+    for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
+      const specifier = statement.moduleSpecifier;
+      if (!specifier || !ts.isStringLiteral(specifier)) continue;
+      expect(specifier.text, path).toMatch(/^(?:node:|\.\.?\/)/u);
+      if (!specifier.text.startsWith('node:')) visit(resolve(dirname(path), specifier.text));
+    }
+  };
+  visit(resolve('scripts/agent-review-queue.mjs'));
+});
 
 const time = 1000;
 const receipt = { pr: 12, base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), risk: 'routine', reviewers: ['reviewer'], verdict: 'PASS', expires: time + 86400000, sessionDigest: 'd'.repeat(64) };

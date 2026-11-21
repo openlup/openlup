@@ -316,6 +316,29 @@ describe("offline catalogue conformance", () => {
       expect(prepared).toMatchObject({ prepared: true, rows: [expect.objectContaining({ canonical_unit: "openlup:g", canonical_value: "1000" })] });
     }
   });
+  it.each([
+    ["/same", "~1same"],
+    ["/~1same", "~1~01same"],
+    ["/a.b~1", "~1a.b~01"],
+    ["/same.part~end", "~1same.part~0end"],
+  ])("escapes the finding pointer for duplicate SKU ID %s", async (skuId, escaped) => {
+    const p = pack(), type = { key: p.types[0].key, version: 1 };
+    const input = { axes: [], typed: false, retained: [], incoming: [
+      { skuId, state: "draft" }, { skuId, state: "withdrawn" },
+    ] };
+    const subject = { packs: [{ pack: p, combinations: [{ type, input }] }] };
+    const text = JSON.stringify(subject), report = await runCatalogExtensionConformance(text);
+    const prefix = "/packs/0/combinations/0/input/";
+    expect(report.exitCode).toBe(1);
+    expect(report.findings).toEqual([expect.objectContaining({
+      code: "duplicate_sku_id",
+      path: prefix + escaped,
+      fix: "Remove the repeated SKU entry while preserving authoritative identity.",
+    })]);
+    const token = report.findings[0].path.split("/").at(-1);
+    expect(token?.replaceAll("~1", "/").replaceAll("~0", "~")).toBe(skuId);
+  });
+
   it("conformance_reuses_row_validators S4 combinations", async () => {
     const p = pack(), type = { key: p.types[0].key, version: 1 };
     p.types[0].units = ["g", "kg"].map((unit, i) => ({ code: `openlup:${unit}`, dimension: "mass", integral: false, factor: { canonicalUnit: "openlup:g", unscaled: i ? "1000" : "1", scale: 0 } }));
