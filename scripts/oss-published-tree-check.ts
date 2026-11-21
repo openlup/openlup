@@ -16,7 +16,10 @@ import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHis
 import { assertAdmittedPlatformForward, deriveSourceReleaseContract } from "./oss-source-release-contract.ts";
 import { AGENT_GUIDE_PATH, renderAgentGuide, renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { assertMaterializedOutputInventory } from "./oss-published-tree-output.ts";
+import { isChangelogFragment } from "./packages/changelog-fragments.ts";
+import { PACKAGES_CONFIG_PATH } from "./packages/package-manifest-policy.ts";
 import { assertMigrationBlocks } from "./packages/packages-check.ts";
+import { RELEASE_NOTE_PACKAGED_CONTENT_REMEDY, assertSimulatedUpgradePage, findReleaseNotePackagedContentViolations } from "./packages/release-docs-pass.ts";
 export { assertMaterializedOutputInventory, materializedOutputPaths } from "./oss-published-tree-output.ts";
 
 /** Append-only migration history at the PR or merge-group boundary. */
@@ -129,6 +132,22 @@ export function assertNoAbsoluteFilesystemPaths(root: string, paths: Iterable<st
     if (found.length > 0) violations.push(`${path}: absolute filesystem path ${[...new Set(found)].join(", ")}`);
   }
   if (violations.length > 0) throw new Error(`tracked Markdown names a local filesystem path:\n${violations.join("\n")}`);
+}
+
+/** Shift-left release-note audit: every tracked changelog fragment must pass the packed core neutrality rules. */
+export function assertChangelogFragmentsPackagedContent(root: string, paths: Iterable<string>): void {
+  const violations: string[] = [];
+  for (const path of paths) {
+    if (!isChangelogFragment(path)) continue;
+    violations.push(...findReleaseNotePackagedContentViolations(path, readFileSync(join(root, path), "utf8")));
+  }
+  if (violations.length > 0) {
+    throw new Error(
+      `changelog fragments contain downstream leakage that would fail packed core audit:\n`
+      + `${violations.join("\n")}\n`
+      + `Fix: ${RELEASE_NOTE_PACKAGED_CONTENT_REMEDY}.`,
+    );
+  }
 }
 
 const trackedFiles = (root: string): string[] =>
@@ -335,6 +354,7 @@ export function policyVerdict(root: string, log: (line: string) => void): boolea
   const { tracked, state } = evaluateSharedTreeChecks(root, log);
   assertAgentGuidancePlacement(root, tracked);
   assertNoAbsoluteFilesystemPaths(root, tracked);
+  assertChangelogFragmentsPackagedContent(root, tracked);
   log(`- public policy paths: ${state.policy.activePaths.length}`);
   log(`- public policy contracts: ${state.policy.contracts.length}`);
   log(`- guard viability entries: ${state.catalog.guardViability.length}`);
@@ -345,6 +365,7 @@ export function selfCheckVerdict(root: string, log: (line: string) => void): boo
   const { tracked, state } = evaluateSharedTreeChecks(root, log);
   assertAgentGuidancePlacement(root, tracked);
   assertNoAbsoluteFilesystemPaths(root, tracked);
+  assertChangelogFragmentsPackagedContent(root, tracked);
   log(`- public policy paths: ${state.policy.activePaths.length}`);
   log(`- public policy contracts: ${state.policy.contracts.length}`);
   log(`- guard viability entries: ${state.catalog.guardViability.length}`);
@@ -399,6 +420,13 @@ function assertDocumentationAndMigrations(root: string, options: ReadonlyMap<str
   const ok = runVerdict();
   const base = resolveDocumentationBase(root, { base: options.get("--docs-base") });
   log(`- documentation comparison: ${base.base} (${base.provenance})`);
+  if (existsSync(join(root, PACKAGES_CONFIG_PATH))) {
+    const audit = assertSimulatedUpgradePage(root, { trackedPaths: trackedFiles(root) });
+    if (audit) {
+      const kind = audit.prepared ? "prepared" : "simulated";
+      log(`- ${kind} upgrade page: ${audit.path} (${audit.bytes}/${audit.maxBytes} bytes since ${audit.since})`);
+    }
+  }
   if (base.provenance === "pull-request" || base.provenance === "merge-group") {
     const head = documentationGit(root, ["rev-parse", "HEAD"]).toString("utf8").trim();
     assertAppendOnlyMigrationHistory(root, base.base, head);

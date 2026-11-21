@@ -1509,6 +1509,20 @@ sees the updated Git inventory; no other changes are staged. Follow the
 [release preparation sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md#releasing-a-package)
 for the read-only documentation listing and guide edits. Historical sections
 remain byte-identical. Merging it authorizes no release.
+
+Release preparation follows four authoring rules:
+
+- Keep release notes minimal, and back every behavioural claim with a named test
+  or `file:line` reference in the PR.
+- Commit changelog fragments before running `release:bump`, rather than
+  hand-editing assembled release sections after the bump.
+- Prefer an explicit allowlist over a blacklist for text and audit exceptions;
+  `--policy` and `--self-check` audit tracked fragments and the simulated upgrade
+  page against the packed core release-note rules and size cap before release
+  preparation.
+- When changing an error message or operator remedy, include an executed recovery
+  transcript showing the exact command and observed output in the PR.
+
 A release is then dispatched with `publish-package.yml` and package `all` for the
 reviewed commit, and one maintainer approval of the protected `release`
 environment authorizes every package of the set. Dispatching the set again
