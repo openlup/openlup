@@ -1526,11 +1526,11 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
+      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "path": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
       "class": "public-output"
     },
     {
@@ -4990,11 +4990,11 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261123193000_catalog_publication_reads.sql",
+      "path": "packages/platform/sql/20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "path": "packages/platform/sql/20261124093000_catalog_publication_reads.sql",
       "class": "public-output"
     },
     {

@@ -6060,8 +6060,22 @@
         ]
       },
       {
+        "row": "fulfillment-advance-shipment-lock-order",
+        "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog",
+            "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalog-membership-reads",
-        "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
+        "path": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -6089,20 +6103,6 @@
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
-        "grantOnlyFunctions": [],
-        "dataStatements": []
-      },
-      {
-        "row": "fulfillment-advance-shipment-lock-order",
-        "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
-        "replacedFunctions": [
-          {
-            "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
-            "searchPath": "public, pg_catalog",
-            "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416"
-          }
-        ],
-        "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
       }
@@ -8757,7 +8757,18 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
+      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded",
+      "functions": [
+        {
+          "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416",
+          "afterSha256": "a2a2505f4b031e3ab3c20c8c0585a8bd1575cf0c7a3836410edbe125ed3f5b32"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
       "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb",
       "functions": [
         {
@@ -8789,17 +8800,6 @@
           "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
           "beforeSha256": null,
           "afterSha256": "4a43e9a8e2bca28d0d619a24aefcce70c89ecee49b0d0e4db5e3c4f7b89836a3"
-        }
-      ]
-    },
-    {
-      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
-      "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded",
-      "functions": [
-        {
-          "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
-          "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416",
-          "afterSha256": "a2a2505f4b031e3ab3c20c8c0585a8bd1575cf0c7a3836410edbe125ed3f5b32"
         }
       ]
     }

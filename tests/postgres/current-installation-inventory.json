@@ -7,12 +7,12 @@
         "objectInventorySha256": "fc891621f5201ec3b915480f48f93d3731fd3a0c3a4a0f20c8330090d9fdad3d",
         "tail": [
           {
-            "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
-            "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+            "file": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
+            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
           },
           {
-            "file": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
+            "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+            "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
           },
           {
             "file": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",
@@ -682,16 +682,16 @@
         "objectInventorySha256": "18c3c7d09e15a673ac93c0c89add4d0198d50bb577093eaff7681066c06be16b",
         "tail": [
           {
+            "file": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
+            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
+          },
+          {
             "file": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
             "sha256": "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8"
           },
           {
             "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
             "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
-          },
-          {
-            "file": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
           },
           {
             "file": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",
@@ -1381,16 +1381,16 @@
         "objectInventorySha256": "c75937f7f6cb419096f228e469daa00ad97840ef77ce14d5af20fc34337e9632",
         "tail": [
           {
+            "file": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
+            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
+          },
+          {
             "file": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
             "sha256": "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8"
           },
           {
             "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
             "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
-          },
-          {
-            "file": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
           },
           {
             "file": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",
@@ -2080,12 +2080,12 @@
         "objectInventorySha256": "1ade2615a7a640608b4110a3a2d5acf96157d6b8d8038ddbc6ddcee0e9ae650a",
         "tail": [
           {
-            "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
-            "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+            "file": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
+            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
           },
           {
-            "file": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
+            "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+            "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
           },
           {
             "file": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",
@@ -2771,12 +2771,12 @@
         "objectInventorySha256": "0d01f466ceb80c5a05d2876f240cd02e58c6fc112774f590387e0f4f9804379e",
         "tail": [
           {
-            "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
-            "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+            "file": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
+            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
           },
           {
-            "file": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-            "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
+            "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+            "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
           },
           {
             "file": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",

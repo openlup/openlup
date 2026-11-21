@@ -662,12 +662,12 @@
       "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96"
     },
     {
-      "file": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-      "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
-    },
-    {
       "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+    },
+    {
+      "file": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
+      "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
     }
   ],
   "objectInventorySha256": "fc891621f5201ec3b915480f48f93d3731fd3a0c3a4a0f20c8330090d9fdad3d",
@@ -1354,16 +1354,16 @@
         "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96"
       },
       {
-        "file": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-        "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
-      },
-      {
         "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
         "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
       },
       {
         "file": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
         "sha256": "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8"
+      },
+      {
+        "file": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
+        "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
       }
     ],
     "objectInventorySha256": {
@@ -2054,12 +2054,12 @@
         "sha256": "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96"
       },
       {
-        "file": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-        "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
-      },
-      {
         "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
         "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded"
+      },
+      {
+        "file": "db/platform/migrations/20261124093000_catalog_publication_reads.sql",
+        "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
       }
     ],
     "objectInventorySha256": {

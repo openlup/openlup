@@ -6,7 +6,7 @@ import { readPostgresCatalogMembershipPage, type CatalogMembershipPageInput } fr
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { documentRow, fixture, graph, hash, insertGraph, installPublicationActors, json, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
 
-const forward = "db/platform/migrations/20261123193000_catalog_publication_reads.sql";
+const forward = "db/platform/migrations/20261124093000_catalog_publication_reads.sql";
 const membershipSql = "SELECT public.catalog_offer_memberships_page($1,$2::jsonb,$3,$4) AS result";
 const filterOffer = "test:filter";
 const emptyOffer = "test:known-empty";
