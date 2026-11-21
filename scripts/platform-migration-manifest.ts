@@ -13,6 +13,7 @@ export const QUALIFIED_RUNTIME_COMPLETION_FILE = `${PLATFORM_MIGRATION_DIRECTORY
 export const QUALIFIED_OWNER_PATH_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261029100000_owner_path_name_resolution.sql`;
 // Shared by both qualified plans after their issued tails and the shared suffix at introduction.
 export const QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261103200000_runtime_lock_and_conflict_completion.sql`;
+const QUALIFIED_CATALOG_PUBLICATION_AUTHORITY_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/q2_20261123192500_catalog_publication_authority.sql`;
 export const ADMIN_BASELINE_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_00000000000000_platform_baseline.sql`;
 export const ADMIN_ACTOR_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_20260810180001_self_host_actor_auth.sql`;
 export const ADMIN_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/qa_20260816140000_acquisition_case_foundation.sql`;
@@ -29,7 +30,7 @@ const LEGACY_ACQUISITION_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20260816140000_
 const QUALIFIED_AFTER_FILE = `${PLATFORM_MIGRATION_DIRECTORY}/20261026120000_account_support_operator_authority.sql`;
 const ADMIN_FILES = new Set([ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE,
   REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE]);
-const QUALIFIED_FILES = new Set([QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ...ADMIN_FILES]);
+const QUALIFIED_FILES = new Set([QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, QUALIFIED_CATALOG_PUBLICATION_AUTHORITY_FILE, ...ADMIN_FILES]);
 const PLATFORM_FILE_RE = /^db\/platform\/migrations\/[A-Za-z0-9][A-Za-z0-9_-]*\.sql$/;
 export type AddedMigration = { file: string; content: string };
 export type PlatformMigrationManifestEntry = { file: string; sha256: string };
@@ -92,6 +93,7 @@ function evaluatePlan(input: ManifestValidationInput, baselineFile: string, orde
   const files = entries.map((entry) => entry.file);
   const uniqueFiles = new Set(files);
   if (uniqueFiles.size !== files.length) errors.push("platform migration manifest: duplicate migration filename");
+  if (baselineFile !== QUALIFIED_BASELINE_FILE && uniqueFiles.has(QUALIFIED_CATALOG_PUBLICATION_AUTHORITY_FILE)) errors.push("catalogue publication authority requires the qualified-v2 plan");
   const forwardFiles = forward.map((entry) => entry?.file ?? "");
   if (ordered && forwardFiles.some((file, index) => index > 0 && file <= forwardFiles[index - 1])) errors.push("platform migration manifest.forward: entries must be in strict filename order");
   if (metadataOnly) return errors;
@@ -172,27 +174,30 @@ function evaluateManifest(input: ManifestValidationInput, metadataOnly = false):
     }
   }
   const issuedSharedLength = current.forward.findIndex(({ file }) => file === QUALIFIED_AFTER_FILE) + 1;
-  function qualifiedOrder(plan: QualifiedPlan | AdminPlan, baseline: string, actor: string, acquisition: string, runtime: string, retainedImport: string, files: Set<string>, requireImport: boolean, ownerPath: boolean): number {
+  function qualifiedOrder(plan: QualifiedPlan | AdminPlan, baseline: string, actor: string, acquisition: string, runtime: string, retainedImport: string, files: Set<string>, requireImport: boolean, qualifiedV2: boolean): number {
     const replacements = new Map([[actor, LEGACY_ACTOR_FILE], [acquisition, LEGACY_ACQUISITION_FILE]]);
-    const tails = new Set([runtime, retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE, ...(ownerPath ? [QUALIFIED_OWNER_PATH_FILE] : []), QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE]);
+    const suffixTails = new Set([QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ...(qualifiedV2 ? [QUALIFIED_CATALOG_PUBLICATION_AUTHORITY_FILE] : [])]);
+    const tails = new Set([runtime, retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE, ...(qualifiedV2 ? [QUALIFIED_OWNER_PATH_FILE] : []), ...suffixTails]);
     const shared = plan.forward.filter(({ file }) => !tails.has(file));
     if (shared.length !== current.forward.length || shared.some((entry, index) => {
       const legacyEntry = current.forward[index]!;
       return replacements.has(entry.file) ? replacements.get(entry.file) !== legacyEntry.file : JSON.stringify(entry) !== JSON.stringify(legacyEntry);
     })) errors.push("qualified plan must reuse the complete legacy order with only its two exact bootstrap replacements");
     for (const file of [actor, acquisition, runtime, ...(requireImport ? [retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE] : [])]) if (!files.has(file)) errors.push(`qualified plan is missing ${file}`);
-    const own = new Set([baseline, actor, acquisition, runtime, retainedImport, QUALIFIED_RUNTIME_COMPLETION_FILE, ...(ownerPath ? [QUALIFIED_OWNER_PATH_FILE] : []), QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE]);
+    const own = new Set([baseline, actor, acquisition, ...tails]);
     if ([...files].some(file => !legacyFiles.has(file) && !own.has(file))) errors.push("qualified plan contains a wrong-generation fresh identity");
     const at = (file: string) => plan.forward.findIndex(row => row.file === file);
     if (at(QUALIFIED_AFTER_FILE) < 0 || at(runtime) <= at(QUALIFIED_AFTER_FILE)) errors.push("qualified runtime capabilities must follow the complete ownership closure");
     if (at(retainedImport) >= 0 && at(retainedImport) <= at(runtime)) errors.push("qualified retained import must follow runtime role sealing");
-    const ownerPosition = ownerPath ? at(QUALIFIED_OWNER_PATH_FILE) : -1;
+    const ownerPosition = qualifiedV2 ? at(QUALIFIED_OWNER_PATH_FILE) : -1;
     if (at(QUALIFIED_RUNTIME_COMPLETION_FILE) >= 0 && (at(retainedImport) < 0 || at(QUALIFIED_RUNTIME_COMPLETION_FILE) <= at(retainedImport))) errors.push("qualified runtime completion must follow retained import");
     if (ownerPosition >= 0 && (at(QUALIFIED_RUNTIME_COMPLETION_FILE) < 0 || ownerPosition !== at(QUALIFIED_RUNTIME_COMPLETION_FILE) + 1)) errors.push("qualified owner path forward must be the final tail after runtime completion");
     const lastTail = ownerPosition >= 0 ? ownerPosition : Math.max(at(runtime), at(retainedImport), at(QUALIFIED_RUNTIME_COMPLETION_FILE));
     const lockPosition = at(QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE);
     if (lockPosition >= 0 && (at(QUALIFIED_RUNTIME_COMPLETION_FILE) < 0 || lockPosition <= lastTail)) errors.push("qualified lock and conflict completion must follow every issued qualified tail");
-    if (JSON.stringify(plan.forward.slice(lastTail + 1).filter(({ file }) => file !== QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE)) !== JSON.stringify(current.forward.slice(issuedSharedLength))) errors.push("qualified plan must append the identical shared suffix after its issued tails");
+    const publicationPosition = at(QUALIFIED_CATALOG_PUBLICATION_AUTHORITY_FILE);
+    if (publicationPosition >= 0 && (lockPosition < 0 || publicationPosition <= lockPosition)) errors.push("qualified catalogue publication authority must follow lock and conflict completion");
+    if (JSON.stringify(plan.forward.slice(lastTail + 1).filter(({ file }) => !suffixTails.has(file))) !== JSON.stringify(current.forward.slice(issuedSharedLength))) errors.push("qualified plan must append the identical shared suffix after its issued tails");
     if (requireImport && (at(runtime) !== issuedSharedLength || at(retainedImport) !== issuedSharedLength + 1
       || at(QUALIFIED_RUNTIME_COMPLETION_FILE) !== issuedSharedLength + 2)) errors.push("qualified 91-unit tails must follow the complete shared order exactly");
     return lockPosition < 0 ? -1 : plan.forward.slice(0, lockPosition).filter(({ file }) => !tails.has(file)).length;
