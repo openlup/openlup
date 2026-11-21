@@ -181,6 +181,23 @@ describe("createOfferAvailabilityPort", () => {
       reasonCode: "provider_stock_stale",
     });
   });
+
+  it("accepts lowStockThreshold=0 and rejects invalid thresholds on port creation", async () => {
+    const client = clientWithTables({
+      fulfillment_provider_stock_current: [],
+      inventory_reservations: [],
+      inventory_balances: [balanceRow({ sku: "ITEM-A", onHand: 1, lotStatus: "available", lotExpiresAt: null })],
+    });
+    const port = createOfferAvailabilityPort(client, { isStockProvider: () => false, lowStockThreshold: 0 });
+    expect(await port.getAvailability({ items: [item("ITEM-A")] })).toMatchObject([{ status: "available" }]);
+
+    for (const invalid of [-1, 1.5, NaN, Infinity, -Infinity, 2147483648, null as unknown as number]) {
+      expect(() => createOfferAvailabilityPort(client, {
+        isStockProvider: () => false,
+        lowStockThreshold: invalid,
+      })).toThrow("offer_low_stock_threshold_invalid");
+    }
+  });
 });
 
 function clientWithTables(tables: Record<string, unknown[]>): OfferAvailabilityQueryClient {

@@ -36,6 +36,18 @@ Search terms include product assortment, SKU records.
 
 Show offline: `show catalog.additionalMediaFormats --json`.
 
+## catalog.bundleAvailabilityPolicy
+
+Set the whole-bundle low-stock threshold and whether optional add-on components limit derived bundle stock (bundle low stock, bundle availability, add-on stock).
+Search terms include bundle low stock, bundle availability, add-on stock, limiting component.
+
+- Owner **catalog** · kind **code** · runtime **read-only**
+- Default is `{"lowStockThreshold":3,"includeAddonsInStock":false}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- A three-bundle cutoff reflects multi-unit consumption per bundle, and excluding optional add-ons prevents optional extras from marking core bundles unsellable.
+
+Show offline: `show catalog.bundleAvailabilityPolicy --json`.
+
 ## catalog.netContentUnits
 
 Represent product net contents in units other than grams.
@@ -68,6 +80,18 @@ Search terms include offer policy, offer version, checkout admission, quote acce
 - When absent, checkout intents without offerVersion or minimumUnits proceed unbound; intents carrying either field are refused with offer_version_unsupported.
 
 Show offline: `show checkout.offerAdmission --json`.
+
+## checkout.resumeWindowMinutes
+
+Set how long checkout resumes an open unpaid order for the same customer instead of starting a new order (resume window, duplicate checkout guard, open order continuation).
+Search terms include checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard.
+
+- Owner **commerce** · kind **code** · runtime **read-only**
+- Default is `60`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Sixty minutes covers typical payment hand-offs and customer retries without keeping stale unpaid baskets resumable indefinitely.
+
+Show offline: `show checkout.resumeWindowMinutes --json`.
 
 ## checkout_recovery_reminders
 
@@ -152,6 +176,31 @@ Search terms include messaging, notifications.
 
 Show offline: `show communications.additionalLocales --json`.
 
+## communications.nativeDeliveryControls
+
+Inspect installed native delivery control switches and revisions in public.communication_delivery_controls governing whether native delivery templates and notification controls are enabled (delivery controls, kill switch, email send gate).
+Search terms include delivery controls, communication kill switch, native email gate, control key.
+
+- Owner **communications** · kind **installed** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- Native control-plane delivery starts disabled until an authorized operator creates and enables a control row and active template binding.
+- When absent, when public.communication_delivery_controls has no row for a control key, native communications control-plane preparation treats absent control keys as disabled (false) and refuses delivery preparation with communications_delivery_disabled (the table column default is false; lifecycle notice checks via communications_notification_control_enabled only block explicitly false rows).
+
+Show offline: `show communications.nativeDeliveryControls --json`.
+
+## communications.terminalPayloadRetentionDays
+
+Set how many days terminal processed and discarded outbox event payloads and errors are retained before compaction clears them (outbox retention, payload pruning, compaction days).
+Search terms include outbox retention, payload compaction, processed days, discarded days, terminal events.
+
+- Owner **communications** · kind **code** · runtime **read-only**
+- Default is `{"processedDays":30,"discardedDays":90}`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Thirty days for processed events and ninety days for discarded events preserve recent audit and troubleshooting evidence while bounding table payload growth.
+
+Show offline: `show communications.terminalPayloadRetentionDays --json`.
+
 ## fulfillment.additionalDeliveryMethods
 
 Offer additional delivery methods.
@@ -181,6 +230,18 @@ Search terms include account access, sign-in.
 - The native sign-in port admits existing accounts only.
 
 Show offline: `show identity.magicLinkRegistration --json`.
+
+## inventory.offerLowStockThreshold
+
+Set the sellable unit count at or below which single-SKU offer availability is reported as low_stock (low stock threshold, availability status, stock badge cutoff).
+Search terms include low stock threshold, availability status, stock badge cutoff, sellable threshold.
+
+- Owner **inventory** · kind **code** · runtime **read-only**
+- Default is `20`.
+- Basis `reference-code` (matches the reference deployment's code).
+- Twenty sellable units warns storefronts before an individual SKU hits zero while avoiding false low-stock warnings on normal replenishment buffers.
+
+Show offline: `show inventory.offerLowStockThreshold --json`.
 
 ## inventory.reservationReplayExpiry
 
@@ -235,6 +296,19 @@ Search terms include billing documents, adjustments.
 - The native correction contract supports full reversal.
 
 Show offline: `show invoicing.partialInvoiceCorrections --json`.
+
+## market.settlementProfile
+
+Set the store's settlement currency and region via COMMERCE_SETTLEMENT_CURRENCY and COMMERCE_SETTLEMENT_REGION alongside their mandatory public.commerce_settings mirror (settlement currency, settlement region, market profile).
+Search terms include settlement currency, settlement region, commerce settings mirror, market profile.
+
+- Owner **commerce** · kind **code** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The platform selects no settlement market or currency by default; each deployment must bind its own currency and region consistently in environment configuration and public.commerce_settings.
+- When absent, readSettlementProfile uses the caller-supplied SettlementProfileFallbacks when COMMERCE_SETTLEMENT_CURRENCY or COMMERCE_SETTLEMENT_REGION is blank or unset, and refuses malformed codes. SQL price-setup and readiness routines require non-null matching settlement_currency and settlement_region rows in public.commerce_settings (raising catalog_price_setup_settlement_context_unverified when absent or invalid).
+
+Show offline: `show market.settlementProfile --json`.
 
 ## payments.declineNoticeTiming
 
@@ -347,6 +421,19 @@ Search terms include quote amounts, price calculation.
 - The native strict quote and base-price writer currently use one fixed channel.
 
 Show offline: `show pricing.salesChannels --json`.
+
+## pricing.subscriptionPricePolicy
+
+Inspect installed subscription price policy revisions governing recurring-price basis points and price rounding per price list, region, currency, and channel (recurring price policy, rounding quantum, policy revisions).
+Search terms include recurring price policy, rounding quantum, price policy revisions, renewal rounding, price markdown.
+
+- Owner **pricing** · kind **installed** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The platform ships no preinstalled subscription discount or rounding policy rows; each deployment installs its own versioned policy revisions per price list, region, currency, and channel.
+- When absent, when no rows exist in public.subscription_price_policy_revisions for the requested price list, region, currency, and channel, subscription quote authority falls back to legacy subscription price entries if present, or refuses with subscription_price_policy_not_effective when policy history exists without an effective revision.
+
+Show offline: `show pricing.subscriptionPricePolicy --json`.
 
 ## pricing.subscriptionPriceRounding
 

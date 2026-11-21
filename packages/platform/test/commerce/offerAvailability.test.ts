@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveOfferAvailability } from "../../src/commerce/index.js";
+import { deriveOfferAvailability, statusForSellableNow } from "../../src/commerce/index.js";
 
 const base = {
   sku: "ITEM-A",
@@ -42,5 +42,16 @@ describe("deriveOfferAvailability", () => {
       visibleInConfigurator: true,
       reasonCode: "stock_available",
     });
+  });
+
+  it("accepts boundary non-negative integers 0 and 2147483647", () => {
+    expect(statusForSellableNow(1, 0)).toBe("available");
+    expect(statusForSellableNow(1, 2147483647)).toBe("low_stock");
+  });
+
+  it.each([-1, 1.5, NaN, Infinity, -Infinity, 2147483648, null as unknown as number])("rejects invalid lowStockThreshold=%p even when sellableNow is null or zero", lowStockThreshold => {
+    expect(() => statusForSellableNow(null, lowStockThreshold)).toThrow("offer_low_stock_threshold_invalid");
+    expect(() => statusForSellableNow(0, lowStockThreshold)).toThrow("offer_low_stock_threshold_invalid");
+    expect(() => deriveOfferAvailability({ ...base, sellableNow: null, lowStockThreshold })).toThrow("offer_low_stock_threshold_invalid");
   });
 });

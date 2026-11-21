@@ -1,4 +1,5 @@
 import type { BundleRuleBindings, BundleStockStatus as CommerceOfferAvailabilityStatus } from "./bundleBindings.js";
+import { validateBundleLowStockThreshold } from "./bundleThresholdValidation.js";
 
 /**
  * Derived stock for a composed bundle — the pure kernel that folds many component
@@ -70,6 +71,10 @@ export function createBundleAvailability({ offerAvailabilityReasonCode, offerAva
 function deriveBundleAvailability(
   input: DeriveBundleAvailabilityInput,
 ): BundleAvailability {
+  const lowStockThreshold = validateBundleLowStockThreshold(
+    input.lowStockThreshold,
+    DEFAULT_BUNDLE_LOW_STOCK_THRESHOLD,
+  );
   const counted = input.components.filter(
     (component) => input.includeAddonsInStock === true || !component.isAddon,
   );
@@ -108,7 +113,7 @@ function deriveBundleAvailability(
 
   const status = offerAvailabilityStatusFor(
     sellableNow,
-    input.lowStockThreshold ?? DEFAULT_BUNDLE_LOW_STOCK_THRESHOLD,
+    lowStockThreshold,
   );
   return { sellableNow, status, reasonCode: offerAvailabilityReasonCode(status), limitingSku: limiting.sku };
 }

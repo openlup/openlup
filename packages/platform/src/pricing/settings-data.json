@@ -62,6 +62,24 @@
     "change": {"reference": "docs/guide/how-to/build/quote-prices.md#preserve-the-price-history"}
   },
   {
+    "key": "pricing.subscriptionPricePolicy",
+    "domain": "pricing",
+    "kind": "installed",
+    "goal": "Inspect installed subscription price policy revisions governing recurring-price basis points and price rounding per price list, region, currency, and channel (recurring price policy, rounding quantum, policy revisions).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "absentMeans": {"description": "When no rows exist in public.subscription_price_policy_revisions for the requested price list, region, currency, and channel, subscription quote authority falls back to legacy subscription price entries if present, or refuses with subscription_price_policy_not_effective when policy history exists without an effective revision.", "source": "no installed rows in public.subscription_price_policy_revisions", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform ships no preinstalled subscription discount or rounding policy rows; each deployment installs its own versioned policy revisions per price list, region, currency, and channel.",
+    "effect": {"appliesTo": "New subscription quotes and catalogue subscription price estimates resolve the active revision from public.subscription_price_policy_revisions (discount_bps, rounding_quantum_minor, rounding_rule, effective_from, effective_to) scoped by price list, region, currency, and channel.", "frozenOn": ["Frozen checkout quotes, accepted orders, and existing active subscription renewal prices retain their recorded prices until an accepted edit changes the subscription terms."], "impact": "money"},
+    "runtime": {"level": "read-only", "reason": "Versioned policy revisions in public.subscription_price_policy_revisions are guarded against direct historical mutation and inspected read-only; policy changes add a new effective revision."},
+    "change": {"operation": "No settings write operation is available for this key."},
+    "rules": []
+  },
+  {
     "key": "pricing.subscriptionPriceRounding",
     "domain": "pricing",
     "goal": "Select the subscription price rounding rule.",

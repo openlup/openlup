@@ -657,7 +657,15 @@ it("checks every packaged schema against its default and valid examples", async 
   const entries = loadSettingsCatalogue().entries.filter(entry => "fallback" in entry).filter(entry =>
     (entry.kind === "code" || entry.kind === "installed") && entry.schema);
   expect(entries.map(entry => entry.key)).toEqual([
-    key, "shipping_flat_minor", "subscription_minimum_base_units", "subscription_sized_intro_phase",
+    "catalog.bundleAvailabilityPolicy",
+    "checkout.resumeWindowMinutes",
+    "communications.terminalPayloadRetentionDays",
+    "inventory.offerLowStockThreshold",
+    key,
+    "market.settlementProfile",
+    "shipping_flat_minor",
+    "subscription_minimum_base_units",
+    "subscription_sized_intro_phase",
   ]);
   for (const entry of entries) {
     const values = [
@@ -872,9 +880,10 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // six-reason vocabulary description for commerce.manualHoldReasons,
   // domain-guide change.reference links for all 47 cap and invariant entries,
   // "Default: none (see behavior below)" for null fallbacks (K6),
-  // and Stage 4 Wave 4B packaged callback and single-row installed entries.
+  // Stage 4 Wave 4B packaged callback and single-row installed entries,
+  // and Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5).
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("2553f9d0b2830fe71dc3cd13aa35d19accb84b4be1a6dc28ed6ba21bc45ce803");
+    .toBe("1f017cae2b47ddebe8d450b14b125fa0482576b25be14b5765aac8b3bbd3505f");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {

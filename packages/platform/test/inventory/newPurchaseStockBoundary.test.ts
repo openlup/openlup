@@ -61,4 +61,12 @@ describe("normalized new-purchase boundary", () => {
     f.fallback.getAvailability.mockRejectedValueOnce(new Error("fallback_failed"));
     await expect(f.port.getAvailability({ items })).rejects.toThrow("fallback_failed");
   });
+
+  it.each([-1, 1.5, NaN, Infinity, -Infinity, 2147483648, null as unknown as number])("rejects invalid lowStockThreshold=%p on construction", lowStockThreshold => {
+    const f = fixture({ read: vi.fn() });
+    expect(() => createNewPurchaseStockAvailabilityPort(f.bindings, { mode: "new_purchase", lowStockThreshold }))
+      .toThrow("inventory_low_stock_threshold_invalid");
+    expect(() => createNewPurchaseStockAvailabilityPort({ ...f.bindings, defaultLowStockThreshold: lowStockThreshold }, { mode: "new_purchase" }))
+      .toThrow("inventory_low_stock_threshold_invalid");
+  });
 });
