@@ -8791,6 +8791,11 @@
       "path": "supabase/migrations/20261123151000_managed_inventory_atp_aggregate_credits.sql",
       "sha256": "3f794136b6b4fec62cd0db515589345ad291332592ad92adbb715e084d4bfc8f",
       "prefixSha256": "59eb1ab84d8a19f2b984542a3116922242aa0d2b7e69c63ba3a9aa2a3d8c4caf"
+    },
+    {
+      "path": "supabase/migrations/20261123152000_managed_oms_queue_performance.sql",
+      "sha256": "1db193da33bd9acb57d00e0e3c261fedeb91f67eb6d2192d678173111ae53fb8",
+      "prefixSha256": "8afde8ba1dfa4e0f2873295ce776febbcd1eeae68980f545a1bab54b7e21bd6c"
     }
   ]
 }
