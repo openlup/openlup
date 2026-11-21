@@ -1,3 +1,4 @@
+import { createPostgresStockWaitReads } from "@openlup/platform/subscriptions";
 import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient, type QueryResult } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -100,3 +101,96 @@ it("exact-cover managed renewal witness rejects unconditional soft-demand subtra
   }
   expect((await db.query<{ body: string }>("SELECT pg_get_functiondef($1::regprocedure) AS body", [signature])).rows[0].body).toBe(original);
 }, 120_000);
+
+it("reads scoped managed stock waits using the installed service role", async () => {
+  const id = (suffix: number) => `cb100000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
+  const [principal, client, subscription, other, otherSubscription, wait, otherWait, order, cycle, payment] =
+    Array.from({ length: 10 }, (_, index) => id(index + 1));
+  const now = "2026-08-01T10:00:00.000Z";
+  const deficit = { skuId: id(11), sku: "REFILL", productName: "Refill", sizeG: 100,
+    requiredUnits: 2, reservedUnits: 0, availableUnits: 0, missingUnits: 2 };
+  await db.query("RESET ROLE; BEGIN; SET LOCAL session_replication_role=replica");
+  try {
+    await db.query("INSERT INTO auth.users(id) VALUES ($1)", [principal]);
+    await db.query(`INSERT INTO public.clients (id,email,auth_user_id) VALUES
+      ($1,'one@example.invalid',$3),($2,'two@example.invalid',NULL)`, [client, other, principal]);
+    await db.query(`INSERT INTO public.subscriptions (id,client_id,cadence_days,currency,next_cycle_at)
+      VALUES ($1,$3,28,'XTS',$5),($2,$4,28,'XTS',$5)`, [subscription, otherSubscription, client, other, now]);
+    await db.query(`INSERT INTO public.commerce_orders (id,client_id,subscription_id,subscription_cycle_id,status)
+      VALUES ($1,$2,$3,$4,'pending_payment')`, [order, client, subscription, cycle]);
+    await db.query(`INSERT INTO public.subscription_cycles
+      (id,subscription_id,scheduled_at,status,order_id,payment_id,cycle_number,engine_idempotency_key)
+      VALUES ($1,$2,$3,'payment_pending',$4,$5,1,'stock-wait-read-test')`, [cycle, subscription, now, order, payment]);
+    await db.query(`INSERT INTO public.commerce_payments (id,order_id,provider,amount_cents,currency)
+      VALUES ($1,$2,'fixture',100,'XTS')`, [payment, order]);
+    await db.query(`INSERT INTO public.commerce_payment_intents
+      (order_id,subscription_id,subscription_cycle_id,payment_id,target_kind,amount_cents,currency)
+      VALUES ($1,$2,$3,$4,'subscription_cycle',100,'XTS')`, [order, subscription, cycle, payment]);
+    await db.query(`INSERT INTO public.subscription_stock_wait_cases
+      (id,client_id,subscription_id,scheduled_at,state,cycle_number,due_snapshot,template_snapshot,
+        pricing_snapshot,order_snapshot,fingerprint,deficits,opened_at,last_checked_at,order_id,cycle_id)
+      VALUES ($1,$3,$5,$7,'stock_secured',1,'{}','{}','{}','{}','fixture','[]',$7,$7,$8,$9),
+        ($2,$4,$6,$7,'waiting',1,'{}','{}','{}','{}','fixture',$10,$7,$7,NULL,NULL)`,
+    [wait, otherWait, client, other, subscription, otherSubscription, now, order, cycle, JSON.stringify([deficit, deficit])]);
+    await db.query(`INSERT INTO public.communication_email_deliveries
+      (purpose,template_slug,trigger_source,trigger_event,aggregate_id,dedupe_key,status,updated_at,last_error_code)
+      VALUES ('transactional','subscription-stock-wait-started','fixture','fixture',$1,'wait-latest','delivered',$3,NULL),
+        ('transactional','subscription-stock-wait-started','fixture','fixture',$1,'wait-earlier','failed',
+          $3::timestamptz-interval '1 min','connection_failed'),
+        ('transactional','subscription-renewal-upcoming','fixture','fixture',$1,'unrelated','sent',$3,NULL),
+        ('transactional','subscription-stock-wait-started','fixture','fixture',$2,'other-wait','sent',$3,NULL)`,
+    [wait, otherWait, now]);
+    await db.query("COMMIT");
+  } catch (error) {
+    await db.query("ROLLBACK; SET ROLE postgres");
+    throw error;
+  }
+
+  let snapshots = 0;
+  const reads = createPostgresStockWaitReads({
+    graph: "managed", authorizeOperator: async () => true, authorizeEvidence: async () => true,
+    readOwnedAccount: async () => ({ principalId: principal, clientId: client, subscriptionIds: [subscription] }),
+    async withReadSnapshot(work) {
+      snapshots++;
+      await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET LOCAL ROLE service_role");
+      try { return await work(db); }
+      finally { await db.query("ROLLBACK"); }
+    },
+  });
+  const pending = await reads.listAdmin({ state: "all", page: 1, pageSize: 1 });
+  expect(pending).toMatchObject({ totalCount: 2,
+    productTotals: [{ sku: "REFILL", displayName: "Refill", missingUnits: 4, affectedCases: 1 }],
+    cases: [{ id: wait, state: "stock_secured", orderId: order, cycleId: cycle, resumedAt: null,
+      paymentStatus: "created", paymentEvidence: "recorded",
+      notices: [
+        { templateSlug: "subscription-stock-wait-started", status: "delivered", lastErrorCode: null },
+        { templateSlug: "subscription-stock-wait-started", status: "failed", lastErrorCode: "connection_failed" },
+      ] }],
+  });
+  expect(snapshots).toBe(1);
+  expect(pending.cases[0]?.notices.map(notice => Date.parse(notice.updatedAt))).toEqual([Date.parse(now), Date.parse(now) - 60_000]);
+  const owned = await reads.listCustomer();
+  expect(owned.map(row => row.id)).toEqual([wait]);
+  expect(owned[0]).not.toHaveProperty("paymentStatus");
+  expect(await reads.listAdmin({ state: "all", page: 99, pageSize: 1 })).toMatchObject({
+    totalCount: 2, productTotals: pending.productTotals, cases: [],
+  });
+
+  async function updateGraph(sql: string, values: unknown[]) {
+    await db.query("BEGIN; SET LOCAL session_replication_role=replica");
+    try { await db.query(sql, values); await db.query("COMMIT"); }
+    catch (error) { await db.query("ROLLBACK"); throw error; }
+  }
+  await updateGraph(`WITH settled AS (UPDATE public.commerce_payment_intents SET status='succeeded' WHERE order_id=$1),
+    paid AS (UPDATE public.commerce_orders SET status='paid' WHERE id=$1)
+    UPDATE public.subscription_cycles SET status='paid' WHERE id=$2`, [order, cycle]);
+  const paid = (await reads.listAdmin({ state: "all", page: 1, pageSize: 2 })).cases;
+  expect(paid.map(row => [row.id, row.paymentStatus, row.paymentEvidence])).toEqual([
+    [wait, "succeeded", "recorded"], [otherWait, "not_started", "not_applicable"],
+  ]);
+  await updateGraph("UPDATE public.commerce_payment_intents SET subscription_id=$2 WHERE order_id=$1", [order, otherSubscription]);
+  expect((await reads.listAdmin({ state: "all", page: 1, pageSize: 1 })).cases[0]).toMatchObject({
+    id: wait, orderId: order, paymentStatus: "not_started", paymentEvidence: "missing",
+  });
+  await db.query("SET ROLE postgres; SET search_path=public,extensions");
+});

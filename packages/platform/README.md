@@ -2820,6 +2820,23 @@ defines `subscriber_winback_policy`, its compatibility defaults and the
 starter's retention-consent capture/refusal obligation. This worker mounts no
 account page and selects no other retention planner.
 
+### Read stock waits
+
+Use the experimental `createPostgresStockWaitReads` from
+`@openlup/platform/subscriptions` with the installed native or managed graph.
+Supply a server-side `withReadSnapshot` that opens one read-only repeatable-read
+transaction and keeps all queries on its connection. Bind operator and evidence
+checks to the current request. For customer reads, resolve the authenticated
+principal, client and permitted subscription IDs server-side. The reader verifies
+that ownership in the same snapshot as the cases.
+
+Use `listAdmin` for filtered pages with complete shortage totals and payment
+evidence, and `readOperatorSummary` for totals alone. Use `listEvidence` for up to
+2,000 open cases ordered by check time and `listCustomer` for up to 100 owned
+open cases ordered by opening time. The reader applies eligibility after the
+limit and keeps stock-secured cases visible. Pass evidence and the observation
+time to `stockWaitHealth` to identify stalls and check notice freshness.
+
 ## Invoicing contracts
 
 See [invoicing composition, duties and read helpers](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md).
