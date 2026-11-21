@@ -969,9 +969,20 @@ Locale overrides (`LC_*`), a system gitconfig and `OPENLUP_STACK_BASE` are also
 removed; other local environment variables pass through unchanged.
 
 Run `npm run preflight -- --fast` before reporting a change ready and before starting reviewers.
-It checks worktree cleanliness, mergeability against `origin/main`, both neutrality gates,
-ast-grep, publication policy and inventory, and DCO. If fetch fails, it uses the local `origin/main`.
+It checks worktree cleanliness, mergeability against `origin/main` (skipped when `OPENLUP_STACK_BASE`
+points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, the
+published-tree self-check (`oss:published-tree -- --self-check`), changelog fragments, added
+test-line date/expiry warnings, `gitleaks`, conditional guide-contract and package-manifest checks,
+and DCO sign-off across all commits (merge commits included). `WARN` and `SKIP` statuses surface
+without failing `--fast`. If fetch fails, it uses the local `origin/main`.
 The fast tier does not replace full preflight or hosted CI.
+
+Run `npm run preflight -- --area` for a Docker-free, area-scoped check over changes since
+`git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
+triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
+`scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
+and `sql admit` when SQL under `db/` or `packages/*/sql/` changed. `--fast` and `--area` are
+mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
