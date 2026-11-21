@@ -89,6 +89,9 @@ SELECT current_user::pg_catalog.text AS current_user,session_user::pg_catalog.te
     (pg_catalog.has_database_privilege(r.oid,pg_catalog.current_database(),'CREATE')
     OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
     OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM'))) AS publication_unsafe,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_shdepend d JOIN pg_catalog.pg_roles r ON d.refobjid OPERATOR(pg_catalog.=) r.oid
+    WHERE d.refclassid OPERATOR(pg_catalog.=) 'pg_catalog.pg_authid'::pg_catalog.regclass AND d.deptype OPERATOR(pg_catalog.=) 'o'
+      AND r.rolname OPERATOR(pg_catalog.=) 'openlup_catalog_publication') AS publication_owns,
   CASE WHEN $2::pg_catalog.text IS NULL THEN false ELSE COALESCE((SELECT pg_catalog.has_database_privilege(r.oid,pg_catalog.current_database(),'CREATE')
     OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.left(n.nspname,3) OPERATOR(pg_catalog.<>) 'pg_' AND n.nspname OPERATOR(pg_catalog.<>) 'information_schema' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
     OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM')
@@ -103,7 +106,7 @@ type SessionFacts = {
   server_version_num: unknown; replication_role: unknown; runtime_setting: unknown; restore_setting: unknown;
   mode_setting: unknown; ledger_exists: unknown; ledger_owner: unknown; session_lock_held: unknown;
   runtime_unsafe: unknown; restore_unsafe: unknown; unsafe_replication_default: unknown; default_privileges_exist: unknown;
-  effective_search_path: unknown; publication_unsafe: unknown;
+  effective_search_path: unknown; publication_unsafe: unknown; publication_owns: unknown;
 };
 type CheckedCatalog = { rows: readonly CatalogRow[]; protectedNames: ReadonlySet<string> };
 
@@ -123,6 +126,8 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
   if (!facts || !Array.isArray(facts.effective_search_path)
     || facts.effective_search_path.length !== 2 || facts.effective_search_path[0] !== "pg_catalog"
     || facts.effective_search_path[1] !== "public") fail("qualified_profile_requires_canonical_search_path");
+  if (facts.publication_owns === true)
+    fail("catalog_publication_login_invalid. Transfer or drop objects owned by openlup_catalog_publication in every database.");
   if (!facts || facts.current_user !== selection.migrationLogin || facts.session_user !== selection.migrationLogin
     || facts.bootstrap_login !== selection.bootstrapLogin || facts.database_owner !== selection.migrationLogin) fail("actual_login_or_database_owner_mismatch");
   if (typeof facts.server_version_num !== "number" || Math.trunc(facts.server_version_num / 10_000) !== 16) fail("requires_qualified_postgresql_16_profile");
@@ -188,10 +193,10 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
     if (row.kind === "role" || row.kind === "role-membership") continue;
     const a = attributes(row);
     if (row.kind === "default-privilege") fail("qualified_profile_requires_canonical_default_privileges");
+    if (a.owner === PUBLICATION_LOGIN || a.ownerRole === PUBLICATION_LOGIN) fail(`catalog_publication_login_invalid. ${PUBLICATION_FIX}`);
     const principals = [a.owner, a.ownerRole, a.grantor, a.grantee,
       ...(row.kind === "policy" && Array.isArray(a.roles) ? a.roles : [])];
     if (principals.some(name => typeof name === "string" && name !== "PUBLIC" && !protectedNames.has(name))) fail("outside_principal_references_selected_catalog");
-    if (a.owner === PUBLICATION_LOGIN) fail(`catalog_publication_login_invalid. ${PUBLICATION_FIX}`);
     if (typeof a.owner === "string" && ![selection.migrationLogin, selection.bootstrapLogin, "pg_database_owner", "platform_acquisition_owner", "openlup_retained_import_owner"].includes(a.owner)) fail("runtime_or_actor_owns_selected_object");
     if (a.owner === "openlup_retained_import_owner" && (!applied.some(({ file }) => file === IMPORT)
       || row.kind !== "function" || row.schema !== "public" || !["client_import_retained_row", "subscription_cycle_import_retained_row"].includes(row.name))) fail("unexpected_import_owner_object");
