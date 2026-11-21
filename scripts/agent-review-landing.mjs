@@ -8,7 +8,29 @@ import { REGISTRY_PATHS, registryUnion } from './agent-review-registry.mjs';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { generatedCarrier, SQL_REFERENCE } from './agent-review-generators.mjs';
 
-export async function landingMerge(cwd = process.cwd()) {
+const INVENTORY_INPUT_PATHS = new Set([
+  ...MIGRATION_REGISTRIES,
+  INVENTORY_PATH,
+  'config/ci-images.json',
+  'scripts/ci-image-pull.mjs',
+  'scripts/ci-image-mirror.mjs',
+  'scripts/platform-migration-manifest.ts',
+  'scripts/installation-inventory-refresh.ts',
+  'server/adapters/postgres/migrationRunner.ts',
+  'server/adapters/postgres/qualifiedInstall.ts',
+  'server/adapters/postgres/selectedCatalogProjection.ts',
+  'server/adapters/postgres/connectedStoreCapture.ts',
+  'tests/helpers/postgresContainer.ts',
+]);
+
+export function isInventoryInputPath(path) {
+  return INVENTORY_INPUT_PATHS.has(path) ||
+    /^(?:db|supabase)\/.*\.sql$/u.test(path) ||
+    /^packages\/[^/]+\/sql\//u.test(path) ||
+    /^packages\/platform\/src\/migrations\//u.test(path);
+}
+
+export async function landingMerge(cwd = process.cwd(), { runCommand } = {}) {
   if ((await git(cwd, 'status', '--porcelain=v1', '--untracked-files=all')).trim()) throw new Error('landing: clean committed checkout required');
   for (const key of ['user.name', 'user.email']) {
     let configured;
@@ -37,17 +59,13 @@ export async function landingMerge(cwd = process.cwd()) {
     } catch (error) { throw new Error(error.stderr?.trim() || error.message, { cause: error }); }
   };
   const read = (revision, path) => git(cwd, 'show', `${revision}:${path}`);
+  const prPaths = (await git(cwd, 'diff', '--name-only', '--no-renames', '-z', base, head)).split('\0').filter(Boolean);
+  const needsInventoryRefresh = prPaths.some(isInventoryInputPath) || conflicts.some(isInventoryInputPath);
   // Resolve envelopes before any generator or database work; historical conflict stops.
   const inventories = await Promise.all([base, head, main].map(revision => read(revision, INVENTORY_PATH)));
   const envelopes = inventories.map(inventoryEnvelope);
-  if (!envelopes.every(value => value.before === envelopes[0].before && value.after === envelopes[0].after)) throw new Error('landing: historical inventory conflict');
+  if (needsInventoryRefresh && !envelopes.every(value => value.before === envelopes[0].before && value.after === envelopes[0].after)) throw new Error('landing: historical inventory conflict');
   if (conflicts.includes(SQL_REFERENCE)) runGenerators('owners.syncSqlReference(process.cwd());');
-  writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[1]);
-  for (const path of MIGRATION_REGISTRIES) {
-    const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
-    writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventories[1]));
-    await git(cwd, 'add', '--', path);
-  }
   for (const path of conflicts.filter(path => REGISTRY_PATHS.includes(path))) {
     const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
     writeFileSync(resolve(cwd, path), registryUnion(path, ...inputs));
@@ -57,13 +75,24 @@ export async function landingMerge(cwd = process.cwd()) {
   for (const path of conflicts.filter(generatedCarrier)) {
     if (path !== SQL_REFERENCE && !REGISTRY_PATHS.includes(path)) await git(cwd, 'checkout', '--ours', '--', path);
   }
-  const run = (command, args) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000 });
-  // Owners load from the merged tree; this process still holds pre-merge modules.
-  run(process.execPath, ['--import', 'tsx', resolve(cwd, 'scripts/installation-inventory-refresh.ts')]);
-  const inventory = readFileSync(resolve(cwd, INVENTORY_PATH), 'utf8');
-  for (const path of MIGRATION_REGISTRIES) {
-    const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
-    writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventory));
+  if (needsInventoryRefresh) {
+    writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[1]);
+    for (const path of MIGRATION_REGISTRIES) {
+      const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
+      writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventories[1]));
+      await git(cwd, 'add', '--', path);
+    }
+    const run = runCommand ?? ((command, args) => execFileSync(command, args, { cwd, stdio: 'inherit', timeout: 900000 }));
+    // Owners load from the merged tree; this process still holds pre-merge modules.
+    run(process.execPath, [resolve(cwd, 'scripts/build-packages-incremental.mjs')]);
+    run(process.execPath, ['--import', 'tsx', resolve(cwd, 'scripts/installation-inventory-refresh.ts')]);
+    const inventory = readFileSync(resolve(cwd, INVENTORY_PATH), 'utf8');
+    for (const path of MIGRATION_REGISTRIES) {
+      const inputs = await Promise.all([base, head, main].map(revision => read(revision, path)));
+      writeFileSync(resolve(cwd, path), migrationRegistryUnion(path, ...inputs, inventory));
+    }
+  } else {
+    writeFileSync(resolve(cwd, INVENTORY_PATH), inventories[2]);
   }
   const paths = (await git(cwd, 'ls-files', '-z')).split('\0').filter(Boolean);
   runGenerators("owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));", paths.join('\0'));
@@ -71,6 +100,6 @@ export async function landingMerge(cwd = process.cwd()) {
   await git(cwd, 'add', '--', ...staged);
   if ((await git(cwd, 'diff', '--name-only', '--diff-filter=U')).trim()) throw new Error('landing: unresolved conflicts remain');
   await git(cwd, 'commit', '-s', '-m', 'Merge origin/main and refresh derived carriers');
-  return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main };
+  return { head: (await git(cwd, 'rev-parse', 'HEAD')).trim(), main, inventoryRefreshed: needsInventoryRefresh };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) landingMerge().then(result => console.log(JSON.stringify(result))).catch(error => { console.error(error.message); process.exitCode = 1; });

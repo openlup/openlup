@@ -75,13 +75,64 @@ describe('closed registry grammar', () => {
   });
   it.each(['class', 'removal', 'reorder', 'duplicate', 'overlap', 'outside'])('refuses %s rather than silently normalize', async kind => {
     const path = REGISTRY_PATHS[0]; const source = await readFile(path, 'utf8');
-    const a = JSON.parse(addRegistry(path, source, 'zz-a')); const b = addRegistry(path, source, 'zz-b');
+    const a = JSON.parse(addRegistry(path, source, 'zz-a'));
+    let right = addRegistry(path, source, 'zz-b');
     if (kind === 'class') a.publicPaths[0].class = 'entrypoint';
     if (kind === 'removal') a.publicPaths.shift();
     if (kind === 'reorder') a.publicPaths.reverse();
     if (kind === 'duplicate') a.publicPaths.push(a.publicPaths[0]);
+    if (kind === 'overlap') {
+      const conflict = structuredClone(a);
+      conflict.publicPaths.find((row: { path: string }) => row.path === 'zz-a').class = 'policy';
+      right = JSON.stringify(conflict, null, 2) + '\n';
+    }
     if (kind === 'outside') a.schemaVersion = 4;
-    expect(() => registryUnion(path, source, JSON.stringify(a, null, 2) + '\n', kind === 'overlap' ? JSON.stringify(a, null, 2) + '\n' : b)).toThrow();
+    expect(() => registryUnion(path, source, JSON.stringify(a, null, 2) + '\n', right)).toThrow();
+  });
+  it.each(REGISTRY_PATHS)('deduplicates byte-for-byte identical stacked additions in the same gap for %s', async path => {
+    const source = await readFile(path, 'utf8');
+    const withPred = addRegistry(path, source, 'zz-pred');
+    const left = addRegistry(path, withPred, 'zz-stack');
+    const right = addRegistry(path, withPred, 'zz-main');
+    const merged = registryUnion(path, source, left, right);
+    const list = readRegistry(path, merged).lists[0];
+    const keys = list.map((entry: string | { path: string }) => typeof entry === 'string' ? entry : entry.path);
+    expect(keys.filter((entry: string) => entry === 'zz-pred')).toHaveLength(1);
+    expect(keys).toContain('zz-main');
+    expect(keys).toContain('zz-stack');
+  });
+  it('refuses same-key different-value, cross-gap, cross-array overlaps and unilateral outside edits', async () => {
+    // 1. Same key with different value in publication catalog.
+    const catPath = REGISTRY_PATHS[0];
+    const catBase = await readFile(catPath, 'utf8');
+    const catLeft = addRegistry(catPath, catBase, 'zz-clash');
+    const catRightObj = JSON.parse(catLeft);
+    catRightObj.publicPaths.find((row: { path: string }) => row.path === 'zz-clash').class = 'policy';
+    expect(() => registryUnion(catPath, catBase, catLeft, JSON.stringify(catRightObj, null, 2) + '\n')).toThrow('overlapping additions');
+
+    // 2. Same key added in different gaps of the same array.
+    const boundaryPath = REGISTRY_PATHS[1];
+    const boundaryBase = await readFile(boundaryPath, 'utf8');
+    const boundaryParsed = readRegistry(boundaryPath, boundaryBase);
+    const [bStart, bEnd] = boundaryParsed.ranges[0];
+    const bList = boundaryParsed.lists[0];
+    const boundaryLeft = boundaryBase.slice(0, bStart) + JSON.stringify(['zz-cross-gap', ...bList]) + boundaryBase.slice(bEnd);
+    const boundaryRight = boundaryBase.slice(0, bStart) + JSON.stringify([...bList, 'zz-cross-gap']) + boundaryBase.slice(bEnd);
+    expect(() => registryUnion(boundaryPath, boundaryBase, boundaryLeft, boundaryRight)).toThrow('overlapping additions');
+
+    // 3. Same key added in different arrays (NON_ADAPTER_ENTRIES vs ADAPTER_ENTRIES).
+    const coldPath = REGISTRY_PATHS[2];
+    const coldBase = await readFile(coldPath, 'utf8');
+    const coldLeft = addRegistry(coldPath, coldBase, 'zz-cross-array');
+    const coldParsed = readRegistry(coldPath, coldBase);
+    const [aStart, aEnd] = coldParsed.ranges[1];
+    const aList = [...coldParsed.lists[1], 'zz-cross-array'];
+    const coldRight = coldBase.slice(0, aStart) + `[\n${aList.map((v: string) => `  ${JSON.stringify(v)},`).join('\n')}\n]` + coldBase.slice(aEnd);
+    expect(() => registryUnion(coldPath, coldBase, coldLeft, coldRight)).toThrow('overlapping additions');
+
+    // 4. Unilateral outside edit MUST still refuse even when additions are identical.
+    const outsideLeft = coldBase.replace('Cold installed-artifact proof.', 'Cold installed-artifact proof, edited.');
+    expect(() => registryUnion(coldPath, coldBase, outsideLeft, coldBase)).toThrow('changed carrier outside named arrays');
   });
 });
 
