@@ -469,4 +469,53 @@ describe('six real Git witnesses', () => {
     await expect(f.cli('prepare', '--new', intentPath)).resolves.toBe(0);
     await expect(f.cli('verify')).rejects.toThrow('independent PASS reports required');
   });
+
+  it('allows two parallel reviewers in the same prepare round to close the same open finding via CLI and refuses closure in the next round', async () => {
+    const f = await fixture();
+    const request = join(f.scratch, 'behavior-intent.json');
+    await writeFile(request, JSON.stringify({ intent: { risk: 'behavior', criteria: 'Verify parallel card closure' } }));
+    await f.cli('prepare', request);
+    const round1 = JSON.parse(await readFile(f.statePath, 'utf8'));
+    const reportPath = join(f.scratch, 'report.json');
+    const writeReport = (payload: Record<string, unknown>) => writeFile(reportPath, JSON.stringify({
+      cold: true, verdict: 'PASS', findings: [], closes: [],
+      documentation: 'Fixture assessment: reviewed canonical guidance and secondary examples; no impact.',
+      ...payload,
+    }));
+
+    await writeReport({
+      reviewer: 'reviewer-a', verdict: 'FAIL', tree: round1.candidate.tree,
+      findings: [{ id: 'A-1', summary: 'needs guard', material: true }],
+    });
+    await f.cli('record', reportPath);
+    await writeReport({ reviewer: 'reviewer-b', verdict: 'FAIL', tree: round1.candidate.tree });
+    await f.cli('record', reportPath);
+
+    await writeFile(join(f.cwd, 'source.txt'), 'repaired\n');
+    f.commit();
+    await f.cli('prepare', request);
+    const round2 = JSON.parse(await readFile(f.statePath, 'utf8'));
+
+    await writeReport({ reviewer: 'reviewer-g', tree: round2.candidate.tree, closes: ['A-1'] });
+    await expect(f.cli('record', reportPath)).resolves.toBe(0);
+    await writeReport({ reviewer: 'reviewer-h', tree: round2.candidate.tree, closes: ['A-1'] });
+    await expect(f.cli('record', reportPath)).resolves.toBe(0);
+
+    await expect(f.cli('status', '--explain')).resolves.toBe(0);
+    const explained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
+    expect(explained).toMatchObject({
+      status: 'verify_required', openFindings: [],
+      requirements: { floor: 2, acceptedReports: 2, missingReports: 0, reviewers: ['reviewer-g', 'reviewer-h'] },
+      regroupAdvisory: { triggered: false, nonConvergingCycles: 0, reason: null },
+    });
+    await expect(f.cli('verify')).resolves.toBe(0);
+    await expect(f.cli('receipt', '12')).resolves.toBe(0);
+
+    await writeFile(join(f.cwd, 'source.txt'), 'follow-up\n');
+    f.commit();
+    await f.cli('prepare', request);
+    const round3 = JSON.parse(await readFile(f.statePath, 'utf8'));
+    await writeReport({ reviewer: 'reviewer-i', tree: round3.candidate.tree, closes: ['A-1'] });
+    await expect(f.cli('record', reportPath)).rejects.toThrow('closes must name open material findings');
+  });
 });

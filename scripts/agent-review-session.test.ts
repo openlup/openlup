@@ -570,4 +570,171 @@ describe('native review decisions', () => {
       expect(receiptBody(receiptSummary(session, 12, time + 1))).toContain(`Reviewer floor 0 · Scope ${kind}`);
     }
   });
+  it('allows idempotent parallel closure of findings open before prepare while refusing invalid closures', () => {
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    const behaviorIntent = { ...intent, risk: 'behavior' };
+    let session = prepare({ intent: behaviorIntent, rules });
+    session = recordReport(session, report({
+      reviewer: 'reviewer-a', verdict: 'FAIL',
+      findings: [
+        { id: 'A-1', summary: 'missing invariant check', material: true },
+        { id: 'N-1', summary: 'optional rename', material: false },
+      ],
+    }), time);
+    session = recordReport(session, report({ reviewer: 'reviewer-b', verdict: 'FAIL' }), time);
+
+    const repair1 = { ...observed, head: 'd'.repeat(40), tree: 'e'.repeat(40), rules, intent: behaviorIntent, authorSessionId: 'author' };
+    session = prepareCandidate(session, repair1, time + 1);
+    // Refuses non-material closure and duplicate closure IDs within a single report.
+    expect(() => recordReport(session, report({ reviewer: 'bad-nonmaterial', tree: repair1.tree, closes: ['N-1'] }), time + 1)).toThrow('closes must name open material findings');
+    expect(() => recordReport(session, report({ reviewer: 'bad-dup', tree: repair1.tree, closes: ['A-1', 'A-1'] }), time + 1)).toThrow('closes must name open material findings');
+    // Refuses closing a brand-new finding opened in the same single report.
+    expect(() => recordReport(session, report({
+      reviewer: 'bad-self', tree: repair1.tree,
+      findings: [{ id: 'S-1', summary: 'self opened', material: true }],
+      closes: ['S-1'],
+    }), time + 1)).toThrow('closes must name open material findings');
+
+    // Two parallel reviewers in the same prepare round may both close A-1 idempotently.
+    session = recordReport(session, report({ reviewer: 'reviewer-g', tree: repair1.tree, closes: ['A-1'] }), time + 1);
+    session = recordReport(session, report({ reviewer: 'reviewer-h', tree: repair1.tree, closes: ['A-1'] }), time + 1);
+    expect(verdict(session, repair1, time + 1)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    expect(explainSession(session, repair1, time + 1)).toMatchObject({
+      status: 'verify_required', openFindings: [],
+      regroupAdvisory: { triggered: false, nonConvergingCycles: 0, reason: null },
+    });
+    const summary = receiptSummary(session, 12, time + 1);
+    const body = receiptBody(summary);
+    expect(body).toContain('| reviewer-g | PASS | full | A-1 |');
+    expect(body).toContain('| reviewer-h | PASS | full | A-1 |');
+    expect(body).toContain('Open cards: none');
+    expect(admit({ receipt: parseReceipt(body), observed: { ...repair1, pr: 12, baseValid: true }, now: time + 1 })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+
+    // Re-opening A-1 in the same round after parallel closure keeps A-1 open until closed again.
+    const reopened = recordReport(session, report({
+      reviewer: 'reviewer-reopen', tree: repair1.tree, verdict: 'FAIL',
+      findings: [{ id: 'A-1', summary: 'missing invariant check', material: true }],
+    }), time + 1);
+    expect(verdict(reopened, repair1, time + 1)).toMatchObject({ ok: false, code: 'needs_agent_review', reason: 'close every material finding' });
+
+    // A finding opened during this round (not open at prepare) still preserves sequential closure,
+    // but cannot be idempotently closed a second time in the same round.
+    let sameRound = recordReport(session, report({
+      reviewer: 'reviewer-open', tree: repair1.tree, verdict: 'FAIL',
+      findings: [{ id: 'G-1', summary: 'new finding in round 2', material: true }],
+    }), time + 1);
+    sameRound = recordReport(sameRound, report({ reviewer: 'reviewer-seq-close', tree: repair1.tree, closes: ['G-1'] }), time + 1);
+    expect(() => recordReport(sameRound, report({ reviewer: 'reviewer-second-close', tree: repair1.tree, closes: ['G-1'] }), time + 1)).toThrow('closes must name open material findings');
+
+    // Next prepare round refuses closing A-1 because it was already closed in a previous round.
+    const repair2 = { ...observed, head: 'f'.repeat(40), tree: '9'.repeat(40), rules, intent: behaviorIntent, authorSessionId: 'author' };
+    const nextRound = prepareCandidate(session, repair2, time + 2);
+    expect(() => recordReport(nextRound, report({ reviewer: 'reviewer-i', tree: repair2.tree, closes: ['A-1'] }), time + 2)).toThrow('closes must name open material findings');
+
+    // validateHistory enforces exact symmetry against tampered histories in verdict() and admit().
+    for (const tampered of [
+      (() => {
+        const copy = structuredClone(nextRound);
+        copy.history.push({ type: 'report', at: time + 2, report: { ...report({ reviewer: 'tamper-prev', tree: repair2.tree, closes: ['A-1'] }), at: time + 2 } });
+        return { state: copy, cand: repair2 };
+      })(),
+      (() => {
+        const copy = structuredClone(session);
+        copy.history.push({ type: 'report', at: time + 1, report: { ...report({ reviewer: 'tamper-nonmat', tree: repair1.tree, closes: ['N-1'] }), at: time + 1 } });
+        return { state: copy, cand: repair1 };
+      })(),
+      (() => {
+        const copy = structuredClone(session);
+        copy.history.push({ type: 'report', at: time + 1, report: { ...report({ reviewer: 'tamper-dup', tree: repair1.tree, closes: ['A-1', 'A-1'] }), at: time + 1 } });
+        return { state: copy, cand: repair1 };
+      })(),
+      (() => {
+        const copy = structuredClone(session);
+        copy.history.push({
+          type: 'report', at: time + 1,
+          report: { ...report({ reviewer: 'tamper-self', tree: repair1.tree, findings: [{ id: 'S-1', summary: 'self opened', material: true }], closes: ['S-1'] }), at: time + 1 },
+        });
+        return { state: copy, cand: repair1 };
+      })(),
+      (() => {
+        const copy = structuredClone(sameRound);
+        copy.history.push({ type: 'report', at: time + 1, report: { ...report({ reviewer: 'tamper-same-round-dup', tree: repair1.tree, closes: ['G-1'] }), at: time + 1 } });
+        return { state: copy, cand: repair1 };
+      })(),
+    ]) {
+      expect(verdict(tampered.state, tampered.cand, time + 2)).toMatchObject({ ok: false, code: 'invalid', reason: 'invalid: invalid historical finding closure' });
+    }
+  });
+  it('surfaces advisory regroupAdvisory after two consecutive non-converging repair cycles without affecting verdict or admission', () => {
+    const rules = { version: 3, base: '1'.repeat(64), head: '2'.repeat(64) };
+    let session = prepare({ rules });
+    expect(explainSession(session, session.candidate, time).regroupAdvisory).toEqual({
+      triggered: false, nonConvergingCycles: 0, reason: null,
+    });
+
+    // Cycle 0: opens F1 (0 -> 1). Initial finding discovery is not a repair cycle.
+    session = recordReport(session, report({
+      reviewer: 'r0', verdict: 'FAIL',
+      findings: [{ id: 'F1', summary: 'defect one', material: true }],
+    }), time);
+    expect(explainSession(session, session.candidate, time).regroupAdvisory).toEqual({
+      triggered: false, nonConvergingCycles: 0, reason: null,
+    });
+
+    // Repair cycle 1: closes F1 but opens F2 (1 -> 1) -> 1 non-converging cycle (not triggered yet).
+    const c1 = { ...observed, head: '1'.repeat(40), tree: '1'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c1, time + 1);
+    session = recordReport(session, report({
+      reviewer: 'r1', tree: c1.tree, verdict: 'FAIL',
+      findings: [{ id: 'F2', summary: 'defect two', material: true }, { id: 'A1', summary: 'advice only', material: false }],
+      closes: ['F1'],
+    }), time + 1);
+    expect(explainSession(session, c1, time + 1).regroupAdvisory).toEqual({
+      triggered: false, nonConvergingCycles: 1, reason: null,
+    });
+
+    // Repair cycle 2: leaves F2 open and opens F3 (1 -> 2) -> 2 consecutive non-converging cycles -> triggered!
+    const c2 = { ...observed, head: '2'.repeat(40), tree: '2'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c2, time + 2);
+    session = recordReport(session, report({
+      reviewer: 'r2', tree: c2.tree, verdict: 'FAIL',
+      findings: [{ id: 'F3', summary: 'defect three', material: true }],
+    }), time + 2);
+    expect(explainSession(session, c2, time + 2).regroupAdvisory).toEqual({
+      triggered: true,
+      nonConvergingCycles: 2,
+      reason: '2 consecutive repair cycles did not reduce open material findings; regroup before editing further.',
+    });
+
+    // Preparing cycle 3 before reports arrive preserves the advisory from completed cycles.
+    const c3 = { ...observed, head: '3'.repeat(40), tree: '3'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c3, time + 3);
+    expect(explainSession(session, c3, time + 3).regroupAdvisory).toMatchObject({
+      triggered: true, nonConvergingCycles: 2,
+    });
+
+    // Cycle 3 closes F2 (2 -> 1, strictly decreases) -> converging! Advisory resets.
+    session = recordReport(session, report({ reviewer: 'r3', tree: c3.tree, verdict: 'FAIL', closes: ['F2'] }), time + 3);
+    expect(explainSession(session, c3, time + 3).regroupAdvisory).toEqual({
+      triggered: false, nonConvergingCycles: 0, reason: null,
+    });
+
+    // Cycle 4 closes F3 (1 -> 0) and passes -> verdict and admit succeed cleanly without advisory interference.
+    const c4 = { ...observed, head: '4'.repeat(40), tree: '4'.repeat(40), rules, intent, authorSessionId: 'author' };
+    session = prepareCandidate(session, c4, time + 4);
+    session = recordReport(session, report({ reviewer: 'r4', tree: c4.tree, verdict: 'PASS', closes: ['F3'] }), time + 4);
+    expect(explainSession(session, c4, time + 4).regroupAdvisory).toEqual({
+      triggered: false, nonConvergingCycles: 0, reason: null,
+    });
+    expect(verdict(session, c4, time + 4)).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+    const summary = receiptSummary(session, 12, time + 4);
+    expect(admit({ receipt: parseReceipt(receiptBody(summary)), observed: { ...c4, pr: 12, baseValid: true }, now: time + 4 })).toEqual({ ok: true, code: 'reviewed', reason: 'reviewed' });
+
+    // Corrupted legacy findings keep regroupAdvisory null instead of throwing.
+    const broken = passed();
+    broken.history.at(-1).report.findings = null;
+    expect(explainSession(broken, observed, time)).toMatchObject({
+      status: 'invalid', openFindings: null, regroupAdvisory: null,
+    });
+  });
 });

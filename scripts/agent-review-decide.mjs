@@ -45,13 +45,56 @@ function currentReports(session) {
   const start = session.history.findLastIndex(event => event.type === 'prepare');
   return session.history.slice(start + 1).filter(event => event.type === 'report').map(event => event.report);
 }
-function openFindings(session) {
+function findingState(session) {
   const open = new Map();
-  for (const event of session.history) if (event.type === 'report') {
-    for (const finding of event.report.findings) if (finding.material) open.set(finding.id, { id: finding.id, summary: finding.summary, material: true });
-    for (const id of event.report.closes) open.delete(id);
+  let openAtPrepare = new Set();
+  const closedInCurrentRound = new Set();
+  for (const event of session.history) {
+    if (event.type === 'prepare') {
+      openAtPrepare = new Set(open.keys());
+      closedInCurrentRound.clear();
+    } else if (event.type === 'report') {
+      for (const finding of event.report.findings) if (finding.material) {
+        open.set(finding.id, { id: finding.id, summary: finding.summary, material: true });
+        closedInCurrentRound.delete(finding.id);
+      }
+      for (const id of event.report.closes) {
+        open.delete(id);
+        if (openAtPrepare.has(id)) closedInCurrentRound.add(id);
+      }
+    }
   }
-  return open;
+  return { open, openAtPrepare, closedInCurrentRound };
+}
+function openFindings(session) { return findingState(session).open; }
+function computeRegroupAdvisory(session) {
+  const open = new Set();
+  const cycles = [];
+  let current = null;
+  for (const event of session.history) {
+    if (event.type === 'prepare') {
+      if (current && current.reports > 0) cycles.push({ openBefore: current.openBefore, openAfter: open.size });
+      current = { openBefore: open.size, reports: 0 };
+    } else if (event.type === 'report') {
+      if (!current) current = { openBefore: open.size, reports: 0 };
+      current.reports += 1;
+      for (const finding of event.report.findings) if (finding.material) open.add(finding.id);
+      for (const id of event.report.closes) open.delete(id);
+    }
+  }
+  if (current && current.reports > 0) cycles.push({ openBefore: current.openBefore, openAfter: open.size });
+  let nonConvergingCycles = 0;
+  for (let index = cycles.length - 1; index >= 0; index--) {
+    const cycle = cycles[index];
+    if (cycle.openBefore > 0 && cycle.openAfter >= cycle.openBefore) nonConvergingCycles += 1;
+    else break;
+  }
+  const triggered = nonConvergingCycles >= 2;
+  return {
+    triggered,
+    nonConvergingCycles,
+    reason: triggered ? `${nonConvergingCycles} consecutive repair cycles did not reduce open material findings; regroup before editing further.` : null,
+  };
 }
 // Earlier source coverage narrows inspection, never the fresh reviewer floor.
 const legacyReviewExpiry = session => Math.min(
@@ -222,15 +265,20 @@ export function recordReport(session, report, now) {
   demand(report.findings.every(finding => identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean') && new Set(report.findings.map(finding => finding.id)).size === report.findings.length, 'findings need unique stable ids, summaries and material flags');
   const prior = session.history.filter(event => event.type === 'report').flatMap(event => event.report.findings);
   demand(report.findings.every(finding => prior.every(old => old.id !== finding.id || digest(old) === digest(finding))), 'finding id changed meaning');
-  demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => openFindings(session).has(id)), 'closes must name open material findings');
+  const { open, closedInCurrentRound } = findingState(session);
+  demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => open.has(id) || closedInCurrentRound.has(id)), 'closes must name open material findings');
   const next = structuredClone(session); next.history.push({ type: 'report', at: now, report: { ...report, at: now } }); return next;
 }
 function validateHistory(session) {
   let candidate; let enabled = false; const findings = new Map(); const open = new Set();
+  let openAtPrepare = new Set(); const closedInCurrentRound = new Set();
   for (const event of session.history) {
     demand(['prepare', 'report', 'continue', 'rules', 'renew'].includes(event.type), 'unknown history event');
     if (event.type === 'rules') { demand(event.version === 3, 'unknown rules transition'); enabled = true; }
-    if (event.type === 'prepare') { candidate = event.candidate; candidateValid(candidate); enabled ||= candidate.rules?.version === 3; }
+    if (event.type === 'prepare') {
+      candidate = event.candidate; candidateValid(candidate); enabled ||= candidate.rules?.version === 3;
+      openAtPrepare = new Set(open); closedInCurrentRound.clear();
+    }
     if (event.type !== 'report') continue;
     const report = event.report;
     if (enabled) demand(identity(report.documentation), 'documentation assessment is required');
@@ -239,10 +287,11 @@ function validateHistory(session) {
     for (const finding of report.findings) {
       demand(identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean' &&
         (!findings.has(finding.id) || digest(findings.get(finding.id)) === digest(finding)), 'finding changed meaning');
-      findings.set(finding.id, finding); if (finding.material) open.add(finding.id);
+      findings.set(finding.id, finding);
     }
-    demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => open.has(id)), 'invalid historical finding closure');
-    report.closes.forEach(id => open.delete(id));
+    demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => open.has(id) || closedInCurrentRound.has(id)), 'invalid historical finding closure');
+    for (const finding of report.findings) if (finding.material) { open.add(finding.id); closedInCurrentRound.delete(finding.id); }
+    for (const id of report.closes) { open.delete(id); if (openAtPrepare.has(id)) closedInCurrentRound.add(id); }
   }
 }
 function validateSessionReports(session, now) {
@@ -303,7 +352,11 @@ export function explainSession(session, observed = session?.candidate, now = Dat
     twoReviewerPaths = (session.candidate.changedPaths ?? []).filter(session.version === 3 ? twoReviewerPath : sensitivePath);
   }
   let openMaterial = null;
-  try { openMaterial = [...openFindings(session).values()]; } catch (error) { invalidReason ??= error.message; }
+  let regroupAdvisory = null;
+  try {
+    openMaterial = [...openFindings(session).values()];
+    regroupAdvisory = computeRegroupAdvisory(session);
+  } catch (error) { invalidReason ??= error.message; }
   const missingReports = Math.max(0, floor - reports.length);
   const edge = session.version === 3 ? session.candidate.coverage : undefined;
   const coverage = edge ? {
@@ -366,6 +419,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
       twoReviewerPaths, modeChanged,
     },
     openFindings: openMaterial,
+    regroupAdvisory,
     coverage,
     nextAction,
     verifyChecksPending: [
