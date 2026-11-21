@@ -676,9 +676,13 @@
     {
       "file": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
       "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
+    },
+    {
+      "file": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+      "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
     }
   ],
-  "objectInventorySha256": "c21efc07bf5e82f13b7ae1bdc7bb60fbea3f7dd17a697e915dc96830ebfc7a84",
+  "objectInventorySha256": "601d75eb82262c6ff75e70713234bdd5812f32ff3741bee0fb0e967bdabf3e95",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1380,14 +1384,18 @@
       {
         "file": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
         "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
+      },
+      {
+        "file": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+        "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "6aa2d1f728d3799c923a54bfcbebda5ebbc1e389ea75972a8a975c778833baaa"
+        "withRestore": "c72fc8d2b5bafcc0f458a0283d0e47b7eb163a1abc75b72781da0c982b17a23a"
       },
       "separateMigrator": {
-        "withRestore": "9bcee5532c2f6ffabcf5bb42ecbcebea262450837472ab62b4896c08d09ea9b7"
+        "withRestore": "f03be597dc10e3fde62f07ae62558dc9ab7b1fc6e22b5060bc8a9a302ebc71fc"
       }
     }
   },
@@ -2084,11 +2092,15 @@
       {
         "file": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
         "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb"
+      },
+      {
+        "file": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+        "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "e3efc9ee0885af979ffb1d76d9ad0a49c0db4b13abda6a7ecc52d2018ee2d83f",
-      "operatorProvisioned": "3c735153c0305b04d55b02ab8ff5577d39f485d788e45ffed27442913e8e3a31"
+      "installerManaged": "6a729c9aa454f90e11efe5c052b7256bf0f411385e68b1a04824e630909bc186",
+      "operatorProvisioned": "c4daea4af7792829f9bd33c9d700e21ded71b1a7ecb1346c571365666836302b"
     }
   }
 }

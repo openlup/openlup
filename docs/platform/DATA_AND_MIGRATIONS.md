@@ -2370,6 +2370,9 @@ functions in the base migrations. Its other function and data lists are empty.
 The whole-file pin covers exactly the listed `ALTER FUNCTION … SET search_path`
 statements in order. The PostgreSQL catalog check allows only the pinned
 `search_path` changes.
+The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
+requires `pg_temp` last for every installed definer outside the shrink-only
+`DEFINER_SEARCH_PATH_PENDING` list.
 
 The queue routes every native filename at or after the first issued slot time
 through the guard, including SQL whose slot was prepared earlier. The guard

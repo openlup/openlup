@@ -6130,6 +6130,84 @@
         ],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "definer-search-path-pin",
+        "path": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "settingsOnlyFunctions": [
+          {
+            "signature": "public.channel_ingest_capture_read(uuid,text,uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_listing_read(uuid,uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_pull_page_read(uuid,uuid,uuid,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid)",
+            "searchPath": "pg_catalog, public, pg_temp"
+          },
+          {
+            "signature": "public.customer_checkout_recovery_find_as_actor(uuid,uuid)",
+            "searchPath": "public, auth, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_checkout_recovery_token_issue_as_actor(uuid,text,timestamptz,timestamptz)",
+            "searchPath": "public, auth, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_communication_preferences_as_actor()",
+            "searchPath": "public, auth, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_communication_preferences_set_as_actor(boolean,timestamptz)",
+            "searchPath": "public, auth, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_has_live_subscription_as_actor()",
+            "searchPath": "public, auth, pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_subscription_control_snapshot_as_actor()",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_subscription_pause_as_actor(uuid,text,text,text)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "dataStatements": []
       }
     ]
   },
@@ -8848,6 +8926,11 @@
           "afterSha256": "4a43e9a8e2bca28d0d619a24aefcce70c89ecee49b0d0e4db5e3c4f7b89836a3"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+      "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75",
+      "functions": []
     }
   ],
   "managedExactForwards": [

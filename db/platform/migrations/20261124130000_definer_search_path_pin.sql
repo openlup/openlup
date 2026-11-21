@@ -1,0 +1,17 @@
+ALTER FUNCTION public.channel_ingest_capture_read(uuid,text,uuid) SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION public.channel_ingest_record_inbound_event(uuid,text,text,text,jsonb,text,text) SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION public.channel_listing_read(uuid,uuid) SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION public.channel_pull_page_read(uuid,uuid,uuid,text) SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION public.channel_pull_page_record(uuid,uuid,uuid,uuid,text,text) SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION public.channel_pull_progress_commit(uuid,uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz) SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION public.channel_purchase_conversion_command(uuid,text,uuid,uuid,text) SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION public.channel_purchase_scope(jsonb,uuid,uuid,boolean,uuid) SET search_path = pg_catalog, public, pg_temp;
+ALTER FUNCTION public.customer_checkout_recovery_find_as_actor(uuid,uuid) SET search_path = public, auth, pg_catalog, pg_temp;
+ALTER FUNCTION public.customer_checkout_recovery_token_issue_as_actor(uuid,text,timestamptz,timestamptz) SET search_path = public, auth, pg_catalog, pg_temp;
+ALTER FUNCTION public.customer_communication_preferences_as_actor() SET search_path = public, auth, pg_catalog, pg_temp;
+ALTER FUNCTION public.customer_communication_preferences_set_as_actor(boolean,timestamptz) SET search_path = public, auth, pg_catalog, pg_temp;
+ALTER FUNCTION public.customer_has_live_subscription_as_actor() SET search_path = public, auth, pg_catalog, pg_temp;
+ALTER FUNCTION public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer) SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION public.customer_subscription_control_snapshot_as_actor() SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION public.customer_subscription_pause_as_actor(uuid,text,text,text) SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer) SET search_path = pg_catalog, pg_temp;
