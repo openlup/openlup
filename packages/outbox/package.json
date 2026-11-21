@@ -48,7 +48,8 @@
     "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
     "ci": "npm run build && npm run test && npm run api:check && npm run docs:check",
     "docs:check": "node --experimental-strip-types ../core/scripts/documentation-contract.ts --package .",
-    "ci:required": "npm run test:consumer",
+    "ci:required": "npm run test:coverage && npm run test:consumer",
+    "test:coverage": "vitest run --config vitest.config.ts --coverage",
     "test:consumer": "node --experimental-strip-types ./scripts/consumer-proof.ts"
   },
   "peerDependencies": {
