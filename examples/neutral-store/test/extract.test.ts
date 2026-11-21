@@ -218,6 +218,11 @@ test('settings show reports the six existing declarations from the selected file
 
 const managedHint = 'Managed by OpenLup. Use AGENTS.md to find the owned extension point.';
 const catalogueHint = 'Managed by OpenLup. Use owned/catalogue.ts and owned/catalogue-rules.cjs for catalogue definitions and rules.';
+const managedHeaderFixtures = [
+  ['Dockerfile', 'FROM node:24.21.0-bookworm-slim AS application\n', `# ${managedHint}`, '# syntax=docker/dockerfile:1\nFROM scratch\n'],
+  ['index.html', '<!doctype html>\n', `<!-- ${managedHint} -->`, '<!doctype html><html></html>\n'],
+  ['client/style.css', '', `/* ${managedHint} */`, '@charset "UTF-8";\n:root {}\n'],
+] as const;
 
 test('extract creates an independent repository and refuses to overwrite an existing one', async () => {
   const { mkdir } = await import('node:fs/promises');
@@ -245,8 +250,7 @@ test('extract creates an independent repository and refuses to overwrite an exis
     assert.deepEqual(candidateFiles.sort(), [...ownership.owned, ...ownership.managed, '.starter-origin.json'].sort());
     const managedJson = ['ownership.json', 'package.json', 'starter-release.json', 'tsconfig.json'];
     assert.deepEqual(ownership.managed.filter((path: string) => path.endsWith('.json')).sort(), managedJson);
-    const indexed = ['Dockerfile', 'client/style.css', 'index.html', ...managedJson];
-    const index = Buffer.from('\n## Managed files without a header\n\n' + indexed.map(path => `- \`${path}\` — ${managedHint}\n`).join(''));
+    const index = Buffer.from('\n## Managed JSON files\n\n' + managedJson.map(path => `- \`${path}\` — ${managedHint}\n`).join(''));
     // Strip only the expected annotations, then compare the source bytes and mode.
     for (const file of [...ownership.owned, ...ownership.managed]) {
       const source = resolve(root, ownership.sourceMappings?.[file] ?? file);
@@ -258,15 +262,16 @@ test('extract creates an independent repository and refuses to overwrite an exis
         bytes = bytes.subarray(0, -index.length);
       }
       if (managedJson.includes(file)) JSON.parse(bytes.toString());
-      if (ownership.managed.includes(file) && !indexed.includes(file)) {
+      if (ownership.managed.includes(file) && !managedJson.includes(file)) {
         const hint = ['host/editor-catalogue.ts', 'installation/install.ts'].includes(file) ? catalogueHint : managedHint;
         let line = `# ${hint}`;
         if (/\.(?:ts|mts|mjs)$/.test(file)) line = `// ${hint}`;
         if (file.endsWith('.md')) line = `<!-- ${hint} -->`;
+        const fixture = managedHeaderFixtures.find(([path]) => path === file);
         const lines = bytes.toString().split('\n');
         assert.equal(lines.filter(line => line.includes('Managed by OpenLup.')).length, 1, file);
-        const prefix = file === 'lifecycle' ? '#!/bin/sh\n' : '';
-        const annotation = Buffer.from(prefix + line + '\n');
+        const prefix = fixture?.[1] ?? (file === 'lifecycle' ? '#!/bin/sh\n' : '');
+        const annotation = Buffer.from(prefix + (fixture?.[2] ?? line) + '\n');
         assert.deepEqual(bytes.subarray(0, annotation.length), annotation, file);
         bytes = Buffer.concat([Buffer.from(prefix), bytes.subarray(annotation.length)]);
       } else assert.ok(!bytes.includes('Managed by OpenLup.'), file);
@@ -436,22 +441,31 @@ test('manifests without managed edit routes retain historical extraction bytes a
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
 
+for (const [path, prefix, header, malformed] of managedHeaderFixtures) {
+  test(`released extraction marks ${path} and refuses an unsupported prefix`, async () => {
+    const f = await releasedFixture();
+    try {
+      f.ownership.managed.push(path);
+      await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
+      const source = resolve(f.source, path);
+      const original = await readFile(resolve(root, path));
+      await mkdir(dirname(source), { recursive: true });
+      await writeFile(source, original);
+      const target = f.run();
+      const expected = Buffer.concat([Buffer.from(prefix + header + '\n'), original.subarray(Buffer.byteLength(prefix))]);
+      assert.deepEqual(await readFile(resolve(target, path)), expected, path);
+      await writeFile(source, malformed);
+      assert.throws(() => f.run('invalid-prefix'), /starter_managed_format_unknown/);
+    } finally { await rm(f.directory, { recursive: true, force: true }); }
+  });
+}
+
 test('released extraction pins and commits registry artifacts with deterministic content and lock identities', async () => {
   const f = await releasedFixture();
   try {
     for (const path of ['node_modules/pg', 'node_modules/pg/node_modules/@types/node'])
       f.lock.packages[path] = { version: '1.0.0', resolved: 'https://registry.npmjs.org/other/-/other-1.0.0.tgz' };
     await f.put('lock.json', f.lock);
-    const indexed = {
-      Dockerfile: Buffer.from('FROM node:24.21.0-bookworm-slim AS application\nRUN true\n'),
-      'index.html': Buffer.from('<!doctype html><html lang="en"></html>\n'),
-      'bom.html': Buffer.from('\ufeff<!doctype html><html lang="en"></html>\n'),
-      'style.css': Buffer.from('@charset "windows-1252";a::after { content: "café"; }\n', 'latin1'),
-    };
-    for (const [path, bytes] of Object.entries(indexed)) {
-      f.ownership.managed.push(path);
-      await writeFile(resolve(f.source, path), bytes);
-    }
     const scripts = [
       ['lone-cr.mjs', '#!/usr/bin/env node\rconst text = `before\nafter`;\n',
         `#!/usr/bin/env node\r// ${managedHint}\nconst text = \`before\nafter\`;\n`],
@@ -469,9 +483,6 @@ test('released extraction pins and commits registry artifacts with deterministic
     }
     await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
     const first = f.run(), second = f.run('second');
-    for (const [path, bytes] of Object.entries(indexed)) {
-      assert.deepEqual(await readFile(resolve(first, path)), bytes, path);
-    }
     for (const [path, , expected] of scripts) {
       assert.deepEqual(await readFile(resolve(first, path)), Buffer.from(expected), path);
     }

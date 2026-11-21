@@ -43,15 +43,19 @@ function managedHint(path) {
     ? `Managed by OpenLup. Use ${route.join(' and ')} for catalogue definitions and rules.`
     : 'Managed by OpenLup. Use AGENTS.md to find the owned extension point.';
 }
-function isIndexOnly(path) {
-  return path === 'Dockerfile' || /\.(?:html|css|json)$/.test(path);
-}
-function managedHeader(path, hint) {
-  if (/\.(?:[cm]?ts|[cm]?js)$/.test(path)) return `// ${hint}`;
+function managedHeader(path, hint, bytes) {
+  if (/\.(?:[cm]?ts|[cm]?js)$/.test(path)) return [`// ${hint}`, 0];
   if (path === 'lifecycle' || /^\.(?:dockerignore|gitignore|npmrc)$|\.ya?ml$/.test(path)) {
-    return `# ${hint}`;
+    return [`# ${hint}`, 0];
   }
-  if (path.endsWith('.md')) return `<!-- ${hint} -->`;
+  if (path.endsWith('.md')) return [`<!-- ${hint} -->`, 0];
+  if (path === 'Dockerfile' || path.endsWith('.html')) {
+    const docker = path === 'Dockerfile';
+    const firstLine = docker ? /^FROM [^\r\n]+\n/ : /^<!doctype html>\r?\n/i;
+    const prefix = firstLine.exec(bytes.toString('latin1'));
+    if (prefix) return [docker ? `# ${hint}` : `<!-- ${hint} -->`, prefix[0].length];
+  }
+  if (path.endsWith('.css') && bytes.subarray(0, 8).toString('latin1') !== '@charset') return [`/* ${hint} */`, 0];
   throw new Error(`starter_managed_format_unknown: ${path}`);
 }
 function validPath(path) {
@@ -144,7 +148,7 @@ if (mode) {
     ...(packs ? { verificationSource: 'candidate, local digest-verified' } : {}),
     ...(mode === 'reconstructed' ? { reason: options.get('--reason') } : {}), lockfileSha256: hash(lockBytes) };
 }
-const indexed = ownership.managed.filter(path => typeof path === 'string' && isIndexOnly(path)).sort();
+const indexed = ownership.managed.filter(path => typeof path === 'string' && path.endsWith('.json')).sort();
 const bom = Buffer.from([0xef, 0xbb, 0xbf]);
 for (const path of files) {
   const sourcePath = ownership.sourceMappings?.[path] ?? path;
@@ -160,10 +164,10 @@ for (const path of files) {
   const info = await lstat(origin);
   if (!info.isFile()) throw new Error('starter_extract_file_required');
   await mkdir(dirname(destination), { recursive: true });
-  if (managedEditRoutes && ownership.managed.includes(path) && !isIndexOnly(path)) {
+  if (managedEditRoutes && ownership.managed.includes(path) && !path.endsWith('.json')) {
     const bytes = await readFile(origin);
-    const header = managedHeader(path, managedHint(path));
     if (bytes.subarray(0, bom.length).equals(bom)) throw new Error(`starter_managed_file_bom: ${path}`);
+    const [header, afterPrefix] = managedHeader(path, managedHint(path), bytes);
     const shebang = (path === 'lifecycle' || header.startsWith('//')) && bytes[0] === 35 && bytes[1] === 33;
     let afterShebang = 0;
     if (shebang && path === 'lifecycle') afterShebang = bytes.indexOf(10) + 1;
@@ -172,13 +176,13 @@ for (const path of files) {
       const terminator = /\r\n|[\r\n]|\xe2\x80[\xa8\xa9]/.exec(bytes.toString('latin1'));
       if (terminator) afterShebang = terminator.index + terminator[0].length;
     }
-    const offset = shebang ? afterShebang || bytes.length : 0;
+    const offset = shebang ? afterShebang || bytes.length : afterPrefix;
     const separator = shebang && afterShebang === 0 ? '\n' : '';
     const parts = [bytes.subarray(0, offset), Buffer.from(separator + header + '\n'), bytes.subarray(offset)];
     if (path === 'docs/ownership.md' && indexed.length) {
       const entries = indexed.map(file => `- \`${file}\` — ${managedHint(file)}`);
       const gap = bytes.at(-1) === 10 ? '\n' : '\n\n';
-      parts.push(Buffer.from(`${gap}## Managed files without a header\n\n${entries.join('\n')}\n`));
+      parts.push(Buffer.from(`${gap}## Managed JSON files\n\n${entries.join('\n')}\n`));
     }
     await writeFile(destination, Buffer.concat(parts));
   } else await copyFile(origin, destination);

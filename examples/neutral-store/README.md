@@ -203,10 +203,11 @@ the upgrade CLI installs nothing. These modes do not establish stable-framework
 or supported-installation status.
 
 When the manifest declares `managedEditRoutes`, extraction adds one header to
-managed scripts, Markdown, YAML and supported configuration files. The extracted
-ownership guide lists Dockerfile, HTML, CSS and JSON paths. Extraction keeps
-their source bytes apart from the release rewrites above. A manifest without
-the map uses the original extraction procedure.
+each managed non-JSON file and lists managed JSON in the extracted ownership guide.
+The Dockerfile header follows the first `FROM` line and the HTML header follows
+the doctype. Extraction refuses unexpected prefixes and CSS files that begin
+with a charset declaration.
+A manifest without the map uses the original extraction procedure.
 The committed released lockfile stays generated and outside upgrade snapshots;
 the upgrade CLI installs no dependencies. Install the exact public-registry set
 separately from its committed lockfile with `npm ci`.
