@@ -67,9 +67,15 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
   return { head, manifest, receipt };
 }
 type Issue = NonNullable<Awaited<ReturnType<typeof verifiedIssue>>>;
+type PublicationReadFailure = CatalogPublicationFailure & { message: string };
 type CurrentPublicationRead = { outcome: "unpublished" }
   | { outcome: "found"; head: CatalogHeadRef; documentRef: string; observations: CatalogPublicationReceipt["changes"] }
-  | (CatalogPublicationFailure & { message: string });
+  | PublicationReadFailure;
+type PublicationHistoryRead = {
+  outcome: "page"; receipts: CatalogPublicationReceipt[]; limit: typeof limits.pageItems; nextCursor: string | null;
+} | PublicationReadFailure;
+type PublicationReceiptRead = { outcome: "absent"; receipt?: undefined } | { outcome: "found"; receipt: CatalogPublicationReceiptV2 }
+  | PublicationReadFailure;
 
 async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonly CatalogSkuRevisionRef[]) {
   const { rows } = await db.query(`SELECT r.id,r.sku_id,r.sku_code,r.digest,r.revision,
@@ -185,7 +191,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
     return issue;
   }
 
-  async function receipt(scope: { productId: string; commandKey: string }, capability: VerifiedCatalogPublisher) {
+  async function receipt(scope: { productId: string; commandKey: string }, capability: VerifiedCatalogPublisher): Promise<PublicationReceiptRead> {
     try {
       requireCondition(id.safeParse(scope.productId).success && key.safeParse(scope.commandKey).success,
         "catalog_publication_query_invalid", "validation_issue");
@@ -224,7 +230,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
         });
       } catch (error) { return publicationReadFailure(error); }
     },
-    async history(productId: string, cursor: string | null) {
+    async history(productId: string, cursor: string | null): Promise<PublicationHistoryRead> {
       try {
         requireCondition(id.safeParse(productId).success, "catalog_publication_query_invalid", "validation_issue");
         const pointer = decodeCursor(cursor, productId, "history");

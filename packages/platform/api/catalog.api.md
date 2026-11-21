@@ -1218,6 +1218,7 @@ export {};
 ```ts
 import type { PgQueryExecutor } from "../data/index.js";
 import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
+import { CATALOG_PUBLICATION_LIMITS as limits } from "./publicationContracts.js";
 import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 /** @experimental */
@@ -1234,6 +1235,9 @@ export interface CatalogPublicationReadDependencies<Context> {
         ok: false;
     }>;
 }
+type PublicationReadFailure = CatalogPublicationFailure & {
+    message: string;
+};
 type CurrentPublicationRead = {
     outcome: "unpublished";
 } | {
@@ -1241,9 +1245,20 @@ type CurrentPublicationRead = {
     head: CatalogHeadRef;
     documentRef: string;
     observations: CatalogPublicationReceipt["changes"];
-} | (CatalogPublicationFailure & {
-    message: string;
-});
+} | PublicationReadFailure;
+type PublicationHistoryRead = {
+    outcome: "page";
+    receipts: CatalogPublicationReceipt[];
+    limit: typeof limits.pageItems;
+    nextCursor: string | null;
+} | PublicationReadFailure;
+type PublicationReceiptRead = {
+    outcome: "absent";
+    receipt?: undefined;
+} | {
+    outcome: "found";
+    receipt: CatalogPublicationReceiptV2;
+} | PublicationReadFailure;
 /** Reads admitted history in one snapshot on a host-selected publication connection.
  * The host authorizes current, exact and history and supplies a verified human for receipt recovery.
  * @experimental
@@ -1251,28 +1266,13 @@ type CurrentPublicationRead = {
 export declare function createPostgresCatalogPublicationReads<Context>(deps: CatalogPublicationReadDependencies<Context>): {
     reads: {
         current(productId: string): Promise<CurrentPublicationRead>;
-        history(productId: string, cursor: string | null): Promise<(CatalogPublicationFailure & {
-            message: string;
-        }) | {
-            outcome: "page";
-            receipts: CatalogPublicationReceipt[];
-            limit: 100;
-            nextCursor: string | null;
-        }>;
+        history(productId: string, cursor: string | null): Promise<PublicationHistoryRead>;
     };
     authorize: (context: Context) => Promise<VerifiedCatalogPublisher | null>;
     receipt: (scope: {
         productId: string;
         commandKey: string;
-    }, capability: VerifiedCatalogPublisher) => Promise<(CatalogPublicationFailure & {
-        message: string;
-    }) | {
-        outcome: "absent";
-        receipt?: undefined;
-    } | {
-        outcome: "found";
-        receipt: CatalogPublicationReceiptV2;
-    }>;
+    }, capability: VerifiedCatalogPublisher) => Promise<PublicationReceiptRead>;
     readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
 };
 export {};
