@@ -128,6 +128,7 @@ export function careAvailability(row: PortalSubscription, action: CareAction, co
   if (!row.nextCycleAt || row.editCutoffAt && Date.parse(row.editCutoffAt) <= now) return 'edit_window_closed';
   return null;
 }
+export const cancelNoteLimit = 240;
 export type SaveOfferKind = 'skip' | 'reschedule' | 'pause';
 export function assertRetention(config: SubscriptionCareConfig): void {
   const policy = config.retention;

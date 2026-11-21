@@ -1,3 +1,4 @@
+import { isRecord } from '../shared/offer.ts';
 import { composeSandboxRecoveryPayments, composeExpiredRecovery } from './checkout-recovery.ts';
 import { readPostgresCustomerAccountClient, createPostgresCustomerAccountMutationPort, createCustomerAccountMutationSchemas, createAccountEventPrivacyContributor } from '@openlup/platform/account-support';
 import { createPersonalDataContributorRegistry, createCustomerBillingPrivacyContributor, createCustomerSavedAddressPrivacyContributor,
@@ -7,7 +8,7 @@ import { customerAccountPolicy } from '../owned/acquisition-policy.ts';
 import type { SubscriptionCommand } from '@openlup/platform/subscriptions/contracts';
 import { createPostgresSubscriptionCommands } from '@openlup/platform/subscriptions';
 import { isUuid } from './recurring-fence.ts';
-import { admitCareCommand, assertSubscriptionCare } from '../shared/renewal-config.ts';
+import { admitCareCommand, assertSubscriptionCare, cancelNoteLimit } from '../shared/renewal-config.ts';
 import { readAccountRenewal } from './account-renewal.ts';
 import { composeOperatorRecovery } from './operator-recovery.ts';
 import { composeAuthenticatedRecovery } from './authenticated-recovery.ts';
@@ -292,16 +293,17 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
     const allowed = ['action', 'subscriptionRef', 'reason', 'pausePreset', 'survey', 'saveOffer', 'newNextCycleAt', 'confirmedChargeTiming', 'locale'];
     if (Object.keys(input).some(key => !allowed.includes(key)) || !isUuid(input.subscriptionRef)
       || typeof input.action !== 'string' || !['skip', 'slide', 'pause', 'resume', 'cancel', 'order_now', 'reactivate'].includes(input.action)
-      || (input.reason != null && (typeof input.reason !== 'string' || input.reason.length > 2000))) return refuse('starter_input_invalid');
+      || (input.action !== 'cancel' && input.reason != null && (typeof input.reason !== 'string' || input.reason.length > 2000))) return refuse('starter_input_invalid');
     const owner = (await pool.query(`SELECT s.id FROM public.subscriptions s JOIN public.clients c ON c.id=s.client_id
       WHERE s.id=$1::uuid AND c.id=$2::uuid AND c.principal_id=$3::uuid`,
     [input.subscriptionRef, context.actor.customerRef, context.actor.principalRef])).rows[0];
     if (!owner) return refuse('starter_subscription_not_found');
-    assertSubscriptionCare(context.config.renewal.subscriptionCare);
+    const care = context.config.renewal.subscriptionCare;
+    assertSubscriptionCare(care);
     const port = createPostgresSubscriptionCommands({
-      lifecycleTerms: context.config.renewal.subscriptionCare.terms,
-      retentionReasonCodes: context.config.renewal.subscriptionCare.retentionReasons,
-      admitSubscriptionCommand: facts => admitCareCommand(context.config.renewal.subscriptionCare, facts),
+      lifecycleTerms: care.terms,
+      retentionReasonCodes: care.retentionReasons,
+      admitSubscriptionCommand: facts => admitCareCommand(care, facts),
       async withTransaction(work) {
         const db = await pool.connect();
         try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
@@ -325,10 +327,21 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
       case 'slide':
         if (typeof input.newNextCycleAt !== 'string' || !Number.isFinite(Date.parse(input.newNextCycleAt))) return refuse('starter_input_invalid');
         command = { ...base, action: 'slide', newNextCycleAt: input.newNextCycleAt, reason, confirmedChargeTiming: input.confirmedChargeTiming === true }; break;
-      case 'cancel':
-        command = { ...base, action: 'cancel', reason, confirmedChargeTiming: input.confirmedChargeTiming === true,
-          survey: input.survey as Extract<SubscriptionCommand, { action: 'cancel' }>['survey'] ?? null,
-          saveOffer: input.saveOffer as Extract<SubscriptionCommand, { action: 'cancel' }>['saveOffer'] ?? null }; break;
+      case 'cancel': {
+        const allowedReason = (value: unknown): value is string => typeof value === 'string' && care.retentionReasons.includes(value);
+        const feedback = isRecord(input.survey) ? input.survey : {};
+        const { reasonCode, comment } = feedback;
+        const note = typeof comment === 'string' ? comment.trim() : '';
+        const valid = (reasonCode === undefined || allowedReason(reasonCode))
+          && (comment == null || typeof comment === 'string' && note.length <= cancelNoteLimit);
+        const survey = valid && (reasonCode || note)
+          ? { ...(allowedReason(reasonCode) ? { reasonCode } : {}), comment: note || null, acceptedSaveOfferId: null }
+          : null;
+        command = { ...base, action: 'cancel', reason: valid && allowedReason(reason) ? reason : null,
+          confirmedChargeTiming: input.confirmedChargeTiming === true, survey,
+          saveOffer: input.saveOffer as Extract<SubscriptionCommand, { action: 'cancel' }>['saveOffer'] ?? null };
+        break;
+      }
       default:
         command = { ...base, action: input.action as 'skip' | 'resume', reason, confirmedChargeTiming: input.confirmedChargeTiming === true };
     }

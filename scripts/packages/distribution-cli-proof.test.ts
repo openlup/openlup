@@ -10,7 +10,7 @@ import { qualificationReceipt, qualifyReleasedSet } from "./exact-set-qualificat
 import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, migrateStarterOwned,
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers,
   reminderInstallationTest, starterLifecycle, starterOptionalCatalogueFiles, starterUpgradeSnapshot,
-  starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
+  starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide, proveDistributionCliConsumer,
   starterSubscriptionOffer, reconcileSubscriptionOfferCustomization } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
@@ -311,24 +311,40 @@ it.each([false, true])("upgrades direct cancellation and ask-first copy from 1.3
     expect(result.status, result.stderr || result.stdout).toBe(status);
     return JSON.parse(result.stdout);
   };
-  if (customized) for (const path of [portal, ...owned]) {
-    const previous = from.files[path]!, next = to.files[path]!, local = "// Local portal customization.\n";
-    write(path, previous + local);
-    assertUpgradeConflict(apply(1), path);
-    expect(readFileSync(join(app, path), "utf8")).toBe(previous + local);
-    candidate("predecessor.ts", previous);
-    const reconciled = execFileSync("git", ["merge-file", "-p", join(app, path), join(target, "predecessor.ts"), join(target, path)], { encoding: "utf8" });
-    expect(reconciled).toBe(next + local);
-    write(path, reconciled);
-    delete from.files[path];
-    delete to.files[path];
+  if (customized) {
+    write("ownership.json", { ...ownership, owned: [...owned, "owned/store.config.ts", "owned/fragments.ts"] });
+    write("owned/store.config.ts", "export default '#3d6657';");
+    write("owned/fragments.ts", "export default 'offer-intro';");
+    mkdirSync(join(target, "node_modules/.bin"), { recursive: true });
+    symlinkSync(resolve("packages/platform/src/lifecycle/openlup.mjs"), join(target, "node_modules/.bin/openlup"));
+    const evidence = { phases: [] as { name: string; result: string }[] };
+    const finish = proveDistributionCliConsumer(target, { from: app, to: target, fromVersion: "1.3.0", toVersion: "999999.0.0", evidence });
+    expect(readFileSync(join(app, portal), "utf8")).toContain("account-heading");
+    const localCopy = readFileSync(join(app, "owned/copy.ts"), "utf8");
+    expect(localCopy).toContain("Sign in to your account");
+    expect(localCopy).not.toMatch(/careGuidance|confirmCancel/u);
+    expect(readFileSync(join(app, starterSettingsHost), "utf8")).toContain("Set the account subscription discount");
+
+    const extracted = join(target, "reconciled-starter");
+    execFileSync(process.execPath, [resolve("examples/neutral-store/extract.mjs"), extracted]);
+    for (const path of [portal, ...owned]) writeFileSync(join(extracted, path), readFileSync(join(app, path)));
+    symlinkSync(resolve("node_modules"), join(extracted, "node_modules"), "dir");
+    const result = spawnSync("npm", ["run", "typecheck"], { cwd: extracted, encoding: "utf8" });
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(finish).toBeTypeOf("function");
+    finish?.();
+    expect(evidence.phases).toEqual(expect.arrayContaining([
+      { name: "cancellation-customization-reconciliation", result: "PASS" },
+      { name: "installed-application-and-owned-bytes", result: "PASS" },
+    ]));
+  } else {
+    expect(apply(0).applied).toEqual(expect.arrayContaining([...managed, ...owned]));
+    expect(apply(0).applied).toEqual([]);
   }
-  expect(apply(0).applied).toEqual(expect.arrayContaining(customized ? ["shared/copy-keys.ts"] : [...managed, ...owned]));
-  expect(apply(0).applied).toEqual([]);
   expect(readFileSync(join(app, portal), "utf8")).toContain("submit: 'cancelSubscription'");
   expect(readFileSync(join(app, "owned/copy.ts"), "utf8")).toContain("careOfferPermission");
   expect(readFileSync(join(app, starterSettingsHost), "utf8")).toContain("offerPresentation");
-});
+}, 30_000);
 
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "starter-next-set-"))); directories.push(directory);

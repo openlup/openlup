@@ -87,6 +87,8 @@ export const starterOptionalCatalogueFiles: ReadonlySet<string> = new Set([
 export const starterSettingsHost = "owned/settings-host.ts";
 const settingsHeading = "\n## Change a business setting\n";
 const starterAgentGuide = "AGENTS.md";
+const starterAccountPage = "client/pages/account.ts";
+const starterCopy = "owned/copy.ts";
 
 export function includeSettingsHost(app: string, target: string, to: ReturnType<typeof starterUpgradeSnapshot>): void {
   if (!existsSync(join(target, starterSettingsHost))) return;
@@ -142,7 +144,7 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
     includeSettingsHost(app, target, to);
   }
   if (from.version === "1.3.0" && to.version !== from.version && to.files["shared/copy-keys.ts"]?.includes("'careOfferPermission'")) {
-    for (const path of ["owned/copy.ts", starterSettingsHost]) {
+    for (const path of [starterCopy, starterSettingsHost]) {
       from.files[path] = readFileSync(join(app, path), "utf8");
       to.files[path] = readFileSync(join(target, path), "utf8");
     }
@@ -241,7 +243,42 @@ function reconcileManagedCustomization(
   return { path, bytes };
 }
 
-export const starterDisplayFiles = ["host/paid-mail.ts", "client/pages/account.ts", "browser/acquisition.spec.ts"] as const;
+export const starterDisplayFiles = ["host/paid-mail.ts", starterAccountPage, "browser/acquisition.spec.ts"] as const;
+
+function reconcileCancellationCustomization(
+  app: string, workspace: string, from: ReturnType<typeof starterUpgradeSnapshot>, to: ReturnType<typeof starterUpgradeSnapshot>,
+  applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],
+): Record<string, Buffer> {
+  const customizations = [
+    [starterAccountPage, "el('h1', {}, context.t('account'))", "el('h1', { class: 'account-heading' }, context.t('account'))"],
+    [starterCopy, 'signIn: "Sign in"', 'signIn: "Sign in to your account"'],
+    [starterSettingsHost, "Set the subscription discount in basis points.", "Set the account subscription discount in basis points."],
+  ] as const;
+  const customize = (bytes: string, before: string, after: string) => {
+    assert(bytes.includes(before), "starter cancellation customization marker missing");
+    return bytes.replace(before, after);
+  };
+  for (const [path, before, after] of customizations)
+    writeFileSync(join(app, path), customize(from.files[path]!, before, after));
+  const report = applyRefused();
+  assert.equal(report.conflicts.length, customizations.length);
+  const reconciled: Record<string, Buffer> = {};
+  for (const [path, before, after] of customizations) {
+    assertUpgradeConflict({ ...report, conflicts: report.conflicts.filter(conflict => conflict.path === path) }, path);
+    const current = join(app, path);
+    assert.equal(readFileSync(current, "utf8"), customize(from.files[path]!, before, after));
+    const predecessor = join(workspace, "cancellation-predecessor.ts"), candidate = join(workspace, "cancellation-target.ts");
+    writeFileSync(predecessor, from.files[path]!);
+    writeFileSync(candidate, to.files[path]!);
+    const bytes = execFileSync("git", ["merge-file", "-p", current, predecessor, candidate]);
+    assert.equal(bytes.toString("utf8"), customize(to.files[path]!, before, after));
+    writeFileSync(current, bytes);
+    delete from.files[path];
+    delete to.files[path];
+    reconciled[path] = bytes;
+  }
+  return reconciled;
+}
 
 export function reconcileDisplayCustomization(
   app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],
@@ -348,8 +385,9 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     file.path === starterEditorPorts && file.action === "replace");
   const lifecycleReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === starterLifecycle && file.action === "replace");
+  const reconcileCancellation = Object.hasOwn(from.files, starterCopy);
   const displayReplacements = starterDisplayFiles.filter(path =>
-    changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
+    !(path === starterAccountPage && reconcileCancellation) && changed.some((file: { path: string; action: string }) => file.path === path && file.action === "replace"));
   const offerReplaced = changed.some((file: { path: string; action: string }) =>
     file.path === starterSubscriptionOffer && file.action === "replace");
   const { path: conflict, action } = editorReplacement ?? changed.findLast((file: { action: string }) => file.action === "create") ?? changed.at(-1);
@@ -451,6 +489,14 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     checkUpgradeFiles();
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
+  if (reconcileCancellation) phase("cancellation-customization-reconciliation", () => {
+    const files = reconcileCancellationCustomization(app, workspace, from, to, applyRefused);
+    Object.assign(owned, files);
+    for (const [path, bytes] of Object.entries(files)) pair.evidence.customizations![path] = hash(bytes);
+    writeSnapshots();
+    assert.deepEqual(run("apply").applied, []);
+    checkUpgradeFiles();
+  });
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();

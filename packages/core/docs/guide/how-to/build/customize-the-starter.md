@@ -259,10 +259,11 @@ Set `pausePresets` with the starter-local `choice(default, ...allowed)` helper.
 The native preset vocabulary is `2_weeks`, `1_month` and `indefinite`; durations
 still come from owned lifecycle `terms`. `assertChoice` refuses an empty,
 duplicate or unknown selection, or a default outside it, with
-`starter_pause_presets_invalid`. The account pause form offers `allowed` and preselects `default` (`2_weeks` in
-the demonstration). The cancellation save offer uses `retention.pausePreset`
-(`1_month`), which
-must be allowed and falls back to `default` when omitted.
+`starter_pause_presets_invalid`. Both pause forms offer all presets in `allowed`. The account pause form
+preselects `default` (`2_weeks` in the demonstration). The cancellation pause
+offer preselects `retention.pausePreset` (`1_month`), which must be allowed and
+falls back to `default` when omitted. The customer can choose another allowed
+preset before accepting.
 
 The managed host binds the same data through
 [command admission](../../concepts/subscriptions.md#admit-account-commands).

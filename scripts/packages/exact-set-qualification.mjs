@@ -391,6 +391,7 @@ export function qualifyReleasedSet(tag, expectedCommit, receiptPath, upgrade = f
       // The CLI moved declarations; the harness moves the verified lock and installs.
       assert.deepEqual(readFileSync(join(applications[0], 'package.json')), readFileSync(join(applications[1], 'package.json')), 'file upgrade must move exact dependency declarations');
       writeFileSync(join(applications[0], 'package-lock.json'), readFileSync(join(applications[1], 'package-lock.json')));
+      // Typecheck the upgraded application with the reconciled portal, copy and bindings in place.
       proveReleasedStarter(pair.to, { ...inputs[1], application: applications[0] }, run, environment);
       finish();
       pair.to.result = 'PASS'; pair.to.endedAt = new Date().toISOString();
