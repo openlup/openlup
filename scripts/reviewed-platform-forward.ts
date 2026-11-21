@@ -3187,6 +3187,44 @@ const deferredTarget = String.raw`public\.[a-z_][a-z0-9_]{0,62}`;
 const deferredEventPattern = "(?:INSERT(?: OR UPDATE)?(?: OR DELETE)?|UPDATE(?: OR DELETE)?|DELETE)";
 const deferredTriggerForm = new RegExp(`^${deferredTriggerSql("<name>", deferredEventPattern, deferredTarget, String.raw`${deferredTarget}\(\)`)}$`, "iu");
 
+const isAsciiSearchPathList = (value: string): boolean => /^[A-Za-z_][A-Za-z0-9_]*(?:, [A-Za-z_][A-Za-z0-9_]*)*$/u.test(value);
+const hasPgTempSchema = (schemaList: string): boolean => schemaList.toLowerCase().split(", ").some(schema => schema === "pg_temp" || /^pg_temp_\d+$/u.test(schema));
+
+/**
+ * A native-store replacement header must stay byte-identical to its predecessor,
+ * except it may append exact trailing `, pg_temp` to an existing ASCII
+ * `SET search_path` clause that does not already name `pg_temp` or `pg_temp_<N>`.
+ */
+function isAllowedNativeStoreReplacementHeader(priorHeader: string, nextHeader: string): boolean {
+  if (nextHeader === priorHeader) return true;
+  if (nextHeader !== `${priorHeader}, pg_temp`) return false;
+  const priorNormalized = nativeStoreTrim(priorHeader.replace(/[ \t\n]+/gu, " "));
+  const priorPathHeader = priorNormalized.replace(/ SET search_path=/iu, " SET search_path = ");
+  const priorRawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(priorPathHeader)?.[1] ?? null;
+  if (priorRawSearchPath === null || !nativeStoreAscii(priorRawSearchPath)) return false;
+  return !hasPgTempSchema(priorRawSearchPath);
+}
+
+/**
+ * A replaced function's catalog attributes must remain unchanged, except its
+ * single `search_path=` proconfig entry may strictly append trailing `, pg_temp`
+ * when the slot pins that exact tightened search_path and the prior search_path
+ * did not already name `pg_temp` or `pg_temp_<N>`.
+ */
+export function expectedReplacedFunctionAttrs(oldAttrs: Record<string, unknown>, searchPath: string | null): Record<string, unknown> {
+  if (searchPath === null) return oldAttrs;
+  const oldConfig = oldAttrs.proconfig;
+  if (!Array.isArray(oldConfig)) return oldAttrs;
+  const searchPathEntries = oldConfig.filter((item): item is string => typeof item === "string" && item.startsWith("search_path="));
+  if (searchPathEntries.length !== 1) return oldAttrs;
+  const oldEntry = searchPathEntries[0]!;
+  const oldSchemasRaw = oldEntry.slice("search_path=".length);
+  if (!isAsciiSearchPathList(oldSchemasRaw) || hasPgTempSchema(oldSchemasRaw)) return oldAttrs;
+  const target = `search_path=${searchPath.replace(/\s+/gu, " ").trim()}`;
+  if (target !== `${oldEntry}, pg_temp`) return oldAttrs;
+  return { ...oldAttrs, proconfig: oldConfig.map(item => item === oldEntry ? target : item) };
+}
+
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
 export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]) {
   validateNativeStoreClass(registry, new Set());
@@ -3362,8 +3400,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (defined.has(signature)) throw new Error("reviewed native store duplicate function definition");
       if (sqlSha256(statement) !== forward.functions.find(pin => pin.signature === signature)?.afterSha256) throw new Error("reviewed native store unlisted, missing or drifted function definition");
       if (!fixed || replacement !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
-      const header = nativeStoreTrim(headerAttributes(statement).replace(/[ \t\n]+/gu, " "));
-      if (fixed.beforeSha256 !== null && nativeStoreTrim(headerAttributes(statement)) !== nativeStoreTrim(headerAttributes(priorStatements.get(signature)!))) throw new Error("reviewed native store replacement header drifted");
+      const nextHeader = nativeStoreTrim(headerAttributes(statement));
+      const header = nativeStoreTrim(nextHeader.replace(/[ \t\n]+/gu, " "));
+      if (fixed.beforeSha256 !== null && !isAllowedNativeStoreReplacementHeader(nativeStoreTrim(headerAttributes(priorStatements.get(signature)!)), nextHeader)) throw new Error("reviewed native store replacement header drifted");
       const pathHeader = fixed.beforeSha256 !== null ? header.replace(/ SET search_path=/iu, " SET search_path = ") : header;
       const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(pathHeader)?.[1] ?? null;
       if (rawSearchPath && !nativeStoreAscii(rawSearchPath)) throw new Error("reviewed native store non-ASCII search_path refused");

@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -2198,5 +2198,196 @@ describe("CD-SEC-1 SECURITY DEFINER trailing pg_temp search_path", () => {
       const prefix = all.filter(unit => unit.path < slot.path);
       expect(() => assertNativeStoreForward(production, slot.path, bytes, prefix), slot.path).not.toThrow();
     }
+  });
+});
+
+describe("native-store replacement search_path pg_temp tightening", () => {
+  const signature = "public.fixture_tighten(uuid)";
+  const nativeReplacementCheck = (priorAttrs: string, nextAttrs: string, slotSearchPath: string | null) => {
+    const priorDef = `CREATE FUNCTION public.fixture_tighten(p_id uuid) RETURNS text LANGUAGE sql ${priorAttrs} AS $$ SELECT 'before'; $$;`;
+    const nextDef = `CREATE OR REPLACE FUNCTION public.fixture_tighten(p_id uuid) RETURNS text LANGUAGE sql ${nextAttrs} AS $$ SELECT 'after'; $$;`;
+    const beforeSha256 = sqlSha256(priorDef);
+    const afterSha256 = sqlSha256(nextDef);
+    const value = registry();
+    const slot = value.nativeStoreForwardClass!.slots[0]!;
+    slot.replacedFunctions = [{ signature, beforeSha256, searchPath: slotSearchPath }];
+    slot.createdFunctions = [];
+    value.nativeStoreForwards = [{ path: slot.path, sha256: sqlSha256(nextDef), functions: [{ signature, beforeSha256, afterSha256 }] }];
+    assertNativeStoreForward(value, slot.path, Buffer.from(nextDef), [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.from(priorDef) }]);
+  };
+
+  it.each([
+    [
+      "SECURITY DEFINER tightening pg_catalog, public -> pg_catalog, public, pg_temp",
+      "SECURITY DEFINER SET search_path = pg_catalog, public",
+      "SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "SECURITY INVOKER tightening pg_catalog, public -> pg_catalog, public, pg_temp",
+      "SECURITY INVOKER SET search_path = pg_catalog, public",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "compact legacy SET search_path=pg_catalog -> SET search_path=pg_catalog, pg_temp",
+      "SECURITY INVOKER SET search_path=pg_catalog",
+      "SECURITY INVOKER SET search_path=pg_catalog, pg_temp",
+      "pg_catalog, pg_temp",
+    ],
+  ])("accepts %s", (_label, priorAttrs, nextAttrs, slotSearchPath) => {
+    expect(() => nativeReplacementCheck(priorAttrs, nextAttrs, slotSearchPath)).not.toThrow();
+  });
+
+  it.each([
+    [
+      "dropping pg_temp from INVOKER",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "SECURITY INVOKER SET search_path = pg_catalog, public",
+      "pg_catalog, public",
+    ],
+    [
+      "dropping pg_temp from DEFINER",
+      "SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp",
+      "SECURITY DEFINER SET search_path = pg_catalog, public",
+      "pg_catalog, public",
+    ],
+    [
+      "appending pg_temp when prior already has pg_temp",
+      "SECURITY INVOKER SET search_path = pg_catalog, pg_temp",
+      "SECURITY INVOKER SET search_path = pg_catalog, pg_temp, pg_temp",
+      "pg_catalog, pg_temp, pg_temp",
+    ],
+    [
+      "appending pg_temp when prior already has uppercase PG_TEMP",
+      "SECURITY INVOKER SET search_path = pg_catalog, PG_TEMP",
+      "SECURITY INVOKER SET search_path = pg_catalog, PG_TEMP, pg_temp",
+      "pg_catalog, pg_temp, pg_temp",
+    ],
+    [
+      "appending pg_temp when prior already has pg_temp_1",
+      "SECURITY INVOKER SET search_path = pg_catalog, pg_temp_1",
+      "SECURITY INVOKER SET search_path = pg_catalog, pg_temp_1, pg_temp",
+      "pg_catalog, pg_temp_1, pg_temp",
+    ],
+    [
+      "appending uppercase PG_TEMP",
+      "SECURITY INVOKER SET search_path = pg_catalog, public",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, PG_TEMP",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "reordering schemas while adding pg_temp",
+      "SECURITY INVOKER SET search_path = public, pg_catalog",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "appending a schema other than pg_temp",
+      "SECURITY INVOKER SET search_path = pg_catalog, public",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, extra",
+      "pg_catalog, public, extra",
+    ],
+    [
+      "adding SET search_path when prior had none",
+      "SECURITY INVOKER",
+      "SECURITY INVOKER SET search_path = pg_catalog, pg_temp",
+      "pg_catalog, pg_temp",
+    ],
+    [
+      "changing STABLE to VOLATILE alongside pg_temp",
+      "STABLE SECURITY INVOKER SET search_path = pg_catalog, public",
+      "VOLATILE SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "changing VOLATILE to STABLE alongside pg_temp",
+      "VOLATILE SECURITY INVOKER SET search_path = pg_catalog, public",
+      "STABLE SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "changing SECURITY INVOKER to SECURITY DEFINER alongside pg_temp",
+      "SECURITY INVOKER SET search_path = pg_catalog, public",
+      "SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "changing SECURITY DEFINER to SECURITY INVOKER alongside pg_temp",
+      "SECURITY DEFINER SET search_path = pg_catalog, public",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "changing whitespace alongside pg_temp",
+      "SECURITY INVOKER SET search_path = pg_catalog, public",
+      "SECURITY INVOKER  SET search_path = pg_catalog, public, pg_temp",
+      "pg_catalog, public, pg_temp",
+    ],
+    [
+      "changing compact = spacing alongside pg_temp",
+      "SECURITY INVOKER SET search_path=pg_catalog",
+      "SECURITY INVOKER SET search_path = pg_catalog, pg_temp",
+      "pg_catalog, pg_temp",
+    ],
+  ])("refuses %s", (_label, priorAttrs, nextAttrs, slotSearchPath) => {
+    expect(() => nativeReplacementCheck(priorAttrs, nextAttrs, slotSearchPath))
+      .toThrow("reviewed native store replacement header drifted");
+  });
+
+  it.each([
+    [
+      "SECURITY DEFINER",
+      "SECURITY DEFINER SET search_path = pg_catalog, public",
+      "SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp",
+    ],
+    [
+      "SECURITY INVOKER",
+      "SECURITY INVOKER SET search_path = pg_catalog, public",
+      "SECURITY INVOKER SET search_path = pg_catalog, public, pg_temp",
+    ],
+  ])("refuses %s pg_temp tightening when slot.replacedFunctions[].searchPath stays pinned to the old value", (_label, priorAttrs, nextAttrs) => {
+    expect(() => nativeReplacementCheck(priorAttrs, nextAttrs, "pg_catalog, public"))
+      .toThrow("reviewed native store unpinned SECURITY DEFINER or search_path");
+  });
+
+  describe("expectedReplacedFunctionAttrs (catalog parity)", () => {
+    const baseAttrs = (proconfig: unknown) => ({ prosecdef: true, provolatile: "v", proconfig });
+
+    it("tightens a single search_path proconfig entry with trailing , pg_temp and preserves other entries and attrs", () => {
+      const oldSingle = baseAttrs(["search_path=pg_catalog, public"]);
+      expect(expectedReplacedFunctionAttrs(oldSingle, "pg_catalog, public, pg_temp")).toEqual(
+        baseAttrs(["search_path=pg_catalog, public, pg_temp"]),
+      );
+      expect(oldSingle.proconfig).toEqual(["search_path=pg_catalog, public"]);
+
+      const oldWithOtherGuc = baseAttrs(["work_mem=4MB", "search_path=pg_catalog"]);
+      expect(expectedReplacedFunctionAttrs(oldWithOtherGuc, "pg_catalog, pg_temp")).toEqual(
+        baseAttrs(["work_mem=4MB", "search_path=pg_catalog, pg_temp"]),
+      );
+    });
+
+    it("keeps attrs unchanged when proconfig already matches the tightened search_path (e.g. qualified-v2)", () => {
+      const alreadyTightened = baseAttrs(["search_path=pg_catalog, public, pg_temp"]);
+      expect(expectedReplacedFunctionAttrs(alreadyTightened, "pg_catalog, public, pg_temp")).toBe(alreadyTightened);
+    });
+
+    it.each([
+      ["slot pins null searchPath", ["search_path=pg_catalog, public"], null],
+      ["unchanged search_path without tightening", ["search_path=pg_catalog, public"], "pg_catalog, public"],
+      ["dropping pg_temp", ["search_path=pg_catalog, public, pg_temp"], "pg_catalog, public"],
+      ["prior already has pg_temp", ["search_path=pg_catalog, pg_temp"], "pg_catalog, pg_temp, pg_temp"],
+      ["prior already has uppercase PG_TEMP", ["search_path=pg_catalog, PG_TEMP"], "pg_catalog, PG_TEMP, pg_temp"],
+      ["prior already has pg_temp_1", ["search_path=pg_catalog, pg_temp_1"], "pg_catalog, pg_temp_1, pg_temp"],
+      ["uppercase PG_TEMP target", ["search_path=pg_catalog, public"], "pg_catalog, public, PG_TEMP"],
+      ["reordering schemas", ["search_path=public, pg_catalog"], "pg_catalog, public, pg_temp"],
+      ["appending non-pg_temp schema", ["search_path=pg_catalog, public"], "pg_catalog, public, extra"],
+      ["prior proconfig is null", null, "pg_catalog, pg_temp"],
+      ["prior proconfig has no search_path", ["work_mem=4MB"], "pg_catalog, pg_temp"],
+      ["prior proconfig has duplicate search_path entries", ["search_path=pg_catalog", "search_path=public"], "pg_catalog, pg_temp"],
+    ])("does not allow tightening for %s", (_label, oldProconfig, slotSearchPath) => {
+      const oldAttrs = baseAttrs(oldProconfig);
+      expect(expectedReplacedFunctionAttrs(oldAttrs, slotSearchPath)).toBe(oldAttrs);
+    });
   });
 });

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, readReviewedForwardRegistry, renderNativeDeferredTrigger, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
@@ -324,7 +324,8 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const resolve = async (signature: string) => Number((await db.query("SELECT $1::regprocedure::oid::int AS oid", [signature])).rows[0].oid);
   const created = new Map<number, CatalogSlot["createdFunctions"][number]>();
   for (const fn of slot.createdFunctions) created.set(await resolve(fn.signature), fn);
-  const replaced = new Set<number>(); for (const fn of slot.replacedFunctions) replaced.add(await resolve(fn.signature));
+  const replaced = new Map<number, CatalogSlot["replacedFunctions"][number]>();
+  for (const fn of slot.replacedFunctions) replaced.set(await resolve(fn.signature), fn);
   const grantOnly = new Map<number, CatalogSlot["grantOnlyFunctions"][number]>();
   for (const fn of slot.grantOnlyFunctions) grantOnly.set(await resolve(fn.signature), fn);
   const settings = new Map<number, string>();
@@ -355,7 +356,8 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
       const expected = { ...old, attrs: { ...old.attrs, proconfig } };
       if (JSON.stringify(now) !== JSON.stringify(expected)) fail(`settings-only function ${old.name} must change only to the pinned ${searchPath}`);
     } else if (replaced.has(old.oid)) {
-      if (JSON.stringify(now.attrs) !== JSON.stringify(old.attrs) || JSON.stringify(now.acl) !== JSON.stringify(old.acl)) fail(`replaced function ${old.name} changed attributes or ACL`);
+      const expectedAttrs = expectedReplacedFunctionAttrs(old.attrs, replaced.get(old.oid)!.searchPath);
+      if (JSON.stringify(now.attrs) !== JSON.stringify(expectedAttrs) || JSON.stringify(now.acl) !== JSON.stringify(old.acl)) fail(`replaced function ${old.name} changed attributes or ACL`);
     } else if (grantOnly.has(old.oid)) {
       const entry = grantOnly.get(old.oid)!;
       if (JSON.stringify(now.attrs) !== JSON.stringify(old.attrs) || now.src !== old.src) fail(`grant-only function ${old.name} was redefined`);
