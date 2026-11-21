@@ -43,12 +43,13 @@ const portableCreationPaths = [
   "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
 ];
 type PortableCreationBinding = { path: string; sha256: string };
+const cataloguePublicationAuthorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
 const qualifiedInstallationPaths = [
   QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE,
   ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE,
   REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE,
   QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE,
-  "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
+  cataloguePublicationAuthorityPath,
 ];
 const qualifiedOwnerPathSignatures = [
   "acquisition_private.keyed_digest(text,jsonb)",
@@ -2623,7 +2624,9 @@ const qualifiedCatalogueReadTargets = [
 ] as const;
 const qualifiedCatalogueReadSql = `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='${cataloguePublicationRole}')
-    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL
+    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+      WHERE catalog_path OPERATOR(pg_catalog.=) '${cataloguePublicationAuthorityPath}'::pg_catalog.text
+        AND sha256 OPERATOR(pg_catalog.=) 'baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8'::pg_catalog.text)
   THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION ${qualifiedCatalogueReadTargets[0][1]},
       ${qualifiedCatalogueReadTargets[1][1]} TO ${cataloguePublicationRole};';
@@ -3299,7 +3302,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     return { slot, ordinaryProof };
   }
   const qualifiedCatalogueReadGrant = isQualifiedCatalogueReadGrant(slot);
-  if (qualifiedCatalogueReadGrant && !bytes.equals(Buffer.from(qualifiedCatalogueReadSql))) throw new Error("reviewed native store qualified catalogue read forward must contain exactly the guarded EXECUTE grant");
+  if (qualifiedCatalogueReadGrant && !bytes.equals(Buffer.from(qualifiedCatalogueReadSql))) throw new Error("reviewed native store qualified catalogue read forward must contain exactly the EXECUTE grant guarded by role existence and the authority ledger path and hash");
   const definitionSources = qualifiedCatalogueReadGrant ? new Map<string, string>() : undefined;
   const triggerFunctions = new Set<string>(), granted = new Set<string>();
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);

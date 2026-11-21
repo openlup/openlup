@@ -2713,10 +2713,12 @@ One dedicated grant-only shape allows a single non-grantable `EXECUTE` grant to
 `public.catalog_publication_activation_readiness(text[],text)`. Both functions
 must resolve to their already-issued native slots with matching file and function
 hashes. The exact `DO` block checks for the role in `pg_catalog.pg_roles` and for
-the database-local qualified-v2 authority function through
-`pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL`
-before executing the grant. The slot carries only those two grant capabilities,
-and its pin lists no function definitions.
+the exact `catalog_path` and `sha256` of the [qualified-v2 authority migration](../../db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql)
+in `ONLY public.platform_schema_migrations` before executing the grant. The
+runner records that row in the transaction that applies the authority migration.
+The legacy and qualified-admin plans omit that migration, so the block skips
+the grant in those databases even when the cluster role exists. The slot
+carries only those two grant capabilities, and its pin lists no function definitions.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON

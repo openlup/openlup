@@ -58,10 +58,16 @@ const encode = (value: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(va
 
 const catalogueReadTargets = ["public.catalog_offer_memberships_page(text,jsonb,integer,text)", "public.catalog_publication_activation_readiness(text[],text)"];
 const catalogueReadRole = "openlup_catalog_publication";
+const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+const authoritySha256 = "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8";
+const roleGuard = "  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')\n";
+const ledgerGuard = `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+      WHERE catalog_path OPERATOR(pg_catalog.=) '${authorityPath}'::pg_catalog.text
+        AND sha256 OPERATOR(pg_catalog.=) '${authoritySha256}'::pg_catalog.text)
+`;
+const catalogueReadGuardRefusal = "qualified catalogue read forward must contain exactly the EXECUTE grant guarded by role existence and the authority ledger path and hash";
 const catalogueReadSql = `DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
-    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL
-  THEN
+${roleGuard}${ledgerGuard}  THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_offer_memberships_page(text,jsonb,integer,text),
       public.catalog_publication_activation_readiness(text[],text) TO openlup_catalog_publication;';
   END IF;
@@ -468,6 +474,8 @@ REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 
 describe("grant-only existing functions", () => {
   it("admits the exact qualified catalogue read grant against the issued function pins", () => {
+    expect(production.qualifiedInstallations).toContainEqual({ path: authorityPath, sha256: authoritySha256 });
+    expect(sqlSha256(readFileSync(authorityPath))).toBe(authoritySha256);
     const value = structuredClone(production);
     value.nativeStoreForwardClass!.slots.push(structuredClone(catalogueReadSlot));
     const directory = "db/platform/migrations";
@@ -567,10 +575,21 @@ describe("grant-only existing functions", () => {
 
 describe("the sole conditional role rule", () => {
   it.each([
+    ["old function lookup", "    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL\n"],
+    ["any ledger row", "    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations)\n"],
+    ["path without digest", `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations WHERE catalog_path OPERATOR(pg_catalog.=) '${authorityPath}'::pg_catalog.text)\n`],
+    ["digest without path", `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations WHERE sha256 OPERATOR(pg_catalog.=) '${authoritySha256}'::pg_catalog.text)\n`],
+    ["wrong path", ledgerGuard.replace(authorityPath, PLATFORM_BASELINE_FILE)],
+    ["wrong digest", ledgerGuard.replace(authoritySha256, "0".repeat(64))],
+  ])("refuses a qualified catalogue read grant with %s in place of the exact authority ledger check", (_label, guard) => {
+    const { value, preceding } = catalogueReadFixture();
+    expect(() => checkCatalogueRead(value, preceding, catalogueReadSql.replace(ledgerGuard, guard))).toThrow(catalogueReadGuardRefusal);
+  });
+  it.each([
     ["unguarded grant", `GRANT EXECUTE ON FUNCTION ${catalogueReadTargets.join(", ")} TO ${catalogueReadRole};\n`],
-    ["altered guard", catalogueReadSql.replace("IS NOT NULL", "IS NULL")],
-    ["role-only guard", catalogueReadSql.replace(/^ {4}AND .*\n/mu, "")],
-    ["database-only guard", catalogueReadSql.replace(/IF EXISTS [^\n]+\n {4}AND /u, "IF ")],
+    ["altered guard", catalogueReadSql.replace("AND EXISTS", "AND NOT EXISTS")],
+    ["role-only guard", catalogueReadSql.replace(ledgerGuard, "")],
+    ["ledger-only guard", catalogueReadSql.replace(roleGuard + ledgerGuard, ledgerGuard.replace("    AND ", "  IF "))],
     ["wrong grantee", catalogueReadSql.replace(" TO openlup_catalog_publication", " TO service_role")],
     ["wrong schema", catalogueReadSql.replace("FUNCTION public.", "FUNCTION private.")],
     ["wrong overload", catalogueReadSql.replace("text,jsonb,integer,text", "text,jsonb,bigint,text")],
@@ -583,7 +602,7 @@ describe("the sole conditional role rule", () => {
     ["extra SQL after the block", `${catalogueReadSql}CREATE TABLE public.fixture_extra (id uuid);\n`],
   ])("refuses a qualified catalogue read forward with %s", (_label, text) => {
     const { value, preceding } = catalogueReadFixture();
-    expect(() => checkCatalogueRead(value, preceding, text)).toThrow("qualified catalogue read forward must contain exactly the guarded EXECUTE grant");
+    expect(() => checkCatalogueRead(value, preceding, text)).toThrow(catalogueReadGuardRefusal);
   });
   it.each([["anon", "REVOKE ALL"], ["authenticated", "REVOKE ALL"], ["service_role", "REVOKE ALL"], ["authenticated", "GRANT EXECUTE"], ["service_role", "GRANT EXECUTE"]])("accepts %s %s", (role, verb) => {
     expect(() => check(`${sql()}\n${block(role, verb)}`)).not.toThrow();

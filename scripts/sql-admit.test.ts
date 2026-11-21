@@ -86,10 +86,13 @@ function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePa
 }
 
 describe("qualified catalogue read grant in sql:admit and hosted checks", () => {
+  const ledgerGuard = `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
+      WHERE catalog_path OPERATOR(pg_catalog.=) 'db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql'::pg_catalog.text
+        AND sha256 OPERATOR(pg_catalog.=) 'baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8'::pg_catalog.text)
+`;
   const text = `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
-    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL
-  THEN
+${ledgerGuard}  THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_offer_memberships_page(text,jsonb,integer,text),
       public.catalog_publication_activation_readiness(text[],text) TO openlup_catalog_publication;';
   END IF;
@@ -99,6 +102,7 @@ END; $$;
     .map(file => `db/platform/migrations/${file}`);
   const coLocated = "reviewed replacement admission machinery must be approved separately before co-located SQL/pins";
   const unissued = `reviewed native store qualified catalogue read predecessor must already be issued: ${predecessors[0]}`;
+  const noAuthorityLedger = "reviewed native store qualified catalogue read forward must contain exactly the EXECUTE grant guarded by role existence and the authority ledger path and hash";
   const pass = ["PASS"];
   const refuse = (message: string) => ["REFUSED", message];
 
@@ -117,17 +121,20 @@ END; $$;
     ["issued predecessors", 0, [pass, pass, pass, pass]],
     ["a co-located rule change", 1, [pass, pass, refuse(coLocated), refuse(coLocated)]],
     ["co-introduced predecessors", 1, [pass, pass, refuse(unissued), refuse(unissued), refuse(unissued), refuse(unissued)]],
+    ["the old function lookup without the authority ledger", 1, Array.from({ length: 4 }, () => refuse(noAuthorityLedger))],
   ] as const)("checks %s for the qualified catalogue read grant", (scenario, exit, expected) => {
     const f = fixture(), { value, rows } = stagePredecessors(f);
     const base = scenario === "co-introduced predecessors" ? f.base : f.commit();
     const entry = slot(nativePath, "catalogue-read-grant");
     entry.grantOnlyFunctions = ["public.catalog_offer_memberships_page(text,jsonb,integer,text)", "public.catalog_publication_activation_readiness(text[],text)"]
       .map(signature => ({ signature, grantTo: ["openlup_catalog_publication"], revokeFrom: [] }));
+    const sql = scenario === "the old function lookup without the authority ledger"
+      ? text.replace(ledgerGuard, "    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL\n") : text;
     value.nativeStoreForwardClass!.slots.push(entry);
-    value.nativeStoreForwards!.push({ path: nativePath, sha256: sqlSha256(text), functions: [] });
+    value.nativeStoreForwards!.push({ path: nativePath, sha256: sqlSha256(sql), functions: [] });
     f.put(REVIEWED_FORWARD_PATH, encode(value));
-    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([...rows, { file: nativePath, sha256: sha256(text) }]));
-    f.put(nativePath, text);
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([...rows, { file: nativePath, sha256: sha256(sql) }]));
+    f.put(nativePath, sql);
     if (scenario === "a co-located rule change") f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
     const head = f.commit();
     const result = cli(f.root, ["--base", base, "--head", head, STALE]);
