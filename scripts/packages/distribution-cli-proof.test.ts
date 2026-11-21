@@ -247,6 +247,15 @@ it.each([false, true])("upgrades the 1.3.0 starter agent guide, customized=%s", 
   expect(readFileSync(join(app, path))).toEqual(local?.bytes ?? Buffer.from(next));
   if (customized) expect(readFileSync(join(app, path), "utf8")).toContain("Record local acceptance results in the test log.");
   expect(apply(0).applied).toEqual([]);
+  const guide = readFileSync(join(app, path), "utf8");
+  const map = guide.split("<!-- END:openlup-agent-rules -->")[1]?.split("## Catalogue tasks\n")[1] ?? "";
+  expect(map).toContain("| Add a product type with a content rule |");
+  expect(map).toContain("| Publish a saved catalogue draft (prepare, approve, publish, recover a lost response, read back) |");
+  const correction = "When changing lists, set `expected.entryId` and `expected.unitPriceMinor` from the SKU's current one-time base price on the destination list, using `null` for both when there is no current entry, and resolve any pending base price there before publishing.";
+  expect(map.split("\n").find(line => line.startsWith("| Correct a refused price-list input |"))).toContain(correction);
+  const installed = readFileSync(resolve("packages/core/docs/guide/how-to/build/customize-the-starter.md"), "utf8");
+  const refusal = installed.split("### Correct a price-list refusal\n")[1]?.split("\n## ")[0];
+  expect(refusal?.replace(/\s+/g, " ")).toContain(correction);
 });
 
 it.each([false, true])("replaces the managed subscription offer and preserves reconciled edits, customized=%s", customized => {

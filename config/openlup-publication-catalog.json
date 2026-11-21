@@ -1722,6 +1722,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/history/native-renewal-throughput-baseline-2026-11-21.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/history/neutral-store-limits-2026-11-13.md",
       "class": "public-output"
     },
@@ -30159,6 +30163,10 @@
     },
     {
       "path": "tests/postgres/benchmarks/managedQueryData.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/benchmarks/nativeRenewalThroughput.ts",
       "class": "public-output"
     },
     {
