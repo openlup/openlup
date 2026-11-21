@@ -163,7 +163,6 @@ describe("packed consumer dependency roots", () => {
       `\`@openlup/platform/${family}/${name}\``,
       `\`${family}/${name}\``,
       `// dist/${family}/${name}/index.d.ts`,
-      `\`${family}-${name}.api.md\``,
       `### \`packages/platform/api/${family}-${name}.api.md\``,
     ]).join("\n");
     const packFiles = [...new Set([...requiredPackFiles, path])];
@@ -183,11 +182,16 @@ describe("packed consumer dependency roots", () => {
 
   it.each([
     `@another/platform/payments/${paymentAdapter}`,
+    `['str', 'ipe', '${paymentSubpath}'].join('')`,
+    `'@another/platform/' + 'payments/${paymentAdapter}'`,
     `${paymentSubpath}-extra`,
     `${paymentSubpath}/index.js`,
+    String.raw`payments/${paymentAdapter}\index.js`,
     `dist/payments/${paymentAdapter}/`,
     `dist/payments/${paymentAdapter}/nested/index.d.ts`,
+    String.raw`dist/payments/${paymentAdapter}/nested\index.d.ts`,
     `dist/payments/${paymentAdapter}/${paymentAdapter}.js`,
+    `payments-${paymentAdapter}.api.md`,
     `payments-${paymentAdapter}.api.md.bak`,
     `packages/platform/api/payments-${paymentAdapter}.api.md`,
   ])("still refuses the unapproved reference %s in release notes", source => {

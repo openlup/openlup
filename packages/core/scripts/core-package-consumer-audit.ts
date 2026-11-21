@@ -63,10 +63,9 @@ const documentedAdapters = [
 const adapterSubpaths = documentedAdapters.map(([family, names]) => `${family}/(?:${names.join("|")})`).join("|");
 const adapterReports = documentedAdapters.map(([family, names]) => `${family}-(?:${names.join("|")})`).join("|");
 const packagedAdapterReference = new RegExp([
-  String.raw`(?<![\w./@-])(?:@openlup/platform/)?(?:${adapterSubpaths})(?![\w/@-]|\.[\w./-])`,
+  String.raw`(?<![\w./@\\-])(?:@openlup/platform/)?(?:${adapterSubpaths})(?![\w/@\\-]|\.[\w./\\-])`,
   // Mask only the directory so the file name itself remains subject to the audit.
-  String.raw`(?<![\w./@-])dist/(?:${adapterSubpaths})(?=/[\w-]+(?:\.[\w-]+)*(?![\w./@-]))`,
-  String.raw`(?<![\w./@-])(?:${adapterReports})\.api\.md(?![\w./@-])`,
+  String.raw`(?<![\w./@\\-])dist/(?:${adapterSubpaths})(?=/[\w-]+(?:\.[\w-]+)*(?![\w./@\\-]))`,
   `^### \`packages/platform/api/(?:${adapterReports})\\.api\\.md\`$`,
 ].join("|"), "gm");
 const approvedPublicSecurityContact = "dev@openlup.com";
@@ -192,8 +191,8 @@ function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInp
       .replaceAll(approvedPublicSecurityContact, "APPROVED_SECURITY_CONTACT");
     const approvedSource = path === "release-gates.json"
       ? normalizeApprovedDogfoodEvidence(source)
-      : normalizeReleaseAdapterReferences(path, source);
-    const auditableSource = normalizeSimpleLiteralCompositions(approvedSource);
+      : source;
+    const auditableSource = normalizeReleaseAdapterReferences(path, normalizeSimpleLiteralCompositions(approvedSource));
     const semanticViolations = Object.entries(scanNeutralitySource(auditableSource, packagedNeutralityPolicy))
       .filter(([, count]) => count > 0)
       .map(([category]) => `${path}: downstream ${category}`);
