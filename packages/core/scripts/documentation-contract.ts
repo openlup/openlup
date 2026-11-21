@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import ts from "typescript";
 
+import { markdownTable, publishedPackages, readCoreVersion, renderSqlInventory, repositoryLink, repositoryUrl } from "./documentation-sql-inventory.ts";
 import { packageKinds } from "./public-api-config.ts";
 import { packDryRun } from "./release-npm-checks.ts";
 
@@ -352,11 +353,9 @@ function isExternalOrAnchor(target: string): boolean {
 // Governing document: docs/platform/DOCUMENTATION.md, "Reader guide contract".
 
 const guideDirectory = "docs/guide";
-const repositoryUrl = "https://github.com/openlup/openlup";
 /** Every `AGENTS.md` entry point, package or root, stays within these limits. */
 export const agentsFileCap = { lines: 200, bytes: 10240 } as const;
 const guideAllowListPath = "config/documentation-guide-allowlist.json";
-const publishedPackages = ["core", "outbox", "platform"] as const;
 const absoluteFilesystemPath = /(?<![\w.~:/-])(?:file:\/\/)?\/(?:Users|home)\/[A-Za-z0-9._-]+|(?<![\w\\])[A-Za-z]:[\\/]Users[\\/][A-Za-z0-9._-]+/g;
 // Repository-internal language that a reader of the guide cannot resolve.
 const readerLanguagePatterns: ReadonlyArray<readonly [RegExp, string]> = [
@@ -634,21 +633,12 @@ export function syncGeneratedRegions(source: string, label: string, repositoryRo
 
 /** The generators. Each reads the file that already owns the fact; none keeps a second copy. */
 export function renderGeneratedRegion(name: string, repositoryRoot: string, coreVersion = readCoreVersion(repositoryRoot)): string | undefined {
-  const link = (path: string, label = path) => `[${label}](${repositoryUrl}/blob/openlup-core-v${coreVersion}/${path})`;
-  const selected = /^(exports|sql):([a-z]+)$/.exec(name);
-  if (selected) {
-    const [, kind, pkg] = selected;
-    if (!(publishedPackages as readonly string[]).includes(pkg!) || (kind === "sql" && pkg === "core")) return undefined;
+  if (name.startsWith("sql:")) return renderSqlInventory(name, repositoryRoot, coreVersion);
+  const link = (path: string, label = path) => repositoryLink(coreVersion, path, label);
+  const pkg = /^exports:([a-z]+)$/.exec(name)?.[1];
+  if (pkg) {
+    if (!(publishedPackages as readonly string[]).includes(pkg)) return undefined;
     const base = `packages/${pkg}`;
-    if (kind === "sql") {
-      // Inventory the SQL files shipped under sql/** directly, including files outside the migration
-      // manifest. File-name order is not the installation sequence selected by a catalogue.
-      const files = readdirSync(join(repositoryRoot, base, "sql"), { withFileTypes: true })
-        .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
-        .map((entry) => entry.name)
-        .sort();
-      return markdownTable(["File"], files.map((file) => [link(`${base}/sql/${file}`, `\`${file}\``)]));
-    }
     const manifest = readJson<{ exports: Record<string, unknown> }>(repositoryRoot, `${base}/package.json`);
     const gates = readJson<{ packageSurface: Record<string, SurfaceContract> }>(repositoryRoot, `${base}/release-gates.json`);
     const subpaths = Object.keys(codeExports(manifest.exports));
@@ -658,7 +648,7 @@ export function renderGeneratedRegion(name: string, repositoryRoot: string, core
       // public-api-config and api-contract use packageSurface.snapshot, including nested subpaths.
       const report = contract?.snapshot;
       return [`\`${subpath}\``, String(contract?.role), String(contract?.maturity), report && existsSync(join(repositoryRoot, base, report)) ? link(`${base}/${report}`, "API report") : "none"];
-    })) + omittedSubpaths(pkg!, omitted.size, link);
+    })) + omittedSubpaths(pkg, omitted.size, link);
   }
   if (name === "cli:openlup" || name === "cli:openlup-context") {
     // Read static help via the compiler API: no build prerequisite, imports, application loading or
@@ -753,15 +743,6 @@ function omittedSubpaths(pkg: string, count: number, link: (path: string, label?
 
 function readJson<T>(root: string, path: string): T {
   return JSON.parse(readFileSync(join(root, path), "utf8")) as T;
-}
-
-function readCoreVersion(repositoryRoot: string): string {
-  return readJson<{ version: string }>(repositoryRoot, "packages/core/package.json").version;
-}
-
-function markdownTable(headings: string[], rows: string[][]): string {
-  const cell = (value: string) => value.replaceAll("|", "&#124;").replace(/\r?\n/g, "<br>");
-  return [headings, headings.map(() => "---"), ...rows].map((row) => `| ${row.map(cell).join(" | ")} |\n`).join("");
 }
 
 function sourceFiles(root: string): string[] {
