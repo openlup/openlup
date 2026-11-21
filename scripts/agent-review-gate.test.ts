@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { admit, COMPRESSED_RECEIPT_MARKER, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { assertMergePreflight, captureSessionCandidate, git as reviewGit, sessionMain, verifyCandidateCommand } from './agent-review-session.mjs';
 import { carryOverSourceReview, parseReceipt, waitNativeAdmission } from './agent-review-queue.mjs';
 
@@ -470,12 +470,24 @@ describe('six real Git witnesses', () => {
     await expect(f.cli('verify')).rejects.toThrow('independent PASS reports required');
   });
 
-  it('allows two parallel reviewers in the same prepare round to close the same open finding via CLI and refuses closure in the next round', async () => {
-    const f = await fixture();
+  it('allows two parallel reviewers in a v3 floor-2 prepare round to close the same open finding via CLI and refuses closure in the next round', async () => {
+    const f = await fixture('native-review-v3-');
+    // Enable v3 review rules on base main so verify runs both validateHistory and validateEconomySession.
+    f.git('checkout', '-q', '--detach', f.base);
+    await mkdir(join(f.cwd, 'scripts'), { recursive: true });
+    await writeFile(join(f.cwd, 'scripts/agent-review-decide.mjs'), 'export const REVIEW_RULES_VERSION = 3;\n');
+    f.git('add', 'scripts/agent-review-decide.mjs');
+    f.git('commit', '-qm', 'enable v3 rules on main');
+    const v3Base = f.git('rev-parse', 'HEAD');
+    f.git('update-ref', 'refs/remotes/origin/main', v3Base);
+    await writeFile(join(f.cwd, 'source.txt'), 'reviewed v3\n');
+    f.commit();
+
     const request = join(f.scratch, 'behavior-intent.json');
-    await writeFile(request, JSON.stringify({ intent: { risk: 'behavior', criteria: 'Verify parallel card closure' } }));
+    await writeFile(request, JSON.stringify({ intent: { risk: 'behavior', criteria: 'Verify v3 parallel card closure' } }));
     await f.cli('prepare', request);
     const round1 = JSON.parse(await readFile(f.statePath, 'utf8'));
+    expect(round1.version).toBe(3);
     const reportPath = join(f.scratch, 'report.json');
     const writeReport = (payload: Record<string, unknown>) => writeFile(reportPath, JSON.stringify({
       cold: true, verdict: 'PASS', findings: [], closes: [],
@@ -491,25 +503,37 @@ describe('six real Git witnesses', () => {
     await writeReport({ reviewer: 'reviewer-b', verdict: 'FAIL', tree: round1.candidate.tree });
     await f.cli('record', reportPath);
 
-    await writeFile(join(f.cwd, 'source.txt'), 'repaired\n');
-    f.commit();
+    // Repair touches a protected path so the v3 repair-delta floor is 2.
+    await writeFile(join(f.cwd, 'scripts/agent-review-extra.mjs'), 'export const guarded = true;\n');
+    f.git('add', 'scripts/agent-review-extra.mjs');
+    f.git('commit', '-qm', 'repair on protected path');
     await f.cli('prepare', request);
     const round2 = JSON.parse(await readFile(f.statePath, 'utf8'));
+    expect(round2.version).toBe(3);
+    expect(round2.candidate.coverage).toMatchObject({ kind: 'repair', proof: { paths: ['scripts/agent-review-extra.mjs'] } });
 
-    await writeReport({ reviewer: 'reviewer-g', tree: round2.candidate.tree, closes: ['A-1'] });
+    const delta = round2.candidate.coverage.delta;
+    await writeReport({ reviewer: 'reviewer-g', tree: round2.candidate.tree, ordinary: true, delta, closes: ['A-1'] });
     await expect(f.cli('record', reportPath)).resolves.toBe(0);
-    await writeReport({ reviewer: 'reviewer-h', tree: round2.candidate.tree, closes: ['A-1'] });
+    await writeReport({ reviewer: 'reviewer-h', tree: round2.candidate.tree, ordinary: true, delta, closes: ['A-1'] });
     await expect(f.cli('record', reportPath)).resolves.toBe(0);
 
     await expect(f.cli('status', '--explain')).resolves.toBe(0);
     const explained = JSON.parse(vi.mocked(console.log).mock.calls.at(-1)![0]);
     expect(explained).toMatchObject({
-      status: 'verify_required', openFindings: [],
-      requirements: { floor: 2, acceptedReports: 2, missingReports: 0, reviewers: ['reviewer-g', 'reviewer-h'] },
+      version: 3, status: 'verify_required', openFindings: [],
+      requirements: { scope: 'repair-delta', floor: 2, acceptedReports: 2, missingReports: 0, reviewers: ['reviewer-g', 'reviewer-h'] },
       regroupAdvisory: { triggered: false, nonConvergingCycles: 0, reason: null },
     });
     await expect(f.cli('verify')).resolves.toBe(0);
     await expect(f.cli('receipt', '12')).resolves.toBe(0);
+    const body = vi.mocked(console.log).mock.calls.at(-1)![0];
+    expect(body).toContain(COMPRESSED_RECEIPT_MARKER);
+    const parsed = parseReceipt(body);
+    expect(parsed?.version).toBe(3);
+    expect(admit({ receipt: parsed, observed: { ...round2.candidate, pr: 12, baseValid: true }, now: Date.now() })).toEqual({
+      ok: true, code: 'reviewed', reason: 'reviewed',
+    });
 
     await writeFile(join(f.cwd, 'source.txt'), 'follow-up\n');
     f.commit();

@@ -67,7 +67,7 @@ function findingState(session) {
   return { open, openAtPrepare, closedInCurrentRound };
 }
 function openFindings(session) { return findingState(session).open; }
-function computeRegroupAdvisory(session) {
+function computeRegroupAdvisory(session, trailingFloor = 1) {
   const open = new Set();
   const cycles = [];
   let current = null;
@@ -82,7 +82,9 @@ function computeRegroupAdvisory(session) {
       for (const id of event.report.closes) open.delete(id);
     }
   }
-  if (current && current.reports > 0) cycles.push({ openBefore: current.openBefore, openAfter: open.size });
+  if (current && current.reports >= Math.max(1, trailingFloor)) {
+    cycles.push({ openBefore: current.openBefore, openAfter: open.size });
+  }
   let nonConvergingCycles = 0;
   for (let index = cycles.length - 1; index >= 0; index--) {
     const cycle = cycles[index];
@@ -262,11 +264,12 @@ export function recordReport(session, report, now) {
   demand(report.tree === session.candidate.tree && ['PASS', 'FAIL'].includes(report.verdict), 'report tree or verdict differs');
   demand(Number.isFinite(now) && now >= session.preparedAt && session.history.every(event => event.at <= now), 'report time is invalid');
   demand(Array.isArray(report.findings) && Array.isArray(report.closes), 'findings and closes must be arrays');
-  demand(report.findings.every(finding => identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean') && new Set(report.findings.map(finding => finding.id)).size === report.findings.length, 'findings need unique stable ids, summaries and material flags');
+  const findingIds = new Set(report.findings.map(finding => finding.id));
+  demand(report.findings.every(finding => identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean') && findingIds.size === report.findings.length, 'findings need unique stable ids, summaries and material flags');
   const prior = session.history.filter(event => event.type === 'report').flatMap(event => event.report.findings);
   demand(report.findings.every(finding => prior.every(old => old.id !== finding.id || digest(old) === digest(finding))), 'finding id changed meaning');
   const { open, closedInCurrentRound } = findingState(session);
-  demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => open.has(id) || closedInCurrentRound.has(id)), 'closes must name open material findings');
+  demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'closes must name open material findings');
   const next = structuredClone(session); next.history.push({ type: 'report', at: now, report: { ...report, at: now } }); return next;
 }
 function validateHistory(session) {
@@ -284,12 +287,14 @@ function validateHistory(session) {
     if (enabled) demand(identity(report.documentation), 'documentation assessment is required');
     demand(candidate && report.tree === candidate.tree && report.at === event.at && ['PASS', 'FAIL'].includes(report.verdict) &&
       Array.isArray(report.findings) && Array.isArray(report.closes), 'report differs from its historical candidate');
+    const findingIds = new Set();
     for (const finding of report.findings) {
       demand(identity(finding.id) && identity(finding.summary) && typeof finding.material === 'boolean' &&
         (!findings.has(finding.id) || digest(findings.get(finding.id)) === digest(finding)), 'finding changed meaning');
       findings.set(finding.id, finding);
+      findingIds.add(finding.id);
     }
-    demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => open.has(id) || closedInCurrentRound.has(id)), 'invalid historical finding closure');
+    demand(new Set(report.closes).size === report.closes.length && report.closes.every(id => !findingIds.has(id) && (open.has(id) || closedInCurrentRound.has(id))), 'invalid historical finding closure');
     for (const finding of report.findings) if (finding.material) { open.add(finding.id); closedInCurrentRound.delete(finding.id); }
     for (const id of report.closes) { open.delete(id); if (openAtPrepare.has(id)) closedInCurrentRound.add(id); }
   }
@@ -355,7 +360,7 @@ export function explainSession(session, observed = session?.candidate, now = Dat
   let regroupAdvisory = null;
   try {
     openMaterial = [...openFindings(session).values()];
-    regroupAdvisory = computeRegroupAdvisory(session);
+    regroupAdvisory = computeRegroupAdvisory(session, floor);
   } catch (error) { invalidReason ??= error.message; }
   const missingReports = Math.max(0, floor - reports.length);
   const edge = session.version === 3 ? session.candidate.coverage : undefined;
