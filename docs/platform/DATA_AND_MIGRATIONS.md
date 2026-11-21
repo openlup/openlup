@@ -2364,16 +2364,6 @@ Every earlier slot in registry order needs unchanged landed pins;
 issued native file pins must also be present unchanged.
 Registry-derived slot timestamps require approval even for expand-only SQL.
 
-For search-path hardening, a settings-only slot pins its `path` and an ordered
-`settingsOnlyFunctions` list of `{ signature, searchPath }` entries for qualified
-functions in the base migrations. Its other function and data lists are empty.
-The whole-file pin covers exactly the listed `ALTER FUNCTION … SET search_path`
-statements in order. The PostgreSQL catalog check allows only the pinned
-`search_path` changes.
-The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
-requires `pg_temp` last for every installed definer outside the shrink-only
-`DEFINER_SEARCH_PATH_PENDING` list.
-
 The queue routes every native filename at or after the first issued slot time
 through the guard, including SQL whose slot was prepared earlier. The guard
 still admits ordinary unregistered expand-only migrations through their existing path. Unlisted function
@@ -2382,6 +2372,17 @@ role statements refuse. Tables and indexes retain the existing expand-only
 rules; data statements require exact head-class slot entries. CHECK and UNIQUE
 replacements use the named, closed entries below. A whole-file hash does not
 bypass the content checks.
+
+For search-path hardening, a settings-only slot pins its `path` and an ordered
+`settingsOnlyFunctions` list of `{ signature, searchPath }` entries for qualified
+functions in the base migrations. Signatures are unique and each `searchPath`
+contains a single `pg_temp` entry in the final position. The other function and
+data lists are empty. The whole-file pin covers exactly the listed
+`ALTER FUNCTION … SET search_path` statements in order. The PostgreSQL catalog
+check allows only the pinned `search_path` changes.
+The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
+requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
+installed definer outside the shrink-only `DEFINER_SEARCH_PATH_PENDING` list.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new

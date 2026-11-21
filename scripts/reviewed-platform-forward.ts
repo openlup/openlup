@@ -1020,7 +1020,7 @@ function blob(root: string, revision: string, path: string): Buffer | undefined 
 
 const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards", "qualifiedInstallations", "channelIngestForwards", "nativeStoreForwards", "managedExactForwards"] as const;
 const CLOSED_HISTORICAL_FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards", "qualifiedInstallations", "channelIngestForwards"] as const;
-// Already-landed open-class forwards whose immutable historical bytes predate CD-SEC-1.
+// Already-landed open-class forwards whose immutable historical bytes predate the trailing pg_temp rule.
 // Keyed by exact path and file SHA-256 so only those frozen historical blobs are grandfathered.
 const HISTORICAL_SECURITY_DEFINER_FORWARDS = new Map<string, string>([
   [
@@ -1292,7 +1292,7 @@ function tokenizeSecurityDefinerStatements(source: string, path?: string): Secur
   return statements;
 }
 
-/** CD-SEC-1: Every new SECURITY DEFINER function/procedure and routine ALTER search_path must pin pg_temp last. */
+/** Every new SECURITY DEFINER function/procedure and routine ALTER search_path must pin pg_temp last. */
 export function assertSecurityDefinerSearchPath(sql: string | Buffer, path?: string): void {
   const ctx = path ? ` in ${path}` : "";
   const rawBytes = typeof sql === "string" ? Buffer.from(sql, "utf8") : sql;
@@ -2705,18 +2705,20 @@ function nativeStoreFunctionDefinitionFromTokens(
   allowed: ReadonlySet<string>,
   names: ReadonlySet<string>,
   preceding: boolean,
+  sourcePath?: string,
 ): [string, string] | null {
   const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
   if (!nativeWord(tokens, 0, "CREATE") || !nativeWord(tokens, functionIndex, "FUNCTION")) return null;
   const name = nativeQualified(tokens, functionIndex + 1);
   if (preceding && name && !names.has(name.name)) return null;
-  if (!complete || !name || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted" || !nativeSymbol(tokens, name.next, "(")) throw new Error(preceding ? "reviewed native store unsupported preceding function DDL" : "reviewed native store unsupported function header");
+  const context = sourcePath ? ` in ${sourcePath} for ${name?.name ?? tokens[functionIndex + 1]?.value ?? "<missing function name>"}` : "";
+  if (!complete || !name || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted" || !nativeSymbol(tokens, name.next, "(")) throw new Error(preceding ? `reviewed native store unsupported preceding function DDL${context}` : "reviewed native store unsupported function header");
   let close = name.next, depth = 0;
   for (; close < tokens.length; close++) {
     if (nativeSymbol(tokens, close, "(")) depth++;
     if (nativeSymbol(tokens, close, ")") && --depth === 0) break;
   }
-  if (close >= tokens.length || !nativeWord(tokens, close + 1, "RETURNS")) throw new Error("reviewed native store unsupported function header");
+  if (close >= tokens.length || !nativeWord(tokens, close + 1, "RETURNS")) throw new Error(`reviewed native store unsupported function header${context}`);
   const signature = nativeStoreIdentity(name.name, statement.slice(tokens[name.next]!.end, tokens[close]!.start));
   if (!allowed.has(signature)) {
     if (preceding) return null;
@@ -2890,6 +2892,9 @@ function assertNativeStoreSettingsTargets(settings: readonly NativeStoreFunction
   const found = new Set(preceding.flatMap(source => [...nativeStoreFunctionDefinitions(source.bytes, signatures, true).keys()]));
   for (const signature of signatures) if (!found.has(signature)) throw new Error(`reviewed native store settings-only function absent from base migrations: ${signature}`);
 }
+
+const renderNativeStoreSetting = ({ signature, searchPath }: NativeStoreFunctionSetting) =>
+  `ALTER FUNCTION ${signature} SET search_path = ${searchPath};`;
 
 function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<string>): void {
   const control = registry.nativeStoreForwardClass;
@@ -3195,9 +3200,12 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if (!slot || !forward || sqlSha256(bytes) !== forward.sha256) throw new Error("reviewed native store path or file hash drifted");
   if (bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) throw new Error("reviewed native store refuses control characters");
   if (preceding[0]?.path !== PLATFORM_BASELINE_FILE || preceding.some((source, index) => !/^db\/platform\/migrations\/\d{14}_[a-zA-Z0-9_-]+\.sql$/u.test(source.path) || source.path >= path || (index > 0 && source.path <= preceding[index - 1]!.path))) throw new Error("reviewed native store requires an ordered same-rail prefix and baseline");
-  for (const earlier of control!.slots.slice(0, control!.slots.indexOf(slot))) {
+  const earlierSlots = control!.slots.slice(0, control!.slots.indexOf(slot));
+  const landedSettings = new Map<string, Set<string>>();
+  for (const earlier of earlierSlots) {
     const pin = registry.nativeStoreForwards!.find(pin => pin.path === earlier?.path), source = preceding.find(source => source.path === earlier?.path);
     if (!pin || !source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed native store requires every earlier slot landed first");
+    if (earlier.settingsOnlyFunctions) landedSettings.set(earlier.path, new Set(earlier.settingsOnlyFunctions.map(renderNativeStoreSetting)));
   }
   for (const pin of [...registry.batchedForwards ?? [], ...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? [], ...registry.channelIngestForwards ?? []].filter(pin => pin.path.startsWith("db/") && pin.path < path)) {
     const source = preceding.find(source => source.path === pin.path);
@@ -3214,8 +3222,11 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   };
   const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
   if (slot.settingsOnlyFunctions) {
-    const expected = slot.settingsOnlyFunctions.map(fn => `ALTER FUNCTION ${fn.signature} SET search_path = ${fn.searchPath};`);
-    if (statements.length !== expected.length || statements.some((statement, index) => statement !== expected[index])) throw new Error("reviewed native store settings-only forward must contain exactly its ordered ALTER FUNCTION search_path statements");
+    const expected = slot.settingsOnlyFunctions.map(renderNativeStoreSetting);
+    const refusal = "reviewed native store settings-only forward must contain exactly its ordered ALTER FUNCTION search_path statements";
+    if (statements.length !== expected.length) throw new Error(`${refusal}. Expected ${expected.length} statements, found ${statements.length}.`);
+    const difference = expected.findIndex((statement, index) => statement !== statements[index]);
+    if (difference !== -1) throw new Error(`${refusal}. At index ${difference} (zero-based), expected: ${expected[difference]}`);
     assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, preceding);
     return { slot, ordinaryProof };
   }
@@ -3227,12 +3238,17 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   let checkSource: string | undefined;
   const allowedSignatures = new Set(signatures);
   for (const source of preceding) for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
+    if (landedSettings.get(source.path)?.has(statement)) continue;
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
     if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {
-      const name = nativeQualified(tokens, functionIndex + 1);
-      if (!name || (names.has(name.name) && (!nativeWord(tokens, 0, "CREATE") || tokens[functionIndex + 1]?.kind === "quoted" || tokens[functionIndex + 3]?.kind === "quoted"))) throw new Error("reviewed native store unsupported preceding function DDL");
+      const target = functionIndex + 1, name = nativeQualified(tokens, target);
+      if (!name || (names.has(name.name) && !nativeWord(tokens, 0, "CREATE"))) {
+        const args = tokens.find((_, index) => index > target && nativeSymbol(tokens, index, "("));
+        const functionName = name?.name ?? statement.slice(tokens[target]?.start ?? statement.length, args?.start ?? -1).trim();
+        throw new Error(`reviewed native store unsupported preceding function DDL in ${source.path} for ${functionName || "<missing function name>"}`);
+      }
     }
-    const definition = nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowedSignatures, names, true);
+    const definition = nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowedSignatures, names, true, source.path);
     if (definition) {
       const [signature, digest] = definition;
       prior.set(signature, digest); priorStatements.set(signature, statement);
@@ -3250,7 +3266,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     if (slot.purposeCheck && /^(?:ALTER|DROP)\b/iu.test(statement) && /\bTABLE\b/iu.test(statement) && statement.toLowerCase().includes("communication_native_sync_state")) throw new Error("reviewed native store purpose CHECK intervening DDL refused");
   }
   if (indexCreates.size !== droppedIndexes.length) throw new Error("reviewed native store dropped index plain CREATE missing from prefix");
-  const chained = new Set(control!.slots.slice(0, control!.slots.indexOf(slot)).flatMap(slot => nativeStoreFunctions(slot).map(fn => fn.signature)));
+  const chained = new Set(earlierSlots.flatMap(slot => nativeStoreFunctions(slot).map(fn => fn.signature)));
   for (const fn of functions) if ((!chained.has(fn.signature) && (baseDefinitions.get(fn.signature) ?? null) !== fn.beforeSha256) || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed native store actual base function before-hash drifted");
   for (const fn of slot.grantOnlyFunctions) if (!baseDefinitions.has(fn.signature)) throw new Error("reviewed native store grant-only function absent from base chain");
   const existingTableStatements = slot.existingTableStatements ?? [];

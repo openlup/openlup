@@ -324,7 +324,7 @@ describe("upstream exact managed migration approval", () => {
   });
 });
 
-describe("CD-SEC-1 SECURITY DEFINER search_path admission via sql:admit and hosted checks", () => {
+describe("SECURITY DEFINER trailing pg_temp rule in sql:admit and hosted checks", () => {
   const signature = "public.fixture_sec_definer(uuid)";
   const nativeFnSql = (security: "DEFINER" | "INVOKER", searchPathSql: string | null) => {
     const clause = searchPathSql === null ? "" : ` SET search_path = ${searchPathSql}`;

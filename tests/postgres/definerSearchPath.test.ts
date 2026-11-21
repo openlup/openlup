@@ -44,17 +44,18 @@ type Definer = { signature: string; search_path: string | null };
 function searchPathFailures(definers: readonly Definer[], pending: readonly string[]): string[] {
   const failures: string[] = [];
   const awaitingPin = new Set(pending);
+  const temporarySchema = /^(?:pg_temp(?:_\d+)?|"pg_temp(?:_\d+)?")$/u;
   for (const { signature, search_path: searchPath } of definers) {
-    const lastSchema = searchPath?.split(",").at(-1)?.trim();
-    const pinned = lastSchema === "pg_temp" || lastSchema === '"pg_temp"';
+    // Keep commas inside quoted schema names.
+    const schemas = (searchPath?.match(/(?:[^",]|"(?:[^"]|"")*")+/g) ?? [])
+      .map(schema => schema.trim()).filter(Boolean);
+    const lastSchema = schemas.at(-1);
+    const pinned = (lastSchema === "pg_temp" || lastSchema === '"pg_temp"')
+      && !schemas.slice(0, -1).some(schema => temporarySchema.test(schema));
     if (awaitingPin.delete(signature)) {
       if (pinned) failures.push(`remove ${signature} from DEFINER_SEARCH_PATH_PENDING`);
     } else if (!pinned) {
-      // Keep commas inside quoted schema names.
-      const schemas = (searchPath?.match(/(?:[^",]|"(?:[^"]|"")*")+/g) ?? [])
-        .map(schema => schema.trim())
-        .filter(schema => schema && schema !== "pg_temp" && schema !== '"pg_temp"');
-      const suggestedPath = [...schemas, "pg_temp"].join(", ");
+      const suggestedPath = [...schemas.filter(schema => !temporarySchema.test(schema)), "pg_temp"].join(", ");
       failures.push(`SECURITY DEFINER function ${signature}: pin pg_temp last: SET search_path = ${suggestedPath}`);
     }
   }
@@ -108,6 +109,9 @@ it("reports a pinned pending definer, an unpinned definer and a stale pending en
     { signature: "public.empty_setting()", search_path: "" },
     { signature: "public.temp_first()", search_path: "pg_temp, public" },
     { signature: "public.temp_repeated()", search_path: 'pg_temp, "pg_temp", "schema, name", public' },
+    { signature: "public.temp_duplicated()", search_path: '"pg_temp", pg_catalog, pg_temp' },
+    { signature: "public.temp_numbered()", search_path: '"pg_temp_12", pg_catalog, pg_temp' },
+    { signature: "public.quoted_comma()", search_path: '"schema, pg_temp_12", pg_temp' },
     { signature: "public.pinned()", search_path: 'pg_catalog, "pg_temp"' },
   ], ["public.pending_pinned()", "public.missing()"])).toEqual([
     "remove public.pending_pinned() from DEFINER_SEARCH_PATH_PENDING",
@@ -116,6 +120,8 @@ it("reports a pinned pending definer, an unpinned definer and a stale pending en
     "SECURITY DEFINER function public.empty_setting(): pin pg_temp last: SET search_path = pg_temp",
     "SECURITY DEFINER function public.temp_first(): pin pg_temp last: SET search_path = public, pg_temp",
     'SECURITY DEFINER function public.temp_repeated(): pin pg_temp last: SET search_path = "schema, name", public, pg_temp',
+    "SECURITY DEFINER function public.temp_duplicated(): pin pg_temp last: SET search_path = pg_catalog, pg_temp",
+    "SECURITY DEFINER function public.temp_numbered(): pin pg_temp last: SET search_path = pg_catalog, pg_temp",
     "remove public.missing() from DEFINER_SEARCH_PATH_PENDING: SECURITY DEFINER function is missing",
   ]);
 });
