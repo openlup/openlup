@@ -83,7 +83,10 @@ test('publishes and recovers an installed catalogue issue under human authority'
   const email = (await owner.query('SELECT email FROM public.platform_human_principals WHERE principal_id=$1', [principal])).rows[0].email;
   const example = await call(page, drafts, { action: 'example' });
   expect(example.ok).toBe(true);
-  const payload = example.value, productId = payload.product.id, sku = payload.skus[0], variantId = sku.id;
+  const exampleProductId: string = example.value.product.id;
+  const productId = exampleProductId.slice(0, 14) + '0' + exampleProductId.slice(15);
+  const payload = JSON.parse(JSON.stringify(example.value).replaceAll(exampleProductId, productId));
+  const sku = payload.skus[0], variantId = sku.id;
   const price = { schemaVersion: 1, commandKey: randomUUID(), priceListId, variantId,
     mode: 'one_time', minQty: 1, amountKind: 'gross', unitPriceMinor: 1733, expected: { entryId: null, unitPriceMinor: null } };
   sku.priceOperations = [{ ...price, priceListId: missingListId }];

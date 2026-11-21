@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/account-support/postgres';
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
@@ -19,6 +20,7 @@ const text = (value: unknown, max = 200): value is string => typeof value === 's
   && value.trim() === value && value.length > 0 && value.length <= max;
 const uuid = (value: unknown): value is string => typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const publicationProductId = z.guid().refine(value => value === value.toLowerCase());
 const only = (payload: Record<string, unknown>, keys: string[]) =>
   Object.keys(payload).every(key => key === 'locale' || keys.includes(key));
 
@@ -83,13 +85,14 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
       const result = await commands.execute({ ...command, commandKey: context.commandKey } as CatalogPublicationCommand, capability);
       return 'reason' in result ? publicationRefused(result) : { ...success(result), ...(result.outcome === 'replayed' ? { replayed: true } : {}) };
     }
-    const { action, productId, head, commandKey, cursor = null } = payload;
+    const { action, head, commandKey, cursor = null } = payload;
     if (cursor !== null && typeof cursor !== 'string') return refused('starter_input_invalid');
     if (action === 'exact' && only(payload, ['action', 'head', 'cursor']) && isRecord(head)) {
       const result = await publication.readbackV2(head as unknown as Parameters<typeof publication.readbackV2>[0], cursor);
       return 'reason' in result ? publicationRefused(result) : success(result);
     }
-    if (!uuid(productId)) return refused('starter_input_invalid');
+    const productId = publicationProductId.safeParse(payload.productId).data;
+    if (!productId) return refused('starter_input_invalid');
     if (action === 'receipt' && only(payload, ['action', 'productId', 'commandKey']) && text(commandKey)) {
       const capability = await publication.authorize(context);
       if (!capability) return refused('operator_required');
