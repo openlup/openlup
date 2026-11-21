@@ -1,7 +1,8 @@
 Successful readbacks from `@openlup/platform/payments/tpay` and verified
 webhooks from `@openlup/platform/payments/stripe` require review when payment
 amounts conflict. Checkout recovery and verify-now return manual review, and
-native renewal waits for provider evidence.
+native renewal waits for provider evidence. Managed invoice preflight blocks
+issuance when a successful readback reports conflicting amounts.
 
 - Version 1.2.0 settled a `payment_intent.succeeded` webhook on the requested
   `amount` when it differed from `amount_received`. Version 1.3.0 routes those

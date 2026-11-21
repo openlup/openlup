@@ -14,6 +14,12 @@ import { createCheckoutRecoveryPaymentResolver } from "../../../domains/payment/
 import { verifyPaymentAttemptNow } from "@openlup/platform/payments";
 import type { VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
 
+import { runAccountingInvoiceIssueJob } from "../../../domains/accounting/accountingJobService.js";
+import { readAccountingRuntimeConfig } from "../../../domains/accounting/accountingRuntimeConfig.js";
+import { createTestAccountingProvider } from "../../accounting/testAccountingProvider.js";
+import { createSupabaseAccountingInvoicePort } from "../accountingInvoicePort.js";
+import type { ClaimedAccountingInvoiceIssue } from "../../../../src/domains/accounting/ports.js";
+
 const transactionProvider = "tpay" as const;
 
 
@@ -142,6 +148,53 @@ describe("createSupabasePaymentProviderReconciliationPort", () => {
     await expect(recovery.resolve({ orderId: snapshot.orderId, paymentIntentId: snapshot.paymentIntentId }))
       .resolves.toEqual({ kind: "manual_review" });
     expect(client.rpc).not.toHaveBeenCalledWith("commerce_payment_control_apply_reconciliation_result", expect.anything());
+  });
+
+  it("blocks managed invoice issuance when a settled readback reports conflicting collected amounts", async () => {
+    const row = claimedRow({ amount_cents: 1299 });
+    const currency = row.currency;
+    const claim: ClaimedAccountingInvoiceIssue = {
+      outboxId: "invoice-outbox", attemptCount: 1, providerKind: "host-fiscal",
+      payment: { intentId: row.payment_intent_id, provider: transactionProvider, providerPaymentId: "01HX",
+        amountCents: 1299, currency, localSettlementState: "unavailable" },
+      invoice: {
+        id: "invoice-1", orderId: row.order_id, orderRef: "order-1", invoiceRef: "order-1:base",
+        documentKind: "b2c_named", ksefRequired: false, currency,
+        buyerSnapshot: { name: "Buyer", taxId: null }, orderSnapshot: {}, taxSnapshot: {},
+        linesSnapshot: [{ name: "Item", quantity: 1, totalGrossMinor: 1299, vatRate: "8" }],
+        totalGrossCents: 1299, totalNetCents: 1203, paymentCompletedAt: row.local_updated_at,
+        packageShippedAt: row.local_updated_at, providerPaymentId: "01HX", metadata: { paymentProvider: transactionProvider },
+      },
+    };
+    const paymentProvider = providerForTransaction({
+      status: "correct", amount: "12.99", payments: { amountPaid: "11.99" }, paidAmount: "12.49", currency,
+    });
+    const client = fakeClient();
+    client.rpc.mockImplementation(async (name, args: Record<string, unknown>) => {
+      expect(name).toBe("accounting_invoice_issue_payment_preflight");
+      const providerStatus = args.p_provider_status;
+      const providerAmount = args.p_provider_amount_cents;
+      // The managed preflight permits unavailable evidence and blocks a status mismatch.
+      const ok = providerStatus === "unavailable" || (providerStatus === "succeeded"
+        && (providerAmount === null || providerAmount === claim.payment.amountCents));
+      return { data: { ok, code: ok ? null : "accounting_invoice_provider_settlement_status_mismatch",
+        providerReadbackState: ok ? "unavailable" : "mismatch", paymentIntentId: row.payment_intent_id }, error: null };
+    });
+    const markInvoiceIssueSucceeded = vi.fn();
+    const port = { ...createSupabaseAccountingInvoicePort(client), claimInvoiceIssues: async () => [claim],
+      markInvoiceIssueSucceeded, markInvoiceIssueFailed: vi.fn(), blockInvoiceIssueCanonicalMapper: vi.fn() };
+    const invoiceProvider = createTestAccountingProvider();
+    const createInvoice = vi.spyOn(invoiceProvider, "createInvoice");
+    await expect(runAccountingInvoiceIssueJob({
+      port, provider: invoiceProvider, config: readAccountingRuntimeConfig({ ACCOUNTING_CREATE_ENABLED: "true" }),
+      env: {}, paymentProviders: { [transactionProvider]: paymentProvider },
+    })).resolves.toMatchObject({ ok: false, checked: 1, updated: 0, failures: 1 });
+    expect(client.rpc).toHaveBeenNthCalledWith(2, "accounting_invoice_issue_payment_preflight", expect.objectContaining({
+      p_provider_status: "unknown", p_provider_amount_cents: null,
+      p_provider_evidence: expect.objectContaining({ unavailableReason: "provider_amount_mismatch" }),
+    }));
+    expect(createInvoice).not.toHaveBeenCalled();
+    expect(markInvoiceIssueSucceeded).not.toHaveBeenCalled();
   });
 
   it("records reconciliation evidence through payment-control", async () => {

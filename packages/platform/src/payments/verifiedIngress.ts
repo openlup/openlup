@@ -123,6 +123,14 @@ export function createVerifiedPaymentIngress({
   refundEvidencePolicy?: RefundEvidencePolicy;
   operationalEvents?: OperationalEventRecorder;
 }): PaymentIngressPort {
+  function recordReviewDiagnostic(event: Parameters<OperationalEventRecorder>[0]): void {
+    try {
+      void Promise.resolve(operationalEvents(event)).catch(() => {});
+    } catch {
+      // Preserve the payment response when diagnostics fail.
+    }
+  }
+
   return { async receive(input) {
     let evidence;
     try { evidence = await verifyPort.verifyAndNormalize(input); }
@@ -156,7 +164,7 @@ export function createVerifiedPaymentIngress({
           provider, providerEventId, providerPaymentId: providerPaymentRef, legacyFingerprint: historicalCaptureFingerprint,
         });
         if (paymentEventId) {
-          operationalEvents({ name: "provider_payment_historical_capture_replay", domain: "payment", surface: "webhook",
+          recordReviewDiagnostic({ name: "provider_payment_historical_capture_replay", domain: "payment", surface: "webhook",
             details: { provider, providerPaymentId: providerPaymentRef, eventType: "payment.succeeded" } });
           sendSuccess(res, { provider, providerEventId, paymentEventId, replayed: true });
           return;
@@ -178,17 +186,13 @@ export function createVerifiedPaymentIngress({
             ...(malformed.length ? { malformedAmounts: malformed } : {}),
             currency: typeof currency === "string" ? currency : null,
           };
-          try {
-            void Promise.resolve(operationalEvents({
-              name: "provider_payment_amount_mismatch",
-              domain: "payment",
-              surface: "webhook",
-              details: { provider, providerEventId: verifiedEvidence.providerEventId,
-                providerPaymentId: verifiedEvidence.providerPaymentRef, ...amounts, outcome: "review_required" },
-            })).catch(() => {});
-          } catch {
-            // A diagnostic failure cannot change the refusal.
-          }
+          recordReviewDiagnostic({
+            name: "provider_payment_amount_mismatch",
+            domain: "payment",
+            surface: "webhook",
+            details: { provider, providerEventId: verifiedEvidence.providerEventId,
+              providerPaymentId: verifiedEvidence.providerPaymentRef, ...amounts, outcome: "review_required" },
+          });
           sendBffError(res, "CONFLICT", "Provider payment amounts disagree. Review the payment before settling.");
           Object.assign(res.data, amounts);
           return;

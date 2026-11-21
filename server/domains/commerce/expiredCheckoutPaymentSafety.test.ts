@@ -30,6 +30,17 @@ describe("expired checkout prior-payment safety", () => {
     }).verifyPriorPayment(order)).resolves.toBe("paid");
   });
 
+  it.each(["read", "close"])("keeps a successful amount mismatch from the %s out of the paid outcome", async source => {
+    const conflict = { ...status("succeeded"), amountMinor: null, failureReason: "provider_amount_mismatch" };
+    const readPayment = vi.fn(async () => source === "read" ? conflict : status("failed", 18_774, "requires_payment_method"));
+    const closePayment = vi.fn(async () => conflict);
+    await expect(createExpiredCheckoutPaymentSafetyPort({
+      [order.priorPaymentEvidence!.provider]: { readPayment, closePayment },
+    })
+      .verifyPriorPayment(order)).resolves.toBe("unavailable");
+    expect(closePayment).toHaveBeenCalledTimes(source === "close" ? 1 : 0);
+  });
+
   it("accepts amount-matching terminal Tpay expiry without Stripe close semantics", async () => {
     const tpayOrder = {
       ...order,

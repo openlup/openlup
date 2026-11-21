@@ -378,6 +378,34 @@ describe("opt-in payment factory", () => {
     expect(afterProcessed).not.toHaveBeenCalled();
     expect(operationalEvents).toHaveBeenCalledWith(expect.objectContaining({ name: "provider_payment_historical_capture_replay" }));
   });
+  it("acknowledges an exact completed receipt when the replay recorder rejects", async () => {
+    const { adapter } = subject();
+    const delivery = signed(event("payment_intent.succeeded", { amount: "300", amount_received: 200 }));
+    const ingestPaymentEvent = vi.fn();
+    const applyPaymentResult = vi.fn();
+    const findCompletedHistoricalCapture = vi.fn(async () => "prior-local-event");
+    const recorded = vi.fn();
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort,
+      paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult },
+      operationalEvents: event => {
+        recorded(event);
+        return Promise.reject(new Error("async replay recorder unavailable"));
+      },
+    });
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      expect(await ingress.receive(delivery)).toMatchObject({ status: 200, data: { replayed: true, paymentEventId: "prior-local-event" } });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(recorded).toHaveBeenCalledWith(expect.objectContaining({ name: "provider_payment_historical_capture_replay" }));
+      expect(ingestPaymentEvent).not.toHaveBeenCalled();
+      expect(applyPaymentResult).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
   it("preserves active checkout versus recovery read semantics and exact input references", async () => {
     const { adapter } = subject({ id: "pi_fixture", status: "requires_payment_method", amount: 2599, currency: "eur", client_secret: "transient_fixture" });
     const input = { identity: { provider: "stripe", providerPaymentRef: "pi_fixture", intentRef: "intent-a", attemptRef: "attempt-a" }, expectedMoney: request.money, purpose: "active_checkout" as const };
