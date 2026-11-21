@@ -515,6 +515,27 @@ it.each([
 });
 
 it.each([
+  ["short string", new Error("x_invalid", { cause: "a.b: must be positive" }), "x_invalid (a.b: must be positive)"],
+  ["no cause", new Error("x_invalid"), "x_invalid"],
+  ["empty string", new Error("x_invalid", { cause: "" }), "x_invalid"],
+  ["non-string cause", new Error("x_invalid", { cause: 42 }), "x_invalid"],
+  ["301-character string", new Error("x_invalid", { cause: "a".repeat(301) }), "x_invalid"],
+  ["string with a line feed", new Error("x_invalid", { cause: "a.b: must be positive\nsecond line" }), "x_invalid"],
+] as const)("reports a %s cause on check load and validation failures", async (_, error, message) => {
+  const fail = () => { throw error; };
+  const loaded = await run(checkArgs, { host: checks(async () => fail()) });
+  const validated = await run(checkArgs, { host: checks(async () => ({ file: { ...minimumFile, validate: fail } })) });
+  expect(loaded.exit).toBe(1);
+  expect(validated.exit).toBe(1);
+  expect(JSON.parse(loaded.output)).toMatchObject({
+    state: "invalid", appValidation: { state: "failed", phase: "load", message },
+  });
+  expect(JSON.parse(validated.output)).toMatchObject({
+    state: "invalid", appValidation: { state: "failed", message },
+  });
+});
+
+it.each([
   [["check"], "app"], [["check", "--database-url", url], "database-url"],
   [[...checkArgs, "--database-url", url], "database-url"],
   [[...checkArgs, "--database-url="], "database-url"], [[...checkArgs, "--value", "{}"], "value"],
