@@ -131,6 +131,11 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    'export type TaxQuoteInputV1 = Synthetic;',
+    'export type TaxQuoteRequestV1 = { key: string; input: TaxQuoteInputV1 };',
+    'export interface TaxCalculationPort { quote(request: TaxQuoteRequestV1): Promise<unknown> }',
+    'export declare function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuoteRequestV1;',
+    'export declare const taxQuoteRequestV1Schema: { parse(value: unknown): TaxQuoteRequestV1 };',
     'export type PartnerAcquisitionListRequest = { view: "partner_acquisition_v1"; limit: number; cursor?: string };',
     'export type PartnersB2BInquirySubmitRequest = { company: string; country: string; firstName: string; lastName: string; email: string; phone?: string | null; notes?: string | null; openlupInternalCheck?: string };',
     'export declare const partnerAcquisitionListRequestSchema: { parse(value: unknown): PartnerAcquisitionListRequest };',
@@ -389,8 +394,11 @@ it("compiles actual declarations in both modes and refuses leaked peer types", (
   const nodeTypes = join(consumer, "node_modules/@types/node"); mkdirSync(nodeTypes, { recursive: true });
   writeFileSync(join(nodeTypes, "index.d.ts"), "export {};\n");
   compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
-  writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), 'import type { Pool } from "pg"; export type Leaked = Pool;\n');
-  expect(() => compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler)).toThrow();
+  const declaration = join(consumer, "node_modules/@openlup/platform/index.d.ts");
+  writeFileSync(declaration, readFileSync(declaration, "utf8") + 'import type { Pool } from "pg"; export type Leaked = Pool;\n');
+  expect(() => compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler)).toThrow(expect.objectContaining({
+    status: 2, stdout: expect.stringContaining("error TS2307: Cannot find module 'pg'"),
+  }));
 }, 35_000);
 it("refuses a runtime import that throws even if its declaration exists", () => {
   const consumer = fixture(); writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), 'throw new Error("synthetic provider initialization");');
