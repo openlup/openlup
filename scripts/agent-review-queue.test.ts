@@ -377,6 +377,16 @@ describe('CI completion queue handoff', () => {
     await expect(f.execute()).rejects.toThrow(); expect(f.enqueue).not.toHaveBeenCalled();
     expect(f.api.get.mock.calls.filter(([path]) => path.includes('/issues/')).length).toBeLessThanOrEqual(1);
   });
+  it('reports unavailable native review without receipt-rerun advice when missing at Queue Handoff', async () => {
+    const f = handoffFixture();
+    f.state.comments = [];
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      await expect(f.execute()).rejects.toThrow('Current native review is unavailable at CI completion; no enqueue retry');
+      expect(f.enqueue).not.toHaveBeenCalled();
+      expect(f.api.get.mock.calls.filter(([path]) => path.includes('/issues/'))).toHaveLength(1);
+    } finally { log.mockRestore(); }
+  });
   it.each(['unarmed', 'already queued', 'head moved', 'draft'])('skips %s without a mutation', async scenario => {
     const f = handoffFixture();
     if (scenario === 'unarmed') Object.assign(f.queuePr, { autoMergeRequest: null });
@@ -785,7 +795,7 @@ describe('hosted review decisions', () => {
         event: { number: 12, repository: { private: false }, pull_request: { head: { sha: receipt.head } } },
         env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' },
         api, runGit, now: () => clock, sleep, deadlineMs: 30000,
-      })).rejects.toThrow(`needs_agent_review: no receipt comment yet for head ${receipt.head}; post a current receipt comment from a user with write, maintain or admin permission; post the receipt comment and Native Review Receipt Rerun will rerun native-review automatically`);
+      })).rejects.toThrow(`needs_agent_review: no receipt comment yet for head ${receipt.head}; post a current receipt comment from a user with write, maintain or admin permission; when native-review is the only failed job of the completed run, Native Review Receipt Rerun will rerun it automatically`);
       expect(sleep).not.toHaveBeenCalled();
       expect(runGit).not.toHaveBeenCalled();
       expect(log).toHaveBeenCalledWith('needs_agent_review: post a current receipt comment from a user with write, maintain or admin permission');
