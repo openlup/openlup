@@ -109,8 +109,8 @@ export function createPostgresStockWaitReads(options: {
 
   async function payments(db: SubscriptionQueryExecutor, cases: StockWaitReadProjection[]) {
     const requests = cases.filter(row => row.orderId !== null)
-      .map(({ id, caseKind, orderId, cycleId, clientId, subscriptionId, scheduledAt }) => (
-        { id, kind: caseKind, orderId, cycleId, clientId, subscriptionId, scheduledAt }
+      .map(({ id, caseKind, orderId, cycleId, cycleNumber, clientId, subscriptionId, scheduledAt }) => (
+        { id, kind: caseKind, orderId, cycleId, cycleNumber, clientId, subscriptionId, scheduledAt }
       ));
     const statuses = new Map<string, z.infer<typeof paymentSchema>>();
     if (!requests.length) return statuses;

@@ -2837,11 +2837,23 @@ open cases ordered by opening time. The reader applies eligibility after the
 limit and keeps stock-secured cases visible. Pass evidence and the observation
 time to `stockWaitHealth` to identify stalls and check notice freshness.
 
-Managed operator pages with bound orders require a PostgreSQL executor with read
-access to `commerce_orders.subscription_id`, `commerce_orders.subscription_cycle_id`,
-`subscription_cycles.order_id`, `subscription_cycles.payment_id`,
-`commerce_payments.id`, and `commerce_payments.order_id` in addition to the existing
-managed read columns. Native case projections report
+For managed reads, the PostgreSQL executor needs read access to the columns
+used by each method.
+
+| Used by | Relation | Columns |
+| --- | --- | --- |
+| All reads | `subscription_stock_wait_cases` | `id`, `state`, `deficits` |
+| Admin, evidence and customer listings | `subscription_stock_wait_cases` | `client_id`, `subscription_id`, `cycle_number`, `scheduled_at`, `order_id`, `cycle_id`, `fulfillment_id`, `opened_at`, `last_checked_at`, `stock_secured_at`, `resumed_at`, `closed_at`, `block_reason` |
+| Admin, evidence and customer listings | `subscriptions` | `id`, `client_id`, `status`, `next_cycle_at` |
+| Admin, evidence and customer listings that project notices | `communication_email_deliveries` | `id`, `aggregate_id`, `aggregate_type`, `template_slug`, `status`, `last_error_code`, `updated_at` |
+| Customer ownership checks | `clients` | `id`, `auth_user_id` |
+| Customer ownership checks | `subscriptions` | `id`, `client_id` |
+| Admin payment reads | `commerce_orders` | `id`, `client_id`, `subscription_id`, `subscription_cycle_id` |
+| Admin payment reads | `subscription_cycles` | `id`, `subscription_id`, `scheduled_at`, `order_id`, `cycle_number`, `payment_id` |
+| Admin payment reads | `commerce_payments` | `id`, `order_id` |
+| Admin payment reads | `commerce_payment_intents` | `order_id`, `subscription_id`, `subscription_cycle_id`, `payment_id`, `target_kind`, `status` |
+
+Native case projections report
 `stock_wait_read_generation_missing: <case-id>` if the linked renewal operation
 is absent or disagrees with the case. Check the operation binding for that case.
 

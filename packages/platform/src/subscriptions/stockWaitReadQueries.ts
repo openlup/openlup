@@ -69,14 +69,14 @@ export function stockWaitPageSql(graph: Graph, reader: "admin" | "evidence" | "c
 export function stockWaitPaymentSql(graph: Graph) {
   const requested = `WITH requested AS (
     SELECT * FROM jsonb_to_recordset($1::jsonb) AS cases(id uuid,kind text,"orderId" uuid,"cycleId" uuid,
-      "clientId" uuid,"subscriptionId" uuid,"scheduledAt" timestamptz)
+      "clientId" uuid,"subscriptionId" uuid,"scheduledAt" timestamptz,"cycleNumber" integer)
   )`;
   if (graph === "managed") return `${requested}
     SELECT c.id,c.kind,i.status FROM requested c
     JOIN public.commerce_orders o ON (o.id,o.client_id,o.subscription_id,o.subscription_cycle_id)=
       (c."orderId",c."clientId",c."subscriptionId",c."cycleId")
-    JOIN public.subscription_cycles cycle ON (cycle.id,cycle.subscription_id,cycle.scheduled_at,cycle.order_id)=
-      (c."cycleId",c."subscriptionId",c."scheduledAt",o.id)
+    JOIN public.subscription_cycles cycle ON (cycle.id,cycle.subscription_id,cycle.scheduled_at,cycle.order_id,cycle.cycle_number)=
+      (c."cycleId",c."subscriptionId",c."scheduledAt",o.id,c."cycleNumber")
     JOIN public.commerce_payments payment ON payment.id=cycle.payment_id AND payment.order_id=o.id
     JOIN public.commerce_payment_intents i ON (i.order_id,i.subscription_id,i.subscription_cycle_id,i.payment_id)=
       (o.id,c."subscriptionId",cycle.id,payment.id) AND i.target_kind='subscription_cycle'`;

@@ -207,6 +207,8 @@ it("reads scoped managed stock waits and verifies canonical evidence and snapsho
   });
   await updateGraph("UPDATE public.commerce_payment_intents SET subscription_id=$2 WHERE order_id=$1", [order, subscription]);
   for (const [label, sql, values, restored] of [
+    ["bound cycle number differs from the case", "UPDATE public.subscription_cycles SET cycle_number=$2 WHERE id=$1",
+      [cycle, 3], [cycle, 1]],
     ["order belongs to another cycle", "UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1",
       [order, otherCycle], [order, cycle]],
     ["cycle points back to another order", "UPDATE public.subscription_cycles SET order_id=$2 WHERE id=$1",
@@ -218,7 +220,7 @@ it("reads scoped managed stock waits and verifies canonical evidence and snapsho
   ] as const) {
     await updateGraph(sql, [...values]);
     expect.soft((await reads.listAdmin({ state: "all", page: 1, pageSize: 1 })).cases[0], label).toMatchObject({
-      id: wait, orderId: order, cycleId: cycle, paymentStatus: "not_started", paymentEvidence: "missing",
+      id: wait, orderId: order, cycleId: cycle, cycleNumber: 1, paymentStatus: "not_started", paymentEvidence: "missing",
     });
     await updateGraph(sql, [...restored]);
   }
