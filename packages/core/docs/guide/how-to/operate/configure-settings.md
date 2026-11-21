@@ -1,6 +1,6 @@
 # Configure settings
 
-The settings tool answers four questions before you change store behavior: what can be changed, where the value lives, what changing it does (including which existing records keep their original values) and how to check a proposed edit. It is available through two equivalent entry points: the command line (`openlup settings ...` or `npm --silent run settings -- ...` in a starter) and a read-only MCP server (`openlup settings mcp`). It writes nothing: discovery, check and preview are strictly read-only. The [Settings catalogue](settings-catalogue.md) covers platform settings, capabilities and invariants; your application's settings script adds settings declared by the app. This discovery surface is experimental.
+The settings tool answers four questions before you change store behavior: what can be changed, where the value lives, what changing it does (including which existing records keep their original values) and how to check a proposed edit. It is available through two equivalent entry points: the command line (`openlup settings ...` or your starter's `settings` script) and a read-only MCP server (`openlup settings mcp`). It writes nothing: discovery, check and preview are strictly read-only. The [Settings catalogue](settings-catalogue.md) covers platform settings, capabilities and invariants; your application's settings script adds settings declared by the app. This discovery surface is experimental.
 
 ## Find a setting
 
@@ -86,7 +86,7 @@ the driver or pool manage their own connections.
 To change an installed policy such as `inventory_renewal_protection` in the starter:
 
 1. Edit the configured policy value and revision in `owned/store.config.ts`.
-2. Run offline validation: `npm --silent run settings -- check --configuration <id>`.
+2. Run offline validation by passing `check --configuration <id>` to your starter's `settings` script.
 3. Preview the proposed policy against the store database with `preview` before installing.
 4. Install the updated policy with `./lifecycle up --configuration <id>`.
 5. Verify the live installed row with a connected `show --database-url ...`.
@@ -94,7 +94,7 @@ To change an installed policy such as `inventory_renewal_protection` in the star
 In the Docker Compose local demonstration, the `database` service does not publish a port on the host, while connected `openlup settings` commands require a TCP connection. Run connected `show` and `preview` inside the `application` container on the Compose network:
 
 ```sh
-docker compose exec application npm --silent run settings -- show inventory_renewal_protection --database-url postgresql://starter_runtime@database:5432/neutral_store --json
+docker compose exec application ./node_modules/.bin/openlup settings --app ./owned/settings-host.ts show inventory_renewal_protection --database-url postgresql://starter_runtime@database:5432/neutral_store --json
 ```
 
 Pass the same `--database-url` to `preview` inside `docker compose exec application` when estimating stock availability before reinstalling. To inspect the database directly with `psql`, run:
