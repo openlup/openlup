@@ -656,9 +656,16 @@ it("checks every packaged schema against its default and valid examples", async 
   const { loadSettingsCatalogue } = await import("../../src/operations/server/settingsCatalog.js");
   const entries = loadSettingsCatalogue().entries.filter(entry => "fallback" in entry).filter(entry =>
     (entry.kind === "code" || entry.kind === "installed") && entry.schema);
-  expect(entries.map(entry => entry.key)).toEqual([key]);
+  expect(entries.map(entry => entry.key)).toEqual([
+    key, "shipping_flat_minor", "subscription_minimum_base_units", "subscription_sized_intro_phase",
+  ]);
   for (const entry of entries) {
-    for (const value of [entry.fallback, ...entry.examples.filter(example => !example.code).map(example => example.value)]) {
+    const values = [
+      ...(entry.fallback !== null ? [entry.fallback] : []),
+      ...entry.examples.filter(example => !example.code).map(example => example.value),
+    ];
+    expect(values.length, entry.key).toBeGreaterThan(0);
+    for (const value of values) {
       const host = checks(async () => ({ file: { ...minimumFile, entries: { [entry.key]: { value } } } }));
       const { exit, output } = await run(checkArgs, { host });
       expect(exit, entry.key).toBe(0);
@@ -864,9 +871,10 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // the unknown-key guidance, the text hint for an empty list, the clarified
   // six-reason vocabulary description for commerce.manualHoldReasons,
   // domain-guide change.reference links for all 47 cap and invariant entries,
-  // and "Default: none (see behavior below)" for null fallbacks (K6).
+  // "Default: none (see behavior below)" for null fallbacks (K6),
+  // and Stage 4 Wave 4B packaged callback and single-row installed entries.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("54cb8428fb39f94782ca71a39865cb634ba9c760ebf71dcbc65559d4633468a2");
+    .toBe("2553f9d0b2830fe71dc3cd13aa35d19accb84b4be1a6dc28ed6ba21bc45ce803");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {

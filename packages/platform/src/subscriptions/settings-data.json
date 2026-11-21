@@ -15,6 +15,42 @@
     "rules": []
   },
   {
+    "key": "subscription_minimum_base_units",
+    "domain": "subscriptions",
+    "kind": "installed",
+    "goal": "Set the minimum base unit count required when editing a classic subscription (minimum base units, subscription edit floor, package minimum).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "integer", "minimum": 1, "maximum": 2147483647},
+    "previewSchema": null,
+    "examples": [{"value": 6}],
+    "fallback": null,
+    "absentMeans": {"description": "Both TypeScript (createPostgresPackageEditReadPort) and SQL subscription edit paths fail closed with subscription_reprice_minimum_base_units_unavailable when no valid positive 32-bit integer is stored in commerce_settings.value_text.", "source": "no installed row (fail-closed refusal subscription_reprice_minimum_base_units_unavailable)", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform provides no implicit floor for classic subscription edits; stores must explicitly install a positive 32-bit integer row in commerce_settings.",
+    "effect": {"appliesTo": "Classic subscription edit quotes and SQL applies read the installed minimum base-unit count from commerce_settings.value_text; host edit admission checks for drift against configured offer minimums before admitting edits.", "frozenOn": ["Existing active subscriptions and already completed edit command receipts retain their agreed quantities and prices."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "Install or update the commerce_settings row through your store installation step; host edit admission refuses drift against application configuration."},
+    "change": {"operation": "No settings write operation is available for this key."},
+    "rules": []
+  },
+  {
+    "key": "subscription_sized_intro_phase",
+    "domain": "subscriptions",
+    "kind": "installed",
+    "goal": "Set the introductory fixed-cycle and graduation-cycle boundaries for sized subscription editing (intro phase, graduation cycle, starter pack editing).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"fixedThroughCycle": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}, "graduationCycle": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}}, "required": ["fixedThroughCycle", "graduationCycle"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [{"value": {"fixedThroughCycle": 2, "graduationCycle": 3}}],
+    "fallback": null,
+    "absentMeans": {"description": "Introductory starter-pack subscriptions fail closed in SQL with subscription_edit_invalid_sized_configuration when no valid JSON row is installed in commerce_settings.value_text. In the starter, owned/subscription-editing.ts holds the code copy while owned/demo-seed.ts installs the matching database copy; keep both aligned.", "source": "no installed row (fail-closed refusal subscription_edit_invalid_sized_configuration)", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform provides no implicit introductory phase cutoff; stores must explicitly install fixedThroughCycle and graduationCycle in commerce_settings when introductory subscriptions use sized editing.",
+    "effect": {"appliesTo": "Sized subscription edit commands for introductory starter-pack subscriptions evaluate fixedThroughCycle and graduationCycle from the installed commerce_settings row in SQL alongside the configured SizedEditPolicy in TypeScript (in the starter, keep owned/subscription-editing.ts aligned with the database row seeded by owned/demo-seed.ts).", "frozenOn": ["Already completed edit command receipts and past paid cycles retain their recorded state."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "Install or update the commerce_settings row together with the application's SizedEditPolicy configuration."},
+    "change": {"operation": "No settings write operation is available for this key."},
+    "rules": []
+  },
+  {
     "key": "subscriptions.addressBasedRenewalShipping",
     "domain": "subscriptions",
     "goal": "Reprice renewal shipping from the current address.",
@@ -22,6 +58,23 @@
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Retained native terms carry one shipping threshold profile."},
     "change": {"reference": "docs/guide/concepts/starter-ownership.md#paid-order-messages-and-shipping"}
+  },
+  {
+    "key": "subscriptions.afterRenewal",
+    "domain": "subscriptions",
+    "kind": "callback",
+    "goal": "Customize renewal execution input, failure classification, and post-renewal or exhaustion outcome handling (after renewal, renewal policy, dunning exhaustion, failure classification).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform supplies neutral failure-key defaults via createDefaultRenewalFailurePolicy and leaves post-exhaustion actions unconfigured so hosts compose AutomaticRenewalPolicy, RenewalOutcomePolicy, and RenewalFailurePolicy from @openlup/platform/subscriptions explicitly.",
+    "effect": {"appliesTo": "Subsequent renewal runs and failure-handling passes invoke the bound AutomaticRenewalPolicy, RenewalOutcomePolicy, and RenewalFailurePolicy callbacks from @openlup/platform/subscriptions.", "frozenOn": ["Already recorded renewal operations, retry obligations, dunning cases, and completed command receipts retain their persisted state."], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "The policy hooks are executable server code implementing AutomaticRenewalPolicy, RenewalOutcomePolicy, and RenewalFailurePolicy from @openlup/platform/subscriptions."},
+    "change": {"reference": "docs/guide/concepts/subscriptions.md#lifecycle-in-durable-storage"},
+    "rules": []
   },
   {
     "key": "subscriptions.calendarCadence",
@@ -51,6 +104,23 @@
     "change": {"reference": "docs/guide/concepts/subscriptions.md#subscription-delivery-alignment"}
   },
   {
+    "key": "subscriptions.editTermsAdmission",
+    "domain": "subscriptions",
+    "kind": "callback",
+    "goal": "Admit or refuse proposed subscription lines, quantities, and cadences before pricing a subscription edit (edit terms admission, offer admission, cadence validation).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Omitting admitSubscriptionTerms (SubscriptionTermsAdmission from @openlup/platform/subscriptions) preserves native subscription editing behavior with no application-specific offer filter beyond platform minimums and representation bounds.",
+    "effect": {"appliesTo": "Fresh subscription edit previews and applies invoke the bound SubscriptionTermsAdmission callback (admitSubscriptionTerms from @openlup/platform/subscriptions) after normalization and before pricing or quote persistence.", "frozenOn": ["Active subscription terms and already completed matching command receipts replay without re-evaluating changed admission rules."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The callback is executable server code implementing SubscriptionTermsAdmission from @openlup/platform/subscriptions."},
+    "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#configure-subscription-offers"},
+    "rules": []
+  },
+  {
     "key": "subscriptions.introductoryPhases",
     "domain": "subscriptions",
     "goal": "Schedule introductory discounts by renewal cycle.",
@@ -58,6 +128,23 @@
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native terms support one introductory phase before the retained terms take over."},
     "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#configure-subscription-offers"}
+  },
+  {
+    "key": "subscriptions.lifecycleCommandAdmission",
+    "domain": "subscriptions",
+    "kind": "callback",
+    "goal": "Admit or refuse fresh customer subscription lifecycle commands such as skip, slide, pause, resume, cancel, order_now, and reactivate (command admission, pause presets, account actions).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Omitting admitSubscriptionCommand (SubscriptionCommandAdmission from @openlup/platform/subscriptions) preserves native command behavior across all supported lifecycle actions subject to platform state and payment fences.",
+    "effect": {"appliesTo": "Fresh subscription lifecycle previews and commands invoke the bound SubscriptionCommandAdmission callback (admitSubscriptionCommand from @openlup/platform/subscriptions) after replay checks and before durable writes.", "frozenOn": ["Completed command receipts and existing pauses or cycle dates replay and retain their stored outcomes."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The callback is executable server code implementing SubscriptionCommandAdmission from @openlup/platform/subscriptions."},
+    "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#configure-account-actions-and-pauses"},
+    "rules": []
   },
   {
     "key": "subscriptions.prepaidCycles",
@@ -103,6 +190,23 @@
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Managed and native delivery paths use separate controls."},
     "change": {"reference": "docs/guide/reference/limits.md#subscription-care"}
+  },
+  {
+    "key": "subscriptions.sizedPortionProposal",
+    "domain": "subscriptions",
+    "kind": "callback",
+    "goal": "Compute target variant quantities from daily need, cadence, and portion factor during sized subscription portion changes (portion proposal, resize bundle, sized editor).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform provides no default demand-to-quantity sizing formula; hosts supply SizedHostPorts.proposePortion from @openlup/platform/subscriptions, or refuse demand-driven resizing when unconfigured.",
+    "effect": {"appliesTo": "New sized subscription portion-mode edits invoke SizedHostPorts.proposePortion from @openlup/platform/subscriptions before quoting and persisting updated lines.", "frozenOn": ["Existing subscriptions and completed edit receipts retain their agreed lines and prices until a new edit is applied."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The callback is executable server code implementing SizedHostPorts.proposePortion from @openlup/platform/subscriptions."},
+    "change": {"reference": "docs/guide/concepts/subscriptions.md#installed-subscription-boundary"},
+    "rules": []
   },
   {
     "key": "subscriptions.stockWaitHoldLifetime",

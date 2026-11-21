@@ -66,6 +66,46 @@ async function bindSettings({ database, app, configuration }) {
           const policy = await readRenewalStockProtectionOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
         },
+        subscription_minimum_base_units: async () => {
+          const { rows } = await db.query("SELECT value_text FROM public.commerce_settings WHERE key = 'subscription_minimum_base_units'");
+          if (!rows.length) return { present: false };
+          const raw = rows[0].value_text;
+          const value = Number(raw);
+          if (typeof raw !== "string" || !/^[1-9][0-9]*$/u.test(raw) || !Number.isSafeInteger(value) || value > 2147483647) {
+            throw new Error("subscription_reprice_minimum_base_units_unavailable");
+          }
+          return { present: true, value, revision: null };
+        },
+        subscription_sized_intro_phase: async () => {
+          const { rows } = await db.query("SELECT value_text FROM public.commerce_settings WHERE key = 'subscription_sized_intro_phase'");
+          if (!rows.length) return { present: false };
+          const raw = rows[0].value_text;
+          if (typeof raw !== "string") throw new Error("subscription_edit_invalid_sized_configuration");
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+            || Object.keys(parsed).length !== 2
+            || !Object.hasOwn(parsed, "fixedThroughCycle") || !Object.hasOwn(parsed, "graduationCycle")
+            || !Number.isSafeInteger(parsed.fixedThroughCycle) || parsed.fixedThroughCycle < 1
+            || !Number.isSafeInteger(parsed.graduationCycle) || parsed.graduationCycle < 1) {
+            throw new Error("subscription_edit_invalid_sized_configuration");
+          }
+          return {
+            present: true,
+            value: { fixedThroughCycle: parsed.fixedThroughCycle, graduationCycle: parsed.graduationCycle },
+            revision: null,
+          };
+        },
+        shipping_flat_minor: async () => {
+          const { rows } = await db.query("SELECT value_minor FROM public.commerce_settings WHERE key = 'shipping_flat_minor'");
+          if (!rows.length) return { present: false };
+          const raw = rows[0].value_minor;
+          if (raw === null || raw === undefined) throw new Error("shipping_flat_minor_invalid");
+          const value = Number(raw);
+          if (!Number.isSafeInteger(value) || value < 0 || value > 2147483647) {
+            throw new Error("shipping_flat_minor_invalid");
+          }
+          return { present: true, value, revision: null };
+        },
         ...overrides.readers,
       },
       previewers: {
