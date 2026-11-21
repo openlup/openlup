@@ -58,7 +58,12 @@ export function settingsDocuments(entries?: readonly z.infer<typeof descriptor>[
   ]);
   const showRequest = z.strictObject({ key });
   const showResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), setting, observation: observationSchema });
-  const listResult = z.strictObject({ schemaVersion: z.literal(settingsVersion), entries: z.array(summary) });
+  const listResult = z.strictObject({
+    schemaVersion: z.literal(settingsVersion),
+    entries: z.array(summary),
+    appBindingWarning: z.string().min(1).optional(),
+    partialMatch: z.literal(true).optional(),
+  });
   return { showRequest, showResult, listResult };
 }
 
@@ -89,6 +94,7 @@ export function listCatalogueSettings(input: unknown, catalogue?: ReturnType<typ
   const { entries, listResult, searchTerms } = catalogue ?? loadSettingsCatalogue();
   const { goal } = parsed.data;
   let matches = entries;
+  let partialMatch = false;
   if (goal !== undefined) {
     const words = searchTokens(goal);
     const scored = entries.map(entry => {
@@ -100,11 +106,13 @@ export function listCatalogueSettings(input: unknown, catalogue?: ReturnType<typ
       return { entry, count };
     }).filter(({ count }) => count > 0);
     const complete = scored.filter(({ count }) => count === words.length);
+    partialMatch = scored.length > 0 && complete.length === 0;
     matches = (complete.length > 0 ? complete : scored.sort((a, b) => b.count - a.count).slice(0, 10))
       .map(({ entry }) => entry);
   }
   return listResult.parse({
     schemaVersion: settingsVersion,
     entries: matches.map(({ key, goal, kind, runtime, change }) => ({ key, goal, kind, runtime, change })),
+    ...(partialMatch ? { partialMatch: true as const } : {}),
   });
 }

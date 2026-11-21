@@ -41,13 +41,14 @@ type SettingsHost = {
   loadCheck?(input: { app: string; configuration?: string }): Promise<SettingsAppBindings | undefined>;
   formatPreview?(result: PreviewDocument): string;
   previewResultSchema?: ZodType;
+  runTool?(argv: readonly string[], stdin: string): Promise<{ exit: number; stdout: string }>;
 };
 type SettingsIo = { write(text: string): void; warn?(text: string): void; readStdin(): Promise<string>; input?: AsyncIterable<Buffer> };
 type Result = Awaited<ReturnType<typeof previewSetting<PreviewDocument>>>
   | ReturnType<typeof listSettings> | Awaited<ReturnType<typeof showSetting>> | ReturnType<typeof explainSetting>
   | z.infer<ReturnType<typeof catalogueWithAppSettings>["appShowResult"]>;
 
-const help = `openlup settings (experimental) list [--goal <text>] | show <key> | preview <key> --value <json-or-> | explain <refusal-code-or-key>
+const help = `openlup settings (experimental) list [--goal <text>] | show <key> | preview <key> --value <json-or-> | explain <refusal-code-or-key> | check --app <module> [--configuration <id>]
 openlup settings mcp [--app <module>] [--configuration <id>] [--database-url <url>]
 Use --json for a versioned settings document. Preview before any change.
 Pass --value - to read one JSON value from stdin or --value=-1 for a negative number.
@@ -60,27 +61,40 @@ Examples:
   npm --silent run settings -- list --goal "renewal stock protection horizon"
   npm --silent run settings -- show inventory_renewal_protection --json
   npm --silent run settings -- preview inventory_renewal_protection --value '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json
-  npm --silent run settings -- explain commerce_setting_unknown`;
+  npm --silent run settings -- explain commerce_setting_unknown
+  npm --silent run settings -- check --app <module> [--configuration <id>] --json`;
 
 function text(result: Result, host?: SettingsHost): string {
   if ("refusal" in result || "explanation" in result) {
     const { code, rule, hint, remediation } = "refusal" in result ? result.refusal : result.explanation;
     return [code, rule, hint, remediation.action, remediation.command].join("\n");
   }
-  if ("entries" in result) return result.entries.length
-    ? result.entries.map(({ key, kind, runtime, goal, change }) => [
-      `${key} (${kind}, ${runtime.level})`, `  ${goal}`,
-      ...((kind === "cap" || kind === "invariant") && "reason" in runtime ? [`  ${runtime.reason}`] : []),
-      `  Change: ${Object.values(change).join(" ")}`,
-    ].join("\n")).join("\n")
-    : "No settings matched the goal.\nTry fewer or different words, or run list without --goal.";
+  if ("entries" in result) {
+    const lines: string[] = [];
+    if (result.appBindingWarning) {
+      lines.push(`Warning: application settings unavailable — ${result.appBindingWarning}`);
+    }
+    if (result.entries.length) {
+      if (result.partialMatch) {
+        lines.push("Partial matches (not all goal words matched):");
+      }
+      lines.push(...result.entries.map(({ key, kind, runtime, goal, change }) => [
+        `${key} (${kind}, ${runtime.level})`, `  ${goal}`,
+        ...((kind === "cap" || kind === "invariant") && "reason" in runtime ? [`  ${runtime.reason}`] : []),
+        `  Change: ${Object.values(change).join(" ")}`,
+      ].join("\n")));
+    } else {
+      lines.push("No settings matched the goal.\nTry fewer or different words, or run list without --goal.");
+    }
+    return lines.join("\n");
+  }
   if (!("setting" in result)) return host?.formatPreview?.(result) ?? JSON.stringify(result, null, 2);
   const { setting, observation } = result;
   return [setting.key + " — " + setting.goal, `Owner: ${setting.domain}`,
     `Kind: ${setting.kind} (${setting.runtime.level})`,
     ...("reason" in setting.runtime ? [setting.runtime.reason] : []),
     ...("effect" in setting ? [
-      `Default: ${JSON.stringify(setting.fallback)}`,
+      `Default: ${setting.fallback === null ? "none (see behavior below)" : JSON.stringify(setting.fallback)}`,
       `Basis: ${setting.defaultBasis.kind}${setting.defaultBasis.kind === "reference-code" ? " (matches the reference deployment’s code)" : ""}`,
       setting.whyThisDefault, ...(setting.absentMeans ? [setting.absentMeans.description] : []),
       `Schema: ${JSON.stringify(setting.schema)}`, `Effect: ${setting.effect.appliesTo}`,
@@ -88,6 +102,42 @@ function text(result: Result, host?: SettingsHost): string {
     ] : []),
     `Change: ${Object.values(setting.change).join(" ")}`, `Observation: ${JSON.stringify(observation)}`].join("\n");
 }
+
+const listHelp = `openlup settings (experimental) list [--goal <text>] [--app <module>] [--configuration <id>] [--json]
+Search platform and declared application settings by goal words, or omit --goal to list everything.
+Exit codes: 0 completed, 1 refused, 64 invalid syntax or input, 74 operation unavailable.
+
+Examples:
+  npm --silent run settings -- list --goal "renewal stock protection horizon"
+  npm --silent run settings -- list --app <module> --json`;
+
+const showHelp = `openlup settings (experimental) show <key> [--app <module>] [--configuration <id>] [--database-url <read-capable-url>] [--json]
+Read one setting by key: owner, rules, default behavior, and current observation (offline, file, or connected database).
+Exit codes: 0 completed, 1 refused, 64 invalid syntax or input, 74 operation unavailable.
+
+Examples:
+  npm --silent run settings -- show inventory_renewal_protection --json
+  npm --silent run settings -- show inventory_renewal_protection --database-url <read-capable-url> --json`;
+
+const previewHelp = `openlup settings (experimental) preview <key> --value <json-or-> --database-url <read-capable-url> [--app <module>] [--configuration <id>] [--sku <sku>]... [--as-of <UTC-ISO-instant>] [--json]
+Preview the effect of a proposed value without writing anything.
+Pass --value - to read one JSON value from stdin or --value=-1 for a negative number.
+Exit codes: 0 completed (including invalid-policy preview), 1 refused, 64 invalid syntax or input, 74 operation unavailable.
+
+Example:
+  npm --silent run settings -- preview inventory_renewal_protection --value '{"revision":"store-1","renewalProtectionDays":21}' --database-url <read-capable-url> --sku <sku> --json`;
+
+const explainHelp = `openlup settings (experimental) explain <refusal-code-or-key> [--app <module>] [--configuration <id>] [--json]
+Explain a refusal code returned by another command, or the offline behavior of a setting key.
+Exit codes: 0 completed, 1 refused, 64 invalid syntax or input, 74 operation unavailable.
+
+Examples:
+  npm --silent run settings -- explain commerce_setting_unknown
+  npm --silent run settings -- explain checkout_recovery_reminders --json`;
+
+const mcpHelp = `openlup settings (experimental) mcp [--app <module>] [--configuration <id>] [--database-url <read-capable-url>]
+Run the read-only JSON-RPC stdio MCP server exposing settings_list, settings_show, settings_explain, settings_check, and settings_preview.
+Exit codes: 0 completed, 64 invalid syntax or configuration, 74 app module or factory not found.`;
 
 const checkHelp = `openlup settings check --app <module> [--configuration <id>] [--json] (experimental, offline)
 Check reported file values against available setting schemas and run the application's optional startup validation.
@@ -243,8 +293,12 @@ async function validateFileValue(file: FileValue, schema: Record<string, JsonVal
   try {
     const parsed = appSchema ? await appSchema.safeParseAsync(file.value) : z.fromJSONSchema(schema!).safeParse(file.value);
     return parsed.success ? { state: "valid" }
-      : { state: "invalid", paths: parsed.error.issues.map(issue => issue.path.map(String)) };
-  } catch { return appSchema ? { state: "invalid", paths: [[]] } : { state: "not-validated" }; }
+      : {
+        state: "invalid",
+        paths: parsed.error.issues.map(issue => issue.path.map(String)),
+        messages: parsed.error.issues.map(issue => issue.message),
+      };
+  } catch { return appSchema ? { state: "invalid", paths: [[]], messages: ["Application schema validation failed."] } : { state: "not-validated" }; }
 }
 
 async function checkDocument(file: FileBinding | undefined, appValidation: AppValidation, declarations?: ReadonlyMap<string, AppSetting>) {
@@ -283,7 +337,11 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
       const source = file.state === "not-reported" ? undefined : file.location;
       return [
         `${row.key}: file ${file.state}, schema ${row.validation.state}${row.validation.state === "invalid"
-          ? ` at ${row.validation.paths.map(path => path.join(".") || "<value>").join(", ")}` : ""}`,
+          ? ` at ${row.validation.paths.map((path, index) => {
+            const label = path.join(".") || "<value>";
+            const message = row.validation.state === "invalid" ? row.validation.messages?.[index] : undefined;
+            return message ? `${label}: ${message}` : label;
+          }).join(", ")}` : ""}`,
         ...(source ? [`  ${source.file} · ${source.symbol}`] : []),
         ...(file.state === "present" ? [`  Value: ${JSON.stringify(file.value)}`] : file.state === "unreportable" ? [`  ${file.message}`] : []),
         `  Effect: ${row.effect} Change: ${row.takesEffect}`,
@@ -306,6 +364,10 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     return emit(field && hint ? { ...result, refusal: { ...result.refusal, path: [field], hint } } : result, 64);
   };
   if (argv[0] === "mcp") {
+    if (argv.includes("--help")) {
+      io.write((json ? JSON.stringify({ schemaVersion: 1, help: mcpHelp }) : mcpHelp) + "\n");
+      return 0;
+    }
     // Hosts must route process output away from the protocol stream they pass as io.write.
     // Hosts must supply a strict preview result schema, since the output gate accepts what that schema admits.
     if (!io.input || !host?.previewResultSchema) return invalid();
@@ -361,7 +423,15 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
   const { values, positionals: [command, key, ...extra] } = parsed;
   json = values.json === true;
   if (values.help) {
-    const usage = command === "check" ? checkHelp : help;
+    const helpByCommand: Record<string, string> = {
+      list: listHelp,
+      show: showHelp,
+      preview: previewHelp,
+      explain: explainHelp,
+      mcp: mcpHelp,
+      check: checkHelp,
+    };
+    const usage = (command && Object.hasOwn(helpByCommand, command) ? helpByCommand[command] : undefined) ?? help;
     io.write((json ? JSON.stringify({ schemaVersion: 1, help: usage }) : usage) + "\n");
     return 0;
   }
@@ -434,7 +504,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     const loadFailure = (hint: string, status: number) => {
       if (command === "list") {
         io.warn?.(`Settings app: ${hint}\n`);
-        return emit(offline, exit);
+        return emit("entries" in offline ? { ...offline, appBindingWarning: hint } : offline, exit);
       }
       return emit(appUnavailable(["app"], hint, `openlup settings ${command} <key> --app <module>`), status);
     };
@@ -482,33 +552,42 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     catch (error) {
       return emit(refuseSettingsPreview("commerce_setting_preview_json_invalid"), error instanceof SyntaxError ? 64 : 74);
     }
-    if (key && values.app && host?.loadCheck && !loadSettingsCatalogue().entries.some(entry => entry.key === key)) {
-      let bindings;
-      try { bindings = await loadApp(); }
-      catch { /* Continue with ordinary preview dispatch when the app cannot load. */ }
-      if (bindings && !("configurationIds" in bindings)) {
-        const admitted = declaredSettings(bindings.file);
-        if ("declarations" in admitted && admitted.declarations.has(key)) {
-          return emit(refuseSettingsPreview("commerce_setting_preview_unsupported", {
-            path: ["key"],
-            hint: `${key} is an application setting without a preview. Read it with settings show ${key} and validate an edit with settings check.`,
-          }));
-        }
-      }
-    }
   }
   const input = { key, proposed, skus: values.sku, asOf: values["as-of"] };
-  const unavailable = (hint?: string) => {
+  const unavailable = (detail?: string | Partial<Pick<SettingRefusal, "rule" | "hint" | "remediation">>) => {
     const refusal = loadSettingsCatalogue().byCode.get("commerce_setting_read_unavailable")!;
-    return { refusal: hint ? { ...refusal, hint } : refusal };
+    return {
+      refusal: typeof detail === "string" ? { ...refusal, hint: detail } : detail ? { ...refusal, ...detail } : refusal,
+    };
   };
   const needsApp = (field = "app") => refuseSettingsPreview("commerce_setting_preview_connection_required", {
     path: [field], hint: "Pass --app <module> for the shop's stock source and configuration.",
   });
+  const appUnsupported = async (): Promise<[Result, number?] | undefined> => {
+    if (!key || !values.app || !host?.loadCheck || loadSettingsCatalogue().entries.some(entry => entry.key === key)) {
+      return undefined;
+    }
+    let appBindings;
+    try { appBindings = await loadApp(); }
+    catch { return undefined; }
+    if (appBindings && !("configurationIds" in appBindings)) {
+      const admitted = declaredSettings(appBindings.file);
+      if ("declarations" in admitted && admitted.declarations.has(key)) {
+        return [refuseSettingsPreview("commerce_setting_preview_unsupported", {
+          path: ["key"],
+          hint: `${key} is an application setting without a preview. Read it with settings show ${key} and validate an edit with settings check.`,
+        })];
+      }
+    }
+    return undefined;
+  };
   async function dispatch(): Promise<[Result, number?]> {
     const resolveConfiguration = preview && values.configuration !== undefined;
     if (preview && !resolveConfiguration && !invalidDatabase) {
       const offline = await previewSetting(input);
+      if (offline.refusal.code === "commerce_setting_unknown") {
+        return (await appUnsupported()) ?? [offline];
+      }
       if (!databaseUrl || offline.refusal.code !== "commerce_setting_preview_connection_required") {
         return [offline, offline.refusal.code === "commerce_setting_preview_input_invalid" ? 64 : undefined];
       }
@@ -531,14 +610,30 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
         if ("refusal" in result) {
           if (result.refusal.code === "commerce_setting_preview_input_invalid") return [result, 64];
           if (result.refusal.code === "commerce_setting_preview_unexpected") return [result, 74];
+          if (result.refusal.code === "commerce_setting_unknown") return (await appUnsupported()) ?? [result];
           if (databaseUrl && !values.app && result.refusal.code === "commerce_setting_preview_connection_required") return [needsApp()];
         }
         return [result];
       }
       const readers = bindings?.readers;
       if (!readers || !Object.hasOwn(readers, key!) || typeof readers[key!] !== "function") {
-        return [unavailable(host && !values.app ? "Pass --app <module> that supplies a reader for this setting."
-          : "No connected reader exists for this key. Omit --database-url for offline discovery.")];
+        return [unavailable(host && !values.app ? {
+          rule: "A connected read requires an application settings reader for this key.",
+          hint: "Pass --app <module> that supplies a reader for this setting.",
+          remediation: {
+            retry: true,
+            action: "Pass --app <module> with a reader for this key, or omit --database-url for offline discovery.",
+            command: "npm --silent run settings -- show <key> --json",
+          },
+        } : {
+          rule: "No connected reader is registered for this setting key.",
+          hint: "No connected reader exists for this key. Omit --database-url for offline discovery.",
+          remediation: {
+            retry: false,
+            action: "Omit --database-url to inspect this setting offline.",
+            command: "npm --silent run settings -- show <key> --json",
+          },
+        })];
       }
       const result = await showSetting({ key }, readers);
       return [result, "refusal" in result && result.refusal.code === "commerce_setting_read_unavailable" ? 74 : undefined];

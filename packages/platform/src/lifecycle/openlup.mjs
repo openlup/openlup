@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Tool-only Node entry; importing platform engine entries never starts this CLI.
+import { spawn } from "node:child_process";
 import { Console } from "node:console";
 import { promises as fs } from "node:fs";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 const help = `openlup upgrade plan|apply --root DIR --from SNAPSHOT.json --to SNAPSHOT.json --schema-version N [--json]
@@ -108,8 +109,43 @@ function formatSettingsPreview(result) {
   ].join("\n");
 }
 
+const maxToolStdoutBytes = 16 * 1024 * 1024;
+function runSettingsToolProcess(argv, stdin) {
+  return new Promise(resolveResult => {
+    const child = spawn(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url), "settings-mcp-tool", ...argv], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const chunks = [];
+    let bytes = 0;
+    let settled = false;
+    const finish = result => {
+      if (settled) return;
+      settled = true;
+      resolveResult(result);
+    };
+    child.stdout.on("data", chunk => {
+      bytes += chunk.length;
+      if (bytes > maxToolStdoutBytes) {
+        child.kill();
+        finish({ exit: 74, stdout: "" });
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.on("data", chunk => { process.stderr.write(chunk); });
+    child.stdin.on("error", () => {});
+    child.on("error", () => { finish({ exit: 74, stdout: "" }); });
+    child.on("close", code => {
+      finish({ exit: code ?? 74, stdout: Buffer.concat(chunks).toString("utf8") });
+    });
+    if (stdin) child.stdin.write(stdin);
+    child.stdin.end();
+  });
+}
+
 async function main(args) {
-  if (args[0] === "settings") {
+  if (args[0] === "settings" || args[0] === "settings-mcp-tool") {
+    const isolateStdout = args[0] === "settings-mcp-tool";
     validatingInput = false;
     const host = { bind: bindSettings, loadCheck: loadSettingsCheck, formatPreview: formatSettingsPreview };
     // eslint-disable-next-line no-restricted-syntax -- tool entry loads the existing installed server subpath only for settings
@@ -136,9 +172,16 @@ async function main(args) {
       // eslint-disable-next-line no-restricted-syntax -- tool entry uses the same public preview contract as the catalogue generator
       const { renewalStockProtectionPreviewResult } = await import("@openlup/platform/inventory");
       process.exitCode = await runSettingsCommand(mcpArgs, { ...io, write, input: process.stdin },
-        { ...host, previewResultSchema: renewalStockProtectionPreviewResult });
+        { ...host, previewResultSchema: renewalStockProtectionPreviewResult, runTool: runSettingsToolProcess });
     } else {
-      process.exitCode = await runSettingsCommand(settingsArgs, io, host);
+      let toolIo = io;
+      if (isolateStdout) {
+        const write = process.stdout.write.bind(process.stdout);
+        process.stdout.write = process.stderr.write.bind(process.stderr);
+        globalThis.console = new Console(process.stderr);
+        toolIo = { ...io, write };
+      }
+      process.exitCode = await runSettingsCommand(settingsArgs, toolIo, host);
     }
     return;
   }

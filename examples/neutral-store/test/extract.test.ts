@@ -147,7 +147,10 @@ test('settings check identifies invalid object and array members in scratch conf
       assert.equal(checked.state, 'invalid', key);
       assert.equal(checked.appValidation.state, appValidationState, key);
       const row = checked.rows.find((entry: { key: string }) => entry.key === key);
-      assert.deepEqual(row?.validation, { state: 'invalid', paths: [path] }, key);
+      assert.equal(row?.validation.state, 'invalid', key);
+      assert.deepEqual(row?.validation.paths, [path], key);
+      assert.ok(Array.isArray(row?.validation.messages) && row.validation.messages.length > 0, key);
+      assert.ok(row.validation.messages.every((message: unknown) => typeof message === 'string' && message.length > 0), key);
     } finally {
       delete configurations[configuration];
     }

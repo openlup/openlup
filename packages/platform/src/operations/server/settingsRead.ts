@@ -7,6 +7,8 @@ type JsonValue = z.infer<ReturnType<typeof z.json>>;
 type ListResult = {
   schemaVersion: 1;
   entries: Pick<SettingDescriptor, "key" | "goal" | "kind" | "runtime" | "change">[];
+  appBindingWarning?: string;
+  partialMatch?: true;
 };
 type Observation =
   | { state: "offline" }

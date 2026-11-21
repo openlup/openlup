@@ -69,6 +69,7 @@ const searchTerms: Record<string, string> = {
   savedAddressValidation: "postal format, phone normalization, delivery address checks",
   "account-support": "operator permissions, administrative access",
   catalog: "product assortment, SKU records",
+  checkout: "basket, cart, order placement, purchase limits, recovery",
   commerce: "store orders, checkout processing",
   communications: "messaging, notifications",
   fulfillment: "shipping, dispatch, delivery",

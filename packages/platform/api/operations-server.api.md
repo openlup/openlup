@@ -320,6 +320,10 @@ type SettingsHost = {
     }): Promise<SettingsAppBindings | undefined>;
     formatPreview?(result: PreviewDocument): string;
     previewResultSchema?: ZodType;
+    runTool?(argv: readonly string[], stdin: string): Promise<{
+        exit: number;
+        stdout: string;
+    }>;
 };
 type SettingsIo = {
     write(text: string): void;
@@ -340,6 +344,8 @@ type JsonValue = z.infer<ReturnType<typeof z.json>>;
 type ListResult = {
     schemaVersion: 1;
     entries: Pick<SettingDescriptor, "key" | "goal" | "kind" | "runtime" | "change">[];
+    appBindingWarning?: string;
+    partialMatch?: true;
 };
 type Observation = {
     state: "offline";

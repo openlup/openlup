@@ -1,7 +1,7 @@
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { CallToolResultSchema, ListToolsResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -481,7 +481,10 @@ it.each([
     const base = invoke(...args);
     const withApp = invoke(...args, "--app", app);
     expect(base.status).toBe(0);
-    expect(withApp).toEqual({ ...base, stderr: args[0] === "list" ? `Settings app: ${cause}\n` : "" });
+    const expectedStdout = args[0] === "list"
+      ? JSON.stringify({ ...JSON.parse(base.stdout), appBindingWarning: cause }) + "\n"
+      : base.stdout;
+    expect(withApp).toEqual({ ...base, stdout: expectedStdout, stderr: args[0] === "list" ? `Settings app: ${cause}\n` : "" });
   }
 });
 
@@ -576,7 +579,7 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
   if (command !== "list") {
     expected = expected.replace(before.runtime.reason, runtimeReason)
       .replace(before.effect.appliesTo, appliesTo)
-      .replace(`Default: ${JSON.stringify(before.fallback)}\n`, "Default: null\n")
+      .replace(`Default: ${JSON.stringify(before.fallback)}\n`, "Default: none (see behavior below)\n")
       .replace(/^Basis: .*$/mu, "Basis: neutral")
       .replace(before.whyThisDefault, defaultReason)
       .replace(`Schema: ${JSON.stringify(before.schema)}\n`, `Schema: ${JSON.stringify(displayedSchema)}\n`);
@@ -667,4 +670,132 @@ it("exchanges all five MCP tools and recovers from bad frames with the packed bi
     expect(validateOutput({ ...document, extra: true }).valid, tool.name).toBe(false);
     expect(validateOutput({ ...document, schemaVersion: undefined }).valid, tool.name).toBe(false);
   }
+});
+
+it("observes live app edits and load failures in a single MCP session without restart", async () => {
+  const { directory, write } = fixture();
+  const key = "offer.freeShippingFromMinor";
+  const zodSpecifier = JSON.stringify(import.meta.resolve("zod"));
+  const writeApp = (value: number) => write(starterSettingsHost, `import { z } from ${zodSpecifier};
+export function createSettingsBindings() {
+  console.log("app console log");
+  process.stdout.write("app stdout log\\n");
+  return { file: { configuration: "supplements", validate() {}, entries: {
+    ${JSON.stringify(key)}: { value: ${value}, location: { file: "owned/store.config.ts", symbol: "threshold" },
+      descriptor: { domain: "shipping", goal: "Free shipping threshold", schema: z.number().int().min(0),
+        effect: { appliesTo: "New orders.", impact: "customer-promise", frozenOn: [] } } },
+  } } };
+}
+`);
+  writeApp(1000);
+
+  const child = spawn(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"),
+    "settings", "mcp", "--app", "./" + starterSettingsHost], { cwd: directory, stdio: ["pipe", "pipe", "pipe"] });
+  let stderr = "";
+  child.stderr.on("data", chunk => { stderr += chunk.toString("utf8"); });
+
+  let buffer = "";
+  const lines: string[] = [];
+  let waiting: ((line: string) => void) | undefined;
+  child.stdout.on("data", chunk => {
+    buffer += chunk.toString("utf8");
+    while (true) {
+      const newline = buffer.indexOf("\n");
+      if (newline === -1) break;
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (waiting) {
+        const resolveLine = waiting;
+        waiting = undefined;
+        resolveLine(line);
+      } else {
+        lines.push(line);
+      }
+    }
+  });
+  const nextReply = () => new Promise<Record<string, unknown>>((resolveReply, rejectReply) => {
+    if (lines.length) { resolveReply(JSON.parse(lines.shift()!)); return; }
+    const timer = setTimeout(() => rejectReply(new Error(`Timed out waiting for MCP reply. stderr:\n${stderr}`)), 15_000);
+    waiting = line => { clearTimeout(timer); resolveReply(JSON.parse(line)); };
+  });
+  const send = (payload: object) => { child.stdin.write(JSON.stringify(payload) + "\n"); };
+  const callTool = async (id: number, name: string, args: object = {}) => {
+    send({ jsonrpc: "2.0", id, method: "tools/call", params: { name: `settings_${name}`, arguments: args } });
+    const reply = await nextReply();
+    expect(reply.id).toBe(id);
+    return CallToolResultSchema.parse(reply.result);
+  };
+
+  try {
+    send({ jsonrpc: "2.0", id: 1, method: "initialize",
+      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "live-edit-test", version: "1" } } });
+    expect((await nextReply()).id).toBe(1);
+    send({ jsonrpc: "2.0", method: "notifications/initialized" });
+
+    const checkValid = await callTool(2, "check");
+    expect(checkValid.isError).toBe(false);
+    expect(checkValid.structuredContent).toMatchObject({
+      state: "checked",
+      rows: expect.arrayContaining([expect.objectContaining({
+        key, file: expect.objectContaining({ state: "present", value: 1000 }), validation: { state: "valid" },
+      })]),
+    });
+    const showInitial = await callTool(3, "show", { key });
+    expect(showInitial.isError).toBe(false);
+    expect(showInitial.structuredContent).toMatchObject({ observation: { state: "file", value: 1000 } });
+
+    writeApp(-5);
+    const checkInvalid = await callTool(4, "check");
+    expect(checkInvalid.isError).toBe(true);
+    expect(checkInvalid.structuredContent).toMatchObject({
+      state: "invalid",
+      rows: expect.arrayContaining([expect.objectContaining({
+        key, file: expect.objectContaining({ state: "present", value: -5 }),
+        validation: { state: "invalid", paths: [[]], messages: [expect.any(String)] },
+      })]),
+    });
+    const showUpdated = await callTool(5, "show", { key });
+    expect(showUpdated.isError).toBe(false);
+    expect(showUpdated.structuredContent).toMatchObject({ observation: { state: "file", value: -5 } });
+
+    writeApp(2500);
+    const checkRecovered = await callTool(6, "check");
+    expect(checkRecovered.isError).toBe(false);
+    expect(checkRecovered.structuredContent).toMatchObject({
+      state: "checked",
+      rows: expect.arrayContaining([expect.objectContaining({
+        key, file: expect.objectContaining({ state: "present", value: 2500 }), validation: { state: "valid" },
+      })]),
+    });
+
+    write(starterSettingsHost, 'export function createSettingsBindings() { throw new Error("broken edit after start"); }\n');
+    const listBroken = await callTool(7, "list");
+    expect(listBroken.isError).toBe(false);
+    expect(listBroken.structuredContent).toMatchObject({
+      schemaVersion: 1,
+      appBindingWarning: "broken edit after start",
+      entries: expect.arrayContaining([expect.objectContaining({ key: "inventory_renewal_protection" })]),
+    });
+
+    const closed = new Promise<number | null>(resolveClose => child.once("close", resolveClose));
+    child.stdin.end();
+    expect(await closed).toBe(0);
+    expect(stderr).toContain("app console log\napp stdout log\n");
+    expect(stderr).toContain("Settings app: broken edit after start\n");
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+  }
+}, 30_000);
+
+it("returns exit 0 for openlup settings mcp --help", () => {
+  const cli = resolve("packages/platform/src/lifecycle/openlup.mjs");
+  const text = spawnSync(process.execPath, [cli, "settings", "mcp", "--help"], { encoding: "utf8" });
+  expect(text.status, text.stderr).toBe(0);
+  expect(text.stderr).toBe("");
+  expect(text.stdout.split("\n")[0]).toContain("openlup settings (experimental) mcp");
+
+  const json = spawnSync(process.execPath, [cli, "settings", "mcp", "--help", "--json"], { encoding: "utf8" });
+  expect(json.status, json.stderr).toBe(0);
+  expect(json.stderr).toBe("");
+  expect(JSON.parse(json.stdout)).toEqual({ schemaVersion: 1, help: text.stdout.trimEnd() });
 });
