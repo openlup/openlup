@@ -18,7 +18,6 @@ vi.mock("node:child_process", async (original) => {
   } };
 });
 
-const bootstrap = { readRegistry: () => undefined };
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); vi.restoreAllMocks(); vi.unstubAllEnvs(); publicationAudits.mockReset(); });
 const quiet = () => { vi.spyOn(console, "log").mockImplementation(() => undefined); return vi.spyOn(console, "error").mockImplementation(() => undefined); };
@@ -344,20 +343,20 @@ describe("API snapshot Migration blocks", () => {
   }, 60_000);
   it("accepts migration notes moved by the actual set bump in the same API-change candidate", () => {
     const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
-    expect(compare((write, root) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0", undefined, bootstrap); }, { "package-lock.json": lock })).not.toThrow();
+    expect(compare((write, root) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); }, { "package-lock.json": lock })).not.toThrow();
   });
   it("refuses mismatched lockfile carriers after a combined set bump", () => {
     const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
     for (const carrier of ["package-lock.json", "packages/pub/package-lock.json"]) {
       expect(compare((write, root) => {
-        write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0", undefined, bootstrap);
+        write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0");
         write(carrier, JSON.stringify({ version: "0.4.0", packages: { "": { version: "0.4.0" }, "packages/pub": { version: "0.4.0" } } }));
       }, { "package-lock.json": lock }), carrier).toThrow(red);
     }
   });
   it("refuses candidate migration notes above Unreleased with otherwise coherent carriers", () => {
     const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
-    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0", undefined, bootstrap); };
+    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); };
     expect(compare(prepare, { "package-lock.json": lock }), "accepted notes below empty Unreleased").not.toThrow();
     expect(compare((write, root) => {
       prepare(write, root);
@@ -373,7 +372,7 @@ describe("API snapshot Migration blocks", () => {
       "package-lock.json": JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": carrier } }, null, 2),
       "packages/demo/package-lock.json": JSON.stringify({ version: "0.1.0", packages: { "": carrier } }, null, 2),
     };
-    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0", undefined, bootstrap); };
+    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); };
     expect(compare(prepare, overrides), "accepted private manifest/root/own carrier pin update").not.toThrow();
     const rootWithoutPrivateCarrier = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" } } }, null, 2);
     expect(compare(prepare, { ...overrides, "package-lock.json": rootWithoutPrivateCarrier }), "accepted private package with no prior root carrier and coherent own pins").not.toThrow();
@@ -396,7 +395,7 @@ describe("API snapshot Migration blocks", () => {
     const lock = JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.1.0" } } }, null, 2);
     const raise = (write: (path: string, contents: string) => void, root: string, version: string) => {
       write(SNAPSHOT, removed);
-      write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, version, undefined, bootstrap);
+      write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, version);
     };
     expect(compare((write, root) => raise(write, root, "0.5.0"), { "package-lock.json": lock }), "accepted coherent control").not.toThrow();
     expect(compare((write) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", released("0.4.0")); }, { "package-lock.json": lock }), "stale same version").toThrow(red);
@@ -409,7 +408,7 @@ describe("API snapshot Migration blocks", () => {
       "packages/demo/package.json": JSON.stringify({ name: "@openlup/demo", version: "0.4.0", license: "Apache-2.0", files: ["dist/**"], publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: "packages/demo" }, exports: { ".": "./dist/a.js" }, scripts: { build } }, null, 2),
       "package-lock.json": JSON.stringify({ packages: { "packages/pub": { version: "0.4.0" }, "packages/demo": { version: "0.4.0" } } }, null, 2),
     };
-    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0", undefined, bootstrap); };
+    const prepare = (write: (path: string, contents: string) => void, root: string) => { write(SNAPSHOT, removed); write("packages/pub/CHANGELOG.md", changelog(BLOCK)); bumpSet(root, "0.5.0"); };
     expect(compare(prepare, overrides), "accepted coherent two-package control").not.toThrow();
     expect(compare((write, root) => {
       prepare(write, root);

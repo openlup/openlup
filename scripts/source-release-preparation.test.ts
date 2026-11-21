@@ -14,7 +14,6 @@ import { packageReleaseInputs, preflightPackageRelease, preflightSetRelease, pre
 import { bumpSet } from "./packages/release-bump.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const bootstrap = { readRegistry: () => undefined };
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const zero = `sha256-${"0".repeat(64)}`;
@@ -60,10 +59,10 @@ describe("release-only source snapshots", () => {
     f.git("add", "packages/platform/changes/not-consumed.md");
     const staged = f.git("diff", "--cached", "--binary");
     f.write(fragments[0]!, "## Invalid fragment\n");
-    expect(() => bumpSet(f.root, "0.18.0", undefined, bootstrap)).toThrow(/fragment/);
+    expect(() => bumpSet(f.root, "0.18.0")).toThrow(/fragment/);
     expect(f.git("diff", "--cached", "--binary")).toBe(staged);
     f.write(fragments[0]!, "- A change.\n");
-    bumpSet(f.root, "0.18.0", undefined, bootstrap);
+    bumpSet(f.root, "0.18.0");
     expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([...fragments.map((path) => `D\t${path}`), "A\tpackages/core/docs/guide/upgrade/v0-18-0.md", "A\tpackages/platform/changes/not-consumed.md"]);
     for (const path of fragments) expect(f.git("ls-files", "--", path)).toBe("");
     expect(f.git("diff", "--cached", "--binary", "--", "packages/platform")).toBe(staged);
@@ -77,7 +76,7 @@ describe("release-only source snapshots", () => {
     f.write(consumed, "- A change.\n"); f.write(sibling, "- Another change.\n");
     f.commit();
     rmSync(join(f.root, sibling));
-    bumpSet(f.root, "0.18.0", undefined, bootstrap);
+    bumpSet(f.root, "0.18.0");
     expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([`D\t${consumed}`, "A\tpackages/core/docs/guide/upgrade/v0-18-0.md"]);
     expect(f.git("ls-files", "--", sibling)).toContain(sibling);
   });
