@@ -1348,6 +1348,9 @@ On qualified-v2, apply `20261124180000_catalogue_read_grant.sql` to use
 remains supported. Run readiness in a read-write `READ COMMITTED` transaction
 and close it promptly.
 
+Direct SQL calls hold a `SHARE` lock on `catalog_products` until the
+transaction ends, so concurrent publication can return `publication_busy`.
+
 The read waits for an in-flight publication, then reads the sealed head, SKU
 evidence and price readiness in one snapshot. It writes nothing. A moved head
 is a retryable conflict and a legacy catalogue is `unsupported`. A code with no

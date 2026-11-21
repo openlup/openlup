@@ -29,11 +29,14 @@ export function readIssuedPlatformManifest() {
 }
 
 /** Existing runner root seam: install the fixed issued prefix, then the live suffix. */
-export async function withIssuedPlatformCatalog<T>(work: (root: string) => Promise<T>): Promise<T> {
-  const issued = readIssuedPlatformManifest();
+export function withIssuedPlatformCatalog<T>(work: (root: string) => Promise<T>): Promise<T> {
+  return withPlatformCatalog(readIssuedPlatformManifest(), work);
+}
+
+export async function withPlatformCatalog<T>(manifest: ReturnType<typeof readIssuedPlatformManifest>, work: (root: string) => Promise<T>): Promise<T> {
   const root = mkdtempSync(join(tmpdir(), "openlup-issued-prefix-"));
   try {
-    const paths = new Set([issued, issued.qualified, issued.qualifiedAdmin].flatMap(plan =>
+    const paths = new Set([manifest, manifest.qualified, manifest.qualifiedAdmin].flatMap(plan =>
       [plan.baseline.file, ...plan.forward.map(entry => entry.file)]));
     for (const file of paths) {
       const target = join(root, file);
@@ -41,7 +44,7 @@ export async function withIssuedPlatformCatalog<T>(work: (root: string) => Promi
       cpSync(file, target);
     }
     mkdirSync(join(root, "config"));
-    writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(issued));
+    writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(manifest));
     return await work(root);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
