@@ -24,6 +24,8 @@ REVOKE ALL ON FUNCTION public.catalog_publication_lock_projection() FROM PUBLIC;
 
 -- The recorder derives the actor, receipt and event. Its deferred checks bind the issue to the approved state.
 ALTER FUNCTION public.catalog_publication_record_command(jsonb) SECURITY DEFINER;
+-- The deferred trigger performs only the existing draft fence no-op update.
+ALTER FUNCTION public.catalog_publication_admit() SECURITY DEFINER;
 
 GRANT SELECT ON public.catalog_products, public.catalog_skus, public.catalog_sku_identifiers,
   public.catalog_product_document_revisions, public.catalog_draft_heads, public.catalog_draft_revisions,
@@ -73,7 +75,7 @@ CREATE POLICY publication_select ON public.catalog_type_versions FOR SELECT TO o
 CREATE POLICY publication_select ON public.catalog_draft_revisions FOR SELECT TO openlup_catalog_publication USING (true);
 CREATE POLICY publication_select ON public.catalog_draft_command_receipts FOR SELECT TO openlup_catalog_publication USING (true);
 CREATE POLICY publication_select ON public.catalog_draft_heads FOR SELECT TO openlup_catalog_publication USING (true);
-CREATE POLICY publication_update ON public.catalog_draft_heads FOR UPDATE TO openlup_catalog_publication USING (true);
+CREATE POLICY publication_lock ON public.catalog_draft_heads FOR UPDATE TO openlup_catalog_publication USING (true) WITH CHECK (false);
 CREATE POLICY publication_select ON public.catalog_publications FOR SELECT TO openlup_catalog_publication USING (true);
 CREATE POLICY publication_select ON public.catalog_sku_revisions FOR SELECT TO openlup_catalog_publication USING (true);
 CREATE POLICY publication_select ON public.catalog_operator_receipts FOR SELECT TO openlup_catalog_publication USING (true);

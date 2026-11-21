@@ -763,9 +763,9 @@ it("commits deferred publication checks through the restricted login", async () 
       document_mutation: false, projection_mutation: false, outbox_read_or_update: false, draft_fence: true,
       draft_status_update: false, recorder: true, draft_writer: false,
     }]);
-    const refuseStatement = (sql: string) => transaction(publisher, async db => {
+    const refuseStatement = (sql: string, args?: unknown[]) => transaction(publisher, async db => {
       await db.query("SAVEPOINT permission_probe");
-      await expect(db.query(sql)).rejects.toMatchObject({ code: "42501" });
+      await expect(db.query(sql, args)).rejects.toMatchObject({ code: "42501" });
       await db.query("ROLLBACK TO SAVEPOINT permission_probe");
     });
     for (const sql of [
@@ -784,6 +784,7 @@ it("commits deferred publication checks through the restricted login", async () 
     data.payload.skus[0]!.priceOperations = [{ schemaVersion: 1, commandKey: randomUUID(), variantId: data.skuId, priceListId,
       mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1733, expected: { entryId: null, unitPriceMinor: null } }];
     await save(data, 1);
+    await refuseStatement("UPDATE public.catalog_draft_heads SET revision=revision+1 WHERE draft_id=$1", [data.draftId]);
     const prepared = await prepare(data, 1, null);
     let sqlFailure: string | undefined;
     const api = native(async (db, sql, args) => db.query(sql, args).catch((error: Error) => {
