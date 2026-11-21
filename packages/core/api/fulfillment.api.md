@@ -390,9 +390,15 @@ export declare function stepForToken(token: string | null | undefined): Customer
  */
 export declare function customerStepFromSignals(tokens: Array<string | null | undefined>): CustomerFulfillmentStep;
 export declare function phaseIndexForStep(step: CustomerFulfillmentStep): number;
-/** i18n key for a step's short label (progress bar + cards). */
+/**
+ * i18n key for a step's short label (progress bar + cards).
+ * @deprecated Scheduled for removal in 2.0.0; use `FULFILLMENT_STATUS_EFFECTS` and application-owned i18n.
+ */
 export declare function stepLabelKey(step: CustomerFulfillmentStep): string;
-/** Server-emitted Polish milestone label for the order-detail timeline. */
+/**
+ * Server-emitted Polish milestone label for the order-detail timeline.
+ * @deprecated Scheduled for removal in 2.0.0; use `FULFILLMENT_STATUS_EFFECTS` and application-owned i18n.
+ */
 export declare function timelineLabelForStep(step: CustomerFulfillmentStep): string;
 /** `panels.orders.trackingPhase.*` key for a step (start-page tile). */
 export declare function trackingPhaseKeyForStep(step: CustomerFulfillmentStep): string;
