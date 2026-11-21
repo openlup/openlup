@@ -69,6 +69,7 @@ export type BatchedForwardBinding = ForwardBinding & { statements: { sha256: str
 export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraints?: { table: string; name: string; beforeSha256: string; beforeSql: string }[] };
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
 type NativeStoreFunction = { signature: string; beforeSha256: string | null; searchPath: string | null };
+type NativeStoreFunctionSetting = { signature: string; searchPath: string };
 type NativeStoreGrantOnly = { signature: string; grantTo: string[]; revokeFrom: string[] };
 export type NativeStoreCheck = { table: string; constraint: string; column: string } & (
   { values: string[] } | { range: { lower: number; upper: number }; beforeSha256: string }
@@ -124,7 +125,7 @@ const deferredTriggerMessages = {
   field: (name: unknown, field: string, rule: string) => `createdTriggers entry ${typeof name === "string" ? name : "<unnamed>"}: ${field} ${rule}`,
 };
 type NativeCreatedTrigger = { name: string; table: string; sha256: string; deferred?: never } | NativeDeferredTrigger;
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] } };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] } };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 type ManagedExactForward = { path: string; sha256: string; prefixSha256: string };
 export type ReviewedForwardRegistry = { managedExactForwards?: ManagedExactForward[]; nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
@@ -1282,8 +1283,10 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");
   if (registry.supportAuthorityForwards?.includes(forward as SupportAuthorityForwardBinding) || registry.channelIngestForwards?.includes(forward as BatchedForwardBinding) || registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
     const prefix = readPrecedingBlobs(root, head, portable ? "db/platform/migrations/" : "supabase/migrations/", path, true);
-    if (registry.nativeStoreForwards?.includes(forward as ForwardBinding)) assertNativeStoreForward(registry, path, bytes, prefix);
-    else if (registry.channelIngestForwards?.includes(forward as BatchedForwardBinding)) assertChannelIngestForward(registry, path, bytes, prefix);
+    if (registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
+      const { slot } = assertNativeStoreForward(registry, path, bytes, prefix);
+      if (slot.settingsOnlyFunctions) assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, readPrecedingBlobs(root, approval, "db/platform/migrations/", path, true));
+    } else if (registry.channelIngestForwards?.includes(forward as BatchedForwardBinding)) assertChannelIngestForward(registry, path, bytes, prefix);
     else assertSupportAuthorityForward(registry, path, bytes, prefix);
     return;
   }
@@ -2433,6 +2436,15 @@ function nativeStoreNewSlotTimes(root: string, base: string, before: ReviewedFor
   const paths = git(root, ["ls-tree", "-r", "--name-only", base, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\n");
   const latest = paths.map(path => /\/(?:q2_|qa_|qb_)?(\d{14})_[^/]+\.sql$/u.exec(path)?.[1] ?? "").sort().at(-1) ?? "";
   if (added.some(slot => nativeStoreTime(slot.path) <= latest)) throw new Error("reviewed native store new slot time must be later than every base migration");
+  for (const slot of added) if (slot.settingsOnlyFunctions) {
+    assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, readPrecedingBlobs(root, base, "db/platform/migrations/", slot.path, true));
+  }
+}
+
+function assertNativeStoreSettingsTargets(settings: readonly NativeStoreFunctionSetting[], preceding: readonly { bytes: Buffer }[]): void {
+  const signatures = settings.map(fn => fn.signature);
+  const found = new Set(preceding.flatMap(source => [...nativeStoreFunctionDefinitions(source.bytes, signatures, true).keys()]));
+  for (const signature of signatures) if (!found.has(signature)) throw new Error(`reviewed native store settings-only function absent from base migrations: ${signature}`);
 }
 
 function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<string>): void {
@@ -2446,11 +2458,26 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   const rows = new Set<string>();
   for (const slot of control.slots) {
     const time = nativeStoreTime(slot.path);
-    const keys = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables"].filter(key => Object.hasOwn(slot, key)), ...(slot.existingTableStatements !== undefined ? ["existingTableStatements"] : []), ...(slot.insertSelectTables !== undefined ? ["insertSelectTables"] : [])].sort().join(",");
+    const settingsOnly = Object.hasOwn(slot, "settingsOnlyFunctions");
+    const fields = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row"];
+    if (settingsOnly) fields.push("settingsOnlyFunctions");
+    else {
+      fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables"].filter(key => Object.hasOwn(slot, key)));
+      if (slot.existingTableStatements !== undefined) fields.push("existingTableStatements");
+      if (slot.insertSelectTables !== undefined) fields.push("insertSelectTables");
+    }
+    const keys = fields.sort().join(",");
     if (!keysAre(slot, keys) || typeof slot.row !== "string" || !/^[A-Za-z][A-Za-z0-9_-]*$/u.test(slot.row) || rows.has(slot.row) || !time || time <= previous || paths.has(slot.path)) throw new Error("reviewed native store slot path, row or order drifted");
     previous = time; rows.add(slot.row);
     paths.add(slot.path);
     if (!Array.isArray(slot.replacedFunctions) || !Array.isArray(slot.createdFunctions) || !Array.isArray(slot.grantOnlyFunctions)) throw new Error("reviewed native store requires three closed function lists");
+    if (settingsOnly) {
+      const settings = slot.settingsOnlyFunctions;
+      if (slot.replacedFunctions.length || slot.createdFunctions.length || slot.grantOnlyFunctions.length || !Array.isArray(slot.dataStatements) || slot.dataStatements.length) throw new Error("reviewed native store settings-only slot requires empty function definition, grant and data lists");
+      if (!Array.isArray(settings) || !settings.length || settings.some(fn => !fn || !keysAre(fn, "searchPath,signature") || typeof fn.signature !== "string" || nativeStoreSignature(fn.signature) !== fn.signature || typeof fn.searchPath !== "string" || !/^(?:(?!pg_temp, )[a-z_][a-z0-9_]*, )*pg_temp$/u.test(fn.searchPath))) throw new Error("reviewed native store settings-only slot requires canonical qualified signatures and search_path ending in pg_temp");
+      if (new Set(settings.map(fn => fn.signature)).size !== settings.length) throw new Error("reviewed native store settings-only slot has duplicate signatures");
+      continue;
+    }
     const functions = nativeStoreFunctions(slot);
     if (slot.replacedFunctions.some(fn => !keysAre(fn, "beforeSha256,searchPath,signature") || !hash(fn.beforeSha256)) || slot.createdFunctions.some(fn => !keysAre(fn, "searchPath,signature")) || functions.some(fn => nativeStoreSignature(fn.signature) !== fn.signature || (fn.searchPath !== null && !/^[a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*$/u.test(fn.searchPath)))) throw new Error("reviewed native store closed signature, preimage or search_path drifted");
     for (const fn of slot.grantOnlyFunctions) {
@@ -2740,6 +2767,13 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     const creation = digest ? statements.find(sql => sqlSha256(sql) === digest) : undefined;
     return new Error(deferredTriggerMessages.pinned(pin, name, creation));
   };
+  const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
+  if (slot.settingsOnlyFunctions) {
+    const expected = slot.settingsOnlyFunctions.map(fn => `ALTER FUNCTION ${fn.signature} SET search_path = ${fn.searchPath};`);
+    if (statements.length !== expected.length || statements.some((statement, index) => statement !== expected[index])) throw new Error("reviewed native store settings-only forward must contain exactly its ordered ALTER FUNCTION search_path statements");
+    assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, preceding);
+    return { slot, ordinaryProof };
+  }
   const triggerFunctions = new Set<string>(), granted = new Set<string>();
   const functions = nativeStoreFunctions(slot), signatures = [...functions, ...slot.grantOnlyFunctions].map(fn => fn.signature);
   const names = new Set(signatures.map(signature => signature.split("(")[0]!)), prior = new Map<string, string>(), baseDefinitions = new Map<string, string>(), priorStatements = new Map<string, string>();
@@ -2777,7 +2811,6 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const existingTableStatements = slot.existingTableStatements ?? [];
   const revoked = new Set<string>(), defined = new Map<string, boolean>(), blocks = new Set<string>(), data = new Set<string>(), tables = new Set<string>();
   const dropped = new Set<string>(), triggers = new Set<string>(), views = new Set<string>(), revokedViews = new Set<string>(), completedConstraints = new Set<string>();
-  const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
   const censusTables = slot.absorptionCensusTables ?? [], censusGrants = new Set<string>(), censusPolicies = new Set<string>();
   let pending: string | undefined;
   const baselineActions = new Set<number>();

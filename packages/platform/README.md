@@ -1318,6 +1318,18 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
+### Read governed offer memberships
+
+Install the complete PostgreSQL catalogue through
+`20261124120000_catalog_publication_reads.sql`. Call the experimental
+`readPostgresCatalogMembershipPage(executor, input)` from `@openlup/platform/catalog`.
+It reads one page with one SELECT. The caller owns the transaction and savepoints.
+An expected refusal is returned as a value and leaves the transaction usable.
+A confirmed legacy catalogue returns an empty first page. A governed page
+returns evidence for each emitted SKU and a cursor when more entries match.
+Pass back that cursor with the same offer and mode. Start again at the first
+page when the head moves. A PostgreSQL serialization failure is retryable.
+
 Run `openlup catalogue project --trusted-packs ./owned/catalogue.ts --json`
 to check trusted pack definitions and fixtures with their content validators.
 The module executes with the operator's permissions. The report identifies the

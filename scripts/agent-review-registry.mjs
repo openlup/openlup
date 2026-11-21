@@ -120,16 +120,28 @@ export function registryUnion(path, baseSource, leftSource, rightSource) {
   const allLeft = new Set(); const allRight = new Set();
   const unions = base.lists.map((entries, index) => {
     const a = gaps(entries, left.lists[index]); const b = gaps(entries, right.lists[index]);
-    a.flat().forEach(value => allLeft.add(key(value))); b.flat().forEach(value => allRight.add(key(value)));
     const result = [];
     for (let gap = 0; gap <= entries.length; gap++) {
-      const x = [...a[gap]], y = [...b[gap]];
+      const x = [...a[gap]];
+      const xByKey = new Map(x.map(value => [key(value), JSON.stringify(value)]));
+      const y = [];
+      for (const value of b[gap]) {
+        const entryKey = key(value);
+        if (xByKey.has(entryKey)) {
+          check(xByKey.get(entryKey) === JSON.stringify(value), 'overlapping additions');
+          continue;
+        }
+        y.push(value);
+      }
+      x.forEach(value => allLeft.add(key(value)));
+      y.forEach(value => allRight.add(key(value)));
       while (x.length || y.length) result.push(!y.length || (x.length && compare(key(x[0]), key(y[0])) < 0) ? x.shift() : y.shift());
       if (gap < entries.length) result.push(entries[gap]);
     }
-    validEntries(result); return result;
+    return result;
   });
   check(![...allLeft].some(value => allRight.has(value)), 'overlapping additions');
+  unions.forEach(validEntries);
   let result = base.source;
   for (const { range: [start, end], index } of base.ranges.map((range, index) => ({ range, index })).sort((a, b) => b.range[0] - a.range[0])) {
     const original = base.source.slice(start, end); const values = unions[index];

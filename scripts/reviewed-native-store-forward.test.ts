@@ -1022,6 +1022,86 @@ function nativeGitFixture(run: (context: { folder: string; git: (...args: string
   try { git("init", "-q", "-b", "main"); run({ folder, git, put, commit }); } finally { rmSync(folder, { force: true, recursive: true }); }
 }
 const emptySlot = (path: string, row = "Future"): NativeStoreSlot => ({ row, path, replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] });
+describe("settings-only native forwards", () => {
+  const path = "db/platform/migrations/20261124130000_fixture_settings.sql";
+  const settings = [
+    { signature: "public.fixture_grant(text[])", searchPath: "pg_catalog, pg_temp" },
+    { signature: "public.fixture_existing(uuid)", searchPath: "public, pg_catalog, pg_temp" },
+  ];
+  const render = ({ signature, searchPath }: typeof settings[number]) => `ALTER FUNCTION ${signature} SET search_path = ${searchPath};`;
+  const statements = settings.map(render);
+  const text = statements.join("\n");
+  const valueFor = (bytes = text, functions = settings) => {
+    const value = registry();
+    value.nativeStoreForwardClass = { sealed: true, slots: [{ ...emptySlot(path), settingsOnlyFunctions: functions }] };
+    value.nativeStoreForwards = [{ path, sha256: sqlSha256(bytes), functions: [] }];
+    return value;
+  };
+  const prefix = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+  const exactError = /exactly its ordered ALTER FUNCTION search_path statements/u;
+
+  it("admits exact settings statements from committed base through PR, queue and release checks", () => {
+    nativeGitFixture(({ folder, put, commit }) => {
+      const value = valueFor();
+      const prior = structuredClone(value);
+      prior.nativeStoreForwardClass!.slots = [];
+      prior.nativeStoreForwards = [];
+      put(PLATFORM_BASELINE_FILE, before);
+      put("config/reviewed-platform-forwards.json", encode(prior));
+      const base = commit();
+      put(path, text);
+      put("config/reviewed-platform-forwards.json", encode(value));
+      const head = commit();
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(text))).not.toThrow();
+      expect(() => assertCoLocatedForwardApproval(folder, base, head)).not.toThrow();
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(text), true)).not.toThrow();
+    });
+  });
+
+  it.each([
+    ["an extra ALTER", `${text}\nALTER FUNCTION public.fixture_existing(uuid) COST 10;`],
+    ["reordered entries", [...statements].reverse().join("\n")],
+    ["non-ALTER SQL", `${statements[0]}\nSELECT 1;`],
+  ])("refuses %s even with a matching file hash", (_label, candidate) => {
+    expect(() => assertNativeStoreForward(valueFor(candidate), path, Buffer.from(candidate), prefix)).toThrow(exactError);
+  });
+
+  it.each([
+    ["a search path without a final pg_temp", [{ ...settings[0]!, searchPath: "pg_temp, pg_catalog" }], /search_path ending in pg_temp/u],
+    ["an earlier pg_temp before the final pg_temp", [{ ...settings[0]!, searchPath: "pg_temp, pg_catalog, pg_temp" }], /search_path ending in pg_temp/u],
+    ["a duplicate signature", [settings[0]!, { ...settings[0]!, searchPath: "pg_temp" }], /duplicate signatures/u],
+    ["an unqualified signature", [{ ...settings[0]!, signature: "fixture_grant(text[])" }], /canonical qualified signatures/u],
+  ] as const)("refuses %s in the registry reader", (_label, functions, message) => {
+    expect(() => readReviewedForwardRegistry(encode(valueFor(text, [...functions])))).toThrow(message);
+  });
+
+  it.each([false, true])("refuses an unknown function introduced with the SQL (previously reserved slot: %s)", (reserved) => {
+    nativeGitFixture(({ folder, put, commit }) => {
+      const functions = [{ signature: "public.fixture_missing()", searchPath: "pg_catalog, pg_temp" }];
+      const candidate = functions.map(render).join("\n");
+      const value = valueFor(candidate, functions);
+      const prior = structuredClone(value);
+      if (!reserved) prior.nativeStoreForwardClass!.slots = [];
+      prior.nativeStoreForwards = [];
+      put(PLATFORM_BASELINE_FILE, before);
+      put("config/reviewed-platform-forwards.json", encode(prior));
+      const base = commit();
+      put("db/platform/migrations/20261124120000_fixture_create.sql", "CREATE FUNCTION public.fixture_missing() RETURNS integer LANGUAGE sql AS $$ SELECT 1; $$;");
+      put("config/reviewed-platform-forwards.json", encode(value));
+      put(path, candidate);
+      const head = commit();
+      const message = "settings-only function absent from base migrations: public.fixture_missing()";
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(candidate))).toThrow(message);
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(candidate), true)).toThrow(message);
+      expect(() => assertNativeStoreForward(value, path, Buffer.from(candidate), prefix)).toThrow(message);
+    });
+  });
+
+  it("refuses a whole-file hash mismatch", () => {
+    expect(() => assertNativeStoreForward(valueFor(), path, Buffer.from(text + "\n"), prefix)).toThrow(/path or file hash drifted/u);
+  });
+});
+
 describe("parameterized native Git history", () => {
   it.each(["20271106100000", "20271105100000"])("refuses a registry-only new slot at or before the latest qualified base time: %s", time => {
     nativeGitFixture(({ folder, put, commit }) => {

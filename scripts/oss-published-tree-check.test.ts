@@ -8,6 +8,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { availableParallelism, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { runPublicTypecheckProjects } from "./oss-public-typecheck.ts";
@@ -23,6 +24,7 @@ import {
 } from "./oss-publication-contract.ts";
 import {
   assertAgentGuidancePlacement,
+  assertChangelogFragmentsPackagedContent,
   assertMaterializedOutputInventory,
   assertNoAbsoluteFilesystemPaths,
   assertMaterializedPublicationCatalog,
@@ -33,6 +35,7 @@ import {
   selfCheckVerdict,
   typecheckVerdict,
 } from "./oss-published-tree-check.ts";
+import { assertSimulatedUpgradePage, previousCoreTag } from "./packages/release-docs-pass.ts";
 import { validateGuidePage, PUBLIC_PACKAGE_COMMANDS, PUBLIC_PACKAGE_EXECUTION_SURFACES, PUBLIC_TEST_COMMAND, PUBLIC_TEST_SCOPE } from "./oss-publication-policy.ts";
 import { carriesPrivateOperationalCoordinate } from "./oss-public-coordinate-detector.ts";
 
@@ -944,7 +947,7 @@ describe("the workflow stays in step with what it claims to run", () => {
     expect(workflow).toContain("gitleaks git . --config config/gitleaks.toml --redact --no-banner");
   });
 
-  it("scans only a non-empty pull-request or merge-group range, full history otherwise or on scanner input changes, and refuses unreadable event SHAs", () => {
+  it("scans non-empty pull-request and merge-group ranges, full history on scanner input changes, and only the event commit's history on push", () => {
     const job = workflowJob("gitleaks");
     expect(job).toContain("fetch-depth: 0");
     const step = job.split("      - name: Scan the event range, or the complete available history\n")[1] ?? "";
@@ -980,21 +983,27 @@ describe("the workflow stays in step with what it claims to run", () => {
       const run =(event: string, patch: Record<string, string> = {}) => {
         writeFileSync(calls, "");
         const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", command!], { cwd: repo, encoding: "utf8", timeout: 20_000,
-          env: { ...environment, PATH: `${bin}:${environment.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
+          env: { ...environment, PATH: `${bin}:${environment.PATH ?? ""}`, SCAN_CALLS: calls, GITHUB_EVENT_NAME: event, GITHUB_SHA: "", PR_BASE: "", PR_HEAD: "", GROUP_BASE: "", GROUP_HEAD: "", ...patch } });
         return { status: result.status, calls: readFileSync(calls, "utf8") };
       };
-      const full = "[git][.][--config][config/gitleaks.toml][--redact][--no-banner]\n";
-      const range = `[git][.][--config][config/gitleaks.toml][--redact][--no-banner][--log-opts][${base}..${head}]\n`;
+      const scanArgs = "[git][.][--config][config/gitleaks.toml][--redact][--no-banner]";
+      const full = `${scanArgs}\n`;
+      const range = `${scanArgs}[--log-opts][${base}..${head}]\n`;
       const all = { PR_BASE: base, PR_HEAD: head, GROUP_BASE: base, GROUP_HEAD: head };
       expect(run("pull_request", { PR_BASE: base, PR_HEAD: head })).toEqual({ status: 0, calls: range });
       expect(run("merge_group", { GROUP_BASE: base, GROUP_HEAD: head })).toEqual({ status: 0, calls: range });
-      for (const event of ["push", "workflow_dispatch", ""]) expect(run(event, all)).toEqual({ status: 0, calls: full });
+      // The event SHA differs from the checkout's HEAD. Require the exact argv, which excludes --all.
+      for (const event of ["push", "workflow_dispatch", ""]) {
+        expect(run(event, { ...all, GITHUB_SHA: head })).toEqual({ status: 0, calls: `${scanArgs}[--log-opts=${head}]\n` });
+      }
       expect(run("pull_request", { PR_BASE: head, PR_HEAD: rules })).toEqual({ status: 0, calls: full });
       expect(run("pull_request", { PR_BASE: base, PR_HEAD: ignored })).toEqual({ status: 0, calls: full });
       expect(run("merge_group", { GROUP_BASE: rules, GROUP_HEAD: ignored })).toEqual({ status: 0, calls: full });
       expect(run("merge_group", { GROUP_BASE: ignored, GROUP_HEAD: unignored })).toEqual({ status: 0, calls: full });
       const absent = "1".repeat(40);
       const refusals: [string, Record<string, string>][] = [
+        ["push", all], ["push", { GITHUB_SHA: head.slice(0, 39) }], ["push", { GITHUB_SHA: `${head} --all` }],
+        ["push", { GITHUB_SHA: absent }], ["push", { GITHUB_SHA: tree }],
         ["pull_request", {}], ["pull_request", { PR_BASE: base }], ["pull_request", { GROUP_BASE: base, GROUP_HEAD: head }],
         ["pull_request", { PR_BASE: "A".repeat(40), PR_HEAD: head }], ["pull_request", { PR_BASE: base.slice(0, 39), PR_HEAD: head }],
         ["pull_request", { PR_BASE: "--all", PR_HEAD: head }], ["pull_request", { PR_BASE: `${base} --all`, PR_HEAD: head }],
@@ -1584,4 +1593,165 @@ it("admits only the closed non-executable catalogue documentation skeleton", () 
   }
   for (const file of ["registry.ts", "tsconfig.json", "extra.ts", "install.mjs", "nested/pack.ts", "../pack.ts"]) expect(() => validateGuidePage(base + file, "sample", "100644")).toThrow();
   expect(() => validateGuidePage("packages/core/docs/guide/other.ts", "sample", "100644")).toThrow();
+});
+
+describe("shift-left release-note fragment audit and bare-Node dependency boundary", () => {
+  const providerName = ["st", "ri", "pe"].join("");
+  const allowlistedSubpath = `\`@openlup/platform/payments/${providerName}\``;
+
+  it("accepts this repository's tracked changelog fragments and simulated upgrade page", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" }).split("\0").filter(Boolean);
+    expect(() => assertChangelogFragmentsPackagedContent(ROOT, tracked)).not.toThrow();
+    const audit = assertSimulatedUpgradePage(ROOT, { trackedPaths: tracked });
+    if (previousCoreTag(ROOT)) {
+      expect(audit).not.toBeNull();
+      expect(audit!.bytes).toBeGreaterThan(0);
+      expect(audit!.bytes).toBeLessThanOrEqual(audit!.maxBytes);
+    } else {
+      expect(audit).toBeNull();
+    }
+  });
+
+  it("accepts allowlisted adapter subpaths and refuses unmasked vendor mentions in fragments", () => {
+    const root = mkdtempSync(join(tmpdir(), "openlup-fragment-audit-"));
+    try {
+      const okPath = "packages/platform/changes/ok.md";
+      const badPath = "packages/core/changes/bad.md";
+      mkdirSync(dirname(join(root, okPath)), { recursive: true });
+      mkdirSync(dirname(join(root, badPath)), { recursive: true });
+      writeFileSync(join(root, okPath), `- Updated ${allowlistedSubpath} error handling.\n`);
+      expect(() => assertChangelogFragmentsPackagedContent(root, [okPath])).not.toThrow();
+
+      writeFileSync(join(root, badPath), `- Calls bare ${providerName} API directly.\n`);
+      let message = "";
+      try { assertChangelogFragmentsPackagedContent(root, [okPath, badPath]); } catch (error) { message = (error as Error).message; }
+      expect(message).toContain(`${badPath}: downstream provider dependency`);
+      expect(message).toContain("Fix: wrap approved adapter subpaths in inline code");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a tracked changelog fragment with unmasked vendor text during policyVerdict and selfCheckVerdict", () => {
+    const root = mkdtempSync(join(tmpdir(), "openlup-fragment-policy-"));
+    const digest = (contents: string) => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
+    try {
+      const policy = `${JSON.stringify({ schemaVersion: 1, activePaths: ["README.md"], contracts: [{ id: "entrypoint", owners: ["README.md"] }] }, null, 2)}\n`;
+      const baselinePath = "db/platform/migrations/00000000000000_platform_baseline.sql", baseline = "CREATE TABLE example(id integer);\n";
+      const packageManifestPaths = PUBLIC_PACKAGE_EXECUTION_SURFACES.map(({ path }) => path);
+      const fragmentPath = "packages/core/changes/leaked-vendor.md";
+      const paths = [...new Set([
+        baselinePath, "README.md", "docs/platform/README.md", "docs/platform/AGENT_GUIDE.md",
+        "docs/platform/adopter-kit/dependabot.template.yml", "config/openlup-policy-registry.json",
+        "config/openlup-publication-catalog.json", "config/openlup-source-release-contract.json",
+        "config/platform-migration-manifest.json", "src/integrations/supabase/types.ts",
+        "package-lock.json", "packages/core/package-lock.json", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS,
+      ])].sort();
+      const catalogue = createPublicPublicationCatalog(paths.map((path) => ({ path, class: "public-output" })), []).contents;
+      const manifest = JSON.stringify({
+        name: "openlup",
+        private: true,
+        workspaces: ["packages/core", "packages/outbox", "packages/platform"],
+        scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])),
+      });
+      const lock = "{}\n";
+      const migration = JSON.stringify({ schemaVersion: 1, baseline: { file: baselinePath, sha256: digest(baseline).slice(7) }, forward: [], objectInventorySha256: digest("objects").slice(7) });
+      const types = "export type Database = Record<string, any>;\n";
+      const contract = createSourceReleaseContract({
+        inventoryDigest: publicPublicationCatalogDigests(catalogue).inventoryDigest,
+        classDigest: digest(JSON.stringify(paths)),
+        packageDigest: digest(manifest),
+        rootLockDigest: digest(lock),
+        coreLockDigest: digest(lock),
+        migrationManifestDigest: digest(migration),
+        databaseTypesDigest: digest(types),
+        policyRegistryDigest: digest(policy),
+        publicationCatalogDigest: digest(catalogue),
+      }).contents;
+      const files = new Map([
+        ["README.md", "# Public\n"],
+        ["docs/platform/README.md", "[Guide](AGENT_GUIDE.md)\n"],
+        ["docs/platform/AGENT_GUIDE.md", "# Guide\n"],
+        ["docs/platform/adopter-kit/dependabot.template.yml", 'groups:\n  openlup:\n    patterns:\n      - "@openlup/*"\n'],
+        ["package.json", manifest],
+        ["package-lock.json", lock],
+        ["packages/core/package-lock.json", lock],
+        ["config/platform-migration-manifest.json", migration],
+        ["src/integrations/supabase/types.ts", types],
+        ["config/openlup-policy-registry.json", policy],
+        ["config/openlup-publication-catalog.json", catalogue],
+        ["config/openlup-source-release-contract.json", contract],
+        [baselinePath, baseline],
+        [fragmentPath, `- Mentions ${allowlistedSubpath} safely.\n`],
+      ]);
+      for (const [path, contents] of files) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); }
+      for (const path of PUBLIC_EXECUTION_ENTRYPOINTS) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), "public\n"); }
+      for (const surface of PUBLIC_PACKAGE_EXECUTION_SURFACES) {
+        if (surface.path === "package.json") continue;
+        const source = readFileSync(join(ROOT, surface.path), "utf8");
+        mkdirSync(dirname(join(root, surface.path)), { recursive: true });
+        writeFileSync(join(root, surface.path), source);
+      }
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      execFileSync("git", ["add", "."], { cwd: root });
+
+      expect(policyVerdict(root, () => undefined)).toBe(true);
+      expect(selfCheckVerdict(root, () => undefined)).toBe(true);
+
+      writeFileSync(join(root, fragmentPath), `- Mentions bare ${providerName} outside allowlist.\n`);
+      expect(() => policyVerdict(root, () => undefined)).toThrow(`${fragmentPath}: downstream provider dependency`);
+      expect(() => selfCheckVerdict(root, () => undefined)).toThrow(`${fragmentPath}: downstream provider dependency`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps oss-published-tree-check.ts free of external node_modules imports for bare Node 24 CI self-check", () => {
+    const visited = new Set<string>();
+    const external: Array<{ file: string; specifier: string }> = [];
+    const missingRelative: Array<{ file: string; specifier: string }> = [];
+    const forbiddenRequire: Array<{ file: string; kind: string }> = [];
+    const queue = [join(ROOT, "scripts/oss-published-tree-check.ts")];
+    while (queue.length > 0) {
+      const current = queue.pop()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      const rel = current.slice(ROOT.length + 1);
+      const sourceFile = ts.createSourceFile(current, readFileSync(current, "utf8"), ts.ScriptTarget.Latest, true);
+      const record = (specifier: string) => {
+        if (!specifier || specifier.startsWith("node:")) return;
+        if (specifier.startsWith(".")) {
+          const target = resolve(dirname(current), specifier);
+          if (!existsSync(target)) missingRelative.push({ file: rel, specifier });
+          else if (!visited.has(target)) queue.push(target);
+        } else {
+          external.push({ file: rel, specifier });
+        }
+      };
+      const visit = (node: ts.Node) => {
+        if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+          record(node.moduleSpecifier.text);
+          if (ts.isImportDeclaration(node) && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
+            for (const element of node.importClause.namedBindings.elements) {
+              if ((element.propertyName?.text ?? element.name.text) === "createRequire") {
+                forbiddenRequire.push({ file: rel, kind: "createRequire-import" });
+              }
+            }
+          }
+        } else if (ts.isCallExpression(node)) {
+          if (node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
+            record(node.arguments[0].text);
+          } else if (ts.isIdentifier(node.expression) && (node.expression.text === "require" || node.expression.text === "createRequire")) {
+            forbiddenRequire.push({ file: rel, kind: node.expression.text });
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(sourceFile);
+    }
+    expect(visited.size).toBeGreaterThan(10);
+    expect(missingRelative).toEqual([]);
+    expect(forbiddenRequire).toEqual([]);
+    expect(external).toEqual([]);
+  });
 });

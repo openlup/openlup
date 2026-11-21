@@ -1,4 +1,4 @@
-import type { PaymentVerifyReadPort, VerifiableAttemptSnapshot } from "../../../domains/payment/paymentVerifyNowService.js";
+import type { PaymentVerifyReadPort, VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
 
 /**
  * Read side of the buyer-triggered payment verify-now flow: assemble the

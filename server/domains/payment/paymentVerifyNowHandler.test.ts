@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { bffResponder } from "../../_lib/bff/response.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import type { ProviderReconciliationStatus } from "./paymentProviderReconciliationContracts.js";
-import {
-  createCommercePaymentVerifyHandler,
-  type VerifiableAttemptSnapshot,
-} from "./paymentVerifyNowHandler.js";
+import { createCommercePaymentVerifyHandler } from "@openlup/platform/payments";
+import type { VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
 
 const ORDER_ID = "11111111-1111-4111-8111-111111111111";
 const CLIENT_ID = "22222222-2222-4222-8222-222222222222";
@@ -68,6 +67,7 @@ function makeHandler(input: {
     readPort: { async readVerifiableAttempt() { return input.snap === undefined ? snapshot() : input.snap; } },
     applyPort: { applyTerminalResult: apply as never },
     providers: providers as never,
+    responder: bffResponder,
     mutationsEnabled: () => input.enabled ?? true,
     now: () => new Date("2026-07-24T07:00:00.000Z"),
   });

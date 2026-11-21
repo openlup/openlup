@@ -985,6 +985,13 @@ transactions and exact-prefix/replay behavior remain.
 
 ### Sealed native catalog publication history
 
+The [membership read forward](../../db/platform/migrations/20261124120000_catalog_publication_reads.sql)
+adds a service-executable page and owner-only evidence helpers. The page uses
+the caller's statement snapshot. Its cursor binds the latest sealed issue
+across governed products. See the installed
+[catalogue entry](../../packages/platform/README.md#read-governed-offer-memberships)
+for paging and refusal behavior.
+
 The [`catalog_publication` forward](../../db/platform/migrations/20261123190000_catalog_publication.sql)
 adds native publication history.
 The publication, SKU revisions, operator receipts, and candidate decisions are
@@ -2356,6 +2363,14 @@ machinery.
 Every earlier slot in registry order needs unchanged landed pins;
 issued native file pins must also be present unchanged.
 Registry-derived slot timestamps require approval even for expand-only SQL.
+
+For search-path hardening, a settings-only slot pins its `path` and an ordered
+`settingsOnlyFunctions` list of `{ signature, searchPath }` entries for qualified
+functions in the base migrations. Its other function and data lists are empty.
+The whole-file pin covers exactly the listed `ALTER FUNCTION … SET search_path`
+statements in order. The PostgreSQL catalog check allows only the pinned
+`search_path` changes.
+
 The queue routes every native filename at or after the first issued slot time
 through the guard, including SQL whose slot was prepared earlier. The guard
 still admits ordinary unregistered expand-only migrations through their existing path. Unlisted function
