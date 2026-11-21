@@ -122,5 +122,5 @@ OpenLup 1.x follows the [stable compatibility policy](packages/core/docs/guide/r
 the generated [subpath classifications](packages/core/docs/guide/reference/maturity.md),
 and the [installation support boundary](.github/INSTALL_SUPPORT_POLICY.md).
 Preserve those commitments; a source checkout or a recipe alone is not a supported release artifact.
-Version numbers and release timing follow the [release cadence](.github/VERSIONING_AND_EOL.md#release-cadence).
+Versions and timing follow the [release cadence](.github/VERSIONING_AND_EOL.md#release-cadence).
 A release or activation needs its own explicit authorization and evidence; ordinary code changes do not create that authority.
