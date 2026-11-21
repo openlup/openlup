@@ -114,6 +114,14 @@ describe("extracted-root documentation contract", () => {
     expect(() => check(root)).not.toThrow();
   });
 
+  it("refuses a documented npm script with an empty body", () => {
+    const root = fixture("Run `npm run ci`.\n");
+    const path = join(root, "package.json");
+    const manifest = JSON.parse(readFileSync(path, "utf8"));
+    writeFileSync(path, JSON.stringify({ ...manifest, scripts: { ci: "" } }));
+    expect(() => check(root)).toThrow("README.md: unknown npm script ci");
+  });
+
   it("refuses a shipped link to documentation present in source but absent from the tarball", () => {
     const root = fixture("[Guide](docs/guide.md#setup)\n");
     expect(() => check(root, ["AGENTS.md", "README.md", "package.json"])).toThrow(
@@ -455,6 +463,17 @@ const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
 describe("reader guide contract", { timeout: 60_000 }, () => {
+  it.each(["how-to/build/customize-the-starter.md", "how-to/extend/catalogue-extension.md"])("refuses an empty starter npm script in %s", page => {
+    const roots = guideFixture("# Guide\n", { [page]: "# Recipe\n\nRun `npm run typecheck`.\n" });
+    const starter = join(roots.repository, "examples/neutral-store");
+    mkdirSync(starter, { recursive: true });
+    const manifest = join(starter, "package.json");
+    writeFileSync(manifest, JSON.stringify({ scripts: { typecheck: "tsc --noEmit" } }));
+    expect(() => checkGuide(roots)).not.toThrow();
+    writeFileSync(manifest, JSON.stringify({ scripts: { typecheck: "" } }));
+    expect(() => checkGuide(roots)).toThrow(`docs/guide/${page}: unknown npm script typecheck`);
+  });
+
   it("accepts an exact generated Core report heading in an upgrade page", () => {
     const roots = guideFixture("# Guide\n", {
       "upgrade/v1-2-3.md": "# Upgrade\n\n### `packages/core/api/example-contracts.api.md`\n",

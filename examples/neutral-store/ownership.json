@@ -177,6 +177,10 @@
     "test/locales.test.ts",
     "test/subscription-creation.test.ts"
   ],
+  "managedEditRoutes": {
+    "host/editor-catalogue.ts": ["owned/catalogue.ts", "owned/catalogue-rules.cjs"],
+    "installation/install.ts": ["owned/catalogue.ts", "owned/catalogue-rules.cjs"]
+  },
   "sourceMappings": {
     "AGENTS.md": "AGENTS.template.md",
     "README.md": "README.template.md"

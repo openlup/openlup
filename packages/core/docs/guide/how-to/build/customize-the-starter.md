@@ -591,7 +591,10 @@ support access through the [operator roster](#provision-operator-rosters).
 
 ### Change a product rule
 
-In a fresh starter candidate extracted from OpenLup main, edit
+To add a product type for offline checking, follow
+[New vertical](../extend/catalogue-extension.md#new-vertical).
+
+In a fresh extraction of the starter, edit
 `owned/catalogue-rules.cjs` and add an accepted and a refused example to
 `owned/catalogue-rules.test.cjs`. If your upgraded application still uses
 `owned/catalogue.ts` to validate drafts, copy both rule files from a fresh
@@ -612,7 +615,7 @@ From the extracted application root, run the rule test:
 node --test owned/catalogue-rules.test.cjs
 ```
 
-Run the extracted application's `typecheck` npm script from the same directory.
+After each change, run `npm run typecheck` from the extracted application root.
 The bundled test accepts a draft with a title such as `Fictional item` and
 expects `title_required` for a blank title. In the publication-shaped example,
 the hook reports `presentation.title` within the shared content.
@@ -627,14 +630,19 @@ revision. Earlier saved drafts keep their installed rule version.
 
 ### Publish a saved catalogue draft
 
+If you change an input, follow [Change a product rule](#change-a-product-rule)
+or [Correct a price-list refusal](#correct-a-price-list-refusal) for its checks.
+
 Run `./lifecycle up` to install the catalogue rules and provision the private
 publication connection for the demonstration host. Sign in as a human
 administrator. The following actions use the same verified operator session as
 the draft editor. Send JSON to `POST /api/actions/<operation>` from the starter
-origin with `X-Starter-Request: 1` and an `Idempotency-Key` header. Use a fresh
+origin with the matching `Origin`, `X-Starter-Request: 1`,
+`Content-Type: application/json` and an `Idempotency-Key` header. Use a fresh
 UUID for each new request unless retrying a command.
 
-1. Save a version 3 draft. Send `{action: "prepare", draftId, expectedRevision}`
+1. Send `{action: "get", draftId}` to `operator.catalogDrafts` to read the saved
+   version 3 draft and its revision. Send `{action: "prepare", draftId, expectedRevision}`
    to `operator.catalogDrafts` using the saved revision. Review the returned
    `issues` and `preparation`. The response includes the `expectedHead` resolved
    from the saved product. Prepare reports a missing or ineffective price list
@@ -672,8 +680,16 @@ with zero-based SKU and operation indexes, such as
 Find the effective list for the selected configuration in `owned/demo-seed.ts`.
 The demonstration's `buildDemoSeed(config).priceLists[0].id` is derived from
 the configuration ID and market currency. Revise the affected operation to use
-that list and a fresh price command key. Save, prepare and approve the new draft
-revision, then publish it with a fresh publication key.
+that list and a fresh price operation `commandKey`.
+When changing lists, set `expected.entryId` and `expected.unitPriceMinor` from
+the SKU's current one-time base price on the destination list, using `null` for
+both when there is no current entry, and resolve any pending base price there
+before publishing.
+After each change, run `npm run typecheck` from the extracted application root.
+Send `{action: "revise", draftId, expectedRevision, payload}` to
+`operator.catalogDrafts` with the corrected draft as `payload`. Prepare and
+approve the new revision, publish with a fresh publication key, then read the
+issued facts as described in [Publish a saved catalogue draft](#publish-a-saved-catalogue-draft).
 
 ## Replace acquisition location choices
 
