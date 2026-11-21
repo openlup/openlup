@@ -455,6 +455,22 @@ const coreRegion = (body: string) => `<!-- generated:maturity:outbox -->\n${body
 const freshMaturity = "| Export | Role | Maturity |\n| --- | --- | --- |\n| `.` | rail | experimental |\n";
 
 describe("reader guide contract", { timeout: 60_000 }, () => {
+  it("accepts an exact generated Core report heading in an upgrade page", () => {
+    const roots = guideFixture("# Guide\n", {
+      "upgrade/v1-2-3.md": "# Upgrade\n\n### `packages/core/api/example-contracts.api.md`\n",
+    });
+    expect(() => checkGuide(roots)).not.toThrow();
+  });
+
+  it("rejects a Core report path in an annotated upgrade heading or a general guide page", () => {
+    const heading = "### `packages/core/api/example-contracts.api.md`";
+    const roots = guideFixture("# Guide\n", {
+      "upgrade/v1-2-3.md": "# Upgrade\n\n" + heading + " extra text\n",
+      "reference/report.md": "# Report\n\n" + heading + "\n",
+    });
+    expect(() => checkGuide(roots)).toThrow(/reference\/report\.md: monorepo package path[\s\S]*upgrade\/v1-2-3\.md: monorepo package path/);
+  });
+
   it.each([
     [2, "# Title\n\n# Another title\n"],
     [2, "# Title\n\n # Other\n"],

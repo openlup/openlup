@@ -16,12 +16,24 @@ signature. For typed rows or readonly query values, wrap the client with
 
 Before (separate pools per store and stubbed hosted client factory):
 ```ts
+import { createDataBindings, type SupabaseCreateClient } from "@openlup/platform/data";
+import { createPostgresAccountLinkStore } from "@openlup/platform/identity";
+
+declare const stubClient: SupabaseCreateClient;
+declare const connectionString: string;
+
 const bindings = createDataBindings({ createSupabaseClient: stubClient });
 const store = createPostgresAccountLinkStore({ connectionString });
 ```
 
 After (single application-owned pool shared across direct-PostgreSQL stores):
 ```ts
+import type { Pool } from "pg";
+import { createDataBindings, createPostgresTransactionRunner } from "@openlup/platform/data";
+import { createPostgresAccountLinkStore } from "@openlup/platform/identity";
+
+declare const sharedPool: Pool;
+
 const bindings = createDataBindings();
 const runner = createPostgresTransactionRunner(sharedPool);
 const store = createPostgresAccountLinkStore({ connectionString: "" }, { pool: sharedPool });

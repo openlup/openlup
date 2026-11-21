@@ -13,8 +13,8 @@ import { packDryRun } from "./release-npm-checks.ts";
 const defaultPackageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const downstreamRepositoryCommand = "veli";
 const retiredPackageScope = "veli";
+const monorepoPackagePath = /(^|\W)packages\/core(?:\/|\b)/;
 const forbiddenExtractedRootReferences = [
-  [/(^|\W)packages\/core(?:\/|\b)/, "monorepo package path"],
   [/\bnpm\s+--workspace\b/, "monorepo workspace command"],
   [
     new RegExp(`(^|[^A-Za-z0-9_])\\./${downstreamRepositoryCommand}(?=$|[^A-Za-z0-9_/-])`),
@@ -83,6 +83,11 @@ export function assertDocumentationContract(
     const label = relative(packageRoot, file).split(sep).join("/");
     // A pinned repository URL in the guide is the published link form, not an extracted-root path.
     const scanned = guideFiles.includes(file) ? source.replace(releaseUrlPattern(), "") : source;
+    // Keep the report headings recognized by openlup-context in versioned upgrade pages.
+    const pathSource = /^docs\/guide\/upgrade\/v[^/]*\.md$/.test(label)
+      ? source.replace(/^### `packages\/core\/api\/[a-z0-9-]+\.api\.md`$/gm, "").replace(releaseUrlPattern(), "")
+      : scanned;
+    if (monorepoPackagePath.test(pathSource)) violations.push(`${label}: monorepo package path`);
     for (const [pattern, description] of forbiddenExtractedRootReferences) {
       if ((pattern as RegExp).test(scanned)) violations.push(`${label}: ${description}`);
     }
