@@ -40,6 +40,28 @@ function refuse(exitCode, code, observed, fix, cause = exitCode === 64 ? "Invali
   emit({ command: "openlup", state: exitCode === 64 ? "refused" : "failed", exitCode, findings: [finding] }, `${renderFinding(finding)}\n${help}`);
 }
 
+function readSettingText(value, code) {
+  if (typeof value !== "string" || !value.length) throw new Error(code);
+  return value;
+}
+
+function readSettingInt(value, min, max, code) {
+  const parsed = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value) ? Number(value) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) throw new Error(code);
+  return parsed;
+}
+
+function readSettingTimestamp(value, code, nullable = false) {
+  if (nullable && (value === null || value === undefined)) return null;
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) throw new Error(code);
+    return value.toISOString();
+  }
+  return readSettingText(value, code);
+}
+
 async function bindSettings({ database, app, configuration }) {
   let db;
   if (database) {
@@ -65,6 +87,90 @@ async function bindSettings({ database, app, configuration }) {
         [inventory]: async () => {
           const policy = await readRenewalStockProtectionOverride(db);
           return policy ? { present: true, value: { ...policy }, revision: policy.revision } : { present: false };
+        },
+        subscription_minimum_base_units: async () => {
+          const { rows } = await db.query("SELECT value_text FROM public.commerce_settings WHERE key = 'subscription_minimum_base_units'");
+          if (!rows.length) return { present: false };
+          const raw = rows[0].value_text;
+          const value = Number(raw);
+          if (typeof raw !== "string" || !/^[1-9][0-9]*$/u.test(raw) || !Number.isSafeInteger(value) || value > 2147483647) {
+            throw new Error("subscription_reprice_minimum_base_units_unavailable");
+          }
+          return { present: true, value, revision: null };
+        },
+        subscription_sized_intro_phase: async () => {
+          const { rows } = await db.query("SELECT value_text FROM public.commerce_settings WHERE key = 'subscription_sized_intro_phase'");
+          if (!rows.length) return { present: false };
+          const raw = rows[0].value_text;
+          if (typeof raw !== "string") throw new Error("subscription_edit_invalid_sized_configuration");
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+            || Object.keys(parsed).length !== 2
+            || !Object.hasOwn(parsed, "fixedThroughCycle") || !Object.hasOwn(parsed, "graduationCycle")
+            || !Number.isSafeInteger(parsed.fixedThroughCycle) || parsed.fixedThroughCycle < 1 || parsed.fixedThroughCycle > 2147483647
+            || !Number.isSafeInteger(parsed.graduationCycle) || parsed.graduationCycle < 1 || parsed.graduationCycle > 2147483647
+            || parsed.graduationCycle <= parsed.fixedThroughCycle) {
+            throw new Error("subscription_edit_invalid_sized_configuration");
+          }
+          return {
+            present: true,
+            value: { fixedThroughCycle: parsed.fixedThroughCycle, graduationCycle: parsed.graduationCycle },
+            revision: null,
+          };
+        },
+        shipping_flat_minor: async () => {
+          const { rows } = await db.query("SELECT value_minor FROM public.commerce_settings WHERE key = 'shipping_flat_minor'");
+          if (!rows.length) return { present: false };
+          const raw = rows[0].value_minor;
+          if (raw === null || raw === undefined) throw new Error("shipping_flat_minor_invalid");
+          const value = Number(raw);
+          if (!Number.isSafeInteger(value) || value < 0 || value > 2147483647) {
+            throw new Error("shipping_flat_minor_invalid");
+          }
+          return { present: true, value, revision: null };
+        },
+        "pricing.subscriptionPricePolicy": async () => {
+          const { rows } = await db.query(
+            "SELECT id, price_list_id, region_code, currency, channel, revision_no, discount_bps, rounding_quantum_minor, rounding_rule, effective_from, effective_to FROM public.subscription_price_policy_revisions ORDER BY price_list_id, region_code, currency, channel, revision_no",
+          );
+          if (!rows.length) return { present: false };
+          const code = "subscription_price_policy_invalid";
+          return {
+            present: true,
+            value: rows.map(row => ({
+              id: readSettingText(row.id, code),
+              price_list_id: readSettingText(row.price_list_id, code),
+              region_code: readSettingText(row.region_code, code),
+              currency: readSettingText(row.currency, code),
+              channel: readSettingText(row.channel, code),
+              revision_no: readSettingInt(row.revision_no, 1, 2147483647, code),
+              discount_bps: readSettingInt(row.discount_bps, 0, 10000, code),
+              rounding_quantum_minor: readSettingInt(row.rounding_quantum_minor, 1, 2147483647, code),
+              rounding_rule: readSettingText(row.rounding_rule, code),
+              effective_from: readSettingTimestamp(row.effective_from, code),
+              effective_to: readSettingTimestamp(row.effective_to, code, true),
+            })),
+            revision: null,
+          };
+        },
+        "communications.nativeDeliveryControls": async () => {
+          const { rows } = await db.query(
+            "SELECT control_key, enabled, revision FROM public.communication_delivery_controls ORDER BY control_key",
+          );
+          if (!rows.length) return { present: false };
+          const code = "communications_delivery_controls_invalid";
+          return {
+            present: true,
+            value: rows.map(row => {
+              if (typeof row.enabled !== "boolean") throw new Error(code);
+              return {
+                control_key: readSettingText(row.control_key, code),
+                enabled: row.enabled,
+                revision: readSettingInt(row.revision, 1, 2147483647, code),
+              };
+            }),
+            revision: null,
+          };
         },
         ...overrides.readers,
       },

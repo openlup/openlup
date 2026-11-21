@@ -1,6 +1,7 @@
 import {
   DEFAULT_LOW_STOCK_THRESHOLD,
   deriveOfferAvailability,
+  statusForSellableNow,
 } from "../offerAvailability.js";
 import type {
   CommerceOfferAvailability,
@@ -71,7 +72,10 @@ export function createOfferAvailabilityPort(
   client: OfferAvailabilityQueryClient,
   options: { isStockProvider: (providerKind: string) => boolean; lowStockThreshold?: number; now?: () => Date },
 ): CommerceOfferAvailabilityPort {
-  const lowStockThreshold = options.lowStockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD;
+  const lowStockThreshold = options.lowStockThreshold === undefined
+    ? DEFAULT_LOW_STOCK_THRESHOLD
+    : options.lowStockThreshold;
+  statusForSellableNow(null, lowStockThreshold);
   const now = options.now ?? (() => new Date());
 
   return {

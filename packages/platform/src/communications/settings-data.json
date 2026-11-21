@@ -16,5 +16,40 @@
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Package contracts restrict the supported locale vocabulary."},
     "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#select-your-configuration"}
+  },
+  {
+    "key": "communications.nativeDeliveryControls",
+    "domain": "communications",
+    "kind": "installed",
+    "goal": "Inspect installed native delivery control switches and revisions in public.communication_delivery_controls governing whether native delivery templates and notification controls are enabled (delivery controls, kill switch, email send gate).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "absentMeans": {"description": "When public.communication_delivery_controls has no row for a control key, native communications control-plane preparation treats absent control keys as disabled (false) and refuses delivery preparation with communications_delivery_disabled (the table column default is false; lifecycle notice checks via communications_notification_control_enabled only block explicitly false rows).", "source": "no installed control row (absent control keys default to disabled / false in native control-plane delivery preparation)", "value": null},
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "Native control-plane delivery starts disabled until an authorized operator creates and enables a control row and active template binding.",
+    "effect": {"appliesTo": "Controls native communications delivery eligibility in public.communication_delivery_controls (control_key, enabled, revision), evaluated when preparing new delivery commands and lifecycle notification gates. Because public.communication_delivery_controls has REVOKE ALL from default roles (PUBLIC, anon, authenticated), connected reads require an explicit SELECT grant on public.communication_delivery_controls (otherwise returning commerce_setting_read_unavailable).", "frozenOn": ["Already accepted delivery commands, recorded delivery receipts, and append-only delivery events replay and retain their stored outcomes."], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "Managed through operator-authorized database routine communications_set_delivery_control; connected CLI reads require explicit SELECT permission on public.communication_delivery_controls."},
+    "change": {"operation": "communications_set_delivery_control"},
+    "rules": []
+  },
+  {
+    "key": "communications.terminalPayloadRetentionDays",
+    "domain": "communications",
+    "kind": "code",
+    "goal": "Set how many days terminal processed and discarded outbox event payloads and errors are retained before compaction clears them (outbox retention, payload pruning, compaction days).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"processedDays": {"type": "integer", "minimum": 1, "maximum": 3650}, "discardedDays": {"type": "integer", "minimum": 1, "maximum": 3650}}, "required": ["processedDays", "discardedDays"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [{"value": {"processedDays": 30, "discardedDays": 90}}, {"value": {"processedDays": 14, "discardedDays": 60}}],
+    "fallback": {"processedDays": 30, "discardedDays": 90},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "Thirty days for processed events and ninety days for discarded events preserve recent audit and troubleshooting evidence while bounding table payload growth.",
+    "effect": {"appliesTo": "Passed as processedDays and discardedDays (integers 1..3650) to createOutbox(..., { prune: { enabled: true, processedDays, discardedDays, ... } }) or createPostgresOutboxCompactor().compact({ processedDays, discardedDays, limit }) from @openlup/outbox. Clears payload and error on processed rows older than processedDays and discarded rows with a valid metadata.discardedAt older than discardedDays while retaining the event row, unique enqueue key, and retentionCompacted* metadata.", "frozenOn": ["Already compacted event rows, pending/failed/processing events, and rows marked metadata.retainPayload=true keep their current state."], "impact": "operations"},
+    "runtime": {"level": "read-only", "reason": "Configured in server outbox composition via createPostgresOutboxCompactor().compact({ processedDays, discardedDays, limit }) or createOutbox prune options from @openlup/outbox and applied on deployment."},
+    "change": {"reference": "docs/guide/how-to/build/outbox.md#retain-terminal-work-safely"},
+    "rules": []
   }
 ]

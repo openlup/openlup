@@ -5,6 +5,7 @@ import type { CheckoutKind, ConfiguratorIntent } from "../contracts/index.js";
 import type { CheckoutQuoteSnapshot } from "./checkoutQuoteTypes.js";
 import type { StarterDeclaration } from "./commerceStarterOfferGuard.js";
 import { selectedDeliveryMatches, type CheckoutResumeGuardDeps } from "./commerceCheckoutResumeGuard.js";
+import { resolveResumeWindowMinutes } from "./checkoutResumeWindowValidation.js";
 export function createSavedAcquisitionContinuation<Intent extends ConfiguratorIntent & { selectedDelivery?: unknown }, Provisioned, Request extends CreateQuoteRequest, Snapshot extends CheckoutQuoteSnapshot, InvoicePreference, Response>(bindings: {
   quoteSchema: z.ZodType<Snapshot>;
   buildQuoteRequest(intent: Intent, provisioned: Provisioned): Request;
@@ -29,10 +30,11 @@ async function resolveSavedAcquisitionContinuation(input: {
   now: () => Date;
 }): Promise<Response | null> {
   const { deps, clientId, checkoutKind, intent, expectedQuote } = input;
+  const withinMinutes = resolveResumeWindowMinutes(deps.resumeWindowMinutes);
   if (!deps.resumableOrderPort || !expectedQuote || checkoutKind !== "subscription_initial") return null;
   try {
     const resumable = await deps.resumableOrderPort.findResumableOrderForClient({
-      clientId, withinMinutes: deps.resumeWindowMinutes ?? 60,
+      clientId, withinMinutes,
       now: input.now(), journeyKey: intent.idempotencyKey,
     });
     if (!resumable || !resumable.paymentIntentId || !selectedDeliveryMatches(resumable.metadata, intent)) return null;

@@ -10,4 +10,26 @@ describe("checkout resume guard", () => {
   it("resumes the matching owned basket with no fresh provider action", async () => { const f = fixture(); const result = await resolveResumeOpenOrderResponse(f.input); expect(result).toMatchObject({ orderId: ORDER_ID, status: "processing", clientAction: { kind: "none" }, clientId: CLIENT_ID, subscription: { requested: false, cadenceDays: null, activationStatus: "not_applicable" } }); expect(f.findResumableOrderForClient).toHaveBeenCalledExactlyOnceWith({ clientId: CLIENT_ID, withinMinutes: 60, now: new Date(0), journeyKey: f.asked.idempotencyKey }); });
   it.each(["same_journey", "money", "basket", "delivery"] as const)("does not re-offer old money after %s changed", async field => { const f = fixture(); if (field === "same_journey") f.row.sameJourney = true; if (field === "money") f.input.acceptedQuote = { ...f.quote.quote, totalGross: { amountMinor: 1600, currency: "XTS" } }; if (field === "basket") f.input.acceptedQuote = { ...f.quote.quote, lines: [{ ...f.quote.quote.lines[0], quantity: 2 }] }; if (field === "delivery") f.asked.selectedDelivery = { kind: "courier", carrierKind: "carrier-b", service: "other" }; await expect(resolveResumeOpenOrderResponse(f.input)).resolves.toBeNull(); });
   it("fails open after a read error and does not read when the port is absent", async () => { const f = fixture(); f.findResumableOrderForClient.mockRejectedValueOnce(new Error("unavailable")); await expect(resolveResumeOpenOrderResponse(f.input)).resolves.toBeNull(); await expect(resolveResumeOpenOrderResponse({ ...f.input, deps: {} })).resolves.toBeNull(); expect(f.findResumableOrderForClient).toHaveBeenCalledOnce(); });
+  it.each([1, 15, 2147483647])("accepts explicit resumeWindowMinutes=%i", async resumeWindowMinutes => {
+    const f = fixture();
+    await expect(resolveResumeOpenOrderResponse({
+      ...f.input,
+      deps: { ...f.input.deps, resumeWindowMinutes },
+    })).resolves.toMatchObject({ orderId: ORDER_ID });
+    expect(f.findResumableOrderForClient).toHaveBeenCalledWith({
+      clientId: CLIENT_ID, withinMinutes: resumeWindowMinutes, now: new Date(0), journeyKey: f.asked.idempotencyKey,
+    });
+  });
+  it.each([0, -5, 1.5, NaN, Infinity, -Infinity, 2147483648, null as unknown as number])("rejects invalid resumeWindowMinutes=%p even when port is absent", async resumeWindowMinutes => {
+    const f = fixture();
+    await expect(resolveResumeOpenOrderResponse({
+      ...f.input,
+      deps: { ...f.input.deps, resumeWindowMinutes },
+    })).rejects.toThrow("checkout_resume_window_minutes_invalid");
+    await expect(resolveResumeOpenOrderResponse({
+      ...f.input,
+      deps: { resumeWindowMinutes },
+    })).rejects.toThrow("checkout_resume_window_minutes_invalid");
+    expect(f.findResumableOrderForClient).not.toHaveBeenCalled();
+  });
 });

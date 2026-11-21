@@ -35,4 +35,8 @@ describe("neutral checkout HTTP sequence", () => {
     expect(res.status).toHaveBeenCalledWith({ method: 405, invalid: 400, rate_refused: 429, rate_failed: 503, risk_refused: 403, risk_failed: 503 }[kind]);
     expect(ports.persistencePort.persistIntent).not.toHaveBeenCalled(); expect(ports.quotePort.createQuote).not.toHaveBeenCalled(); expect(ports.runtimePort.startRuntime).not.toHaveBeenCalled();
   });
+  it.each([0, -1, 1.5, NaN, Infinity, 2147483648])("rejects invalid resumeWindowMinutes=%p when creating the checkout handler", resumeWindowMinutes => {
+    const ports = createPorts();
+    expect(() => createCommerceCheckoutHandler({ ...ports, resumeWindowMinutes })).toThrow("checkout_resume_window_minutes_invalid");
+  });
 });

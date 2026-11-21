@@ -1,5 +1,22 @@
 [
   {
+    "key": "bundles.compositionRules",
+    "domain": "catalog",
+    "kind": "callback",
+    "goal": "Validate and resize bundle core and add-on compositions against opaque CompositionConstraint envelopes (bundle rules, composition constraints, resizing).",
+    "schemaVersion": 1,
+    "schema": null,
+    "previewSchema": null,
+    "examples": [],
+    "fallback": null,
+    "defaultBasis": {"kind": "neutral"},
+    "whyThisDefault": "The platform stores CompositionConstraint envelopes without interpreting them; bundle writes skip constraint validation when no CompositionRulesPort from @openlup/core/bundle is supplied or the constraint is empty.",
+    "effect": {"appliesTo": "New bundle composition writes and subscription package edits evaluate the bound CompositionRulesPort from @openlup/core/bundle when validating or resizing constrained compositions.", "frozenOn": ["Saved bundle versions, active product facts, and existing subscription templates retain their stored compositions until edited."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "The callbacks are executable server code implementing CompositionRulesPort from @openlup/core/bundle."},
+    "change": {"reference": "docs/guide/how-to/build/bundles.md"},
+    "rules": []
+  },
+  {
     "key": "catalog.additionalMediaFormats",
     "domain": "catalog",
     "goal": "Accept additional catalogue media formats.",
@@ -7,6 +24,23 @@
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The media contract admits a fixed set of validated formats."},
     "change": {"reference": "docs/guide/how-to/extend/catalogue-extension.md"}
+  },
+  {
+    "key": "catalog.bundleAvailabilityPolicy",
+    "domain": "catalog",
+    "kind": "code",
+    "goal": "Set the whole-bundle low-stock threshold and whether optional add-on components limit derived bundle stock (bundle low stock, bundle availability, add-on stock).",
+    "schemaVersion": 1,
+    "schema": {"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": {"lowStockThreshold": {"type": "integer", "minimum": 0, "maximum": 2147483647}, "includeAddonsInStock": {"type": "boolean"}}, "required": ["lowStockThreshold", "includeAddonsInStock"], "additionalProperties": false},
+    "previewSchema": null,
+    "examples": [{"value": {"lowStockThreshold": 3, "includeAddonsInStock": false}}, {"value": {"lowStockThreshold": 5, "includeAddonsInStock": true}}],
+    "fallback": {"lowStockThreshold": 3, "includeAddonsInStock": false},
+    "defaultBasis": {"kind": "reference-code"},
+    "whyThisDefault": "A three-bundle cutoff reflects multi-unit consumption per bundle, and excluding optional add-ons prevents optional extras from marking core bundles unsellable.",
+    "effect": {"appliesTo": "BundleAvailabilityServiceDeps (lowStockThreshold default 3, includeAddonsInStock default false) and DeriveBundleAvailabilityInput in @openlup/platform/catalog. Controls derived bundle status and whether add-on components constrain sellableNow. Non-integer or negative lowStockThreshold values reject at runtime.", "frozenOn": ["Saved bundle compositions, placed orders, and active reservations retain their recorded stock state."], "impact": "customer-promise"},
+    "runtime": {"level": "read-only", "reason": "Passed in BundleAvailabilityServiceDeps / DeriveBundleAvailabilityInput (@openlup/platform/catalog) and applied on deployment."},
+    "change": {"reference": "docs/guide/how-to/build/bundles.md"},
+    "rules": []
   },
   {
     "key": "catalog.netContentUnits",

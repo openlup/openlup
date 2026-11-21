@@ -359,19 +359,6 @@ export function createSettingsBindings({ db, configuration }: {
         },
       },
     },
-    'shipping.rateResolver': {
-      value: undefined,
-      location: { file: 'owned/quote-shipping.ts', symbol: 'createQuoteShipping' },
-      descriptor: {
-        domain: 'shipping',
-        goal: "Change how shipping rates are calculated or connect a shipping carrier (carrier, shipping provider, courier, rate calculation).",
-        effect: {
-          appliesTo: "Checkout quote composition calls the deployed shipping resolver factory when creating a new quote.",
-          frozenOn: ["Saved checkout quotes keep their shipping amounts and terms."],
-          impact: 'money',
-        },
-      },
-    },
     'market.localePolicy': {
       value: {
         locales: config.market.locales,
@@ -688,6 +675,14 @@ export function createSettingsBindings({ db, configuration }: {
     },
     inventory_renewal_protection: { value: config.inventory?.renewalProtection, location: { file, symbol: 'inventory.renewalProtection' } },
     checkout_recovery_reminders: { value: config.checkoutRecoveryReminders, location: { file, symbol: 'checkoutRecoveryReminders' } },
+    subscription_minimum_base_units: { value: config.subscriptionOffers?.classic?.minimumBaseUnits, location: { file, symbol: 'subscriptionOffers.classic.minimumBaseUnits' } },
+    subscription_sized_intro_phase: {
+      value: config.subscriptionEditing?.sized ? {
+        fixedThroughCycle: config.subscriptionEditing.sized.fixedThroughCycle,
+        graduationCycle: config.subscriptionEditing.sized.graduationCycle,
+      } : undefined,
+      location: { file: 'owned/subscription-editing.ts', symbol: 'subscriptionEditing' },
+    },
   };
   return {
     stockSourceKey: `starter-demo:${config.id}`,

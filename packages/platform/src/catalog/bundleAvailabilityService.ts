@@ -2,6 +2,7 @@ import type {
   BundleAvailability,
   BundleAvailabilityComponent,
 } from "./bundleAvailability.js";
+import { validateBundleLowStockThreshold } from "./bundleThresholdValidation.js";
 import type {
   BundleStockAvailability as CommerceOfferAvailability,
   BundleStockPort as CommerceOfferAvailabilityPort,
@@ -68,6 +69,7 @@ export function createBundleAvailabilityServices({ deriveBundleAvailability }: {
 function createBundleAvailabilityService(
   deps: BundleAvailabilityServiceDeps,
 ): BundleAvailabilityService {
+  const lowStockThreshold = validateBundleLowStockThreshold(deps.lowStockThreshold);
   async function describeCompositions(
     compositions: readonly ActiveBundleComposition[],
   ): Promise<BundleAvailabilityRow[]> {
@@ -92,7 +94,7 @@ function createBundleAvailabilityService(
         components,
         availability: deriveBundleAvailability({
           components,
-          lowStockThreshold: deps.lowStockThreshold,
+          lowStockThreshold,
           includeAddonsInStock: deps.includeAddonsInStock,
         }),
       };

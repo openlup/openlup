@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -59,7 +59,7 @@ const encode = (value: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(va
 const catalogueReadTargets = ["public.catalog_offer_memberships_page(text,jsonb,integer,text)", "public.catalog_publication_activation_readiness(text[],text)"];
 const catalogueReadRole = "openlup_catalog_publication";
 const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
-const authoritySha256 = "baf0999ba0d8dce9734282c71e4c796514e974f0e42b1fb9089e5c381c742bd8";
+const authoritySha256 = sqlSha256(readFileSync(authorityPath));
 const roleGuard = "  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')\n";
 const ledgerGuard = `    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
       WHERE catalog_path OPERATOR(pg_catalog.=) '${authorityPath}'::pg_catalog.text
@@ -473,10 +473,10 @@ REVOKE ALL ON FUNCTION public.cat_created(text) FROM PUBLIC;`;
 });
 
 describe("grant-only existing functions", () => {
-  it("admits the exact qualified catalogue read grant against the issued function pins", () => {
+  it("admits the original qualified catalogue read grant byte for byte against the issued function pins", () => {
     expect(production.qualifiedInstallations).toContainEqual({ path: authorityPath, sha256: authoritySha256 });
-    expect(sqlSha256(readFileSync(authorityPath))).toBe(authoritySha256);
     const path = "db/platform/migrations/20261124180000_catalogue_read_grant.sql";
+    expect(sqlSha256(catalogueReadSql)).toBe("bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a");
     const directory = "db/platform/migrations";
     const preceding = readdirSync(directory).filter(file => /^\d{14}_.*\.sql$/u.test(file))
       .map(file => `${directory}/${file}`).filter(file => file < path).sort()
@@ -1132,6 +1132,135 @@ function nativeGitFixture(run: (context: { folder: string; git: (...args: string
   try { git("init", "-q", "-b", "main"); run({ folder, git, put, commit }); } finally { rmSync(folder, { force: true, recursive: true }); }
 }
 const emptySlot = (path: string, row = "Future"): NativeStoreSlot => ({ row, path, replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [] });
+
+describe("native replacements of qualified SECURITY DEFINER functions", () => {
+  const path = "db/platform/migrations/20990101000000_qualified_security.sql";
+  const signature = "public.catalog_price_setup_region_code()";
+  const searchPath = "pg_catalog, pg_temp";
+  const prior = `CREATE FUNCTION ${signature} RETURNS text LANGUAGE sql SECURITY INVOKER SET search_path = ${searchPath} AS $$ SELECT 'before'; $$;`;
+  const definition = prior.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace("'before'", "'after'");
+  const guard = renderQualifiedSecurityDefiner(signature);
+  const text = `${definition}\n${guard}`;
+  const valueFor = (candidate = text, target = signature, preimage = prior.replace(signature, target), pinnedSearchPath: string | null = searchPath) => {
+    const value = registry(), slot = emptySlot(path);
+    slot.replacedFunctions = [{ signature: target, beforeSha256: sqlSha256(preimage), searchPath: pinnedSearchPath, qualifiedSecurityDefiner: true }];
+    value.nativeStoreForwardClass = { sealed: true, slots: [slot] };
+    bind(value, 0, candidate);
+    return { value, slot, prefix: [{ path: PLATFORM_BASELINE_FILE, bytes: Buffer.from(preimage) }] };
+  };
+
+  it("admits the rendered guard against committed base through PR, queue and release checks", () => {
+    nativeGitFixture(({ folder, git, put, commit }) => {
+      const { value } = valueFor();
+      const baseRegistry = { ...value, nativeStoreForwardClass: { sealed: true, slots: [] }, nativeStoreForwards: [] };
+      put(PLATFORM_BASELINE_FILE, prior);
+      put("config/reviewed-platform-forwards.json", encode(baseRegistry));
+      const base = commit();
+      put(path, text);
+      put("config/reviewed-platform-forwards.json", encode(value));
+      const head = commit();
+      const merged = git("commit-tree", git("rev-parse", `${head}^{tree}`), "-p", base, "-p", head, "-m", "Synthetic PR merge");
+      expect(() => assertAdmittedPlatformForward(folder, base, merged, path, Buffer.from(text))).not.toThrow();
+      expect(() => assertCoLocatedForwardApproval(folder, base, head)).not.toThrow();
+      expect(() => assertCoLocatedForwardApproval(folder, base, merged)).not.toThrow();
+      expect(() => assertAdmittedPlatformForward(folder, base, merged, path, Buffer.from(text), true)).not.toThrow();
+    });
+  });
+
+  it.each([
+    ["changed whitespace", `${definition}\n${guard.replace("  THEN", "   THEN")}`, "expected this exact statement immediately after"],
+    ["changed signature", `${definition}\n${guard.replace(signature, "public.catalog_price_setup_settlement_currency()")}`, "expected this exact statement immediately after"],
+    ["changed ledger path", `${definition}\n${guard.replace(authorityPath, PLATFORM_BASELINE_FILE)}`, "expected this exact statement immediately after"],
+    ["changed ledger hash", `${definition}\n${guard.replace(authoritySha256, "0".repeat(64))}`, "expected this exact statement immediately after"],
+    ["missing statement at the end of the file", definition, "expected this exact statement immediately after"],
+    ["statement before the replacement", `${guard}\n${definition}`, "put this exact statement only immediately after"],
+    ["mark with a different following statement", `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`, "expected this exact statement immediately after"],
+    ["a DEFINER header", text.replace("SECURITY INVOKER", "SECURITY DEFINER"), "keep the native SECURITY INVOKER header"],
+  ])("refuses %s with the signature and exact statement", (_label, candidate, remedy) => {
+    const { value, prefix } = valueFor(candidate);
+    const admit = () => assertNativeStoreForward(value, path, Buffer.from(candidate), prefix);
+    expect(admit).toThrow(`${signature}: ${remedy}`);
+    expect(admit).toThrow(guard);
+  });
+
+  it.each([
+    "public.catalog_publication_record_command(jsonb)",
+    "public.catalog_publication_admit()",
+    "public.catalog_price_setup_region_code()",
+    "public.catalog_price_setup_settlement_currency()",
+    "public.platform_human_membership_is_administrator(uuid)",
+    "public.catalog_publication_assert_receipt(uuid,text)",
+  ])("refuses an unmarked replacement of qualified DEFINER %s", target => {
+    const candidate = definition.replace(signature, target);
+    const { value, slot, prefix } = valueFor(candidate, target);
+    delete slot.replacedFunctions[0]!.qualifiedSecurityDefiner;
+    expect(() => assertNativeStoreForward(value, path, Buffer.from(candidate), prefix))
+      .toThrow(`${target}: set qualifiedSecurityDefiner: true and put this statement immediately after its CREATE OR REPLACE FUNCTION:\n${renderQualifiedSecurityDefiner(target)}`);
+  });
+
+  it("refuses an unmarked replacement even with the exact statement", () => {
+    const { value, slot, prefix } = valueFor();
+    delete slot.replacedFunctions[0]!.qualifiedSecurityDefiner;
+    expect(() => assertNativeStoreForward(value, path, Buffer.from(text), prefix))
+      .toThrow(`${signature}: set qualifiedSecurityDefiner: true and put this statement immediately after its CREATE OR REPLACE FUNCTION:\n${guard}`);
+  });
+
+  it.each([
+    ["pg_catalog, public", false],
+    ["pg_catalog, public, pg_temp", true],
+  ] as const)("admits a marked record_command replacement with search_path %s = %s", (pinnedPath, admitted) => {
+    const target = "public.catalog_publication_record_command(jsonb)";
+    const nativePath = "pg_catalog, public";
+    const source = readFileSync("db/platform/migrations/20261123191000_catalog_publication_commands.sql", "utf8");
+    const preimage = sqlStatements(source, false, false, true).find(statement => statement.startsWith("CREATE FUNCTION public.catalog_publication_record_command("))!;
+    const replacement = preimage.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION").replace(`SET search_path = ${nativePath} AS`, `SET search_path = ${pinnedPath} AS`);
+    const candidate = `${replacement}\n${renderQualifiedSecurityDefiner(target)}`;
+    const { value, prefix } = valueFor(candidate, target, preimage, pinnedPath);
+    const admit = () => assertNativeStoreForward(value, path, Buffer.from(candidate), prefix);
+    if (admitted) expect(admit).not.toThrow();
+    else expect(admit).toThrow(`${target}: qualifiedSecurityDefiner must pin SET search_path = pg_catalog, public, pg_temp`);
+  });
+
+  it.each([null, "pg_catalog, pg_temp, pg_temp", "pg_catalog, pg_temp_42, pg_temp", "pg_catalog, pg_temp_42"])("refuses a marked replacement with search_path %j", pinnedPath => {
+    const { value, slot } = valueFor();
+    slot.replacedFunctions[0]!.searchPath = pinnedPath;
+    expect(() => readReviewedForwardRegistry(encode(value)))
+      .toThrow(`${signature}: qualifiedSecurityDefiner must pin SET search_path = pg_catalog, pg_temp`);
+  });
+
+  it.each([true, false])("refuses a guard for a function outside the qualified set with mark present = %s", marked => {
+    const other = "public.fixture_unqualified()";
+    const candidate = text.replaceAll(signature, other), { value, slot, prefix } = valueFor(candidate, other);
+    if (!marked) delete slot.replacedFunctions[0]!.qualifiedSecurityDefiner;
+    const admit = () => assertNativeStoreForward(value, path, Buffer.from(candidate), prefix);
+    expect(admit).toThrow(`${other}: ${marked ? "the qualified authority migration leaves its SECURITY mode unchanged" : "remove this statement"}`);
+    expect(admit).toThrow(renderQualifiedSecurityDefiner(other));
+  });
+
+  it("refuses the field on a created function", () => {
+    const { value, slot } = valueFor();
+    slot.createdFunctions = [{ ...slot.replacedFunctions[0]! }];
+    slot.replacedFunctions = [];
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(`${signature}: remove qualifiedSecurityDefiner from createdFunctions`);
+  });
+
+  it.each([false, null, "true", 1])("refuses a qualifiedSecurityDefiner value of %j", invalid => {
+    const { value, slot } = valueFor();
+    Object.assign(slot.replacedFunctions[0]!, { qualifiedSecurityDefiner: invalid });
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(`${signature}: qualifiedSecurityDefiner must be true when present`);
+  });
+
+  it("admits a later marked replacement with the chained before-hash", () => {
+    const { value, slot, prefix } = valueFor();
+    const later = emptySlot("db/platform/migrations/20990102000000_qualified_security.sql", "Later");
+    later.replacedFunctions = [{ ...slot.replacedFunctions[0]!, beforeSha256: sqlSha256(definition) }];
+    value.nativeStoreForwardClass!.slots.push(later);
+    const candidate = text.replace("'after'", "'later'");
+    bind(value, 1, candidate);
+    expect(() => assertNativeStoreForward(value, later.path, Buffer.from(candidate), [...prefix, { path, bytes: Buffer.from(text) }])).not.toThrow();
+  });
+});
+
 describe("settings-only native forwards", () => {
   const path = "db/platform/migrations/20261124130000_fixture_settings.sql";
   const settings = [

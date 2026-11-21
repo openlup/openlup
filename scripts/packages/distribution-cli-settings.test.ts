@@ -194,6 +194,13 @@ it("preserves and reconciles an existing value-only host after a manifest refusa
   const { entries, ...listDocument } = JSON.parse(search.stdout);
   const { rows, ...checkDocument } = JSON.parse(defaultCheck.stdout);
   const remaining = (row: { key: string }) => !starterKeys.includes(row.key);
+  const stripAddedInstalledRows = (stdout: string, expectedKeys: Set<string>) => {
+    const document = JSON.parse(stdout);
+    expect(document.rows.map((row: { key: string }) => row.key).toSorted())
+      .toEqual([...expectedKeys, ...newPackagedCheckKeys].toSorted());
+    document.rows = document.rows.filter((row: { key: string }) => expectedKeys.has(row.key));
+    return JSON.stringify(document) + "\n";
+  };
   const applyUpdatedCapReference = <T extends { key: string; change?: { reference?: string } }>(row: T): T => {
     const updated = updatedCapReferences[row.key];
     return updated && row.change ? { ...row, change: { ...row.change, reference: updated.after } } : row;
@@ -204,7 +211,8 @@ it("preserves and reconciles an existing value-only host after a manifest refusa
     expect(runStarterSettings(app, search.args)).toEqual({
       exit: search.exit, stdout: JSON.stringify({ ...listDocument, entries: entries.filter(remaining).map(applyUpdatedCapReference) }) + "\n", stderr: warning,
     });
-    expect(runStarterSettings(app, defaultCheck.args)).toEqual({
+    const actualCheck = runStarterSettings(app, defaultCheck.args);
+    expect({ ...actualCheck, stdout: stripAddedInstalledRows(actualCheck.stdout, new Set(rows.filter(remaining).map(row => row.key))) }).toEqual({
       exit: defaultCheck.exit, stdout: JSON.stringify({ ...checkDocument, rows: rows.filter(remaining) }) + "\n", stderr: warning,
     });
   };
@@ -227,7 +235,8 @@ it("preserves and reconciles an existing value-only host after a manifest refusa
   expect(listed.exit).toBe(0);
   expect(listed.stderr).toBe("");
   expect(JSON.parse(listed.stdout).entries.map(({ key }: { key: string }) => key)).toEqual(expect.arrayContaining(starterKeys));
-  expect(runStarterSettings(app, defaultCheck.args)).toEqual({
+  const reconciledCheck = runStarterSettings(app, defaultCheck.args);
+  expect({ ...reconciledCheck, stdout: stripAddedInstalledRows(reconciledCheck.stdout, new Set(rows.map(row => row.key))) }).toEqual({
     exit: defaultCheck.exit,
     stdout: defaultCheck.stdout.replace(subscriptionOffersBeforeEffect, subscriptionOffersEffect),
     stderr: "",
@@ -432,6 +441,193 @@ it("consumes an idle Pool error without printing its message", () => {
   expect(result.stdout).not.toContain("fake_idle_role");
 });
 
+it.each([
+  ["subscription_minimum_base_units", [{ value_text: "6" }], 0, { state: "override", value: 6, revision: null }],
+  ["subscription_minimum_base_units", [], 0, { state: "absent", value: null }],
+  ["subscription_minimum_base_units", [{ value_text: "0" }], 74, "commerce_setting_read_unavailable"],
+  ["subscription_minimum_base_units", [{ value_text: "abc" }], 74, "commerce_setting_read_unavailable"],
+  ["subscription_sized_intro_phase", [{ value_text: '{"fixedThroughCycle":2,"graduationCycle":3}' }], 0,
+    { state: "override", value: { fixedThroughCycle: 2, graduationCycle: 3 }, revision: null }],
+  ["subscription_sized_intro_phase", [{ value_text: '{"fixedThroughCycle":2147483646,"graduationCycle":2147483647}' }], 0,
+    { state: "override", value: { fixedThroughCycle: 2147483646, graduationCycle: 2147483647 }, revision: null }],
+  ["subscription_sized_intro_phase", [], 0, { state: "absent", value: null }],
+  ["subscription_sized_intro_phase", [{ value_text: '{"fixedThroughCycle":0,"graduationCycle":3}' }], 74, "commerce_setting_read_unavailable"],
+  ["subscription_sized_intro_phase", [{ value_text: '{"fixedThroughCycle":2,"graduationCycle":2147483648}' }], 74, "commerce_setting_read_unavailable"],
+  ["subscription_sized_intro_phase", [{ value_text: '{"fixedThroughCycle":2147483648,"graduationCycle":2147483649}' }], 74, "commerce_setting_read_unavailable"],
+  ["subscription_sized_intro_phase", [{ value_text: '{"fixedThroughCycle":3,"graduationCycle":3}' }], 74, "commerce_setting_read_unavailable"],
+  ["subscription_sized_intro_phase", [{ value_text: '{"fixedThroughCycle":3,"graduationCycle":2}' }], 74, "commerce_setting_read_unavailable"],
+  ["subscription_sized_intro_phase", [{ value_text: '{"fixedThroughCycle":2,"graduationCycle":3,"extra":1}' }], 74, "commerce_setting_read_unavailable"],
+  ["shipping_flat_minor", [{ value_minor: 500 }], 0, { state: "override", value: 500, revision: null }],
+  ["shipping_flat_minor", [], 0, { state: "fallback", value: 0 }],
+  ["shipping_flat_minor", [{ value_minor: null }], 74, "commerce_setting_read_unavailable"],
+  ["shipping_flat_minor", [{ value_minor: -1 }], 74, "commerce_setting_read_unavailable"],
+  ["pricing.subscriptionPricePolicy", [
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      price_list_id: "22222222-2222-4222-8222-222222222222",
+      region_code: "US",
+      currency: "USD",
+      channel: "web",
+      revision_no: 1,
+      discount_bps: 1000,
+      rounding_quantum_minor: 5,
+      rounding_rule: "FLOOR_TO_QUANTUM",
+      effective_from: "2026-01-01T00:00:00.000Z",
+      effective_to: "2026-06-01T00:00:00.000Z",
+    },
+    {
+      id: "33333333-3333-4333-8333-333333333333",
+      price_list_id: "22222222-2222-4222-8222-222222222222",
+      region_code: "US",
+      currency: "USD",
+      channel: "web",
+      revision_no: 2,
+      discount_bps: 1500,
+      rounding_quantum_minor: 10,
+      rounding_rule: "FLOOR_TO_QUANTUM",
+      effective_from: "2026-06-01T00:00:00.000Z",
+      effective_to: null,
+    },
+  ], 0, {
+    state: "override",
+    value: [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        price_list_id: "22222222-2222-4222-8222-222222222222",
+        region_code: "US",
+        currency: "USD",
+        channel: "web",
+        revision_no: 1,
+        discount_bps: 1000,
+        rounding_quantum_minor: 5,
+        rounding_rule: "FLOOR_TO_QUANTUM",
+        effective_from: "2026-01-01T00:00:00.000Z",
+        effective_to: "2026-06-01T00:00:00.000Z",
+      },
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        price_list_id: "22222222-2222-4222-8222-222222222222",
+        region_code: "US",
+        currency: "USD",
+        channel: "web",
+        revision_no: 2,
+        discount_bps: 1500,
+        rounding_quantum_minor: 10,
+        rounding_rule: "FLOOR_TO_QUANTUM",
+        effective_from: "2026-06-01T00:00:00.000Z",
+        effective_to: null,
+      },
+    ],
+    revision: null,
+  }],
+  ["pricing.subscriptionPricePolicy", [], 0, { state: "absent", value: null }],
+  ["pricing.subscriptionPricePolicy", [{
+    id: "11111111-1111-4111-8111-111111111111",
+    price_list_id: "22222222-2222-4222-8222-222222222222",
+    region_code: "US",
+    currency: "USD",
+    channel: "web",
+    revision_no: 1,
+    discount_bps: -1,
+    rounding_quantum_minor: 5,
+    rounding_rule: "FLOOR_TO_QUANTUM",
+    effective_from: "2026-01-01T00:00:00.000Z",
+    effective_to: null,
+  }], 74, "commerce_setting_read_unavailable"],
+  ["communications.nativeDeliveryControls", [
+    { control_key: "lifecycle_notice", enabled: true, revision: 2 },
+    { control_key: "transactional_receipt", enabled: false, revision: 1 },
+  ], 0, {
+    state: "override",
+    value: [
+      { control_key: "lifecycle_notice", enabled: true, revision: 2 },
+      { control_key: "transactional_receipt", enabled: false, revision: 1 },
+    ],
+    revision: null,
+  }],
+  ["communications.nativeDeliveryControls", [], 0, { state: "absent", value: null }],
+  ["communications.nativeDeliveryControls", [{ control_key: "lifecycle_notice", enabled: "yes", revision: 1 }],
+    74, "commerce_setting_read_unavailable"],
+] as const)("reads built-in installed setting %s with rows %j", (settingKey, rows, expectedExit, expected) => {
+  const { directory, write } = fixture();
+  const pgModule = JSON.stringify(import.meta.resolve("pg"));
+  write("preload.mjs", `import pg from ${pgModule};
+    pg.Pool.prototype.query = async () => ({ rows: ${JSON.stringify(rows)} });
+    pg.Pool.prototype.end = async () => {};`);
+  const result = spawnSync(process.execPath, ["--import", join(directory, "preload.mjs"),
+    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", settingKey,
+    "--database-url", "postgresql://sample@unused.invalid/shop", "--json"], { cwd: directory, encoding: "utf8" });
+  expect(result.status, result.stderr || result.stdout).toBe(expectedExit);
+  expect(result.stderr).toBe("");
+  const parsed = JSON.parse(result.stdout);
+  if (typeof expected === "string") expect(parsed.refusal.code).toBe(expected);
+  else expect(parsed.observation).toMatchObject(expected);
+});
+
+it("normalizes Date timestamps for pricing.subscriptionPricePolicy and refuses on permission errors", () => {
+  const { directory, write } = fixture();
+  const pgModule = JSON.stringify(import.meta.resolve("pg"));
+  write("preload-dates.mjs", `import pg from ${pgModule};
+    pg.Pool.prototype.query = async (sql) => {
+      if (!sql.includes("FROM public.subscription_price_policy_revisions")
+        || !sql.includes("ORDER BY price_list_id, region_code, currency, channel, revision_no")) {
+        throw new Error("unexpected query: " + sql);
+      }
+      return {
+        rows: [{
+          id: "11111111-1111-4111-8111-111111111111",
+          price_list_id: "22222222-2222-4222-8222-222222222222",
+          region_code: "US",
+          currency: "USD",
+          channel: "web",
+          revision_no: 1,
+          discount_bps: 500,
+          rounding_quantum_minor: 1,
+          rounding_rule: "FLOOR_TO_QUANTUM",
+          effective_from: new Date("2026-01-01T00:00:00.000Z"),
+          effective_to: null,
+        }],
+      };
+    };
+    pg.Pool.prototype.end = async () => {};`);
+  const datesRun = spawnSync(process.execPath, ["--import", join(directory, "preload-dates.mjs"),
+    resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", "pricing.subscriptionPricePolicy",
+    "--database-url", "postgresql://sample@unused.invalid/shop", "--json"], { cwd: directory, encoding: "utf8" });
+  expect(datesRun.status, datesRun.stderr || datesRun.stdout).toBe(0);
+  expect(JSON.parse(datesRun.stdout).observation).toEqual({
+    state: "override",
+    value: [{
+      id: "11111111-1111-4111-8111-111111111111",
+      price_list_id: "22222222-2222-4222-8222-222222222222",
+      region_code: "US",
+      currency: "USD",
+      channel: "web",
+      revision_no: 1,
+      discount_bps: 500,
+      rounding_quantum_minor: 1,
+      rounding_rule: "FLOOR_TO_QUANTUM",
+      effective_from: "2026-01-01T00:00:00.000Z",
+      effective_to: null,
+    }],
+    revision: null,
+  });
+
+  write("preload-denied.mjs", `import pg from ${pgModule};
+    pg.Pool.prototype.query = async () => {
+      throw Object.assign(new Error("permission denied for table communication_delivery_controls"), { code: "42501" });
+    };
+    pg.Pool.prototype.end = async () => {};`);
+  for (const settingKey of ["pricing.subscriptionPricePolicy", "communications.nativeDeliveryControls"]) {
+    const denied = spawnSync(process.execPath, ["--import", join(directory, "preload-denied.mjs"),
+      resolve("packages/platform/src/lifecycle/openlup.mjs"), "settings", "show", settingKey,
+      "--database-url", "postgresql://sample@unused.invalid/shop", "--json"], { cwd: directory, encoding: "utf8" });
+    expect(denied.status, denied.stderr || denied.stdout).toBe(74);
+    expect(denied.stderr).toBe("");
+    expect(denied.stdout).not.toContain("permission denied for table");
+    expect(JSON.parse(denied.stdout).refusal.code).toBe("commerce_setting_read_unavailable");
+  }
+});
+
 it.each([false, true])("replaces the managed editor through apply and replay, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const editor = starterEditorPorts;
@@ -609,8 +805,19 @@ const newStarterCheckKeys = [
   "renewal.retryBackoffHours", "renewal.subscriptionCare.actions", "renewal.subscriptionCare.notices",
   "renewal.subscriptionCare.pausePresets", "renewal.subscriptionCare.recovered.windowSeconds",
   "renewal.subscriptionCare.retention", "renewal.subscriptionCare.terms", "returns.reasons",
-  "shipping.rateResolver", "subscriptionEditing.sizedPreferences",
+  "subscriptionEditing.sizedPreferences",
 ];
+const newPackagedInstalledKeys = [
+  "communications.nativeDeliveryControls", "pricing.subscriptionPricePolicy",
+  "shipping_flat_minor", "subscription_minimum_base_units", "subscription_sized_intro_phase",
+];
+const newPackagedCodeKeys = [
+  "catalog.bundleAvailabilityPolicy", "checkout.resumeWindowMinutes",
+  "communications.terminalPayloadRetentionDays", "inventory.offerLowStockThreshold",
+  "market.fiscalProfile", "market.settlementProfile",
+];
+const newPackagedCheckKeys = [...newPackagedInstalledKeys, ...newPackagedCodeKeys];
+const newCheckKeys = [...newStarterCheckKeys, ...newPackagedCheckKeys];
 
 it.each(baseline.checks)("reports exactly the baseline and new starter check rows for $args", captured => {
   const { stdout, ...actual } = runStarterSettings(starter, captured.args);
@@ -619,7 +826,7 @@ it.each(baseline.checks)("reports exactly the baseline and new starter check row
     const expected = JSON.parse(captured.stdout);
     const document = JSON.parse(stdout);
     const keys = new Set(expected.rows.map((row: { key: string }) => row.key));
-    expect(document.rows.map((row: { key: string }) => row.key).toSorted()).toEqual([...keys, ...newStarterCheckKeys].toSorted());
+    expect(document.rows.map((row: { key: string }) => row.key).toSorted()).toEqual([...keys, ...newCheckKeys].toSorted());
     expect(JSON.stringify(document) + "\n").toBe(stdout);
     document.rows = document.rows.filter((row: { key: string }) => keys.has(row.key));
     existing = JSON.stringify(document) + "\n";
@@ -629,11 +836,11 @@ it.each(baseline.checks)("reports exactly the baseline and new starter check row
     const rowKeys = (parts: string[]) => parts.map(key).filter(value => value !== undefined);
     const keys = new Set(rowKeys(blocks(captured.stdout)));
     const actualBlocks = blocks(stdout);
-    expect(rowKeys(actualBlocks).toSorted()).toEqual([...keys, ...newStarterCheckKeys].toSorted());
+    expect(rowKeys(actualBlocks).toSorted()).toEqual([...keys, ...newCheckKeys].toSorted());
     existing = actualBlocks.map(block => {
       const rowKey = key(block);
-      // New code rows end at Effect. Keep any text that follows them.
-      return rowKey === undefined || keys.has(rowKey) ? block : block.replace(/^[\s\S]*?^ {2}Effect: .*\n/mu, "");
+      // New code rows end at Effect, while new installed rows end at Store. Keep any text that follows them.
+      return rowKey === undefined || keys.has(rowKey) ? block : block.replace(/^[\s\S]*?^ {2}Effect: .*\n(?: {2}Store: .*\n)?/mu, "");
     }).join("");
   }
   const expectedStdout = captured.stdout.replace(subscriptionOffersBeforeEffect, subscriptionOffersEffect);

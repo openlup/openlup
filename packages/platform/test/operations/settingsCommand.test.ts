@@ -656,9 +656,25 @@ it("checks every packaged schema against its default and valid examples", async 
   const { loadSettingsCatalogue } = await import("../../src/operations/server/settingsCatalog.js");
   const entries = loadSettingsCatalogue().entries.filter(entry => "fallback" in entry).filter(entry =>
     (entry.kind === "code" || entry.kind === "installed") && entry.schema);
-  expect(entries.map(entry => entry.key)).toEqual([key]);
+  expect(entries.map(entry => entry.key)).toEqual([
+    "catalog.bundleAvailabilityPolicy",
+    "checkout.resumeWindowMinutes",
+    "communications.terminalPayloadRetentionDays",
+    "inventory.offerLowStockThreshold",
+    key,
+    "market.fiscalProfile",
+    "market.settlementProfile",
+    "shipping_flat_minor",
+    "subscription_minimum_base_units",
+    "subscription_sized_intro_phase",
+  ]);
   for (const entry of entries) {
-    for (const value of [entry.fallback, ...entry.examples.filter(example => !example.code).map(example => example.value)]) {
+    const values = [
+      ...(entry.fallback !== null ? [entry.fallback] : []),
+      ...entry.examples.filter(example => !example.code).map(example => example.value),
+    ];
+    expect(values.length, entry.key).toBeGreaterThan(0);
+    for (const value of values) {
       const host = checks(async () => ({ file: { ...minimumFile, entries: { [entry.key]: { value } } } }));
       const { exit, output } = await run(checkArgs, { host });
       expect(exit, entry.key).toBe(0);
@@ -864,9 +880,12 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // the unknown-key guidance, the text hint for an empty list, the clarified
   // six-reason vocabulary description for commerce.manualHoldReasons,
   // domain-guide change.reference links for all 47 cap and invariant entries,
-  // and "Default: none (see behavior below)" for null fallbacks (K6).
+  // "Default: none (see behavior below)" for null fallbacks (K6),
+  // Stage 4 Wave 4B packaged callback and single-row installed entries,
+  // Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5),
+  // and the market fiscal profile descriptor.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("54cb8428fb39f94782ca71a39865cb634ba9c760ebf71dcbc65559d4633468a2");
+    .toBe("1ffe1321836d72a393dedbe850e4fd850ae36075556eb787fcd5547ec45603df");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {
