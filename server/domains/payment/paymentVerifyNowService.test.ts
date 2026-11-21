@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ProviderReconciliationStatus } from "./paymentProviderReconciliationContracts.js";
-import {
-  verifyPaymentAttemptNow,
-  type VerifiableAttemptSnapshot,
-} from "./paymentVerifyNowService.js";
+import { verifyPaymentAttemptNow } from "@openlup/platform/payments";
+import type { VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
 
 const snapshot: VerifiableAttemptSnapshot = {
   orderId: "11111111-1111-4111-8111-111111111111",

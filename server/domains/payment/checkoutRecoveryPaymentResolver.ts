@@ -9,9 +9,11 @@ import { terminalAmountMismatch } from "./paymentProviderReconciliationEvidence.
 import {
   toClaimedAttemptShape,
   verifyPaymentAttemptNow,
-  type PaymentVerifyReadPort,
-  type VerifiableAttemptSnapshot,
-} from "./paymentVerifyNowService.js";
+} from "@openlup/platform/payments";
+import type {
+  PaymentVerifyReadPort,
+  VerifiableAttemptSnapshot,
+} from "@openlup/platform/payments/contracts";
 
 export type CheckoutRecoveryPaymentResolution =
   | { kind: "paid" }
@@ -144,6 +146,9 @@ async function resolveSnapshot(
       providerStatus: recovery.status,
       now,
     });
+    if (verified.status === "manual_review") {
+      return { kind: "manual_review" };
+    }
     if (verified.status !== "succeeded" && verified.status !== "failed") {
       return { kind: "awaiting_provider" };
     }

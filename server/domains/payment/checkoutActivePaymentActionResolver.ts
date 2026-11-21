@@ -2,11 +2,11 @@ import type {
   PaymentProviderRecoveryProvider,
   ProviderRecoveryAction,
 } from "./checkoutRecoveryPaymentResolver.js";
-import {
-  toClaimedAttemptShape,
-  type PaymentVerifyReadPort,
-  type VerifiableAttemptSnapshot,
-} from "./paymentVerifyNowService.js";
+import { toClaimedAttemptShape } from "@openlup/platform/payments";
+import type {
+  PaymentVerifyReadPort,
+  VerifiableAttemptSnapshot,
+} from "@openlup/platform/payments/contracts";
 import {
   PSP_PROVIDER_KINDS,
   type PspProviderKind,
