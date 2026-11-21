@@ -30,6 +30,8 @@ function fixture(options: FixtureOptions = {}) {
   write("package.json", JSON.stringify({ private: true, type: "module", workspaces: options.nonWorkspace ? [] : names.map(name => `packages/${name}`), scripts: {
     "packages:check": `${shellQuote(process.execPath)} --experimental-strip-types ${shellQuote(join(source, "packages-check.ts"))}`,
   } }));
+  mkdirSync(join(root, "node_modules"));
+  mkdirSync(join(root, "scratch/released"), { recursive: true });
   for (const name of names) {
     const scripts: Record<string, string> = {
       build: "node ../../tools/phase.mjs build",
@@ -39,13 +41,18 @@ function fixture(options: FixtureOptions = {}) {
     };
     if (options.missing) delete scripts[options.missing];
     const peerDeps = options.peerDependencies?.[name];
-    write(`packages/${name}/package.json`, JSON.stringify({ name: `@openlup/${name}`, version: "0.4.0", type: "module", license: "Apache-2.0", files: ["dist/**"],
+    write(`packages/${name}/package.json`, JSON.stringify({ name: `@openlup/${name}`, version: "1.4.0", type: "module", license: "Apache-2.0", files: ["dist/**"],
       ...(peerDeps ? { peerDependencies: peerDeps } : {}),
       publishConfig: { access: "public", provenance: true, tag: "preview" }, repository: { type: "git", url: PUBLIC_REPOSITORY_URL, directory: `packages/${name}` },
-      exports: { ".": "./dist/index.js" }, scripts }));
-    write(`packages/${name}/release-gates.json`, JSON.stringify({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.4.0", packedBytes: 1000000 }, browserEntries: {} } }));
-    write(`packages/${name}/CHANGELOG.md`, "## [0.4.0]\n\n- Initial fixture.\n");
+      exports: { ".": { types: "./dist/index.d.ts", default: "./dist/index.js" } }, scripts }));
+    write(`packages/${name}/release-gates.json`, JSON.stringify({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "1.4.0", packedBytes: 1000000 }, browserEntries: {} } }));
+    write(`packages/${name}/CHANGELOG.md`, "## [1.4.0]\n\n- Initial fixture.\n");
     write(`packages/${name}/src/index.ts`, `export const value = ${JSON.stringify(name)};\n`);
+    const staging = `scratch/${name}/package`;
+    write(`${staging}/package.json`, readFileSync(join(root, `packages/${name}/package.json`), "utf8"));
+    write(`${staging}/dist/index.d.ts`, `export declare const value: ${JSON.stringify(name)};`);
+    write(`${staging}/release-gates.json`, JSON.stringify({ packageSurface: { ".": { maturity: "stable" } } }));
+    execFileSync("tar", ["-czf", join(root, `scratch/released/${name}.tgz`), "-C", join(root, "scratch", name), "package"]);
   }
   write("tools/phase.mjs", `
 import assert from 'node:assert/strict';
@@ -59,6 +66,7 @@ if (phase === 'build') {
   appendFileSync(join(root, 'builds.jsonl'), JSON.stringify({ phase, name }) + '\\n');
   mkdirSync('dist', { recursive: true });
   writeFileSync('dist/index.js', readFileSync('src/index.ts'));
+  writeFileSync('dist/index.d.ts', 'export declare const value: ' + JSON.stringify(name) + ';');
 } else {
   appendFileSync(join(root, 'trace.jsonl'), JSON.stringify({ phase, name, ...(phase === 'required' ? { distReady: processEnvironment.OPENLUP_DIST_READY } : {}) }) + '\\n');
   if (phase === 'api') {
@@ -128,7 +136,7 @@ function builds(root: string): Observation[] {
 
 function invoke(input: ReturnType<typeof fixture>, commit = input.commit) {
   const started = performance.now();
-  const result = spawnSync(process.execPath, ["--experimental-strip-types", join(source, "required-package-gates.ts"), "--out", input.output, "--expected-commit", commit], {
+  const result = spawnSync(process.execPath, ["--experimental-strip-types", join(source, "required-package-gates.ts"), "--out", input.output, "--expected-commit", commit, "--released", "scratch/released"], {
     cwd: input.root, env: { ...isolatedConsumerEnv(), npm_config_cache: join(input.root, "scratch/npm-cache") }, encoding: "utf8", timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
   });
   console.log(`Neutral required package fixture ${Math.round(performance.now() - started)} ms`);
@@ -165,16 +173,16 @@ describe("inventory-driven required package gates", () => {
     expect(new Set(consumers.map(({ manifest: digest }) => digest)).size).toBe(1);
   }, 60_000);
 
-  it.each(["api:check", "ci:required", "test:consumer"])("refuses absent %s before creating cold artifacts", missing => {
+  it.each(["api:check", "ci:required", "test:consumer"])("refuses absent %s before creating cold artifacts", async missing => {
     const input = fixture({ missing });
-    expect(() => runRequiredPackageGates(input.root, input.output, input.commit)).toThrow(`needs executable ${missing}`);
+    await expect(runRequiredPackageGates(input.root, input.output, input.commit)).rejects.toThrow(`needs executable ${missing}`);
     expect(existsSync(input.output)).toBe(false);
     expect(observations(input.root)).toEqual([]);
   });
 
-  it("refuses an inventory member outside actual workspace discovery before packing", () => {
+  it("refuses an inventory member outside actual workspace discovery before packing", async () => {
     const input = fixture({ nonWorkspace: true });
-    expect(() => runRequiredPackageGates(input.root, input.output, input.commit)).toThrow("is not an actual workspace");
+    await expect(runRequiredPackageGates(input.root, input.output, input.commit)).rejects.toThrow("is not an actual workspace");
     expect(existsSync(input.output)).toBe(false);
   });
 
@@ -239,8 +247,8 @@ describe("inventory-driven required package gates", () => {
     const input = fixture({
       names: ["alpha", "beta", "gamma"],
       peerDependencies: {
-        beta: { "@openlup/alpha": "0.4.0" },
-        gamma: { "@openlup/alpha": "0.4.0" },
+        beta: { "@openlup/alpha": "1.4.0" },
+        gamma: { "@openlup/alpha": "1.4.0" },
       },
     });
     for (const name of ["alpha", "beta", "gamma"]) {

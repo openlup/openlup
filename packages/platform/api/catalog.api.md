@@ -5259,7 +5259,10 @@ export declare const BUNDLE_MIGRATIONS: readonly [{
     readonly sha256: "d0ec6674d7eedf4cd3ce0d8ccd7345ebe2f93da635316a68a6bd178ec55b2679";
     readonly url: URL;
 }];
-/** Catalog foundation projections; install the complete canonical catalogue. */
+/**
+ * Catalog foundation projections; install the complete canonical catalogue.
+ * @appendOnly
+ */
 export declare const CATALOG_MIGRATIONS: readonly [
     {
         readonly id: "20260807140000_read_parity_catalog";

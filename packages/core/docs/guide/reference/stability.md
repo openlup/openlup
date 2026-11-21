@@ -41,6 +41,7 @@ stability from a namespace’s name.
 
 Stable subpaths follow SemVer from 1.0.0. Status, event, reason, command and
 capability unions and literal sets are open: adding a value is a minor change.
+Ordered registries tagged append-only may grow by tail appends in a minor release; consumers must not pin their length or index positions.
 Consumers must keep a default branch for unknown values. Removing, renaming or
 narrowing an export, value or type requires a major release. Symbols tagged
 `@experimental` inside a stable subpath are outside that promise. Experimental

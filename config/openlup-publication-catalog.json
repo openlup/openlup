@@ -13262,6 +13262,30 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/packages/released-api-baseline.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/released-api-check.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/released-api-check.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/released-api-payment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/released-api-registries.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/packages/released-api-types.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/packages/required-package-gates.test.ts",
       "class": "public-output"
     },
