@@ -1865,7 +1865,7 @@ entry. Observe an existing request instead of repeatedly arming it.
 
 Where activated, trusted `Queue Handoff` can insert a still-armed exact head once
 after the required source successes and current native proof. At each of its two
-mergeability checks, it re-reads `UNKNOWN` up to six times, 10 seconds apart.
+mergeability checks, it re-reads `UNKNOWN` up to twelve times, 15 seconds apart.
 Persistent `UNKNOWN` requires re-running the job. It does not arm an unarmed PR
 or automatically requeue an evicted head. Its App is scoped
 to this repository with no bypass; its private key stays in the main-only
