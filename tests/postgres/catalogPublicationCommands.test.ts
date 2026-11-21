@@ -840,6 +840,17 @@ it("commits deferred publication checks through the restricted login", async () 
       .toEqual([{ revision: 1 }]);
     expect((await pool.query("SELECT mode,min_qty,amount_kind,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows)
       .toEqual([{ mode: "one_time", min_qty: 1, amount_kind: "gross", unit_price_minor: 1733 }]);
+    const priceBefore = (await pool.query("SELECT id,active,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows;
+    const priceKey = randomUUID();
+    const replacement = canonicalCatalogPriceSetupCommand({ ...data.payload.skus[0]!.priceOperations![0]!,
+      commandKey: priceKey, unitPriceMinor: 1999, expected: { entryId: priceBefore[0]!.id, unitPriceMinor: 1733 } });
+    await expect(transaction(publisher, async db => {
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);
+      expect((await db.query("SELECT public.catalog_price_setup_apply($1,$2) AS result", [replacement, hash(replacement)])).rows[0]?.result)
+        .toMatchObject({ outcome: "committed", receipt: { current: { unitPriceMinor: 1999 } } });
+    })).rejects.toMatchObject(bindingRefusal);
+    expect((await pool.query("SELECT id,active,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows).toEqual(priceBefore);
+    expect((await pool.query("SELECT 1 FROM public.catalog_price_setup_receipts WHERE idempotency_key=$1", [priceKey])).rowCount).toBe(0);
     expect((await pool.query("SELECT attribute_key,text_value FROM public.catalog_attribute_projection WHERE sku_id=$1", [data.skuId])).rows)
       .toEqual([{ attribute_key: "finish", text_value: "matte" }]);
     expect((await pool.query(`SELECT e.event_type, e.idempotency_key=h.publication_id::text AS matches
@@ -872,10 +883,34 @@ it("commits deferred publication checks through the restricted login", async () 
     repaired.publication = { kind: "compensation", evidence: {},
       operations: [{ op: "set_product_presentation", productSlug: data.slug, presentation: {} }] };
     await save(data, 2, repaired);
-    await pool.query("UPDATE public.catalog_products SET name='Unpublished drift' WHERE id=$1", [data.productId]);
     const compensation = await prepare(data, 2, head);
     expect(await api.execute(compensation.approve, who), sqlFailure).toMatchObject({ outcome: "committed" });
-    expect(await api.execute(compensation.publish, who), sqlFailure)
+    // Keep the runner's approved write set so the next attempt exercises the SQL check at COMMIT.
+    const recorder = "SELECT public.catalog_publication_record_command($1::jsonb) AS result";
+    const projection: { sql: string; args: unknown[] | undefined }[] = [];
+    let recorded: unknown[] | undefined;
+    const preview = native((db, sql, args) => {
+      if (sql === recorder) {
+        recorded = args;
+        throw new Error("Discard the tentative compensation");
+      }
+      if (/^(INSERT|UPDATE|DELETE) /u.test(sql)) projection.push({ sql, args });
+      return db.query(sql, args);
+    }, publisher);
+    await preview.execute(compensation.publish, (await preview.authorize(actor))!);
+    expect(recorded).toHaveLength(1);
+    await save(data, 3, repaired);
+    await expect(transaction(publisher, async db => {
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: actor, role: "authenticated" })]);
+      for (const { sql, args } of projection) await db.query(sql, args);
+      expect((await db.query(recorder, recorded)).rows[0]?.result).toEqual(expect.any(String));
+    })).rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_draft_advanced" });
+    expect(await readers.reads.current(data.productId)).toMatchObject({ outcome: "found", head });
+
+    await pool.query("UPDATE public.catalog_products SET name='Unpublished drift' WHERE id=$1", [data.productId]);
+    const currentCompensation = await prepare(data, 3, head);
+    expect(await api.execute(currentCompensation.approve, who), sqlFailure).toMatchObject({ outcome: "committed" });
+    expect(await api.execute(currentCompensation.publish, who), sqlFailure)
       .toMatchObject({ outcome: "committed", receipt: { previousHead: head, head: { revision: 2 }, changes: [] } });
   } finally { await publisher.end(); }
 });

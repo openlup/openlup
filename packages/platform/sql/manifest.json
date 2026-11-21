@@ -1341,15 +1341,15 @@
         },
         {
           "file": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
-          "sha256": "8f69f07855d55524a090992b570e921eb1a041daac14232d202f89ca581d886f"
+          "sha256": "ca16a8f0557284e34109bdbda01700e1bdbc30a7ea2144cf61da640ccaaab657"
         }
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "e3c36f4663aa1de6bffe9c1ee021f59d854daf1c3359aeeacfc4eceb9ee4d11f"
+          "withRestore": "4e69041559a0fb096370c4d6b62bd5fc28ad9d0e94bf0140abeba629011b853a"
         },
         "separateMigrator": {
-          "withRestore": "ec7f9829f3e2fd9d8b9b22ee61f534d09ebfd1ce4344302e9a71be653f5583c5"
+          "withRestore": "0ec0984f0af250f6fcbcda4cd745401e9cd6d04182c716ed28899d5f143d0289"
         }
       }
     },
@@ -2898,7 +2898,7 @@
     {
       "file": "q2_20261123192500_catalog_publication_authority.sql",
       "source": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
-      "sha256": "8f69f07855d55524a090992b570e921eb1a041daac14232d202f89ca581d886f"
+      "sha256": "ca16a8f0557284e34109bdbda01700e1bdbc30a7ea2144cf61da640ccaaab657"
     },
     {
       "file": "qa_00000000000000_platform_baseline.sql",

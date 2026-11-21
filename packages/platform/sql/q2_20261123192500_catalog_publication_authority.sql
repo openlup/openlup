@@ -33,6 +33,15 @@ CREATE FUNCTION public.catalog_publication_bind_live_write() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $bind$
 DECLARE product uuid;
 BEGIN
+  IF TG_ARGV[0] = 'open_draft' THEN
+    PERFORM 1 FROM public.catalog_draft_heads
+      WHERE draft_id=NEW.draft_id AND product_id=NEW.product_id AND revision=NEW.draft_revision AND status='open'
+      FOR NO KEY UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'catalog_publication_draft_advanced' USING ERRCODE='23514', CONSTRAINT='catalog_publication_draft_advanced';
+    END IF;
+    RETURN NULL;
+  END IF;
   IF TG_TABLE_NAME = 'catalog_publications' AND to_regclass('pg_temp.catalog_publication_issued_products') IS NULL THEN
     CREATE TEMP TABLE catalog_publication_issued_products (product_id uuid PRIMARY KEY) USING heap ON COMMIT DELETE ROWS;
   END IF;
@@ -50,6 +59,10 @@ BEGIN
         WHERE id=CASE WHEN TG_OP='DELETE' THEN OLD.catalog_sku_id ELSE NEW.catalog_sku_id END;
       WHEN 'catalog_attribute_projection' THEN SELECT product_id INTO product FROM public.catalog_skus
         WHERE id=CASE WHEN TG_OP='DELETE' THEN OLD.sku_id ELSE NEW.sku_id END;
+      WHEN 'price_entries' THEN SELECT product_id INTO product FROM public.catalog_skus
+        WHERE id=CASE WHEN TG_OP='DELETE' THEN OLD.variant_id ELSE NEW.variant_id END;
+      WHEN 'catalog_price_setup_receipts' THEN SELECT product_id INTO product FROM public.catalog_skus
+        WHERE id=(NEW.metadata->>'variantId')::uuid;
       ELSE product := CASE WHEN TG_OP='DELETE' THEN OLD.product_id ELSE NEW.product_id END;
     END CASE;
     IF NOT EXISTS (SELECT 1 FROM pg_temp.catalog_publication_issued_products WHERE product_id=product) THEN
@@ -62,11 +75,18 @@ $bind$;
 REVOKE ALL ON FUNCTION public.catalog_publication_bind_live_write() FROM PUBLIC;
 CREATE TRIGGER catalog_publication_record_write_binding AFTER INSERT ON public.catalog_publications FOR EACH ROW
   WHEN (session_user='openlup_catalog_publication') EXECUTE FUNCTION public.catalog_publication_bind_live_write();
+CREATE CONSTRAINT TRIGGER catalog_publications_open_draft AFTER INSERT ON public.catalog_publications
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (session_user='openlup_catalog_publication')
+  EXECUTE FUNCTION public.catalog_publication_bind_live_write('open_draft');
 DO $triggers$ DECLARE target text; BEGIN
-  FOREACH target IN ARRAY ARRAY['catalog_products','catalog_skus','catalog_sku_identifiers','catalog_product_document_revisions','catalog_attribute_projection'] LOOP
+  FOREACH target IN ARRAY ARRAY['catalog_products','catalog_skus','catalog_sku_identifiers','catalog_product_document_revisions','catalog_attribute_projection','price_entries'] LOOP
     EXECUTE format('CREATE CONSTRAINT TRIGGER catalog_publication_live_write AFTER INSERT OR UPDATE OR DELETE ON public.%I DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (session_user=''openlup_catalog_publication'') EXECUTE FUNCTION public.catalog_publication_bind_live_write()', target);
   END LOOP;
 END $triggers$;
+-- The writer removes its provisional receipt on refusal. Only completion persists a receipt.
+CREATE CONSTRAINT TRIGGER catalog_publication_live_write AFTER INSERT OR UPDATE ON public.catalog_price_setup_receipts
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (session_user='openlup_catalog_publication' AND NEW.status='completed')
+  EXECUTE FUNCTION public.catalog_publication_bind_live_write();
 
 -- Check the effect (including replay) under the same row fence as the native writer.
 CREATE FUNCTION public.catalog_publication_lock_effective_base_price(p_sku uuid, p_list uuid)
