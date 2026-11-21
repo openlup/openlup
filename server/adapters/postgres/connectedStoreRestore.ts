@@ -352,6 +352,8 @@ export async function restoreConnectedNativeStore(input: {
     const inventory = installation.generation === "qualified-admin" ? await catalogPayload(client, installation) : undefined;
     if (inventory !== undefined && digest(inventory) !== manifest.objectInventorySha256) fail("schema_conflict");
     if (installation.generation === "qualified-admin") await openRestrictedOwnerWindow(client, installation);
+    // Use the install lock before taking receipt-table locks used by replay.
+    await client.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('openlup:catalog-definitions', 0))");
     const keyIdentity = await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key");
     // Lock the whole public/app census, including excluded tables. Unknown data
     // cannot appear during import, and no observer sees intermediate rows.
@@ -629,7 +631,14 @@ async function insert(client: PoolClient, table: Rows, row: string): Promise<voi
   const capturedSubject=table.table==='subscription_events'||table.table==='commerce_order_operations';
   const prior=capturedSubject?(await client.query("SELECT current_setting('app.communication_retained_copy',true) AS value")).rows[0]?.value:undefined;
   if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy','on',true)");
-  await client.query(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM pg_catalog.jsonb_populate_record(NULL::${name},$1::jsonb) ON CONFLICT DO NOTHING`, [row]);
+  await client.query(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM pg_catalog.jsonb_populate_record(NULL::${name},$1::jsonb) ON CONFLICT DO NOTHING`, [row])
+    .catch((error: unknown) => {
+      if (table.table === "catalog_definition_installs" && error instanceof Error && "code" in error && error.code === "22023"
+        && ["definition_profile_invalid", "cadence_kind_unsupported", "invalid_catalog_pack"].includes(error.message)) {
+        throw Object.assign(new PostgresTransferError("target_conflict", table.table), { cause: error.message });
+      }
+      throw error;
+    });
   if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy',$1,true)",[prior??'']);
   if ((await client.query(`SELECT 1 FROM ${connectedStoreRowSource(table.table, table.columns)} t WHERE pg_catalog.to_jsonb(t)=$1::jsonb`, [row])).rows.length !== 1) fail("target_conflict", table.table);
 }
@@ -678,6 +687,7 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // Publication guards validate restored facts and the complete ledger. The
     // live-write binding triggers are scoped to the dedicated publication login.
     catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write"],
+    catalog_definition_installs: ["catalog_definition_install_profile_immutable"],
     catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write"],
     catalog_sku_identifiers: ["catalog_publication_live_write"],
     catalog_product_document_revisions: ["catalog_publication_live_write"],

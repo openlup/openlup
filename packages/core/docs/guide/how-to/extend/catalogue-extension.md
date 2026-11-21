@@ -192,14 +192,26 @@ Check availability: `npx --no -- openlup catalogue project --trusted-packs ./own
 
 ## Subscription profile
 
-Edit metadata in `pack.ts`: `subscriptionProfiles: [{key:
-"stationery:repeat", version: 1}]`, with the same `subscriptionProfileRef` on a
-type. Reference checking is available. Cadence bounds, demand pools, unit
-compatibility, overflow and runtime composition await the profile owner; request
-`requiredChecks: ["profiles"]` for those checks. Never infer a database cadence
-bound. New closed grammar kinds require upstream work. Usual codes:
-`definition_profile_ref_invalid`, `definition_unknown_profile_ref`.
-Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
+In `pack.ts`, add the key and version to `subscriptionProfiles` and use the
+same `subscriptionProfileRef` on the product type. Add the matching
+`subscriptionProfileDefinitions` entry with these fields.
+
+- `key` and `version` identify the declaration.
+- `allowedCadences` lists distinct choices such as
+  `{ schemaVersion: 1, kind: "fixed_days", days: 28 }`. Choose whole days from
+  1 to 3660. `calendar_months` is reserved and v1 returns `cadence_kind_unsupported`.
+- `maxFixedDays` optionally narrows the profile. A value of 120 makes a
+  121-day choice unavailable even when every offer includes it.
+- `policyRef` names the policy key and version. `policyDigest` pins the policy
+  artifact with a lowercase SHA-256 hex digest.
+
+Run `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`
+to check declaration shape and references. The native install command records
+the canonical profile digest in its receipt. Install a higher version for any
+change to the declaration. Use the installed identity and observed database
+bound when checking an explicit cadence against the store, SKU, offer and
+command choices. Issued facts, accepted subscriptions and demand calculation
+have separate owners and require their own composition.
 
 ## Upgrade a definition
 

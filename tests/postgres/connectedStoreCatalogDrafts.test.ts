@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canonicalCatalogDraftJson, installCatalogDefinitions, withCatalogPublicationRules, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
+import { canonicalCatalogDraftJson, installCatalogDefinitions, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
   type CatalogDraftPublicationStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
@@ -11,9 +11,13 @@ const artifact = readFileSync(new URL("../../examples/neutral-store/owned/catalo
 
 const relations = ["catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
   "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes", "catalog_skus", "catalog_products"] as const;
+const profile = { key: "example:transfer-profile", version: 1, allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days: 28 }],
+  policyRef: { key: "example:transfer-policy", version: 1 }, policyDigest: "a".repeat(64) } as const;
 const packs = [1, 2].map(version => withCatalogPublicationRules({ id: "example:transfer", namespace: "example", version, openlupRange: "0.44.x", capabilities: { publish: false },
   types: [{ key: "example:transfer-item", version, units: [{ code: "openlup:piece", dimension: "count" as const, integral: true }],
-    netContentUnits: ["openlup:piece"], dimensions: [], validateContent: () => [] }],
+    netContentUnits: ["openlup:piece"], dimensions: [], validateContent: () => [],
+    ...(version === 2 && { subscriptionProfileRef: { key: profile.key, version: profile.version } }) }],
+  ...(version === 2 && { subscriptionProfiles: [{ key: profile.key, version: profile.version }], subscriptionProfileDefinitions: [profile] }),
   taxClasses: [{ key: "example:transfer-standard" }] }, () => Buffer.from(artifact)));
 const resources = storeJourneyResources();
 let source: JourneyInstallation, target: JourneyInstallation;
@@ -139,6 +143,20 @@ beforeAll(async () => {
   expect(before.catalog_draft_revisions).toHaveLength(12);
   expect(before.catalog_draft_command_receipts).toHaveLength(12);
   expect(before.catalog_draft_sku_reservations).toHaveLength(4);
+  const corrupted = structuredClone(packet);
+  const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
+  installs.rows = installs.rows.map(row => {
+    const value = JSON.parse(row);
+    if (!value.receipt.subscriptionProfileDefinitions) return row;
+    value.receipt.subscriptionProfileDefinitions[0].policyDigest = "b".repeat(64);
+    return JSON.stringify(value);
+  });
+  const { sha256: _old, ...corruptedBody } = corrupted;
+  corrupted.sha256 = createHash("sha256").update(JSON.stringify(corruptedBody)).digest("hex");
+  const pristineCensus = await journeyCensus(target.owner);
+  await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet: corrupted, freshTarget: pristine }))
+    .rejects.toMatchObject({ code: "target_conflict", cause: "definition_profile_invalid" });
+  expect(await journeyCensus(target.owner)).toEqual(pristineCensus);
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
     .toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(packet.outsideProfileCensus.find(entry => entry.relation === "public.catalog_attribute_projection"))
@@ -148,6 +166,8 @@ beforeAll(async () => {
   expect([...packet.compatible.tables, ...packet.owned].some(entry => String(entry.table) === "catalog_attribute_projection")).toBe(false);
   expect((await target.owner.query("SELECT * FROM public.catalog_attribute_projection")).rows).toEqual([]);
   expect((await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine })).replayed).toBe(true);
+  expect(await readInstalledCatalogSubscriptionProfile(target.owner, profile))
+    .toEqual(await readInstalledCatalogSubscriptionProfile(source.owner, profile));
   expect((await target.owner.query("SELECT * FROM public.catalog_attribute_projection")).rows).toEqual([]);
   restored = await journeyCensus(target.owner);
 }, postgresSetupTimeoutMs);
@@ -155,7 +175,7 @@ afterAll(async () => {
   try {
     // One whole-census comparison covers restore and every command replay,
     // including no extra live products, SKUs, prices or other effects.
-    if (target && before) expect(await journeyCensus(target.owner)).toEqual(before);
+    if (restored) expect(await journeyCensus(target.owner)).toEqual(before);
   } finally { await resources.close(); }
 }, postgresTeardownTimeoutMs);
 

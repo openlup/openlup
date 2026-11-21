@@ -983,6 +983,21 @@ requires its declared migration owner. Each applied unit is recorded after a
 fresh ledger check within that unit's transaction. Individual migration
 transactions and exact-prefix/replay behavior remain.
 
+### Native subscription profile receipts
+
+The [subscription profile forward](../../db/platform/migrations/20261124210000_subscription_profiles.sql)
+adds canonical declarations and digests to native definition-install receipts.
+Installation and connected restore share the existing definition lock.
+Profile-bearing inserts require `READ COMMITTED` so contenders observe the
+first committed declaration. The receipt trigger verifies shape, canonical
+digest and identity, and refuses updates and deletes of profile-bearing
+receipts. A legacy receipt cannot gain profile metadata through an update.
+
+The exact-key lookup uses the existing migration owner. Its result contains
+the profile and policy identities. Connected restore validates receipts during
+insert and rolls back the transaction if retained evidence fails validation.
+There is no data backfill. See [Install subscription profiles](../../packages/platform/README.md#install-subscription-profiles).
+
 ### Sealed native catalog publication history
 
 The [membership read forward](../../db/platform/migrations/20261124120000_catalog_publication_reads.sql)

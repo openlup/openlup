@@ -6304,6 +6304,36 @@
           }
         ],
         "dataStatements": []
+      },
+      {
+        "row": "subscription-profiles",
+        "path": "db/platform/migrations/20261124210000_subscription_profiles.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.catalog_definition_install(text,integer,jsonb)",
+            "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
+            "searchPath": "pg_catalog"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.catalog_subscription_profile_identity(text,integer)",
+            "searchPath": "pg_catalog, pg_temp"
+          },
+          {
+            "signature": "public.catalog_definition_install_profile_immutable()",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": [],
+        "createdTriggers": [
+          {
+            "name": "catalog_definition_install_profile_immutable",
+            "table": "public.catalog_definition_installs",
+            "sha256": "512c5f2c4b1f2d9074275e3d87812fb2ce72a1246ae0ae5610972ff9887c74a9"
+          }
+        ]
       }
     ]
   },
@@ -9096,6 +9126,27 @@
       "path": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
       "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261124210000_subscription_profiles.sql",
+      "sha256": "af886b6014002944ef0d4848585d8e3a0e707aefce17fa86cceff22c65814832",
+      "functions": [
+        {
+          "signature": "public.catalog_definition_install(text,integer,jsonb)",
+          "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
+          "afterSha256": "f8fd5aab9da57d84d80919cc3d2eb0cc85cf24afac3f896a7fae2626f2912efa"
+        },
+        {
+          "signature": "public.catalog_subscription_profile_identity(text,integer)",
+          "beforeSha256": null,
+          "afterSha256": "9496a9184ff471bd97ae1fc04f4b7d87c6af66735b07afc15afb6934f70846b0"
+        },
+        {
+          "signature": "public.catalog_definition_install_profile_immutable()",
+          "beforeSha256": null,
+          "afterSha256": "761d8571923548d187ae6042dc054e6c10ebecec8a685e4b852a8ce4c6a246ef"
+        }
+      ]
     }
   ],
   "managedExactForwards": [

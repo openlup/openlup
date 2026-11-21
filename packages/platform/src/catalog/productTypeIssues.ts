@@ -1,5 +1,5 @@
 import { z } from "./validation.js";
-import { validateCatalogUnitFactor } from "@openlup/core/catalog";
+import { validateCatalogSubscriptionProfile, validateCatalogUnitFactor } from "@openlup/core/catalog";
 import type { CatalogConformanceCode, CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 export const catalogNamespacedKeySchema = z.string().max(120).regex(/^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$/u);
 export const catalogDimensionKeySchema = z.string().max(64).regex(/^[a-z][a-z0-9_-]*$/u)
@@ -170,6 +170,7 @@ const packSchema = z.object({
   capabilities: z.record(z.string(), z.boolean()), types: z.array(z.unknown()),
   taxClasses: z.array(z.object({ key: z.string(), labels: labels.optional() }).strict()),
   subscriptionProfiles: z.array(catalogProductTypeRefSchema).optional(),
+  subscriptionProfileDefinitions: z.array(z.unknown()).max(100).optional(),
 }).strict();
 /** Shared pack shape, definitions and references; installation also requires pinned validators and unique tax-class keys.
  * @experimental
@@ -189,6 +190,22 @@ export function catalogPackIssues(input: unknown): CatalogDefinitionIssue[] {
     if (definition.subscriptionProfileRef && typeof definition.subscriptionProfileRef === "object") {
       const ref = definition.subscriptionProfileRef as Record<string, unknown>;
       if (!pack.subscriptionProfiles?.some(({ key, version }) => key === ref.key && version === ref.version)) issues.push({ code: "definition_unknown_profile_ref", path: `/types/${index}/subscriptionProfileRef` });
+    }
+  });
+  const profiles = new Set<string>();
+  pack.subscriptionProfileDefinitions?.forEach((input, index) => {
+    const result = validateCatalogSubscriptionProfile(input);
+    const path = `/subscriptionProfileDefinitions/${index}`;
+    if ("issue" in result) {
+      issues.push({ code: result.issue.code, path: path + result.issue.path });
+      return;
+    }
+    const { key, version } = result.profile;
+    const identity = `${key}@${version}`;
+    if (profiles.has(identity)) issues.push({ code: "definition_profile_invalid", path });
+    profiles.add(identity);
+    if (!pack.subscriptionProfiles?.some(ref => ref.key === key && ref.version === version)) {
+      issues.push({ code: "definition_unknown_profile_ref", path });
     }
   });
   return issues;

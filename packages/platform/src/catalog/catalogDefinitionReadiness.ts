@@ -1,13 +1,17 @@
+import { validateCatalogSubscriptionProfile, type CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import type { CatalogRegistryObservation } from "@openlup/core/readiness";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import { catalogDefinitionDigest } from "./catalogDefinitionDigest.js";
+import { catalogSubscriptionProfileIdentity, readInstalledCatalogSubscriptionProfile } from "./installedSubscriptionProfiles.js";
 
-/** Read-only, uncached live-binding probe. Requires an owner or BYPASSRLS reader for both tables.
+/** Read-only, uncached live-binding probe. Profile declarations require the migration owner executor.
+ * Reference-only checks require an owner or BYPASSRLS reader for both tables.
  * @experimental
  */
 export async function observeCatalogDefinitionReadiness(
   readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, database: string,
+  profiles?: readonly CatalogSubscriptionProfileV1[],
 ): Promise<CatalogRegistryObservation> {
   const { rows } = await readExecutor.query(
     `SELECT row_security_active('public.catalog_products') OR row_security_active('public.catalog_type_versions') AS restricted,
@@ -19,18 +23,28 @@ export async function observeCatalogDefinitionReadiness(
        ) binding), '[]'::jsonb) AS bindings`,
   );
   const result = rows[0] as { restricted: boolean; bindings: { key: string; version: number; definitionDigest: string | null }[] };
-  return { database, complete: result.restricted === false, referencedVersions: result.bindings.map(row => {
+  const referencedVersions = await Promise.all(result.bindings.map(async row => {
     const definition = registry.resolve(row);
-    return { ...row, registryDigest: definition ? catalogDefinitionDigest(definition) : null };
-  }) };
+    let registryDigest = definition ? catalogDefinitionDigest(definition) : null;
+    const ref = definition?.subscriptionProfileRef;
+    if (profiles && ref && result.restricted === false) {
+      const declared = validateCatalogSubscriptionProfile(profiles.find(profile => profile.key === ref.key && profile.version === ref.version));
+      const installed = await readInstalledCatalogSubscriptionProfile(readExecutor, ref);
+      if ("issue" in declared || installed?.profileDigest !== catalogSubscriptionProfileIdentity(declared.profile).profileDigest) registryDigest = null;
+    }
+    return { ...row, registryDigest };
+  }));
+  return { database, complete: result.restricted === false, referencedVersions };
 }
 
 /** Opt-in catalogue write guard. Probe failures propagate and the supplied write is never called.
  * @experimental
  */
-export function createCatalogDefinitionWriteGuard(readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry) {
+export function createCatalogDefinitionWriteGuard(
+  readExecutor: PgQueryExecutor, registry: CatalogProductTypeRegistry, profiles?: readonly CatalogSubscriptionProfileV1[],
+) {
   return async <T>(write: () => Promise<T>): Promise<T> => {
-    const observation = await observeCatalogDefinitionReadiness(readExecutor, registry, "catalogue-write");
+    const observation = await observeCatalogDefinitionReadiness(readExecutor, registry, "catalogue-write", profiles);
     if (observation.complete === false || observation.referencedVersions.some(ref => ref.definitionDigest === null || ref.registryDigest !== ref.definitionDigest)) {
       throw Object.assign(new Error("registry_missing_referenced_version"), { code: "registry_missing_referenced_version" });
     }

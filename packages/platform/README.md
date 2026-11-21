@@ -1318,6 +1318,24 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
+### Install subscription profiles
+
+Apply the complete native catalogue through
+`20261124210000_subscription_profiles.sql`. Pass the migration-owner executor
+and a pack with `subscriptionProfileDefinitions` to `installCatalogDefinitions`.
+Include each declaration's key and version in `subscriptionProfiles`. Reinstall
+the same pack version to recover the original receipt. Supply the declarations
+to `createCatalogDefinitionWriteGuard` to require a matching installed identity
+for every referenced profile. The existing reference-only pack form remains
+available.
+
+`readInstalledCatalogSubscriptionProfile` reads one exact key and version
+with the migration-owner executor. At a day-based boundary, supply that identity,
+the declaration and the bound from `observeCatalogSubscriptionCadenceBound`
+to `selectCatalogProfileCadence`. The selector returns a whole-day projection
+when the choice is offered by every supplied owner. The selector is available
+for explicit composition in `@openlup/platform/subscriptions`.
+
 ### Read governed offer memberships
 
 Install the complete PostgreSQL catalogue through

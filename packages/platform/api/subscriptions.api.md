@@ -113,6 +113,40 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
     settlementIntentId: string;
 }, externalAttemptRef: string | null, reason: string, failureClass: string, occurredAt: string): Promise<AutomaticRenewalRunResult>;
 ```
+## dist/subscriptions/catalogProfileBinding.d.ts
+
+```ts
+import { type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileV1, type InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
+import { type CadenceChoiceV1 } from "@openlup/core/subscription";
+/** The caller supplies the offers admitted by each owning boundary.
+ * @experimental
+ */
+export interface CatalogProfileCadenceInput {
+    readonly choice: CadenceChoiceV1;
+    readonly cadenceDays?: number;
+    readonly mode: "recurring" | "prepaid";
+    readonly storeChoices: readonly CadenceChoiceV1[];
+    readonly skuChoices: readonly CadenceChoiceV1[];
+    readonly offerChoices: readonly CadenceChoiceV1[];
+    readonly commandChoices: readonly CadenceChoiceV1[];
+    readonly nativeMaxFixedDays: number | null;
+    readonly profileRef?: CatalogSubscriptionProfileRef;
+    readonly profile?: {
+        readonly declaration: CatalogSubscriptionProfileV1;
+        readonly installed: InstalledCatalogSubscriptionProfile;
+    };
+}
+/** @experimental */
+export type CatalogProfileCadenceResult = {
+    readonly cadenceDays: number;
+} | {
+    readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch" | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "profile_cadence_bound_unavailable";
+};
+/** Verify a day choice before passing its projection to the owning day-based operation.
+ * @experimental
+ */
+export declare function selectCatalogProfileCadence(input: CatalogProfileCadenceInput): CatalogProfileCadenceResult;
+```
 ## dist/subscriptions/classicPackageQuote.d.ts
 
 ```ts
@@ -533,6 +567,8 @@ export declare function createExactSubscriptionRepricer(deps: PackageEditQuotePo
 
 ```ts
 export { renewalIdentity } from "./renewalIdentity.js";
+export { selectCatalogProfileCadence, type CatalogProfileCadenceInput, type CatalogProfileCadenceResult } from "./catalogProfileBinding.js";
+export { observeCatalogSubscriptionCadenceBound } from "./observeProfileCadenceBound.js";
 export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
@@ -839,6 +875,15 @@ export declare function nativeSubscriptionSchema(catalogue: {
     version: string;
     migration: string;
 }): RequiredSchema;
+```
+## dist/subscriptions/observeProfileCadenceBound.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Observe the validated quote constraint and both effective native preview guards.
+ * @experimental
+ */
+export declare function observeCatalogSubscriptionCadenceBound(db: SubscriptionQueryExecutor): Promise<number | null>;
 ```
 ## dist/subscriptions/packageEditContracts.d.ts
 

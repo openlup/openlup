@@ -15,6 +15,7 @@ export type CatalogConformanceCode =
   | "definition_unknown_axis_attribute" | "definition_axis_scope_invalid" | "definition_duplicate_enum_value"
   | "definition_unknown_axis_dimension"
   | "definition_unknown_tax_class" | "definition_unknown_profile_ref" | "pack_type_namespace_mismatch"
+  | "definition_profile_invalid" | "cadence_kind_unsupported"
   | "attribute_projection_text_too_large" | "attribute_storage_too_large"
   | "attribute_values_invalid" | "attribute_value_invalid" | "attribute_unknown_key" | "attribute_scope_conflict"
   | "attribute_cardinality_invalid" | "attribute_required_missing" | "attribute_required_locale_missing"
