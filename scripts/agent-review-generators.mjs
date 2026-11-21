@@ -2,14 +2,18 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+// eslint-disable-next-line no-restricted-imports -- repository landing tooling needs the trusted source documentation owner
+import { syncGeneratedRegions } from '../packages/core/scripts/documentation-contract.ts';
 import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
 import { readDocumentationState } from './documentation-routing.ts';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
 import { createPublicPublicationCatalog } from './oss-publication-policy.ts';
 
+const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
+
 export function generatedCarrier(path) {
   return ['packages/platform/sql/manifest.json', 'packages/platform/src/migrations/catalog.ts',
-    'config/openlup-publication-catalog.json', 'docs/platform/SOURCE_MAP.md'].includes(path) ||
+    'config/openlup-publication-catalog.json', 'docs/platform/SOURCE_MAP.md', SQL_REFERENCE].includes(path) ||
     /^packages\/platform\/sql\/[A-Za-z0-9_-]+\.sql$/u.test(path);
 }
 export function runLandingGenerators(root, paths) {
@@ -19,6 +23,11 @@ export function runLandingGenerators(root, paths) {
   const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
   writeFileSync(catalogPath, createPublicPublicationCatalog(catalog.publicPaths, catalog.guardViability).contents);
   writeFileSync(join(root, 'docs/platform/SOURCE_MAP.md'), renderDocumentationSourceMap(readDocumentationState(root, paths)));
+  const sqlReferencePath = join(root, SQL_REFERENCE);
+  const violations = [];
+  const sqlReference = syncGeneratedRegions(readFileSync(sqlReferencePath, 'utf8'), SQL_REFERENCE, root, true, violations);
+  if (violations.length) throw new Error(violations.join('; '));
+  writeFileSync(sqlReferencePath, sqlReference);
 }
 export function withPredictedTree(cwd, tree, action) {
   const git = args => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.hooksPath=/dev/null', ...args],

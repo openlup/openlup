@@ -30,6 +30,7 @@ function append(slot: string) {
   runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean).concat([file, `packages/platform/sql/${slot}_landing_fixture.sql`]));
 }
 const CATALOGUE = 'config/openlup-publication-catalog.json';
+const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
 // Main adds a package command after the reviewed head forked; main's own owner
 // writes its catalogue in a new process, as a contributor's generator run would.
 function addPackageCommand() {
@@ -64,6 +65,11 @@ async function proof(head = merged) {
   return proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, reviewed), await captureCommittedReviewCandidate(root, main, head));
 }
 it('lands two independently appended real forwards through the CLI as derived', async () => {
+  await expect(sourceGit(root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', reviewed, main))
+    .rejects.toMatchObject({ code: 1, stdout: expect.stringContaining(`${SQL_REFERENCE}\0`) });
+  const page = git('show', `${merged}:${SQL_REFERENCE}`);
+  expect(page).toContain('/packages/platform/sql/20990101010000_landing_fixture.sql)');
+  expect(page).toContain('/packages/platform/sql/20990101020000_landing_fixture.sql)');
   expect(await proof()).toMatchObject({ kind: 'derived', derived: true });
   expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
   expect(git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
@@ -100,7 +106,7 @@ it('carries reviewed coverage through the derived edge and replays its recorded 
   await validateEconomySession(root, session);
 // Two full-tree generator passes plus receipt replay exceeded the 10 s unit default.
 }, 90000);
-it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
+it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'missing SQL reference row', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
   if (scenario === 'historical byte') write(INVENTORY_PATH, read(INVENTORY_PATH).replace('"historical": {}', '"historical": { }'));
   if (scenario === 'edited existing entry') {
@@ -110,13 +116,23 @@ it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong ge
     const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwardClass.slots.push(data.nativeStoreForwardClass.slots.at(-1)); write(path, json(data));
   }
   if (scenario === 'wrong generator bytes') write('packages/platform/sql/manifest.json', read('packages/platform/sql/manifest.json') + ' ');
+  if (scenario === 'missing SQL reference row') {
+    write(SQL_REFERENCE, read(SQL_REFERENCE).split('\n').filter(line => !line.startsWith('| [`20990101010000_landing_fixture.sql`]')).join('\n'));
+  }
   if (scenario === 'other byte') write('README.md', read('README.md') + '\nUnexpected edit\n');
   if (scenario === 'SQL byte') write('db/platform/migrations/20990101010000_landing_fixture.sql', 'SELECT 2;\n');
   git('add', '-A'); const tree = git('write-tree');
   const args = scenario === 'wrong lineage' ? ['-p', reviewed] : ['-p', reviewed, '-p', main];
   const head = git('commit-tree', tree, ...args, '-m', 'Synthetic refusal');
   if (scenario === 'wrong lineage') await expect(proof(head)).rejects.toThrow('integration parents differ');
-  else expect((await proof(head)).kind).toBe('resolution');
+  else {
+    const decision = await proof(head);
+    expect(decision.kind).toBe('resolution');
+    if (scenario === 'missing SQL reference row') {
+      expect(decision.derived).toBeUndefined();
+      expect(decision.resolution).toContain(SQL_REFERENCE);
+    }
+  }
 }, 50000);
 it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry union boundary', scenario => {
   const original = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`), side = JSON.parse(original);

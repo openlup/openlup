@@ -1729,8 +1729,8 @@ rows retain the existing closed registry union.
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
 unions, the package SQL manifest and selection mirror, publication catalogue,
-generated source map, and the current installation data file. Trusted owner
-generators run on a temporary prediction, without
+generated source map, generated SQL reference page, and the current installation
+data file. Trusted owner generators run on a temporary prediction, without
 executing candidate tooling or touching the checkout. Output must equal committed
 bytes. Every SQL byte and mode must equal the mechanical merge; other changes
 remain a `resolution` delta with its existing review floor. Size caps and release
