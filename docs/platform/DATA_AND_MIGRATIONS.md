@@ -2389,9 +2389,14 @@ For search-path hardening, a settings-only slot pins its `path` and an ordered
 `settingsOnlyFunctions` list of `{ signature, searchPath }` entries for qualified
 functions in the base migrations. Signatures are unique and each `searchPath`
 contains a single `pg_temp` entry in the final position. The other function and
-data lists are empty. The whole-file pin covers exactly the listed
+data lists are empty. By default the whole-file pin covers exactly the listed
 `ALTER FUNCTION … SET search_path` statements in order. The PostgreSQL catalog
-check allows only the pinned `search_path` changes.
+check allows only the pinned `search_path` changes. A settings-only slot may
+name an `ownerWindowRole`. Its forward then contains exactly the rendered open
+statement, the ordered `ALTER FUNCTION` statements, and the rendered close
+statement. A restricted installer inherits the owner role's privileges only
+within the migration transaction, a superuser installer skips the window, and
+the open statement refuses a pre-existing self-granted membership.
 A later ordinary slot treats a landed settings-only slot's exact pinned
 `ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
 function or grant privileges on it. A replacement may tighten a single

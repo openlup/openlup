@@ -3,13 +3,13 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "settingsOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
@@ -680,7 +680,10 @@ async function checkForward(pool: Pool, slot: CatalogSlot, forward: string, keep
       if (setup) await db.query(setup);
       const reusableBefore = !keep && !setup ? (cachedBefore ?? pristineSnapshots.get(pool)) : undefined;
       const before = reusableBefore ?? await pinned(db, () => snapshot(db));
+      const memberships = async () => (await db.query("SELECT * FROM pg_catalog.pg_auth_members ORDER BY oid")).rows;
+      const membersBefore = slot.ownerWindowRole === undefined ? undefined : await memberships();
       await db.query(forward);
+      if (membersBefore && JSON.stringify(await memberships()) !== JSON.stringify(membersBefore)) fail("pg_auth_members changed during the settings-only forward");
       await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), migrationRole, forward, admission));
       passed = true;
     } finally {
@@ -1074,6 +1077,19 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/invalid privilege type .* for column/u);
   });
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
+  it("allows only the pinned function setting and requires identical membership rows for an owner window", async () => {
+    const signature = "public.cat_replaced(text,boolean)", role = "authenticated";
+    const settings = [{ signature, searchPath: "pg_catalog, pg_temp" }];
+    const slot: CatalogSlot = {
+      createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], ownerWindowRole: role, settingsOnlyFunctions: settings,
+    };
+    const sql = renderNativeStoreSettingsOwnerWindow(settings, role);
+    const membership = "GRANT authenticated TO anon";
+    const setup = `ALTER FUNCTION ${signature} SET search_path = pg_catalog; ${membership};`;
+    await checkForward(pool, slot, sql, false, setup);
+    await expect(checkForward(pool, slot, `${sql}REVOKE authenticated FROM anon; ${membership};`, false, setup))
+      .rejects.toThrow("pg_auth_members changed during the settings-only forward");
+  });
   it("admits only the client census column and SELECT policy on a new block-classified table", async () => {
     await checkForward(pool, CENSUS_SLOT, forward(CREATED_OK, CENSUS_SQL));
   });

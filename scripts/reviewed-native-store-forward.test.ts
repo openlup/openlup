@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -1038,6 +1038,14 @@ describe("settings-only native forwards", () => {
     return value;
   };
   const prefix = [{ path: PLATFORM_BASELINE_FILE, bytes: before }];
+  const ownerWindowRole = "fixture_owner";
+  const windowText = renderNativeStoreSettingsOwnerWindow(settings, ownerWindowRole);
+  const [open, , , close] = sqlStatements(windowText, false, false, true) as [string, string, string, string];
+  const valueForWindow = (candidate = windowText) => {
+    const value = valueFor(candidate);
+    value.nativeStoreForwardClass!.slots[0]!.ownerWindowRole = ownerWindowRole;
+    return value;
+  };
 
   it("admits exact settings statements from committed base through PR, queue and release checks", () => {
     nativeGitFixture(({ folder, put, commit }) => {
@@ -1065,7 +1073,68 @@ describe("settings-only native forwards", () => {
     expect(() => assertNativeStoreForward(valueFor(candidate), path, Buffer.from(candidate), prefix)).toThrow(message);
   });
 
-  it("admits a later replacement and grant-only change after the pinned settings ALTERs", () => {
+  it("admits the exact settings-owner window from committed base through PR, queue and release checks", () => {
+    nativeGitFixture(({ folder, put, commit }) => {
+      const value = valueForWindow();
+      const prior = structuredClone(value);
+      prior.nativeStoreForwardClass!.slots = [];
+      prior.nativeStoreForwards = [];
+      put(PLATFORM_BASELINE_FILE, before);
+      put("config/reviewed-platform-forwards.json", encode(prior));
+      const base = commit();
+      put(path, windowText);
+      put("config/reviewed-platform-forwards.json", encode(value));
+      const head = commit();
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(windowText))).not.toThrow();
+      expect(() => assertCoLocatedForwardApproval(folder, base, head)).not.toThrow();
+      expect(() => assertAdmittedPlatformForward(folder, base, head, path, Buffer.from(windowText), true)).not.toThrow();
+    });
+  });
+
+  const lineOf = (snippet: string) => windowText.slice(0, windowText.indexOf(snippet)).split("\n").length;
+  const closeLine = lineOf(close);
+  const grantLine = lineOf("    EXECUTE pg_catalog.format('GRANT");
+  const revokeLine = lineOf("    EXECUTE pg_catalog.format('REVOKE");
+  const closeEnd = windowText.trimEnd().split("\n").length;
+
+  it.each([
+    ["a space in OPEN", windowText.replace(open, open.replace("BEGIN\n", "BEGIN \n")), 2],
+    ["a newline in OPEN", windowText.replace(open, open.replace("BEGIN\n", "BEGIN\r\n")), 2],
+    ["a space in CLOSE", windowText.replace(close, close.replace("BEGIN\n", "BEGIN \n")), closeLine + 1],
+    ["a newline in CLOSE", windowText.replace(close, close.replace("BEGIN\n", "BEGIN\r\n")), closeLine + 1],
+    ["a different role in OPEN", windowText.replace(`GRANT ${ownerWindowRole}`, "GRANT another_owner"), grantLine],
+    ["a different role in CLOSE", windowText.replace(`REVOKE ${ownerWindowRole} FROM %I`, "REVOKE another_owner FROM %I"), revokeLine],
+    ["a literal grantor in OPEN", windowText.replace(open, open.replace("GRANTED BY %I", "GRANTED BY another_owner")), grantLine],
+    ["a literal grantor in CLOSE", windowText.replace(close, close.replace("GRANTED BY %I", "GRANTED BY another_owner")), revokeLine],
+    ["a different ADMIN", windowText.replace("ADMIN FALSE", "ADMIN TRUE"), grantLine],
+    ["a different INHERIT", windowText.replace("INHERIT TRUE", "INHERIT FALSE"), grantLine],
+    ["a different SET", windowText.replace("SET FALSE", "SET TRUE"), grantLine],
+    ["missing OPEN", `${text}\n${close}\n`, 1],
+    ["missing CLOSE", `${open}\n${text}\n`, closeLine],
+    ["CLOSE before the ALTERs", `${open}\n${close}\n${text}\n`, lineOf(statements[0]!)],
+    ["reordered ALTERs", `${open}\n${[...statements].reverse().join("\n")}\n${close}\n`, lineOf(statements[0]!)],
+    ["an extra statement", `${windowText}SELECT 1;\n`, closeEnd + 1],
+    ["a missing final newline", windowText.slice(0, -1), closeEnd],
+    ["an extra final newline", `${windowText}\n`, closeEnd + 1],
+  ] as const)("refuses %s and reports the first differing line", (_label, candidate, line) => {
+    const show = (sql: string) => JSON.stringify(sql.split(/(?<=\n)/u)[line - 1]) ?? "<end of file>";
+    expect(() => assertNativeStoreForward(valueForWindow(candidate), path, Buffer.from(candidate), prefix))
+      .toThrow(`Line ${line}: expected ${show(windowText)}; actual ${show(candidate)}.`);
+  });
+
+  it("refuses ownerWindowRole on an ordinary slot", () => {
+    const value = valueForWindow();
+    delete value.nativeStoreForwardClass!.slots[0]!.settingsOnlyFunctions;
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow("ownerWindowRole is allowed only on a settings-only slot");
+  });
+
+  it.each(["Fixture_owner", '"fixture_owner"', "pg_fixture_owner", "a".repeat(64), 42])("refuses invalid ownerWindowRole %j", role => {
+    const value = valueForWindow();
+    Object.assign(value.nativeStoreForwardClass!.slots[0]!, { ownerWindowRole: role });
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow("ownerWindowRole must be an unquoted lowercase role name of at most 63 ASCII characters matching ^[a-z_][a-z0-9_]{0,62}$ and must not start with pg_.");
+  });
+
+  it.each([false, true])("admits a later replacement and grant-only change after the pinned settings ALTERs (owner window: %s)", withWindow => {
     const grant = settings[0]!, replace = settings[1]!;
     // Keep the replacement header already pinned so this exercises the prefix scan independently.
     const prior = `CREATE FUNCTION public.fixture_existing(p_id uuid) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = ${replace.searchPath} AS $$ SELECT 'before'; $$;`;
@@ -1073,14 +1142,14 @@ describe("settings-only native forwards", () => {
     const next = emptySlot("db/platform/migrations/20261124140000_fixture_followup.sql", "Followup");
     next.replacedFunctions.push({ ...replace, beforeSha256: sqlSha256(prior) });
     next.grantOnlyFunctions.push({ signature: grant.signature, grantTo: ["authenticated"], revokeFrom: [] });
-    const value = valueFor();
+    const value = withWindow ? valueForWindow() : valueFor();
     value.nativeStoreForwardClass!.slots.push(next);
     const candidate = `${after}\n${block("authenticated", "GRANT EXECUTE", grant.signature)}`;
     bind(value, 1, candidate);
     const baseline = before.toString("utf8").replace(/^CREATE FUNCTION public\.fixture_existing\(.*$/mu, () => prior);
     const history = [
       { path: PLATFORM_BASELINE_FILE, bytes: Buffer.from(baseline) },
-      { path, bytes: Buffer.from(text) },
+      { path, bytes: Buffer.from(withWindow ? windowText : text) },
     ];
     expect(() => assertNativeStoreForward(value, next.path, Buffer.from(candidate), history)).not.toThrow();
 
