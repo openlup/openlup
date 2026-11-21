@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.3.0]
+
+- Publishable on the npm `latest` dist-tag as `1.3.0`, from tag
+  `openlup-outbox-v1.3.0`.
+
+- Scope `@openlup/outbox` `.api.md` declaration snapshots to each subpath's own exported declarations without changing any exported runtime or type symbol.
+
+Migration: No application changes required. Snapshot scoping does not alter public exports. It removes cross-subpath duplicates from generated `.api.md` snapshots.
+
+- Add optional `snoozeScope?: "all" | "event_type"` (`OutboxSnoozeScope`) on `OutboxDispatchConfig` so workers can isolate `{ kind: "snooze" }` circuit-breaking to the snoozed event type and affected aggregates without starving unrelated event types.
+
 ## [1.2.0]
 
 - Publishable on the npm `latest` dist-tag as `1.2.0`, from tag

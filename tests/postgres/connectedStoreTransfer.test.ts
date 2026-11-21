@@ -3,7 +3,7 @@ import { createPostgresAbandonedCheckoutCompensationPort, createPostgresPurchase
 import { createPostgresDestinationPort, type DestinationDocument } from "@openlup/platform/commerce/server/destinations";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
@@ -25,22 +25,23 @@ import { mapManagedIdentityForConnectedRestore, restoreConnectedNativeStore, typ
 import { createPostgresPartnerAcquisitionPort } from "../../server/adapters/postgres/partners/partnerAcquisitionRoutines.js";
 import { createPartnerAcquisitionSubmitHandler } from "../../server/bff/partners/partnerAcquisitionDirect.js";
 import type { VercelResponse } from "../../server/_lib/types/vercel.js";
-import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
+import type { QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { OrderReviewMediaObjectStore } from "../../server/adapters/filesystem/orderReviewMediaObjectStore.js";
 import { captureOrderReviewMediaFilesystem, type OrderReviewMediaFilesystemCensus } from "../../server/adapters/filesystem/orderReviewMediaTransferInventory.js";
 import { createOrderReviewMediaTransferReader } from "../../server/adapters/filesystem/orderReviewMediaTransferReader.js";
 import { restoreOrderReviewMediaFilesystem } from "../../server/adapters/filesystem/orderReviewMediaTransferRestore.js";
 import { fixture, openCase, replacement } from "../helpers/fulfillmentNative.js";
-import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+import { storeJourneyResources, type JourneyTargetInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 
-const containers: PostgresContainer[] = [], pools: Pool[] = [], ports: { close(): Promise<void> }[] = [];
+const resources = storeJourneyResources();
+const ports: { close(): Promise<void> }[] = [];
 const selection: QualifiedPostgresInstallation = { generation: "qualified-v2", roleMode: "installer-managed",
   migrationLogin: "transfer_owner", bootstrapLogin: "postgres", runtimeLogin: "transfer_runtime", restoreLogin: "transfer_restore" };
 const selected = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", { migrationIsBootstrap: false, hasRestore: true });
-const selectedUnits = [selected.baseline, ...selected.forward];
-type Installation = { owner: Pool; ownerUrl: string; runtime: Pool; restore: Pool; runtimeUrl: string };
+type Installation = JourneyTargetInstallation;
 let targetNumber = 0;
+let sourceTemplates: JourneyTargetTemplate, targetTemplates: JourneyTargetTemplate;
 let source: Installation, target: Installation, pristine: ConnectedNativeStoreCapture, packet: ConnectedNativeStoreCapture;
 let graph: Awaited<ReturnType<typeof fixture>>, successor: string, prunedHold: string, retainedHold: string, erased: string;
 let historicalReferences: { pruned: string; retained: string };
@@ -125,29 +126,6 @@ async function renewalPurchase(complete: boolean) {
   return { orderId, subscriptionId: String(activated.subscriptionId) };
 }
 
-function pool(connectionString: string): Pool { const result = new Pool({ connectionString }); pools.push(result); return result; }
-async function installation(label: string): Promise<Installation> {
-  const container = await runPostgresContainer({ name: `m14-connected-${label}-${process.pid}`, password: "synthetic-transfer" });
-  containers.push(container);
-  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Connected transfer PostgreSQL unavailable");
-  const bootstrap = pool(container.connectionString);
-  await bootstrap.query(`CREATE ROLE transfer_owner LOGIN INHERIT SUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-transfer';
-    ALTER DATABASE postgres OWNER TO transfer_owner;
-    CREATE ROLE transfer_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-transfer';
-    CREATE ROLE transfer_restore LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-transfer'`);
-  const url = (login: string, startup = false) => {
-    const value = new URL(container.connectionString); value.username = login;
-    if (startup) value.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
-    return value.toString();
-  };
-  const owner = pool(url(selection.migrationLogin, true));
-  const runner = createPostgresMigrationRunner({ connectionString: url(selection.migrationLogin) }, { installation: selection, poolFactory: () => owner });
-  expect((await runner.apply()).applied).toEqual(selectedUnits.map(unit => unit.file));
-  expect((await owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
-    .toEqual(selectedUnits.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
-  expect((await runner.status()).pending).toEqual([]);
-  return { owner, ownerUrl: url(selection.migrationLogin, true), runtime: pool(url(selection.runtimeLogin)), restore: pool(url(selection.restoreLogin!)), runtimeUrl: url(selection.runtimeLogin) };
-}
 async function capture(db: Pool, sourceId: string, limits = { maximumRows: 10000, maximumBytes: 64 * 1024 * 1024 }): Promise<ConnectedNativeStoreCapture> {
   return captureConnectedNativeStore({ sourceId, catalogueId: selected.objectInventorySha256, ...limits,
     source: { async withSnapshot(work) {
@@ -318,8 +296,11 @@ async function mediaFixture() {
 }
 
 beforeAll(async () => {
-  if (!await dockerAvailable()) throw new Error("Connected transfer proof requires owned disposable PostgreSQL");
-  source = await installation("source");
+  [sourceTemplates, targetTemplates] = await Promise.all([
+    resources.targetTemplate("transfer-source"),
+    resources.targetTemplate("transfer-target"),
+  ]);
+  source = await sourceTemplates.clone("source");
   identity = await identityFixture();
   graph = await fixture(source.owner);
   const retainedGraph = await fixture(source.owner);
@@ -473,11 +454,11 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 // Each case owns a fresh qualified target and can run without another case.
 beforeEach(async () => {
-  target = await installation(`target-${++targetNumber}`);
+  target = await targetTemplates.nextTarget(`target-${++targetNumber}`);
   pristine = await capture(target.owner, "owned-pristine-target");
 }, postgresSetupTimeoutMs);
 afterAll(async () => {
-  try { await closePostgres(containers, pools, ports.map(port => () => port.close())); }
+  try { await resources.close(ports.map(port => () => port.close())); }
   finally { if (media) await rm(media.parent, { recursive: true, force: true }); }
 }, postgresTeardownTimeoutMs);
 
@@ -516,51 +497,53 @@ it("restores writer-created sandbox attempts, cyclic observations and terminal r
   expect((await restore()).replayed).toBe(false);
   expect(await census(target.owner)).toEqual(before);
   expect((await restore()).replayed).toBe(true);
-  const restarted = pool(target.runtimeUrl), port = paymentPort(restarted), truth = createPostgresPaymentTruthPort(restarted, paymentOptions);
-  const p = payments;
-  expect(await port.readAttempt({ settlementIntentId: p.open.intentId })).toMatchObject({ id: p.open.attempt.id, state: "dispatched", latestObservation: null });
-  expect((await port.beginAttempt(p.open.input)).replayed).toBe(true);
-  await expect(port.beginAttempt({ ...p.open.input, idempotencyKey: `attempt:${randomUUID()}` })).rejects.toThrow("payment_simulator_attempt_unresolved");
-  expect(await port.readAttempt({ settlementIntentId: p.fenced.intentId })).toMatchObject({ id: p.active.id, state: "indeterminate" });
-  expect((await port.beginAttempt(p.nextInput)).replayed).toBe(true);
-  await expect(port.beginAttempt({ ...p.nextInput, idempotencyKey: `attempt:${randomUUID()}` })).rejects.toThrow("payment_simulator_attempt_unresolved");
-  await expect(port.recordObservation({ ...p.refused.input, idempotencyKey: `observation:${randomUUID()}`, outcome: "captured" })).rejects.toThrow("wrong_attempt");
-  expect(await paymentReceive(restarted, p.fenced.attempt, p.refused.id)).toMatchObject({ status: 200, data: { replayed: true } });
-  expect(await port.recordObservation(p.captured.input)).toEqual({ id: p.captured.id, replayed: true });
-  expect((await paymentReceive(restarted, p.pending.attempt, p.captured.id)).status).toBe(200);
-  expect(await paymentReceive(restarted, p.pending.attempt, p.captured.id)).toMatchObject({ status: 200, data: { replayed: true } });
-  for (const current of [{ ...p.open, active: p.open.attempt }, { ...p.fenced, active: p.active }]) {
-    const late = await paymentObservation(restarted, current.active, "captured");
-    expect((await paymentReceive(restarted, current.active, late.id)).status).toBe(200);
-    expect(await paymentReceive(restarted, current.active, late.id)).toMatchObject({ status: 200, data: { replayed: true } });
-  }
-  for (const current of [p.open, p.fenced, p.pending]) {
-    expect((await target.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [current.intentId])).rows).toHaveLength(1);
-    expect((await target.owner.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.paid'", [current.orderId])).rows).toHaveLength(1);
-  }
-  const original = await createPostgresPaymentTruthPort(source.runtime, paymentOptions).readEvent(p.reviewEvent);
-  expect(await truth.readEvent(p.reviewEvent)).toEqual(original);
-  expect(original).toMatchObject({ event: { applicationStatus: "review_required", state: "open", outcome: "captured" }, financial: { orderStatus: "cancelled" } });
-  expect(original!.event.reviewRequiredAt).toBeTruthy();
-  const observation = (await port.readAttempt({ settlementIntentId: p.review.intentId }))!.latestObservation!;
-  const reconciliation = { eventId: p.reviewEvent, idempotencyKey: randomUUID(), evidenceStatus: "observed" as const, outcome: "captured" as const,
-    occurredAt: paymentAt, failure: null, evidence: { sourceKind: "reconciliation_read" as const, sourceReference: observation.id,
-      observedStatus: observation.outcome, observedAt: observation.occurredAt, payloadFingerprint: observation.fingerprint, attemptRef: p.review.attempt.id } };
-  expect((await truth.recordReconciliation(reconciliation)).event.applicationStatus).toBe("review_required");
-  expect((await truth.recordReconciliation(reconciliation)).event.replayed).toBe(true);
-  for (let n = 0; n < 2; n++) expect((await truth.sweepOpenEvents({ now: "2030-01-01T00:00:00Z", limit: 1000 })).eventIds).not.toContain(p.reviewEvent);
-  expect(await paymentReceive(restarted, p.review.attempt, p.cancelled.id)).toMatchObject({ status: 200, data: { replayed: true } });
-  expect((await target.owner.query("SELECT e.review_required_at IS NOT NULL AS review,e.outcome,o.status FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id JOIN public.commerce_orders o ON o.id=i.order_id WHERE e.id=$1", [p.reviewEvent])).rows)
-    .toEqual([{ review: true, outcome: "captured", status: "cancelled" }]);
-  const reviewTransitions = "SELECT id,outcome FROM public.commerce_settlement_transitions WHERE intent_id=$1 ORDER BY id";
-  expect((await target.owner.query(reviewTransitions, [p.review.intentId])).rows).toEqual((await source.owner.query(reviewTransitions, [p.review.intentId])).rows);
-  expect((await target.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [p.review.intentId])).rows).toEqual([]);
-  for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) {
-    const rows = packet.owned.find(data => data.table === table)!.rows;
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.join()).not.toContain("dispatch-only@example.invalid");
-    expect(rows.join()).not.toContain("rawPayload"); expect(rows.join()).not.toContain("payerEmail");
-  }
+  const restarted = new Pool({ connectionString: target.runtimeUrl }), port = paymentPort(restarted), truth = createPostgresPaymentTruthPort(restarted, paymentOptions);
+  try {
+    const p = payments;
+    expect(await port.readAttempt({ settlementIntentId: p.open.intentId })).toMatchObject({ id: p.open.attempt.id, state: "dispatched", latestObservation: null });
+    expect((await port.beginAttempt(p.open.input)).replayed).toBe(true);
+    await expect(port.beginAttempt({ ...p.open.input, idempotencyKey: `attempt:${randomUUID()}` })).rejects.toThrow("payment_simulator_attempt_unresolved");
+    expect(await port.readAttempt({ settlementIntentId: p.fenced.intentId })).toMatchObject({ id: p.active.id, state: "indeterminate" });
+    expect((await port.beginAttempt(p.nextInput)).replayed).toBe(true);
+    await expect(port.beginAttempt({ ...p.nextInput, idempotencyKey: `attempt:${randomUUID()}` })).rejects.toThrow("payment_simulator_attempt_unresolved");
+    await expect(port.recordObservation({ ...p.refused.input, idempotencyKey: `observation:${randomUUID()}`, outcome: "captured" })).rejects.toThrow("wrong_attempt");
+    expect(await paymentReceive(restarted, p.fenced.attempt, p.refused.id)).toMatchObject({ status: 200, data: { replayed: true } });
+    expect(await port.recordObservation(p.captured.input)).toEqual({ id: p.captured.id, replayed: true });
+    expect((await paymentReceive(restarted, p.pending.attempt, p.captured.id)).status).toBe(200);
+    expect(await paymentReceive(restarted, p.pending.attempt, p.captured.id)).toMatchObject({ status: 200, data: { replayed: true } });
+    for (const current of [{ ...p.open, active: p.open.attempt }, { ...p.fenced, active: p.active }]) {
+      const late = await paymentObservation(restarted, current.active, "captured");
+      expect((await paymentReceive(restarted, current.active, late.id)).status).toBe(200);
+      expect(await paymentReceive(restarted, current.active, late.id)).toMatchObject({ status: 200, data: { replayed: true } });
+    }
+    for (const current of [p.open, p.fenced, p.pending]) {
+      expect((await target.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [current.intentId])).rows).toHaveLength(1);
+      expect((await target.owner.query("SELECT id FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.order.paid'", [current.orderId])).rows).toHaveLength(1);
+    }
+    const original = await createPostgresPaymentTruthPort(source.runtime, paymentOptions).readEvent(p.reviewEvent);
+    expect(await truth.readEvent(p.reviewEvent)).toEqual(original);
+    expect(original).toMatchObject({ event: { applicationStatus: "review_required", state: "open", outcome: "captured" }, financial: { orderStatus: "cancelled" } });
+    expect(original!.event.reviewRequiredAt).toBeTruthy();
+    const observation = (await port.readAttempt({ settlementIntentId: p.review.intentId }))!.latestObservation!;
+    const reconciliation = { eventId: p.reviewEvent, idempotencyKey: randomUUID(), evidenceStatus: "observed" as const, outcome: "captured" as const,
+      occurredAt: paymentAt, failure: null, evidence: { sourceKind: "reconciliation_read" as const, sourceReference: observation.id,
+        observedStatus: observation.outcome, observedAt: observation.occurredAt, payloadFingerprint: observation.fingerprint, attemptRef: p.review.attempt.id } };
+    expect((await truth.recordReconciliation(reconciliation)).event.applicationStatus).toBe("review_required");
+    expect((await truth.recordReconciliation(reconciliation)).event.replayed).toBe(true);
+    for (let n = 0; n < 2; n++) expect((await truth.sweepOpenEvents({ now: "2030-01-01T00:00:00Z", limit: 1000 })).eventIds).not.toContain(p.reviewEvent);
+    expect(await paymentReceive(restarted, p.review.attempt, p.cancelled.id)).toMatchObject({ status: 200, data: { replayed: true } });
+    expect((await target.owner.query("SELECT e.review_required_at IS NOT NULL AS review,e.outcome,o.status FROM public.payment_truth_events e JOIN public.commerce_settlement_intents i ON i.id=e.settlement_intent_id JOIN public.commerce_orders o ON o.id=i.order_id WHERE e.id=$1", [p.reviewEvent])).rows)
+      .toEqual([{ review: true, outcome: "captured", status: "cancelled" }]);
+    const reviewTransitions = "SELECT id,outcome FROM public.commerce_settlement_transitions WHERE intent_id=$1 ORDER BY id";
+    expect((await target.owner.query(reviewTransitions, [p.review.intentId])).rows).toEqual((await source.owner.query(reviewTransitions, [p.review.intentId])).rows);
+    expect((await target.owner.query("SELECT id FROM public.commerce_settlement_transitions WHERE intent_id=$1 AND outcome='succeeded'", [p.review.intentId])).rows).toEqual([]);
+    for (const table of ["payment_simulator_attempts", "payment_simulator_observations"] as const) {
+      const rows = packet.owned.find(data => data.table === table)!.rows;
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.join()).not.toContain("dispatch-only@example.invalid");
+      expect(rows.join()).not.toContain("rawPayload"); expect(rows.join()).not.toContain("payerEmail");
+    }
+  } finally { await restarted.end(); }
 }, 100_000);
 
 // About 4x the slowest hosted run (16,613 ms), rounded up to 5 s.
@@ -626,7 +609,7 @@ it("refuses a native capture login that row security would silently filter", asy
   const login = "transfer_filtered_reader";
   await source.owner.query(`CREATE ROLE ${login} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'synthetic-transfer';
     GRANT pg_read_all_data TO ${login}`);
-  const url = new URL(source.ownerUrl); url.username = login; url.search = "";
+  const url = new URL(source.ownerUrl); url.username = login; url.password = "synthetic-transfer"; url.search = "";
   const reader = new Pool({ connectionString: url.toString(), max: 1 });
   const errors: unknown[] = [];
   try {
@@ -1000,8 +983,10 @@ it("preserves the connected retained graph, pruned history and exact replay unde
   const other = await identity.verifier.verifyToken(await identity.token("different-signed-subject"));
   if (!other.ok) throw new Error("Distinct owned subject token did not verify");
   expect(await me(other.principal.principalId)).toBeNull();
-  const accounts = createPostgresAccountLinkStore({ connectionString: target.runtimeUrl }); ports.push(accounts);
-  await expect(accounts.createAccount({ email: "erased@example.invalid", principalId: erased, acquisitionSource: "direct", lifecycleStage: "lead" })).rejects.toThrow("account_erased_refused");
+  const accounts = createPostgresAccountLinkStore({ connectionString: target.runtimeUrl });
+  try {
+    await expect(accounts.createAccount({ email: "erased@example.invalid", principalId: erased, acquisitionSource: "direct", lifecycleStage: "lead" })).rejects.toThrow("account_erased_refused");
+  } finally { await accounts.close(); }
   await expect(target.restore.query("SELECT id FROM public.clients")).rejects.toMatchObject({ code: "42501" });
   await expect(target.runtime.query("SET ROLE openlup_retained_import_owner")).rejects.toMatchObject({ code: "42501" });
   expect((await target.runtime.query("SELECT current_user,session_user,rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).rows)
@@ -1212,9 +1197,11 @@ it("checks the identity mapper's erased-subject and conflict branches with synth
       phone: null, country: null, metadata: {}, principal_id: null }]);
   expect((await target.owner.query("SELECT from_stage,to_stage FROM public.customer_subject_lifecycle_events WHERE client_id=$1 ORDER BY occurred_at", [erasedClient])).rows)
     .toEqual([{ from_stage: "customer", to_stage: "inactive" }]);
-  const accounts = createPostgresAccountLinkStore({ connectionString: target.runtimeUrl }); ports.push(accounts);
-  await expect(accounts.createAccount({ email: "same@example.invalid", principalId: deriveOidcPrincipalId(issuer, erasedManagedId),
-    acquisitionSource: "direct", lifecycleStage: "lead" })).rejects.toThrow("account_erased_refused");
+  const accounts = createPostgresAccountLinkStore({ connectionString: target.runtimeUrl });
+  try {
+    await expect(accounts.createAccount({ email: "same@example.invalid", principalId: deriveOidcPrincipalId(issuer, erasedManagedId),
+      acquisitionSource: "direct", lifecycleStage: "lead" })).rejects.toThrow("account_erased_refused");
+  } finally { await accounts.close(); }
   expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
   expect((await restoreConnectedNativeStore({ owner: target.owner, installation: selection, packet: mapped.packet, freshTarget: pristine })).replayed).toBe(true);
   const linkedSource = evidence.clients.find(row => row.auth_user_id === liveManagedId)!;
@@ -1316,55 +1303,57 @@ it("enforces actual cumulative row and byte limits at EACH address relation", as
 it("drains every target acquisition command before opening a new installation-key namespace", async () => {
   const sourcePort = createPostgresPartnerAcquisitionPort({ connectionString: source.ownerUrl });
   const targetPort = createPostgresPartnerAcquisitionPort({ connectionString: target.ownerUrl });
-  ports.push(sourcePort, targetPort);
-  const input = { idempotencyKey: "managed-drain-command-1", requesterKey: "synthetic-requester",
-    policyVersion: "partner-inquiry-request-v1", sourcePath: "/partners/b2b-inquiries" as const,
-    acceptedAt: new Date().toISOString(), request: { company: "Synthetic Partner", country: "US",
-      firstName: "Ada", lastName: "Example", email: "drain-source@example.invalid", phone: "+15551234567", notes: null } };
-  expect(await sourcePort.submit(input)).toMatchObject({ ok: true, replayed: false });
-  expect(await sourcePort.submit(input)).toMatchObject({ ok: true, replayed: true });
-  const sourceReceipt = (await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows;
-  expect(sourceReceipt).toHaveLength(1);
-  const sourceDigest = (await source.owner.query("SELECT encode(acquisition_private.keyed_digest('transfer-probe','{}'::jsonb),'hex') AS digest")).rows[0].digest;
-  const targetDigest = (await target.owner.query("SELECT encode(acquisition_private.keyed_digest('transfer-probe','{}'::jsonb),'hex') AS digest")).rows[0].digest;
-  expect(targetDigest).not.toBe(sourceDigest);
-  const keyIdentity = (await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
+  ports.push(sourcePort);
+  try {
+    const input = { idempotencyKey: "managed-drain-command-1", requesterKey: "synthetic-requester",
+      policyVersion: "partner-inquiry-request-v1", sourcePath: "/partners/b2b-inquiries" as const,
+      acceptedAt: new Date().toISOString(), request: { company: "Synthetic Partner", country: "US",
+        firstName: "Ada", lastName: "Example", email: "drain-source@example.invalid", phone: "+15551234567", notes: null } };
+    expect(await sourcePort.submit(input)).toMatchObject({ ok: true, replayed: false });
+    expect(await sourcePort.submit(input)).toMatchObject({ ok: true, replayed: true });
+    const sourceReceipt = (await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows;
+    expect(sourceReceipt).toHaveLength(1);
+    const sourceDigest = (await source.owner.query("SELECT encode(acquisition_private.keyed_digest('transfer-probe','{}'::jsonb),'hex') AS digest")).rows[0].digest;
+    const targetDigest = (await target.owner.query("SELECT encode(acquisition_private.keyed_digest('transfer-probe','{}'::jsonb),'hex') AS digest")).rows[0].digest;
+    expect(targetDigest).not.toBe(sourceDigest);
+    const keyIdentity = (await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
 
-  const started = new Date(Date.now() - 1000).toISOString();
-  const env = { OPENLUP_ACQUISITION_DRAIN_STARTED_AT: started, OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "3600" };
-  const request = (key: string, email: string) => ({ method: "POST", query: {}, headers: { "idempotency-key": key,
-    "x-forwarded-for": "127.0.0.1" }, body: { company: "Synthetic Partner", country: "US", firstName: "Ada",
-    lastName: "Example", email, phone: "+15551234567", notes: null } });
-  const response = () => {
-    const headers: Record<string, string> = {};
-    let statusCode = 0, body: unknown;
-    const res = { setHeader(name: string, value: string) { headers[name] = value; return res; },
-      status(value: number) { statusCode = value; return res; }, json(value: unknown) { body = value; return res; } } as unknown as VercelResponse;
-    return { res, headers, get statusCode() { return statusCode; }, get body() { return body; } };
-  };
-  const during = response();
-  await createPartnerAcquisitionSubmitHandler({ env, resolvePort: async () => targetPort })(
-    request(input.idempotencyKey, "drain-source@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], during.res);
-  expect(during.statusCode).toBe(503);
-  expect(Number(during.headers["Retry-After"])).toBeGreaterThan(0);
-  expect(during.body).toMatchObject({ ok: false, error: { code: "UPSTREAM_UNAVAILABLE",
-    details: { reason: "acquisition_legacy_drain" } } });
-  expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands")).rows[0].count).toBe(0);
+    const started = new Date(Date.now() - 1000).toISOString();
+    const env = { OPENLUP_ACQUISITION_DRAIN_STARTED_AT: started, OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "3600" };
+    const request = (key: string, email: string) => ({ method: "POST", query: {}, headers: { "idempotency-key": key,
+      "x-forwarded-for": "127.0.0.1" }, body: { company: "Synthetic Partner", country: "US", firstName: "Ada",
+      lastName: "Example", email, phone: "+15551234567", notes: null } });
+    const response = () => {
+      const headers: Record<string, string> = {};
+      let statusCode = 0, body: unknown;
+      const res = { setHeader(name: string, value: string) { headers[name] = value; return res; },
+        status(value: number) { statusCode = value; return res; }, json(value: unknown) { body = value; return res; } } as unknown as VercelResponse;
+      return { res, headers, get statusCode() { return statusCode; }, get body() { return body; } };
+    };
+    const during = response();
+    await createPartnerAcquisitionSubmitHandler({ env, resolvePort: async () => targetPort })(
+      request(input.idempotencyKey, "drain-source@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], during.res);
+    expect(during.statusCode).toBe(503);
+    expect(Number(during.headers["Retry-After"])).toBeGreaterThan(0);
+    expect(during.body).toMatchObject({ ok: false, error: { code: "UPSTREAM_UNAVAILABLE",
+      details: { reason: "acquisition_legacy_drain" } } });
+    expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands")).rows[0].count).toBe(0);
 
-  const ended = response();
-  await createPartnerAcquisitionSubmitHandler({ env: { ...env, OPENLUP_ACQUISITION_DRAIN_ENDED_AT: new Date().toISOString() },
-    resolvePort: async () => targetPort })(request(input.idempotencyKey, "drain-source@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], ended.res);
-  expect(ended.statusCode).toBe(200);
-  expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows[0].count).toBe(1);
+    const ended = response();
+    await createPartnerAcquisitionSubmitHandler({ env: { ...env, OPENLUP_ACQUISITION_DRAIN_ENDED_AT: new Date().toISOString() },
+      resolvePort: async () => targetPort })(request(input.idempotencyKey, "drain-source@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], ended.res);
+    expect(ended.statusCode).toBe(200);
+    expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows[0].count).toBe(1);
 
-  const maximum = response();
-  await createPartnerAcquisitionSubmitHandler({ env: { OPENLUP_ACQUISITION_DRAIN_STARTED_AT: new Date(Date.now() - 2000).toISOString(),
-    OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "1" }, resolvePort: async () => targetPort })(
-    request("managed-drain-command-2", "drain-second@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], maximum.res);
-  expect(maximum.statusCode).toBe(200);
-  expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands WHERE scope='partner_submit'")).rows[0].count).toBe(2);
-  expect((await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows).toEqual(sourceReceipt);
-  expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
+    const maximum = response();
+    await createPartnerAcquisitionSubmitHandler({ env: { OPENLUP_ACQUISITION_DRAIN_STARTED_AT: new Date(Date.now() - 2000).toISOString(),
+      OPENLUP_ACQUISITION_DRAIN_MAX_SECONDS: "1" }, resolvePort: async () => targetPort })(
+      request("managed-drain-command-2", "drain-second@example.invalid") as unknown as Parameters<ReturnType<typeof createPartnerAcquisitionSubmitHandler>>[0], maximum.res);
+    expect(maximum.statusCode).toBe(200);
+    expect((await target.owner.query("SELECT count(*)::integer AS count FROM acquisition_private.commands WHERE scope='partner_submit'")).rows[0].count).toBe(2);
+    expect((await source.owner.query("SELECT to_jsonb(c)::text AS value FROM acquisition_private.commands c WHERE scope='partner_submit' AND idempotency_key=$1", [input.idempotencyKey])).rows).toEqual(sourceReceipt);
+    expect((await target.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows).toEqual(keyIdentity);
+  } finally { await targetPort.close(); }
 }, 55_000);
 
 
@@ -1373,11 +1362,12 @@ it("preserves native checkout receipt identity, privacy and microseconds across 
   const { installSubscriptionConsumer } = await import("../helpers/installSubscriptionConsumer.js");
   const { execFileSync } = await import("node:child_process");
   const { writeFile } = await import("node:fs/promises");
+  await mkdir(join(process.cwd(), ".context/scratch"), { recursive: true });
   const consumer = await mkdtemp(join(process.cwd(), ".context/scratch/checkout-transfer-consumer-"));
   try {
     const installed = await installSubscriptionConsumer(consumer);
     const checkout = await import(installed.resolve("@openlup/platform/commerce/server/native-checkout")) as typeof import("@openlup/platform/commerce/server/native-checkout");
-    const native = await installation("checkout-source");
+    const native = await sourceTemplates.nextTarget("checkout-source");
     const clientId = randomUUID(), principalId = randomUUID(), skuId = randomUUID(), listId = randomUUID();
     await native.owner.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'checkout-transfer@example.invalid')", [principalId]);
     await native.owner.query("INSERT INTO public.clients(id,principal_id,email) VALUES($1,$2,'checkout-transfer@example.invalid')", [clientId, principalId]);
@@ -1471,7 +1461,7 @@ it("round-trips open and accepted package previews with their event and subscrip
 
 
 it("refuses a real sized opt-in before target writes while the classic source still transfers", async () => {
-  const sizedSource = await installation("sized-source");
+  const sizedSource = await sourceTemplates.nextTarget("sized-source");
   const clientId = randomUUID(), subscriptionId = randomUUID(), actorId = randomUUID(), sku = randomUUID(), priceList = randomUUID();
   const at = "2026-11-06T12:00:00.000Z", next = "2026-12-20T12:00:00.000Z";
   await sizedSource.owner.query("INSERT INTO public.clients(id,email,principal_id) VALUES($1,'sized@example.invalid',$2)", [clientId, actorId]);
@@ -1551,7 +1541,7 @@ const lineageIds = {
   rootOnly: "00000000-0000-4000-8000-000000000001",
 };
 async function lineageStore() {
-  const native = await installation(`lineage-source-${targetNumber}`), client = randomUUID();
+  const native = await sourceTemplates.nextTarget(`lineage-source-${targetNumber}`), client = randomUUID();
   await native.owner.query("INSERT INTO public.clients(id,email) VALUES($1,'lineage@example.invalid')", [client]);
   const db = await native.owner.connect();
   try {
@@ -1614,7 +1604,7 @@ it.each(["recovery_root_order_id", "recreated_from_order_id"] as const)("refuses
 }, 110_000);
 
 it("round-trips an actually recreated checkout and its root with complete row equality", async () => {
-  const native = await installation("recreated-checkout-source");
+  const native = await sourceTemplates.nextTarget("recreated-checkout-source");
   const { createPostgresNativeCheckoutPersistence } = await import("@openlup/platform/commerce/server/native-checkout");
   const { createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort, createPostgresExpiredCheckoutRecoveryPort,
     createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime, createPostgresExpiredCheckoutCompensation,

@@ -1,3 +1,0 @@
-- Improve `openlup-context` search ergonomics and determinism:
-  - Traverse declaration, application, and package-source directories in deterministic lexicographic order so bounded scans produce identical results across filesystems.
-  - Add configurable result limits (`1..50`, default `8`) via `--limit <n>` / `--limit=<n>` on the CLI, `limit` on the MCP `search_openlup_context` tool, and an optional `SearchContextOptions` argument on `searchContext(...)`.

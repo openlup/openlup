@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import {
+  asPostgresSqlExecutor,
   createPostgresDataGateway,
   createPostgresGatewayTypeOverrides,
   createPostgresRoleFreeTransactionLane,
@@ -243,14 +244,16 @@ describe("createPostgresDataGateway", () => {
     expect(typeof untypedLane.run).toBe("function");
 
     await lane.run(async (db) => {
-      const asSql: SqlExecutor = db;
+      const asSql: SqlExecutor = asPostgresSqlExecutor(db);
       const asPg: PgQueryExecutor = db;
-      await asSql.query("SELECT 1", ["a"]);
+      const values = ["a"] as const;
+      await asSql.query<{ value: string }>("SELECT 1", values);
       await asPg.query("SELECT 2", ["b"]);
     });
     await lane.close();
     expect(end).not.toHaveBeenCalled();
     expect(client.queries.map((q) => q.text)).toEqual(["BEGIN", "SELECT 1", "SELECT 2", "COMMIT"]);
+    expect(client.queries[1]?.values).toEqual(["a"]);
     expect(client.released).toBe(true);
 
     expect(() => createPostgresRoleFreeTransactionLane(

@@ -5,14 +5,14 @@ import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
-  type JourneyInstallation } from "../helpers/storeJourney.js";
+  type JourneyInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const resources = storeJourneyResources();
 const at = "2026-09-01T00:00:00Z", closedAt = "2026-10-01T00:00:00Z";
 const carried = ["catalog_sku_identifiers", "subscription_price_policy_revisions", "commerce_promotion_definitions"] as const;
 const list = randomUUID(), skus = [randomUUID(), randomUUID()];
-let source: JourneyInstallation, empty: JourneyInstallation, target: JourneyInstallation;
+let source: JourneyInstallation, empty: JourneyInstallation, target: JourneyInstallation, targets: JourneyTargetTemplate;
 let packet: ConnectedNativeStoreCapture, emptyPacket: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture;
 let targetNumber = 0;
 
@@ -28,8 +28,11 @@ async function parents(store: JourneyInstallation) {
 }
 
 beforeAll(async () => {
-  source = await resources.installation("starter-source");
-  empty = await resources.installation("starter-empty");
+  [source, empty, targets] = await Promise.all([
+    resources.installation("starter-source"),
+    resources.installation("starter-empty"),
+    resources.targetTemplate("starter-target"),
+  ]);
   await parents(source); await parents(empty);
   for (const [index, sku] of skus.entries()) await source.owner.query(`INSERT INTO public.catalog_sku_identifiers
     (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary,created_at)
@@ -71,7 +74,7 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 
 beforeEach(async () => {
-  target = await resources.installation(`starter-target-${++targetNumber}`);
+  target = await targets.nextTarget(`starter-target-${++targetNumber}`);
   freshTarget = await captureStoreJourney(target.owner, "starter-relations-target");
 }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);

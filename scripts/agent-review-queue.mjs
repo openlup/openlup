@@ -110,7 +110,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   }
   return receipts;
 }
-export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 20 * 60 * 1000, runGit = git }) {
+export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');
   const root = `/repos/${env.GITHUB_REPOSITORY}`; const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
   demand(['pull_request', 'merge_group'].includes(env.GITHUB_EVENT_NAME), 'only pull_request and merge_group events are supported');
@@ -167,7 +167,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
     invalidCommentNotice = invalid ? `; receipt comment ${invalid.id}: Review receipt machine block could not be parsed: ${diagnoseReceipt(invalid.body)}. Re-run \`node scripts/agent-review-session.mjs receipt ${prNumber}\` and post its exact output.${v2Remedy}` : '';
     console.log(`needs_agent_review: ${reason}${invalidCommentNotice}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
-  throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
+  throw new Error(`needs_agent_review: bounded 3-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
 }
 // A completed source run hands an existing merge request to GitHub's queue once.
 // This code runs only from trusted main; source objects are never checked out.

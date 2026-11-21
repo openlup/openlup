@@ -1,1 +1,0 @@
-- Return redacted `persistence` facts from `createTpayPaymentAdapter().attemptPort.execute` and synthesize safe, redacted fallback persistence in `createPostgresProviderPaymentRail` when an adapter omits optional `execution.persistence`, preventing post-dispatch throws that stranded live provider attempts.

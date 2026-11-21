@@ -1,4 +1,4 @@
-import { readPaidAmountMinor } from "./tpayTransactionPayload.js";
+import { readTransactionAmountEvidence } from "./tpayTransactionPayload.js";
 import type {
   ProviderReconciliationStatus,
 } from "./donorContracts.js";
@@ -27,7 +27,7 @@ export function createTpayPaymentReconciliationProvider(
       const status = normalizeTpayTransaction(transaction);
       const identityMatches = tpayIdentityMatches(transaction, input.providerPaymentId);
       const configuredMoneyMatches = tpayConfiguredMoneyMatches(transaction, input.attempt);
-      const manualReviewRequired = tpayMoneyMoved(transaction);
+      const manualReviewRequired = tpayMoneyMoved(transaction) || status.failureReason === "provider_amount_mismatch";
       let clientAction: ProviderRecoveryAction | null = null;
       if (identityMatches && !manualReviewRequired && status.status === "pending") {
         const url = validatedTpayPaymentUrl(transaction);
@@ -98,20 +98,32 @@ export function normalizeTpayTransaction(
     ? lastRefusal(payments.attempts, "paymentErrorCode") ?? lastRefusal(payments.errors, "errorCode")
     : null;
   const status = refusal ? "failed" as const : statusFromField;
-  const amountMinor = status === "succeeded" ? readPaidAmountMinor(transaction, payments) : readAmountMinor(transaction);
-  const configuredAmountMinor = status === "succeeded" && amountMinor === null ? readConfiguredAmountMinor(transaction) : null;
+  const evidence = status === "succeeded" ? readTransactionAmountEvidence(transaction, payments) : null;
+  const amountEvidence = evidence ? [...evidence.configured, ...evidence.paid] : [];
+  const validPaid = evidence?.paid.filter(field => "amountMinor" in field) ?? [];
+  const firstPaid = validPaid[0]?.amountMinor ?? 0;
+  const agreedPaid = firstPaid > 0 && validPaid.every(field => field.amountMinor === firstPaid) ? firstPaid : null;
+  const amountMismatch = amountEvidence.some(field => "malformed" in field)
+    || (validPaid.length > 0 && (agreedPaid === null
+      || evidence?.configured.some(field => "amountMinor" in field && field.amountMinor !== agreedPaid)));
+  const amountMinor = status === "succeeded" ? agreedPaid : readAmountMinor(transaction);
+  const configuredAmountMinor = status === "succeeded" && amountMinor === null && !amountMismatch
+    ? readConfiguredAmountMinor(transaction) : null;
   return {
     status,
     ...(configuredAmountMinor !== null ? { configuredAmountMinor } : {}),
-    ...(status === "succeeded" && amountMinor !== null && amountMinor > 0 ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
+    ...(status === "succeeded" && amountMinor !== null && !amountMismatch ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
     providerStatus,
     occurredAt: refusal?.occurredAt ?? readDate(transaction),
-    failureReason: refusal
+    failureReason: amountMismatch ? "provider_amount_mismatch" : refusal
       ? `tpay_decline_${refusal.code}`
       : status === "failed" ? `tpay_${providerStatus}` : null,
     amountMinor,
     currency: readCurrency(transaction),
-    rawPayload: sanitizedTpayTransaction(transaction, providerStatus, amountMinor, refusal),
+    rawPayload: {
+      ...sanitizedTpayTransaction(transaction, providerStatus, amountMinor, refusal),
+      ...(amountMismatch ? { amountEvidence } : {}),
+    },
   };
 }
 

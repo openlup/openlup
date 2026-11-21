@@ -1,1 +1,0 @@
-- Clarify in the starter ownership guide which extraction modes commit the installation lockfile and which local address callback results the platform accepts.

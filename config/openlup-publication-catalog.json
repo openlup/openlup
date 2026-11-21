@@ -3230,6 +3230,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/scripts/build-if-missing.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/scripts/core-package-consumer-audit.ts",
       "class": "public-output"
     },
@@ -12419,6 +12423,14 @@
     },
     {
       "path": "scripts/ci-vitest-duration-keys.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-sequencer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-sequencer.ts",
       "class": "public-output"
     },
     {
@@ -31327,7 +31339,7 @@
     },
     {
       "name": "build:public-reference",
-      "command": "npm --workspace @openlup/core run build && npm --workspace @openlup/platform run build && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender",
+      "command": "node scripts/build-packages-incremental.mjs && npm run guard:client-secret-boundary && npm run guard:public-reference-site-routes && npm run build:public-reference:client && npm run build:public-reference:ssr && npm run build:public-reference:prerender",
       "publicDocs": [
         "CONTRIBUTING.md",
         "README.md"
@@ -31543,11 +31555,11 @@
     },
     {
       "path": "package.json",
-      "digest": "sha256-7f2f88eb43581e036a35b93b9933d4f702e4fbee336bba7931e86eadbb4ee736"
+      "digest": "sha256-cb756f48ff32142926f8b84922261a35f31f7b82d141d0cf9defdf76998024cc"
     },
     {
       "path": "packages/core/package.json",
-      "digest": "sha256-45f672a598c2c3f1d90c2a84fe2ddda11fb54315e2c52462691d2b22ca8dc7a6"
+      "digest": "sha256-4f6bcde0848f6c84669b06720154b12e47a3f73d75a1cfd7f54fd7802bc745ca"
     },
     {
       "path": "packages/outbox/package.json",

@@ -2,7 +2,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { delimiter, dirname, relative, resolve } from "node:path";
 import { env as processEnvironment } from "node:process";
 import { fileURLToPath } from "node:url";
 import { pinnedDurationMs } from "./ci-vitest-duration-keys.ts";
@@ -109,6 +109,7 @@ export function parseShardArgs(argv) {
   let total;
   let weightsPath = DEFAULT_WEIGHTS_PATH;
   let printFiles = false;
+  let skipPretest = false;
   const extraArgs = [];
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -131,13 +132,15 @@ export function parseShardArgs(argv) {
       weightsPath = arg.slice("--weights=".length);
     } else if (arg === "--print-files") {
       printFiles = true;
+    } else if (arg === "--skip-pretest") {
+      skipPretest = true;
     } else {
       throw new Error(`Unknown option: ${arg}`);
     }
   }
 
   if (!Number.isInteger(total) || total < 1) {
-    throw new Error("Usage: node scripts/ci-vitest-shard.mjs --shard <1..N> --total <N> [--weights <path>] [--print-files] [-- <vitest-args...>]");
+    throw new Error("Usage: node scripts/ci-vitest-shard.mjs --shard <1..N> --total <N> [--weights <path>] [--print-files] [--skip-pretest] [-- <vitest-args...>]");
   }
   if (!Number.isInteger(shard) || shard < 1 || shard > total) {
     throw new Error(`--shard must be an integer between 1 and ${total}, received: ${String(shard)}`);
@@ -146,11 +149,38 @@ export function parseShardArgs(argv) {
     throw new Error("--weights requires a non-empty file path");
   }
 
-  return { shard, total, weightsPath, printFiles, extraArgs };
+  return { shard, total, weightsPath, printFiles, skipPretest, extraArgs };
+}
+
+export function buildShardCommand(files, { skipPretest = false, extraArgs = [], platform = process.platform, execPath = process.execPath } = {}) {
+  if (skipPretest) {
+    return {
+      command: execPath,
+      args: ["scripts/run-vitest.mjs", "run", ...files, ...extraArgs],
+    };
+  }
+  const npmCommand = platform === "win32" ? "npm.cmd" : "npm";
+  return {
+    command: npmCommand,
+    args: ["test", "--", ...files, ...extraArgs],
+  };
+}
+
+function withLocalBinOnPath(env, rootDir = REPOSITORY_ROOT) {
+  const localBin = resolve(rootDir, "node_modules", ".bin");
+  const currentPath = env.PATH ?? "";
+  const entries = currentPath ? currentPath.split(delimiter) : [];
+  if (entries.includes(localBin)) {
+    return env;
+  }
+  return {
+    ...env,
+    PATH: currentPath ? `${localBin}${delimiter}${currentPath}` : localBin,
+  };
 }
 
 function main(argv = process.argv.slice(2)) {
-  const { shard, total, weightsPath, printFiles, extraArgs } = parseShardArgs(argv);
+  const { shard, total, weightsPath, printFiles, skipPretest, extraArgs } = parseShardArgs(argv);
   const manifest = loadShardWeights(weightsPath, REPOSITORY_ROOT);
   const files = listVitestFiles(REPOSITORY_ROOT, processEnvironment);
   const shards = partitionShards(files, total, manifest);
@@ -173,11 +203,12 @@ function main(argv = process.argv.slice(2)) {
     `Weighted Vitest shard ${shard}/${total}: ${selected.files.length} files (estimated ${estimatedSeconds}s)\n`,
   );
 
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(npmCommand, ["test", "--", ...selected.files, ...extraArgs], {
+  const { command, args } = buildShardCommand(selected.files, { skipPretest, extraArgs });
+  const env = skipPretest ? withLocalBinOnPath(processEnvironment, REPOSITORY_ROOT) : processEnvironment;
+  const result = spawnSync(command, args, {
     cwd: REPOSITORY_ROOT,
     stdio: "inherit",
-    env: processEnvironment,
+    env,
   });
   if (result.error) {
     throw result.error;
