@@ -9,7 +9,7 @@ import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardow
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "settingsOnlyFunctions" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
@@ -21,7 +21,7 @@ const GRANT_OPTION = " WITH GRANT OPTION";
 // moves when the same statement sits at another offset. That is compared as nothing; everything else in a tree is compared.
 const POSITIONS = String.raw`':(?:stmt_)?location -?[0-9]+|:stmt_len [0-9]+', ':position'`;
 
-type FunctionRow = { oid: number; name: string; owner: string; returnsTrigger: boolean; attrs: Record<string, unknown>; acl: string[]; src: string };
+type FunctionRow = { oid: number; name: string; owner: string; returnsTrigger: boolean; attrs: Record<string, unknown>; acl: string[]; rawMetadata: [string | null, string | null]; src: string };
 type RelationRow = { oid: number; name: string; schema: string; relation: string; kind: string; owner: string; rls: boolean; forceRls: boolean; options: string | null; acl: string[]; columnAcls: unknown };
 type Snapshot = {
   indexes: { oid: number; name: string; table: string; definition: string; attrs: unknown }[];
@@ -54,7 +54,7 @@ const aclOf = (expr: string, kind: string, owner: string) => `ARRAY(SELECT (CASE
 async function snapshot(db: PoolClient): Promise<Snapshot> {
   const functions = (await db.query(`SELECT p.oid::int AS oid, p.oid::regprocedure::text AS name, p.proowner::regrole::text AS owner, p.prorettype = 'pg_catalog.trigger'::regtype AS "returnsTrigger",
     (to_jsonb(p)-'prosrc'-'proacl'-'proargdefaults')||jsonb_build_object('proargdefaults',regexp_replace(COALESCE(p.proargdefaults::text,''),${POSITIONS},'g')) AS attrs,
-    ${aclOf("p.proacl", "'f'", "p.proowner")} AS acl, p.prosrc AS src
+    ${aclOf("p.proacl", "'f'", "p.proowner")} AS acl, ARRAY[p.proacl::text, p.proargdefaults::text] AS "rawMetadata", p.prosrc AS src
     FROM pg_proc p WHERE p.oid >= ${OID_FLOOR} ORDER BY p.oid`)).rows;
   const relations = (await db.query(`SELECT c.oid::int AS oid, c.oid::regclass::text AS name, n.nspname::text AS schema, c.relname::text AS relation,
     c.relkind::text AS kind, c.relowner::regrole::text AS owner,
@@ -327,22 +327,34 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const replaced = new Set<number>(); for (const fn of slot.replacedFunctions) replaced.add(await resolve(fn.signature));
   const grantOnly = new Map<number, CatalogSlot["grantOnlyFunctions"][number]>();
   for (const fn of slot.grantOnlyFunctions) grantOnly.set(await resolve(fn.signature), fn);
+  const settings = new Map<number, string>();
+  for (const fn of slot.settingsOnlyFunctions ?? []) settings.set(await resolve(fn.signature), norm(fn.searchPath));
 
   // 0. Nothing PostgreSQL ships changes: not a function, a relation privilege or a column privilege.
   if (JSON.stringify(before.system) !== JSON.stringify(after.system)) fail("a system catalog function, relation or column privilege changed");
 
   // 1. New functions are exactly the created list, wherever they were created.
   const knownFunctions = new Set(before.functions.map(row => row.oid));
+  for (const oid of settings.keys()) if (!knownFunctions.has(oid)) fail(`settings-only function OID ${oid} was absent before the forward`);
   const added = after.functions.filter(row => !knownFunctions.has(row.oid));
   const byOid = (x: number, y: number) => x - y;
   if (JSON.stringify(added.map(row => row.oid).sort(byOid)) !== JSON.stringify([...created.keys()].sort(byOid))) fail(`created functions differ from the slot list: ${added.map(row => row.name).join(", ")}`);
 
-  // 2. Existing functions change only inside the replaced and grant-only lists.
+  // 2. Existing functions change only as allowed by their slot lists.
   const current = new Map(after.functions.map(row => [row.oid, row]));
   for (const old of before.functions) {
     const now = current.get(old.oid);
     if (!now) return fail(`function ${old.name} was dropped`);
-    if (replaced.has(old.oid)) {
+    const searchPath = settings.get(old.oid);
+    if (searchPath !== undefined) {
+      const config = (old.attrs.proconfig as string[] | null) ?? [];
+      const isSearchPath = (entry: string) => entry.startsWith("search_path=");
+      const proconfig = config.some(isSearchPath)
+        ? config.map(entry => isSearchPath(entry) ? searchPath : entry)
+        : [...config, searchPath];
+      const expected = { ...old, attrs: { ...old.attrs, proconfig } };
+      if (JSON.stringify(now) !== JSON.stringify(expected)) fail(`settings-only function ${old.name} must change only to the pinned ${searchPath}`);
+    } else if (replaced.has(old.oid)) {
       if (JSON.stringify(now.attrs) !== JSON.stringify(old.attrs) || JSON.stringify(now.acl) !== JSON.stringify(old.acl)) fail(`replaced function ${old.name} changed attributes or ACL`);
     } else if (grantOnly.has(old.oid)) {
       const entry = grantOnly.get(old.oid)!;
@@ -351,7 +363,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
       const ok = (item: string, roles: string[]) => roles.some(role => item.startsWith(`${role}:`));
       if (gained.some(item => !item.endsWith(":EXECUTE") || !ok(item, entry.grantTo))) fail(`grant-only function ${old.name} gained ${gained.join(", ")} outside its grant list`);
       if (lost.some(item => !ok(item, [...entry.revokeFrom, ...entry.grantTo]))) fail(`grant-only function ${old.name} lost ${lost.join(", ")} outside its role lists`);
-    } else if (JSON.stringify(now) !== JSON.stringify(old)) fail(`function ${old.name} changed but is on no slot list`);
+    } else if (JSON.stringify({ ...now, rawMetadata: old.rawMetadata }) !== JSON.stringify(old)) fail(`function ${old.name} changed but is on no slot list`);
   }
 
   // 3. Created functions: owned by the migration role, pinned search_path for every definer, no PUBLIC or anon execute, closed grantees only.
