@@ -6,6 +6,7 @@ import { env as processEnvironment } from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bumpRelease as bumpPackageVersion, bumpSet as bumpSetVersion, npmPublishedPackedBytes, setVersionFields } from "./release-bump.ts";
 import * as docs from "./release-docs-pass.ts";
+import { packageReleaseTag } from "./release-gate.ts";
 
 
 const checkGuide = (root: string): string => execFileSync(process.execPath, ["--experimental-strip-types", resolve("packages/core/scripts/documentation-contract.ts"), "--check-guide", join(root, "packages/core")], { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
@@ -52,8 +53,8 @@ const changedLines = (before: string, after: string) => before.split("\n").map((
 const git = (root: string, ...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8" }).trim();
 const day = 24 * 60 * 60 * 1000;
 const minorTagDate = Date.parse("2026-01-02T03:04:05Z");
-const tagRelease = (root: string, tag: string, date = minorTagDate) => execFileSync("git",
-  ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "tag", "-a", "-m", "Fixture release", tag],
+const tagRelease = (root: string, name: string, version: string, date = minorTagDate, message = packageReleaseTag(name, version).message) => execFileSync("git",
+  ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "tag", "-a", "--cleanup=verbatim", "-m", message, packageReleaseTag(name, version).tag],
   { cwd: root, env: {
     PATH: processEnvironment.PATH,
     GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
@@ -89,14 +90,14 @@ function setFixture() {
     "packages/kit/changes/keep.md": "- Unconsumed change.\n",
   });
   for (const [path, source] of Object.entries(f.files)) { mkdirSync(dirname(join(f.root, path)), { recursive: true }); writeFileSync(join(f.root, path), source); }
-  git(f.root, "add", "."); git(f.root, "commit", "-qm", "set fixture"); tagRelease(f.root, "openlup-core-v0.7.0");
+  git(f.root, "add", "."); git(f.root, "commit", "-qm", "set fixture"); tagRelease(f.root, "core", "0.7.0");
   return f;
 }
 
 describe.each(["set", "package"] as const)("release:bump cadence for a %s", (form) => {
   function cadenceFixture() {
     const { root, files } = form === "set" ? setFixture() : fixture();
-    if (form === "package") tagRelease(root, "openlup-core-v0.7.0");
+    if (form === "package") tagRelease(root, "core", "0.7.0");
     const bump = (version: string, cadence: Parameters<typeof bumpSetVersion>[3]) => form === "set"
       ? bumpSet(root, version, undefined, cadence)
       : bumpRelease(root, "core", version, undefined, cadence);
@@ -132,12 +133,27 @@ describe.each(["set", "package"] as const)("release:bump cadence for a %s", (for
     expectUntouched();
   });
 
+  it("ignores annotated tags with any other message and counts the exact release message", () => {
+    const { root, bump, expectUntouched } = cadenceFixture();
+    const { tag, message } = packageReleaseTag("core", "2.0.0");
+    for (const otherMessage of ["Local checkout marker.\n", `${message}\n`]) {
+      tagRelease(root, "core", "2.0.0", minorTagDate, otherMessage);
+      expect(() => bump("2.0.0", {})).toThrow("Pass --major-approved");
+      expect(() => bump("0.8.0", { now: () => minorTagDate + day })).toThrow("wait until 2026-01-23 03:04:05 UTC");
+      expectUntouched();
+      git(root, "tag", "-d", tag);
+    }
+    tagRelease(root, "core", "2.0.0");
+    expect(() => bump("2.1.0", { now: () => minorTagDate + day })).toThrow("wait until 2026-01-23 03:04:05 UTC");
+    expectUntouched();
+  });
+
   it("uses the highest annotated version even when its commit is outside HEAD ancestry", () => {
     const { root, bump, expectUntouched } = cadenceFixture();
     git(root, "switch", "-q", "-c", "release-history");
     git(root, "commit", "-qm", "release commit", "--allow-empty");
-    tagRelease(root, "openlup-core-v0.10.0", minorTagDate + day);
-    tagRelease(root, "openlup-core-v0.9.0", minorTagDate + 2 * day);
+    tagRelease(root, "core", "0.10.0", minorTagDate + day);
+    tagRelease(root, "core", "0.9.0", minorTagDate + 2 * day);
     git(root, "switch", "-q", "-");
 
     const eligibleAt = minorTagDate + 22 * day;
@@ -163,13 +179,17 @@ describe.each(["set", "package"] as const)("release:bump cadence for a %s", (for
   it("uses the released patch's minor-series tag when the manifest has already advanced", () => {
     const { root, bump, expectUntouched } = cadenceFixture();
     git(root, "tag", "-d", "openlup-core-v0.7.0");
-    tagRelease(root, "openlup-core-v0.6.2");
+    tagRelease(root, "core", "0.6.2");
     const readTagDate = vi.fn(() => minorTagDate);
     expect(() => bump("0.7.1", { now: () => minorTagDate + day, readTagDate })).toThrow("wait until 2026-01-23 03:04:05 UTC");
-    expect(readTagDate).toHaveBeenCalledExactlyOnceWith(root, "openlup-core-v0.6.0");
+    const { tag, message } = packageReleaseTag("core", "0.6.0");
+    expect(readTagDate).toHaveBeenCalledExactlyOnceWith(root, tag, message);
     const missingDate = /Cannot read the annotated tagger date for openlup-core-v0\.6\.0\. Fetch the annotated release tags and retry\. Use --cadence-exception=security for a security defect or --cadence-exception=money for a money defect, only when the fix requires a database or public API change\. See \.github\/VERSIONING_AND_EOL\.md#release-cadence\./u;
     expect(() => bump("0.7.1", {})).toThrow(missingDate);
-    git(root, "tag", "openlup-core-v0.6.0");
+    git(root, "tag", tag);
+    expect(() => bump("0.7.1", {})).toThrow(missingDate);
+    git(root, "tag", "-d", tag);
+    tagRelease(root, "core", "0.6.0", minorTagDate, "Local checkout marker.\n");
     expect(() => bump("0.7.1", {})).toThrow(missingDate);
     expectUntouched();
   });
@@ -178,20 +198,35 @@ describe.each(["set", "package"] as const)("release:bump cadence for a %s", (for
 describe("release:bump", () => {
   it("uses the highest version among the set's publishable package tags", () => {
     const { root, files } = setFixture();
-    tagRelease(root, "openlup-outbox-v0.8.0", minorTagDate + day);
-    tagRelease(root, "openlup-kit-v0.9.0", minorTagDate + 2 * day);
+    tagRelease(root, "outbox", "0.8.0", minorTagDate + day);
+    tagRelease(root, "kit", "0.9.0", minorTagDate + 2 * day);
     const bump = () => bumpSet(root, "0.9.0", undefined, { now: () => minorTagDate + 21 * day });
-    expect(bump).toThrow("wait until 2026-01-24 03:04:05 UTC");
-    tagRelease(root, "openlup-core-v0.8.0", minorTagDate + 2 * day);
+    expect(bump).toThrow("Cannot read the annotated tagger date for openlup-core-v0.8.0");
+    tagRelease(root, "core", "0.8.0", minorTagDate + 2 * day);
     expect(bump).toThrow("wait until 2026-01-25 03:04:05 UTC");
     expect(read(root, files)).toEqual(files);
     expect(git(root, "status", "--porcelain")).toBe("");
   });
 
+  it("uses the Core minor tag's exact deadline after an Outbox-only patch", () => {
+    const { root, files } = setFixture();
+    const coreDate = Date.parse("2026-11-21T07:14:11Z");
+    const eligibleAt = coreDate + 21 * day;
+    tagRelease(root, "core", "1.3.0", coreDate);
+    tagRelease(root, "outbox", "1.3.0", coreDate - 9000);
+    const bumpEarly = () => bumpSet(root, "1.4.0", undefined, { now: () => eligibleAt - 1000 });
+    expect(bumpEarly).toThrow("wait until 2026-12-12 07:14:11 UTC");
+    tagRelease(root, "outbox", "1.3.1", coreDate + day);
+    expect(bumpEarly).toThrow("wait until 2026-12-12 07:14:11 UTC");
+    expect(read(root, files)).toEqual(files);
+    expect(git(root, "status", "--porcelain")).toBe("");
+    expect(bumpSet(root, "1.4.0", undefined, { now: () => eligibleAt })).toContain("packages/core/package.json");
+  });
+
   it("reads the named package's release tag for a per-package bump", () => {
     const { root, files } = fixture();
-    tagRelease(root, "openlup-core-v0.7.0");
-    tagRelease(root, "openlup-kit-v2.1.0");
+    tagRelease(root, "core", "0.7.0");
+    tagRelease(root, "kit", "2.1.0");
     expect(() => bumpRelease(root, "kit", "2.2.0", undefined, { now: () => minorTagDate + day })).toThrow("wait until 2026-01-23 03:04:05 UTC");
     expect(read(root, files)).toEqual(files);
   });
@@ -300,7 +335,7 @@ describe("release:bump", () => {
 
   it("refuses malformed command-line arguments with usage and runs valid package bumps", () => {
     const { root, files } = fixture();
-    tagRelease(root, "openlup-core-v0.7.0");
+    tagRelease(root, "core", "0.7.0");
     const script = resolve("scripts/packages/release-bump.ts");
     const run = (...args: string[]) => { try { return { code: 0, out: execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, ...args], { cwd: root, encoding: "utf8", stdio: "pipe" }) }; } catch (error) { return { code: (error as { status: number }).status, out: String((error as { stderr: string }).stderr) }; } };
     const usage = expect.stringContaining("usage: npm run release:bump -- --set <MAJOR.MINOR.PATCH>, or npm run release:bump -- <package directory name> <MAJOR.MINOR.PATCH>");
@@ -320,7 +355,7 @@ describe("release:bump", () => {
   it("logs removed fragments and stages their deletions and the upgrade page from the set command", () => {
     const { root } = fixture(), fragment = "packages/core/changes/a-one.md";
     mkdirSync(dirname(join(root, fragment)), { recursive: true }); writeFileSync(join(root, fragment), "- A change.\n");
-    git(root, "add", "."); git(root, "commit", "-qm", "fragment fixture"); tagRelease(root, "openlup-core-v0.7.0");
+    git(root, "add", "."); git(root, "commit", "-qm", "fragment fixture"); tagRelease(root, "core", "0.7.0");
     writeFileSync(join(root, "packages/kit/package.json"), readFileSync(join(root, "packages/kit/package.json"), "utf8") + "\n");
     const output = execFileSync(process.execPath, ["--experimental-strip-types", resolve("scripts/packages/release-bump.ts"), "--set", "0.9.0", "--cadence-exception=security"], { cwd: root, encoding: "utf8" });
     expect(output).toContain(`release:bump: removed ${fragment}`);
