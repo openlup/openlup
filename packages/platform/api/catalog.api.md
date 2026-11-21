@@ -1234,26 +1234,23 @@ export interface CatalogPublicationReadDependencies<Context> {
         ok: false;
     }>;
 }
+type CurrentPublicationRead = {
+    outcome: "unpublished";
+} | {
+    outcome: "found";
+    head: CatalogHeadRef;
+    documentRef: string;
+    observations: CatalogPublicationReceipt["changes"];
+} | (CatalogPublicationFailure & {
+    message: string;
+});
 /** Reads admitted history in one snapshot on a host-selected publication connection.
  * The host authorizes current, exact and history and supplies a verified human for receipt recovery.
  * @experimental
  */
 export declare function createPostgresCatalogPublicationReads<Context>(deps: CatalogPublicationReadDependencies<Context>): {
     reads: {
-        current(productId: string): Promise<(CatalogPublicationFailure & {
-            message: string;
-        }) | {
-            outcome: "found";
-            head: {
-                publicationId: string;
-                revision: number;
-                documentDigest: string;
-            };
-            documentRef: string;
-            observations: readonly import("./contracts/lifecycle.js").CatalogLifecycleObservation[];
-        } | {
-            outcome: "unpublished";
-        }>;
+        current(productId: string): Promise<CurrentPublicationRead>;
         history(productId: string, cursor: string | null): Promise<(CatalogPublicationFailure & {
             message: string;
         }) | {
@@ -1278,6 +1275,7 @@ export declare function createPostgresCatalogPublicationReads<Context>(deps: Cat
     }>;
     readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
 };
+export {};
 ```
 ## dist/catalog/catalogPublicationRules.d.ts
 

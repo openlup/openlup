@@ -67,6 +67,9 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
   return { head, manifest, receipt };
 }
 type Issue = NonNullable<Awaited<ReturnType<typeof verifiedIssue>>>;
+type CurrentPublicationRead = { outcome: "unpublished" }
+  | { outcome: "found"; head: CatalogHeadRef; documentRef: string; observations: CatalogPublicationReceipt["changes"] }
+  | (CatalogPublicationFailure & { message: string });
 
 async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonly CatalogSkuRevisionRef[]) {
   const { rows } = await db.query(`SELECT r.id,r.sku_id,r.sku_code,r.digest,r.revision,
@@ -207,7 +210,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
   }
 
   const reads = {
-    async current(productId: string) {
+    async current(productId: string): Promise<CurrentPublicationRead> {
       try {
         requireCondition(id.safeParse(productId).success, "catalog_publication_query_invalid", "validation_issue");
         return await read(async db => {

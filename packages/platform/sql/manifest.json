@@ -1346,10 +1346,10 @@
       ],
       "objectInventorySha256": {
         "bootstrapMigrator": {
-          "withRestore": "655f1e9d8c8090b50809ab7ac62002d1d82512183c8609154676d8959691411a"
+          "withRestore": "ca4c27d73062cd9d9105bda5beacdf084a83ec624434cdd82f5c69aed66c1cc4"
         },
         "separateMigrator": {
-          "withRestore": "73065f952461d0bfb4a6587660c1d25c42605efa912709d1b608904857f5988c"
+          "withRestore": "2e482f1401c49ef07376989dbdbce566dc2ab040f9301eaa4eaa5ef09ca6aaae"
         }
       }
     },
