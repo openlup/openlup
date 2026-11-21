@@ -297,6 +297,19 @@ Search terms include billing documents, adjustments.
 
 Show offline: `show invoicing.partialInvoiceCorrections --json`.
 
+## market.fiscalProfile
+
+Set the fiscal country, tax category, VAT rate in basis points, and legal basis via COMMERCE_FISCAL_COUNTRY, COMMERCE_FISCAL_CATEGORY, COMMERCE_FISCAL_VAT_RATE_BPS, and COMMERCE_FISCAL_LEGAL_BASIS.
+Search terms include fiscal jurisdiction, tax category, VAT rate, basis points, statutory citation, inclusive VAT.
+
+- Owner **commerce** · kind **code** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The market-packs reader leaves fallback fiscal facts to the caller. Each override can change independently, and the fiscal country is independent of the settlement region.
+- When absent, readFiscalProfile uses the corresponding caller-supplied value for each unset or blank environment variable after trimming. The resolved country must be two uppercase ASCII letters. A configured VAT rate must be one to five ASCII digits from 0 through 10000. Invalid country or rate values throw InvalidFiscalProfileError. Category and legal basis are free text.
+
+Show offline: `show market.fiscalProfile --json`.
+
 ## market.settlementProfile
 
 Set the store's settlement currency and region via COMMERCE_SETTLEMENT_CURRENCY and COMMERCE_SETTLEMENT_REGION alongside their mandatory public.commerce_settings mirror (settlement currency, settlement region, market profile).

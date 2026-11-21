@@ -662,6 +662,7 @@ it("checks every packaged schema against its default and valid examples", async 
     "communications.terminalPayloadRetentionDays",
     "inventory.offerLowStockThreshold",
     key,
+    "market.fiscalProfile",
     "market.settlementProfile",
     "shipping_flat_minor",
     "subscription_minimum_base_units",
@@ -881,9 +882,10 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // domain-guide change.reference links for all 47 cap and invariant entries,
   // "Default: none (see behavior below)" for null fallbacks (K6),
   // Stage 4 Wave 4B packaged callback and single-row installed entries,
-  // and Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5).
+  // Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5),
+  // and the market fiscal profile descriptor.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("6ea42484341f94df44d723a389fd7de2660f88b6e789f186435f305b00ff8550");
+    .toBe("1ffe1321836d72a393dedbe850e4fd850ae36075556eb787fcd5547ec45603df");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {

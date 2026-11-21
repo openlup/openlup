@@ -29,6 +29,7 @@ it("represents every domain data key and executable descriptor in the catalogue"
     "checkout.resumeWindowMinutes",
     "communications.terminalPayloadRetentionDays",
     "inventory.offerLowStockThreshold",
+    "market.fiscalProfile",
     "market.settlementProfile",
   ]);
   expect(entries.find(({ key }) => key === "savedAddressValidation")).toMatchObject({
