@@ -18,7 +18,7 @@
     ],
     [
       1,
-      "commerce_setting_read_unavailable\nA connected read requires an accessible, valid settings row or confirmed absence.\nPass --app <module> that supplies a reader for this setting.\nCheck the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\nnpm --silent run settings -- show <key> --database-url <read-capable-url> --json\n"
+      "commerce_setting_read_unavailable\nA connected read requires an application settings reader for this key.\nPass --app <module> that supplies a reader for this setting.\nPass --app <module> with a reader for this key, or omit --database-url for offline discovery.\nnpm --silent run settings -- show <key> --json\n"
     ],
     [
       0,
@@ -26,7 +26,7 @@
     ],
     [
       1,
-      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"key\"],\"rule\":\"A connected read requires an accessible, valid settings row or confirmed absence.\",\"hint\":\"Pass --app <module> that supplies a reader for this setting.\",\"remediation\":{\"retry\":true,\"action\":\"Check the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\",\"command\":\"npm --silent run settings -- show <key> --database-url <read-capable-url> --json\"}}}\n"
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"key\"],\"rule\":\"A connected read requires an application settings reader for this key.\",\"hint\":\"Pass --app <module> that supplies a reader for this setting.\",\"remediation\":{\"retry\":true,\"action\":\"Pass --app <module> with a reader for this key, or omit --database-url for offline discovery.\",\"command\":\"npm --silent run settings -- show <key> --json\"}}}\n"
     ],
     [
       0,
@@ -34,11 +34,11 @@
     ],
     [
       1,
-      "commerce_setting_read_unavailable\nA connected read requires an accessible, valid settings row or confirmed absence.\nNo connected reader exists for this key. Omit --database-url for offline discovery.\nCheck the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\nnpm --silent run settings -- show <key> --database-url <read-capable-url> --json\n"
+      "commerce_setting_read_unavailable\nNo connected reader is registered for this setting key.\nNo connected reader exists for this key. Omit --database-url for offline discovery.\nOmit --database-url to inspect this setting offline.\nnpm --silent run settings -- show <key> --json\n"
     ],
     [
       1,
-      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"key\"],\"rule\":\"A connected read requires an accessible, valid settings row or confirmed absence.\",\"hint\":\"No connected reader exists for this key. Omit --database-url for offline discovery.\",\"remediation\":{\"retry\":true,\"action\":\"Check the connection and SELECT access, then repeat the connected read. Omit the URL to use offline discovery.\",\"command\":\"npm --silent run settings -- show <key> --database-url <read-capable-url> --json\"}}}\n"
+      "{\"schemaVersion\":1,\"refusal\":{\"code\":\"commerce_setting_read_unavailable\",\"path\":[\"key\"],\"rule\":\"No connected reader is registered for this setting key.\",\"hint\":\"No connected reader exists for this key. Omit --database-url for offline discovery.\",\"remediation\":{\"retry\":false,\"action\":\"Omit --database-url to inspect this setting offline.\",\"command\":\"npm --silent run settings -- show <key> --json\"}}}\n"
     ],
     [
       1,

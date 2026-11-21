@@ -55,9 +55,17 @@ export async function callSettingsTool(tool: Tool, args: ToolArguments, context:
   for (const sku of args.skus ?? []) argv.push(`--sku=${sku}`);
   const key = args.key ?? args.keyOrCode;
   if (key !== undefined) argv.push("--", key);
+  const stdin = args.value !== undefined ? JSON.stringify(args.value) : "";
   let line = "";
-  const exit = await runSettingsCommand(argv, { write: text => { line += text; },
-    readStdin: async () => JSON.stringify(args.value) }, host);
+  let exit: number;
+  if (host?.runTool) {
+    const result = await host.runTool(argv, stdin);
+    exit = result.exit;
+    line = result.stdout;
+  } else {
+    exit = await runSettingsCommand(argv, { write: text => { line += text; },
+      readStdin: async () => stdin }, host);
+  }
   try {
     const document: unknown = JSON.parse(line);
     if (output.safeParse(document).success) return {

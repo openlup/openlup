@@ -233,10 +233,21 @@ describe("settings goal search", () => {
   });
 
   it("limits partial matches to ten and preserves catalogue order for ties", () => {
-    const full = catalogue.listResult.parse(listSettings({ goal: "a" })).entries;
+    const fullResult = catalogue.listResult.parse(listSettings({ goal: "a" }));
+    const full = fullResult.entries;
     expect(full.length).toBeGreaterThan(10);
-    const partial = catalogue.listResult.parse(listSettings({ goal: "a qzxunique" })).entries;
-    expect(partial).toEqual(full.slice(0, 10));
+    expect("partialMatch" in fullResult).toBe(false);
+    const partialResult = catalogue.listResult.parse(listSettings({ goal: "a qzxunique" }));
+    expect(partialResult.partialMatch).toBe(true);
+    expect(partialResult.entries).toEqual(full.slice(0, 10));
+    expect("partialMatch" in catalogue.listResult.parse(listSettings({ goal: "qzxunique" }))).toBe(false);
+    expect("partialMatch" in catalogue.listResult.parse(listSettings({}))).toBe(false);
+  });
+
+  it("includes checkout search terms for checkout settings", () => {
+    expect(catalogue.searchTerms.checkout).toContain("cart");
+    const { entries } = catalogue.listResult.parse(listSettings({ goal: "basket" }));
+    expect(entries.map(entry => entry.key)).toContain("checkout_recovery_reminders");
   });
 });
 

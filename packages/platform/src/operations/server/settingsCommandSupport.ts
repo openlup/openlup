@@ -51,7 +51,7 @@ const fileSchema = z.discriminatedUnion("state", [
 ]);
 const validationSchema = z.union([
   z.strictObject({ state: z.enum(["valid", "not-validated"]) }),
-  z.strictObject({ state: z.literal("invalid"), paths: z.array(z.array(z.string())) }),
+  z.strictObject({ state: z.literal("invalid"), paths: z.array(z.array(z.string())), messages: z.array(z.string()).optional() }),
 ]);
 const appValidationSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("passed") }),

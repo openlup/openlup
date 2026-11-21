@@ -269,6 +269,22 @@ it.each([
   expect(output).toBe(expected);
 });
 
+it("signals partialMatch only on partial goal matches in list text and JSON", async () => {
+  const partialJson = await run(["list", "--goal", "renewal qzxunique", "--json"]);
+  expect(partialJson.exit).toBe(0);
+  expect(JSON.parse(partialJson.output)).toMatchObject({ schemaVersion: 1, partialMatch: true });
+  const partialText = await run(["list", "--goal", "renewal qzxunique"]);
+  expect(partialText.exit).toBe(0);
+  expect(partialText.output.startsWith("Partial matches (not all goal words matched):\n")).toBe(true);
+
+  const exactJson = await run(["list", "--goal", "renewal", "--json"]);
+  expect(exactJson.exit).toBe(0);
+  expect(JSON.parse(exactJson.output)).not.toHaveProperty("partialMatch");
+  const exactText = await run(["list", "--goal", "renewal"]);
+  expect(exactText.exit).toBe(0);
+  expect(exactText.output).not.toContain("Partial matches");
+});
+
 it.each([
   ["list result", ["list", "--goal", "inventory buffer"], "inventory_renewal_protection (installed, preview)"],
   ["compact list reason", ["list", "--goal", "shipping.addressRegions"],
@@ -295,9 +311,16 @@ it.each([
   const bind = vi.fn(async () => ({ readers }));
   const { exit, output } = await run(["show", setting, "--database-url", url, "--json", ...(app ? ["--app", app] : [])], { host: { bind } });
   expect(exit).toBe(expectedExit);
-  if (hint) expect(JSON.parse(output)).toMatchObject({
-    refusal: { code: "commerce_setting_read_unavailable", path: ["key"], hint },
-  });
+  if (hint) {
+    const parsed = JSON.parse(output);
+    expect(parsed).toMatchObject({
+      refusal: { code: "commerce_setting_read_unavailable", path: ["key"], hint },
+    });
+    expect(parsed.refusal.rule).not.toContain("SELECT");
+    expect(parsed.refusal.remediation.action).not.toContain("SELECT");
+    expect(parsed.refusal.remediation.retry).toBe(app === undefined);
+    expect(parsed.refusal.remediation.command).toBe("npm --silent run settings -- show <key> --json");
+  }
   else expect(output).toBe(document(await showSetting({ key: setting }, readers)));
   // A connected request only needs a binding for a known installed key.
   expect(bind).toHaveBeenCalledTimes(setting === "savedAddressValidation" || setting === "unknown" ? 0 : 1);
@@ -464,6 +487,30 @@ it.each([[["--help"]], [["preview", "--help"]]] as const)("labels settings %j ex
   expect(output).toMatch(/0 completed.*1 refused.*64 invalid syntax or input.*74 operation unavailable/u);
 });
 
+it("advertises check in top-level help and returns dedicated help for every subcommand", async () => {
+  const top = await run(["--help"]);
+  expect(top.exit).toBe(0);
+  expect(top.output).toContain("check --app <module>");
+
+  for (const [argv, expectedFirstLine] of [
+    [["list", "--help"], "openlup settings (experimental) list "],
+    [["show", "--help"], "openlup settings (experimental) show "],
+    [["preview", "--help"], "openlup settings (experimental) preview "],
+    [["explain", "--help"], "openlup settings (experimental) explain "],
+    [["check", "--help"], "openlup settings check --app <module>"],
+    [["mcp", "--help"], "openlup settings (experimental) mcp "],
+    [["--help", "mcp"], "openlup settings (experimental) mcp "],
+  ] as const) {
+    const textHelp = await run([...argv]);
+    expect(textHelp.exit, argv.join(" ")).toBe(0);
+    expect(textHelp.output.split("\n")[0], argv.join(" ")).toContain(expectedFirstLine);
+
+    const jsonHelp = await run([...argv, "--json"]);
+    expect(jsonHelp.exit, argv.join(" ")).toBe(0);
+    expect(JSON.parse(jsonHelp.output)).toEqual({ schemaVersion: 1, help: textHelp.output.trimEnd() });
+  }
+});
+
 it("shows versioned JSON help before checking required arguments", async () => {
   const bind = vi.fn();
   const { exit, output } = await run(["--json", "--help", "preview"], { host: { bind } });
@@ -572,11 +619,20 @@ it.each([
   ['{"revision":"local","renewalProtectionDays":14,"__proto__":{"custom":true}}', []],
   ['{"revision":"local","renewalProtectionDays":{"__proto__":{"custom":true}}}', ["renewalProtectionDays"]],
 ] as const)("validates and emits the original value %s", async (raw, path) => {
-  const { exit, output } = await run(checkArgs, { host: checks(async () => ({
+  const host = checks(async () => ({
     file: { ...minimumFile, entries: { [key]: { value: JSON.parse(raw) } } },
-  })) });
+  }));
+  const { exit, output } = await run(checkArgs, { host });
   expect(exit).toBe(1);
-  expect(output).toContain(`"file":{"state":"present","value":${raw}},"validation":{"state":"invalid","paths":${JSON.stringify([path])}}`);
+  expect(output).toContain(`"file":{"state":"present","value":${raw}}`);
+  const row = JSON.parse(output).rows.find((item: { key: string }) => item.key === key);
+  expect(row.validation).toEqual({ state: "invalid", paths: [path], messages: [expect.any(String)] });
+  expect(row.validation.messages[0].length).toBeGreaterThan(0);
+  const textCheck = await run(checkArgs.filter(arg => arg !== "--json"), { host });
+  expect(textCheck.exit).toBe(1);
+  expect(textCheck.output).toContain(
+    `${key}: file present, schema invalid at ${path.join(".") || "<value>"}: ${row.validation.messages[0]}`,
+  );
 });
 
 it.each(["list", "check"])("warns once about unmatched value-only keys in %s without reading them", async command => {
@@ -685,6 +741,43 @@ it("keeps the unknown refusal for an application key without --app", async () =>
 });
 
 it.each([
+  ["nonfinite proposal", ["--value", "1e999"], ["proposed"]],
+  ["invalid as-of instant", ["--value", "{}", "--as-of", "not-a-date"], ["asOf"]],
+  ["invalid database-url", ["--value", "{}", "--database-url", "http://bad"], ["database-url"]],
+] as const)("validates preview %s before refusing an application key as unsupported", async (_, flags, path) => {
+  const loadCheck = vi.fn(async () => appFixture());
+  const host = checks(loadCheck);
+  const { exit, output } = await run(["preview", feeKey, ...flags, ...appArgs, "--json"], { host });
+  expect(exit).toBe(64);
+  expect(JSON.parse(output)).toMatchObject({
+    schemaVersion: 1,
+    refusal: { code: "commerce_setting_preview_input_invalid", path },
+  });
+  expect(loadCheck).not.toHaveBeenCalled();
+  expect(host.bind).not.toHaveBeenCalled();
+});
+
+it("keeps P10 unknown configuration precedence over invalid asOf on an application key", async () => {
+  const loadCheck = vi.fn(async () => appFixture());
+  const close = vi.fn(async () => {});
+  const host = {
+    loadCheck,
+    bind: vi.fn(async () => ({ configurationIds: ["west"], close })),
+  };
+  const { exit, output } = await run(
+    ["preview", feeKey, "--value", "{}", "--as-of", "not-a-date", ...appArgs, "--configuration", "missing", "--json"],
+    { host },
+  );
+  expect(exit).toBe(64);
+  expect(JSON.parse(output)).toMatchObject({
+    schemaVersion: 1,
+    refusal: { code: "commerce_setting_preview_configuration_unknown", path: ["configuration"] },
+  });
+  expect(loadCheck).not.toHaveBeenCalled();
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it.each([
   ["checkout_recovery_reminders", "commerce_setting_preview_unsupported"],
   [key, "commerce_setting_preview_connection_required"],
 ] as const)("keeps the packaged %s preview refusal without loading the app", async (packagedKey, code) => {
@@ -752,6 +845,16 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
           projected = projected.split(/(?=^[^\s])/mu)
             .filter(line => !line.startsWith(feeKey + " ") && !line.startsWith(giftKey + " ")).join("");
         }
+      } else if (list && load === loadBroken) {
+        if (json) {
+          const { appBindingWarning, ...rest } = JSON.parse(projected);
+          expect(appBindingWarning).toBe("rejected edit");
+          projected = document(rest);
+        } else {
+          const prefix = "Warning: application settings unavailable — rejected edit\n";
+          expect(projected.startsWith(prefix)).toBe(true);
+          projected = projected.slice(prefix.length);
+        }
       }
       expect(projected, argv.join(" ")).toBe(output);
       expect(app.warnings).toEqual(list && load === loadBroken ? ["Settings app: rejected edit\n"] : []);
@@ -759,10 +862,11 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   }
   // N3a bytes with the six starter keys removed, the callback guide reference,
   // the unknown-key guidance, the text hint for an empty list, the clarified
-  // six-reason vocabulary description for commerce.manualHoldReasons, and
-  // domain-guide change.reference links for all 47 cap and invariant entries.
+  // six-reason vocabulary description for commerce.manualHoldReasons,
+  // domain-guide change.reference links for all 47 cap and invariant entries,
+  // and "Default: none (see behavior below)" for null fallbacks (K6).
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("2cef2946b7f649f0b811e348803df7d53a71107dad1d83099b5ab881af463cbe");
+    .toBe("54cb8428fb39f94782ca71a39865cb634ba9c760ebf71dcbc65559d4633468a2");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {
@@ -827,7 +931,7 @@ it.each([["150", "valid"], ["151", "invalid"]] as const)("checks the original fe
   expect(rows.filter((row: { key: string }) => !row.key.startsWith("gift."))).toEqual(packagedRows);
   expect(rows.find((row: { key: string }) => row.key === feeKey)).toEqual({
     key: feeKey, file: { state: "present", location: { file: giftPath, symbol: feeKey }, value },
-    validation: state === "valid" ? { state } : { state, paths: [[]] },
+    validation: state === "valid" ? { state } : { state, paths: [[]], messages: ["Invalid input"] },
     effect: feeEffect, takesEffect: `${giftPath} ${feeKey}`, kind: "code",
   });
   expect(rows.find((row: { key: string }) => row.key === giftKey).validation).toEqual({ state: "not-validated" });
@@ -956,7 +1060,10 @@ it.each([
   }
   const app = await run(["list", ...appArgs, "--json"], { host });
   const baseline = await run(["list", "--json"]);
-  expect({ exit: app.exit, output: app.output }).toEqual({ exit: baseline.exit, output: baseline.output });
+  expect({ exit: app.exit, output: app.output }).toEqual({
+    exit: baseline.exit,
+    output: document({ ...JSON.parse(baseline.output), appBindingWarning: hint }),
+  });
   expect(app.warnings).toEqual([`Settings app: ${hint}\n`]);
 });
 
@@ -1172,4 +1279,29 @@ it.each([
     { jsonrpc: "2.0", id: 2, result: {} },
   ]);
   expect(bind).not.toHaveBeenCalled();
+});
+
+it("delegates MCP tool calls to host.runTool when supplied", async () => {
+  const input = (async function* () {
+    yield Buffer.from('{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"settings_list","arguments":{"goal":"renewal"}}}\n');
+    yield Buffer.from('{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"settings_preview","arguments":{"key":"inventory_renewal_protection","value":{"revision":"x"}}}}\n');
+  })();
+  const write = vi.fn<(line: string) => void>();
+  const delegatedList = document(listSettings({ goal: "renewal" }));
+  const delegatedRefusal = document(refuseSettingsPreview("commerce_setting_preview_connection_required"));
+  const runTool = vi.fn(async (argv: readonly string[], _stdin: string) => (
+    argv[0] === "list"
+      ? { exit: 0, stdout: delegatedList }
+      : { exit: 1, stdout: delegatedRefusal }
+  ));
+  expect(await runSettingsCommand(["mcp", "--app=./app.ts"], { write, input, readStdin: async () => "" }, {
+    bind: vi.fn(), previewResultSchema: renewalStockProtectionPreviewResult, runTool,
+  })).toBe(0);
+  expect(runTool).toHaveBeenNthCalledWith(1, ["list", "--json", "--app=./app.ts", "--goal=renewal"], "");
+  expect(runTool).toHaveBeenNthCalledWith(2, ["preview", "--json", "--app=./app.ts", "--value=-", "--", "inventory_renewal_protection"], '{"revision":"x"}');
+  const replies = write.mock.calls.map(([line]) => JSON.parse(line));
+  expect(replies).toEqual([
+    { jsonrpc: "2.0", id: 1, result: { isError: false, structuredContent: JSON.parse(delegatedList), content: [{ type: "text", text: delegatedList.trimEnd() }] } },
+    { jsonrpc: "2.0", id: 2, result: { isError: true, structuredContent: JSON.parse(delegatedRefusal), content: [{ type: "text", text: delegatedRefusal.trimEnd() }] } },
+  ]);
 });
