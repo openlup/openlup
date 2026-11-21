@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE } from "./platform-migration-manifest.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
@@ -75,8 +75,18 @@ END; $$;
 `;
 const catalogueReadPredecessors = ["20261124120000_catalog_publication_reads.sql", "20261124140000_catalog_publication_readiness.sql"]
   .map(file => `db/platform/migrations/${file}`);
+const platformMigrationDirectory = dirname(PLATFORM_BASELINE_FILE);
+const latestPlatformMigrationTimestamp = [
+  ...readdirSync(platformMigrationDirectory),
+  ...production.nativeStoreForwardClass!.slots.map(slot => basename(slot.path)),
+].flatMap(file => /^(?:q2_)?(\d{14})_.*\.sql$/u.exec(file)?.[1] ?? []).sort().at(-1)!;
+const latestPlatformMigrationIso = latestPlatformMigrationTimestamp.replace(
+  /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/u, "$1-$2-$3T$4:$5:$6Z",
+);
+const nextNativeFixtureTimestamp = new Date(Date.parse(latestPlatformMigrationIso) + 1000)
+  .toISOString().slice(0, 19).replace(/\D/gu, "");
 const catalogueReadSlot: NativeStoreSlot = {
-  row: "catalogue-read-grant", path: "db/platform/migrations/20261124150000_catalogue_read_grant.sql",
+  row: "catalogue-read-grant", path: `${platformMigrationDirectory}/${nextNativeFixtureTimestamp}_catalogue_read_grant.sql`,
   replacedFunctions: [], createdFunctions: [], dataStatements: [],
   grantOnlyFunctions: catalogueReadTargets.map(signature => ({ signature, grantTo: [catalogueReadRole], revokeFrom: [] })),
 };
@@ -2370,7 +2380,7 @@ describe("SECURITY DEFINER trailing pg_temp rule", () => {
 describe("native-store replacement search_path pg_temp tightening", () => {
   it("admits a later replacement of the installed channel listing function with its compact defining header", () => {
     const value = structuredClone(production);
-    const slot = emptySlot("db/platform/migrations/20990101000000_fixture_followup.sql", "FixtureFollowup");
+    const slot = emptySlot(`${platformMigrationDirectory}/${nextNativeFixtureTimestamp}_fixture_followup.sql`, "FixtureFollowup");
     const signature = "public.channel_listing_read(uuid,uuid)";
     const priorClause = "SET search_path=pg_catalog,public";
     const searchPath = "pg_catalog, public, pg_temp";
