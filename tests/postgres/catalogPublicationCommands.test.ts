@@ -1102,6 +1102,22 @@ publicationTest("commits approval and publication with a session temporary uuid 
   } finally { await publisher.end(); }
 });
 
+publicationTest("publishes and reads a governed genesis through the restricted login", async ({ publicationUrl }) => {
+  const publisher = new Pool({ connectionString: publicationUrl });
+  try {
+    const data = authored(85), draft: CatalogDraftPayloadV4 = { ...data.payload, schemaVersion: 4 };
+    await save(data, 1, draft);
+    const commands = await prepare(data, 1, null);
+    const api = native(undefined, publisher), who = (await api.authorize(actor))!;
+    expect(await api.execute(commands.approve, who)).toMatchObject({ outcome: "committed" });
+    const result = await api.execute(commands.publish, who);
+    if (result.outcome !== "committed" || !("head" in result.receipt)) throw Error(JSON.stringify(result));
+    const reads = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(publisher, work) },
+      authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+    expect(await reads.readbackV3(result.receipt.head)).toMatchObject({ outcome: "page", schemaVersion: 3 });
+  } finally { await publisher.end(); }
+});
+
 it("refuses governed archive and the five legacy lifecycle RPCs before changing live data", async () => {
   const data = authored(83), api = native(), who = (await api.authorize(actor))!;
   const payload: CatalogDraftPayloadV4 = { ...structuredClone(data.payload), schemaVersion: 4 };

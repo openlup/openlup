@@ -77,7 +77,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
     try {
       const recorder = await owner.query(`SELECT prosecdef FROM pg_catalog.pg_proc
         WHERE oid='public.catalog_publication_record_command(jsonb)'::regprocedure`);
-      expect(recorder.rows).toEqual([{ prosecdef: profile !== "legacy" }]);
+      expect(recorder.rows).toEqual([{ prosecdef: profile === "bootstrap" || profile === "separate" }]);
       const { rows } = await owner.query<Definer>(`
         SELECT pg_catalog.format('%I.%I(%s)', n.nspname, p.proname,
                  pg_catalog.array_to_string(ARRAY(

@@ -600,22 +600,24 @@ BEGIN
  END IF;
  -- Core-S already runs this live variant at the deferred SKU event. Compare
  -- the final SKU, since a creation snapshot can precede the transaction's final facts.
- IF p_live AND body->'schemaVersion'='3'::jsonb AND NOT EXISTS (
-   SELECT 1 FROM public.catalog_publication_heads h
-   JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
-   CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') ref
-   JOIN public.catalog_sku_revisions r ON (r.product_id,r.sku_id,r.id)=(h.product_id,p_sku,(ref->>'revisionId')::uuid)
-   JOIN public.catalog_skus current_sku ON (current_sku.product_id,current_sku.id)=(r.product_id,r.sku_id)
-   WHERE h.product_id=p_product AND ref->'skuId'=to_jsonb(p_sku)
-     AND p.canonical_state::jsonb->'schemaVersion'='3'::jsonb
-     AND r.full_facts::jsonb=current_sku.publication_facts
-     AND encode(current_sku.combination_digest,'hex')=current_sku.publication_facts->>'optionDigest'
-     AND current_sku.status=current_sku.publication_facts->>'status'
-     AND to_jsonb(current_sku.sellable_standalone)=current_sku.publication_facts->'sellableStandalone'
-     AND to_jsonb(current_sku.sellable_in_subscription)=current_sku.publication_facts->'sellableInSubscription'
- ) THEN
-  RAISE EXCEPTION 'catalog_lifecycle_raw_status_fenced' USING ERRCODE='23514', CONSTRAINT='catalog_lifecycle_raw_status_fenced',
-    HINT='Use a governed catalogue publication and let its recorder issue the sealed head.';
+ IF p_live AND body->'schemaVersion'='3'::jsonb THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.catalog_publication_heads h
+    JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
+    CROSS JOIN LATERAL jsonb_array_elements(p.canonical_state::jsonb->'skus') ref
+    JOIN public.catalog_sku_revisions r ON (r.product_id,r.sku_id,r.id)=(h.product_id,p_sku,(ref->>'revisionId')::uuid)
+    JOIN public.catalog_skus current_sku ON (current_sku.product_id,current_sku.id)=(r.product_id,r.sku_id)
+    WHERE h.product_id=p_product AND ref->'skuId'=to_jsonb(p_sku)
+      AND p.canonical_state::jsonb->'schemaVersion'='3'::jsonb
+      AND r.full_facts::jsonb=current_sku.publication_facts
+      AND encode(current_sku.combination_digest,'hex')=current_sku.publication_facts->>'optionDigest'
+      AND current_sku.status=current_sku.publication_facts->>'status'
+      AND to_jsonb(current_sku.sellable_standalone)=current_sku.publication_facts->'sellableStandalone'
+      AND to_jsonb(current_sku.sellable_in_subscription)=current_sku.publication_facts->'sellableInSubscription'
+  ) THEN
+   RAISE EXCEPTION 'catalog_lifecycle_raw_status_fenced' USING ERRCODE='23514', CONSTRAINT='catalog_lifecycle_raw_status_fenced',
+     HINT='Use a governed catalogue publication and let its recorder issue the sealed head.';
+  END IF;
  END IF;
  RETURN canonical;
 EXCEPTION WHEN check_violation OR invalid_text_representation OR invalid_parameter_value OR numeric_value_out_of_range OR untranslatable_character OR statement_too_complex THEN
@@ -1383,18 +1385,18 @@ REVOKE ALL ON FUNCTION public.catalog_lifecycle_write_fence() FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_lifecycle_projection_final() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE owner_id uuid; issue public.catalog_publications; state jsonb;
+DECLARE owner_id uuid; canonical_state text; state_digest text; state jsonb;
 BEGIN
  IF NEW.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb
    AND (TG_OP='INSERT' OR OLD.publication_facts->'schemaVersion' IS DISTINCT FROM '3'::jsonb) THEN RETURN NULL; END IF;
  IF TG_OP='UPDATE' AND (OLD.status,OLD.publication_facts) IS NOT DISTINCT FROM (NEW.status,NEW.publication_facts) THEN RETURN NULL; END IF;
  owner_id := NEW.id;
  PERFORM public.catalog_publication_assert_head(owner_id,true);
- SELECT p.* INTO issue FROM public.catalog_publication_heads h
+ SELECT p.canonical_state,p.digest INTO canonical_state,state_digest FROM public.catalog_publication_heads h
  JOIN public.catalog_publications p ON (p.product_id,p.id)=(h.product_id,h.publication_id)
  WHERE h.product_id=owner_id;
  IF FOUND THEN
-  state := public.catalog_publication_manifest_text(owner_id,issue.canonical_state,issue.digest,false)::jsonb;
+  state := public.catalog_publication_manifest_text(owner_id,canonical_state,state_digest,false)::jsonb;
  END IF;
  IF state->'schemaVersion' IS DISTINCT FROM '3'::jsonb
    OR public.catalog_publication_live_matches(owner_id,state->'product',state->'skus') IS DISTINCT FROM true THEN

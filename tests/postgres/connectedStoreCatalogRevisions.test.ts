@@ -187,6 +187,7 @@ function packetWithProductProjection(row: string) {
 async function storeOpaqueProductProjection(owner: Pool, facts: string) {
   // Model a row already on disk while leaving transfer admission active.
   await transaction(owner, async db => {
+    await db.query("SET CONSTRAINTS catalog_products_lifecycle_projection_final IMMEDIATE");
     await db.query("ALTER TABLE public.catalog_products DISABLE TRIGGER catalog_products_publication_pointer_fence");
     await db.query("UPDATE public.catalog_products SET publication_facts=$2 WHERE id=$1", [products[0], facts]);
     await db.query("ALTER TABLE public.catalog_products ENABLE TRIGGER catalog_products_publication_pointer_fence");

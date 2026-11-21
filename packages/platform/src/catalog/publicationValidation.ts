@@ -1333,10 +1333,12 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         need(sku.memberships.some(row => row.admitted), "catalog_publication_activation_membership_required");
       }
       position.subject = definition.key;
-      if (operations.some(operation => operation.op === "set_product_status" && operation.status === "active"
-        || operation.op === "set_product_lifecycle" && operation.state === "active")
-        || governed && activating && (operations.some(op => op.op === "restore_product" || op.op === "restore_sku")
-          || !compiledSkus.some(sku => originalById.get(sku.id)?.sellableStandalone || originalById.get(sku.id)?.sellableInSubscription))) {
+      const activatingProduct = operations.some(op => op.op === "set_product_status" && op.status === "active");
+      const startingGovernedSales = governed && lifecycleAvailable && activating && (
+        operations.some(op => op.op === "set_product_lifecycle" && op.state === "active"
+          || op.op === "restore_product" || op.op === "restore_sku")
+        || !retainedState.skus.some(sku => sku.sellableStandalone || sku.sellableInSubscription));
+      if (activatingProduct || startingGovernedSales) {
         position.path = "product.primarySkuId";
         position.subject = primary?.code ?? definition.key;
         need(primary?.status === "active" && (primary.sellableStandalone || primary.sellableInSubscription), "catalog_publication_v3_active_primary_required");
