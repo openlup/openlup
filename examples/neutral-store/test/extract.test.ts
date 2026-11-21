@@ -88,6 +88,21 @@ const starterSettingLocations = [
   ['offer.subscriptionRoundingQuantumMinor', 'owned/store.config.ts', 'offer.subscriptionRoundingQuantumMinor'],
   ['market', 'owned/store.config.ts', 'market'],
   ['shipping.rateResolver', 'owned/quote-shipping.ts', 'createQuoteShipping'],
+  ['market.localePolicy', 'owned/market.config.ts', 'market'],
+  ['purchase.contact', 'owned/store.config.ts', 'purchase.contact'],
+  ['returns.reasons', 'owned/store.config.ts', 'returns.reasons'],
+  ['orderControls.holdReasons', 'owned/store.config.ts', 'orderControls.holdReasons'],
+  ['checkout.initialPaymentWindow', 'owned/acquisition-policy.ts', 'checkoutRecoverySchedule.initialTimeoutSeconds'],
+  ['checkout.recoveryLinkPolicy', 'owned/acquisition-policy.ts', 'checkoutLinkPolicy'],
+  ['checkout.waveWindows', 'owned/acquisition-policy.ts', 'checkoutWavePolicy'],
+  ['renewal.subscriptionCare.retention', 'owned/renewal.config.ts', 'subscriptionCare.retention'],
+  ['renewal.subscriptionCare.actions', 'owned/renewal.config.ts', 'subscriptionCare.actions'],
+  ['renewal.subscriptionCare.recovered.windowSeconds', 'owned/renewal.config.ts', 'subscriptionCare.recovered.windowSeconds'],
+  ['renewal.recovery', 'owned/renewal.config.ts', 'recovery'],
+  ['renewal.notices.localePolicy', 'owned/renewal.config.ts', 'notices'],
+  ['subscriptionEditing.sizedPreferences', 'owned/subscription-editing.ts', 'subscriptionEditing'],
+  ['quote.acquisition.graduationCadenceDays', 'owned/quote.config.ts', 'quoteConfigurations'],
+  ['pricing.minimumProductPayableMinor', 'owned/quote.config.ts', 'quoteConfigurations'],
 ] as const;
 
 test('settings check includes all new declarations and their edit locations in both configurations', async () => {

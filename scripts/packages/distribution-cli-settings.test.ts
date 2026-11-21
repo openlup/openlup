@@ -601,10 +601,15 @@ it.each(baseline.settings)("preserves starter discovery bytes for $key with only
 });
 
 const newStarterCheckKeys = [
-  "legal.returnsDays", "market", "offer.maxUnits", "offer.minUnits", "offer.shippingMinor",
-  "offer.subscriptionRoundingQuantumMinor", "purchase.attemptLimits", "purchase.tax.vatRateBps",
-  "renewal.retryBackoffHours", "renewal.subscriptionCare.notices", "renewal.subscriptionCare.pausePresets",
-  "renewal.subscriptionCare.terms", "shipping.rateResolver",
+  "checkout.initialPaymentWindow", "checkout.recoveryLinkPolicy", "checkout.waveWindows",
+  "legal.returnsDays", "market", "market.localePolicy", "offer.maxUnits", "offer.minUnits", "offer.shippingMinor",
+  "offer.subscriptionRoundingQuantumMinor", "orderControls.holdReasons", "pricing.minimumProductPayableMinor",
+  "purchase.attemptLimits", "purchase.contact", "purchase.tax.vatRateBps",
+  "quote.acquisition.graduationCadenceDays", "renewal.notices.localePolicy", "renewal.recovery",
+  "renewal.retryBackoffHours", "renewal.subscriptionCare.actions", "renewal.subscriptionCare.notices",
+  "renewal.subscriptionCare.pausePresets", "renewal.subscriptionCare.recovered.windowSeconds",
+  "renewal.subscriptionCare.retention", "renewal.subscriptionCare.terms", "returns.reasons",
+  "shipping.rateResolver", "subscriptionEditing.sizedPreferences",
 ];
 
 it.each(baseline.checks)("reports exactly the baseline and new starter check rows for $args", captured => {

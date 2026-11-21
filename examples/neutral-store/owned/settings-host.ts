@@ -2,7 +2,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { readCheckoutRecoveryReminderObservation } from '@openlup/platform/commerce/server';
 import type { SettingsAppBindings, SettingsFileEntry } from '@openlup/platform/operations/server';
-import { checkoutWavePolicy } from './acquisition-policy.ts';
+import { checkoutLinkPolicy, checkoutRecoverySchedule, checkoutWavePolicy, sandboxRecoveryPolicy } from './acquisition-policy.ts';
 import { assertConfig } from '../shared/config.ts';
 import { configurations, selectConfiguration } from './store.config.ts';
 
@@ -368,6 +368,320 @@ export function createSettingsBindings({ db, configuration }: {
         effect: {
           appliesTo: "Checkout quote composition calls the deployed shipping resolver factory when creating a new quote.",
           frozenOn: ["Saved checkout quotes keep their shipping amounts and terms."],
+          impact: 'money',
+        },
+      },
+    },
+    'market.localePolicy': {
+      value: {
+        locales: config.market.locales,
+        defaultLocale: config.market.defaultLocale,
+      },
+      location: { file: 'owned/market.config.ts', symbol: 'market' },
+      descriptor: {
+        domain: 'commerce',
+        goal: "Choose supported storefront and notice languages and the default locale (locale policy, languages, i18n, default language).",
+        schema: z.strictObject({
+          locales: z.array(z.enum(['en', 'pl'])).min(1).max(2),
+          defaultLocale: z.enum(['en', 'pl']),
+        }).describe(
+          "assertLocaleMarket checks a nonempty list of distinct supported platform locales (en, pl) and requires defaultLocale to be included in locales. assertStarterCopy checks that every configured locale has nonblank copy.",
+        ),
+        effect: {
+          appliesTo: "Storefront routing, copy validation, and locale fallback use the deployed language list and default locale for new requests and renders.",
+          frozenOn: ["Recorded customer locales and saved notice or evidence records retain the locale captured when they were written."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'purchase.contact': {
+      value: config.purchase?.contact,
+      location: { file, symbol: 'purchase.contact' },
+      descriptor: {
+        domain: 'commerce',
+        goal: "Set the default acquisition source and lifecycle stage assigned to newly created guest contacts (guest contact, lead stage, CRM contact defaults).",
+        schema: z.strictObject({
+          acquisitionSource: z.string().regex(/\S/).max(100),
+          lifecycleStage: z.enum(['lead', 'customer', 'inactive']),
+        }).describe(
+          "assertConfig checks a nonblank acquisitionSource of at most 100 characters and lifecycleStage from lead, customer, or inactive.",
+        ),
+        effect: {
+          appliesTo: "Checkout uses the deployed acquisitionSource and lifecycleStage when creating a new guest contact record.",
+          frozenOn: ["Existing matched contacts keep their recorded acquisitionSource and lifecycleStage."],
+          impact: 'operations',
+        },
+      },
+    },
+    'returns.reasons': {
+      value: config.returns?.reasons?.map(reason => reason.code),
+      location: { file, symbol: 'returns.reasons' },
+      descriptor: {
+        domain: 'commerce',
+        goal: "Choose the subset of return reason codes offered to customers (return reasons, RMA reasons, withdrawal reasons).",
+        schema: z.array(z.enum(['damaged', 'wrong_item', 'not_as_described', 'pet_refused', 'changed_mind', 'other'])).min(1).max(6).describe(
+          "assertConfig checks a nonempty list of distinct nonblank return reason codes. Native SQL return creation enforces the fixed six-code vocabulary (damaged, wrong_item, not_as_described, pet_refused, changed_mind, other); see commerce.returnReasons.",
+        ),
+        effect: {
+          appliesTo: "The storefront returns form and starter return request schema admit only the deployed subset of return reason codes for new return requests.",
+          frozenOn: ["Submitted return requests keep the reason code recorded at creation."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'orderControls.holdReasons': {
+      value: config.orderControls?.holdReasons?.map(reason => reason.code),
+      location: { file, symbol: 'orderControls.holdReasons' },
+      descriptor: {
+        domain: 'commerce',
+        goal: "Choose the subset of manual order hold reason codes offered to operators (order holds, hold reasons, fulfillment hold).",
+        schema: z.array(z.enum(['payment_not_succeeded', 'inventory_review', 'risk_review', 'address_review', 'fulfillment_exception', 'manual_support'])).min(1).max(6).describe(
+          "assertConfig checks a nonempty list of distinct nonblank hold reason codes from the fixed six-code native vocabulary; see commerce.manualHoldReasons.",
+        ),
+        effect: {
+          appliesTo: "The operator order-control UI and starter hold admission accept only the deployed subset of the six fixed hold reasons (see commerce.manualHoldReasons) when placing new holds.",
+          frozenOn: ["Recorded order holds keep the reason code captured when they were placed."],
+          impact: 'operations',
+        },
+      },
+    },
+    'checkout.initialPaymentWindow': {
+      value: checkoutRecoverySchedule.initialTimeoutSeconds,
+      location: { file: 'owned/acquisition-policy.ts', symbol: 'checkoutRecoverySchedule.initialTimeoutSeconds' },
+      descriptor: {
+        domain: 'checkout',
+        goal: "Set how many seconds an unpaid checkout stays open before the recovery scheduler can expire or cancel it (checkout timeout, initial payment window, unpaid checkout expiry).",
+        schema: z.number().int().min(1).max(2147483647).describe(
+          "Positive 32-bit integer in seconds governing when the starter's checkout recovery runner treats an unpaid checkout as timed out.",
+        ),
+        effect: {
+          appliesTo: "On its next run, the starter's checkout recovery scheduler applies the deployed timeout threshold to open unpaid checkouts when deciding whether they can be expired.",
+          frozenOn: ["Already expired or completed checkouts keep their recorded terminal state."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'checkout.recoveryLinkPolicy': {
+      value: {
+        operatorLifetimeMs: checkoutLinkPolicy.operatorLifetimeMs,
+        recoveryWindowMs: checkoutLinkPolicy.recoveryWindowMs,
+        buyerLifetimeMs: sandboxRecoveryPolicy.buyerLifetimeMs,
+      },
+      location: { file: 'owned/acquisition-policy.ts', symbol: 'checkoutLinkPolicy' },
+      descriptor: {
+        domain: 'checkout',
+        goal: "Set the lifetime of operator and buyer checkout recovery links and the overall recovery window in milliseconds (recovery link expiry, continuation link TTL, payment link lifetime).",
+        schema: z.strictObject({
+          operatorLifetimeMs: z.number().int().min(1),
+          recoveryWindowMs: z.number().int().min(1),
+          buyerLifetimeMs: z.number().int().min(1),
+        }).describe(
+          "Positive safe integers in milliseconds: checkoutLinkPolicy supplies operatorLifetimeMs and recoveryWindowMs, while sandboxRecoveryPolicy.buyerLifetimeMs supplies the buyer link lifetime.",
+        ),
+        effect: {
+          appliesTo: "New operator recovery links and expired-checkout recovery checks read checkoutLinkPolicy (operatorLifetimeMs, recoveryWindowMs), while new buyer continuation links read sandboxRecoveryPolicy.buyerLifetimeMs.",
+          frozenOn: ["Issued operator and buyer recovery links keep the expiry timestamp recorded when they were created."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'checkout.waveWindows': {
+      value: {
+        checkoutSeconds: checkoutWavePolicy.checkoutSeconds,
+        recoverySeconds: checkoutWavePolicy.recoverySeconds,
+        activitySeconds: checkoutWavePolicy.activitySeconds,
+        firstOffsetSeconds: checkoutWavePolicy.firstOffsetSeconds,
+        finalOffsetSeconds: checkoutWavePolicy.finalOffsetSeconds,
+      },
+      location: { file: 'owned/acquisition-policy.ts', symbol: 'checkoutWavePolicy' },
+      descriptor: {
+        domain: 'checkout',
+        goal: "Set the checkout recovery wave windows, activity debounce, and fallback reminder offsets in seconds (recovery wave policy, abandoned checkout window, reminder fallback offsets).",
+        schema: z.strictObject({
+          checkoutSeconds: z.number().int().min(1).max(2147483647),
+          recoverySeconds: z.number().int().min(1).max(2147483647),
+          activitySeconds: z.number().int().min(1).max(2147483647),
+          firstOffsetSeconds: z.number().int().min(1).max(2147483647),
+          finalOffsetSeconds: z.number().int().min(1).max(2147483647),
+        }).describe(
+          "Whole seconds from 1 through 2147483647; firstOffsetSeconds must stay below finalOffsetSeconds, which must stay below checkoutSeconds.",
+        ),
+        effect: {
+          appliesTo: "Checkout recovery wave scheduling uses checkoutSeconds, recoverySeconds and activitySeconds for new episodes. firstOffsetSeconds and finalOffsetSeconds act only as a fallback when no installed checkout_recovery_reminders row is present in the database.",
+          frozenOn: ["Enqueued reminder events and pinned recovery episodes keep the schedule and timing captured when they were created."],
+          impact: 'operations',
+        },
+      },
+    },
+    'renewal.subscriptionCare.retention': {
+      value: config.renewal?.subscriptionCare ? {
+        reasons: config.renewal.subscriptionCare.retentionReasons,
+        ...config.renewal.subscriptionCare.retention,
+        rescheduleOfferDays: config.renewal.subscriptionCare.rescheduleOfferDays,
+      } : undefined,
+      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.retention' },
+      descriptor: {
+        domain: 'subscriptions',
+        goal: "Configure cancellation reasons, save-offer mapping per reason, fallback offer, preselected pause preset, and reschedule offer days (retention flow, save offer, cancel reasons).",
+        schema: z.strictObject({
+          reasons: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,119}$/)).min(1),
+          offerByReason: z.record(z.string().regex(/^[a-z][a-z0-9_]{0,119}$/), z.enum(['skip', 'reschedule', 'pause'])),
+          defaultOffer: z.enum(['skip', 'reschedule', 'pause']),
+          pausePreset: z.enum(['2_weeks', '1_month', 'indefinite']).optional(),
+          rescheduleOfferDays: z.number().int().min(1).max(2147483647),
+        }).describe(
+          "assertSubscriptionCare checks nonempty snake_case retention reasons and rescheduleOfferDays from 1 through 2147483647. assertRetention requires every offerByReason key to appear in reasons and any pausePreset to be allowed by renewal.subscriptionCare.pausePresets.",
+        ),
+        effect: {
+          appliesTo: "The subscriber cancellation flow presents the deployed reasons, per-reason and fallback save offers, preselected pause preset, and reschedule target offset when a customer starts a new cancellation.",
+          frozenOn: ["Completed skips, pauses, reschedules, and cancellations keep the actions already recorded."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'renewal.subscriptionCare.actions': {
+      value: config.renewal?.subscriptionCare?.actions,
+      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.actions' },
+      descriptor: {
+        domain: 'subscriptions',
+        goal: "Choose which self-service subscription actions are admitted for each subscription status and payment-blocker state (subscriber actions, self-service commands, lifecycle actions).",
+        schema: (() => {
+          const actionList = z.array(z.enum(['skip', 'slide', 'pause', 'resume', 'cancel', 'order_now', 'reactivate'])).max(7);
+          return z.strictObject({
+            active: actionList,
+            paused: actionList,
+            cancelled: actionList,
+            whilePaymentBlocked: actionList,
+            whilePaymentExpired: actionList,
+          });
+        })().describe(
+          "assertSubscriptionCare checks distinct action names from skip, slide, pause, resume, cancel, order_now, and reactivate for active, paused, cancelled, whilePaymentBlocked, and whilePaymentExpired.",
+        ),
+        effect: {
+          appliesTo: "The account portal and starter command admission check the deployed status and payment-blocker action lists when authorizing new customer subscription commands.",
+          frozenOn: ["Completed commands replay their stored outcome without re-evaluating changed action lists."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'renewal.subscriptionCare.recovered.windowSeconds': {
+      value: config.renewal?.subscriptionCare?.recovered?.windowSeconds,
+      location: { file: 'owned/renewal.config.ts', symbol: 'subscriptionCare.recovered.windowSeconds' },
+      descriptor: {
+        domain: 'subscriptions',
+        goal: "Set the time window in seconds for sending payment-recovered confirmation notices (payment recovered window, recovery confirmation cutoff, 48h window).",
+        schema: z.number().int().min(1).max(2147483647).describe(
+          "assertSubscriptionCare checks whole seconds from 1 through 2147483647 (default 172800 seconds, or 48 hours).",
+        ),
+        effect: {
+          appliesTo: "On its next run, the subscription-care notice job evaluates pending payment-recovered confirmations against the deployed window.",
+          frozenOn: ["Already dispatched payment-recovered confirmations keep their recorded delivery state."],
+          impact: 'operations',
+        },
+      },
+    },
+    'renewal.recovery': {
+      value: config.renewal?.recovery,
+      location: { file: 'owned/renewal.config.ts', symbol: 'recovery' },
+      descriptor: {
+        domain: 'subscriptions',
+        goal: "Set the grace period and exhausted-retry link lifetime in seconds for renewal payment recovery links (payment repair link TTL, renewal recovery grace).",
+        schema: z.strictObject({
+          activeGraceSeconds: z.number().int().min(1).max(2147483647),
+          exhaustedTtlSeconds: z.number().int().min(1).max(2147483647),
+        }).describe(
+          "assertRenewalConfig checks whole seconds from 1 through 2147483647 for activeGraceSeconds and exhaustedTtlSeconds.",
+        ),
+        effect: {
+          appliesTo: "New renewal payment-recovery links compute their expiry from activeGraceSeconds while retries remain and exhaustedTtlSeconds after retries are exhausted.",
+          frozenOn: ["Issued renewal payment-recovery links keep the expiry timestamp recorded when they were created."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'renewal.notices.localePolicy': {
+      value: config.renewal?.notices ? {
+        locale: config.renewal.notices.locale,
+        countryLocales: config.renewal.notices.countryLocales ?? {},
+      } : undefined,
+      location: { file: 'owned/renewal.config.ts', symbol: 'notices' },
+      descriptor: {
+        domain: 'subscriptions',
+        goal: "Set the fallback language and country-to-locale mapping for renewal and lifecycle notices (notice language, email locale, country locale mapping).",
+        schema: z.strictObject({
+          locale: z.enum(['en', 'pl']),
+          countryLocales: z.record(z.string().regex(/^[A-Z]{2}$/), z.enum(['en', 'pl'])),
+        }).describe(
+          "assertRenewalConfig checks a supported fallback locale (en, pl) and optional two-letter uppercase country codes mapped to supported locales.",
+        ),
+        effect: {
+          appliesTo: "New renewal and subscription lifecycle notices resolve their language from countryLocales and fall back to locale when no country mapping applies.",
+          frozenOn: ["Already generated or queued notices keep the locale rendered when they were created."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'subscriptionEditing.sizedPreferences': {
+      value: config.subscriptionEditing?.sized ? {
+        preferredSize: config.subscriptionEditing.sized.preferredSize,
+        nominalSizes: config.subscriptionEditing.sized.nominalSizes,
+        portionModes: config.subscriptionEditing.sized.portionModes,
+      } : undefined,
+      location: { file: 'owned/subscription-editing.ts', symbol: 'subscriptionEditing' },
+      descriptor: {
+        domain: 'subscriptions',
+        goal: "Set preferred and nominal package sizes and portion-mode factors for sized subscription editing (sized portions, nominal sizes, portion factors).",
+        schema: (() => {
+          const portionMode = z.strictObject({
+            mode: z.string().min(1),
+            factor: z.number().gt(0),
+          });
+          return z.strictObject({
+            preferredSize: z.number().int().min(1),
+            nominalSizes: z.array(z.number().int().min(1)).min(1),
+            portionModes: z.strictObject({
+              full: portionMode,
+              reduced: portionMode,
+            }),
+          });
+        })().describe(
+          "assertEditorConfig checks positive safe integers for preferredSize and nominalSizes, distinct nonblank full and reduced mode names, and finite positive factors with full.factor greater than reduced.factor.",
+        ),
+        effect: {
+          appliesTo: "Sized subscription editor proposals and starter portion calculations use the deployed preferred size, nominal sizes, and portion-mode factors for new edit sessions.",
+          frozenOn: ["Existing subscriptions keep their saved package lines and terms until a new edit is accepted."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'quote.acquisition.graduationCadenceDays': {
+      value: config.quote?.acquisition?.graduationCadenceDays,
+      location: { file: 'owned/quote.config.ts', symbol: 'quoteConfigurations' },
+      descriptor: {
+        domain: 'pricing',
+        goal: "Set the recurring delivery cadence in days after the introductory acquisition phase (graduation cadence, post-intro cycle, starter-pack cadence).",
+        schema: z.number().int().min(1).max(3660).describe(
+          "assertQuoteConfiguration requires graduationCadenceDays to be an integer cadence admitted by subscriptionOffers.classic.days (1 through 3660).",
+        ),
+        effect: {
+          appliesTo: "New introductory acquisition quotes use the deployed graduation cadence to schedule the post-introductory recurring cycle.",
+          frozenOn: ["Saved acquisition quotes and activated subscriptions retain the graduation cadence captured at checkout."],
+          impact: 'customer-promise',
+        },
+      },
+    },
+    'pricing.minimumProductPayableMinor': {
+      value: config.quote?.acquisition?.minimumProductPayableMinor,
+      location: { file: 'owned/quote.config.ts', symbol: 'quoteConfigurations' },
+      descriptor: {
+        domain: 'pricing',
+        goal: "Set the minimum payable product amount in currency minor units after discounts (minimum product price, payable floor, discount floor).",
+        schema: z.number().int().min(1).max(2147483647).describe(
+          "assertQuoteConfiguration checks a positive whole amount in currency minor units (1 through 2147483647).",
+        ),
+        effect: {
+          appliesTo: "Starter acquisition quote installation seeds the minimum payable product floor from this value. The platform quote path reads COMMERCE_MIN_PRODUCT_PAYABLE_MINOR (defaulting to one major unit when unset), while SQL pricing functions read the database mirror row commerce_settings.min_product_payable_minor; keep the deployed value, environment variable, and database mirror aligned.",
+          frozenOn: ["Saved quotes, orders, and recorded invoice amounts keep the payable amounts already computed."],
           impact: 'money',
         },
       },
