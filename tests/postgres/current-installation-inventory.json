@@ -4,11 +4,11 @@
       "legacy": {
         "count": 170,
         "exactTailCount": 60,
-        "objectInventorySha256": "d81001f1409d3c9fef8d58633d8d04bf862ee1aa966c1e89ce0454da9107b383",
+        "objectInventorySha256": "601d75eb82262c6ff75e70713234bdd5812f32ff3741bee0fb0e967bdabf3e95",
         "tail": [
           {
-            "file": "db/platform/migrations/20261124121000_catalog_publication_readiness.sql",
-            "sha256": "e2b6d89a7deee9e4524e77a6e19c588b99b958f434bbfc854f266a1e31d5d520"
+            "file": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+            "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
           },
           {
             "file": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
@@ -691,11 +691,11 @@
       "bootstrap": {
         "count": 176,
         "exactTailCount": 61,
-        "objectInventorySha256": "599ac74c24fc827e72b793f0546c0b2771934bef9c21e1e01dbcfe3ea13a9f43",
+        "objectInventorySha256": "c72fc8d2b5bafcc0f458a0283d0e47b7eb163a1abc75b72781da0c982b17a23a",
         "tail": [
           {
-            "file": "db/platform/migrations/20261124121000_catalog_publication_readiness.sql",
-            "sha256": "e2b6d89a7deee9e4524e77a6e19c588b99b958f434bbfc854f266a1e31d5d520"
+            "file": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+            "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
           },
           {
             "file": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
@@ -1402,11 +1402,11 @@
       "separate": {
         "count": 176,
         "exactTailCount": 61,
-        "objectInventorySha256": "ae1121924db40f95fe8807df46e5c0f2fa4df7b870781c897e11132d51bd97c4",
+        "objectInventorySha256": "f03be597dc10e3fde62f07ae62558dc9ab7b1fc6e22b5060bc8a9a302ebc71fc",
         "tail": [
           {
-            "file": "db/platform/migrations/20261124121000_catalog_publication_readiness.sql",
-            "sha256": "e2b6d89a7deee9e4524e77a6e19c588b99b958f434bbfc854f266a1e31d5d520"
+            "file": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+            "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
           },
           {
             "file": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
@@ -2113,11 +2113,11 @@
       "admin-managed": {
         "count": 174,
         "exactTailCount": 60,
-        "objectInventorySha256": "eb9f7b932ca9a3e076bd0b69a2327bc2a6fa33b838d739e247060c02e1797c25",
+        "objectInventorySha256": "6a729c9aa454f90e11efe5c052b7256bf0f411385e68b1a04824e630909bc186",
         "tail": [
           {
-            "file": "db/platform/migrations/20261124121000_catalog_publication_readiness.sql",
-            "sha256": "e2b6d89a7deee9e4524e77a6e19c588b99b958f434bbfc854f266a1e31d5d520"
+            "file": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+            "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
           },
           {
             "file": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
@@ -2816,11 +2816,11 @@
       "admin-operator": {
         "count": 174,
         "exactTailCount": 60,
-        "objectInventorySha256": "f20db7769a3169b938f5d7381d015129595a44250814f0f5e98d30178ea721ca",
+        "objectInventorySha256": "c4daea4af7792829f9bd33c9d700e21ded71b1a7ecb1346c571365666836302b",
         "tail": [
           {
-            "file": "db/platform/migrations/20261124121000_catalog_publication_readiness.sql",
-            "sha256": "e2b6d89a7deee9e4524e77a6e19c588b99b958f434bbfc854f266a1e31d5d520"
+            "file": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
+            "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75"
           },
           {
             "file": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",

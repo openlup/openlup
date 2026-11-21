@@ -116,8 +116,6 @@ The default `test:browser` setup does not prove a successful persisted purchase;
 [proof guidance](docs/proof.md). `./lifecycle verify` and `./lifecycle upgrade` depend
 on the installed CLI and explicit inputs and may refuse.
 
-To publish a saved catalogue draft, see `node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft`.
-
 Own renewal stock priority in `inventory.renewalProtection` in
 `owned/store.config.ts`: exactly `revision` (nonblank) and `renewalProtectionDays`
 (integer 1..3660). The demo uses revision `starter-1` and 14 days. The explicit
@@ -125,6 +123,21 @@ installation step installs it; start only reads and refuses
 `starter_installed_policy_drift` on revision or value mismatch. Apply the native
 policy migration and deliberately install a changed policy before restarting.
 New-purchase requests must use the installed horizon and cannot waive protection.
+
+## Catalogue tasks
+
+Run commands from the application root. Resolve guide anchors from
+`node_modules/@openlup/core/docs/guide/` and read the recipe before editing.
+After each change, run `npm run typecheck` (exit 0).
+
+| Goal | Edit | Read only | Commands and expected results | Installed guide anchor |
+| --- | --- | --- | --- | --- |
+| Add a product type with a content rule | `owned/catalogue.ts`: add a separate pack with `validateContent` and a draft fixture in its `catalogueConformance` export. | `host/editor-catalogue.ts`, `installation/install.ts` | Run `npm run --silent catalogue:check:source` with valid content (exit 0), then invalid content (exit 1 with the field and code). Restore valid content and rerun (exit 0). For the existing installed type, use `example` and `get` on `operator.catalogDrafts` to read the installed type and saved draft, then replay the original Save body and key with the same operator. | `how-to/extend/catalogue-extension.md#new-vertical`, `how-to/build/customize-the-starter.md#change-a-product-rule` |
+| Publish a saved catalogue draft (prepare, approve, publish, recover a lost response, read back) | Saved draft in the operator workflow | `client/api.ts`, `shared/api.ts`, `.starter-origin.json` | Run `./lifecycle up` (exit 0). POST `get` and `prepare` to `operator.catalogDrafts`. POST `approve`, `publish`, then `receipt` if the response was lost, to `operator.catalogPublication`. Replay the original publish and POST `exact` with the receipt head and cursor, then `current` with the product ID (HTTP 200 for success). | `how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft` |
+| Correct a refused price-list input | Supplied draft JSON or the saved draft. Set `priceListId` and a fresh price operation `commandKey`. When changing lists, set `expected.entryId` and `expected.unitPriceMinor` from the SKU's current one-time base price on the destination list, using `null` for both when there is no current entry, and resolve any pending base price there before publishing. | `owned/demo-seed.ts` for `buildDemoSeed(config).priceLists[0].id` in the selected configuration | POST `prepare` to `operator.catalogDrafts` first. Read `value.issues` for `price_list_not_found` or `price_list_not_active` at each affected `skus.<i>.priceOperations.<j>.priceListId` (zero-based). Publish refuses these lists and returns the code, with `path` and `subject` for `price_list_not_found`. Save corrections with `revise` there and repeat `prepare` until `value.issues` is empty, even if the structural outcome is `staged`. Then `approve`, `publish` with a fresh `Idempotency-Key` and read back with `exact` and `current` on `operator.catalogPublication`. | `how-to/build/customize-the-starter.md#correct-a-price-list-refusal` |
+
+Use the signed-in administrator for draft and publication actions. Send `POST /api/actions/<operation>` with the recipe's JSON, matching `Origin`, `X-Starter-Request: 1`, `Content-Type: application/json` and `Idempotency-Key`. Send `{}` to `application.status` to check bindings. For receipt lookup, put the original publish key in the body and use a fresh header key. For publish replay, keep the original administrator, body and header key.
+If an unlisted SKU should stay unavailable, POST its one-time cart to `offer.validate` and expect `unknown_sku`. If a binding is unavailable, report it and preserve the authored inputs.
 
 ## Change a business setting
 

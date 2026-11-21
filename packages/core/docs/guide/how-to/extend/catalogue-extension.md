@@ -43,7 +43,17 @@ The CLI withholds raw errors when loading the module or running its validators.
 For the installed starter, follow [Publish a saved catalogue draft](../build/customize-the-starter.md#publish-a-saved-catalogue-draft)
 to prepare, approve, issue and read the exact saved facts.
 
+In an extracted starter, apply this check to all the recipes below.
+After each change, run `npm run typecheck` from the extracted application root.
+Check `owned/catalogue.ts` with `npm run --silent catalogue:check:source` and
+`owned/catalogue.json` with `npm run --silent catalogue:check`. For a pack at
+another path, use the projection command in the recipe.
+
 ## New vertical
+
+In the extracted starter, add your pack and its fixtures to
+`catalogueConformance.packs` in `owned/catalogue.ts`. Use the skeleton below for
+the pack and fixture fields. For a standalone pack, use these scaffold commands.
 
 Copy the [TypeScript skeleton](./catalogue-pack-skeleton/catalogue.ts), rename its
 namespace, edit `pack.ts` and `fixtures.ts`, and add each pack once in `catalogue.ts`.

@@ -85,7 +85,7 @@ export function diagnoseReceipt(body) {
   }
   return null;
 }
-export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments) {
+export async function readReceipts(api, root, pr, head, now, permissions = new Map(), invalidComments, currentHeadComments) {
   const comments = [];
   for (let page = 1; ; page += 1) {
     const batch = await api.get(`${root}/issues/${pr}/comments?per_page=100&page=${page}`);
@@ -97,6 +97,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   for (const comment of comments) {
     const receipt = parseReceipt(comment.body); const login = comment.user?.login;
     if (receipt === null && typeof comment.body === 'string' && comment.body.startsWith(RECEIPT_MARKER_PREFIX)) invalidComments?.push(comment);
+    if (receipt?.pr === pr && receipt.head === head) currentHeadComments?.push(comment);
     if (receipt?.pr !== pr || receipt.head !== head || !admit({ receipt, observed: { ...receipt, baseValid: true }, now }).ok || comment.user?.type !== 'User' || typeof login !== 'string' || !login) continue;
     const key = login.toLowerCase();
     if (!permissions.has(key)) {
@@ -110,9 +111,10 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   }
   return receipts;
 }
-export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git }) {
+export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git, fastFail = undefined }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');
   const root = `/repos/${env.GITHUB_REPOSITORY}`; const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
+  const shouldFastFail = fastFail ?? !group;
   demand(['pull_request', 'merge_group'].includes(env.GITHUB_EVENT_NAME), 'only pull_request and merge_group events are supported');
   const match = group && /^(?:refs\/heads\/)?gh-readonly-queue\/main\/pr-(\d+)-[a-f0-9]+$/u.exec(group.head_ref ?? '');
   const prNumber = group ? Number(match?.[1]) : event.number;
@@ -126,7 +128,8 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
     demand(pr.number === prNumber && pr.state === 'open' && pr.draft === false && !pr.merged && pr.base?.ref === 'main' && SHA.test(pr.head?.sha), 'PR must be the live open main candidate');
     if (!group) demand(event.pull_request?.head?.sha === pr.head.sha, 'PR head changed; rerun CI for the current head', 'stale');
     const invalidComments = [];
-    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidComments);
+    const currentHeadComments = [];
+    const receipts = await readReceipts(api, root, prNumber, pr.head.sha, now(), permissions, invalidComments, currentHeadComments);
     for (const receipt of receipts) {
       const main = (await api.get(`${root}/git/ref/heads/main`)).object?.sha; demand(SHA.test(main), 'main commit identity is invalid');
       const historical = receipt.version === 3 ? receipt.session.history.flatMap(event => event.type === 'prepare' ? [event.candidate.base, event.candidate.head] : event.type === 'renew' ? [event.proof.main] : []) : [];
@@ -160,6 +163,10 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       if (!group) demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
+    }
+    if (shouldFastFail && receipts.length === 0 && invalidComments.length === 0 && currentHeadComments.length === 0) {
+      console.log(`needs_agent_review: ${reason}`);
+      throw new Error(`needs_agent_review: no receipt comment yet for head ${pr.head.sha}; ${reason}; when native-review is the only failed job of the completed run, Native Review Receipt Rerun will rerun it automatically`);
     }
     const invalid = invalidComments[0];
     const v2Remedy = invalid?.body.split('\n', 1)[0] === RECEIPT_MARKER
@@ -258,7 +265,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
     demand(selected.length === 1 && selected[0].status === 'completed' && selected[0].conclusion === 'success', `source requires one actual successful latest ${name} check`);
   }
   await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
-    env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit,
+    env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit, fastFail: false,
     sleep: () => { throw new Error('Current native review is unavailable at CI completion; no enqueue retry'); } });
   const pr = await readMergeable(currentIntent => {
     demand(currentIntent.enabledAt === intent.enabledAt && currentIntent.enabledBy?.login === login,

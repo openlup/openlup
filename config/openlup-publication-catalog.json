@@ -1542,7 +1542,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261124121000_catalog_publication_readiness.sql",
+      "path": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
       "class": "public-output"
     },
     {
@@ -1723,6 +1723,10 @@
     },
     {
       "path": "docs/platform/history/managed-query-baseline-2026-11-19.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/history/native-renewal-throughput-baseline-2026-11-21.md",
       "class": "public-output"
     },
     {
@@ -5026,7 +5030,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261124121000_catalog_publication_readiness.sql",
+      "path": "packages/platform/sql/20261124130000_definer_search_path_pin.sql",
       "class": "public-output"
     },
     {
@@ -30174,6 +30178,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/benchmarks/nativeRenewalThroughput.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/bundleEffectiveParity.test.ts",
       "class": "public-output"
     },
@@ -30215,10 +30223,6 @@
     },
     {
       "path": "tests/postgres/catalogPublicationFixture.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/postgres/catalogPublicationReadiness.test.ts",
       "class": "public-output"
     },
     {
@@ -30423,6 +30427,10 @@
     },
     {
       "path": "tests/postgres/customer_browser_identity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/definerSearchPath.test.ts",
       "class": "public-output"
     },
     {
