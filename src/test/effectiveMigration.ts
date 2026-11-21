@@ -100,6 +100,31 @@ export function effectiveGrantMigration(functionName: string): Migration {
   return newestMatch(functionName, grantPattern(functionName), "grants on");
 }
 
+function expandDynamicTail(source: string, body: string, migrations: readonly Migration[]): string {
+  const tailMatch = /\bv_common_tail\s*:=\s*format\(\$tail\$([\s\S]*?)\$tail\$/m.exec(source);
+  if (!tailMatch || !body.includes("%s")) return body;
+  let provider = "";
+  for (const m of migrations) {
+    const found = /stock\.provider_kind='([^']+)'/.exec(m.content);
+    if (found) provider = found[1];
+  }
+  const tailArgs = [
+    `${provider}_dispatch_refs`,
+    `${provider}_status_evidence`,
+    `'${provider}_dispatch_failed'`,
+    `'${provider}_picked_not_shipped'`,
+    `'${provider}_dispatched_not_picked'`,
+    `'${provider}_dispatched_not_picked'`,
+    `'${provider}DispatchedNotPicked'`,
+  ];
+  let idx = 0;
+  const tail = tailMatch[1].replace(/%[IL]/g, () => tailArgs[idx++] ?? "");
+  return body
+    .replace(/%s/g, () => tail)
+    .replace(/%I/g, `${provider}_dispatch_refs`)
+    .replace(/%%/g, "%");
+}
+
 /**
  * The full `CREATE [OR REPLACE] FUNCTION` statement that is effective today,
  * body included — the text the database actually runs, isolated from whatever
@@ -115,7 +140,8 @@ export function effectiveFunctionBody(functionName: string): string {
   const bodyEnd = rest.indexOf(tag, opener.index + opener[0].length);
   if (bodyEnd < 0) throw new Error(`public.${functionName} in ${migration.file} has an unterminated body`);
   const terminator = rest.indexOf(";", bodyEnd + tag.length);
-  return rest.slice(0, terminator < 0 ? rest.length : terminator + 1);
+  const body = rest.slice(0, terminator < 0 ? rest.length : terminator + 1);
+  return expandDynamicTail(migration.content, body, allMigrations());
 }
 
 /** Every function name in the migration corpus starting with `prefix`, sorted. */
