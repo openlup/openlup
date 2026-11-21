@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ESLint, type Linter } from "eslint";
@@ -37,7 +38,11 @@ async function loadConfig(imports?: Record<string, unknown>): Promise<Linter.Con
     }) as ReadFileSync;
     return { ...actual, default: { ...actual, readFileSync }, readFileSync };
   });
-  return (await import("../../eslint.config.js")).default as Linter.Config[];
+  const full = (await import("../../eslint.config.js")).default as Linter.Config[];
+  // Virtual boundary tests lint non-existent paths; strip project-bound type-aware blocks here.
+  return full.filter((entry) => !(entry.languageOptions && typeof entry.languageOptions === "object"
+    && "parserOptions" in entry.languageOptions && entry.languageOptions.parserOptions
+    && typeof entry.languageOptions.parserOptions === "object" && "project" in entry.languageOptions.parserOptions));
 }
 
 async function restrictedImports(config: Linter.Config[], specifier: string): Promise<string[]> {
@@ -800,4 +805,52 @@ describe("account-support module graph addition", () => {
       "packages/platform/src/account-support/fit.ts"
     )).toContainEqual(expect.stringContaining('module "account-support"'));
   });
+});
+
+describe("type-aware ESLint rules on outbox, platform, api, and server", () => {
+  it("binds type-aware rules to production scopes (excluding tests) and rejects floating/misused promises", async () => {
+    const repoLinter = new ESLint({ cwd: root });
+    for (const file of [
+      "packages/outbox/src/enqueue.ts",
+      "packages/platform/src/subscriptions/index.ts",
+      "api/health.ts",
+      "server/bff/commerce/payment-status.ts",
+    ]) {
+      const cfg = await repoLinter.calculateConfigForFile(resolve(root, file));
+      expect(cfg.rules["@typescript-eslint/no-floating-promises"]?.[0]).toBe(2);
+      expect(cfg.rules["@typescript-eslint/no-misused-promises"]?.[0]).toBe(2);
+    }
+    const testCfg = await repoLinter.calculateConfigForFile(resolve(root, "packages/outbox/test/factory.test.ts"));
+    expect(testCfg.rules["@typescript-eslint/no-floating-promises"]).toBeUndefined();
+
+    const { TYPE_AWARE_RULES } = await import("../../eslint.config.js") as unknown as { TYPE_AWARE_RULES: Linter.RulesRecord };
+    const tseslint = (await import("typescript-eslint")).default;
+    const dir = mkdtempSync(join(tmpdir(), "openlup-type-aware-eslint-"));
+    try {
+      const tsconfigPath = join(dir, "tsconfig.json");
+      const okPath = join(dir, "ok.ts");
+      const badPath = join(dir, "bad.ts");
+      writeFileSync(tsconfigPath, JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true }, include: ["*.ts"] }));
+      writeFileSync(okPath, "export async function ok(): Promise<number> { return await Promise.resolve(1); }\n");
+      writeFileSync(badPath, "export function bad(fn: () => Promise<boolean>): number { Promise.resolve(1); if (fn()) return 1; return 0; }\n");
+
+      const isolated = new ESLint({
+        cwd: dir,
+        overrideConfigFile: true,
+        overrideConfig: tseslint.config({
+          files: ["**/*.ts"],
+          plugins: { "@typescript-eslint": tseslint.plugin },
+          languageOptions: { parser: tseslint.parser, parserOptions: { project: tsconfigPath, tsconfigRootDir: dir } },
+          rules: TYPE_AWARE_RULES,
+        }) as Linter.Config[],
+      });
+      const [okResult, badResult] = await isolated.lintFiles([okPath, badPath]);
+      expect(okResult!.messages).toEqual([]);
+      const badRuleIds = badResult!.messages.map(({ ruleId }) => ruleId);
+      expect(badRuleIds).toContain("@typescript-eslint/no-floating-promises");
+      expect(badRuleIds).toContain("@typescript-eslint/no-misused-promises");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
