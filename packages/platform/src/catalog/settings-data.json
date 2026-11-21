@@ -6,7 +6,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The media contract admits a fixed set of validated formats."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogadditionalmediaformats"}
+    "change": {"reference": "docs/guide/how-to/extend/catalogue-extension.md"}
   },
   {
     "key": "catalog.netContentUnits",
@@ -15,7 +15,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The catalogue read envelope uses grams for net contents."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalognetcontentunits"}
+    "change": {"reference": "docs/guide/how-to/extend/catalogue-extension.md#add-unit"}
   },
   {
     "key": "catalog.optionalGtin",
@@ -24,6 +24,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "Native catalogue identities require a GTIN."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogoptionalgtin"}
+    "change": {"reference": "docs/guide/concepts/catalogue-and-prices.md#products-and-trade-items"}
   }
 ]

@@ -12,7 +12,7 @@
         "reason": "The last human administrator is required for recoverable administration."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#account-supportrecoverableadministration"
+        "reference": "docs/guide/concepts/personal-data.md#export-and-erasure"
       }
     },
     {
@@ -26,7 +26,7 @@
         "reason": "The media contract admits a fixed set of validated formats."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogadditionalmediaformats"
+        "reference": "docs/guide/how-to/extend/catalogue-extension.md"
       }
     },
     {
@@ -40,7 +40,7 @@
         "reason": "The catalogue read envelope uses grams for net contents."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#catalognetcontentunits"
+        "reference": "docs/guide/how-to/extend/catalogue-extension.md#add-unit"
       }
     },
     {
@@ -54,7 +54,7 @@
         "reason": "Native catalogue identities require a GTIN."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#catalogoptionalgtin"
+        "reference": "docs/guide/concepts/catalogue-and-prices.md#products-and-trade-items"
       }
     },
     {
@@ -151,7 +151,7 @@
         "reason": "Native order controls enforce a fixed six-reason hold vocabulary (payment_not_succeeded, inventory_review, risk_review, address_review, fulfillment_exception, manual_support). Applications can subset or relabel these codes in their own UI, but custom hold reasons are rejected by the schema and database."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemanualholdreasons"
+        "reference": "docs/guide/concepts/orders.md#holds-and-returns"
       }
     },
     {
@@ -165,7 +165,7 @@
         "reason": "A starter configuration has one market and composes its own quote and checkout admission."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemultiplemarkets"
+        "reference": "docs/guide/how-to/build/customize-the-starter.md#select-your-configuration"
       }
     },
     {
@@ -179,7 +179,7 @@
         "reason": "The native checkout path lacks a promotion-code resolver."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercepromotioncoderedemption"
+        "reference": "docs/guide/reference/limits.md#catalogue-and-runtime-limits"
       }
     },
     {
@@ -193,7 +193,7 @@
         "reason": "The native order service still enforces a fixed vocabulary."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercereturnreasons"
+        "reference": "docs/guide/how-to/build/oms-stores.md#record-return-intent"
       }
     },
     {
@@ -207,7 +207,7 @@
         "reason": "Native settlement requires a positive charge amount. Zero-payable fulfillment needs its own settlement path."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercezeropayablesettlements"
+        "reference": "docs/guide/concepts/orders.md#order-state-and-money"
       }
     },
     {
@@ -221,7 +221,7 @@
         "reason": "The native account consent path uses fixed purposes and a fixed copy revision."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsaccountconsentpurposes"
+        "reference": "docs/guide/how-to/build/account-and-support.md#bind-reads-to-the-customer"
       }
     },
     {
@@ -235,7 +235,7 @@
         "reason": "Package contracts restrict the supported locale vocabulary."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#communicationsadditionallocales"
+        "reference": "docs/guide/how-to/build/customize-the-starter.md#select-your-configuration"
       }
     },
     {
@@ -249,7 +249,7 @@
         "reason": "The delivery contract has a fixed set of native method kinds."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#fulfillmentadditionaldeliverymethods"
+        "reference": "docs/guide/concepts/fulfillment.md#shipments-and-dispatch"
       }
     },
     {
@@ -263,7 +263,7 @@
         "reason": "Native shipment sequencing needs additional fulfillment modeling for this case."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#fulfillmentindependentshipments"
+        "reference": "docs/guide/concepts/fulfillment.md#shipments-and-dispatch"
       }
     },
     {
@@ -277,7 +277,7 @@
         "reason": "The native sign-in port admits existing accounts only."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#identitymagiclinkregistration"
+        "reference": "docs/guide/concepts/identity.md#customer-sign-in-and-email-trust"
       }
     },
     {
@@ -291,7 +291,7 @@
         "reason": "A replay returns the existing hold without changing stock allocation or expiry."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#inventoryreservationreplayexpiry"
+        "reference": "docs/guide/concepts/checkout.md#inventory-reservation-lifetime"
       }
     },
     {
@@ -305,7 +305,7 @@
         "reason": "Native available-to-promise currently uses zero safety stock and no channel allocation."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#inventorysafetystock"
+        "reference": "docs/guide/concepts/checkout.md#native-stock-priority"
       }
     },
     {
@@ -462,7 +462,7 @@
         "reason": "An invoice relies on matching durable payment evidence."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#invoicinginvoicepaymentmatch"
+        "reference": "docs/guide/how-to/build/invoicing.md#select-the-ports"
       }
     },
     {
@@ -476,7 +476,7 @@
         "reason": "The native correction contract supports full reversal."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#invoicingpartialinvoicecorrections"
+        "reference": "docs/guide/how-to/build/invoicing.md#run-duties-and-issue-jobs"
       }
     },
     {
@@ -490,7 +490,7 @@
         "reason": "Native decline notices wait three minutes and issue links for 24 hours."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeclinenoticetiming"
+        "reference": "docs/guide/concepts/payments.md#dispatch-and-settlement"
       }
     },
     {
@@ -504,7 +504,7 @@
         "reason": "The current payment adapter contract has no separate capture operation."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsdeferredcapture"
+        "reference": "docs/guide/concepts/payments.md#dispatch-and-settlement"
       }
     },
     {
@@ -518,7 +518,7 @@
         "reason": "The current payment adapter contract has no funds-refund operation."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentspaymentrefunds"
+        "reference": "docs/guide/concepts/payments.md#canonical-status"
       }
     },
     {
@@ -532,7 +532,7 @@
         "reason": "Native recovery uses a fixed set of qualified provider profiles."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsproviderprofiles"
+        "reference": "docs/guide/reference/limits.md#purchase-composition-boundaries"
       }
     },
     {
@@ -546,7 +546,7 @@
         "reason": "Settlement relies on verified provider evidence tied to the charged attempt."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#paymentsverifiedpaymentevidence"
+        "reference": "docs/guide/concepts/payments.md#canonical-status"
       }
     },
     {
@@ -560,7 +560,7 @@
         "reason": "The offer pricing contract needs an allocation that reconciles each line."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingindivisibleoffertotals"
+        "reference": "docs/guide/how-to/build/quote-prices.md#price-a-fixed-one-time-offer"
       }
     },
     {
@@ -574,7 +574,7 @@
         "reason": "The strict quote contract rejects mixed tax rates in one quote."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingmixedtaxrates"
+        "reference": "docs/guide/how-to/build/quote-prices.md#resolve-prices-and-adjustments"
       }
     },
     {
@@ -588,7 +588,7 @@
         "reason": "The native strict quote selects base prices only."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingquantitypricebreaks"
+        "reference": "docs/guide/concepts/catalogue-and-prices.md#price-data-and-history"
       }
     },
     {
@@ -602,7 +602,7 @@
         "reason": "Financial evidence must reconcile."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingreconciledquotelines"
+        "reference": "docs/guide/how-to/build/quote-prices.md#resolve-prices-and-adjustments"
       }
     },
     {
@@ -616,7 +616,7 @@
         "reason": "The native strict quote and base-price writer currently use one fixed channel."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsaleschannels"
+        "reference": "docs/guide/how-to/build/quote-prices.md#preserve-the-price-history"
       }
     },
     {
@@ -630,7 +630,7 @@
         "reason": "The current subscription price policy rounds down to the configured quantum."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsubscriptionpricerounding"
+        "reference": "docs/guide/reference/limits.md#subscription-mode-price"
       }
     },
     {
@@ -644,7 +644,7 @@
         "reason": "Native threshold decisions use a fixed basis."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#promotionsfreeshippingbasis"
+        "reference": "docs/guide/how-to/build/customize-the-starter.md#compose-shipping-quotes"
       }
     },
     {
@@ -658,7 +658,7 @@
         "reason": "The adjustment engine needs additional combination rules."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#promotionspromotioncompatibilitygroups"
+        "reference": "docs/guide/how-to/build/quote-prices.md#resolve-prices-and-adjustments"
       }
     },
     {
@@ -707,7 +707,7 @@
         "reason": "The native address contract requires a postal code and has no region field."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingaddressregions"
+        "reference": "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences"
       }
     },
     {
@@ -721,7 +721,7 @@
         "reason": "The customer preferences contract has a fixed payment method vocabulary."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingpaymentmethodpreferences"
+        "reference": "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences"
       }
     },
     {
@@ -769,7 +769,7 @@
         "reason": "Retained native terms carry one shipping threshold profile."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsaddressbasedrenewalshipping"
+        "reference": "docs/guide/concepts/starter-ownership.md#paid-order-messages-and-shipping"
       }
     },
     {
@@ -783,7 +783,7 @@
         "reason": "Native cadence is expressed in days."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionscalendarcadence"
+        "reference": "docs/guide/reference/limits.md#subscription-cadence-representation"
       }
     },
     {
@@ -797,7 +797,7 @@
         "reason": "Native lifecycle commands support two weeks, one month and indefinite."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionscustompausedurations"
+        "reference": "docs/guide/how-to/build/customize-the-starter.md#configure-account-actions-and-pauses"
       }
     },
     {
@@ -811,7 +811,7 @@
         "reason": "A late delivery extends the cycle without stacking deliveries. A replacement counts only after arrival."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsdeliveryalignmentevidence"
+        "reference": "docs/guide/concepts/subscriptions.md#subscription-delivery-alignment"
       }
     },
     {
@@ -825,7 +825,7 @@
         "reason": "Native terms support one introductory phase before the retained terms take over."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsintroductoryphases"
+        "reference": "docs/guide/how-to/build/customize-the-starter.md#configure-subscription-offers"
       }
     },
     {
@@ -839,7 +839,7 @@
         "reason": "Native commands refuse multi-cycle prepaid subscriptions."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsprepaidcycles"
+        "reference": "docs/guide/concepts/subscriptions.md#installed-subscription-boundary"
       }
     },
     {
@@ -853,7 +853,7 @@
         "reason": "Native renewal prices are locked until an edit changes the terms."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsrenewalpricechanges"
+        "reference": "docs/guide/how-to/build/quote-prices.md#preserve-the-price-history"
       }
     },
     {
@@ -867,7 +867,7 @@
         "reason": "The native command compares dates using UTC days."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsrescheduletimezone"
+        "reference": "docs/guide/concepts/subscription-engine.md#what-this-package-owns"
       }
     },
     {
@@ -881,7 +881,7 @@
         "reason": "Provider-recorded failures still use the fixed 24, 72 and 168 hour schedule."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsretryschedule"
+        "reference": "docs/guide/concepts/subscriptions.md#durable-retry-timing"
       }
     },
     {
@@ -895,7 +895,7 @@
         "reason": "Managed and native delivery paths use separate controls."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsshareddeliverycontrols"
+        "reference": "docs/guide/reference/limits.md#subscription-care"
       }
     },
     {
@@ -909,7 +909,7 @@
         "reason": "Native stock-wait recovery fixes the hold at 15 minutes in SQL. The separate reservation port reads holdSeconds from its own reserve call, outside native stock-wait recovery. The starter's scheduled renewal uses this port to expire reservations and leaves its holdSeconds option unused."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsstockwaitholdlifetime"
+        "reference": "docs/guide/concepts/subscriptions.md#lifecycle-in-durable-storage"
       }
     },
     {
@@ -923,7 +923,7 @@
         "reason": "Review branches exist in SQL and need composition before exposing a setting."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionssubscriberreviewwindows"
+        "reference": "docs/guide/reference/limits.md#partner-intake-and-reviews"
       }
     },
     {
@@ -937,7 +937,7 @@
         "reason": "Retrying a charge with an unknown outcome risks charging twice."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsunknownpaymentreconciliation"
+        "reference": "docs/guide/concepts/payments.md#canonical-status"
       }
     },
     {
@@ -951,7 +951,7 @@
         "reason": "The native winback receipt deduplicates by subscription."
       },
       "change": {
-        "reference": "docs/guide/how-to/operate/settings-catalogue.md#subscriptionswinbackepisodededuplication"
+        "reference": "docs/guide/concepts/subscriptions.md#lifecycle-in-durable-storage"
       }
     }
   ],

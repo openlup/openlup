@@ -67,9 +67,21 @@ Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogu
 
 ## Change a business setting
 
-From the extracted application root, use its `settings` script as shown in the
-starter's `AGENTS.md`. Start with `list --goal "renewal stock protection horizon"`
-and inspect `show inventory_renewal_protection --json` before changing a value.
-For a proposed horizon, use `preview` with `--value`, a read-capable
-`--database-url` and each `--sku` you want to inspect.
+From the extracted application root, run `npm --silent run settings -- list` to find a
+key by goal (or `npx --no -- openlup settings list` in an application without the starter's
+`settings` script; pass `--app ./owned/settings-host.ts` to include app-declared settings).
+For example, start with `npm --silent run settings -- list --goal "renewal stock protection horizon"`
+and inspect `npm --silent run settings -- show inventory_renewal_protection --json` before
+changing a value. The `--silent` flag keeps npm's banner out of JSON output.
+See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md` for the read
+path, check loop and refusal guidance.
+
+After editing owned configuration, run `npm --silent run settings -- check --configuration <id>`
+(or `npx --no -- openlup settings check --app ./owned/settings-host.ts`) and verify `npm run typecheck`.
+
+`npm --silent run settings -- mcp` (or `npx --no -- openlup settings mcp`) starts a read-only
+MCP server with the same operations.
+
+For a proposed installed policy such as renewal stock protection, run a connected, read-only
+`preview` with `--value`, a read-capable `--database-url` and each `--sku` you want to inspect.
 Review the effect, uncertainty and any remediation before changing the policy.

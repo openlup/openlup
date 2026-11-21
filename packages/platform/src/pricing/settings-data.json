@@ -6,7 +6,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The offer pricing contract needs an allocation that reconciles each line."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingindivisibleoffertotals"}
+    "change": {"reference": "docs/guide/how-to/build/quote-prices.md#price-a-fixed-one-time-offer"}
   },
   {
     "key": "pricing.mixedTaxRates",
@@ -15,7 +15,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The strict quote contract rejects mixed tax rates in one quote."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingmixedtaxrates"}
+    "change": {"reference": "docs/guide/how-to/build/quote-prices.md#resolve-prices-and-adjustments"}
   },
   {
     "key": "pricing.quantityPriceBreaks",
@@ -24,7 +24,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The native strict quote selects base prices only."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingquantitypricebreaks"}
+    "change": {"reference": "docs/guide/concepts/catalogue-and-prices.md#price-data-and-history"}
   },
   {
     "key": "pricing.reconciledQuoteLines",
@@ -33,7 +33,7 @@
     "schemaVersion": 1,
     "kind": "invariant",
     "runtime": {"level": "read-only", "reason": "Financial evidence must reconcile."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingreconciledquotelines"}
+    "change": {"reference": "docs/guide/how-to/build/quote-prices.md#resolve-prices-and-adjustments"}
   },
   {
     "key": "pricing.salesChannels",
@@ -42,7 +42,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The native strict quote and base-price writer currently use one fixed channel."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsaleschannels"}
+    "change": {"reference": "docs/guide/how-to/build/quote-prices.md#preserve-the-price-history"}
   },
   {
     "key": "pricing.subscriptionPriceRounding",
@@ -51,6 +51,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The current subscription price policy rounds down to the configured quantum."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#pricingsubscriptionpricerounding"}
+    "change": {"reference": "docs/guide/reference/limits.md#subscription-mode-price"}
   }
 ]

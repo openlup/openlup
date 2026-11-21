@@ -194,11 +194,15 @@ it("preserves and reconciles an existing value-only host after a manifest refusa
   const { entries, ...listDocument } = JSON.parse(search.stdout);
   const { rows, ...checkDocument } = JSON.parse(defaultCheck.stdout);
   const remaining = (row: { key: string }) => !starterKeys.includes(row.key);
+  const applyUpdatedCapReference = <T extends { key: string; change?: { reference?: string } }>(row: T): T => {
+    const updated = updatedCapReferences[row.key];
+    return updated && row.change ? { ...row, change: { ...row.change, reference: updated.after } } : row;
+  };
   const warning = `Settings app: value reported without a descriptor for ${starterKeys.toSorted().map(key => JSON.stringify(key)).join(", ")}. Add a descriptor to each named file.entries entry. See node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md#declare-a-setting-of-your-own.\n`;
   const verifyLegacy = () => {
     expect(readFileSync(hostFile, "utf8")).toBe(legacy);
     expect(runStarterSettings(app, search.args)).toEqual({
-      exit: search.exit, stdout: JSON.stringify({ ...listDocument, entries: entries.filter(remaining) }) + "\n", stderr: warning,
+      exit: search.exit, stdout: JSON.stringify({ ...listDocument, entries: entries.filter(remaining).map(applyUpdatedCapReference) }) + "\n", stderr: warning,
     });
     expect(runStarterSettings(app, defaultCheck.args)).toEqual({
       exit: defaultCheck.exit, stdout: JSON.stringify({ ...checkDocument, rows: rows.filter(remaining) }) + "\n", stderr: warning,
@@ -481,6 +485,17 @@ it.each([
   }
 });
 
+const updatedCapReferences: Record<string, { before: string; after: string }> = {
+  "promotions.freeShippingBasis": {
+    before: "docs/guide/how-to/operate/settings-catalogue.md#promotionsfreeshippingbasis",
+    after: "docs/guide/how-to/build/customize-the-starter.md#compose-shipping-quotes",
+  },
+  "subscriptions.introductoryPhases": {
+    before: "docs/guide/how-to/operate/settings-catalogue.md#subscriptionsintroductoryphases",
+    after: "docs/guide/how-to/build/customize-the-starter.md#configure-subscription-offers",
+  },
+};
+
 const subscriptionOffersGoal = "Choose allowed subscription delivery intervals, default cadence, unit and line limits, and per-SKU quantity rules for classic and sized offers.";
 const subscriptionOffersBeforeEffect = "A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.";
 const subscriptionOffersEffect = "Fresh subscription checkouts check the deployed classic offer (cadence, unit/line limits and per-SKU rules). Starter terms admission checks edits against the classic or sized offer for the edit's mode.";
@@ -536,6 +551,12 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
     const setting = command === "list" ? document.entries.find((row: { key: string }) => row.key === key) : document.setting;
     setting.goal = goal;
     setting.runtime.reason = runtimeReason;
+    if (command === "list") {
+      for (const entry of document.entries as Array<{ key: string; change?: { reference?: string } }>) {
+        const updated = updatedCapReferences[entry.key];
+        if (updated && entry.change) entry.change.reference = updated.after;
+      }
+    }
     if (command !== "list") {
       setting.effect.appliesTo = appliesTo;
       setting.schema = displayedSchema;
@@ -547,6 +568,11 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
     return JSON.stringify(document) + "\n";
   }
   let expected = captured.stdout.replace(before.goal, goal);
+  if (command === "list") {
+    for (const { before: oldRef, after: newRef } of Object.values(updatedCapReferences)) {
+      expected = expected.replace(oldRef, newRef);
+    }
+  }
   if (command !== "list") {
     expected = expected.replace(before.runtime.reason, runtimeReason)
       .replace(before.effect.appliesTo, appliesTo)

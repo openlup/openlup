@@ -22,7 +22,7 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The native address contract requires a postal code and has no region field."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingaddressregions"}
+    "change": {"reference": "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences"}
   },
   {
     "key": "shipping.paymentMethodPreferences",
@@ -31,6 +31,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The customer preferences contract has a fixed payment method vocabulary."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#shippingpaymentmethodpreferences"}
+    "change": {"reference": "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences"}
   }
 ]

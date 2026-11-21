@@ -6,6 +6,6 @@
     "schemaVersion": 1,
     "kind": "cap",
     "runtime": {"level": "read-only", "reason": "The native sign-in port admits existing accounts only."},
-    "change": {"reference": "docs/guide/how-to/operate/settings-catalogue.md#identitymagiclinkregistration"}
+    "change": {"reference": "docs/guide/concepts/identity.md#customer-sign-in-and-email-trust"}
   }
 ]

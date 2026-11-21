@@ -40,6 +40,12 @@ Plan, reconcile and apply snapshot-managed application files with
 [Upgrade application files](application-files.md). These commands run no SQL
 and do not observe the database.
 
+After reconciling application files, validate owned business configuration
+offline with `npm --silent run settings -- check` (or
+`./node_modules/.bin/openlup settings check --app ./owned/settings-host.ts`)
+before running full tests and starting the application. See
+[Configure settings](../how-to/operate/configure-settings.md).
+
 ## Check readiness
 
 Create an application-owned module exporting `createVerificationInput()` that
