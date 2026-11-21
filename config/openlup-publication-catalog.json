@@ -5314,6 +5314,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/attributeValues.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/backfillCatalogNetContent.ts",
       "class": "public-output"
     },
@@ -5414,6 +5418,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/combinationOptions.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/commerceQuoteCatalogRead.ts",
       "class": "public-output"
     },
@@ -5499,6 +5507,10 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/variantAxes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftFacts.ts",
       "class": "public-output"
     },
     {
@@ -8167,6 +8179,10 @@
     },
     {
       "path": "packages/platform/src/lifecycle/appVerification.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/catalogueProject.mjs",
       "class": "public-output"
     },
     {
@@ -31539,7 +31555,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-2f05e63cbad54452e990dad06a9cf6978160f30d192d5349d50cd408dd7873d4"
+      "digest": "sha256-c30f60b239d95d16513deb232dc384112c279837aa3e0c13363dba086d0da31d"
     },
     {
       "path": "package.json",

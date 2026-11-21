@@ -3140,15 +3140,12 @@ an authored witness establishes no passing execution result.
 
 ### Application command-line tooling
 
-Catalogue checks share this executable through the explicit `catalogue check
---packs` branch. The Node-only `catalog/testing` subpath imports owner validators;
-ordinary catalog cannot import testing. The installed
-[catalogue guide](../../packages/core/docs/guide/how-to/extend/catalogue-extension.md)
-owns the subject, refusal fixtures, exit codes and pending owners. This branch
-reads JSON text without importing user code and has no database, installation,
-seed or publication path. Attribute/projection and combination owners receive only
-parsed fixture data; content validation is unavailable. Reference/refusal records
-and derived retained identities are fixture evidence, never runtime qualification. An offline PASS grants no activation authority.
+The Node-only `catalog/testing` subpath reads inert JSON via `catalogue check`.
+`catalogue project` explicitly imports an owned module with the operator's process
+permissions and runs the same checker once against its external scratch subject.
+The checker verifies executable rule bindings through the publication rules owner.
+The installed [catalogue guide](../../packages/core/docs/guide/how-to/extend/catalogue-extension.md)
+owns the subject, replay, exit codes and offline evidence limits.
 
 The tool-only Node executable
 [`openlup`](../../packages/platform/src/lifecycle/openlup.mjs) ships inside

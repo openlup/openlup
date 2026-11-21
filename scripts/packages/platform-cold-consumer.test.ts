@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -1548,3 +1548,382 @@ process.stdout.write(JSON.stringify({refusal,value,calls,key:checkoutInlineRecov
  expect(result.calls[0].sql).toContain('public.commerce_checkout_inline_retry_begin');expect(result.calls[0].values[0]).toBe(`${result.key}:payment-execution:prepare-attempt`);
  expect(JSON.parse(result.calls[0].values[6])).toMatchObject({replayOnly:true,retryRequestId:'55555555-5555-4555-8555-555555555555',methodFacts:{}});
 });
+
+function packedCatalogue() {
+  const consumer = pristinePackedA1Fixture();
+  const app = mkdtempSync(join(consumer, "catalogue 'app-"));
+  const temp = realpathSync(mkdtempSync(join(tmpdir(), "catalogue 'scratch-")));
+  temporary.push(app, temp);
+  const platform = join(consumer, "node_modules/@openlup/platform");
+  const bin = join(platform, "src/lifecycle/openlup.mjs");
+  const environment = { ...isolatedConsumerEnv(), TMPDIR: temp, TMP: temp, TEMP: temp };
+  const write = (path: string, bytes: string) => {
+    const target = join(app, path);
+    writeFileSync(target, bytes);
+    return target;
+  };
+  write("package.json", '{"type":"module","dependencies":{"@openlup/core":"1.2.0","@openlup/platform":"1.2.0"}}');
+  function call(args: string[], exit: number, preload: string[] = [], scratchRoot = temp, cwd = app) {
+    const result = spawnSync(process.execPath, [...preload, bin, ...args, "--json"], {
+      cwd, encoding: "utf8", env: { ...environment, TMPDIR: scratchRoot, TMP: scratchRoot, TEMP: scratchRoot },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.stderr).toBe("");
+    expect(result.status, result.stdout).toBe(exit);
+    expect(result.stdout.trim().split("\n")).toHaveLength(1);
+    const report = JSON.parse(result.stdout);
+    expect(report).toMatchObject({ formatVersion: 1, exitCode: exit });
+    expect(result.stdout).not.toContain("SYNTHETIC_PRIVATE_DETAIL");
+    return report;
+  }
+  return { app, temp, platform, bin, environment, write, call, consumer };
+}
+
+const productId = "00000000-0000-4000-8000-000000000001";
+const skuId = "00000000-0000-4000-8000-000000000002";
+const fixtureType = { key: "sample:item", version: 1 };
+const fixturePack = { id: "sample", namespace: "sample", version: 1, openlupRange: "1.x",
+  taxClasses: [], capabilities: {}, types: [{ ...fixtureType, units: [{ code: "sample:each", dimension: "count", integral: true }], netContentUnits: ["sample:each"], dimensions: [] }] };
+const contentDraft = { schemaVersion: 1, product: { id: productId, type: fixtureType, dimensions: [], sharedContent: { title: "Example" } }, skus: [] };
+const sourceModule = (data: unknown, callback = "() => []") => `
+export const catalogueConformance = ${JSON.stringify(data)};
+catalogueConformance.packs[0].pack.types[0].validateContent = ${callback};
+`;
+const sourceArgs = (path: string) => ["catalogue", "project", "--trusted-packs", path];
+const replayArgs = (path: string) => ["catalogue", "check", "--packs", path];
+
+it("RP2 keeps executable suffixes inert", () => {
+  const { app, write, call } = packedCatalogue();
+  const effect = join(app, "effect");
+  for (const suffix of ["ts", "mjs"]) {
+    const path = write("source." + suffix, 'import { writeFileSync } from "node:fs"; writeFileSync("effect", "effect"); export const catalogueConformance = {};');
+    expect(call(replayArgs(path), 64).state).toBe("refused");
+    expect(existsSync(effect)).toBe(false);
+    write("source." + suffix, JSON.stringify({ packs: [{ pack: fixturePack }] }));
+    expect(call(replayArgs(path), 0).command).toBe("catalogue check");
+  }
+});
+
+it("RP2 admits trust flags before loading and classifies failures", () => {
+  const { app, temp, write, call } = packedCatalogue();
+  const path = write("trusted 'example.mjs", 'import { writeFileSync } from "node:fs"; writeFileSync("effect", "effect"); throw new SyntaxError("SYNTHETIC_PRIVATE_DETAIL");');
+  for (const args of [[...sourceArgs(path), "--packs", path], [...replayArgs(path), "--trusted-packs", path], [...sourceArgs(path), "--app", path]]) call(args, 64);
+  expect(existsSync(join(app, "effect"))).toBe(false);
+  call(sourceArgs(path), 74);
+  expect(existsSync(join(app, "effect"))).toBe(true);
+  call(sourceArgs(write("absent-export.mjs", "export const other = 1;")), 74);
+  call(sourceArgs(join(app, "absent-module.mjs")), 74);
+  const data = { packs: [{ pack: fixturePack, drafts: [contentDraft] }], requiredChecks: ["draft-content"] };
+  for (const failure of ['new SyntaxError("SYNTHETIC_PRIVATE_DETAIL")', 'new Error("draft_json_invalid")', '"draft_json_invalid"']) {
+    const file = write("throws.mjs", sourceModule(data, `() => { throw ${failure}; }`));
+    expect(call(sourceArgs(file), 74).findings[0].code).toBe("OPENLUP_E_CLI_FAILURE");
+  }
+  const valid = write("valid.mjs", sourceModule(data));
+  call(sourceArgs(valid), 74, [], join(temp, "missing"));
+  const unavailable = { ...data, requiredChecks: ["taxonomy"] };
+  call(sourceArgs(write("unavailable.mjs", sourceModule(unavailable))), 2);
+  const broken = write("broken 'source.mjs", sourceModule({ ...unavailable, packs: [{ pack: fixturePack,
+    drafts: [null], quantities: [{}] }] }));
+  const report = call(sourceArgs(broken), 1);
+  expect(report.findings.map(({ code, path }: { code: string; path: string }) => [path, code])).toEqual([
+    ["/packs/0/drafts/0", "draft_input_invalid"], ["/packs/0/quantities/0/value", "quantity_invalid"],
+    ["/requiredChecks/0", "conformance_owner_unavailable"],
+  ]);
+  expect(report.transport.recheck).toContain("'\"'\"'");
+  expect(report.findings.every(({ recheck }: { recheck: string }) => recheck === report.transport.recheck)).toBe(true);
+});
+
+it("RP2 confines scratch from a nested working directory", () => {
+  const { app, temp, write, call } = packedCatalogue();
+  const owned = join(app, "owned"), cache = join(app, "cache");
+  mkdirSync(owned); mkdirSync(cache);
+  write("owned/catalogue.mjs", sourceModule({ packs: [{ pack: fixturePack }] }));
+  const before = readdirSync(app, { recursive: true }).sort();
+  for (const scratch of [app, cache]) {
+    call(sourceArgs("./owned/catalogue.mjs"), 74, [], scratch);
+    call(sourceArgs("./catalogue.mjs"), 74, [], scratch, owned);
+    expect(readdirSync(app, { recursive: true }).sort()).toEqual(before);
+  }
+  // The working directory also needs protection when the app is elsewhere.
+  call(sourceArgs(join(owned, "catalogue.mjs")), 74, [], temp, temp);
+  expect(readdirSync(temp)).toEqual([]);
+  expect(call(sourceArgs("./catalogue.mjs"), 0, [], temp, owned).command).toBe("catalogue project");
+});
+
+it.each([false, true])("RP2 confines scratch across nested package boundaries (symlinked: %s)", linked => {
+  const { app, temp, write, call } = packedCatalogue();
+  const owned = join(app, "owned"), submodule = join(owned, "submodule"), cache = join(app, "cache");
+  mkdirSync(submodule, { recursive: true }); mkdirSync(cache);
+  write("owned/catalogue.mjs", sourceModule({ packs: [{ pack: fixturePack }] }));
+  write("owned/submodule/package.json", '{"type":"module"}');
+  const source = write("owned/submodule/catalogue.mjs", 'export { catalogueConformance } from "../catalogue.mjs";');
+  const sourceLink = join(temp, "linked-source.mjs"), cacheLink = join(temp, "linked-cache");
+  symlinkSync(source, sourceLink); symlinkSync(cache, cacheLink);
+  call(sourceArgs(linked ? sourceLink : "./submodule/catalogue.mjs"), 74, [], linked ? cacheLink : cache, owned);
+  expect(readdirSync(cache)).toEqual([]);
+  expect(call(sourceArgs(sourceLink), 0, [], temp, owned).command).toBe("catalogue project");
+});
+
+it.each([false, true])("RP2 reports the saved axis and independent owner evidence (unresolved reference: %s)", reference => {
+  const { write, call } = packedCatalogue();
+  const values = { namespace: "sample:finish", id: "unresolved" };
+  const pack = { ...fixturePack, types: [{ ...fixturePack.types[0],
+    dimensions: [{ key: "lined", kind: "boolean" }], attributes: [{
+      key: "finish", scope: "product", valueType: { kind: "reference", allowlist: [values.namespace] }, required: false,
+      cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {},
+    }],
+  }] };
+  const base = { product: { ...contentDraft.product, dimensions: ["lined"], ...(reference ? { attributes: { finish: values } } : {}) },
+    skus: [{ id: skuId, productId, options: { lined: { kind: "boolean", value: true } } }] };
+  const v3 = { ...base, schemaVersion: 3, product: { ...base.product,
+    sharedContent: { schemaVersion: 1, catalogAction: "create", presentation: {},
+      offerMemberships: [], requestedModes: [], publicationSkus: [] } },
+    publication: { kind: "release", evidence: {}, operations: [] } };
+  const data = { packs: [{ pack, drafts: [{ ...base, schemaVersion: 2 }, v3] }] };
+  const projected = call(sourceArgs(write("axis.mjs", sourceModule(data))), 1);
+  const artifact = projected.transport.subjectPath;
+  const subject = JSON.parse(readFileSync(artifact, "utf8"));
+  for (const report of [projected, call(replayArgs(artifact), 1)]) {
+    const checkFinding = (code: string, path: string, value: unknown) => {
+      const finding = report.findings.find((entry: { code: string; path: string }) => entry.code === code && entry.path === path);
+      expect(finding, `${code} at ${path}`).toBeDefined();
+      const saved = finding.path.split("/").slice(1).reduce((node: unknown, key: string) =>
+        node && typeof node === "object" ? (node as Record<string, unknown>)[key] : undefined, subject);
+      expect(saved, path).toEqual(value);
+    };
+    for (const index of [0, 1]) {
+      const draftPath = `/packs/0/drafts/${index}/product`;
+      checkFinding("axis_not_installed", `${draftPath}/dimensions/0`, "lined");
+      if (reference) checkFinding("attribute_reference_unresolved", `${draftPath}/attributes/finish`, values);
+    }
+  }
+});
+
+it("RP2 replays v2 owner violations and points to saved attribute values", () => {
+  const { write, call } = packedCatalogue();
+  const pack = { ...fixturePack, types: [{ ...fixturePack.types[0], attributes: [{
+    key: "flag", scope: "product", valueType: { kind: "boolean" }, required: false,
+    cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {},
+  }] }] };
+  const draft = { ...contentDraft, schemaVersion: 2, product: {
+    ...contentDraft.product, attributes: { flag: "invalid boolean", "finish/~": "undeclared" },
+  } };
+  const projected = call(sourceArgs(write("attributes.mjs", sourceModule({ packs: [{ pack, drafts: [draft] }] }))), 1);
+  const subject = JSON.parse(readFileSync(projected.transport.subjectPath, "utf8"));
+  const replay = call(replayArgs(projected.transport.subjectPath), 1);
+  expect(replay.findings).toContainEqual(expect.objectContaining({
+    code: "conformance_owner_unavailable", path: "/packs/0/drafts/0/product/sharedContent",
+  }));
+  for (const { findings } of [projected, replay]) {
+    for (const [code, key, value] of [
+      ["attribute_value_invalid", "flag", "invalid boolean"],
+      ["attribute_unknown_key", "finish~1~0", "undeclared"],
+    ]) {
+      const finding = findings.find((entry: { code: string }) => entry.code === code);
+      expect(finding?.path, code).toBe("/packs/0/drafts/0/product/attributes/" + key);
+      const saved = finding.path.split("/").slice(1).reduce((data: unknown, part: string) =>
+        data && typeof data === "object" ? (data as Record<string, unknown>)[part.replaceAll("~1", "/").replaceAll("~0", "~")] : undefined, subject);
+      expect(saved, finding.path).toBe(value);
+    }
+  }
+});
+
+it("RP2 refuses async validators with one sanitized report and matching exit", () => {
+  const { write, call } = packedCatalogue();
+  const source = sourceModule({ packs: [{ pack: fixturePack, drafts: [contentDraft] }] },
+    'async () => { throw new Error("SYNTHETIC_PRIVATE_DETAIL"); }');
+  expect(call(sourceArgs(write("async.mjs", source)), 74).findings[0]).toMatchObject({
+    code: "OPENLUP_E_CLI_FAILURE", fix: expect.stringContaining("return synchronously"),
+  });
+});
+
+it("RP2 handles a rejecting thenable with a one-read getter", () => {
+  const { write, call } = packedCatalogue();
+  const source = sourceModule({ packs: [{ pack: fixturePack, drafts: [contentDraft] }] }, `() => {
+    const rejection = Promise.reject(new Error("SYNTHETIC_PRIVATE_DETAIL"));
+    let reads = 0;
+    return { get then() { return ++reads === 1 ? rejection.then.bind(rejection) : undefined; } };
+  }`);
+  expect(call(sourceArgs(write("thenable.mjs", source)), 74).findings).toEqual([expect.objectContaining({
+    code: "OPENLUP_E_CLI_FAILURE", fix: expect.stringContaining("return synchronously"),
+  })]);
+});
+
+it("RP2 snapshots registration descriptors once and refuses getters", () => {
+  const { app, write, call } = packedCatalogue();
+  const registration = sourceModule({ packs: [{ pack: fixturePack }], requiredChecks: ["draft-content"] })
+    .replace("export const catalogueConformance", "const catalogueConformance");
+  const proxy = write("proxy.mjs", registration + `
+    let enumerations = 0;
+    const registration = new Proxy(catalogueConformance, {
+      ownKeys(target) {
+        return ++enumerations === 1 ? Reflect.ownKeys(target) : ["packs"];
+      },
+    });
+    export { registration as catalogueConformance };
+  `);
+  const projected = call(sourceArgs(proxy), 2);
+  expect(JSON.parse(readFileSync(projected.transport.subjectPath, "utf8")).requiredChecks).toEqual(["draft-content"]);
+  const accessor = write("getter.mjs", registration + `
+    import { writeFileSync } from "node:fs";
+    Object.defineProperty(catalogueConformance, "requiredChecks", {
+      enumerable: true,
+      get() { writeFileSync("getter-effect", "unexpected"); return []; },
+    });
+    export { catalogueConformance };
+  `);
+  call(sourceArgs(accessor), 74);
+  expect(existsSync(join(app, "getter-effect"))).toBe(false);
+});
+
+it("RP2 projects deterministic bytes and replays the quoted command", () => {
+  const { consumer, app, temp, bin, environment, write, call } = packedCatalogue();
+  const v3 = { ...contentDraft, schemaVersion: 3, product: { ...contentDraft.product,
+    sharedContent: { schemaVersion: 1, catalogAction: "create", document: { title: "Café", details: { z: "last", a: "first" } },
+      presentation: {}, offerMemberships: [], requestedModes: [], publicationSkus: [] } },
+    skus: [{ id: skuId, productId, options: {}, priceOperations: [7, 3].map(unitPriceMinor => ({
+      schemaVersion: 1, commandKey: "price:" + unitPriceMinor, variantId: skuId, priceListId: skuId,
+      mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor, expected: { entryId: null, unitPriceMinor: null },
+    })) }], publication: { kind: "release", evidence: {}, operations: [
+      { op: "create_product", name: "Example", productId, productSlug: "example" },
+      { op: "set_product_presentation", productSlug: "example", presentation: { title: "Café" } },
+    ] } };
+  const data = { packs: [{ pack: fixturePack, drafts: [v3, contentDraft] },
+    { pack: { ...fixturePack, id: "other", namespace: "other", types: [] } }] };
+  const reverseKeys = (value: unknown): unknown => Array.isArray(value) ? value.map(reverseKeys) : value && typeof value === "object"
+    ? Object.fromEntries(Object.entries(value).reverse().map(([key, child]) => [key, reverseKeys(child)])) : value;
+  const first = call(sourceArgs(write("first 'copy.mjs", sourceModule(data))), 0).transport;
+  const second = call(sourceArgs(write("second copy.mjs", sourceModule(reverseKeys(data)))), 0).transport;
+  const bytes = readFileSync(first.subjectPath);
+  expect(bytes.equals(readFileSync(second.subjectPath))).toBe(true);
+  expect(JSON.parse(bytes.toString())).toEqual(data);
+  expect(bytes.toString()).toContain('"details":{"a":"first","z":"last"}');
+  expect(first.subjectHash).toBe(createHash("sha256").update(bytes).digest("hex"));
+  expect(second.subjectHash).toBe(first.subjectHash);
+  expect(first.projectionMilliseconds).toBeGreaterThanOrEqual(0);
+  expect(first.checkMilliseconds).toBeGreaterThanOrEqual(0);
+  mkdirSync(join(app, "node_modules/.bin"), { recursive: true });
+  symlinkSync(bin, join(app, "node_modules/.bin/openlup"));
+  const runReported = (command: string) => spawnSync(command, { cwd: app, shell: true, encoding: "utf8",
+    env: { ...environment, npm_config_offline: "true", npm_config_cache: join(consumer, "cache") } });
+  const replay = runReported(first.replay);
+  expect(replay.status, replay.stderr).toBe(2);
+  expect(JSON.parse(replay.stdout)).toMatchObject({ command: "catalogue check", exitCode: 2 });
+  const recheck = runReported(first.recheck);
+  expect(recheck.status, recheck.stderr).toBe(0);
+  expect(JSON.parse(recheck.stdout).transport.subjectHash).toBe(first.subjectHash);
+  const text = spawnSync(process.execPath, [bin, ...sourceArgs(join(app, "first 'copy.mjs"))], { cwd: app, env: environment, encoding: "utf8" });
+  expect(text.status, text.stderr).toBe(0);
+  expect(text.stdout).toMatch(/^catalogue project: satisfied\b/u);
+  expect(text.stdout).not.toContain("--json");
+  expect(first.subjectPath.startsWith(temp + "/")).toBe(true);
+});
+
+it("RP2 checks exactly once and refuses substituted or application-local scratch", () => {
+  const { app, temp, platform, write, call } = packedCatalogue();
+  const draft = { ...contentDraft, product: { ...contentDraft.product, sharedContent: { title: "Example \uFFFD" } } };
+  const args = sourceArgs(write("registration.mjs", sourceModule({ packs: [{ pack: fixturePack, drafts: [draft] }] })));
+  const counter = join(temp, "entries");
+  const checker = join(platform, "dist/catalog/testing/catalogExtensionConformance.js");
+  const original = readFileSync(checker, "utf8");
+  const signature = "async function checkSubject(jsonText, validators) {";
+  expect(original).toContain(signature);
+  writeFileSync(checker, 'import { appendFileSync } from "node:fs";\n' +
+    original.replace(signature, signature + `\nappendFileSync(${JSON.stringify(counter)}, "entry\\n");`));
+  const preload = write("swap.mjs", `
+import { promises as fs } from "node:fs";
+const read = fs.readFile;
+fs.readFile = async (path, ...args) => {
+  if (String(path).endsWith("/subject.json")) await fs.appendFile(path, " ");
+  return read(path, ...args);
+};
+`);
+  const swapEncoding = write("swap-encoding.mjs", `
+import { promises as fs } from "node:fs";
+const read = fs.readFile;
+fs.readFile = async (path, ...args) => {
+  const data = await read(path, ...args);
+  if (!String(path).endsWith("/subject.json")) return data;
+  const index = data.indexOf(Buffer.from([0xef, 0xbf, 0xbd]));
+  return Buffer.concat([data.subarray(0, index), Buffer.from([0xff]), data.subarray(index + 3)]);
+};
+`);
+  const before = () => readdirSync(app).sort().map(file => [file, readFileSync(join(app, file)).toString()]);
+  const appBytes = before();
+  try {
+    const { transport } = call(args, 0);
+    const observed = readFileSync(counter, "utf8").trim().split("\n");
+    expect(observed).toEqual(["entry"]);
+    expect(transport.checkerInvocations).toBe(observed.length);
+    expect(transport.subjectPath.startsWith(temp + "/")).toBe(true);
+    expect(statSync(transport.subjectPath).mode & 0o077).toBe(0);
+    expect(statSync(dirname(transport.subjectPath)).mode & 0o077).toBe(0);
+    call(args, 74, [], realpathSync(app));
+    call(args, 74, ["--import", preload]);
+    call(args, 74, ["--import", swapEncoding]);
+    expect(readFileSync(counter, "utf8")).toBe("entry\n");
+    expect(before()).toEqual(appBytes);
+  } finally { writeFileSync(checker, original); }
+});
+
+it("RP2 uses the Core-I-bound validator and refuses executable mismatch", () => {
+  const { write, call } = packedCatalogue();
+  const artifact = 'module.exports = { validateContent: content => content.title === "Example" ? [] : [{code:"title_required",path:"title"}], validateProduct:()=>[], inspectDocument:()=>null, matchesDocument:()=>false, identifyDocument:()=>null, deriveSkuFacts:()=>({}), classifySkuChange:()=>"inconclusive" };';
+  write("rules.cjs", artifact);
+  const validatorRef = "sha256:" + createHash("sha256").update(artifact).digest("hex");
+  const binding = `
+import { readFileSync } from "node:fs";
+import { withCatalogPublicationRules } from "@openlup/platform/catalog";
+const pack = withCatalogPublicationRules(${JSON.stringify({ ...fixturePack, types: [{ ...fixturePack.types[0], validatorRef }] })},
+  () => readFileSync(new URL("./rules.cjs", import.meta.url)));
+`;
+  function registration(name: string, title: string, replace = false) {
+    const content = { ...contentDraft, product: { ...contentDraft.product, sharedContent: { title } } };
+    const projectedPack = replace ? '{ ...pack, types: [{ ...pack.types[0], validateContent: () => [] }] }' : "pack";
+    return sourceArgs(write(name, binding + `export const catalogueConformance = {
+      packs: [{ pack: ${projectedPack}, drafts: [${JSON.stringify(content)}] }], requiredChecks: ["draft-content"] };
+    `));
+  }
+  const good = registration("good.mjs", "Example");
+  const pass = call(good, 0);
+  expect(call(replayArgs(pass.transport.subjectPath), 2).findings.map(({ code }: { code: string }) => code))
+    .toEqual(["conformance_owner_unavailable", "conformance_owner_unavailable"]);
+  const refusal = call(registration("refused.mjs", ""), 1);
+  expect(refusal.findings).toEqual([expect.objectContaining({ code: "title_required", path: "/packs/0/drafts/0/product/sharedContent/title" })]);
+  call(registration("substituted.mjs", "Example", true), 74);
+  write("rules.cjs", artifact + "\n");
+  call(good, 74);
+});
+
+it("RP2 typechecks and discovers all nine recipes from the packed skeleton", () => {
+  const { app, consumer, write, call, environment } = packedCatalogue();
+  const core = join(consumer, "node_modules/@openlup/core");
+  const guide = "docs/guide/how-to/extend/catalogue-extension.md";
+  for (const file of ["catalogue.ts", "pack.ts", "fixtures.ts"]) {
+    cpSync(join(dirname(join(core, guide)), "catalogue-pack-skeleton", file), join(app, file));
+  }
+  const tsconfig = write("tsconfig.json", JSON.stringify({
+    compilerOptions: { noEmit: true, skipLibCheck: true, strict: true, erasableSyntaxOnly: true,
+      verbatimModuleSyntax: true, allowImportingTsExtensions: true, module: "nodenext", types: [] },
+    files: ["catalogue.ts"],
+  }));
+  const compiled = spawnSync(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "--project", tsconfig],
+    { cwd: app, env: environment, encoding: "utf8" });
+  expect(compiled.status, compiled.stdout || compiled.stderr).toBe(0);
+  const projected = call(sourceArgs(join(app, "catalogue.ts")), 0);
+  const [{ pack, drafts }] = JSON.parse(readFileSync(projected.transport.subjectPath, "utf8")).packs;
+  expect(pack.types[0]).toMatchObject({ key: "stationery:notebook", version: 1, taxClass: "standard" });
+  expect(drafts[0].product.sharedContent).toEqual({ title: "Notebook" });
+  const lines = readFileSync(join(core, guide), "utf8").split("\n");
+  for (const title of ["New vertical", "Add attribute", "Add unit", "Add axis", "Add tax class", "Add category or collection",
+    "Promotion with existing grammar", "Subscription profile", "Upgrade a definition"]) {
+    const result = JSON.parse(execFileSync(process.execPath, [join(core, "src/openlup-context.js"), "search", title, "--limit", "20", "--json"],
+      { cwd: app, env: environment, encoding: "utf8" }));
+    const index = lines.indexOf("## " + title);
+    expect(index, title).toBeGreaterThan(0);
+    const next = lines.findIndex((line, i) => i > index && line.startsWith("## "));
+    expect(result.hits, title).toContainEqual(expect.objectContaining({ title, start: index + 1, end: next < 0 ? lines.length : next }));
+  }
+  // Prove the application parser uses native, erasable TypeScript imports.
+  call(sourceArgs(write("forward.ts", 'export { catalogueConformance } from "./catalogue.ts";')), 0);
+}, 30_000);

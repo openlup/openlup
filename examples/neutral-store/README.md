@@ -285,6 +285,14 @@ installed rules after an upgrade, copy `owned/catalogue-rules.cjs` and
 Move your existing content checks into the bundle, run
 `node --test owned/catalogue-rules.test.cjs`, then run `./lifecycle up`.
 
+## Check catalogue definitions
+
+Run `npm run --silent catalogue:check:source` to check the packs and fixtures in
+`owned/catalogue.ts` with their registered content validators. Use
+`npm run --silent catalogue:check` for inert `owned/catalogue.json` fixtures.
+The installed recipes in `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md`
+describe the evidence each check supplies.
+
 ## Install-only fictional catalogue
 
 `./lifecycle up` calls `installation/install.ts` in a one-shot container before

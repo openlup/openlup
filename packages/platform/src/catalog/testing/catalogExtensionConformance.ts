@@ -3,18 +3,72 @@ import {
   CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues, catalogProductTypeRefIssues,
   validateCatalogAttributes, prepareCatalogAttributeProjection, canonicalizeCatalogCombinationV2,
   validateCatalogCombinationChangesV2, CatalogCombinationError,
-  catalogDraftPayloadSchema, createCatalogProductTypeRegistry, validateCatalogDraft,
+  catalogDraftPayloadSchema, catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema,
+  createCatalogProductTypeRegistry,
   type CatalogConformanceCode, type CatalogPackInput,
 } from "../index.js";
+import { validateDraftFacts } from "../draftFacts.js";
+import { validateDraftAttributes } from "../attributeValues.js";
+import { validateDraftCombinations } from "../combinationOptions.js";
+import { verifyCatalogRulesAtInstall } from "../publicationRules.js";
+import { renderPublicationIssue, type Issue } from "../publicationError.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
 
-const boundary = "Offline JSON definitions, exact quantities, supplied v1 drafts, attribute validation/projection preparation and V2 combination fixtures only. Reference evidence and retained options are fixture observations; PASS does not validate persisted identity bytes or history. Application content validation, category graphs, tax intervals, cadence, promotion grammar and publication require unavailable owner evidence. Installed versions, database references, installed cadence, listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied.";
+const boundary = "Offline definitions, exact quantities, supplied v1–v3 drafts, attribute validation/projection preparation and V2 combination fixtures. Draft admission checks operation and price shape. Reference evidence, retained options and refusal records are fixture observations. Category graphs, tax intervals, cadence, promotion grammar, price execution and publication require other evidence. Installed versions, database references, listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied by the checker.";
 const command = "npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json";
 const pointer = (parts: readonly PropertyKey[]): string => parts.map(part => `/${String(part).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const closed = (value: unknown, keys: readonly string[]): boolean => object(value) && Object.keys(value).every(key => keys.includes(key));
 const compare = (a: string, b: string): number => a < b ? -1 : a > b ? 1 : 0;
 const referenceKey = (namespace: string, id: string): string => JSON.stringify([namespace, id]);
+
+type Validator = CatalogPackInput["types"][number]["validateContent"];
+
+/** Tool-internal source projection. Keep executable bindings scoped to the exact subject.
+ * @internal
+ */
+export function projectCatalogExtensionConformance(source: unknown): {
+  subject: string; check: (jsonText: string) => Promise<CatalogConformanceReport>;
+} {
+  if (!object(source)) throw new TypeError("Missing catalogue registration");
+  const validators = new Map<string, Validator>();
+  const ancestors = new Set<object>();
+  function encode(value: unknown, path: readonly (string | number)[]): string {
+    if (value === null || typeof value === "string" || typeof value === "boolean"
+      || (typeof value === "number" && Number.isFinite(value) && !Object.is(value, -0))) return JSON.stringify(value);
+    const array = Array.isArray(value);
+    if (typeof value !== "object" || ancestors.has(value)
+      || !(array ? Object.getPrototypeOf(value) === Array.prototype
+        : [Object.prototype, null].includes(Object.getPrototypeOf(value)))) throw new TypeError("Invalid catalogue JSON value");
+    ancestors.add(value);
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (!path.length && !Object.hasOwn(descriptors, "packs")) throw new TypeError("Missing catalogue registration");
+    const keys = Reflect.ownKeys(descriptors).filter(key => !array || key !== "length");
+    if (array && (keys.length !== descriptors.length?.value || keys.some((key, index) => key !== String(index))))
+      throw new TypeError("Invalid catalogue array");
+    const fields: string[] = [];
+    for (const key of array ? keys : keys.sort((a, b) => compare(String(a), String(b)))) {
+      if (typeof key !== "string") throw new TypeError("Invalid catalogue property");
+      const descriptor = descriptors[key];
+      if (!descriptor.enumerable || !Object.hasOwn(descriptor, "value")) throw new TypeError("Invalid catalogue property");
+      const child = [...path, array ? Number(key) : key];
+      if (typeof descriptor.value === "function" && key === "validateContent" && path.length === 5
+        && path[0] === "packs" && typeof path[1] === "number" && path[2] === "pack"
+        && path[3] === "types" && typeof path[4] === "number") validators.set(pointer(child), descriptor.value);
+      else {
+        const encoded = encode(descriptor.value, child);
+        fields.push(array ? encoded : `${JSON.stringify(key)}:${encoded}`);
+      }
+    }
+    ancestors.delete(value);
+    return array ? `[${fields.join(",")}]` : `{${fields.join(",")}}`;
+  }
+  const subject = encode(source, []);
+  return { subject, async check(jsonText) {
+    if (jsonText !== subject) throw new TypeError("Projected subject bytes differ");
+    return checkSubject(jsonText, validators);
+  } };
+}
 
 // Deliberate input throws: Core catalog/quantities.ts:15, variantCombination.ts:22,
 // contracts/draft.ts:40-67 and productTypeSchemas.ts:10. Operational failures are excluded.
@@ -31,14 +85,22 @@ const OWNER_INPUT_CODES = new Set([
  * @experimental
  */
 export async function runCatalogExtensionConformance(jsonText: string): Promise<CatalogConformanceReport> {
+  return checkSubject(jsonText);
+}
+
+async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, Validator>): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;
-  function add(code: string, path: string, fixture = "", requiredEvidence = false): void {
-    const rule = Object.hasOwn(CATALOG_CONFORMANCE_RULES, code) ? CATALOG_CONFORMANCE_RULES[code as CatalogConformanceCode] : CATALOG_CONFORMANCE_RULES.draft_payload_invalid;
+  function add(issue: string | Issue, path: string, fixture = "", requiredEvidence = false): void {
+    const code = typeof issue === "string" ? issue : issue.code;
+    const adopterIssue = typeof issue !== "string" && issue.kind === "adopterRule" ? issue : undefined;
+    const rule = !adopterIssue && Object.hasOwn(CATALOG_CONFORMANCE_RULES, code)
+      ? CATALOG_CONFORMANCE_RULES[code as CatalogConformanceCode] : CATALOG_CONFORMANCE_RULES.draft_payload_invalid;
+    const fix = adopterIssue ? renderPublicationIssue({ ...adopterIssue, path }).message : rule.fix;
     if (requiredEvidence) unavailable = true; else violated = true;
     findings.push({ code, severity: rule.severity, path, fixture, observed: `Owner check reported ${code}.`,
-      cause: rule.rule, fix: rule.fix, recipe: rule.recipe, recheck,
-      evidence: { declared: "JSON fixture observations", bound: "Offline owner validators only", checked: path,
+      cause: rule.rule, fix, recipe: rule.recipe, recheck,
+      evidence: { declared: "JSON fixture observations", bound: validators ? "Offline owners and registered content validators" : "Offline owner validators only", checked: path,
         unknown: ["Installed and runtime state; see boundary"] } });
   }
   // Only shared owner calls enter this boundary; parsing, checker logic and CLI I/O remain outside.
@@ -48,7 +110,9 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
       if (error instanceof SyntaxError) throw error;
       const named = error instanceof Error ? "code" in error && typeof error.code === "string" ? error.code : error.message : "";
       if (!OWNER_INPUT_CODES.has(named)) throw error;
-      add(named, `${path}${error instanceof CatalogCombinationError ? pointer(error.path.split(".")) : ""}`);
+      const suffix = error instanceof CatalogCombinationError
+        ? error.path.startsWith("/") ? error.path : pointer(error.path.split(".")) : "";
+      add(named, path + suffix);
       return undefined;
     }
   }
@@ -65,7 +129,10 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
   }
   function finish(): CatalogConformanceReport {
     findings.sort((a, b) => compare(a.path, b.path) || compare(a.code, b.code) || compare(a.fixture, b.fixture));
-    return { state: violated ? "violated" : unavailable ? "unavailable" : "satisfied", exitCode: violated ? 1 : unavailable ? 2 : 0, boundary, findings };
+    const content = validators ? "Trusted source runs registered content validators."
+      : "Application content validation requires trusted projection.";
+    return { state: violated ? "violated" : unavailable ? "unavailable" : "satisfied", exitCode: violated ? 1 : unavailable ? 2 : 0,
+      boundary: `${boundary} ${content}`, findings };
   }
   if (typeof jsonText !== "string") { add("conformance_subject_invalid", ""); return finish(); }
   let parsed: unknown;
@@ -82,10 +149,11 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
   }
   const subject = parsed as unknown as CatalogConformanceSubject;
   if (typeof subject.recheck === "string") recheck = subject.recheck;
-  let attributesAvailable = true, combinationsAvailable = true;
+  let attributesAvailable = true, combinationsAvailable = true, packsWithContent = 0;
   const allTypes: unknown[] = [], typePaths: string[] = [];
   for (const [index, entry] of subject.packs.entries()) {
     const at = `/packs/${index}`;
+    let contentChecked = false;
     if (!closed(entry, ["pack", "drafts", "quantities", "attributes", "combinations", "refusals"])
       || [entry.drafts, entry.quantities, entry.attributes, entry.combinations, entry.refusals].some(value => value !== undefined && !Array.isArray(value))) {
       add("conformance_subject_invalid", at); attributesAvailable = combinationsAvailable = false; continue;
@@ -100,24 +168,51 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
       if (Object.hasOwn(type, "validateContent")) {
         add("definition_unknown_field", `${at}/pack/types/${i}/validateContent`); executableField = true;
       }
-      return { ...type, validateContent: () => [{ code: "conformance_owner_unavailable", path: "" }] };
+      const callback = validators?.get(`${at}/pack/types/${i}/validateContent`);
+      return { ...type, validateContent: validators ? callback : () => [] };
     }) } as CatalogPackInput : entry.pack as CatalogPackInput;
     if (executableField) continue;
     const issues = await owner(`${at}/pack`, () => catalogPackIssues(pack));
     if (!issues) continue;
     issues.forEach(issue => add(issue.code, `${at}/pack${issue.path}`));
     if (issues.length) continue;
+    if (validators) verifyCatalogRulesAtInstall(pack);
     pack.types.forEach((type, i) => { allTypes.push(type); typePaths.push(`${at}/pack/types/${i}`); });
     const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(pack.types));
     if (!registry) continue;
     for (const [i, draft] of (drafts ?? []).entries()) {
-      const path = `${at}/drafts/${i}`, admitted = await owner(`${at}/drafts/${i}`, () => catalogDraftPayloadSchema.safeParse(draft));
+      const path = `${at}/drafts/${i}`, version = object(draft) ? draft.schemaVersion : undefined;
+      const schema = version === 3 ? catalogDraftPayloadV3Schema : version === 2 ? catalogDraftPayloadV2Schema : catalogDraftPayloadSchema;
+      const admitted = await owner(path, () => schema.safeParse(draft));
       if (!admitted) continue;
       if (!admitted.success) { admitted.error.issues.forEach(issue => add("draft_input_invalid", `${path}${pointer(issue.path)}`)); continue; }
-      const validation = await owner(path, () => validateCatalogDraft(admitted.data, registry));
-      if (!validation) continue;
-      if (!validation.valid) validation.issues.forEach(issue => add(issue.code, `${path}${pointer(issue.path.split("."))}`, "", issue.code === "conformance_owner_unavailable"));
+      const payload = admitted.data;
+      const definition = registry.resolve(payload.product.type);
+      const validation = validateDraftFacts(payload, { resolve: () => definition && { ...definition, validateContent: content => {
+        if (!validators) {
+          add("conformance_owner_unavailable", `${path}/product/sharedContent`, "", true);
+          return [];
+        }
+        const result = definition.validateContent(content);
+        const then = (result as unknown as PromiseLike<unknown> | undefined)?.then;
+        if (typeof then === "function") {
+          void then.call(result, undefined, () => undefined);
+          throw new TypeError("Catalogue validateContent must return synchronously");
+        }
+        contentChecked = true;
+        return result;
+      } } }, true);
+      if (!validation.valid) for (const issue of validation.issues) add(issue, path + issue.path);
+      if (payload.schemaVersion === 1 || !definition) continue;
+
+      const attributeIssues = await owner(path, () => validateDraftAttributes(definition, payload));
+      for (const issue of attributeIssues ?? [])
+        add(issue.code, path + issue.path, "", issue.code === "attribute_reference_unresolved");
+      await owner(path, () => validateDraftCombinations(definition, payload, (code, suffix) => {
+        throw new CatalogCombinationError(code, suffix);
+      }, true));
     }
+    if (contentChecked) packsWithContent++;
     for (const [i, fixture] of (quantities ?? []).entries()) {
       const path = `${at}/quantities/${i}`;
       if (!closed(fixture, ["type", "value", "targetUnit"])) { add("conformance_subject_invalid", path); continue; }
@@ -219,7 +314,8 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
       add("conformance_refusal_fixture_missing", `${at}/pack/capabilities${pointer([capability])}`);
   }
   for (const [index, check] of (subject.requiredChecks ?? []).entries())
-    if (!(check === "attribute-values" ? attributesAvailable : check === "variant-combinations" ? combinationsAvailable : false))
+    if (!(check === "attribute-values" ? attributesAvailable : check === "variant-combinations" ? combinationsAvailable
+      : check === "draft-content" && packsWithContent === subject.packs.length))
       add("conformance_owner_unavailable", `/requiredChecks/${index}`, "", true);
   const typeIssues = await owner("/packs", () => catalogProductTypeIssues(allTypes));
   typeIssues?.filter(issue => issue.code === "definition_duplicate_identity").forEach(issue => {

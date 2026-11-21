@@ -1,18 +1,7 @@
-import { createHash } from "node:crypto";
-import { canonicalizeCatalogQuantity, parseCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
-import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import type { CatalogOptionValue, CatalogProductTypeInput } from "./contracts/productTypes.js";
 import type { CatalogCombinationChangeV2, CatalogCombinationCode, CatalogCombinationIdentityV2,
   CatalogRetainedCombinationV2 } from "./contracts/variantAxes.js";
-import { catalogDimensionKeySchema, catalogNamespacedKeySchema, catalogOptionValueSchema, catalogQuantityDimensionSchema } from "./productTypeSchemas.js";
-import { z } from "./validation.js";
-
-// Keep field closure; Core owns the V2 decimal grammar and canonical numeric bounds.
-const quantityOptionV2Schema = z.object({
-  kind: z.literal("quantity"),
-  value: z.object({ dimension: catalogQuantityDimensionSchema, unit: catalogNamespacedKeySchema,
-    unscaled: z.unknown(), scale: z.unknown() }).strict(),
-}).strict();
+import { canonicalizeCombinationOptions, selectCombinationAxes } from "./combinationOptions.js";
 
 /** @experimental */
 export class CatalogCombinationError extends Error {
@@ -30,45 +19,8 @@ export function canonicalizeCatalogCombinationV2(input: {
   axes: readonly string[];
   options: Readonly<Record<string, CatalogOptionValue>>;
 }): CatalogCombinationIdentityV2 {
-  const { definition, axes, options } = input;
-  const selected = new Set<string>();
-  for (const key of axes) {
-    if (selected.has(key)) refuse("duplicate_axis", `axes.${key}`);
-    selected.add(key);
-    if (!catalogDimensionKeySchema.safeParse(key).success || !definition.axes?.some(axis => axis.key === key))
-      refuse("axis_not_installed", `axes.${key}`);
-  }
-  if (!options || typeof options !== "object" || Array.isArray(options)) refuse("option_invalid", "options");
-  for (const key of Object.keys(options)) if (!selected.has(key)) refuse("option_not_selected", `options.${key}`);
-  const entries = [...selected].sort().map(key => {
-    if (!Object.hasOwn(options, key)) return refuse("option_missing", `options.${key}`);
-    const value = options[key];
-    const parsed = value?.kind === "quantity" ? quantityOptionV2Schema.safeParse(value) : catalogOptionValueSchema.safeParse(value);
-    if (!parsed.success) return refuse("option_invalid", `options.${key}`);
-    const option = parsed.data;
-    const axis = definition.axes!.find(axis => axis.key === key)!;
-    const attribute = definition.attributes?.find(attribute => attribute.key === axis.attributeKey);
-    const dimension = definition.dimensions.find(dimension => dimension.key === key);
-    if (!attribute || attribute.scope !== "variant" || !dimension || dimension.kind !== option.kind)
-      return refuse("option_invalid", `options.${key}`);
-    const valueType = attribute.valueType;
-    if (option.kind === "choice" && dimension.kind === "choice" && valueType.kind === "enum"
-      && dimension.values.includes(option.value) && valueType.values.some(value => value.id === option.value))
-      return [key, "choice", option.value];
-    if (option.kind === "boolean" && valueType.kind === "boolean") return [key, "boolean", option.value];
-    if (option.kind !== "quantity" || dimension.kind !== "quantity" || valueType.kind !== "quantity"
-      || dimension.dimension !== option.value.dimension || valueType.dimension !== option.value.dimension
-      || !dimension.units.includes(option.value.unit) || !valueType.units.includes(option.value.unit))
-      return refuse("option_invalid", `options.${key}`);
-    const units: CatalogQuantityUnit[] = definition.units.filter(unit => unit.code === option.value.unit).map(unit => {
-      if (!unit.factor) return refuse("unit_factor_missing", `options.${key}`);
-      return { ...unit, factor: unit.factor };
-    });
-    const quantity = canonicalizeCatalogQuantity(parseCatalogQuantity(option.value, units), units);
-    return [key, "quantity", quantity.dimension, quantity.unit, quantity.unscaled, quantity.scale];
-  });
-  const canonicalOptionBytes = Buffer.from(canonicalCatalogDraftJson(["catalog-combination", 2, entries]), "utf8");
-  return { version: 2, canonicalOptionBytes, combinationDigest: createHash("sha256").update(canonicalOptionBytes).digest() };
+  const selected = selectCombinationAxes(input.definition, input.axes, key => `axes.${key}`, refuse);
+  return canonicalizeCombinationOptions(input.definition, selected, input.options, key => key === undefined ? "options" : `options.${key}`, refuse);
 }
 
 /** Compare authoritative bytes after a digest conflict; a collision never merges identities.
