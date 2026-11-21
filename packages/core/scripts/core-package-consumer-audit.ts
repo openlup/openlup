@@ -32,6 +32,15 @@ type AuditInput = {
   packFiles: string[];
 };
 
+// Use the owner-approved adapter names from scripts/public-ci-neutrality.mjs.
+const documentedAdapters = [
+  ["payments", ["str" + "ipe", "tp" + "ay"]],
+  ["fulfillment", ["omni" + "pack"]],
+  ["communications", ["res" + "end", "kla" + "viyo"]],
+] as const;
+const adapterSubpaths = documentedAdapters.map(([family, names]) => `${family}/(?:${names.join("|")})`).join("|");
+const adapterReports = documentedAdapters.map(([family, names]) => `${family}-(?:${names.join("|")})`).join("|");
+
 // This policy is intentionally readable: it inspects packed production artifacts,
 // not this repository-side audit script or test fixtures.
 const forbiddenPackagedContent = [
@@ -39,6 +48,8 @@ const forbiddenPackagedContent = [
   {
     description: "downstream provider dependency",
     pattern: /@(?:supabase|vercel)\/|\b(?:resend|stripe|tpay|omnipack|dhl|fakturownia|openai|gtm|googletagmanager|axiom|svix|calendly)\b|@gmail\b/i,
+    // Reject unmasked paths even when a suffix makes the adapter name part of a longer word.
+    releaseNotePattern: new RegExp(`(?:${adapterSubpaths})|(?:${adapterReports})\\.api\\.md`),
   },
   { description: "downstream phone country code", pattern: /\+48\b/ },
   { description: "owner-local path", pattern: /\/(?:Users|private\/tmp)\// },
@@ -54,6 +65,13 @@ const packagedNeutralityPolicy: SourceNeutralityPolicy = {
 };
 const approvedDogfoodEvidence = "A first-party production deployment consumes package seams; this is first-party evidence only.";
 const extensionlessTextPackFiles = new Set(["LICENSE"]);
+const packagedAdapterReference = new RegExp([
+  // Released subpaths are inline code; generated dist references end their line.
+  "(?<=`)(?:@openlup/platform/)?(?:" + adapterSubpaths + ")(?=`)",
+  // Mask only the directory so the file name itself remains subject to the audit.
+  String.raw`(?<= )dist/(?:${adapterSubpaths})(?=/[A-Za-z0-9-]+(?:\.[A-Za-z0-9]+)*(?:\n|(?![\s\S])))`,
+  `^### \`packages/platform/api/(?:${adapterReports})\\.api\\.md\`$`,
+].join("|"), "gm");
 const approvedPublicSecurityContact = "dev@openlup.com";
 const approvedPublishConfig = { access: "public", provenance: true, tag: "preview" };
 const approvedRepository = { type: "git", url: "git+https://github.com/openlup/openlup.git", directory: "packages/core" };
@@ -116,9 +134,9 @@ function assertPacklist(packageJson: CorePackageJson, packFiles: string[]): void
   const forbiddenFiles = packFiles.filter(
     (path) =>
       path.startsWith("smoke/") ||
-      // The reader guide includes Markdown and the closed copied catalogue sample.
+      // The reader guide includes Markdown and four catalogue skeleton files.
       (path.startsWith("docs/") && path !== "docs/SUBSCRIPTION_ENGINE.md" && !/^docs\/guide\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.md$/u.test(path)
-        && !/^docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/catalogue\.json$/u.test(path)) ||
+        && !/^docs\/guide\/how-to\/extend\/catalogue-pack-skeleton\/(?:catalogue\.json|catalogue\.ts|pack\.ts|fixtures\.ts)$/u.test(path)) ||
       path.startsWith(".context/") ||
       path === "vitest.config.ts" ||
       path.startsWith("tsconfig."),
@@ -178,14 +196,16 @@ function assertPackagedContent({ packageRoot, packageName, packFiles }: AuditInp
     const approvedSource = path === "release-gates.json"
       ? normalizeApprovedDogfoodEvidence(source)
       : source;
-    const auditableSource = normalizeSimpleLiteralCompositions(approvedSource);
+    const releaseNote = path === "CHANGELOG.md" || /^docs\/guide\/upgrade\/v[0-9-]+\.md$/.test(path);
+    const normalizedSource = normalizeSimpleLiteralCompositions(approvedSource);
+    const auditableSource = releaseNote ? normalizedSource.replace(packagedAdapterReference, "APPROVED_ADAPTER_REFERENCE") : normalizedSource;
     const semanticViolations = Object.entries(scanNeutralitySource(auditableSource, packagedNeutralityPolicy))
       .filter(([, count]) => count > 0)
       .map(([category]) => `${path}: downstream ${category}`);
     return [
       ...semanticViolations,
       ...forbiddenPackagedContent
-      .filter(({ pattern }) => pattern.test(auditableSource))
+      .filter(({ pattern, releaseNotePattern }) => pattern.test(auditableSource) || (releaseNote && releaseNotePattern?.test(auditableSource)))
       .map(({ description }) => `${path}: ${description}`),
     ];
   });

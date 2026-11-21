@@ -21,7 +21,7 @@ they are ordinary public source files, not release assets. Keep the pair and
 source revision together. No author checkout, workspace install or package
 packing is needed.
 
-Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
+Use the [repository's released-starter entry](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/README.md#start-from-an-exact-source-archive)
 for the download commands in `examples/neutral-store/README.md`, under “Start
 from an exact source archive”. Those commands download the exact source archive
 and both inputs at the commits above. In the download directory, after unpacking
@@ -86,7 +86,7 @@ node --experimental-strip-types host/server.ts
 ```
 
 This host does not compose the database-backed actions. Pass `--configuration`
-and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/server.ts)
+and `--port` to select your configuration and listener; the [host CLI](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/host/server.ts)
 owns their defaults. Stop with Ctrl-C before reusing the port. Use the
 [edit loop](#edit-and-refresh) while changing the presentation.
 
@@ -555,16 +555,16 @@ Unchanged copied bytes alone do not establish working behavior. See
 
 ## Protect local sessions and messages
 
-Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/sessions.ts)
+Sessions are held in process memory; restarting loses them. The [session store](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/host/sessions.ts)
 owns expiry and capacity; a full store refuses with
 `starter_session_capacity_exceeded`. Customer ownership and operator membership are rechecked against
 native stores. Replace this session storage for a production application.
 
 The demonstration captures sign-in messages privately rather than sending mail.
 Read `identity.jsonl` through the application container's filesystem as its
-`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/native-composition.ts)
+`node` user; the [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/host/native-composition.ts)
 defines its private location.
-The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/examples/neutral-store/host/native-composition.ts)
+The [capture binding](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/examples/neutral-store/host/native-composition.ts)
 creates the file with owner-only permissions. Access exposes sign-in tokens; keep it
 private. HTTP serves only built assets, not the mailbox.
 
@@ -623,22 +623,57 @@ operator, open **Catalogue drafts**, and choose **Load draft example**. To
 check the bundled title rule, clear `product.sharedContent.presentation.title`
 in the JSON and choose **Save**. Expect `title_required` at that field. Restore
 the title, save, and choose **Prepare saved draft** with the saved draft ID and
-revision. Preparation can report that publication evidence is unavailable.
-Earlier saved drafts keep their installed rule version.
+revision. Earlier saved drafts keep their installed rule version.
+
+### Publish a saved catalogue draft
+
+Run `./lifecycle up` to install the catalogue rules and provision the private
+publication connection for the demonstration host. Sign in as a human
+administrator. The following actions use the same verified operator session as
+the draft editor. Send JSON to `POST /api/actions/<operation>` from the starter
+origin with `X-Starter-Request: 1` and an `Idempotency-Key` header. Use a fresh
+UUID for each new request unless retrying a command.
+
+1. Save a version 3 draft. Send `{action: "prepare", draftId, expectedRevision}`
+   to `operator.catalogDrafts` using the saved revision. Review the returned
+   `issues` and `preparation`. The response includes the `expectedHead` resolved
+   from the saved product. Prepare reports a missing or ineffective price list
+   in `issues` at the affected field, for example
+   `skus.0.priceOperations.0.priceListId`. Correct the issue before approval.
+2. Have the administrator review the proposed effects and send
+   `{action: "approve", productId, candidateRef, candidateDigest, postStateDigest}`
+   to `operator.catalogPublication`. Use the product ID and digests from
+   preparation. Keep the decision receipt.
+3. Send `{action: "publish", productId, candidateRef, candidateDigest, expectedHead, changes: []}`
+   to the same operation with a distinct publication key. Keep the request body
+   and its key until you have the publication receipt. The example issues a
+   draft SKU. Publish also refuses a missing or ineffective list. Offer
+   admission remains an application decision.
+4. If the response is lost, sign in and send
+   `{action: "receipt", productId, commandKey}` with the original publication
+   key in the body. Use a fresh transport header for the lookup. The authorized
+   result is `found` with the full receipt or `absent`. Retry with the same
+   issuing administrator, original publish body and original header key. A
+   committed command returns the same receipt with `replayed: true`.
+5. Use `{action: "current", productId}` to read the current head. Send
+   `{action: "exact", head, cursor: null}` with the receipt's head to get the
+   schema-version 2 product and SKU facts as issued. Continue with `nextCursor` and the same head
+   until the cursor is null. Read newest-first receipt summaries with
+   `{action: "history", productId, cursor: null}` and its continuation cursor.
 
 ### Correct a price-list refusal
 
-When your application supplies a price validator for catalogue preparation,
-`price_list_not_found` in the `pricing` phase identifies a missing target
-list. A path such as `skus.0.priceOperations.0` identifies the first price
-operation on the first SKU. The issue's `subject` is that operation's
-`priceListId`.
-
-The demonstration seed in `owned/demo-seed.ts` derives one list ID from the
-selected configuration ID and its market currency. Use the list installed for
-that configuration and currency. Set the affected operation's `priceListId`
-to the installed ID, save the correction, and prepare the new draft revision.
-The supplied starter's **Prepare saved draft** action has no price validator.
+Prepare reports `price_list_not_found` for a missing list or
+`price_list_not_active` for a list that is inactive, outside its validity window,
+or for a different settlement region or currency. Each issue names the field
+with zero-based SKU and operation indexes, such as
+`skus.0.priceOperations.0.priceListId`. Publish also refuses the list, and a
+`price_list_not_found` publish response identifies the rejected ID as `subject`.
+Find the effective list for the selected configuration in `owned/demo-seed.ts`.
+The demonstration's `buildDemoSeed(config).priceLists[0].id` is derived from
+the configuration ID and market currency. Revise the affected operation to use
+that list and a fresh price command key. Save, prepare and approve the new draft
+revision, then publish it with a fresh publication key.
 
 ## Replace acquisition location choices
 

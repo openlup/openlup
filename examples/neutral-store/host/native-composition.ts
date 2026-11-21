@@ -53,10 +53,29 @@ export function createStarterPersonalDataRegistry(additional: readonly PersonalD
     ] });
 }
 
-/** Local demonstration only. All database connections use the restricted runtime URL. */
-export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring): Promise<ApplicationBindings> {
+/** Local demonstration only. Publication uses a private credential on the same database. */
+export async function composeNativeBindings(connectionString: string, origin: OriginPolicy, config: StoreConfig, quoteAcceptanceKeyring?: PromotionAcceptanceKeyring, publicationPassword?: string): Promise<ApplicationBindings> {
   const pool = new pg.Pool({ connectionString, max: 4 });
+  const publication = publicationPassword === undefined ? undefined : (() => {
+    const url = new URL(connectionString);
+    url.username = 'openlup_catalog_publication';
+    url.password = publicationPassword;
+    url.searchParams.delete('user');
+    url.searchParams.delete('password');
+    return createPostgresRoleFreeTransactionLane<PgQueryExecutor>({ connectionString: url.href });
+  })();
   try {
+    if (publication) {
+      if (!/^[a-f0-9]{64}$/u.test(publicationPassword!)) throw new Error('starter_catalogue_publication_password_invalid');
+      await publication.run(async db => {
+        const { rows } = await db.query(`SELECT session_user = 'openlup_catalog_publication'
+          AND current_user = session_user AND rolcanlogin AND NOT rolinherit AND NOT rolsuper
+          AND NOT rolbypassrls AND NOT rolcreaterole AND NOT rolcreatedb AND NOT rolreplication
+          AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members WHERE member = r.oid OR roleid = r.oid) AS allowed
+          FROM pg_catalog.pg_roles r WHERE rolname = current_user`);
+        if (rows[0]?.allowed !== true) throw new Error('starter_catalogue_publication_login_invalid');
+      }).catch(() => { throw new Error('starter_catalogue_publication_login_invalid'); });
+    }
     const identity = (await pool.query(`SELECT session_user AS login, current_user AS role,
       rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user`)).rows[0];
     if (identity?.login !== 'starter_runtime' || identity.role !== 'starter_runtime'
@@ -77,7 +96,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       })) throw new Error('starter_installed_policy_drift');
     if (!(await pool.query("SELECT to_regprocedure('public.invoicing_capture_duty_with_buyer(text,text,uuid,uuid,jsonb,timestamp with time zone)') IS NOT NULL AS ready")).rows[0]?.ready)
       throw new Error('starter_billing_installation_required');
-  } catch (error) { await pool.end(); throw error; }
+  } catch (error) { await Promise.all([pool.end(), publication?.close()]); throw error; }
   const sessions = createSessions(origin.secureCookies);
   const gateway = createPostgresDataGateway({ connectionString }, { poolFactory: () => pool });
   const operators = createPostgresOperatorIdentityStore({ connectionString });
@@ -90,7 +109,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
   });
   const resolved = resolveCustomerSessionBinding({ PLATFORM_BUNDLE: 'node-postgres', DATABASE_URL: connectionString },
     { issuer: sessions.issuer('customer'), delivery: captured });
-  if (!resolved.binding) { await pool.end(); throw new Error('starter_customer_session_binding_required'); }
+  if (!resolved.binding) { await Promise.all([pool.end(), publication?.close()]); throw new Error('starter_customer_session_binding_required'); }
   const customer = resolved.binding;
   const operator = createOperatorSessionService({ store: operators, delivery: captured, issuer: sessions.issuer('operator') });
   const operatorAuth = createOperatorAdminAuth({ authority: operators, verifier: {
@@ -100,7 +119,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
         ? { principalId: found.session.principalId, email: null, emailVerified: false } : null;
     },
   } });
-  const capabilities = composeExistingCapabilities({ executor: pool, connectionString });
+  const capabilities = composeExistingCapabilities({ executor: pool, connectionString, publication });
   const contacts = createPostgresContactClientRegistrar({ connectionString });
   const checkoutRecoveryTokenLane = createPostgresRoleFreeTransactionLane({ connectionString });
   const recovery = {
@@ -254,7 +273,7 @@ export async function composeNativeBindings(connectionString: string, origin: Or
       const profile = await asCustomer(session.principalId, db => createPostgresCustomerMePort(db).getCustomerMe(session.principalId));
       return profile ? { ...requester, customerRef: profile.clientId, operatorRef: null, principalRef: session.principalId, sessionToken: token } : { ...nobody(), ...requester };
     },
-    async close() { sessions.close(); await Promise.all([capabilities.close(), checkoutRecoveryTokenLane.close(), contacts.close(), operators.close(), pool.end()]); },
+    async close() { sessions.close(); await Promise.all([capabilities.close(), checkoutRecoveryTokenLane.close(), contacts.close(), operators.close(), publication?.close(), pool.end()]); },
   };
 }
 

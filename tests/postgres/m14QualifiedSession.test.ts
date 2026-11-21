@@ -69,6 +69,33 @@ it("admits the actual restricted, fixed operator-provisioned graph under the hel
   });
 });
 
+it("names publication-role ownership of a committed large object outside the selected catalogue", async () => {
+  await admin.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT PASSWORD 'synthetic-only'");
+  const url = new URL(container!.connectionString);
+  url.username = "openlup_catalog_publication";
+  url.password = "synthetic-only";
+  const publisher = new Pool({ connectionString: url.href });
+  try {
+    const { rows: [object] } = await publisher.query("SELECT lo_create(0) AS id");
+    try {
+      await admittedSession(client => expect(assertQualifiedPostgresSession(client, [], selection, lockName)).rejects
+        .toThrow(/catalog_publication_login_invalid.*Transfer or drop objects owned by openlup_catalog_publication/u));
+    } finally { await admin.query("SELECT lo_unlink($1)", [object.id]); }
+  } finally {
+    await publisher.end();
+    await admin.query("DROP ROLE openlup_catalog_publication");
+  }
+});
+
+it("names the publication login's replication startup default", async () => {
+  await admin.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT");
+  try {
+    await admin.query("ALTER ROLE openlup_catalog_publication SET session_replication_role=replica");
+    await admittedSession(client => expect(assertQualifiedPostgresSession(client, [], selection, lockName)).rejects
+      .toThrow(/catalog_publication_login_invalid.*reset session_replication_role for openlup_catalog_publication/u));
+  } finally { await admin.query("DROP ROLE openlup_catalog_publication"); }
+});
+
 const methods = ["status", "dry-run", "apply"] as const;
 const moments = ["before-facts", "after-facts"] as const;
 it.each(moments.flatMap(moment => methods.map(method => ({ moment, method }))))(

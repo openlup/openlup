@@ -39,7 +39,7 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['docs/platform/README.md'])).toEqual(all);
     expect(excludedToolingTests(['config/doc-routing.json'])).toEqual(all);
     expect(excludedToolingTests(['config/openlup-packages.json'])).toEqual(all.filter(test =>
-      !['distribution-cli-proof', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
+      !['distribution-cli-proof', 'distribution-cli-settings', 'outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
   });
   it.each(ROOT_DOC_FILES)(
     'does not disable all exclusions for root doc %s while retaining doc and policy checks',
@@ -49,23 +49,34 @@ describe('conservative tooling scope', () => {
       expect(excluded).not.toContain('scripts/documentation-cli.test.ts');
       for (const unlisted of ['scripts/oss-published-tree-check.test.ts', 'scripts/dco-signoff-check.test.ts',
         'scripts/check-publishable-gap-enumeration.test.ts', 'scripts/public-ci-neutrality.test.ts',
-        'scripts/packages/platform-agent-guide.test.ts']) {
+        'scripts/packages/platform-agent-guide.test.ts', 'scripts/agent-review-derived.test.ts',
+        'scripts/packages/generate-release-bom.test.ts']) {
         expect(excluded).not.toContain(unlisted);
       }
       expect(excluded).toContain('scripts/packages/outbox-consumer-proof.test.ts');
       expect(excluded).toContain('scripts/packages/distribution-cli-proof.test.ts');
     },
   );
-  it('retains the Outbox and distribution witnesses for image-pin-only changes', () => {
+  it('retains the Outbox, distribution and PostgreSQL witnesses for image-pin-only changes', () => {
     const excluded = excludedToolingTests(['config/ci-images.json']);
-    expect(excluded).not.toContain('scripts/packages/outbox-consumer-proof.test.ts');
-    expect(excluded).not.toContain('scripts/packages/distribution-cli-proof.test.ts');
+    for (const test of [
+      'scripts/packages/outbox-consumer-proof.test.ts',
+      'scripts/packages/distribution-cli-proof.test.ts',
+      'scripts/packages/distribution-cli-settings.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts',
+      'tests/postgres/reviewedBatchForwards.test.ts',
+    ]) {
+      expect(excluded).not.toContain(test);
+    }
   });
-  it('retains distribution-cli-proof, guide-tutorial and pgtap-parity for their actual dependency closures', () => {
+  it('retains distribution-cli-proof, distribution-cli-settings, guide-tutorial and pgtap-parity for their actual dependency closures', () => {
     expect(excludedToolingTests(['examples/neutral-store/extract.mjs']))
-      .toEqual(all.filter(test => test !== 'scripts/packages/distribution-cli-proof.test.ts'));
+      .toEqual(all.filter(test => !['scripts/packages/distribution-cli-proof.test.ts', 'scripts/packages/distribution-cli-settings.test.ts'].includes(test)));
     expect(excludedToolingTests(['examples/neutral-store/owned/catalogue.ts']))
       .not.toContain('scripts/packages/distribution-cli-proof.test.ts');
+    expect(excludedToolingTests(['examples/neutral-store/owned/settings-host.ts']))
+      .not.toContain('scripts/packages/distribution-cli-settings.test.ts');
     expect(excludedToolingTests(['packages/platform/src/lifecycle/openlup.mjs']))
       .not.toContain('scripts/packages/distribution-cli-proof.test.ts');
     expect(excludedToolingTests(['packages/core/docs/guide/start/tutorial.md']))
@@ -73,6 +84,82 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['packages/core/src/index.ts']))
       .toContain('scripts/pgtap-parity.test.ts');
     expect(excludedToolingTests(['scripts/pgtap-parity.mjs'])).toEqual([]);
+  });
+  it('excludes bounded migration-pinning, registry, delegation, release-docs and postgres catalog suites on unrelated changes while keeping repo-wide scanners', () => {
+    const excluded = excludedToolingTests(['src/pages/Home.tsx']);
+    for (const bounded of [
+      'scripts/agent-review-registry.test.ts',
+      'scripts/qualified-migration-admission.test.ts',
+      'scripts/reviewed-batch-forward.test.ts',
+      'scripts/reviewed-native-store-forward.test.ts',
+      'scripts/sql-admit.test.ts',
+      'scripts/packages/distribution-cli-settings.test.ts',
+      'scripts/packages/reference-delegation-consumer.test.ts',
+      'scripts/packages/release-docs-pass.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts',
+      'tests/postgres/reviewedBatchForwards.test.ts',
+    ]) {
+      expect(excluded).toContain(bounded);
+    }
+    expect(excluded).not.toContain('scripts/agent-review-derived.test.ts');
+    expect(excluded).not.toContain('scripts/packages/generate-release-bom.test.ts');
+  });
+  it('retains migration-pinning, registry, package and postgres catalog suites when their declared inputs change', () => {
+    const portableMigration = excludedToolingTests(['db/platform/migrations/20261121000000_example.sql']);
+    for (const test of [
+      'scripts/qualified-migration-admission.test.ts',
+      'scripts/reviewed-batch-forward.test.ts',
+      'scripts/reviewed-native-store-forward.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts',
+      'tests/postgres/reviewedBatchForwards.test.ts',
+    ]) {
+      expect(portableMigration).not.toContain(test);
+    }
+    expect(portableMigration).toContain('scripts/sql-admit.test.ts');
+
+    const managedMigration = excludedToolingTests(['supabase/migrations/20261121000000_example.sql']);
+    expect(managedMigration).not.toContain('scripts/reviewed-batch-forward.test.ts');
+    expect(managedMigration).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+    expect(managedMigration).toContain('tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts');
+
+    const forwardRegistry = excludedToolingTests(['config/reviewed-platform-forwards.json']);
+    for (const test of [
+      'scripts/sql-admit.test.ts',
+      'scripts/qualified-migration-admission.test.ts',
+      'scripts/reviewed-batch-forward.test.ts',
+      'scripts/reviewed-native-store-forward.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts',
+      'tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts',
+      'tests/postgres/reviewedBatchForwards.test.ts',
+    ]) {
+      expect(forwardRegistry).not.toContain(test);
+    }
+
+    const pgHarness = excludedToolingTests(['tests/helpers/postgresContainer.ts']);
+    expect(pgHarness).not.toContain('tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts');
+    expect(pgHarness).not.toContain('tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts');
+    expect(pgHarness).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+
+    const dataDoc = excludedToolingTests(['docs/platform/DATA_AND_MIGRATIONS.md']);
+    expect(dataDoc).not.toContain('scripts/reviewed-native-store-forward.test.ts');
+    expect(dataDoc).not.toContain('tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts');
+    expect(dataDoc).not.toContain('tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts');
+
+    expect(excludedToolingTests(['config/openlup-publication-catalog.json'])).not.toContain('scripts/agent-review-registry.test.ts');
+    expect(excludedToolingTests(['packages/platform/test/packageBoundary.test.ts'])).not.toContain('scripts/agent-review-registry.test.ts');
+
+    const pkgChange = excludedToolingTests(['packages/core/src/index.ts']);
+    expect(pkgChange).not.toContain('scripts/packages/distribution-cli-settings.test.ts');
+    expect(pkgChange).not.toContain('scripts/packages/reference-delegation-consumer.test.ts');
+    expect(pkgChange).not.toContain('scripts/packages/release-docs-pass.test.ts');
+    expect(pkgChange).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+
+    expect(excludedToolingTests(['server/adapters/postgres/migrationRunner.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+    expect(excludedToolingTests(['src/domains/commerce/offerAvailability.ts'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+    expect(excludedToolingTests(['tests/postgres/managed-compat/supabase.sql'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
+    expect(excludedToolingTests(['config/ci-postgres-packages.json'])).not.toContain('tests/postgres/reviewedBatchForwards.test.ts');
   });
   it.each(Object.entries(TOOLING_INPUTS).flatMap(([test, inputs]) => inputs.map(input => [test, input] as const)))(
     'runs %s when its declared input %s changes', (test, input) => {

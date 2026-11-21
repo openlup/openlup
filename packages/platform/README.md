@@ -1304,7 +1304,9 @@ Install the complete catalogue through
 `20261122140000_subscription_price_policy_close_digest` before using the updated
 native readers. Unverifiable pre-forward closed tuples refuse with
 `subscription_price_policy_original_tuple_unverified`; historical digests are
-never replaced. The [migration and rollback guidance](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#policy-revision-close-compatibility)
+never replaced. Closed-from-open provenance can only be set by a guarded
+close or a native restore after installing
+`20261123192000_subscription_price_policy_close_provenance`. The [migration and rollback guidance](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#policy-revision-close-compatibility)
 owns compatibility. This adds no scheduler, closing command or activation.
 
 The package witnesses in `test/pricing/` move the incumbent authority, policy,
@@ -1328,21 +1330,13 @@ returns evidence for each emitted SKU and a cursor when more entries match.
 Pass back that cursor with the same offer and mode. Start again at the first
 page when the head moves. A PostgreSQL serialization failure is retryable.
 
-Opt-in Node tooling: `@openlup/platform/catalog/testing` exports
-`runCatalogExtensionConformance`. The existing bin runs
-`npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json`.
-See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
-for the explicit subject, copied skeleton, supported offline checks and pending
-owners. The entry accepts JSON text and returns a Promise; the CLI reads text
-without importing user code. Attribute and combination fixtures reuse their
-owners. Content validation is unavailable offline. Refusal records check
-observations, and retained options do not prove stored identities. Quantity
-fixtures admit closed primitive fields before handoff. Only allowlisted owner
-input errors become exit-1 findings at the input path. Other exceptions propagate
-unchanged: the direct promise rejects and the CLI returns 74 without raw errors.
-The default is 74; only the tagged `JSON.parse` site gives 64. Integrity failures
-are excluded from the input allowlist and give 74. PASS grants no installation,
-migration, publication or activation authority.
+Run `openlup catalogue project --trusted-packs ./owned/catalogue.ts --json`
+to check trusted pack definitions and fixtures with their content validators.
+The module executes with the operator's permissions. The report identifies the
+scratch JSON and gives an inert replay command. `catalogue check --packs` and
+`runCatalogExtensionConformance` from `@openlup/platform/catalog/testing` read
+inert JSON. See the installed [catalogue recipes](../core/docs/guide/how-to/extend/catalogue-extension.md)
+for the copied skeleton, offline checks and evidence limits.
 
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to
 `./catalog/contracts`. Descriptors preserve readonly literal type, unit, option,
@@ -2814,6 +2808,13 @@ policy, captions, event descriptors and key scopes. Canonical and legacy line
 checks share the unchanged donor allocation; handoff helpers register no job or
 executor. Eight issue/line/payment/handoff cases join the existing package smoke
 selection. Continuity cutover and activation remain separate.
+
+If your invoice flow can issue during a provider outage, block issuance when
+`readInvoicePaymentEvidence` returns `provider_payment_identity_mismatch` in
+`providerEvidence.unavailableReason`. The helper reports `providerStatus: "unknown"`
+for an identity refusal and `provider_read_failed` for an outage. Custom readers
+can throw an error with the `PaymentReadbackIdentityMismatch` code from the
+`@openlup/platform/payments/contracts` type.
 
 Correction and reversal workers preserve durable identity, recovery and fenced
 outcomes through host callbacks. The reference host requires a conforming

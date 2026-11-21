@@ -833,7 +833,23 @@ export interface TpayTransactionCreated {
 export declare function buildTpayTransactionPayload(input: TpayTransactionCreateInput): Record<string, unknown>;
 /** Webhook settlement requires positive paid money. */
 export declare function paidMajorToMinor(value: unknown): number | null;
+export declare function readNullableTransactionAmount(raw: unknown): number | null;
+type TransactionAmountField = {
+    field: string;
+    amountMinor: number;
+} | {
+    field: string;
+    malformed: true;
+};
 export declare function readPaidAmountMinor(transaction: Record<string, unknown>, payments: Record<string, unknown>): number | null;
+export declare const malformedConfiguredTransactionAmount: unique symbol;
+export declare function readTransactionAmountEvidence(transaction: Record<string, unknown> & {
+    [malformedConfiguredTransactionAmount]?: true;
+}, payments: Record<string, unknown>): {
+    configured: TransactionAmountField[];
+    paid: TransactionAmountField[];
+};
+export {};
 ```
 ## dist/payments/tpay/webhookJwsVerifier.d.ts
 

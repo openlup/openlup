@@ -2,6 +2,11 @@ import type { ProviderReadPurpose } from "./evidence.js";
 export type ReconciliationProviderKind = string;
 export type ProviderReconciliationStatusKind = "succeeded" | "failed" | "pending" | "unknown";
 
+/** Throw an error or object with this code when the provider returns a different payment identity. */
+export type PaymentReadbackIdentityMismatch = {
+  readonly code: "provider_payment_identity_mismatch";
+};
+
 export interface ProviderReconciliationStatus {
   status: ProviderReconciliationStatusKind;
   providerStatus: string;

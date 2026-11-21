@@ -20,6 +20,9 @@ const BASELINE = "db/platform/migrations/q2_00000000000000_platform_baseline.sql
 const ACTOR = "db/platform/migrations/q2_20260810180001_self_host_actor_auth.sql";
 const ACQUISITION = "db/platform/migrations/q2_20260816140000_acquisition_case_foundation.sql";
 const IMPORT = "db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql";
+const PUBLICATION_FORWARD = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+const PUBLICATION_LOGIN = "openlup_catalog_publication";
+const PUBLICATION_FIX = "Provision openlup_catalog_publication as LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS with no memberships or owned objects.";
 const ACTOR_GROUPS = ["anon", "authenticated", "service_role"];
 const ACQUISITION_GROUPS = ["platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"];
 const GROUPS = [...ACTOR_GROUPS, ...ACQUISITION_GROUPS];
@@ -46,7 +49,7 @@ export function assertQualifiedPostgresSelection(value: QualifiedPostgresInstall
   if (JSON.stringify(keys) !== JSON.stringify(expected) || value.generation !== "qualified-v2"
     || !["installer-managed", "operator-provisioned"].includes(value.roleMode)) fail("invalid_selection");
   const names = [value.migrationLogin, value.bootstrapLogin, value.runtimeLogin, ...(value.restoreLogin === undefined ? [] : [value.restoreLogin])];
-  if (names.some(name => typeof name !== "string" || !SAFE_NAME.test(name) || name.toUpperCase() === "PUBLIC" || GROUPS.includes(name) || PREDEFINED.includes(name))) fail("invalid_principal_name");
+  if (names.some(name => typeof name !== "string" || !SAFE_NAME.test(name) || name.toUpperCase() === "PUBLIC" || name === PUBLICATION_LOGIN || GROUPS.includes(name) || PREDEFINED.includes(name))) fail("invalid_principal_name");
   if (value.runtimeLogin === value.migrationLogin || value.runtimeLogin === value.bootstrapLogin
     || value.restoreLogin !== undefined && [value.runtimeLogin, value.migrationLogin, value.bootstrapLogin].includes(value.restoreLogin)) fail("principal_alias_not_permitted");
 }
@@ -58,6 +61,12 @@ export function qualifiedPostgresStartupOptions(value: QualifiedPostgresInstalla
 }
 
 const SESSION_FACTS_SQL = String.raw`
+WITH unsafe_replication_defaults AS (
+  SELECT s.setrole FROM pg_catalog.pg_db_role_setting s CROSS JOIN LATERAL pg_catalog.unnest(s.setconfig) setting
+  WHERE (s.setdatabase OPERATOR(pg_catalog.=) 0 OR s.setdatabase OPERATOR(pg_catalog.=)
+    (SELECT oid FROM pg_catalog.pg_database WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database()))
+    AND setting OPERATOR(pg_catalog.~~) 'session_replication_role=%' AND setting OPERATOR(pg_catalog.<>) 'session_replication_role=origin'
+)
 SELECT current_user::pg_catalog.text AS current_user,session_user::pg_catalog.text AS session_user,
   pg_catalog.current_schemas(true)::pg_catalog.text[] AS effective_search_path,
   (SELECT rolname::pg_catalog.text FROM pg_catalog.pg_roles WHERE oid OPERATOR(pg_catalog.=) 10) AS bootstrap_login,
@@ -82,21 +91,29 @@ SELECT current_user::pg_catalog.text AS current_user,session_user::pg_catalog.te
     (pg_catalog.has_database_privilege(r.oid,pg_catalog.current_database(),'CREATE')
     OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.left(n.nspname,3) OPERATOR(pg_catalog.<>) 'pg_' AND n.nspname OPERATOR(pg_catalog.<>) 'information_schema' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
     OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM'))) AS runtime_unsafe,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_roles r WHERE r.rolname OPERATOR(pg_catalog.=) 'openlup_catalog_publication' AND
+    (pg_catalog.has_database_privilege(r.oid,pg_catalog.current_database(),'CREATE')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
+    OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM'))) AS publication_unsafe,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_shdepend d JOIN pg_catalog.pg_roles r ON d.refobjid OPERATOR(pg_catalog.=) r.oid
+    WHERE d.refclassid OPERATOR(pg_catalog.=) 'pg_catalog.pg_authid'::pg_catalog.regclass AND d.deptype OPERATOR(pg_catalog.=) 'o'
+      AND r.rolname OPERATOR(pg_catalog.=) 'openlup_catalog_publication') AS publication_owns,
   CASE WHEN $2::pg_catalog.text IS NULL THEN false ELSE COALESCE((SELECT pg_catalog.has_database_privilege(r.oid,pg_catalog.current_database(),'CREATE')
     OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.left(n.nspname,3) OPERATOR(pg_catalog.<>) 'pg_' AND n.nspname OPERATOR(pg_catalog.<>) 'information_schema' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
     OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM')
     FROM pg_catalog.pg_roles r WHERE r.rolname OPERATOR(pg_catalog.=) $2),true) END AS restore_unsafe,
-  EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s CROSS JOIN LATERAL pg_catalog.unnest(s.setconfig) setting
-    WHERE (s.setdatabase OPERATOR(pg_catalog.=) 0 OR s.setdatabase OPERATOR(pg_catalog.=) (SELECT oid FROM pg_catalog.pg_database WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database()))
-      AND (s.setrole OPERATOR(pg_catalog.=) 0 OR s.setrole OPERATOR(pg_catalog.=) ANY(SELECT oid FROM pg_catalog.pg_roles WHERE rolname OPERATOR(pg_catalog.=) $1 OR rolname OPERATOR(pg_catalog.=) $2))
-      AND setting OPERATOR(pg_catalog.~~) 'session_replication_role=%' AND setting OPERATOR(pg_catalog.<>) 'session_replication_role=origin') AS unsafe_replication_default`;
+  EXISTS (SELECT 1 FROM unsafe_replication_defaults
+    WHERE setrole OPERATOR(pg_catalog.=) 0 OR setrole OPERATOR(pg_catalog.=) ANY(SELECT oid FROM pg_catalog.pg_roles
+      WHERE rolname OPERATOR(pg_catalog.=) $1 OR rolname OPERATOR(pg_catalog.=) $2)) AS unsafe_replication_default,
+  EXISTS (SELECT 1 FROM unsafe_replication_defaults WHERE setrole OPERATOR(pg_catalog.=)
+    (SELECT oid FROM pg_catalog.pg_roles WHERE rolname OPERATOR(pg_catalog.=) 'openlup_catalog_publication')) AS publication_replication_default_unsafe`;
 
 type SessionFacts = {
   current_user: unknown; session_user: unknown; bootstrap_login: unknown; database_owner: unknown;
   server_version_num: unknown; replication_role: unknown; runtime_setting: unknown; restore_setting: unknown;
   mode_setting: unknown; ledger_exists: unknown; ledger_owner: unknown; session_lock_held: unknown;
   runtime_unsafe: unknown; restore_unsafe: unknown; unsafe_replication_default: unknown; default_privileges_exist: unknown;
-  effective_search_path: unknown;
+  effective_search_path: unknown; publication_unsafe: unknown; publication_owns: unknown; publication_replication_default_unsafe: unknown;
 };
 type CheckedCatalog = { rows: readonly CatalogRow[]; protectedNames: ReadonlySet<string> };
 
@@ -116,6 +133,10 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
   if (!facts || !Array.isArray(facts.effective_search_path)
     || facts.effective_search_path.length !== 2 || facts.effective_search_path[0] !== "pg_catalog"
     || facts.effective_search_path[1] !== "public") fail("qualified_profile_requires_canonical_search_path");
+  if (facts.publication_owns === true)
+    fail("catalog_publication_login_invalid. Transfer or drop objects owned by openlup_catalog_publication in every database.");
+  if (facts.publication_replication_default_unsafe === true)
+    fail("catalog_publication_login_invalid. Use ALTER ROLE to reset session_replication_role for openlup_catalog_publication.");
   if (!facts || facts.current_user !== selection.migrationLogin || facts.session_user !== selection.migrationLogin
     || facts.bootstrap_login !== selection.bootstrapLogin || facts.database_owner !== selection.migrationLogin) fail("actual_login_or_database_owner_mismatch");
   if (typeof facts.server_version_num !== "number" || Math.trunc(facts.server_version_num / 10_000) !== 16) fail("requires_qualified_postgresql_16_profile");
@@ -135,6 +156,16 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
   assertFlags(roles.get(selection.bootstrapLogin), { login: true, inherit: true, superuser: true, elevated: true });
   if (selection.migrationLogin !== selection.bootstrapLogin) assertFlags(roles.get(selection.migrationLogin), { login: true, inherit: true, superuser: true, elevated: false });
   for (const name of [selection.runtimeLogin, ...(selection.restoreLogin === undefined ? [] : [selection.restoreLogin])]) assertFlags(roles.get(name), { login: true, inherit: false, superuser: false, elevated: false });
+  const publication = roles.get(PUBLICATION_LOGIN);
+  const publicationInstalled = applied.some(({ file }) => file === PUBLICATION_FORWARD);
+  if (publicationInstalled && !publication) fail(`catalog_publication_login_missing. ${PUBLICATION_FIX}`);
+  if (publication) {
+    if (!publicationInstalled && selection.roleMode === "installer-managed")
+      fail("catalog_publication_login_preexisting. Use operator-provisioned mode or remove the unused pre-existing publication role.");
+    try { assertFlags(publication, { login: true, inherit: false, superuser: false, elevated: false }); }
+    catch { fail(`catalog_publication_login_invalid. ${PUBLICATION_FIX}`); }
+    if (facts.publication_unsafe !== false) fail("catalog_publication_login_invalid. Revoke publication login schema creation and replication privileges.");
+  }
   const actorPresent = selection.roleMode === "operator-provisioned" || applied.some(({ file }) => file === ACTOR);
   const acquisitionPresent = selection.roleMode === "operator-provisioned" || applied.some(({ file }) => file === ACQUISITION);
   for (const name of GROUPS) {
@@ -148,7 +179,7 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
     const a = attributes(role);
     if (a.login !== false || a.superuser !== false || ["createRole", "createDb", "replication", "bypassRls"].some(key => a[key] !== false)) fail("predefined_role_elevated");
   }
-  const protectedNames = new Set([...GROUPS, ...PREDEFINED, selection.migrationLogin, selection.bootstrapLogin, selection.runtimeLogin, ...(selection.restoreLogin === undefined ? [] : [selection.restoreLogin])]);
+  const protectedNames = new Set([...GROUPS, ...PREDEFINED, ...(publicationInstalled ? [PUBLICATION_LOGIN] : []), selection.migrationLogin, selection.bootstrapLogin, selection.runtimeLogin, ...(selection.restoreLogin === undefined ? [] : [selection.restoreLogin])]);
   for (const [name, role] of roles) if (!protectedNames.has(name)) {
     const a = attributes(role);
     if (name.startsWith("pg_")) fail("unsupported_predefined_role");
@@ -161,6 +192,8 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
   for (const row of rows.filter(row => row.kind === "role-membership")) {
     const a = attributes(row);
     const edge = [a.grantedRole, a.memberRole, a.grantorRole, a.adminOption, a.inheritOption, a.setOption];
+    if (a.grantedRole === PUBLICATION_LOGIN || a.memberRole === PUBLICATION_LOGIN)
+      fail(`catalog_publication_login_invalid. ${PUBLICATION_FIX}`);
     if (protectedNames.has(String(a.grantedRole)) || protectedNames.has(String(a.memberRole))) actualEdges.push(edge);
     else if (protectedNames.has(String(a.grantorRole)) && a.grantorRole !== selection.bootstrapLogin && a.grantorRole !== selection.migrationLogin) fail("protected_grantor_has_outside_edge");
   }
@@ -169,6 +202,7 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
     if (row.kind === "role" || row.kind === "role-membership") continue;
     const a = attributes(row);
     if (row.kind === "default-privilege") fail("qualified_profile_requires_canonical_default_privileges");
+    if (a.owner === PUBLICATION_LOGIN || a.ownerRole === PUBLICATION_LOGIN) fail(`catalog_publication_login_invalid. ${PUBLICATION_FIX}`);
     const principals = [a.owner, a.ownerRole, a.grantor, a.grantee,
       ...(row.kind === "policy" && Array.isArray(a.roles) ? a.roles : [])];
     if (principals.some(name => typeof name === "string" && name !== "PUBLIC" && !protectedNames.has(name))) fail("outside_principal_references_selected_catalog");

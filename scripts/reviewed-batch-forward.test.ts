@@ -77,13 +77,36 @@ describe("account withdrawal fixed replacement slot", () => {
 });
 
 const pins = registry.batchedForwards!;
-const bytes = (pin: BatchedForwardBinding) => readFileSync(`scripts/fixtures/reviewed-m10/${pin.path}`);
+const bytesCache = new Map<string, Buffer>();
+const bytes = (pin: BatchedForwardBinding) => {
+  let cached = bytesCache.get(pin.path);
+  if (!cached) {
+    cached = readFileSync(`scripts/fixtures/reviewed-m10/${pin.path}`);
+    bytesCache.set(pin.path, cached);
+  }
+  return cached;
+};
+const fileBytesCache = new Map<string, Buffer>();
+const cachedFileBytes = (path: string) => {
+  let cached = fileBytesCache.get(path);
+  if (!cached) {
+    cached = readFileSync(path);
+    fileBytesCache.set(path, cached);
+  }
+  return cached;
+};
 const rail = (pin: BatchedForwardBinding) => pin.path.startsWith("db/") ? "db/platform/migrations" : "supabase/migrations";
+const prefixCache = new Map<string, Buffer[]>();
 function prefix(pin: BatchedForwardBinding): Buffer[] {
-  const folder = rail(pin);
-  const railPins = pins.filter(prior => rail(prior) === folder);
-  return reviewedBatchPaths(process.cwd(), folder, railPins).filter(path => path < pin.path)
-    .map(path => { const prior = railPins.find(pin => pin.path === path); return prior ? bytes(prior) : readFileSync(path); });
+  let cached = prefixCache.get(pin.path);
+  if (!cached) {
+    const folder = rail(pin);
+    const railPins = pins.filter(prior => rail(prior) === folder);
+    cached = reviewedBatchPaths(process.cwd(), folder, railPins).filter(path => path < pin.path)
+      .map(path => { const prior = railPins.find(pin => pin.path === path); return prior ? bytes(prior) : cachedFileBytes(path); });
+    prefixCache.set(pin.path, cached);
+  }
+  return cached;
 }
 const repin = (pin: BatchedForwardBinding, sql: string): BatchedForwardBinding => ({ ...structuredClone(pin), sha256: sqlSha256(sql), statements: sqlStatements(sql).map(statement => ({ sha256: sqlSha256(statement), ...(!/^CREATE(?: OR REPLACE)? FUNCTION /u.test(statement) ? { sql: statement } : {}) })) });
 
@@ -643,10 +666,17 @@ describe("admitted M11 commerce live registry", () => {
   delete beforeAdmission.managedCommerceForwards;
   const beforeAdmissionBytes = Buffer.from(JSON.stringify(beforeAdmission));
   const commerce = registry.managedCommerceForwards!;
+  const commerceBytesCache = new Map<string, Buffer>();
   const commerceBytes = (pin: ManagedCommerceForwardBinding) => {
-    const fixture = readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`);
-    if (existsSync(pin.path)) expect(readFileSync(pin.path), pin.path).toEqual(fixture);
-    return readFileSync(pin.path);
+    let cached = commerceBytesCache.get(pin.path);
+    if (!cached) {
+      const fixture = readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`);
+      const live = cachedFileBytes(pin.path);
+      if (existsSync(pin.path)) expect(live, pin.path).toEqual(fixture);
+      cached = live;
+      commerceBytesCache.set(pin.path, cached);
+    }
+    return cached;
   };
   const managedM10 = pins.filter(pin => pin.path.startsWith("supabase/"));
   const allPins = [...managedM10, ...commerce];
@@ -657,7 +687,7 @@ describe("admitted M11 commerce live registry", () => {
   const sources = reviewedBatchPaths(process.cwd(), "supabase/migrations", allPins).map(path => {
     const pin = commerce.find(pin => pin.path === path);
     const m10 = managedM10.find(pin => pin.path === path);
-    return { path, bytes: pin ? commerceBytes(pin) : m10 ? reviewedBatchBytes(process.cwd(), process.cwd(), m10) : readFileSync(path) };
+    return { path, bytes: pin ? commerceBytes(pin) : m10 ? reviewedBatchBytes(process.cwd(), process.cwd(), m10) : cachedFileBytes(path) };
   });
   const preceding = (pin: ManagedCommerceForwardBinding) => sources.filter(source => source.path < pin.path);
   const repinned = (pin: ManagedCommerceForwardBinding, sql: string) => {
@@ -1652,17 +1682,23 @@ describe("M17 channel ingest approval", () => {
   }
   const sources = synthetic.map(source => ({ path: source.path, bytes: Buffer.from(source.statements.join("\n")) }));
   const registry = { ...marker, channelIngestForwards: sources.map(source => pin(source.path, source.bytes.toString())) };
+  const m17PrefixCache = new Map<string, { path: string; bytes: Buffer }[]>();
   function prefix(path: string): { path: string; bytes: Buffer }[] {
-    const directory = dirname(path);
-    const issued = [...marker.batchedForwards ?? [], ...marker.managedCommerceForwards ?? [], ...marker.supportAuthorityForwards ?? []].filter(pin => dirname(pin.path) === directory && pin.path < path);
-    const paths = [...new Set([...readdirSync(directory).filter(file => file.endsWith(".sql")).map(file => `${directory}/${file}`), ...issued.map(pin => pin.path), ...sources.filter(source => dirname(source.path) === directory).map(source => source.path)])].filter(file => file < path).sort();
-    return paths.map(path => {
-      const synthetic = sources.find(source => source.path === path);
-      if (synthetic) return synthetic;
-      const file = [path, ...["m10", "m11", "m12"].map(module => `scripts/fixtures/reviewed-${module}/${path}`)].find(existsSync);
-      if (!file) throw new Error(`missing existing rail fixture: ${path}`);
-      return { path, bytes: readFileSync(file) };
-    });
+    let cached = m17PrefixCache.get(path);
+    if (!cached) {
+      const directory = dirname(path);
+      const issued = [...marker.batchedForwards ?? [], ...marker.managedCommerceForwards ?? [], ...marker.supportAuthorityForwards ?? []].filter(pin => dirname(pin.path) === directory && pin.path < path);
+      const paths = [...new Set([...readdirSync(directory).filter(file => file.endsWith(".sql")).map(file => `${directory}/${file}`), ...issued.map(pin => pin.path), ...sources.filter(source => dirname(source.path) === directory).map(source => source.path)])].filter(file => file < path).sort();
+      cached = paths.map(path => {
+        const synthetic = sources.find(source => source.path === path);
+        if (synthetic) return synthetic;
+        const file = [path, ...["m10", "m11", "m12"].map(module => `scripts/fixtures/reviewed-${module}/${path}`)].find(existsSync);
+        if (!file) throw new Error(`missing existing rail fixture: ${path}`);
+        return { path, bytes: cachedFileBytes(file) };
+      });
+      m17PrefixCache.set(path, cached);
+    }
+    return cached;
   }
   function repin(index: number, sql: string) {
     const candidate = structuredClone(registry);

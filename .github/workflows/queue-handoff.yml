@@ -11,7 +11,7 @@ jobs:
   enqueue:
     if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && github.event.workflow_run.event == 'pull_request' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure') && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && vars.OPENLUP_QUEUE_APP_CLIENT_ID != '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     environment: openlup-merge-queue
     permissions:
       actions: read

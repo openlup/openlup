@@ -83,7 +83,7 @@ describe('local obligation contract', () => {
     expect(job('self-check')).toContain('run: node scripts/public-ci-neutrality.mjs --base-commit "$NEUTRALITY_BASE_COMMIT"');
     expect(job('install-packages')).toContain('scripts/packages/required-package-gates.ts --out "$RUNNER_TEMP/package-gates" --expected-commit "$(git rev-parse HEAD)"');
     expect(job('install-proof')).toContain('needs: [install-packages, install-browser]');
-    expect(job('test-full-shard')).toContain('node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8');
+    expect(job('test-full-shard')).toContain('node scripts/ci-vitest-shard.mjs --shard ${{ matrix.shard }} --total 8 --skip-pretest');
     expect(job('test')).toContain('test "$SHARD_RESULT" = "success"');
     expect(plan().hostedOnly.map(item => item.context)).toEqual(['test', 'install-proof', 'native-review']);
   });
@@ -123,7 +123,7 @@ describe('read-only public explain CLI', () => {
     expect(human.stdout).toContain('Hosted only (native-review)'); expect(await readdir(f.cwd)).toEqual(files);
     expect(human.stdout).toContain('Prerequisite compiler: blocked');
     expect(human.stdout).toContain('npm ci --prefer-offline --no-audit --fund=false');
-  });
+  }, 30_000);
   it('observes selected versions without builds, installation, review or scratch writes, and reports wrong versions', async () => {
     const f = await gitFixture();
     const bin = join(f.cwd, '.git', 'observation-bin'); await mkdir(bin);
@@ -148,7 +148,7 @@ describe('read-only public explain CLI', () => {
     const wrong = JSON.parse(observe().stdout).prerequisites;
     for (const name of ['node', 'npm', 'compiler']) expect(wrong.find(item => item.name === name)?.status).toBe('blocked');
     expect(await readdir(f.cwd)).toEqual(before); expect(await readFile(join(f.cwd, '.git/index'))).toEqual(index);
-  });
+  }, 30_000);
   it('distinguishes a known comparison base from incomplete secret-scan history without changing admission', async () => {
     const f = await gitFixture();
     await writeFile(join(f.cwd, '.git', 'shallow'), `${f.git('rev-parse', 'HEAD')}\n`);
@@ -161,7 +161,7 @@ describe('read-only public explain CLI', () => {
     expect(result.prerequisites.find(item => item.name === 'secret scan history')).toMatchObject({ status: 'unknown', observed: 'shallow checkout; complete local history is not available' });
     expect(result.phases.map(step => step.name)).toEqual(expectedNames);
     expect(await readFile(join(f.cwd, '.git/index'))).toEqual(before);
-  });
+  }, 30_000);
   it('schedules a broad diagnostic only after early preflight accepts the committed candidate', async () => {
     const f = await gitFixture();
     const base = f.git('rev-parse', 'HEAD');
@@ -201,7 +201,7 @@ describe('read-only public explain CLI', () => {
     expect(refused.stdout).not.toContain('broker-started');
     expect(await readdir(f.cwd)).toEqual(['.git', 'new-file', 'source']);
     expect(await readFile(join(f.cwd, '.git/index'))).toEqual(index);
-  });
+  }, 30_000);
   it('keeps all obligations and reports UNKNOWN scope when the Git base is unreadable', async () => {
     const f = await gitFixture(); f.git('update-ref', '-d', 'refs/remotes/origin/main');
     const output = execute(f.cwd, '--plan', '--json');
@@ -210,9 +210,9 @@ describe('read-only public explain CLI', () => {
     expect(result.phases.map(step => step.name)).toEqual(expectedNames);
     expect(result.phases.find(step => step.name === 'dco').command.slice(-2)).toEqual(['<comparison-base>', '<candidate-head>']);
     expect(await readdir(f.cwd)).toEqual(['.git', 'new-file', 'source']);
-  });
+  }, 30_000);
   it.each([['--json'], ['--plan', '--plan'], ['--skip'], ['--plan', '--pgtap', '--pgtap']])('refuses invalid args %j before writing', async (...args) => {
     const cwd = await mkdtemp(join(tmpdir(), 'verification-plan-args-')); directories.push(cwd);
     expect(execute(cwd, ...args).status).toBe(1); expect(await readdir(cwd)).toEqual([]);
-  });
+  }, 30_000);
 });

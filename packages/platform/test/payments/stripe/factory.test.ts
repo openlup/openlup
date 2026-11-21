@@ -237,11 +237,130 @@ describe("opt-in payment factory", () => {
     };
     expect(await adapter.verifyPort.verifyAndNormalize(staleRotated)).toEqual({ kind: "refusal", reason: "stale" });
   });
-  it.each([500, undefined])("acknowledges a completed legacy receipt after collected money changes to %s", async amount_received => {
+  it.each([request.money.amountMinor, 0])("records and refuses a signed success with conflicting collected amount %s on each delivery", async paidAmountMinor => {
     const { adapter } = subject();
-    const prior = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded")));
+    const configuredAmountMinor = 2699;
+    const delivery = signed(event("payment_intent.succeeded", { amount: configuredAmountMinor, amount_received: paidAmountMinor }));
+    const ingestPaymentEvent = vi.fn();
+    const applyPaymentResult = vi.fn();
+    const findCompletedHistoricalCapture = vi.fn(async () => null);
+    const operationalEvents = vi.fn();
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort, operationalEvents,
+      paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult } });
+    const details = { reason: "provider_amount_mismatch", configuredAmountMinor, paidAmountMinor, currency: "EUR" };
+    const recorded = { name: "provider_payment_amount_mismatch", domain: "payment", surface: "webhook", details: {
+      ...details, provider: "stripe", providerEventId: "evt_fixture", providerPaymentId: "pi_fixture", outcome: "review_required",
+    } };
+    for (const deliveryNumber of [1, 2]) {
+      expect(await ingress.receive(delivery)).toEqual({ status: 409, data: {
+        error: "Provider payment amounts disagree. Review the payment before settling.", ...details,
+      } });
+      expect(operationalEvents).toHaveBeenCalledTimes(deliveryNumber);
+      expect(operationalEvents).toHaveBeenLastCalledWith(recorded);
+    }
+    expect(ingestPaymentEvent).not.toHaveBeenCalled();
+    expect(applyPaymentResult).not.toHaveBeenCalled();
+    const evidence = await adapter.verifyPort.verifyAndNormalize(delivery);
+    expect(evidence).toMatchObject({ kind: "money", outcome: "succeeded", money: null, providerAuditPayload: {
+      configuredAmountMinor, paidAmountMinor, currency: "EUR",
+    } });
+    expect(evidence).not.toHaveProperty("capturedAmountBasis");
+  });
+
+  it.each([
+    { label: "two valid amounts differ (a)", object: { amount: 300, amount_received: 200 },
+      amounts: { configuredAmountMinor: 300, paidAmountMinor: 200 } },
+    { label: "requested is malformed (b)", object: { amount: "synthetic-private-value", amount_received: 200 },
+      amounts: { paidAmountMinor: 200, malformedAmounts: [{ field: "amount", malformed: true }] } },
+    { label: "received is malformed (b)", object: { amount: 300, amount_received: { data: "synthetic-private-value" } },
+      amounts: { configuredAmountMinor: 300, malformedAmounts: [{ field: "amount_received", malformed: true }] } },
+  ])("refuses when $label even if the recorder throws", async ({ object, amounts }) => {
+    const { adapter } = subject();
+    const delivery = signed(event("payment_intent.succeeded", object));
+    const ingestPaymentEvent = vi.fn();
+    const applyPaymentResult = vi.fn();
+    const operationalEvents = vi.fn(() => { throw new Error("recorder unavailable"); });
+    // The managed binding does not supply a completed-receipt lookup.
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort, operationalEvents,
+      paymentControlPort: { ingestPaymentEvent, applyPaymentResult } });
+    const details = { reason: "provider_amount_mismatch", currency: "EUR", ...amounts };
+    for (const deliveryNumber of [1, 2]) {
+      expect(await ingress.receive(delivery)).toEqual({ status: 409, data: {
+        error: "Provider payment amounts disagree. Review the payment before settling.", ...details,
+      } });
+      expect(operationalEvents).toHaveBeenCalledTimes(deliveryNumber);
+      expect(operationalEvents).toHaveBeenLastCalledWith({ name: "provider_payment_amount_mismatch", domain: "payment", surface: "webhook",
+        details: { provider: "stripe", providerEventId: "evt_fixture", providerPaymentId: "pi_fixture", ...details, outcome: "review_required" } });
+    }
+    const evidence = await adapter.verifyPort.verifyAndNormalize(delivery);
+    expect(evidence).toMatchObject({ kind: "money", money: null, providerAuditPayload: amounts });
+    expect(evidence).not.toHaveProperty("capturedAmountBasis");
+    expect(JSON.stringify(evidence)).not.toContain("synthetic-private-value");
+    expect(ingestPaymentEvent).not.toHaveBeenCalled();
+    expect(applyPaymentResult).not.toHaveBeenCalled();
+  });
+
+  it("returns the conflict evidence when the recorder returns a rejected promise", async () => {
+    const { adapter } = subject();
+    const delivery = signed(event("payment_intent.succeeded", { amount: 300, amount_received: 200 }));
+    const ingestPaymentEvent = vi.fn();
+    const applyPaymentResult = vi.fn();
+    let recorded = 0;
+    // Use a plain callback so the test spy cannot handle the returned rejection.
+    const operationalEvents = () => {
+      recorded += 1;
+      return Promise.reject(new Error("async recorder unavailable"));
+    };
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort, operationalEvents,
+      paymentControlPort: { ingestPaymentEvent, applyPaymentResult } });
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      expect(await ingress.receive(delivery)).toMatchObject({ status: 409, data: {
+        reason: "provider_amount_mismatch", configuredAmountMinor: 300, paidAmountMinor: 200, currency: "EUR",
+      } });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(recorded).toBe(1);
+      expect(ingestPaymentEvent).not.toHaveBeenCalled();
+      expect(applyPaymentResult).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
+  it("refuses redelivery of a released requested-amount receipt without a completed-receipt lookup", async () => {
+    const { adapter } = subject();
+    const completedReceipt = { paymentEventId: "historical-event", paymentIntentId: "historical-intent",
+      replayed: true, amountMinor: 300 };
+    const prior = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded", {
+      amount: completedReceipt.amountMinor, amount_received: completedReceipt.amountMinor,
+    })));
     if (prior.kind !== "money") throw new Error("Expected verified legacy identity");
-    const delivery = signed(event("payment_intent.succeeded", { amount_received }));
+    const delivery = signed(event("payment_intent.succeeded", { amount: 300, amount_received: 200 }));
+    expect(await adapter.verifyPort.verifyAndNormalize(delivery)).toMatchObject({ historicalCaptureFingerprint: prior.fingerprint });
+    const ingestPaymentEvent = vi.fn(async () => completedReceipt);
+    const applyPaymentResult = vi.fn();
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort,
+      paymentControlPort: { ingestPaymentEvent, applyPaymentResult } });
+    expect(await ingress.receive(delivery)).toMatchObject({ status: 409, data: {
+      reason: "provider_amount_mismatch", configuredAmountMinor: 300, paidAmountMinor: 200,
+    } });
+    expect(ingestPaymentEvent).not.toHaveBeenCalled();
+    expect(applyPaymentResult).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { object: { amount_received: 500 }, legacyAmount: request.money.amountMinor },
+    { object: { amount_received: undefined }, legacyAmount: request.money.amountMinor },
+    { object: { amount: "300", amount_received: 200 }, legacyAmount: 200 },
+  ])("acknowledges a completed legacy receipt for $object", async ({ object, legacyAmount }) => {
+    const { adapter } = subject();
+    const prior = await adapter.verifyPort.verifyAndNormalize(signed(event("payment_intent.succeeded", {
+      amount: legacyAmount, amount_received: legacyAmount,
+    })));
+    if (prior.kind !== "money") throw new Error("Expected verified legacy identity");
+    const delivery = signed(event("payment_intent.succeeded", object));
     const current = await adapter.verifyPort.verifyAndNormalize(delivery);
     expect(current).toMatchObject({ historicalCaptureFingerprint: prior.fingerprint });
     const findCompletedHistoricalCapture = vi.fn(async () => "prior-local-event");
@@ -259,6 +378,34 @@ describe("opt-in payment factory", () => {
     expect(afterProcessed).not.toHaveBeenCalled();
     expect(operationalEvents).toHaveBeenCalledWith(expect.objectContaining({ name: "provider_payment_historical_capture_replay" }));
   });
+  it("acknowledges an exact completed receipt when the replay recorder rejects", async () => {
+    const { adapter } = subject();
+    const delivery = signed(event("payment_intent.succeeded", { amount: "300", amount_received: 200 }));
+    const ingestPaymentEvent = vi.fn();
+    const applyPaymentResult = vi.fn();
+    const findCompletedHistoricalCapture = vi.fn(async () => "prior-local-event");
+    const recorded = vi.fn();
+    const ingress = createVerifiedPaymentIngress({ provider: "stripe", verifyPort: adapter.verifyPort,
+      paymentControlPort: { findCompletedHistoricalCapture, ingestPaymentEvent, applyPaymentResult },
+      operationalEvents: event => {
+        recorded(event);
+        return Promise.reject(new Error("async replay recorder unavailable"));
+      },
+    });
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      expect(await ingress.receive(delivery)).toMatchObject({ status: 200, data: { replayed: true, paymentEventId: "prior-local-event" } });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(recorded).toHaveBeenCalledWith(expect.objectContaining({ name: "provider_payment_historical_capture_replay" }));
+      expect(ingestPaymentEvent).not.toHaveBeenCalled();
+      expect(applyPaymentResult).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
+  });
+
   it("preserves active checkout versus recovery read semantics and exact input references", async () => {
     const { adapter } = subject({ id: "pi_fixture", status: "requires_payment_method", amount: 2599, currency: "eur", client_secret: "transient_fixture" });
     const input = { identity: { provider: "stripe", providerPaymentRef: "pi_fixture", intentRef: "intent-a", attemptRef: "attempt-a" }, expectedMoney: request.money, purpose: "active_checkout" as const };

@@ -1213,6 +1213,70 @@ export declare function createPostgresCatalogPublicationCommands<Context>(deps: 
 };
 export {};
 ```
+## dist/catalog/catalogPublicationReads.d.ts
+
+```ts
+import type { PgQueryExecutor } from "../data/index.js";
+import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
+import { CATALOG_PUBLICATION_LIMITS as limits } from "./publicationContracts.js";
+import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublicationFailure } from "./publicationContracts.js";
+import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
+/** @experimental */
+export interface CatalogPublicationReadDependencies<Context> {
+    transactions: {
+        run<T>(work: (db: PgQueryExecutor) => Promise<T>): Promise<T>;
+    };
+    authorizeHuman(context: Context): Promise<{
+        ok: true;
+        userId: string;
+        role: string;
+        isMachineActor: boolean;
+    } | {
+        ok: false;
+    }>;
+}
+type PublicationReadFailure = CatalogPublicationFailure & {
+    message: string;
+};
+type CurrentPublicationRead = {
+    outcome: "unpublished";
+} | {
+    outcome: "found";
+    head: CatalogHeadRef;
+    documentRef: string;
+    observations: CatalogPublicationReceipt["changes"];
+} | PublicationReadFailure;
+type PublicationHistoryRead = {
+    outcome: "page";
+    receipts: CatalogPublicationReceipt[];
+    limit: typeof limits.pageItems;
+    nextCursor: string | null;
+} | PublicationReadFailure;
+type PublicationReceiptRead = {
+    outcome: "absent";
+    receipt?: undefined;
+} | {
+    outcome: "found";
+    receipt: CatalogPublicationReceiptV2;
+} | PublicationReadFailure;
+/** Reads admitted history in one snapshot on a host-selected publication connection.
+ * The host authorizes current, exact and history and supplies a verified human for receipt recovery.
+ * @experimental
+ */
+export declare function createPostgresCatalogPublicationReads<Context>(deps: CatalogPublicationReadDependencies<Context>): {
+    reads: {
+        current(productId: string): Promise<CurrentPublicationRead>;
+        history(productId: string, cursor: string | null): Promise<PublicationHistoryRead>;
+    };
+    authorize: (context: Context) => Promise<VerifiedCatalogPublisher | null>;
+    receipt: (scope: {
+        productId: string;
+        commandKey: string;
+    }, capability: VerifiedCatalogPublisher) => Promise<PublicationReceiptRead>;
+    readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
+};
+export {};
+```
 ## dist/catalog/catalogPublicationRules.d.ts
 
 ```ts
@@ -4048,6 +4112,7 @@ export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, Catalo
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 export { nativeCatalogPublication } from "./publicationCodec.js";
 export type { CatalogFullPublicationV2, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
+export { createPostgresCatalogPublicationReads } from "./catalogPublicationReads.js";
 export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCommands.js";
 export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt, PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
 export { readPostgresCatalogMembershipPage } from "./postgresPublicationDiscovery.js";
@@ -4588,6 +4653,7 @@ export interface CatalogPublicationFailure {
     reason: string;
     message?: string;
     path?: string;
+    subject?: string;
 }
 ```
 ## dist/catalog/publicationError.d.ts
@@ -5316,6 +5382,14 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly catalogPath: "db/platform/migrations/20261123191000_catalog_publication_commands.sql";
         readonly position: number;
         readonly sha256: "2a83d6f21a923669dcab4230569dcb7c1e4218d87b6c8e99589f857854725907";
+        readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261123192000_subscription_price_policy_close_provenance";
+        readonly catalogPath: "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql";
+        readonly position: number;
+        readonly sha256: "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96";
         readonly url: URL;
     }
 ];

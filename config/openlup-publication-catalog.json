@@ -1522,7 +1522,15 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "class": "public-output"
     },
     {
@@ -1555,6 +1563,10 @@
     },
     {
       "path": "db/platform/migrations/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
       "class": "public-output"
     },
     {
@@ -4974,7 +4986,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261123192000_subscription_price_policy_close_provenance.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20261123193000_catalog_publication_reads.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124090000_fulfillment_advance_shipment_lock_order.sql",
       "class": "public-output"
     },
     {
@@ -5011,6 +5031,10 @@
     },
     {
       "path": "packages/platform/sql/q2_20261103200000_runtime_lock_and_conflict_completion.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/q2_20261123192500_catalog_publication_authority.sql",
       "class": "public-output"
     },
     {
@@ -5298,6 +5322,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/attributeValues.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/backfillCatalogNetContent.ts",
       "class": "public-output"
     },
@@ -5382,6 +5410,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogPublicationReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/catalogPublicationRules.ts",
       "class": "public-output"
     },
@@ -5391,6 +5423,10 @@
     },
     {
       "path": "packages/platform/src/catalog/catalogSkuEnvelopeMapper.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/combinationOptions.ts",
       "class": "public-output"
     },
     {
@@ -5479,6 +5515,10 @@
     },
     {
       "path": "packages/platform/src/catalog/contracts/variantAxes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/draftFacts.ts",
       "class": "public-output"
     },
     {
@@ -8151,6 +8191,10 @@
     },
     {
       "path": "packages/platform/src/lifecycle/appVerification.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/catalogueProject.mjs",
       "class": "public-output"
     },
     {
@@ -12434,6 +12478,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-vitest-sequencer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-vitest-sequencer.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-vitest-shard.mjs",
       "class": "public-output"
     },
@@ -15470,10 +15522,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/commerce/oms/types.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/commerce/oms/types.ts",
       "class": "public-output"
     },
@@ -15666,10 +15714,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/communications/adminPermissions.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/communications/adminPermissions.ts",
       "class": "public-output"
     },
@@ -15714,15 +15758,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/supabase/communications/notificationRecipients.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/supabase/communications/notificationRecipients.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/supabase/communications/publicPreferenceToken.test.ts",
       "class": "public-output"
     },
     {
@@ -17050,10 +17086,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/bff/admin/communications/permissions.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/bff/admin/communications/permissions.ts",
       "class": "public-output"
     },
@@ -17382,10 +17414,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/bff/admin/partners/shared.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/bff/admin/partners/shared.ts",
       "class": "public-output"
     },
@@ -17475,10 +17503,6 @@
     },
     {
       "path": "server/bff/admin/platform/settings/update.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/bff/admin/platform/shared.test.ts",
       "class": "public-output"
     },
     {
@@ -26914,10 +26938,6 @@
       "class": "public-output"
     },
     {
-      "path": "src/lib/catalogDbBackedGuard.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "src/lib/catalogProductDisplay.test.ts",
       "class": "public-output"
     },
@@ -31555,7 +31575,7 @@
   "packageExecutionSurfaces": [
     {
       "path": "examples/neutral-store/package.json",
-      "digest": "sha256-2f05e63cbad54452e990dad06a9cf6978160f30d192d5349d50cd408dd7873d4"
+      "digest": "sha256-c30f60b239d95d16513deb232dc384112c279837aa3e0c13363dba086d0da31d"
     },
     {
       "path": "package.json",

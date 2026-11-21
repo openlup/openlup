@@ -116,7 +116,7 @@ The default `test:browser` setup does not prove a successful persisted purchase;
 [proof guidance](docs/proof.md). `./lifecycle verify` and `./lifecycle upgrade` depend
 on the installed CLI and explicit inputs and may refuse.
 
-Catalogue recipes: `node_modules/@openlup/core/docs/guide/how-to/extend/catalogue-extension.md` (offline scope and pending owners).
+To publish a saved catalogue draft, see `node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#publish-a-saved-catalogue-draft`.
 
 Own renewal stock priority in `inventory.renewalProtection` in
 `owned/store.config.ts`: exactly `revision` (nonblank) and `renewalProtectionDays`
@@ -133,8 +133,14 @@ key by goal. For example, run
 `npm --silent run settings -- list --goal "renewal stock protection horizon"`, then
 `npm --silent run settings -- show inventory_renewal_protection --json`. Check the
 owner, allowed values, effect and frozen records before changing configuration.
-See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md`
-for the read path and refusal guidance.
+Try `npm --silent run settings -- list --goal "payment retry policy"` or
+`npm --silent run settings -- list --goal "flat shipping"`.
+The `--silent` flag keeps npm's banner out of JSON output.
+See `node_modules/@openlup/core/docs/guide/how-to/operate/configure-settings.md` for the read path and refusal guidance.
+
+For a value change, a `checked` result from `npm --silent run settings -- check --configuration <id>` and a passing `npm run typecheck` are enough. Skip the full test run and build for the setting itself.
+
+`npm --silent run settings -- mcp` starts a read-only MCP server with the same operations. See “Use the settings server from an MCP client” in the installed guide above.
 
 Before changing renewal stock protection, run a connected, read-only preview.
 

@@ -1,5 +1,5 @@
 import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from "../data/index.js";
-import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
+import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogCandidatePreview, CatalogCandidateQuery } from "./contracts/candidate.js";
 import type { CatalogPublishCommand } from "./contracts/lifecycle.js";
 import type { CatalogPublicationPort, VerifiedCatalogPublisher } from "./publicationPorts.js";
@@ -271,9 +271,32 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
         await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
         await claimHuman(db, actor);
         const drafts = createPostgresCatalogDraftStoreV3(db);
+        const priceIssues: CatalogDraftIssue[] = [];
         const service = createCatalogCandidateServiceWithPublication({
           registry: deps.registry,
           readDraft: (draftId, revision) => drafts.get({ draftId, ...(revision === undefined ? {} : { revision }) }, actor),
+          async validatePrices(payload) {
+            const operations = payload.skus.flatMap((sku, skuIndex) => (sku.priceOperations ?? []).map(
+              ({ priceListId }, operationIndex) => ({ priceListId, path: `skus.${skuIndex}.priceOperations.${operationIndex}.priceListId` })));
+            const listIds = [...new Set(operations.map(({ priceListId }) => priceListId))];
+            // Match the price writer's list predicate at the transaction timestamp.
+            const { rows } = await db.query(`SELECT requested.id, CASE
+              WHEN list.id IS NULL THEN 'price_list_not_found'
+              WHEN list.status <> 'active' OR list.region_code <> public.catalog_price_setup_region_code()
+                OR list.currency <> public.catalog_price_setup_settlement_currency()
+                OR list.valid_from > now() OR (list.valid_to IS NOT NULL AND list.valid_to <= now())
+                THEN 'price_list_not_active'
+              END AS code
+              FROM unnest($1::uuid[]) AS requested(id)
+              LEFT JOIN public.price_lists list ON list.id = requested.id`, [listIds]);
+            const codes = new Map(rows.map(({ id, code }) => [id, code]));
+            // Report every field in the preview. The interpreter's price refusal stops at the first issue.
+            for (const { priceListId, path } of operations) {
+              const code = codes.get(priceListId);
+              if (typeof code === "string") priceIssues.push({ path, code });
+            }
+            return [];
+          },
           async installedDefinitionDigest(type) {
             const { rows } = await db.query("SELECT definition_digest FROM public.catalog_type_versions WHERE type_key=$1 AND version=$2",
               [type.key, type.version]);
@@ -307,7 +330,8 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
             return { ...previous.evidence, drafts: await source.read() };
           },
         });
-        return service.prepareCandidate(query);
+        const preview = await service.prepareCandidate(query);
+        return { ...preview, issues: [...preview.issues, ...priceIssues] };
       });
     } catch (error) {
       if (error instanceof CatalogCandidateError)

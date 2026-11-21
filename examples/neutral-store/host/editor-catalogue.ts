@@ -10,6 +10,9 @@ import { isRecord } from '../shared/offer.ts';
 import type { StoreConfig } from '../shared/config.ts';
 import type { EditorProduct } from '../shared/subscription-edit.ts';
 
+// Admit owned definitions at host import, including hosts without a rules file.
+void catalogDraftRegistry.resolve;
+
 export const starterCatalogueType = { key: 'starter:item', version: 1 } as const;
 const buildDirectory = fileURLToPath(new URL('../.context/catalogue-builds', import.meta.url));
 
