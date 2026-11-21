@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { z } from "./validation.js";
+import { catalogQuantitySchema } from "./productTypeSchemas.js";
 import { catalogDraftSummarySchema } from "./draftSchemas.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
 import { isValidGtin, catalogDocumentRevisionRefSchema } from "./foundationSchemas.js";
 import { canonicalizeCatalogCombinationV2, CatalogCombinationError } from "./variantCombination.js";
-import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, parseCatalogQuantity } from "@openlup/core/catalog";
+import { canonicalizeCatalogQuantity, compareCatalogQuantities } from "@openlup/core/catalog";
+import { asLegacyIntegralGrams, catalogPhysicalUnits } from "./physicalQuantity.js";
 import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogQuantity } from "./contracts/productTypes.js";
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/draftV3.js";
@@ -12,7 +14,7 @@ import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publication
 import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
 import { adopterIssue, CatalogPublicationError, publicationDiagnostic, publicationIssue, publicationRefuse,
   type EvaluationIssue, type Issue, type PlatformCode } from "./publicationError.js";
-import { assertNativeProductDocument, assertNativeProductReferences, assertNativeSkuNetWeight, assertPublicationRegistration, assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, decodePublishedSku, publicationContent,
+import { assertNativeProductDocument, assertNativeProductReferences, assertPublicationRegistration, assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, decodePublishedSku, publicationContent,
   publicationDigest, publicationJson, publicationReadinessVerdict } from "./publicationCodec.js";
 import { resolvePublicationRules, ruleProduct, ruleSku } from "./publicationRules.js";
 import type { CatalogPublicationRulesModule, CatalogRulesContext } from "./catalogPublicationRules.js";
@@ -50,37 +52,28 @@ function assertCatalogAction(payload: PublicationIntent, action: "create" | "rev
   need(payload.product.sharedContent.catalogAction === action, "catalog_action_conflict");
 }
 const authoredSlug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
-/** Temporary native publication boundary, until versioned quantity readers land. */
-export function catalogPublicationIntegralGrams(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): string {
-  const reason = "catalog_publication_integral_grams_required";
-  try {
-    const units = definition.units.flatMap(unit => {
-      const known = CATALOG_QUANTITY_UNITS.find(value => value.code === unit.code);
-      return known ? [known] : unit.factor ? [{ ...unit, factor: unit.factor }] : [];
-    });
-    const value = canonicalizeCatalogQuantity(parseCatalogQuantity(quantity, units), units);
-    const divisor = 10n ** BigInt(value.scale), unscaled = BigInt(value.unscaled);
-    need(value.dimension === "mass" && value.unit === "openlup:g" && unscaled > 0n && unscaled % divisor === 0n, reason);
-    const grams = unscaled / divisor, maximum = 2_147_483_647n;
-    need(grams <= maximum, reason);
-    return grams.toString();
-  } catch { return publicationRefuse(reason); }
+function exactNetContent(quantity: CatalogQuantity, definition: CatalogProductTypeDefinition): CatalogQuantity {
+  need(catalogQuantitySchema.safeParse(quantity).success && definition.netContentUnits.includes(quantity.unit), "catalog_publication_net_content_invalid");
+  try { return canonicalizeCatalogQuantity(quantity, catalogPhysicalUnits(definition)); }
+  catch { return publicationRefuse("catalog_publication_net_content_invalid"); }
 }
-export function assertCatalogPublicationMassInputs(payload: unknown, definition: CatalogProductTypeDefinition): void {
-  const header = z.object({ skus: z.array(z.object({ code: z.string().optional(), netContent: z.unknown().optional() })) }).safeParse(payload);
-  if (!header.success) return;
-  for (const [index, sku] of header.data.skus.entries()) {
-    const value = sku.netContent;
-    if (value && typeof value === "object" && "dimension" in value && value.dimension === "mass") {
-      try { catalogPublicationIntegralGrams(value as CatalogQuantity, definition); }
-      catch (error) {
-        if (!(error instanceof CatalogPublicationError)) throw error;
-        throw new CatalogPublicationError(publicationDiagnostic(error, "structural", `skus.${index}.netContent`, sku.code ?? definition.key), error.outcome);
-      }
-    }
+
+type AmountBinding = { definition: CatalogProductTypeDefinition;
+  rules: Pick<CatalogPublicationRulesModule, "validateSkuAmounts" | "validateSkuQuantities"> };
+function assertPublicationQuantities(sku: { code: string; netContent: CatalogQuantity; grossMass?: CatalogQuantity | null },
+  { definition, rules }: AmountBinding): void {
+  exactNetContent(sku.netContent, definition);
+  if (sku.grossMass) assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, definition);
+  if (rules.validateSkuQuantities) {
+    need(rules.validateSkuQuantities({ code: sku.code, netContent: sku.netContent, grossMass: sku.grossMass ?? null }) === true,
+      "catalog_publication_authored_amounts_invalid");
+  } else if (rules.validateSkuAmounts) {
+    const legacy = asLegacyIntegralGrams(sku.netContent, catalogPhysicalUnits(definition));
+    if (legacy.outcome !== "converted") return publicationRefuse("catalog_publication_integral_grams_required");
+    need(rules.validateSkuAmounts({ code: sku.code, netGrams: String(legacy.grams) }) === true,
+      "catalog_publication_authored_amounts_invalid");
   }
 }
-type AmountBinding = { definition: CatalogProductTypeDefinition; rules: Pick<CatalogPublicationRulesModule, "validateSkuAmounts"> };
 
 /** @experimental */
 export function catalogPublicationPreparationIssues(payload: PublicationIntent, binding?: AmountBinding): CatalogDraftIssue[] {
@@ -100,12 +93,9 @@ function preparationIssues(payload: PublicationIntent, binding?: AmountBinding) 
     if (!sku.code) { add(`${path}.code`, "sku_code_missing"); return; }
     if (!sku.identifiers?.some(identifier => identifier.scheme === "gs1:gtin"
       && identifier.packagingLevel === "unit" && isValidGtin(identifier.value))) add(`${path}.identifiers`, "unit_trade_identifier_missing");
-    if (!binding || sku.netContent?.dimension !== "mass") return;
+    if (!binding || !sku.netContent) return;
     try {
-      if (sku.grossMass) assertCatalogPublicationGrossMass(sku.netContent, sku.grossMass, binding.definition);
-      const netGrams = catalogPublicationIntegralGrams(sku.netContent, binding.definition);
-      if (binding.rules.validateSkuAmounts && binding.rules.validateSkuAmounts({ code: sku.code, netGrams }) !== true)
-        add(`${path}.netContent`, "catalog_publication_authored_amounts_invalid");
+      assertPublicationQuantities({ code: sku.code, netContent: sku.netContent, grossMass: sku.grossMass ?? null }, binding);
     } catch (error) {
       if (!(error instanceof CatalogPublicationError) || error.diagnostic.kind !== "platform") throw error;
       if (error.diagnostic.code === "catalog_publication_rule_failed") {
@@ -127,18 +117,15 @@ export function assertCatalogPublicationPreparation(payload: CatalogDraftPayload
  * @experimental
  */
 export function assertCatalogPublicationGrossMass(net: CatalogQuantity, gross: CatalogQuantity | null, definition: CatalogProductTypeDefinition): void {
-  need(net.dimension === "mass", "catalog_publication_mass_required_until_mc5");
-  need(gross?.dimension === "mass", "catalog_publication_gross_mass_required");
-  const units = definition.units.flatMap(unit => {
-    const known = CATALOG_QUANTITY_UNITS.find(value => value.code === unit.code);
-    return known ? [known] : unit.factor ? [{ ...unit, factor: unit.factor }] : [];
-  });
-  try {
-    const n = canonicalizeCatalogQuantity(parseCatalogQuantity(net, units), units);
-    const g = canonicalizeCatalogQuantity(parseCatalogQuantity(gross!, units), units);
-    need(g.dimension === "mass" && n.unit === g.unit && BigInt(g.unscaled) > 0n, "catalog_publication_gross_mass_invalid");
-    need(BigInt(g.unscaled) * 10n ** BigInt(n.scale) >= BigInt(n.unscaled) * 10n ** BigInt(g.scale), "catalog_publication_gross_below_net");
-  } catch (error) { if (error instanceof CatalogPublicationError) throw error; publicationRefuse("catalog_publication_gross_mass_invalid"); }
+  if (!gross) return publicationRefuse("catalog_publication_gross_mass_required");
+  need(catalogQuantitySchema.safeParse(gross).success && gross.dimension === "mass", "catalog_publication_gross_mass_invalid");
+  const units = catalogPhysicalUnits(definition);
+  let mass: CatalogQuantity;
+  try { mass = canonicalizeCatalogQuantity(gross, units); }
+  catch { return publicationRefuse("catalog_publication_gross_mass_invalid"); }
+  if (net.dimension === "mass") {
+    need(compareCatalogQuantities(mass, exactNetContent(net, definition)) >= 0, "catalog_publication_gross_below_net");
+  }
 }
 
 export function unresolvedPublicationDraftIssues<T extends Issue>(issues: readonly T[],
@@ -224,7 +211,7 @@ function assertMaterializedSkuSource(sku: CatalogPublishedSku | undefined, sourc
 function skuCreationFacts(operation: Extract<PublicationOperation, { op: "create_sku" }>,
   source: { sku: CatalogDraftPayloadV3["skus"][number]; source: PublicationDraftRecord }, productId: string): CatalogPublishedSku {
   const { sku } = source;
-  need(sku.netContent?.dimension === "mass", "catalog_publication_mass_required_until_mc5");
+  need(sku.netContent, "net_content_missing");
   return { id: operation.skuId, productId, code: operation.skuCode, title: operation.title,
     status: "draft", minQuantity: operation.minQuantity, isAddon: operation.isAddon, sellableStandalone: false, sellableInSubscription: false,
     netContent: sku.netContent!, grossMass: sku.grossMass ?? null, options: sku.options, attributes: sku.attributes ?? {},
@@ -543,9 +530,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     try { canonicalPayload = canonicalCatalogDraftJson(input.record.payload); }
     catch { return publicationRefuse("candidate_invalid"); }
     const [record] = snapshot(input.record);
-    // Check the temporary numeric domain before strict positive-quantity decoding,
-    // so zero, negative, fractional and overflow all have the same stable refusal.
-    assertCatalogPublicationMassInputs(record.payload, definition);
     const intent = publicationIntent(record.payload, (path, unsupportedKey, fix) => {
       const code = "candidate_invalid";
       const message = fix ?? (unsupportedKey ? "Remove the unsupported field at this path, then prepare the draft again."
@@ -1056,6 +1040,11 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         } else if (operation.op === "create_sku") {
           need(!skus.has(operation.skuCode) && ![...skus.values()].some(sku => sku.id === operation.skuId), "catalog_publication_v3_compile_sku_conflict");
           const sku = skuCreationFacts(operation, source!, knownProduct().id);
+          const { netContent } = sku;
+          if (netContent.dimension === "mass" && (netContent.unit !== "openlup:g" || netContent.scale !== 0)) {
+            const bridge = asLegacyIntegralGrams(netContent, catalogPhysicalUnits(definition));
+            if (bridge.outcome === "converted") sku.netWeightG = bridge.grams;
+          }
           existingCombinations ??= new Set([...skus.values()].map(existing => combination(existing)));
           const identity = combination(sku);
           need(!existingCombinations.has(identity), "duplicate_combination");
@@ -1206,8 +1195,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
             beforeDocument: beforeDocument.canonicalText, afterDocument: afterDocument.canonicalText,
           }) === "compatible", "sku_identity_change_requires_new_sku");
         }
-        need(sku.netContent.dimension === "mass", "catalog_publication_mass_required_until_mc5");
-        catalogPublicationIntegralGrams(sku.netContent, input.definition);
+        assertPublicationQuantities(sku, { definition, rules: {} });
         if (!withdrawalOnly && rules && afterDocument) need(equal(documentSkuFacts(afterDocument, sku, rules), sku.facts),
           "catalog_publication_v3_compile_derived_facts_mismatch");
         if (result && governed && (sku.sellableStandalone || sku.sellableInSubscription)) {
@@ -1242,7 +1230,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           sku.source = claim;
         }
         const finalSku = decodePublishedSku(sku, "skus", sku.code);
-        assertNativeSkuNetWeight(finalSku);
         assertPublishedSkuDocumentExclusion(finalSku, documentDigests);
       }
       const lifecycle = governed && productState ? { product: productState, skus: Object.fromEntries([...skuStates].sort()) } : undefined;

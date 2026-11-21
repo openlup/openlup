@@ -71,3 +71,15 @@ Find the machine-readable code identifying why an operation was refused; see the
 | `@openlup/platform` | `ChannelBundleExpansionRefusal` | [`./channels`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/channels.api.md) | object type |
 | `@openlup/platform` | `ReconcileAccountErrorCode` | [`./identity`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/identity.api.md) | reference to another type |
 <!-- /generated:refusal-codes-open -->
+
+### Catalogue quantity issuance
+
+- `catalog_publication_net_content_invalid` asks for positive, exact content in
+  a declared net unit. Supply whole counts and keep the converted value within
+  the supported range and scale.
+- `catalog_publication_integral_grams_required` means the selected installed
+  rule requires the legacy whole-gram input. Use exact whole grams within the
+  legacy range or adopt the typed rule hook.
+- `quantity_requires_v2` means a selected SKU has typed content without an
+  exact positive integer gram value. Use the V2 membership SQL surface for
+  authored quantity evidence.

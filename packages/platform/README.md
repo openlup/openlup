@@ -1318,6 +1318,24 @@ compiles installed declarations without optional provider peers.
 
 ## Catalog
 
+### Issue exact catalogue quantities
+
+Install the complete native catalogue through
+`20261124190000_catalog_quantity_serving.sql` before using the exact-quantity
+writer. Declare mass, volume or whole count and its unit in the installed
+product type. A custom unit supplies an exact decimal factor to the canonical
+unit of its dimension. Author and retain the original coefficient, scale and
+unit. Use the independent `grossMass` field for the parcel.
+
+An installed rules bundle can export `validateSkuQuantities({code, netContent,
+grossMass})`. A bundle using only `validateSkuAmounts({code, netGrams})` still
+requires content convertible to whole positive grams within the legacy range.
+Native V1 offer membership reads report `quantity_requires_v2` when a selected
+SKU's gram field is NULL. Legacy-compatible results retain their shape. The
+existing readiness entry point returns selected typed evidence using existing
+privileges. The V2 SQL membership entry is owner-only in this forward.
+
+
 ### Read governed offer memberships
 
 Install the complete PostgreSQL catalogue through
@@ -1591,8 +1609,7 @@ The native quantity forward adds nullable all-or-none net-content and gross-mass
 columns to live SKUs. Net dimensions are `mass|volume|count`; gross dimension is
 explicit and fixed to `mass`, so storage rejects any other dimension. Coefficients
 are positive `numeric(40,0)` values and scales are 0–12. Use decimal strings at the
-TypeScript boundary. SQL does not admit unit codes: the future publisher checks
-units against installed definitions. Gross mass is never inferred from net content.
+TypeScript boundary. Governed publication checks units against installed definitions. Gross mass is never inferred from net content.
 Stock and reservations continue to count sellable packs.
 
 After applying the complete native catalogue, call
@@ -1603,9 +1620,9 @@ ID order with `FOR NO KEY UPDATE`. The driver drains batches, can resume after a
 interruption and is a no-op on replay. It fills only absent net content from
 positive legacy grams as mass / scale 0 / `openlup:g`; native zero stays unknown.
 It preserves existing content and every gross-mass field. Migration application
-itself performs no backfill. The old `net_weight_g` contract and V1 readers stay
-unchanged; V2 readers and migration-phase host wiring arrive separately. The
-managed rail does not supply this feature.
+itself performs no backfill. The later exact-quantity forward makes the native
+gram field nullable for newly issued typed content. Historical zero still means
+unknown. The managed rail keeps its mandatory legacy column.
 
 The native attribute forward adds nullable `attribute_values` JSONB on products
 and SKUs. NULL preserves legacy absence; each supplied value must be an object

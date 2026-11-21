@@ -107,3 +107,20 @@ it("requires document, primary GTIN, status, weight and mode sellability for eve
   expect(await feed()).toHaveLength(1);
   expect(await store().listActiveBundleCompositions({ ...feedInput, mode: "subscription" })).toEqual([]);
 });
+
+it("qualifies exact volume without substituting grams for bundle sale quantities", async () => {
+  await db.query(`UPDATE public.catalog_skus SET net_weight_g=NULL,net_content_dimension='volume',
+    net_content_unit='openlup:ml',net_content_unscaled=50,net_content_scale=0 WHERE id=$1`, [part]);
+  await db.query(`CREATE ROLE bundle_quantity_reader;
+    GRANT USAGE ON SCHEMA public TO bundle_quantity_reader;
+    GRANT SELECT ON public.catalog_bundles,public.catalog_bundle_prices,public.catalog_bundle_components,
+      public.catalog_skus,public.catalog_products,public.catalog_product_document_revisions,public.catalog_sku_identifiers,
+      public.price_entries,public.price_lists TO bundle_quantity_reader`);
+  await db.query("SET LOCAL ROLE bundle_quantity_reader");
+  expect((await db.query(`SELECT has_column_privilege('public.catalog_type_versions','definition','SELECT') AS can_read`)).rows)
+    .toEqual([{ can_read: false }]);
+  expect(await feed()).toMatchObject([{ components: [{ quantity: 1 }, { quantity: 1 }] }]);
+  await db.query("RESET ROLE");
+  await db.query("UPDATE public.catalog_skus SET net_content_unit='openlup:g' WHERE id=$1", [part]);
+  expect(await feed()).toEqual([]);
+});

@@ -4,7 +4,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresCatalogDraftStoreV3,
   createPostgresCatalogPublicationCommands, createCatalogProductTypeRegistry, withCatalogPublicationRules,
-  catalogDefinitionDigest, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
+  installCatalogDefinitions, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { publicationWireVectors } from "@openlup/platform/catalog/testing";
@@ -35,19 +35,32 @@ const artifact = Buffer.from(`
     classifySkuChange: () => "compatible",
   };
 `);
-const registry = createCatalogProductTypeRegistry(withCatalogPublicationRules({ id: "example:rules", namespace: "example",
-  version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [], types: [{
-    key: "example:article", version: 1,
-    units: [{ code: "openlup:g", dimension: "mass", integral: false }],
-    netContentUnits: ["openlup:g"],
+const dimensions = [
+  { units: [
+    { code: "openlup:g", dimension: "mass", integral: false },
+    { code: "openlup:kg", dimension: "mass", integral: false },
+    { code: "example:oz", dimension: "mass", integral: false, factor: { canonicalUnit: "openlup:g", unscaled: "28349523125", scale: 9 } },
+    { code: "example:lb", dimension: "mass", integral: false, factor: { canonicalUnit: "openlup:g", unscaled: "45359237", scale: 5 } },
+  ], netContentUnits: ["openlup:g", "openlup:kg", "example:oz", "example:lb"] },
+  { units: [
+    { code: "openlup:g", dimension: "mass", integral: false },
+    { code: "openlup:ml", dimension: "volume", integral: false },
+    { code: "example:us-fl-oz", dimension: "volume", integral: false, factor: { canonicalUnit: "openlup:ml", unscaled: "295735295625", scale: 10 } },
+  ], netContentUnits: ["openlup:ml", "example:us-fl-oz"] },
+  { units: [{ code: "openlup:g", dimension: "mass", integral: false }, { code: "openlup:piece", dimension: "count", integral: true }],
+    netContentUnits: ["openlup:piece"] },
+] as const;
+const pack = withCatalogPublicationRules({ id: "example:rules", namespace: "example",
+  version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [], types: dimensions.map(({ units, netContentUnits }, index) => ({
+    key: "example:article", version: index + 1, units: [...units], netContentUnits: [...netContentUnits],
     dimensions: [{ key: "finish", kind: "choice", values: ["matte", "gloss"] }],
     axes: [{ key: "finish", attributeKey: "finish" }],
     attributes: [{ key: "finish", scope: "variant", valueType: { kind: "enum", values: [{ id: "matte" }, { id: "gloss" }] },
       required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
-  }] },
-() => artifact).types);
+  })) },
+() => artifact);
+const registry = createCatalogProductTypeRegistry(pack.types);
 const installed = registry.resolve({ key: "example:article", version: 1 })!;
-const installedDigest = catalogDefinitionDigest(installed);
 beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-publication-commands-${process.pid}`, password: randomUUID() });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Command proof needs PostgreSQL");
@@ -62,8 +75,7 @@ beforeAll(async () => {
     await pool.query(`INSERT INTO public.platform_human_memberships
       (principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())`, [id]);
   }
-  await pool.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
-    VALUES($1,1,'{}',$2,$3)`, [installed.key, installedDigest, installed.validatorRef]);
+  await installCatalogDefinitions(pool, pack);
   await pool.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await pool.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
@@ -744,6 +756,50 @@ const publicationTest = it.extend("publicationUrl", { scope: "file" }, async () 
   url.username = "openlup_catalog_publication";
   url.password = password;
   return url.href;
+});
+
+const exactAmounts = [
+  [1, "mass", "openlup:g", "100", 0, 100],
+  [2, "volume", "openlup:ml", "50", 0, null],
+  [3, "count", "openlup:piece", "56", 0, null],
+  [1, "mass", "openlup:kg", "4", 1, 400],
+  [1, "mass", "example:oz", "16", 0, null],
+  [1, "mass", "example:lb", "100000", 0, 45359237],
+  [2, "volume", "example:us-fl-oz", "12", 0, null],
+  [1, "mass", "openlup:g", "55", 1, null],
+  [1, "mass", "openlup:g", "2147483648", 0, null],
+] as const;
+
+publicationTest("MC5 exact issuance preserves authored evidence and projects nullable grams on the restricted login", async ({ publicationUrl }) => {
+  const publisher = new Pool({ connectionString: publicationUrl, max: 1 });
+  try {
+    const api = native(undefined, publisher);
+    const who = (await api.authorize(actor))!;
+    const readers = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(publisher, work) },
+      authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+    for (const [index, [version, dimension, unit, unscaled, scale, grams]] of exactAmounts.entries()) {
+      const data = authored(65 + index);
+      data.payload.product.type.version = version;
+      const netContent = { dimension, unit, unscaled, scale };
+      const grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "999999999999", scale: 0 } as const;
+      Object.assign(data.payload.skus[0]!, { netContent, grossMass });
+      await save(data, 1);
+      const command = await prepare(data, 1, null);
+      expect(await api.execute(command.approve, who)).toMatchObject({ outcome: "committed" });
+      const published = await api.execute(command.publish, who);
+      expect(published).toMatchObject({ outcome: "committed" });
+      if (!("receipt" in published) || !("head" in published.receipt)) throw new Error("publication receipt required");
+      const { head } = published.receipt;
+      expect(await readers.reads.current(data.productId)).toMatchObject({ outcome: "found", head });
+      expect(await readers.readbackV2(head)).toMatchObject({ outcome: "page", head, items: [{ facts: { netContent, grossMass } }] });
+      expect((await pool.query(`SELECT s.net_weight_g, s.net_content_unscaled::text AS unscaled, s.net_content_scale AS scale,
+        s.gross_mass_unit, r.full_facts::jsonb->'netWeightG' AS sealed_grams, r.full_facts::jsonb->'netContent' AS net, r.full_facts::jsonb->'grossMass' AS gross
+        FROM public.catalog_skus s JOIN public.catalog_sku_revisions r ON r.sku_id=s.id WHERE s.id=$1`, [data.skuId])).rows)
+        .toEqual([{ net_weight_g: grams, unscaled, scale, gross_mass_unit: grossMass.unit,
+          sealed_grams: unit === "openlup:g" && scale === 0 ? null : grams, net: netContent, gross: grossMass }]);
+    }
+    await expect(publisher.query("SELECT definition FROM public.catalog_type_versions")).rejects.toMatchObject({ code: "42501" });
+  } finally { await publisher.end(); }
 });
 
 publicationTest("checks every proposed price list during Prepare through the publication login", async ({ publicationUrl }) => {

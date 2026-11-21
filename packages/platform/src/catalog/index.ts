@@ -97,3 +97,6 @@ export { readPostgresCatalogActivationReadiness, readPostgresCatalogMembershipPa
 export type { CatalogActivationReadinessInput, CatalogActivationReadinessItem, CatalogActivationReadinessResult, CatalogDiscoveryEvidence,
   CatalogDiscoveryRefusal, CatalogInstalledReadiness, CatalogMembershipCursor, CatalogMembershipItem,
   CatalogMembershipPageInput, CatalogMembershipPageResult } from "./postgresPublicationDiscovery.js";
+
+export { asLegacyIntegralGrams } from "./physicalQuantity.js";
+export { projectManagedCatalogContent, type ManagedCatalogContentRow } from "./managedCatalogContent.js";

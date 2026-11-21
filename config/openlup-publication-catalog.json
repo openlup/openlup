@@ -1566,6 +1566,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124190000_catalog_quantity_serving.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5074,6 +5078,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261124190000_catalog_quantity_serving.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5646,7 +5654,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/managedCatalogContent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/mediaSourcePack.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/physicalQuantity.ts",
       "class": "public-output"
     },
     {
@@ -8387,6 +8403,10 @@
     },
     {
       "path": "packages/platform/src/marketing/seo/metadata.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/productLdV2.ts",
       "class": "public-output"
     },
     {
@@ -28991,6 +29011,10 @@
     },
     {
       "path": "supabase/migrations/20261123153000_managed_reconciliation_replay_strip.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261124190000_catalog_quantity_serving.sql",
       "class": "public-output"
     },
     {

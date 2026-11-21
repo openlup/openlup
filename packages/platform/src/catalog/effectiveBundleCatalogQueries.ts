@@ -8,8 +8,13 @@ const ANCHORS = `SELECT pe.unit_price_minor FROM public.price_entries pe
         AND exact.price_list_id = pe.price_list_id AND exact.active AND exact.min_qty = 1
         AND exact.amount_kind = 'gross' AND exact.mode = $4::text
         AND exact.valid_from <= $3::timestamptz AND (exact.valid_to IS NULL OR exact.valid_to > $3::timestamptz))))`;
+const CONTENT = `jsonb_build_object(
+    'dimension', s.net_content_dimension, 'unit', s.net_content_unit,
+    'unscaled', s.net_content_unscaled::text, 'scale', s.net_content_scale)`;
 const FACTS = `s.status AS sku_status, s.sellable_standalone, s.sellable_in_subscription,
   s.net_weight_g, pr.status AS product_status,
+  CASE WHEN s.net_content_dimension IS NOT NULL THEN ${CONTENT} END AS typed_content,
+  s.publication_facts->'netContent' = ${CONTENT} AS published_content_matches,
   (pr.primary_sku_id IS NOT NULL AND revision.id IS NOT NULL) AS document_ready,
   COALESCE((SELECT jsonb_agg(jsonb_build_object('issuer', identifier.issuer, 'normalizedValue', identifier.normalized_value,
     'kind', identifier.identifier_kind, 'packKind', identifier.pack_kind, 'packQuantity', identifier.quantity, 'isPrimary', identifier.is_primary))

@@ -1,3 +1,5 @@
+import { canonicalizeCatalogQuantity } from "@openlup/core/catalog";
+import { catalogQuantitySchema } from "./productTypeSchemas.js";
 import type { PgQueryExecutor } from "../data/index.js";
 import { assertPrimaryUnitGtinAuthority, type CatalogSkuIdentifier } from "./contracts/foundation.js";
 import { BundleCatalogReadError, type BundleCatalogReadPort, type BundleComponentRow, type BundleSummary, type GetBundleInput } from "./bundleCatalogReadPort.js";
@@ -31,7 +33,9 @@ interface ComponentRow {
   reference_price_count: number | string;
   sku_status: string;
   product_status: string;
-  net_weight_g: number;
+  net_weight_g: number | null;
+  typed_content?: unknown;
+  published_content_matches?: boolean | null;
   sellable_standalone: boolean;
   sellable_in_subscription: boolean;
   document_ready: boolean;
@@ -201,8 +205,23 @@ function toConstraint(value: Record<string, unknown> | null) {
 function componentReady(row: ComponentRow, mode: string): boolean {
   try { assertPrimaryUnitGtinAuthority(row.identifiers); } catch { return false; }
   return row.sku_status === "active" && row.product_status === "active" && row.document_ready === true
-    && Number.isSafeInteger(row.net_weight_g) && row.net_weight_g > 0
+    && componentContentReady(row)
     && (mode === "subscription" ? row.sellable_in_subscription : row.sellable_standalone)
     && row.reference_unit_price_minor !== null && Number.isSafeInteger(Number(row.reference_unit_price_minor))
     && Number(row.reference_unit_price_minor) > 0;
+}
+
+function componentContentReady(row: ComponentRow): boolean {
+  if (row.published_content_matches === false) return false;
+  if (row.typed_content == null) return row.net_weight_g !== null && Number.isSafeInteger(row.net_weight_g) && row.net_weight_g > 0;
+  const parsed = catalogQuantitySchema.safeParse(row.typed_content);
+  if (!parsed.success) return false;
+  // The publication write guard has verified this authored value and its unit.
+  if (row.published_content_matches === true) return true;
+  try {
+    canonicalizeCatalogQuantity(parsed.data);
+    return true;
+  } catch {
+    return false;
+  }
 }

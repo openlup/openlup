@@ -37,7 +37,7 @@ const page = z.discriminatedUnion("protocol", [
 ]);
 const wire = z.union([
   z.object({ kind: z.literal("page"), value: page }).strict(),
-  z.object({ kind: z.literal("refusal"), reason: z.enum(["invalid_request", "unknown_offer", "head_moved"]) }).strict(),
+  z.object({ kind: z.literal("refusal"), reason: z.enum(["invalid_request", "unknown_offer", "head_moved", "quantity_requires_v2"]) }).strict(),
   z.object({ kind: z.literal("refusal"), reason: z.literal("inconsistent_evidence"), detail: z.literal("catalog_publication_live_drift").optional() }).strict(),
 ]);
 const batchInput = z.object({ skuCodes: z.array(code).min(1).max(100).refine(codes => new Set(codes).size === codes.length), expectedHeadDigest: digest }).strict();
@@ -126,6 +126,7 @@ export async function readPostgresCatalogMembershipPage(db: PgQueryExecutor, inp
   if (!decoded.success) return unavailable;
   if (decoded.data.kind === "refusal") {
     if (decoded.data.reason === "inconsistent_evidence") return { ...unavailable, reason: decoded.data.detail ?? unavailable.reason };
+    if (decoded.data.reason === "quantity_requires_v2") return { outcome: "validation_issue", reason: decoded.data.reason };
     if (decoded.data.reason === "head_moved") return { outcome: "conflict", reason: "catalog_publication_head_moved", retryable: true };
     return invalid;
   }

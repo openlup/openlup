@@ -1,3 +1,4 @@
+import { asLegacyIntegralGrams } from "@openlup/platform/catalog";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
@@ -72,7 +73,13 @@ export async function installPublicationActors(pool: Pool) {
   await pool.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES($1,'publication@example.invalid')", [actorId]);
   await pool.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES($1,'admin','active','legacy',clock_timestamp())", [actorId]);
   await pool.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
-    VALUES($1,$2,'{}',$3,$4)`, [type.key, type.version, definitionDigest, `sha256:${hash("synthetic rules")}`]);
+    VALUES($1,$2,$3,$4,$5)`, [type.key, type.version, {
+    units: [
+      { code: "openlup:g", dimension: "mass", integral: false },
+      { code: "openlup:ml", dimension: "volume", integral: false },
+      { code: "openlup:piece", dimension: "count", integral: true },
+    ], netContentUnits: ["openlup:g", "openlup:ml", "openlup:piece"],
+  }, definitionDigest, `sha256:${hash("synthetic rules")}`]);
 }
 
 export async function transaction<T>(pool: Pool, work: (db: PoolClient) => Promise<T>): Promise<T> {
@@ -249,7 +256,7 @@ export async function skuRow(db: PoolClient, value: Graph, issueOrdinal = 1, fac
 export async function insertGraph(db: PoolClient, value: Graph, options: {
   order?: "child-first"; receipt?: "omit" | "timestamp"; roster?: "omit"; head?: "omit"; rawState?: (state: string) => string; rawFacts?: (facts: string) => string;
   existingDocument?: boolean; omitProductProjection?: boolean; extraSkuCount?: number; approvalTime?: string; reuseApproval?: boolean; approvedState?: string;
-  receiptResult?: string;
+  receiptResult?: string; exactQuantity?: boolean;
   inherit?: CatalogSkuRevisionRef; inherited?: CatalogSkuRevisionRef[]; onlyNew?: boolean; skuRevision?: number; maxCodes?: boolean;
 } = {}) {
   if (!value.before && !options.existingDocument) await documentRow(db, value);
@@ -313,11 +320,22 @@ export async function insertGraph(db: PoolClient, value: Graph, options: {
   if (options.order === "child-first") await issue();
   if (!options.omitProductProjection) await db.query("UPDATE public.catalog_products SET publication_facts=$2,variant_axes=$3,attribute_values=$4 WHERE id=$1",
     [productId, json(value.product), value.product.axes, json(value.product.attributes)]);
-  if (issued.length) await db.query(`UPDATE public.catalog_skus s SET title=f->>'title', publication_facts=f,
+  if (issued.length && !options.exactQuantity) await db.query(`UPDATE public.catalog_skus s SET title=f->>'title', publication_facts=f,
       status=f->>'status',sellable_standalone=(f->>'sellableStandalone')::boolean,sellable_in_subscription=(f->>'sellableInSubscription')::boolean,
       option_values=f->'options',attribute_values=f->'attributes', net_content_dimension='mass',net_content_unit='openlup:g',
       net_content_unscaled=100,net_content_scale=0
     FROM jsonb_array_elements($1::jsonb) AS f WHERE s.id=(f->>'id')::uuid`, [json(issued.map(sku => sku.facts))]);
+  else if (issued.length) await db.query(`UPDATE public.catalog_skus s SET title=f->>'title', publication_facts=f,
+      status=f->>'status',sellable_standalone=(f->>'sellableStandalone')::boolean,sellable_in_subscription=(f->>'sellableInSubscription')::boolean,
+      option_values=f->'options',attribute_values=f->'attributes',net_weight_g=grams,
+      net_content_dimension=f#>>'{netContent,dimension}',net_content_unit=f#>>'{netContent,unit}',
+      net_content_unscaled=(f#>>'{netContent,unscaled}')::numeric,net_content_scale=(f#>>'{netContent,scale}')::integer,
+      gross_mass_dimension=f#>>'{grossMass,dimension}',gross_mass_unit=f#>>'{grossMass,unit}',
+      gross_mass_unscaled=(f#>>'{grossMass,unscaled}')::numeric,gross_mass_scale=(f#>>'{grossMass,scale}')::integer
+    FROM unnest($1::jsonb[],$2::integer[]) AS value(f,grams) WHERE s.id=(f->>'id')::uuid`, [
+    issued.map(sku => json(sku.facts)),
+    issued.map(sku => { const bridge = asLegacyIntegralGrams(sku.facts.netContent); return bridge.outcome === "converted" ? bridge.grams : null; }),
+  ]);
   for (const { skuId, facts } of issued) {
     for (const id of facts.identifiers) await db.query(`INSERT INTO public.catalog_sku_identifiers
       (catalog_sku_id,issuer,identifier_kind,normalized_value,pack_kind,quantity,is_primary) VALUES($1,$2,$3,$4,$5,$6,$7)`,

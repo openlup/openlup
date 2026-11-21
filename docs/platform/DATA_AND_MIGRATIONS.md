@@ -36,6 +36,28 @@ rather than requiring any particular textual spelling of the clamp.
 Installed readers follow the
 [package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
 
+## Exact catalogue quantities
+
+The native [quantity serving forward](../../db/platform/migrations/20261124190000_catalog_quantity_serving.sql)
+allows NULL in `catalog_skus.net_weight_g`. It keeps existing rows, defaults
+and sealed revisions. The existing deferred write guard validates typed net
+and gross quantities against the installed definition. Only an exact positive
+whole mass up to 2,147,483,647 grams yields a legacy value. A positive
+conversion from a different mass representation adds optional sealed gram
+evidence. Readers compare the live columns with those sealed facts using
+existing privileges. Historical zero still means unknown.
+
+A scoped membership page that selects content without a gram value refuses on
+V1. The owner can use the bounded V2 SQL entry for authored `netContent` and
+`grossMass`. The existing readiness entry point continues to certify selected
+evidence for the service role. Runtime V2 membership binding follows in A2.
+
+The [managed peer](../../supabase/migrations/20261124190000_catalog_quantity_serving.sql)
+adds exact canonical content, independent gross grams and a checked nullable
+compatibility field. Managed readers use their current document pointer and
+keep the incumbent mandatory gram column and role policies. Managed
+publication remains dark.
+
 ## Native outbox partial indexes and atomic label/address RPCs
 
 The [outbox active partial indexes forward](../../db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql)
@@ -1036,9 +1058,9 @@ The publication assertion checks the exact document and draft evidence, the
 candidate's current approval, the immediate predecessor, the resolved SKU
 roster, response size and the original command result. Approval records the
 expected product and SKU facts. An issue must match those facts, and the latest
-issue must also match the live product and SKU projections, including the legacy
-whole-gram net weight that quote readers serve, so it publishes net content in whole
-grams at scale 0. A candidate with an issue keeps its approval, so a later
+issue must also match the live product and SKU projections, including the
+typed quantities and the exact nullable gram value that legacy readers use.
+A candidate with an issue keeps its approval, so a later
 revocation refuses and needs no action. Decision transitions
 use the existing draft head to serialize with issuance, including before the
 product exists. Capture and exact restore replay apply the same read-only

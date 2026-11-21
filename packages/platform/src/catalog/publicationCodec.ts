@@ -144,11 +144,20 @@ const identifierSchema = z.object({ scheme: ref, issuer: ref, value: z.string().
 export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.object({
   id, productId: id, code, title: z.string().min(1).max(500), status: z.enum(["draft", "active", "archived"]),
   minQuantity: z.number().int().min(1).max(2_147_483_647), isAddon: z.boolean(), sellableStandalone: z.boolean(), sellableInSubscription: z.boolean(),
-  netContent: catalogQuantitySchema, grossMass: catalogQuantitySchema.nullable(), options: z.record(catalogDimensionKeySchema, catalogOptionValueSchema),
+  netContent: catalogQuantitySchema, grossMass: catalogQuantitySchema.nullable(),
+  netWeightG: z.number().int().min(1).max(2_147_483_647).optional(), options: z.record(catalogDimensionKeySchema, catalogOptionValueSchema),
   attributes, facts: publishedFactsSchema, identifiers: z.array(identifierSchema), assetRefs: z.array(ref).max(32),
   logisticsRef: z.string().min(1).max(500).refine(value => value.trim() === value).nullable(),
   memberships: z.array(z.object({ offerVersion: ref, admitted: z.boolean() }).strict()), source: claimSchema,
 }).strict().superRefine((sku, context) => {
+  if (sku.netWeightG !== undefined && sku.netContent.dimension !== "mass") {
+    context.addIssue({ code: "custom", path: ["netWeightG"], message: "A gram bridge requires mass content" });
+  }
+  for (const [path, quantity] of [["netContent", sku.netContent], ["grossMass", sku.grossMass]] as const) {
+    if (quantity && (path === "grossMass" && quantity.dimension !== "mass"
+      || quantity.dimension === "count" && BigInt(quantity.unscaled) % (10n ** BigInt(quantity.scale)) !== 0n))
+      context.addIssue({ code: "custom", path: [path], message: "Expected mass for gross or a whole count for count content" });
+  }
   if (!sku.memberships.every((row, index) => index === 0 || comparePublicationText(sku.memberships[index - 1]!.offerVersion, row.offerVersion) < 0)
     || sku.identifiers.filter(row => row.isPrimary).length > 1)
     context.addIssue({ code: "custom", message: "membership roster and primary identifier must be unique" });
@@ -206,7 +215,7 @@ export function decodePublishedSku(input: unknown, path: string, subject?: strin
   return parsed.data;
 }
 
-/** The native latest issue must fit the whole-gram projection served by legacy readers. */
+/** Assert the original entire-gram wire format for legacy consumers. */
 export function assertNativeSkuNetWeight({ code, netContent }: CatalogPublishedSku): void {
   if (netContent.dimension !== "mass" || netContent.unit !== "openlup:g" || netContent.scale !== 0
     || Number(netContent.unscaled) > 2_147_483_647)

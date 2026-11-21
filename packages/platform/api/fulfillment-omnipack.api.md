@@ -50,6 +50,7 @@ import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchRequest, Fulfi
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { type OmnipackObservationCodecs } from "./observation.js";
 import { omnipackIntakeOrderIdentity } from "./intake.js";
+import { type TypedProductPayloadInput } from "./omnipackProductPayload.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
 export interface OmnipackFulfillmentAdapterConfig {
@@ -91,6 +92,10 @@ export interface OmnipackFulfillmentAdapterConfig {
     /** Writes occur only through deliberate calls; scheduled composition must remain pull-only. */
     product?: {
         resolvePushMetadata: (sku: string) => Promise<Record<string, unknown> | null>;
+    };
+    /** An explicit packaged quantity for product registration. @experimental */
+    typedProduct?: {
+        resolvePushMetadata: (sku: string) => Promise<TypedProductPayloadInput | null>;
     };
 }
 /** No route, schedule, environment reader or default binding is installed. */
@@ -240,6 +245,37 @@ export declare function observation(input: {
     approveTrackingUrl: (url: string) => boolean;
     observationCodecs?: OmnipackObservationCodecs;
 }): FulfillmentObservation;
+```
+## dist/fulfillment/omnipack/omnipackProductPayload.d.ts
+
+```ts
+import { type CatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+export interface OmnipackProductPack {
+    weightGrams: number;
+    lengthMm: number;
+    widthMm: number;
+    heightMm: number;
+}
+export interface OmnipackProductInput {
+    sku: string;
+    ean: string | null;
+    productGroup: string;
+    title: string;
+    pack: OmnipackProductPack | null;
+}
+export declare class OmnipackProductPayloadError extends Error {
+    readonly code: string;
+    constructor(code: string);
+}
+export declare function buildOmnipackProductPayload(input: OmnipackProductInput): Record<string, unknown>;
+/** Explicit packaged gross mass for the existing product-registration lane. @experimental */
+export interface TypedProductPayloadInput extends Omit<OmnipackProductInput, "pack"> {
+    pack: (Omit<OmnipackProductPack, "weightGrams"> & {
+        grossMass: CatalogQuantity | null;
+    }) | null;
+    units?: readonly CatalogQuantityUnit[];
+}
+export declare function buildTypedProductPayload(input: TypedProductPayloadInput): Record<string, unknown>;
 ```
 ## dist/fulfillment/omnipack/omnipackStatusVocabulary.d.ts
 

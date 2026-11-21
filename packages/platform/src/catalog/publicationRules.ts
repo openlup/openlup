@@ -29,12 +29,13 @@ const results = {
   classifySkuChange: [z.enum(["compatible", "material", "inconclusive"]), "Return compatible, material or inconclusive."],
   validateMembershipChange: [z.boolean(), "Return true or false to accept or refuse the membership change."],
   validateSkuAmounts: [z.boolean(), "Return true or false to accept or refuse the SKU quantity."],
+  validateSkuQuantities: [z.boolean(), "Return true or false to accept or refuse the typed SKU quantities."],
 } satisfies Record<Hook, readonly [z.ZodType, string]>;
 const localContext: CatalogRulesContext = Object.freeze({ evaluatedAt: null });
 
 const requiredHooks = ["validateContent", "validateProduct", "inspectDocument", "matchesDocument", "identifyDocument",
   "deriveSkuFacts", "classifySkuChange"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
-const optionalHooks = ["validateMembershipChange", "validateSkuAmounts"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
+const optionalHooks = ["validateMembershipChange", "validateSkuAmounts", "validateSkuQuantities"] as const satisfies readonly (keyof CatalogPublicationRulesModule)[];
 type Binding = {
   validatorRef: `sha256:${string}`; bytes: Buffer;
   rules(evaluation: CatalogRulesContext): CatalogPublicationRulesModule;
@@ -84,7 +85,7 @@ function runRule<T>(hook: Hook | "module", invoke: () => T): T {
 export function ruleProduct({ source: _source, document: _document, content: _content, ...product }: CatalogPublishedProduct): RulesProduct {
   return product;
 }
-export function ruleSku({ source: _source, ...sku }: CatalogPublishedSku): RulesSku {
+export function ruleSku({ source: _source, netWeightG: _netWeightG, ...sku }: CatalogPublishedSku): RulesSku {
   return sku;
 }
 
@@ -173,7 +174,7 @@ ${source}
         runRule(key, () => {
           // Each method receives the same explicit final argument, including local use.
           const arity = { validateContent: 1, validateProduct: 3, validateMembershipChange: 2, inspectDocument: 1,
-            matchesDocument: 2, identifyDocument: 1, validateSkuAmounts: 1, deriveSkuFacts: 2, classifySkuChange: 3 }[key];
+            matchesDocument: 2, identifyDocument: 1, validateSkuAmounts: 1, validateSkuQuantities: 1, deriveSkuFacts: 2, classifySkuChange: 3 }[key];
           return instantiate().invoke(key, JSON.stringify([...args.slice(0, arity), args[arity] ?? context]));
         })]))) as unknown as CatalogPublicationRulesModule;
     } };

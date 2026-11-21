@@ -4,10 +4,10 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { readPostgresCatalogMembershipPage, type CatalogMembershipPageInput } from "@openlup/platform/catalog";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { documentRow, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json, membershipSignature,
+import { catalogueReadGrant, documentRow, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json, membershipSignature,
   publicationDocuments, publicFunctionGrants, stageProductRows, transaction, type Graph } from "./catalogPublicationFixture.js";
 
-const forward = "db/platform/migrations/20261124120000_catalog_publication_reads.sql";
+const forward = "db/platform/migrations/20261124190000_catalog_quantity_serving.sql";
 const membershipSql = "SELECT public.catalog_offer_memberships_page($1,$2::jsonb,$3,$4) AS result";
 const filterOffer = "test:filter";
 const emptyOffer = "test:known-empty";
@@ -22,10 +22,11 @@ beforeAll(async () => {
   const position = manifest.forward.findIndex(unit => unit.file === forward);
   expect(position).toBeGreaterThan(0);
   const prefix = [manifest.baseline, ...manifest.forward.slice(0, position)];
-  for (const { file } of prefix) await pool.query(readFileSync(file, "utf8"));
+  for (const { file } of prefix) {
+    if (file === catalogueReadGrant) await installCatalogueReadGrants(pool);
+    else await pool.query(readFileSync(file, "utf8"));
+  }
   await pool.query(readFileSync(forward, "utf8"));
-  await pool.query(readFileSync("db/platform/migrations/20261124140000_catalog_publication_readiness.sql", "utf8"));
-  await installCatalogueReadGrants(pool);
   await installPublicationActors(pool);
   await pool.query("CREATE TABLE public.membership_serialization_witness(id int PRIMARY KEY, value int); INSERT INTO public.membership_serialization_witness VALUES (1,0),(2,0)");
 }, postgresSetupTimeoutMs);
@@ -44,16 +45,20 @@ async function page(input: CatalogMembershipPageInput, db: Pool | PoolClient = p
 
 async function seed(db: PoolClient, options: {
   code?: string; id?: ReturnType<typeof randomUUID>; offer?: string; admitted?: boolean; productActive?: boolean; skuActive?: boolean;
-  oneTime?: boolean; subscription?: boolean; documentText?: string; registrationText?: string | Record<string, never>; extraSkuCount?: number;
+  oneTime?: boolean; subscription?: boolean; documentText?: string; registrationText?: string | Record<string, never>; extraSkuCount?: number; typedVolume?: boolean;
 } = {}) {
   const issue = await graph(db, { ...fixture(), ...(options.id ? { skuId: options.id } : {}), skuCode: options.code }, null, true, { documentText: options.documentText, registrationText: options.registrationText });
   issue.product.status = options.productActive === false ? "draft" : "active";
   issue.facts.status = options.skuActive === false ? "draft" : "active";
   issue.facts.sellableStandalone = options.oneTime ?? true;
   issue.facts.sellableInSubscription = options.subscription ?? true;
+  if (options.typedVolume) {
+    issue.facts.netContent = { dimension: "volume", unit: "openlup:ml", unscaled: "50", scale: 0 };
+    issue.facts.grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "70", scale: 0 };
+  }
   issue.facts.memberships = [{ offerVersion: options.offer ?? filterOffer, admitted: options.admitted ?? true }];
   await db.query("UPDATE public.catalog_products SET status=$2 WHERE id=$1", [issue.productId, issue.product.status]);
-  await insertGraph(db, issue, { extraSkuCount: options.extraSkuCount });
+  await insertGraph(db, issue, { extraSkuCount: options.extraSkuCount, exactQuantity: options.typedVolume });
   return issue;
 }
 
@@ -384,6 +389,7 @@ it("refuses invalid SQL request bounds and cursor shape as values before reading
   });
 });
 
+const typedSignature = "public.catalog_offer_memberships_page_v2(text,jsonb,integer,text)";
 const helperSignatures = [
   "public.catalog_publication_read_json(text,text,integer)",
   "public.catalog_publication_read_manifest(uuid,text,text)",
@@ -395,12 +401,12 @@ const helperSignatures = [
 it("grants membership execution independently of effective helper and ledger privileges", async () => {
   const offer = "test:grants";
   await transaction(pool, db => seed(db, { offer }));
-  expect(await publicFunctionGrants(pool, [membershipSignature, ...helperSignatures])).toEqual([]);
+  expect(await publicFunctionGrants(pool, [membershipSignature, typedSignature, ...helperSignatures])).toEqual([]);
   for (const role of ["unrelated", "anon", "authenticated", "service_role", "openlup_catalog_publication", "postgres"]) {
     const canRead = role === "service_role" || role === "openlup_catalog_publication" || role === "postgres";
     const permissions = await pool.query(`SELECT name,has_function_privilege($1::name,name,'EXECUTE') AS allowed
-      FROM unnest($2::text[]) name`, [role, [membershipSignature, ...helperSignatures]]);
-    expect(permissions.rows).toEqual([membershipSignature, ...helperSignatures].map(name => ({
+      FROM unnest($2::text[]) name`, [role, [membershipSignature, typedSignature, ...helperSignatures]]);
+    expect(permissions.rows).toEqual([membershipSignature, typedSignature, ...helperSignatures].map(name => ({
       name, allowed: role === "postgres" || (canRead && name === membershipSignature),
     })));
     const run = transaction(pool, async db => {
@@ -504,4 +510,36 @@ it("preserves a PostgreSQL serialization failure at commit", async () => {
     first.release();
     second.release();
   }
+});
+
+it("MC5 checks the SQL bridge on writes and serves scoped typed evidence only through V2", async () => {
+  const offer = "test:typed";
+  const issue = await transaction(pool, db => seed(db, { offer, typedVolume: true }));
+  await expect(pool.query("UPDATE public.catalog_skus SET net_weight_g=50 WHERE id=$1", [issue.skuId]))
+    .rejects.toMatchObject({ code: "23514", constraint: "catalog_skus_legacy_net_grams_check" });
+  const typedSql = "SELECT public.catalog_offer_memberships_page_v2($1,NULL,1,'one_time') AS result";
+  for (const role of ["service_role", "openlup_catalog_publication"]) {
+    await transaction(pool, async db => {
+      await db.query(`SET LOCAL ROLE ${role}`);
+      expect(await readPostgresCatalogMembershipPage(db, byOffer(offer, "one_time")))
+        .toEqual({ outcome: "validation_issue", reason: "quantity_requires_v2" });
+    });
+  }
+  expect((await pool.query(typedSql, [offer])).rows[0]?.result).toMatchObject({ kind: "page", value: {
+    protocol: "governed", items: [{ skuId: issue.skuId, netWeightG: null, netContent: issue.facts.netContent, grossMass: issue.facts.grossMass }],
+  } });
+  for (const role of ["unrelated", "anon", "authenticated", "service_role", "openlup_catalog_publication"]) {
+    await expect(transaction(pool, async db => {
+      await db.query(`SET LOCAL ROLE ${role}`);
+      await db.query(typedSql, [offer]);
+    })).rejects.toMatchObject({ code: "42501" });
+  }
+});
+
+it("refuses a sealed gram claim that agrees with the live column but disagrees with the installed definition", async () => {
+  const issue = await transaction(pool, db => seed(db, { offer: "test:forged-bridge" }));
+  await expect(transaction(pool, db => db.query(`UPDATE public.catalog_skus SET
+    publication_facts=jsonb_set(jsonb_set(publication_facts,'{netContent,unscaled}','"125"'),'{netWeightG}','124'),
+    net_content_unscaled=125, net_weight_g=124 WHERE id=$1`, [issue.skuId])))
+    .rejects.toMatchObject({ code: "23514", constraint: "catalog_publication_facts_invalid" });
 });

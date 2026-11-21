@@ -19,6 +19,8 @@ export interface CatalogPublishedProduct extends RulesProduct {
 }
 /** @internal */
 export interface CatalogPublishedSku extends RulesSku {
+  /** Sealed compatibility evidence for an exact conversion from authored mass. */
+  netWeightG?: number;
   source: CatalogDraftClaimV3;
 }
 /** @experimental */

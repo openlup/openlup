@@ -621,8 +621,8 @@ const cases: Case[] = [
     operation(data, "create_sku", { facts });
   }, expected: reason("catalog_publication_document_text_copied"), ...beforeRoute },
   { id: "A-5 zero mass reaches the same ingress refusal", arrange: data => { data.payload.skus[0]!.netContent!.unscaled = "0"; },
-    expected: reason("catalog_publication_integral_grams_required"),
-    diagnostic: { path: "skus.0.netContent", phase: "structural", subject: "ARTICLE" } },
+    expected: reason("candidate_invalid"),
+    diagnostic: { path: "skus.0.netContent.unscaled", phase: "structural", subject: "example:article" } },
   { id: "A-6 module state cannot survive repeated phase observations",
     rulesAsset: `let calls = 0; ${artifact.replace("validateContent: () => []", 'validateContent: () => ++calls === 1 ? [] : [{ path: "", code: "state_leaked" }]')}` },
   ...([
@@ -1356,19 +1356,48 @@ it("explains how to order primary SKU selection before activation", async () => 
   });
 });
 
-it("refuses a whole-gram amount whose authored scale cannot be issued natively", async () => {
+it("MC5 issues exact authored amounts without replacing their original scale", async () => {
   const data = input();
   const netContent = { dimension: "mass", unit: "openlup:g", unscaled: "1000", scale: 1 } as const;
   data.payload.skus[0]!.netContent = netContent;
   const query = { draftId: data.record.draftId, draftRevision: data.record.revision, expectedHead: null };
-  const diagnostic = { code: "catalog_publication_net_weight_unsupported", path: "skus.netContent", subject: "ARTICLE",
-    message: expect.stringContaining("whole grams at scale 0") };
-  const preview = await facade(data).prepareCandidate(query);
-  expect(preview.preparation?.structural.issues).toContainEqual(expect.objectContaining(diagnostic));
-  const { message, ...field } = diagnostic;
+  expect((await facade(data).prepareCandidate(query)).preparation?.structural.issues).toEqual([]);
   for (const mode of ["first-decision", "compile"] as const)
-    await expect(compileCatalogPublication(data, mode)).rejects.toMatchObject({ code: field.code, diagnostic: field, message });
-  expect(data.payload.skus[0]!.netContent).toEqual(netContent);
+    expect((await compileCatalogPublication(data, mode)).skus[0]?.netContent).toEqual(netContent);
+});
+
+it("uses a typed hook when selected and keeps the installed whole-gram rule contract", async () => {
+  const data = input();
+  const sku = data.payload.skus[0]!;
+  const netContent = { dimension: "mass", unit: "openlup:g", unscaled: "55", scale: 1 } as const;
+  const grossMass = { ...netContent, unscaled: "60" };
+  Object.assign(sku, { netContent, grossMass });
+  const legacy = loadCatalogRules(Buffer.from(artifact.replace("  validateProduct:", "  validateSkuAmounts: ({netGrams}) => netGrams === '100',\n  validateProduct:")));
+  const both = loadCatalogRules(Buffer.from(artifact.replace("  validateProduct:", `  validateSkuAmounts: () => false,
+    validateSkuQuantities: ({netContent,grossMass}) => netContent.unscaled === "55" && grossMass.unscaled === "60",
+    validateProduct:`)));
+  expect(() => assertCatalogPublicationPreparation(data.payload, { definition: data.definition, rules: legacy }))
+    .toThrow(expect.objectContaining({ code: "catalog_publication_integral_grams_required" }));
+  expect(() => assertCatalogPublicationPreparation(data.payload, { definition: data.definition, rules: both })).not.toThrow();
+  Object.assign(sku, { grossMass: { ...grossMass, unscaled: "54" } });
+  expect(() => assertCatalogPublicationPreparation(data.payload, { definition: data.definition, rules: both }))
+    .toThrow(expect.objectContaining({ code: "catalog_publication_gross_below_net" }));
+});
+
+it("refuses malformed, cross-dimension and fractional count evidence in preparation", () => {
+  const data = input();
+  const sku = data.payload.skus[0]!;
+  const binding = { definition: { ...data.definition, netContentUnits: ["openlup:g", "openlup:piece"],
+    units: [...data.definition.units, { code: "openlup:piece", dimension: "count" as const, integral: true }] }, rules: {} };
+  for (const netContent of [
+    { dimension: "mass", unit: "openlup:g", unscaled: "1/2", scale: 0 },
+    { dimension: "volume", unit: "openlup:g", unscaled: "10", scale: 0 },
+    { dimension: "count", unit: "openlup:piece", unscaled: "15", scale: 1 },
+    { dimension: "mass", unit: "openlup:g", unscaled: "1".repeat(41), scale: 0 },
+  ] as const) {
+    sku.netContent = netContent;
+    expect(() => assertCatalogPublicationPreparation(data.payload, binding)).toThrow(expect.objectContaining({ code: "catalog_publication_net_content_invalid" }));
+  }
 });
 
 it.each([

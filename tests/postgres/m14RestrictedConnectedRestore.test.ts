@@ -184,6 +184,12 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead')");
       await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
+      await source.owner.query(`WITH product AS (
+        INSERT INTO public.catalog_products(slug,name) VALUES ('retained-quantity','Retained quantity') RETURNING id
+      ) INSERT INTO public.catalog_skus(product_id,sku,title,net_weight_g,net_content_dimension,net_content_unit,net_content_unscaled,net_content_scale,
+         gross_mass_dimension,gross_mass_unit,gross_mass_unscaled,gross_mass_scale)
+       SELECT id,'VOLUME','Volume',NULL,'volume','openlup:ml',50,0,'mass','openlup:g',70,0 FROM product
+       UNION ALL SELECT id,'LEGACY','Legacy',0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL FROM product`);
       const packet = await capture(source, "restricted-source"), freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
@@ -200,6 +206,11 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       expect((await target.runner.status()).pending).toEqual([]);
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
       expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
+      expect((await target.owner.query(`SELECT sku,net_weight_g,net_content_unscaled::text,gross_mass_unscaled::text
+        FROM public.catalog_skus ORDER BY sku`)).rows).toEqual([
+        { sku: "LEGACY", net_weight_g: 0, net_content_unscaled: null, gross_mass_unscaled: null },
+        { sku: "VOLUME", net_weight_g: null, net_content_unscaled: "50", gross_mass_unscaled: "70" },
+      ]);
       expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
       expect((await target.owner.query("SELECT event_type FROM public.outbox_events")).rows).toEqual([{ event_type: "synthetic.retained" }]);
       if (shape === "neon" && mode === "installer-managed") {

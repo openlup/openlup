@@ -2,15 +2,15 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { catalogDefinitionDigest, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV3, createPostgresCatalogPublicationCommands,
+import { installCatalogDefinitions, createCatalogProductTypeRegistry, createPostgresCatalogDraftStoreV3, createPostgresCatalogPublicationCommands,
   readPostgresCatalogActivationReadiness, withCatalogPublicationRules, type CatalogHeadRef, type CatalogInstalledReadiness } from "@openlup/platform/catalog";
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json,
+import { actorId, authoredPublicationDocument, catalogueReadGrant, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json,
   publicFunctionGrants, readinessSignature as entry, stageProductRows, transaction } from "./catalogPublicationFixture.js";
 
-const forward = "db/platform/migrations/20261124140000_catalog_publication_readiness.sql";
+const forward = "db/platform/migrations/20261124190000_catalog_quantity_serving.sql";
 const readinessSql = "SELECT public.catalog_publication_activation_readiness($1::text[],$2) AS result";
 const helpers = ["public.catalog_publication_readiness_snapshot(text[],text,timestamptz)", "public.catalog_publication_price_reasons(uuid[],timestamptz)"];
 const unavailable = { outcome: "dependency_unavailable", reason: "catalog_publication_read_unavailable" };
@@ -33,13 +33,14 @@ const artifact = Buffer.from(`
   };
 `);
 // Version 1 types the synthetic sealed fixtures; version 2 is published by the real writer.
-const registry = createCatalogProductTypeRegistry(withCatalogPublicationRules({ id: "example:rules", namespace: "example",
+const pack = withCatalogPublicationRules({ id: "example:rules", namespace: "example",
   version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [], types: [1, 2].map(version => ({
     key: "example:article", version, units: [{ code: "openlup:g", dimension: "mass" as const, integral: false }], netContentUnits: ["openlup:g"],
     dimensions: [{ key: "finish", kind: "choice" as const, values: ["matte", "gloss"] }], axes: [{ key: "finish", attributeKey: "finish" }],
     attributes: [{ key: "finish", scope: "variant" as const, valueType: { kind: "enum" as const, values: [{ id: "matte" }, { id: "gloss" }] },
       required: false, cardinality: { min: 0, max: 1 }, filterable: false, facetable: false, public: true, displayOrder: 0, labels: {} }],
-  })) }, () => artifact).types);
+  })) }, () => artifact);
+const registry = createCatalogProductTypeRegistry(pack.types);
 const none: CatalogInstalledReadiness = { registry, assess: () => [] };
 
 beforeAll(async () => {
@@ -50,13 +51,13 @@ beforeAll(async () => {
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
   const position = manifest.forward.findIndex(unit => unit.file === forward);
   expect(position).toBeGreaterThan(0);
-  for (const { file } of [manifest.baseline, ...manifest.forward.slice(0, position)]) await pool.query(readFileSync(file, "utf8"));
+  for (const { file } of [manifest.baseline, ...manifest.forward.slice(0, position)]) {
+    if (file === catalogueReadGrant) await installCatalogueReadGrants(pool);
+    else await pool.query(readFileSync(file, "utf8"));
+  }
   await pool.query(readFileSync(forward, "utf8"));
-  await installCatalogueReadGrants(pool);
   await installPublicationActors(pool);
-  const writerType = registry.resolve({ key: "example:article", version: 2 })!;
-  await pool.query(`INSERT INTO public.catalog_type_versions(type_key,version,definition,definition_digest,validator_ref)
-    VALUES($1,2,'{}',$2,$3)`, [writerType.key, catalogDefinitionDigest(writerType), writerType.validatorRef]);
+  await installCatalogDefinitions(pool, { ...pack, types: pack.types.filter(type => type.version === 2) });
   await pool.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await pool.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
@@ -85,10 +86,15 @@ async function headDigest(db: Pool | PoolClient = pool) {
   return (await db.query("SELECT coalesce(public.catalog_publication_read_head()->>'headDigest',repeat('0',64)) AS digest")).rows[0]!.digest as string;
 }
 async function seed(db: PoolClient, options: { code?: string; id?: ReturnType<typeof randomUUID>; documentText?: string;
-  registrationText?: string | Record<string, never>; extraSkuCount?: number } = {}) {
+  registrationText?: string | Record<string, never>; extraSkuCount?: number;
+  netContent?: Awaited<ReturnType<typeof graph>>["facts"]["netContent"] } = {}) {
   const issue = await graph(db, { ...fixture(), ...(options.id ? { skuId: options.id } : {}), skuCode: options.code }, null, true,
     { documentText: options.documentText, registrationText: options.registrationText });
-  await insertGraph(db, issue, { extraSkuCount: options.extraSkuCount });
+  if (options.netContent) {
+    issue.facts.netContent = options.netContent;
+    issue.facts.grossMass = { dimension: "mass", unit: "openlup:g", unscaled: "250", scale: 0 };
+  }
+  await insertGraph(db, issue, { extraSkuCount: options.extraSkuCount, exactQuantity: options.netContent !== undefined });
   return issue;
 }
 /** Run direct SQL in a transaction that is always rolled back. */
@@ -577,4 +583,29 @@ it("waits behind the held real writer, refuses its moved head without installed 
   release.resolve();
   expect(await reading).toMatchObject({ protocol: "governed", headDigest: before, items: [{ skuCode: subject.facts.code, skuId: subject.skuId }] });
   expect(await publish(command)).toMatchObject({ outcome: "committed" });
+});
+
+it("certifies selected volume, count and legacy mass through both existing roles", async () => {
+  const quantities = [
+    { dimension: "volume", unit: "openlup:ml", unscaled: "50", scale: 0 },
+    { dimension: "count", unit: "openlup:piece", unscaled: "56", scale: 0 },
+    { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
+  ] as const;
+  const issues = await transaction(pool, async db => {
+    const rows: Awaited<ReturnType<typeof seed>>[] = [];
+    for (const [index, netContent] of quantities.entries()) {
+      rows.push(await seed(db, { code: `exact-evidence-${index}`, netContent }));
+    }
+    return rows;
+  });
+  const digest = await headDigest();
+  for (const role of ["service_role", "openlup_catalog_publication"]) {
+    await transaction(pool, async db => {
+      await db.query(`SET LOCAL ROLE ${role}`);
+      const result = await direct(db, issues.map(issue => issue.facts.code), digest);
+      expect(result, JSON.stringify(result)).toMatchObject({ kind: "batch", value: { items: issues.map((issue, index) => ({
+        skuCode: issue.facts.code, evidence: { sku: { netContent: quantities[index], grossMass: issue.facts.grossMass } },
+      })) } });
+    });
+  }
 });

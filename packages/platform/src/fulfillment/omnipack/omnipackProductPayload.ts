@@ -1,3 +1,5 @@
+import { canonicalizeCatalogQuantity, type CatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
+
 // Pure builder for the OmniPack product-registration request (catalog load). Mirrors the
 // outbound-order payload convention (pure module in server/_lib, wired through the client).
 // The exact OmniPack request key names live behind the constants below so finalizing them
@@ -64,4 +66,27 @@ export function buildOmnipackProductPayload(input: OmnipackProductInput): Record
       height: requirePositive(input.pack.heightMm, "invalid_pack_height"),
     },
   };
+}
+
+/** Explicit packaged gross mass for the existing product-registration lane. @experimental */
+export interface TypedProductPayloadInput extends Omit<OmnipackProductInput, "pack"> {
+  pack: (Omit<OmnipackProductPack, "weightGrams"> & { grossMass: CatalogQuantity | null }) | null;
+  units?: readonly CatalogQuantityUnit[];
+}
+
+export function buildTypedProductPayload(input: TypedProductPayloadInput): Record<string, unknown> {
+  if (!input.pack) throw new OmnipackProductPayloadError("missing_pack");
+  const gross = input.pack.grossMass;
+  if (gross?.dimension !== "mass") throw new OmnipackProductPayloadError("invalid_pack_weight");
+  let quantity: CatalogQuantity;
+  try { quantity = canonicalizeCatalogQuantity(gross, input.units); }
+  catch { throw new OmnipackProductPayloadError("invalid_pack_weight"); }
+  const { unscaled, scale } = quantity;
+  const digits = unscaled.replace(/0+$/u, "");
+  const exponent = unscaled.length - scale - 1;
+  const mantissa = digits.length === 1 ? digits : `${digits[0]}.${digits.slice(1)}`;
+  const weightGrams = Number(`${unscaled}e-${scale}`);
+  if (weightGrams.toExponential() !== `${mantissa}e${exponent < 0 ? "" : "+"}${exponent}`)
+    throw new OmnipackProductPayloadError("invalid_pack_weight");
+  return buildOmnipackProductPayload({ ...input, pack: { ...input.pack, weightGrams } });
 }

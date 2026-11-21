@@ -1,3 +1,4 @@
+import { productLdV2 } from "../../../src/marketing/seo/productLdV2.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
@@ -1213,4 +1214,37 @@ it("allowlists boolean dispatch facts at the durable sink and preserves absent e
   expect(dispatchResult(planted as unknown as FulfillmentDispatchResult)).toEqual(base);
   const facts = { ...base, error: { ...base.error, submissionAttempted: false, responseBodyRead: false } };
   expect(dispatchResult(dispatchResult(facts))).toEqual(facts);
+});
+
+it.each([
+  ["gross mass", { dimension: "mass", unit: "openlup:g", unscaled: "1205", scale: 1 }, "SKU-A", 120.5],
+  ["volume refused", { dimension: "volume", unit: "openlup:ml", unscaled: "50", scale: 0 }, "SKU-A", null],
+  ["wrong product refused", { dimension: "mass", unit: "openlup:g", unscaled: "120", scale: 0 }, "SKU-B", null],
+] as const)("catalog_physical_destination_boundaries MC5-D-029 %s", async (_case, grossMass, declaredSku, weight) => {
+  const f = fixture(undefined, { typedProduct: {
+    resolvePushMetadata: async () => ({ sku: declaredSku, productGroup: "Article", ean: "5901234123457", title: "Example",
+      pack: { grossMass, lengthMm: 15, widthMm: 20, heightMm: 25 } }),
+  } });
+  const create = f.adapter.productSync.ensureProduct("SKU-A");
+  if (weight === null) {
+    await expect(create).rejects.toMatchObject({ phase: "sync", reason: "malformed" });
+    expect(f.fetchImpl).not.toHaveBeenCalled();
+  } else {
+    await expect(create).resolves.toEqual({ replayed: false });
+    expect(JSON.parse(String(f.fetchImpl.mock.calls[0]?.[1]?.body))).toMatchObject({ dimensions: { weight } });
+  }
+});
+
+it("projects validated mass only as JSON-LD weight and refuses a lossy numeric value", () => {
+  const product = { url: "https://example.invalid/item", name: "Example", inLanguage: "en", brandName: "Example", images: [] };
+  const weight = { dimension: "mass", unit: "openlup:kg", unscaled: "4", scale: 1 } as const;
+  expect(productLdV2("https://example.invalid", { ...product, weight })).toMatchObject({
+    weight: { "@type": "QuantitativeValue", value: 400, unitCode: "GRM" },
+  });
+  for (const [dimension, unit] of [["volume", "openlup:ml"], ["count", "openlup:piece"]] as const) {
+    expect(productLdV2("https://example.invalid", { ...product, weight: { dimension, unit, unscaled: "50", scale: 0 } }))
+      .not.toHaveProperty("weight");
+  }
+  expect(() => productLdV2("https://example.invalid", { ...product, weight: { ...weight, unscaled: "9007199254740993", scale: 3 } }))
+    .toThrow("weight cannot be represented exactly");
 });

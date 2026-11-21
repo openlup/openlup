@@ -1,3 +1,4 @@
+import { asLegacyIntegralGrams, catalogPhysicalUnits } from "./physicalQuantity.js";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogHeadRef, CatalogPublishCommand } from "./contracts/lifecycle.js";
 import type { CatalogProductTypeDefinition } from "./contracts/productTypes.js";
@@ -293,10 +294,12 @@ async function applyPrices(db: PgQueryExecutor, operations: Plan["priceOperation
 async function storeSku(db: PgQueryExecutor, sku: CatalogPublishedSku, definition: CatalogProductTypeDefinition,
   axes: string[], create: boolean) {
   const identity = canonicalizeCatalogCombinationV2({ definition, axes, options: sku.options });
-  const values = [publicationJson(sku, undefined, SKU_PAGE_DEPTH), Buffer.from(identity.canonicalOptionBytes), Buffer.from(identity.combinationDigest)];
+  const legacy = asLegacyIntegralGrams(sku.netContent, catalogPhysicalUnits(definition));
+  const values = [publicationJson(sku, undefined, SKU_PAGE_DEPTH), Buffer.from(identity.canonicalOptionBytes),
+    Buffer.from(identity.combinationDigest), legacy.outcome === "converted" ? legacy.grams : null];
   const statements = `SELECT f.id,f."productId",f.code,f.title,f.status,f."minQuantity",f."isAddon",
     f."sellableStandalone",f."sellableInSubscription",f.attributes,f.options,$2::bytea,$3::bytea,
-    (f."netContent"->>'unscaled')::integer,f."netContent"->>'dimension',f."netContent"->>'unit',
+    $4::integer,f."netContent"->>'dimension',f."netContent"->>'unit',
     (f."netContent"->>'scale')::integer,(f."netContent"->>'unscaled')::numeric,
     f."grossMass"->>'dimension',f."grossMass"->>'unit',(f."grossMass"->>'scale')::integer,(f."grossMass"->>'unscaled')::numeric,
     f."assetRefs"->>0,$1::jsonb
