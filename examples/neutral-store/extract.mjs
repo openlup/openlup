@@ -26,7 +26,11 @@ const ownership = JSON.parse(await readFile(resolve(source, 'ownership.json'), '
 const files = [...ownership.owned, ...ownership.managed];
 if (new Set(files).size !== files.length) throw new Error('starter_ownership_duplicate');
 if (ownership.sourceOnly.some(path => files.includes(path))) throw new Error('starter_ownership_scope_overlap');
-const editRoutes = new Map(Object.entries(ownership.managedEditRoutes ?? {}));
+const { managedEditRoutes } = ownership;
+if (managedEditRoutes !== undefined && (managedEditRoutes === null || typeof managedEditRoutes !== 'object' || Array.isArray(managedEditRoutes))) {
+  throw new Error('starter_managed_edit_routes_invalid');
+}
+const editRoutes = new Map(Object.entries(managedEditRoutes ?? {}));
 for (const [path, destinations] of editRoutes) {
   if (!ownership.managed.includes(path) || !Array.isArray(destinations) || destinations.length === 0
     || destinations.some(destination => !ownership.owned.includes(destination))) {
@@ -46,7 +50,7 @@ function managedHeader(path, hint, body) {
     return [`# ${hint}`, /^#![^\n]*\n/.exec(body)];
   }
   if (/\.(?:md|html)$/.test(path)) return [`<!-- ${hint} -->`, /^<!doctype html>\r?\n/i.exec(body)];
-  if (path.endsWith('.css')) return [`/* ${hint} */`, /^@charset "[^"\r\n]+";\r?\n/.exec(body)];
+  if (path.endsWith('.css')) return [`/* ${hint} */`, /^@charset "[^"\r\n]+";(?:\r?\n)?/.exec(body)];
   throw new Error(`starter_managed_format_unknown: ${path}`);
 }
 function validPath(path) {
@@ -154,11 +158,12 @@ for (const path of files) {
   const info = await lstat(origin);
   if (!info.isFile()) throw new Error('starter_extract_file_required');
   await mkdir(dirname(destination), { recursive: true });
-  if (ownership.managed.includes(path) && !path.endsWith('.json')) {
+  if (managedEditRoutes && ownership.managed.includes(path) && !path.endsWith('.json')) {
     const bytes = await readFile(origin);
     const [header, prefix] = managedHeader(path, managedHint(path), bytes.toString('utf8'));
     const offset = Buffer.byteLength(prefix?.[0] ?? '');
-    const parts = [bytes.subarray(0, offset), Buffer.from(header + '\n'), bytes.subarray(offset)];
+    const separator = offset > 0 && bytes[offset - 1] !== 10 ? '\n' : '';
+    const parts = [bytes.subarray(0, offset), Buffer.from(separator + header + '\n'), bytes.subarray(offset)];
     if (path === 'docs/ownership.md' && managedJson.length) {
       const entries = managedJson.map(file => `- \`${file}\` — ${managedHint(file)}`);
       const gap = bytes.at(-1) === 10 ? '\n' : '\n\n';

@@ -196,14 +196,16 @@ For source that predates released extraction, invoke this newer extractor with
 same inputs plus `--reason <explanation>`. The output retains that reason and
 cannot claim original released-starter provenance. The 0.41.0 to 0.42.0 development
 comparison is a labelled reconstruction; a later released pair needs its own proof.
-Without release flags, candidate extraction preserves the copied bytes and legacy
-identity, ignores its generated local lockfile, and creates no initial commit.
+Without release flags, candidate extraction retains the legacy identity,
+ignores its generated local lockfile and creates no initial commit.
 Both generated identity files stay outside owned/managed upgrade snapshots;
 the upgrade CLI installs nothing. These modes do not establish stable-framework
 or supported-installation status.
 
-Candidate extraction retains baseline mechanics, metadata and non-documentation
-file bytes; the extracted README, ownership and proof notes describe both modes.
+When the manifest declares `managedEditRoutes`, extraction adds one header to
+each managed file that supports comments and lists managed JSON files in the
+extracted ownership guide. Manifests without the map retain their original
+extraction bytes, including the existing release rewrites.
 The committed released lockfile stays generated and outside upgrade snapshots;
 the upgrade CLI installs no dependencies. Install the exact public-registry set
 separately from its committed lockfile with `npm ci`.
@@ -218,10 +220,10 @@ npm test -- test/extract.test.ts
 
 These fixtures cover canonical lock keys, the exact OpenLup allowlist, forbidden
 OpenLup references in other entries, named refusals, Git source verification,
-reconstruction, every non-documentation candidate file's baseline bytes and
-deterministic hashes. Only `README.md`, `docs/proof.md` and `docs/ownership.md` are
-exempt from that byte comparison. These fixtures make no network request and do
-not qualify any released set.
+reconstruction and deterministic hashes. For candidate copies, the proof
+removes the expected headers and JSON index before comparing every file with
+its source. These fixtures make no network request and do not qualify any
+released set.
 
 ## Run the local application
 

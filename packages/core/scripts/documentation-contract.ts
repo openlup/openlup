@@ -126,7 +126,7 @@ export function assertDocumentationContract(
       ? starterScripts : manifest.scripts;
     for (const match of source.matchAll(/\bnpm run (?:--silent )?([A-Za-z0-9:_-]+)/g)) {
       const script = match[1];
-      if (!Object.hasOwn(scripts ?? {}, script)) violations.push(`${label}: unknown npm script ${script}`);
+      if (!scripts?.[script]) violations.push(`${label}: unknown npm script ${script}`);
     }
   }
 

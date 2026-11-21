@@ -414,6 +414,28 @@ async function releasedFixture() {
   return { directory, source, names, version, revision, application, ownership, manifest, lock, put, args, run };
 }
 
+test('manifests without managed edit routes retain historical extraction bytes and identity', async () => {
+  const f = await releasedFixture();
+  try {
+    f.ownership.managed.push('docs/ownership.md');
+    await f.put('examples/neutral-store/docs/ownership.md', '# Application ownership\n');
+    await f.put('examples/neutral-store/ownership.json', f.ownership);
+    const target = f.run(), files = [...f.ownership.owned, ...f.ownership.managed];
+    const rewrites: Record<string, string> = {
+      'package.json': JSON.stringify(f.lock.packages[''], null, 2) + '\n',
+      '.gitignore': 'node_modules/\n',
+    };
+    const expected = await Promise.all(files.map(path => Object.hasOwn(rewrites, path)
+      ? Buffer.from(rewrites[path]!) : readFile(resolve(f.source, path === 'README.md' ? 'README.template.md' : path))));
+    const actual = await Promise.all(files.map(path => readFile(resolve(target, path))));
+    const { contentSha256 } = JSON.parse(await readFile(resolve(target, '.starter-origin.json'), 'utf8'));
+    // Recorded with the extractor before managed edit routes.
+    assert.deepEqual({ files: actual, contentSha256 }, {
+      files: expected, contentSha256: '715fda1eefd3977996b6f26eb4d9b50aaf5f6f93f6c3fd3f1e9e56a33f64153f',
+    });
+  } finally { await rm(f.directory, { recursive: true, force: true }); }
+});
+
 test('released extraction pins and commits registry artifacts with deterministic content and lock identities', async () => {
   const f = await releasedFixture();
   try {
@@ -429,8 +451,12 @@ test('released extraction pins and commits registry artifacts with deterministic
       f.ownership.managed.push(path);
       await f.put(`examples/neutral-store/${path}`, prefix + body);
     }
-    await f.put('examples/neutral-store/ownership.json', f.ownership);
+    const charset = '@charset "windows-1252";', rule = 'a::after { content: "café"; }\n';
+    f.ownership.managed.push('inline.css');
+    await writeFile(resolve(f.source, 'inline.css'), Buffer.from(charset + rule, 'latin1'));
+    await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
     const first = f.run(), second = f.run('second');
+    assert.deepEqual(await readFile(resolve(first, 'inline.css')), Buffer.from(`${charset}\n/* ${managedHint} */\n${rule}`, 'latin1'));
     for (const [path, prefix, header, body] of headers) {
       assert.equal(await readFile(resolve(first, path), 'utf8'), prefix + header + body, path);
     }
@@ -462,12 +488,16 @@ test('released extraction pins and commits registry artifacts with deterministic
 test('extraction refuses misrouted or unhandled managed paths', async () => {
   const f = await releasedFixture();
   try {
+    for (const managedEditRoutes of [null, [], 0, false, '']) {
+      await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes });
+      assert.throws(() => f.run('invalid-map'), /starter_managed_edit_routes_invalid/);
+    }
     for (const managedEditRoutes of [{ 'copy.txt': ['copy.txt'] }, { 'README.md': ['unknown.txt'] }, { 'README.md': [] }]) {
       await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes });
       assert.throws(() => f.run('invalid-route'), /starter_managed_edit_route_invalid/);
     }
     await f.put('examples/neutral-store/unknown.txt', 'managed text\n');
-    await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managed: [...f.ownership.managed, 'unknown.txt'] });
+    await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managed: [...f.ownership.managed, 'unknown.txt'], managedEditRoutes: {} });
     assert.throws(() => f.run('unknown-format'), /starter_managed_format_unknown: unknown.txt/);
   } finally { await rm(f.directory, { recursive: true, force: true }); }
 });
