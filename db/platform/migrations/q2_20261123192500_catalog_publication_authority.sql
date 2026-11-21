@@ -112,6 +112,45 @@ ALTER FUNCTION public.catalog_price_setup_settlement_currency() SECURITY DEFINER
 ALTER FUNCTION public.platform_human_membership_is_administrator(uuid) SECURITY DEFINER;
 ALTER FUNCTION public.catalog_publication_assert_receipt(uuid,text) SECURITY DEFINER;
 
+-- Invoker helpers set their own path even when a definer calls them.
+DO $publication_search_paths$
+DECLARE signature text;
+BEGIN
+  FOREACH signature IN ARRAY ARRAY[
+    'public.catalog_publication_record_command(jsonb)',
+    'public.channel_purchase_guard()', -- The recorder's outbox INSERT runs this trigger.
+    'public.catalog_publication_admit()',
+    'public.catalog_publication_sku_admit()',
+    'public.platform_human_membership_is_administrator(uuid)',
+    'public.catalog_draft_get(uuid,integer,text)',
+    'public.catalog_draft_record(uuid,integer)',
+    'public.catalog_publication_assert_candidate(public.catalog_publication_decisions,public.catalog_publications,jsonb)',
+    'public.catalog_publication_assert_head(uuid,boolean)',
+    'public.catalog_publication_assert_issued(uuid,uuid)',
+    'public.catalog_publication_assert_receipt(uuid,text)',
+    'public.catalog_publication_candidate_source(uuid,text,text)',
+    'public.catalog_publication_receipt_input(text)',
+    'public.catalog_publication_canonical(jsonb,integer)',
+    'public.catalog_publication_max_depth()',
+    'public.catalog_publication_head_ref(uuid,uuid)',
+    'public.catalog_publication_manifest_text(uuid,text,text,boolean)',
+    'public.catalog_publication_product_facts(uuid,jsonb,boolean)',
+    'public.catalog_publication_sku_facts(public.catalog_sku_revisions)',
+    'public.catalog_publication_sku_projection(uuid,uuid,text,jsonb,boolean)',
+    'public.catalog_publication_live_matches(uuid,jsonb,jsonb)',
+    'public.catalog_publication_attributes_valid(jsonb)',
+    'public.catalog_publication_carriers_valid(jsonb,uuid)',
+    'public.catalog_publication_claim_valid(jsonb)',
+    'public.catalog_publication_content_problem(jsonb)',
+    'public.catalog_publication_presentation_valid(jsonb)',
+    'public.catalog_publication_quantity_valid(jsonb)',
+    'public.catalog_publication_text_valid(jsonb,integer,boolean)'
+  ] LOOP
+    EXECUTE pg_catalog.format('ALTER FUNCTION %s SET search_path = pg_catalog, public, pg_temp', signature);
+  END LOOP;
+END
+$publication_search_paths$;
+
 GRANT SELECT (id, slug, name, status, primary_sku_id, current_document_revision_id, type_key, type_version, variant_axes,
   attribute_values, publication_facts) ON public.catalog_products TO openlup_catalog_publication;
 GRANT SELECT (id, product_id, sku, title, status, min_order_qty, is_addon, sellable_standalone, sellable_in_subscription,

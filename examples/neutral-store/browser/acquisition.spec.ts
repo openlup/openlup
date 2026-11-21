@@ -92,13 +92,13 @@ test('publishes and recovers an installed catalogue issue under human authority'
   sku.priceOperations = [{ ...price, priceListId: missingListId }];
   expect(await call(page, drafts, { action: 'create', draftId, expectedRevision: 0, payload }))
     .toMatchObject({ ok: true, value: { outcome: 'committed', record: { revision: 1 } } });
-  const prepare = async (expectedRevision: number) => {
-    const prepared = await call(page, drafts, { action: 'prepare', draftId, expectedRevision });
-    expect(prepared).toMatchObject({ ok: true, value: { expectedHead: null, candidateRef: expect.any(String),
+  const prepare = async (expectedRevision: number, head: unknown = null, operatorPage = page) => {
+    const prepared = await call(operatorPage, drafts, { action: 'prepare', draftId, expectedRevision });
+    expect(prepared).toMatchObject({ ok: true, value: { expectedHead: head, candidateRef: expect.any(String),
       candidateDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), preparation: { postStateDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) } } });
     const { candidateRef, candidateDigest, expectedHead, preparation } = prepared.value;
     const candidate = { productId, candidateRef, candidateDigest };
-    expect(await call(page, operation, { action: 'approve', ...candidate, postStateDigest: preparation.postStateDigest }))
+    expect(await call(operatorPage, operation, { action: 'approve', ...candidate, postStateDigest: preparation.postStateDigest }))
       .toMatchObject({ ok: true, value: { outcome: 'committed', receipt: { candidateDigest, postStateDigest: preparation.postStateDigest } } });
     return { action: 'publish', ...candidate, expectedHead, changes: [] };
   };
@@ -170,6 +170,21 @@ test('publishes and recovers an installed catalogue issue under human authority'
     expect(await call(recoveredPage, 'offer.validate', { cart: { schemaVersion: 1, configuration: material.id,
       mode: 'one_time', cadenceDays: null, lines: [{ sku: sku.code, quantity: 1 }] } }))
       .toEqual({ ok: false, code: 'unknown_sku' });
+
+    await owner.query("UPDATE public.catalog_products SET name='Unpublished drift' WHERE id=$1", [productId]);
+    expect(await call(recoveredPage, operation, { action: 'current', productId }))
+      .toMatchObject({ ok: false, code: 'publication_changed' });
+    delete sku.priceOperations;
+    const { sharedContent } = payload.product;
+    sharedContent.catalogAction = 'revise';
+    payload.publication = { kind: 'compensation', evidence: {},
+      operations: [{ op: 'set_product_presentation', productSlug: payload.product.slug, presentation: sharedContent.presentation }] };
+    expect(await call(recoveredPage, drafts, { action: 'revise', draftId, expectedRevision: 2, payload }))
+      .toMatchObject({ ok: true, value: { outcome: 'committed', record: { revision: 3 } } });
+    expect(await call(recoveredPage, operation, await prepare(3, head, recoveredPage)))
+      .toMatchObject({ ok: true, value: { outcome: 'committed', receipt: { previousHead: head, head: { revision: 2 }, changes: [] } } });
+    expect(await call(recoveredPage, operation, { action: 'current', productId }))
+      .toMatchObject({ ok: true, value: { outcome: 'found', head: { revision: 2 } } });
   } finally { await fresh.close(); }
 });
 

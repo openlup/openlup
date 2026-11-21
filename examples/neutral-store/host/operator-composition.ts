@@ -4,7 +4,7 @@ import { createPostgresCustomerSupportJourneyPort } from '@openlup/platform/acco
 import { createPostgresBundleCatalogStore, createPostgresBundleAdminWriteStore,
   createPostgresCatalogDraftStoreV3, createCatalogDraftHandlerV3, createCatalogCandidateServiceWithPublication, CatalogCandidateError, BundleRpcError,
   canonicalCatalogDraftJson, evaluateBundleComposition, createPostgresCatalogPublicationCommands, createPostgresCatalogPublicationReads,
-  type CatalogPublicationCommand, type CatalogPublicationFailure, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
+  type CatalogHeadRef, type CatalogPublicationCommand, type CatalogPublicationFailure, type CatalogDraftPayloadV3, type CatalogProductTypeRef } from '@openlup/platform/catalog';
 import type { PgQueryExecutor, PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
 import { starterCatalogue, starterCatalogueType } from './editor-catalogue.ts';
 import { isRecord } from '../shared/offer.ts';
@@ -70,8 +70,9 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
   // Native request authentication has already verified the operator session and active admin membership.
   const authorizeHuman = async ({ actor }: ActionContext) => actor.operatorRef && actor.sessionToken
     ? { ok: true as const, userId: actor.operatorRef, role: 'admin', isMachineActor: false } : { ok: false as const };
-  const commands = input.publication && createPostgresCatalogPublicationCommands({
-    catalogPublicationOwner: input.publication, authorizeHuman, registry: catalogue.registry,
+  const publicationLane = input.publication;
+  const commands = publicationLane && createPostgresCatalogPublicationCommands({
+    catalogPublicationOwner: publicationLane, authorizeHuman, registry: catalogue.registry,
   });
   const publication = input.publication && createPostgresCatalogPublicationReads({ transactions: input.publication, authorizeHuman });
   if (commands && publication) actions['operator.catalogPublication'] = async (payload, context) => {
@@ -199,16 +200,22 @@ Pick<ApplicationBindings, 'actions' | 'close'> {
     if (payload.action === 'prepare') {
       if (!uuid(payload.draftId) || !Number.isSafeInteger(payload.expectedRevision) || Number(payload.expectedRevision) < 1 || 'payload' in payload)
         return refused('starter_input_invalid');
-      if (commands && publication) {
+      if (commands && publicationLane) {
         const capability = await commands.authorize(context);
         if (!capability) return refused('operator_required');
         const draftRevision = Number(payload.expectedRevision);
         const saved = await drafts.get({ draftId: payload.draftId, revision: draftRevision }, context);
         if ('reason' in saved) return publicationRefused(saved);
         if (!saved.record) return refused('draft_not_found');
-        const current = await publication.reads.current(saved.record.productId);
-        if ('reason' in current) return publicationRefused(current);
-        const expectedHead = current.outcome === 'found' ? current.head : null;
+        const { productId } = saved.record;
+        // The native candidate runner decides whether the draft can repair live drift.
+        const { rows: [lineage] } = await publicationLane.run(db => db.query(`SELECT
+          (SELECT public.catalog_publication_head_ref(product_id,publication_id)
+            FROM public.catalog_publication_heads WHERE product_id=$1) AS head,
+          EXISTS (SELECT 1 FROM public.catalog_products WHERE id=$1) AS live,
+          public.catalog_publication_assert_head($1,false)`, [productId]));
+        if (!lineage || (lineage.head === null && lineage.live !== false)) return refused('catalog_publication_lineage_unknown');
+        const expectedHead = lineage.head as CatalogHeadRef | null;
         const preview = await commands.prepareCandidate({ draftId: payload.draftId, draftRevision, expectedHead }, capability);
         return 'reason' in preview ? publicationRefused(preview) : success({ ...preview, expectedHead });
       }

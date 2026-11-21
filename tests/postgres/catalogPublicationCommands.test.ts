@@ -803,6 +803,23 @@ it("commits deferred publication checks through the restricted login", async () 
     const who = (await api.authorize(actor))!;
     const readers = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(publisher, work) },
       authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+    await publisher.query("CREATE TEMP TABLE publication_session_fixture (id pg_catalog.uuid)");
+    const { rows: paths } = await publisher.query(`SELECT expected.signature, p.proconfig
+      FROM unnest($1::text[]) WITH ORDINALITY AS expected(signature, position)
+      LEFT JOIN pg_catalog.pg_proc p ON p.oid=expected.signature::pg_catalog.regprocedure
+      ORDER BY expected.position`, [[
+      "public.catalog_publication_record_command(jsonb)",
+      "public.catalog_publication_admit()",
+      "public.catalog_publication_assert_receipt(uuid,text)",
+      "public.catalog_publication_assert_issued(uuid,uuid)",
+      "public.catalog_publication_candidate_source(uuid,text,text)",
+      "public.platform_human_membership_is_administrator(uuid)",
+      "public.catalog_price_setup_region_code()",
+      "public.catalog_price_setup_settlement_currency()",
+    ]]);
+    expect(paths).toHaveLength(8);
+    for (const { signature, proconfig } of paths)
+      expect(proconfig, signature).toContainEqual(expect.stringMatching(/^search_path=pg_catalog, (?:public, )?pg_temp$/u));
     expect(await readers.reads.current(data.productId)).toEqual({ outcome: "unpublished" });
     expect(await api.prepareCandidate({ draftId: data.draftId, draftRevision: 1, expectedHead: null }, who), sqlFailure)
       .toMatchObject({ candidateDigest: prepared.approve.candidateDigest, preparation: { postStateDigest: expect.any(String) } });
