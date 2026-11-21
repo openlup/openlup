@@ -22,6 +22,9 @@ END
 $lock$;
 REVOKE ALL ON FUNCTION public.catalog_publication_lock_projection() FROM PUBLIC;
 
+-- The recorder derives the actor, receipt and event. Its deferred checks bind the issue to the approved state.
+ALTER FUNCTION public.catalog_publication_record_command(jsonb) SECURITY DEFINER;
+
 GRANT SELECT ON public.catalog_products, public.catalog_skus, public.catalog_sku_identifiers,
   public.catalog_product_document_revisions, public.catalog_draft_heads, public.catalog_draft_revisions,
   public.catalog_draft_command_receipts, public.catalog_publications, public.catalog_publication_heads,
@@ -34,8 +37,7 @@ GRANT SELECT (key, status), UPDATE (status) ON public.catalog_tax_classes TO ope
 GRANT SELECT (key, value_text) ON public.commerce_settings TO openlup_catalog_publication;
 GRANT SELECT (principal_id, membership_state, role) ON public.platform_human_memberships TO openlup_catalog_publication;
 
-GRANT INSERT ON public.catalog_publications, public.catalog_sku_revisions, public.catalog_operator_receipts,
-  public.catalog_publication_decisions, public.catalog_publication_heads, public.catalog_publication_pointer_capabilities,
+GRANT INSERT ON public.catalog_publication_pointer_capabilities,
   public.catalog_attribute_projection, public.catalog_price_setup_receipts TO openlup_catalog_publication;
 GRANT INSERT (id, slug, name, status) ON public.catalog_products TO openlup_catalog_publication;
 GRANT INSERT (id, product_id, sku, title, status, min_order_qty, is_addon, sellable_standalone, sellable_in_subscription,
@@ -48,8 +50,6 @@ GRANT INSERT (id, product_id, revision_no, schema_id, document_ref, source_ref, 
   ON public.catalog_product_document_revisions TO openlup_catalog_publication;
 GRANT INSERT (price_list_id, variant_id, mode, min_qty, unit_price_minor, amount_kind, active, valid_from)
   ON public.price_entries TO openlup_catalog_publication;
-GRANT INSERT (aggregate_type, aggregate_id, event_type, idempotency_key, payload)
-  ON public.outbox_events TO openlup_catalog_publication;
 
 GRANT UPDATE (current_document_revision_id, slug, name, status, type_key, type_version, variant_axes, attribute_values,
   primary_sku_id, publication_facts, updated_at) ON public.catalog_products TO openlup_catalog_publication;
@@ -59,7 +59,7 @@ GRANT UPDATE (title, status, min_order_qty, is_addon, sellable_standalone, sella
   asset_ref, publication_facts, updated_at) ON public.catalog_skus TO openlup_catalog_publication;
 GRANT UPDATE (identifier_kind, pack_kind, quantity, is_primary, scheme)
   ON public.catalog_sku_identifiers TO openlup_catalog_publication;
-GRANT UPDATE (publication_id, revision) ON public.catalog_publication_heads TO openlup_catalog_publication;
+GRANT UPDATE (revision) ON public.catalog_publication_heads TO openlup_catalog_publication;
 GRANT UPDATE (revision) ON public.catalog_draft_heads TO openlup_catalog_publication;
 GRANT UPDATE (active, valid_to, updated_at) ON public.price_entries TO openlup_catalog_publication;
 GRANT UPDATE (status, response_payload) ON public.catalog_price_setup_receipts TO openlup_catalog_publication;
@@ -75,16 +75,11 @@ CREATE POLICY publication_select ON public.catalog_draft_command_receipts FOR SE
 CREATE POLICY publication_select ON public.catalog_draft_heads FOR SELECT TO openlup_catalog_publication USING (true);
 CREATE POLICY publication_update ON public.catalog_draft_heads FOR UPDATE TO openlup_catalog_publication USING (true);
 CREATE POLICY publication_select ON public.catalog_publications FOR SELECT TO openlup_catalog_publication USING (true);
-CREATE POLICY publication_insert ON public.catalog_publications FOR INSERT TO openlup_catalog_publication WITH CHECK (true);
 CREATE POLICY publication_select ON public.catalog_sku_revisions FOR SELECT TO openlup_catalog_publication USING (true);
-CREATE POLICY publication_insert ON public.catalog_sku_revisions FOR INSERT TO openlup_catalog_publication WITH CHECK (true);
 CREATE POLICY publication_select ON public.catalog_operator_receipts FOR SELECT TO openlup_catalog_publication USING (true);
-CREATE POLICY publication_insert ON public.catalog_operator_receipts FOR INSERT TO openlup_catalog_publication WITH CHECK (true);
 CREATE POLICY publication_select ON public.catalog_publication_decisions FOR SELECT TO openlup_catalog_publication USING (true);
-CREATE POLICY publication_insert ON public.catalog_publication_decisions FOR INSERT TO openlup_catalog_publication WITH CHECK (true);
 CREATE POLICY publication_select ON public.catalog_publication_heads FOR SELECT TO openlup_catalog_publication USING (true);
-CREATE POLICY publication_insert ON public.catalog_publication_heads FOR INSERT TO openlup_catalog_publication WITH CHECK (true);
-CREATE POLICY publication_update ON public.catalog_publication_heads FOR UPDATE TO openlup_catalog_publication USING (true);
+CREATE POLICY publication_lock ON public.catalog_publication_heads FOR UPDATE TO openlup_catalog_publication USING (true) WITH CHECK (false);
 CREATE POLICY publication_insert ON public.catalog_attribute_projection FOR INSERT TO openlup_catalog_publication WITH CHECK (true);
 CREATE POLICY publication_select ON public.catalog_publication_pointer_capabilities FOR SELECT TO openlup_catalog_publication
   USING (transaction_id = pg_current_xact_id());

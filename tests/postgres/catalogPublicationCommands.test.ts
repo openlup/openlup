@@ -759,10 +759,21 @@ it("commits deferred publication checks through the restricted login", async () 
       has_function_privilege('public.catalog_draft_apply(text,text,text)','EXECUTE') AS draft_writer
       FROM pg_catalog.pg_roles WHERE rolname=current_user`)).rows).toEqual([{
       session_user: "openlup_catalog_publication", current_user: "openlup_catalog_publication", rolsuper: false,
-      rolinherit: false, rolbypassrls: false, memberships: false, issue_read: true, issue_insert: true, issue_mutation: false,
+      rolinherit: false, rolbypassrls: false, memberships: false, issue_read: true, issue_insert: false, issue_mutation: false,
       document_mutation: false, projection_mutation: false, outbox_read_or_update: false, draft_fence: true,
       draft_status_update: false, recorder: true, draft_writer: false,
     }]);
+    const refuseStatement = (sql: string) => transaction(publisher, async db => {
+      await db.query("SAVEPOINT permission_probe");
+      await expect(db.query(sql)).rejects.toMatchObject({ code: "42501" });
+      await db.query("ROLLBACK TO SAVEPOINT permission_probe");
+    });
+    for (const sql of [
+      "INSERT INTO public.catalog_publication_decisions(actor_id) SELECT NULL::uuid WHERE false",
+      "INSERT INTO public.catalog_operator_receipts(actor_id) SELECT NULL::uuid WHERE false",
+      "INSERT INTO public.outbox_events(event_type) SELECT NULL::text WHERE false",
+    ]) await refuseStatement(sql);
+    await refuseStatement("SELECT public.catalog_publication_record_command('{}'::jsonb)");
     await pool.query("INSERT INTO public.catalog_tax_classes VALUES ('example:standard','Standard','active')");
     expect(await transaction(publisher, db => db.query("SELECT status FROM public.catalog_tax_classes FOR SHARE")))
       .toMatchObject({ rows: [{ status: "active" }] });
@@ -786,5 +797,8 @@ it("commits deferred publication checks through the restricted login", async () 
     expect(published, sqlFailure).toMatchObject({ outcome: "committed", receipt: { head: { revision: 1 } } });
     expect((await pool.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows)
       .toEqual([{ revision: 1 }]);
+    expect((await pool.query(`SELECT e.event_type, e.idempotency_key=h.publication_id::text AS matches
+      FROM public.outbox_events e JOIN public.catalog_publication_heads h ON h.product_id=e.aggregate_id
+      WHERE e.aggregate_id=$1`, [data.productId])).rows).toEqual([{ event_type: "catalog.publication.committed", matches: true }]);
   } finally { await publisher.end(); }
 });
