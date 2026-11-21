@@ -247,6 +247,11 @@ it.each([false, true])("upgrades the 1.3.0 starter agent guide, customized=%s", 
   expect(readFileSync(join(app, path))).toEqual(local?.bytes ?? Buffer.from(next));
   if (customized) expect(readFileSync(join(app, path), "utf8")).toContain("Record local acceptance results in the test log.");
   expect(apply(0).applied).toEqual([]);
+  const guide = readFileSync(join(app, path), "utf8");
+  const map = guide.split("<!-- END:openlup-agent-rules -->")[1]?.split("## Catalogue tasks\n")[1] ?? "";
+  expect(map).toContain("| Add a product type with a content rule |");
+  expect(map).toContain("| Publish a saved catalogue draft (prepare, approve, publish, recover a lost response, read back) |");
+  expect(map).toContain("| Correct a refused price-list input |");
 });
 
 it.each([false, true])("replaces the managed subscription offer and preserves reconciled edits, customized=%s", customized => {

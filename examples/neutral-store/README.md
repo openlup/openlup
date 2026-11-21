@@ -287,6 +287,7 @@ Move your existing content checks into the bundle, run
 
 ## Check catalogue definitions
 
+After each change, run `npm run typecheck` from the extracted application root.
 Run `npm run --silent catalogue:check:source` to check the packs and fixtures in
 `owned/catalogue.ts` with their registered content validators. Use
 `npm run --silent catalogue:check` for inert `owned/catalogue.json` fixtures.

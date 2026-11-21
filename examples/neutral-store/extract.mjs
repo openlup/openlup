@@ -26,6 +26,29 @@ const ownership = JSON.parse(await readFile(resolve(source, 'ownership.json'), '
 const files = [...ownership.owned, ...ownership.managed];
 if (new Set(files).size !== files.length) throw new Error('starter_ownership_duplicate');
 if (ownership.sourceOnly.some(path => files.includes(path))) throw new Error('starter_ownership_scope_overlap');
+const editRoutes = new Map(Object.entries(ownership.managedEditRoutes ?? {}));
+for (const [path, destinations] of editRoutes) {
+  if (!ownership.managed.includes(path) || !Array.isArray(destinations) || destinations.length === 0
+    || destinations.some(destination => !ownership.owned.includes(destination))) {
+    throw new Error(`starter_managed_edit_route_invalid: ${path}`);
+  }
+}
+function managedHint(path) {
+  const route = editRoutes.get(path);
+  return route
+    ? `Managed by OpenLup. Use ${route.join(' and ')} for catalogue definitions and rules.`
+    : 'Managed by OpenLup. Use AGENTS.md to find the owned extension point.';
+}
+function managedHeader(path, hint, body) {
+  if (/\.(?:[cm]?ts|[cm]?js)$/.test(path)) return [`// ${hint}`, /^#![^\n]*\n/.exec(body)];
+  if (path === 'Dockerfile') return [`# ${hint}`, /^(?:#[ \t]*(?:syntax|escape|check)[ \t]*=[^\n]*\n)+/i.exec(body)];
+  if (path === 'lifecycle' || /^\.(?:dockerignore|gitignore|npmrc)$|\.ya?ml$/.test(path)) {
+    return [`# ${hint}`, /^#![^\n]*\n/.exec(body)];
+  }
+  if (/\.(?:md|html)$/.test(path)) return [`<!-- ${hint} -->`, /^<!doctype html>\r?\n/i.exec(body)];
+  if (path.endsWith('.css')) return [`/* ${hint} */`, /^@charset "[^"\r\n]+";\r?\n/.exec(body)];
+  throw new Error(`starter_managed_format_unknown: ${path}`);
+}
 function validPath(path) {
   return typeof path === 'string' && !path.includes('\\') && !path.startsWith('/')
     && !path.split('/').some(part => part === '..' || part === '.' || part === '');
@@ -116,6 +139,7 @@ if (mode) {
     ...(packs ? { verificationSource: 'candidate, local digest-verified' } : {}),
     ...(mode === 'reconstructed' ? { reason: options.get('--reason') } : {}), lockfileSha256: hash(lockBytes) };
 }
+const managedJson = ownership.managed.filter(path => typeof path === 'string' && path.endsWith('.json')).sort();
 for (const path of files) {
   const sourcePath = ownership.sourceMappings?.[path] ?? path;
   if (!validPath(path) || !validPath(sourcePath)) throw new Error('starter_ownership_path_invalid');
@@ -130,7 +154,18 @@ for (const path of files) {
   const info = await lstat(origin);
   if (!info.isFile()) throw new Error('starter_extract_file_required');
   await mkdir(dirname(destination), { recursive: true });
-  await copyFile(origin, destination);
+  if (ownership.managed.includes(path) && !path.endsWith('.json')) {
+    const bytes = await readFile(origin);
+    const [header, prefix] = managedHeader(path, managedHint(path), bytes.toString('utf8'));
+    const offset = Buffer.byteLength(prefix?.[0] ?? '');
+    const parts = [bytes.subarray(0, offset), Buffer.from(header + '\n'), bytes.subarray(offset)];
+    if (path === 'docs/ownership.md' && managedJson.length) {
+      const entries = managedJson.map(file => `- \`${file}\` — ${managedHint(file)}`);
+      const gap = bytes.at(-1) === 10 ? '\n' : '\n\n';
+      parts.push(Buffer.from(`${gap}## Managed JSON files\n\n${entries.join('\n')}\n`));
+    }
+    await writeFile(destination, Buffer.concat(parts));
+  } else await copyFile(origin, destination);
   await chmod(destination, info.mode & 0o777);
 }
 // This is an independent application repository, not a worktree of the archive.
