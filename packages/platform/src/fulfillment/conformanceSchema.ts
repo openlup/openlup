@@ -137,7 +137,7 @@ export function settled<T>(value: unknown, project: (raw: unknown) => T, failure
   requireFact(types.isPromise(value) && !types.isProxy(value) && Object.getPrototypeOf(value) === promisePrototype && !Object.hasOwn(value, "constructor"), "validation:native_promise");
   return new NativePromise<T>((resolve, reject) => {
     const finish = (transform: typeof project) => (raw: unknown) => { try { resolve(transform(raw)); } catch (error) { reject(error); } };
-    apply(promiseThen, value, [finish(project), finish(failure)]);
+    void apply(promiseThen, value, [finish(project), finish(failure)]);
   });
 }
 /** Host workers may inspect failures too: copy both synchronous throws and promise rejections first. */

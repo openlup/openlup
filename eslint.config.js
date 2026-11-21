@@ -311,6 +311,11 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
   ];
 }
 
+export const TYPE_AWARE_RULES = {
+  "@typescript-eslint/no-floating-promises": "error",
+  "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -373,4 +378,23 @@ export default tseslint.config(
     })),
   ...workspacePackages.filter(({ name }) => name === "@openlup/platform").flatMap((pkg) =>
     Object.keys(PLATFORM_MODULE_GRAPH).flatMap((module) => platformModuleRules(pkg, module))),
+  ...[
+    { files: ["packages/outbox/src/**/*.ts"], project: "./packages/outbox/tsconfig.build.json" },
+    { files: ["packages/platform/src/**/*.ts"], project: "./packages/platform/tsconfig.build.json" },
+    { files: ["api/**/*.ts", "server/**/*.ts"], project: "./tsconfig.api.json" },
+  ].map(({ files, project }) => ({
+    files,
+    ignores: [
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.testFixtures.ts",
+    ],
+    languageOptions: {
+      parserOptions: {
+        project,
+        tsconfigRootDir,
+      },
+    },
+    rules: TYPE_AWARE_RULES,
+  })),
 );
