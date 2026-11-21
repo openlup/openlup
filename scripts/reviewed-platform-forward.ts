@@ -3187,6 +3187,22 @@ const deferredTarget = String.raw`public\.[a-z_][a-z0-9_]{0,62}`;
 const deferredEventPattern = "(?:INSERT(?: OR UPDATE)?(?: OR DELETE)?|UPDATE(?: OR DELETE)?|DELETE)";
 const deferredTriggerForm = new RegExp(`^${deferredTriggerSql("<name>", deferredEventPattern, deferredTarget, String.raw`${deferredTarget}\(\)`)}$`, "iu");
 
+/**
+ * A native-store replacement header must stay byte-identical to its predecessor,
+ * except it may append exact trailing `, pg_temp` to an existing ASCII
+ * `SET search_path` clause that does not already name `pg_temp` or `pg_temp_<N>`.
+ */
+function isAllowedNativeStoreReplacementHeader(priorHeader: string, nextHeader: string): boolean {
+  if (nextHeader === priorHeader) return true;
+  if (nextHeader !== `${priorHeader}, pg_temp`) return false;
+  const priorNormalized = nativeStoreTrim(priorHeader.replace(/[ \t\n]+/gu, " "));
+  const priorPathHeader = priorNormalized.replace(/ SET search_path=/iu, " SET search_path = ");
+  const priorRawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(priorPathHeader)?.[1] ?? null;
+  if (priorRawSearchPath === null || !nativeStoreAscii(priorRawSearchPath)) return false;
+  const priorSchemas = priorRawSearchPath.toLowerCase().split(", ");
+  return !priorSchemas.some(schema => schema === "pg_temp" || /^pg_temp_\d+$/u.test(schema));
+}
+
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
 export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]) {
   validateNativeStoreClass(registry, new Set());
@@ -3362,8 +3378,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
       if (defined.has(signature)) throw new Error("reviewed native store duplicate function definition");
       if (sqlSha256(statement) !== forward.functions.find(pin => pin.signature === signature)?.afterSha256) throw new Error("reviewed native store unlisted, missing or drifted function definition");
       if (!fixed || replacement !== (fixed.beforeSha256 !== null)) throw new Error("reviewed native store function creation/replacement class drifted");
-      const header = nativeStoreTrim(headerAttributes(statement).replace(/[ \t\n]+/gu, " "));
-      if (fixed.beforeSha256 !== null && nativeStoreTrim(headerAttributes(statement)) !== nativeStoreTrim(headerAttributes(priorStatements.get(signature)!))) throw new Error("reviewed native store replacement header drifted");
+      const nextHeader = nativeStoreTrim(headerAttributes(statement));
+      const header = nativeStoreTrim(nextHeader.replace(/[ \t\n]+/gu, " "));
+      if (fixed.beforeSha256 !== null && !isAllowedNativeStoreReplacementHeader(nativeStoreTrim(headerAttributes(priorStatements.get(signature)!)), nextHeader)) throw new Error("reviewed native store replacement header drifted");
       const pathHeader = fixed.beforeSha256 !== null ? header.replace(/ SET search_path=/iu, " SET search_path = ") : header;
       const rawSearchPath = / SET search_path = ([a-z_][a-z0-9_]*(?:, [a-z_][a-z0-9_]*)*)$/iu.exec(pathHeader)?.[1] ?? null;
       if (rawSearchPath && !nativeStoreAscii(rawSearchPath)) throw new Error("reviewed native store non-ASCII search_path refused");

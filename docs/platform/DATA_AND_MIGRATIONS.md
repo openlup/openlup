@@ -2434,7 +2434,10 @@ pin. Its before-hash must equal that predecessor's after-hash. An unbound
 predecessor refuses. The actual latest definition in the complete ordered prefix
 must also match that before-hash; a first replacement without an earlier class
 creation or replacement still binds the pre-class definition. Replacement headers
-and search_path stay identical to that preimage apart from CREATE OR REPLACE, and
+and search_path stay identical to that preimage apart from CREATE OR REPLACE —
+or strictly appending trailing `, pg_temp` to an existing ASCII `SET search_path`
+clause that did not already list `pg_temp` or `pg_temp_<N>`, with the slot's
+pinned `searchPath` updated to match — and
 the PostgreSQL catalog preserves owner and ACL. Issued contents, positions and the sealed-prefix rule stay fixed.
 
 The class-local identity reader normalizes scalar aliases, schema-qualified composite/table arguments and
@@ -2665,7 +2668,10 @@ Each created function must revoke all PUBLIC privileges before its grants and
 conditional blocks. SECURITY DEFINER requires the slot's exact pinned
 `search_path`, such as `pg_catalog, pg_temp`. A replacement may preserve a legacy
 compact `SET search_path=pg_catalog` header: extraction normalizes the assignment
-for its schema-list pin only; the header itself must remain byte-for-byte equal.
+for its schema-list pin only; the header itself must remain byte-for-byte equal,
+except for strictly appending trailing `, pg_temp` to an existing ASCII
+`SET search_path` clause that did not already name `pg_temp` or `pg_temp_<N>`
+(matching the slot's pinned `searchPath`).
 New functions retain their existing spaced spelling, and no other SET grammar,
 schema-token or catalogue proconfig check changes. Grant-only signatures must
 exist in the pre-class native prefix and be disjoint from the replaced/created lists.
@@ -2775,7 +2781,10 @@ operator a forward creates for another operand type cannot hide what it adds:
   privilege.
 - The new functions, in any schema, equal the created list; changed functions lie in
   the replaced and grant-only lists. A replaced function keeps every attribute and
-  its ACL, so only its body may change. A grant-only function keeps its attributes and
+  its ACL, so only its body may change — except its single `search_path=` `proconfig`
+  entry may strictly append trailing `, pg_temp` when its slot pins that tightened
+  `search_path` and the prior entry did not already name `pg_temp` or `pg_temp_<N>`.
+  A grant-only function keeps its attributes and
   body, may gain only EXECUTE for its listed grant roles and may lose privileges only
   from its listed roles.
 - A created function is owned by the migration role, keeps no PUBLIC execute and

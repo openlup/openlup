@@ -100,6 +100,28 @@ async function snapshot(db: PoolClient): Promise<Snapshot> {
 }
 
 const norm = (path: string) => `search_path=${path.replace(/\s+/gu, " ").trim()}`;
+
+/**
+ * A replaced function's catalog attributes must remain unchanged, except its
+ * single `search_path=` proconfig entry may strictly append trailing `, pg_temp`
+ * when the slot pins that exact tightened search_path and the prior search_path
+ * did not already name `pg_temp` or `pg_temp_<N>`.
+ */
+export function expectedReplacedFunctionAttrs(oldAttrs: Record<string, unknown>, searchPath: string | null): Record<string, unknown> {
+  if (searchPath === null) return oldAttrs;
+  const oldConfig = oldAttrs.proconfig;
+  if (!Array.isArray(oldConfig)) return oldAttrs;
+  const searchPathEntries = oldConfig.filter((item): item is string => typeof item === "string" && item.startsWith("search_path="));
+  if (searchPathEntries.length !== 1) return oldAttrs;
+  const oldEntry = searchPathEntries[0]!;
+  const oldSchemasRaw = oldEntry.slice("search_path=".length);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*(?:, [A-Za-z_][A-Za-z0-9_]*)*$/u.test(oldSchemasRaw)) return oldAttrs;
+  const oldSchemas = oldSchemasRaw.toLowerCase().split(", ");
+  if (oldSchemas.some(schema => schema === "pg_temp" || /^pg_temp_\d+$/u.test(schema))) return oldAttrs;
+  const target = norm(searchPath);
+  if (target !== `${oldEntry}, pg_temp`) return oldAttrs;
+  return { ...oldAttrs, proconfig: oldConfig.map(item => item === oldEntry ? target : item) };
+}
 const quotedValues = (list: string) => (list.match(/'((?:[^']|'')*)'/gu) ?? []).map(value => value.slice(1, -1).replaceAll("''", "'"));
 // Only the positive IN shape PostgreSQL deparses reads as a value list. The superset guard
 // strips NOT VALID only after proving equal validation states; other clauses remain refused.
@@ -324,7 +346,8 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   const resolve = async (signature: string) => Number((await db.query("SELECT $1::regprocedure::oid::int AS oid", [signature])).rows[0].oid);
   const created = new Map<number, CatalogSlot["createdFunctions"][number]>();
   for (const fn of slot.createdFunctions) created.set(await resolve(fn.signature), fn);
-  const replaced = new Set<number>(); for (const fn of slot.replacedFunctions) replaced.add(await resolve(fn.signature));
+  const replaced = new Map<number, CatalogSlot["replacedFunctions"][number]>();
+  for (const fn of slot.replacedFunctions) replaced.set(await resolve(fn.signature), fn);
   const grantOnly = new Map<number, CatalogSlot["grantOnlyFunctions"][number]>();
   for (const fn of slot.grantOnlyFunctions) grantOnly.set(await resolve(fn.signature), fn);
   const settings = new Map<number, string>();
@@ -355,7 +378,8 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
       const expected = { ...old, attrs: { ...old.attrs, proconfig } };
       if (JSON.stringify(now) !== JSON.stringify(expected)) fail(`settings-only function ${old.name} must change only to the pinned ${searchPath}`);
     } else if (replaced.has(old.oid)) {
-      if (JSON.stringify(now.attrs) !== JSON.stringify(old.attrs) || JSON.stringify(now.acl) !== JSON.stringify(old.acl)) fail(`replaced function ${old.name} changed attributes or ACL`);
+      const expectedAttrs = expectedReplacedFunctionAttrs(old.attrs, replaced.get(old.oid)!.searchPath);
+      if (JSON.stringify(now.attrs) !== JSON.stringify(expectedAttrs) || JSON.stringify(now.acl) !== JSON.stringify(old.acl)) fail(`replaced function ${old.name} changed attributes or ACL`);
     } else if (grantOnly.has(old.oid)) {
       const entry = grantOnly.get(old.oid)!;
       if (JSON.stringify(now.attrs) !== JSON.stringify(old.attrs) || now.src !== old.src) fail(`grant-only function ${old.name} was redefined`);
