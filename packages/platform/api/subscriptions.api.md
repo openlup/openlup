@@ -992,7 +992,7 @@ export declare function createPostgresSubscriptionAutoResume(executor: Subscript
 ## dist/subscriptions/postgresCommandStore.d.ts
 
 ```ts
-import type { SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandPort, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import type { SubscriptionCancelSurvey, SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandPort, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
 import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 export interface NativeSubscriptionCommand {
     actorId: string;
@@ -1011,6 +1011,16 @@ export interface NativeSubscriptionCommandBinding {
     lifecycleTerms?: SubscriptionLifecycleTerms;
     /** Optional adopter taxonomy; the package validates shape without owning reason values. */
     retentionReasonCodes?: readonly string[];
+    /** Optional trusted feedback policy for fresh cancellations. Called under the
+     * native command lock after checking the original request against its receipt. */
+    prepareCancellation?(feedback: {
+        reason: unknown;
+        survey: unknown;
+    }): {
+        reason: string | null;
+        survey: SubscriptionCancelSurvey | null;
+        lifecycleTerms: SubscriptionLifecycleTerms;
+    };
     /** The callback must use one connection and commit/rollback the complete unit. */
     withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
     /** Validate address ownership and refuse address mutation; resolve SKUs and

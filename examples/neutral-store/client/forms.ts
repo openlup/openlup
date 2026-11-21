@@ -27,6 +27,8 @@ export interface ActionFormOptions {
   input?: () => ActionInput;
   transform?: (values: ActionInput) => ActionInput;
   prepare?: (values: ActionInput) => Promise<ActionInput | null>;
+  /** Reconcile committed state even if this form was replaced during the request. */
+  onCommitted?: () => void;
   onSuccess?: (value: unknown) => void;
   onFailure?: (code: string) => void;
   display?: (value: unknown) => unknown;
@@ -131,6 +133,7 @@ export function actionForm(context: PageContext, options: ActionFormOptions): HT
       output.replaceChildren(el('p', {}, context.t('loading')));
       try {
         const result = await act(options.operation, values, commandKey);
+        if (result.ok) options.onCommitted?.();
         if (!current()) return;
         uncertain = !result.ok && ['starter_transport_unavailable', 'starter_response_invalid'].includes(result.code)
           ? { input, prepared: values } : undefined;

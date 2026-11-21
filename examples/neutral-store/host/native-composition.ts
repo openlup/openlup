@@ -298,12 +298,32 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
       WHERE s.id=$1::uuid AND c.id=$2::uuid AND c.principal_id=$3::uuid`,
     [input.subscriptionRef, context.actor.customerRef, context.actor.principalRef])).rows[0];
     if (!owner) return refuse('starter_subscription_not_found');
-    const care = context.config.renewal.subscriptionCare;
-    assertSubscriptionCare(care);
+    const currentCare = () => {
+      const care = context.config.renewal.subscriptionCare;
+      assertSubscriptionCare(care);
+      return care;
+    };
+    // Cancellation reads current settings only inside the native fresh-command hook.
+    let care = input.action === 'cancel' ? undefined : currentCare();
     const port = createPostgresSubscriptionCommands({
-      lifecycleTerms: care.terms,
-      retentionReasonCodes: care.retentionReasons,
-      admitSubscriptionCommand: facts => admitCareCommand(care, facts),
+      ...(care ? { lifecycleTerms: care.terms, retentionReasonCodes: care.retentionReasons } : {}),
+      admitSubscriptionCommand: facts => admitCareCommand(care ??= currentCare(), facts),
+      prepareCancellation({ reason, survey }) {
+        const config = care ??= currentCare();
+        const allowedReason = (value: unknown): value is string => typeof value === 'string' && config.retentionReasons.includes(value);
+        const feedback = isRecord(survey) ? survey : {};
+        const { reasonCode, comment } = feedback;
+        const note = typeof comment === 'string' ? comment.trim() : '';
+        const valid = (reasonCode === undefined || allowedReason(reasonCode))
+          && (comment == null || typeof comment === 'string' && note.length <= cancelNoteLimit);
+        return {
+          lifecycleTerms: config.terms,
+          reason: valid && allowedReason(reason) ? reason : null,
+          survey: valid && (reasonCode || note)
+            ? { ...(allowedReason(reasonCode) ? { reasonCode } : {}), comment: note || null, acceptedSaveOfferId: null }
+            : null,
+        };
+      },
       async withTransaction(work) {
         const db = await pool.connect();
         try { await db.query('BEGIN'); const value = await work(db); await db.query('COMMIT'); return value; }
@@ -327,21 +347,12 @@ export function composeSubscriptionCare(pool: pg.Pool, now = () => new Date().to
       case 'slide':
         if (typeof input.newNextCycleAt !== 'string' || !Number.isFinite(Date.parse(input.newNextCycleAt))) return refuse('starter_input_invalid');
         command = { ...base, action: 'slide', newNextCycleAt: input.newNextCycleAt, reason, confirmedChargeTiming: input.confirmedChargeTiming === true }; break;
-      case 'cancel': {
-        const allowedReason = (value: unknown): value is string => typeof value === 'string' && care.retentionReasons.includes(value);
-        const feedback = isRecord(input.survey) ? input.survey : {};
-        const { reasonCode, comment } = feedback;
-        const note = typeof comment === 'string' ? comment.trim() : '';
-        const valid = (reasonCode === undefined || allowedReason(reasonCode))
-          && (comment == null || typeof comment === 'string' && note.length <= cancelNoteLimit);
-        const survey = valid && (reasonCode || note)
-          ? { ...(allowedReason(reasonCode) ? { reasonCode } : {}), comment: note || null, acceptedSaveOfferId: null }
-          : null;
-        command = { ...base, action: 'cancel', reason: valid && allowedReason(reason) ? reason : null,
-          confirmedChargeTiming: input.confirmedChargeTiming === true, survey,
+      case 'cancel':
+        command = { ...base, action: 'cancel', reason: (input.reason ?? null) as string | null,
+          confirmedChargeTiming: input.confirmedChargeTiming === true,
+          survey: input.survey as Extract<SubscriptionCommand, { action: 'cancel' }>['survey'] ?? null,
           saveOffer: input.saveOffer as Extract<SubscriptionCommand, { action: 'cancel' }>['saveOffer'] ?? null };
         break;
-      }
       default:
         command = { ...base, action: input.action as 'skip' | 'resume', reason, confirmedChargeTiming: input.confirmedChargeTiming === true };
     }

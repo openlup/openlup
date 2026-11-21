@@ -509,6 +509,8 @@ test('cancel_never_requires_offer_or_reason: a reason removed by the host after 
   const { rows } = await owner.query('SELECT cancel_reason_code,cancel_comment FROM public.subscription_retention_outcomes WHERE subscription_id=$1', [f.subscriptionId]);
   expect(rows.every(row => row.cancel_reason_code === null && row.cancel_comment === null)).toBe(true);
   expect(await invoke(input, request.headers()['idempotency-key']!)).toMatchObject({ ok: true, replayed: true });
+  expect(await invoke({ ...input, survey: { ...input.survey, comment: 'Different discarded feedback' } }, request.headers()['idempotency-key']!))
+    .toMatchObject({ ok: false, code: 'subscription_command_idempotency_conflict' });
 });
 
 test('ask_first_offer_only_after_yes: a second card refresh preserves the frozen offer and answer', async ({ page }) => {
@@ -531,6 +533,84 @@ test('ask_first_offer_only_after_yes: a second card refresh preserves the frozen
   await expect(cardFor(page, b).locator('[data-care-state]')).toHaveAttribute('data-care-state', 'active');
   await expect(yes).toHaveCount(0);
   await expect(offer).toHaveCount(0);
+});
+
+test('cancel_never_requires_offer_or_reason G-1/H-1: exact receipt survives a removed reason', async ({ page }) => {
+  const f = await purchase(page);
+  const config = structuredClone(configurations[material.id]!);
+  const { principal_id: principalRef } = (await runtime.query('SELECT principal_id FROM public.clients WHERE id=$1', [f.clientId])).rows[0];
+  const binding = composeSubscriptionCare(runtime), actor = { principalRef, customerRef: f.clientId, operatorRef: null };
+  const commandKey = randomUUID();
+  const input = { action: 'cancel', subscriptionRef: f.subscriptionId,
+    survey: { reasonCode: 'other', comment: 'Optional feedback', acceptedSaveOfferId: null } };
+  const applied = await binding(input, { actor, config, commandKey });
+  expect(applied).toMatchObject({ ok: true, value: { outcome: 'applied' } });
+  config.renewal.subscriptionCare.retentionReasons = config.renewal.subscriptionCare.retentionReasons.filter(reason => reason !== 'other');
+  let configReads = 0;
+  const replay = await binding(input, { actor, commandKey, get config() { ++configReads; return config; } });
+  expect(replay).toMatchObject({ ok: true, replayed: true, value: { outcome: 'replayed' } });
+  expect(configReads).toBe(0);
+  if (applied.ok && replay.ok) expect(replay.value).toEqual({ ...(applied.value as object), outcome: 'replayed' });
+  expect(await binding({ ...input, survey: { ...input.survey, comment: 'Different feedback' } }, { actor, config, commandKey }))
+    .toMatchObject({ ok: false, code: 'subscription_command_idempotency_conflict' });
+  expect((await owner.query('SELECT cancellation_reason FROM public.subscriptions WHERE id=$1', [f.subscriptionId])).rows)
+    .toEqual([{ cancellation_reason: 'other' }]);
+});
+
+for (const dismissed of [false, true]) {
+  test(`ask_first_offer_only_after_yes G-2/H-2: cancellation resets the ${dismissed ? 'dismissed' : 'visible'} offer`, async ({ page }) => {
+    const f = await purchase(page), locale = market.defaultLocale, t = copy[locale];
+    await signIn(page, f.email, locale);
+    const card = cardFor(page, f), offer = card.locator('[data-save-offer]');
+    const status = card.locator('[data-care-state]');
+    const yes = card.getByRole('button', { name: t.careOfferYes, exact: true });
+    const cancel = card.getByRole('button', { name: t.cancelSubscription, exact: true });
+    await yes.click();
+    await expect(offer).toHaveCount(1);
+    if (dismissed) await card.getByRole('button', { name: t.careDismissOffer }).click();
+    await cancel.click();
+    await expect(status).toHaveAttribute('data-care-state', 'cancelled');
+    const dialog = await open(page, f, locale, t.careReactivate);
+    await dialog.getByLabel(t.careConfirmed).check();
+    await confirm(dialog, t.careReactivate);
+    await expect(status).toHaveAttribute('data-care-state', 'active');
+    if (dismissed) {
+      // Cancel again without answering even if a prompt is available.
+      await cancel.click();
+      await expect(status).toHaveAttribute('data-care-state', 'cancelled');
+      const declines = (await owner.query('SELECT count(*)::int AS count FROM public.subscription_retention_outcomes WHERE subscription_id=$1 AND save_offer_accepted=false', [f.subscriptionId])).rows[0].count;
+      expect(declines).toBe(1);
+    } else {
+      await expect(offer).toHaveCount(0);
+      await yes.click();
+      await expect(offer).toHaveCount(1);
+    }
+  });
+}
+
+test('cancel_never_requires_offer_or_reason H-3: another card refresh cannot lose a pending cancellation', async ({ page }) => {
+  const a = await purchase(page), b = await purchase(page, a.email), locale = market.defaultLocale, t = copy[locale];
+  await signIn(page, a.email, locale);
+  const first = cardFor(page, a), status = first.locator('[data-care-state]');
+  let markHeld!: () => void, release!: () => void;
+  const held = new Promise<void>(resolve => { markHeld = resolve; });
+  const resume = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/actions/subscription.command', async route => {
+    if (route.request().postDataJSON().action !== 'cancel') { await route.continue(); return; }
+    markHeld();
+    await resume;
+    await route.continue();
+  });
+  try {
+    await first.getByRole('button', { name: t.cancelSubscription, exact: true }).click();
+    await held;
+    await pause(page, b, locale);
+    await expect(status).toHaveAttribute('data-care-state', 'active');
+  } finally {
+    release();
+  }
+  await expect(status).toHaveAttribute('data-care-state', 'cancelled');
+  expect((await state(a)).status).toBe('cancelled');
 });
 
 for (const answer of ['yes', 'no', 'off', 'unavailable'] as const) {

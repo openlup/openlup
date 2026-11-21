@@ -287,7 +287,18 @@ it.each([false, true])("replaces the managed subscription offer and preserves re
   if (local) expect(readFileSync(join(app, local.path), "utf8")).toContain("// Adopter offer policy notes.");
 });
 
-it.each([false, true])("upgrades direct cancellation and ask-first copy from 1.3.0, customized=%s", customized => {
+function materializeStarter(input: string, output: string) {
+  const ownership = JSON.parse(readFileSync(join(input, "ownership.json"), "utf8")) as {
+    owned: string[]; managed: string[]; sourceMappings?: Record<string, string>;
+  };
+  for (const path of [...ownership.owned, ...ownership.managed]) {
+    mkdirSync(dirname(join(output, path)), { recursive: true });
+    cpSync(join(input, ownership.sourceMappings?.[path] ?? path), join(output, path));
+  }
+  return ownership;
+}
+
+it.each([false, true])("G-3 upgrades direct cancellation and ask-first copy from 1.3.0, customized=%s", customized => {
   const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
   const portal = "client/pages/account.ts", managed = [portal, "shared/copy-keys.ts"], owned = ["owned/copy.ts", starterSettingsHost];
   const ownership = { managed, owned, generated: [] };
@@ -296,6 +307,21 @@ it.each([false, true])("upgrades direct cancellation and ask-first copy from 1.3
     const source = path === "AGENTS.md" ? "AGENTS.template.md" : path;
     write(path, execFileSync("git", ["show", `openlup-core-v1.3.0:examples/neutral-store/${source}`], { encoding: "utf8" }));
     candidate(path, readFileSync(resolve("examples/neutral-store", source), "utf8"));
+  }
+  if (customized) {
+    const source = join(target, "predecessor-source"), archive = join(target, "starter.tar");
+    mkdirSync(source);
+    execFileSync("git", ["archive", "--output", archive, "openlup-core-v1.3.0", "examples/neutral-store"]);
+    execFileSync("tar", ["-xf", archive, "--strip-components=2", "-C", source]);
+    materializeStarter(source, app);
+    materializeStarter(resolve("examples/neutral-store"), target);
+    // The running test checkout supplies the candidate's installed dependencies.
+    // Both snapshots describe those versions so the fixture can exercise the CLI offline.
+    const version = JSON.parse(readFileSync(resolve("packages/core/package.json"), "utf8")).version;
+    const manifest = { type: "module", dependencies: { "@openlup/core": version }, scripts: { typecheck: "tsc --noEmit" } };
+    write("package.json", manifest); candidate("package.json", manifest);
+    rmSync(join(app, "node_modules"), { recursive: true, force: true });
+    symlinkSync(resolve("node_modules"), join(app, "node_modules"), "dir");
   }
   const from = starterUpgradeSnapshot(app, "1.3.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
   migrateStarterOwned(app, target, from, to);
@@ -312,24 +338,21 @@ it.each([false, true])("upgrades direct cancellation and ask-first copy from 1.3
     return JSON.parse(result.stdout);
   };
   if (customized) {
-    write("ownership.json", { ...ownership, owned: [...owned, "owned/store.config.ts", "owned/fragments.ts"] });
-    write("owned/store.config.ts", "export default '#3d6657';");
-    write("owned/fragments.ts", "export default 'offer-intro';");
     mkdirSync(join(target, "node_modules/.bin"), { recursive: true });
     symlinkSync(resolve("packages/platform/src/lifecycle/openlup.mjs"), join(target, "node_modules/.bin/openlup"));
     const evidence = { phases: [] as { name: string; result: string }[] };
     const finish = proveDistributionCliConsumer(target, { from: app, to: target, fromVersion: "1.3.0", toVersion: "999999.0.0", evidence });
+    // G-3: reconciliation must happen while managed replacements are still pending.
+    const phases = evidence.phases.map(phase => phase.name);
+    expect(phases.indexOf("cancellation-customization-reconciliation")).toBeLessThan(phases.indexOf("interrupt-and-refuse"));
     expect(readFileSync(join(app, portal), "utf8")).toContain("account-heading");
     const localCopy = readFileSync(join(app, "owned/copy.ts"), "utf8");
     expect(localCopy).toContain("Sign in to your account");
     expect(localCopy).not.toMatch(/careGuidance|confirmCancel/u);
     expect(readFileSync(join(app, starterSettingsHost), "utf8")).toContain("Set the account subscription discount");
 
-    const extracted = join(target, "reconciled-starter");
-    execFileSync(process.execPath, [resolve("examples/neutral-store/extract.mjs"), extracted]);
-    for (const path of [portal, ...owned]) writeFileSync(join(extracted, path), readFileSync(join(app, path)));
-    symlinkSync(resolve("node_modules"), join(extracted, "node_modules"), "dir");
-    const result = spawnSync("npm", ["run", "typecheck"], { cwd: extracted, encoding: "utf8" });
+    expect(readFileSync(join(app, "shared/copy-keys.ts"), "utf8")).toBe(to.files["shared/copy-keys.ts"]);
+    const result = spawnSync("npm", ["run", "typecheck"], { cwd: app, encoding: "utf8" });
     expect(result.status, result.stderr + result.stdout).toBe(0);
     expect(finish).toBeTypeOf("function");
     finish?.();
@@ -355,18 +378,8 @@ it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, cus
   execFileSync("tar", ["-xf", archive, "--strip-components=2", "-C", source], { timeout: 5_000 });
   // Materialize the same owned/managed source mappings as extraction, without
   // registry or provenance claims. Installed-package proof remains a separate gate.
-  const materialize = (input: string, output: string) => {
-    const ownership = JSON.parse(readFileSync(join(input, "ownership.json"), "utf8")) as {
-      owned: string[]; managed: string[]; sourceMappings?: Record<string, string>;
-    };
-    for (const path of [...ownership.owned, ...ownership.managed]) {
-      mkdirSync(dirname(join(output, path)), { recursive: true });
-      cpSync(join(input, ownership.sourceMappings?.[path] ?? path), join(output, path));
-    }
-    return ownership;
-  };
-  const previousOwnership = materialize(source, app);
-  const targetOwnership = materialize(resolve("examples/neutral-store"), target);
+  const previousOwnership = materializeStarter(source, app);
+  const targetOwnership = materializeStarter(resolve("examples/neutral-store"), target);
   execFileSync("git", ["init", "--initial-branch=main"], { cwd: app, stdio: "pipe", timeout: 10_000 });
   const read = (path: string) => readFileSync(join(app, path), "utf8");
   const edit = (path: string, before: string, after: string) => {

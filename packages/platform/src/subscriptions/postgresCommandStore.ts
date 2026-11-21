@@ -1,4 +1,4 @@
-import type { SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
+import type { SubscriptionCancelSurvey, SubscriptionCommand, SubscriptionCommandAdmission, SubscriptionCommandPort, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionLifecycleTerms } from "./contracts/commands.js";
 import { MAX_CADENCE_DAYS } from "@openlup/core/subscription";
 import { lifecycleTerms, retentionFields } from "./lifecycleTerms.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
@@ -16,6 +16,11 @@ export interface NativeSubscriptionCommandBinding {
   lifecycleTerms?: SubscriptionLifecycleTerms;
   /** Optional adopter taxonomy; the package validates shape without owning reason values. */
   retentionReasonCodes?: readonly string[];
+  /** Optional trusted feedback policy for fresh cancellations. Called under the
+   * native command lock after checking the original request against its receipt. */
+  prepareCancellation?(feedback: { reason: unknown; survey: unknown }): {
+    reason: string | null; survey: SubscriptionCancelSurvey | null; lifecycleTerms: SubscriptionLifecycleTerms;
+  };
   /** The callback must use one connection and commit/rollback the complete unit. */
   withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
   /** Validate address ownership and refuse address mutation; resolve SKUs and
@@ -82,9 +87,12 @@ export function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubsc
   };
 }
 
+type PreparedCancellation = { payload: Record<string, unknown>; lifecycleTerms: SubscriptionLifecycleTerms };
+
 async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction" | "lifecycleTerms" | "retentionReasonCodes" | "admitSubscriptionCommand">,
   input: NativeSubscriptionCommand, preview: boolean,
-  futureTerms?: () => ReturnType<NativeSubscriptionCommandBinding["futureTerms"]>): Promise<Record<string, unknown>> {
+  futureTerms?: () => ReturnType<NativeSubscriptionCommandBinding["futureTerms"]>,
+  prepareCancellation?: () => PreparedCancellation | SubscriptionCommandRefusal): Promise<Record<string, unknown>> {
   if (input.action === "multi_cycle_prepaid") return {
     status: "refused", reason: NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.refusalCode,
   };
@@ -103,18 +111,37 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
         AND $5::text IS NOT NULL AND jsonb_typeof($6::jsonb)='object'
         AND (NOT $8::boolean OR NOT ($6::jsonb ? 'acceptedQuoteHash'))
         AND EXISTS(SELECT 1 FROM public.subscriptions WHERE id=$4::uuid AND client_id=$2::uuid)
+    ), request AS (
+      SELECT CASE WHEN $10::boolean THEN encode(sha256(convert_to(
+        jsonb_build_object('clientId',$2::uuid,'subscriptionId',$4::uuid,'action',$5::text,'payload',$6::jsonb)::text,'UTF8')),'hex')
+      END AS cancel_request_fingerprint
     ), receipt AS (
-      SELECT *, CASE WHEN $8::boolean OR status='previewed' THEN
+      SELECT *, CASE WHEN $10::boolean AND requested_command #>> '{payload,cancelRequestFingerprint}' IS NOT NULL THEN
+        requested_command #>> '{payload,cancelRequestFingerprint}' = cancel_request_fingerprint
+      WHEN $8::boolean OR status='previewed' THEN
         jsonb_set(requested_command,'{payload}',(requested_command->'payload')-'acceptedQuoteHash')=
           jsonb_build_object('clientId',$2::uuid,'subscriptionId',$4::uuid,'action',$5::text,'payload',$6::jsonb-'acceptedQuoteHash')
         ELSE requested_command=jsonb_build_object('clientId',$2::uuid,'subscriptionId',$4::uuid,'action',$5::text,'payload',$6::jsonb)
         END AND ($8::boolean OR quote_hash IS NOT DISTINCT FROM ($6::jsonb->>'acceptedQuoteHash')) AS matches
-      FROM stored
+      FROM stored CROSS JOIN request
     ) SELECT command, CASE WHEN NOT matches THEN jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict')
       WHEN $8::boolean OR status='refused' THEN result
       WHEN status<>'previewed' THEN result||jsonb_build_object('status','replayed','originalStatus',status,'commandFingerprint',command_fingerprint)
-      END AS response FROM receipt`, [...values, preview, !!futureTerms]);
+      END AS response, request.cancel_request_fingerprint FROM request LEFT JOIN receipt ON true`,
+    [...values, preview, !!futureTerms, !!prepareCancellation]);
     if (stored.rows[0]?.response) return commandResult(subscriptionRecord(stored.rows[0].response));
+    let commandTerms = binding.lifecycleTerms, payload = input.payload;
+    if (prepareCancellation) {
+      const prepared = prepareCancellation();
+      if ("outcome" in prepared) return commandResult({ ...prepared });
+      const fingerprint = stored.rows[0]?.cancel_request_fingerprint;
+      if (typeof fingerprint !== "string") throw new Error("subscription_command_response_invalid");
+      // The native writer stores this digest with the normalized payload so an
+      // exact retry of discarded feedback can still match after policy changes.
+      payload = { ...prepared.payload, cancelRequestFingerprint: fingerprint };
+      values[5] = payload;
+      commandTerms = prepared.lifecycleTerms;
+    }
     if (binding.admitSubscriptionCommand) {
       // Acquire the lock before taking the payment-facts statement snapshot:
       // a dunning writer can commit after we start waiting without updating s.
@@ -134,8 +161,8 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
         throw new Error("subscription_command_admission_isolation_unsupported");
       }
       await binding.admitSubscriptionCommand({ action: admissionAction(input.action),
-        pausePreset: typeof input.payload.pausePreset === "string" ? input.payload.pausePreset : null,
-        reason: typeof input.payload.reason === "string" ? input.payload.reason : null,
+        pausePreset: typeof payload.pausePreset === "string" ? payload.pausePreset : null,
+        reason: typeof payload.reason === "string" ? payload.reason : null,
         subscriptionStatus: String(subscription.rows[0].status), paymentBlocker: row.payment_blocker == null ? null : String(row.payment_blocker) });
     }
     if (["update_package_template", "update_bundle", "resize_bundle", "update_plan_length"].includes(input.action)
@@ -144,14 +171,14 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
       return { status: "refused", reason: "subscription_command_invalid_input" };
     }
     if ((input.action === "pause" || input.action === "cancel") && binding.retentionReasonCodes
-      && input.payload.survey !== null && typeof input.payload.survey === "object") {
-      const reasonCode = subscriptionRecord(input.payload.survey).reasonCode;
+      && payload.survey !== null && typeof payload.survey === "object") {
+      const reasonCode = subscriptionRecord(payload.survey).reasonCode;
       if (typeof reasonCode === "string" && !binding.retentionReasonCodes.includes(reasonCode)) {
         return { status: "refused", reason: "subscription_command_invalid_input" };
       }
     }
     if (futureTerms) {
-      if (stored.rows[0]) {
+      if (stored.rows[0]?.command) {
         // A matching preview already bound the host translation. Apply that
         // exact quote even if the host's mutable policy has since changed.
         values[5] = { ...subscriptionRecord(subscriptionRecord(stored.rows[0].command).payload),
@@ -177,9 +204,9 @@ async function invokeCommand(binding: Pick<NativeSubscriptionCommandBinding, "wi
     }
     if (!result) {
       const name = preview ? "subscription_command_preview" : "subscription_command_apply";
-      const terms = !preview && binding.lifecycleTerms !== undefined
+      const terms = !preview && commandTerms !== undefined
         && ["pause", "resume", "cancel", "skip_next_cycle", "slide_next_cycle", "order_now", "reactivate"].includes(input.action)
-        ? lifecycleTerms(binding.lifecycleTerms) : undefined;
+        ? lifecycleTerms(commandTerms) : undefined;
       const { rows } = await executor.query(`SELECT public.${name}($1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz${terms ? ",$8::jsonb" : ""}) AS response`, terms ? [...values, terms] : values);
       result = commandResult(subscriptionRecord(rows[0]?.response));
     }
@@ -208,10 +235,10 @@ function admissionAction(action: string): SubscriptionCommand["action"] {
 export function createPostgresSubscriptionCommands(binding: NativeSubscriptionCommandBinding): SubscriptionCommandPort & {
   preview(command: Extract<SubscriptionCommand, { action: "edit_future_terms" }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
 } {
-  function encode(command: SubscriptionCommand): NativeSubscriptionCommand | SubscriptionCommandRefusal {
+  function encode(command: SubscriptionCommand, validateRetention = true): NativeSubscriptionCommand | SubscriptionCommandRefusal {
     const { actor, subscriptionId, idempotencyKey, now, action, ...fields } = command;
     let payload: Record<string, unknown> = { ...fields, actorKind: actor.kind };
-    if (command.action === "pause" || command.action === "cancel") {
+    if (validateRetention && (command.action === "pause" || command.action === "cancel")) {
       const retention = retentionFields(command);
       if (!retention) return { outcome: "refused", reason: "subscription_command_invalid_input" };
       payload = { ...payload, ...retention };
@@ -240,10 +267,17 @@ export function createPostgresSubscriptionCommands(binding: NativeSubscriptionCo
       return invokeCommand(binding, input, true, () => binding.futureTerms(command));
     },
     async apply(command) {
-      const input = encode(command);
+      const prepare = command.action === "cancel" && binding.prepareCancellation
+        ? () => {
+          const { lifecycleTerms, ...feedback } = binding.prepareCancellation!({ reason: command.reason, survey: command.survey });
+          const prepared = encode({ ...command, ...feedback });
+          return "outcome" in prepared ? prepared : { payload: prepared.payload, lifecycleTerms };
+        }
+        : undefined;
+      const input = encode(command, !prepare);
       if ("outcome" in input) return input;
       const result = await invokeCommand(binding, input, false,
-        command.action === "edit_future_terms" ? () => binding.futureTerms(command) : undefined);
+        command.action === "edit_future_terms" ? () => binding.futureTerms(command) : undefined, prepare);
       if (result.status === "refused" || result.outcome === "refused") return { outcome: "refused", reason: refusalReason(result.reason) };
       if (result.status !== "applied" && result.status !== "replayed" && result.status !== "noop") throw new Error("subscription_command_response_invalid");
       return { actorId: command.actor.actorId, idempotencyKey: command.idempotencyKey,

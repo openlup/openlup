@@ -169,8 +169,11 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
     el('p', {}, context.t('subscriptionInvariant')));
   const target = context.query.get('sub');
   const offers = new Map<string, { code: string; kind: SaveOfferKind; targetDate: string | null; preset: PausePreset; dismissed: boolean } | null>();
+  let readGeneration = 0;
   async function refresh() {
+    const generation = ++readGeneration;
     const result = await act('account.read', {}, crypto.randomUUID());
+    if (generation !== readGeneration) return;
     output.replaceChildren();
     if (!result.ok) { append(output, refusal(context, result.code)); return; }
     const data = isRecord(result.value) && isRecord(result.value.renewal) ? result.value.renewal.subscriptions : null;
@@ -233,7 +236,10 @@ export function subscriptionPortal(context: PageContext): HTMLElement {
           ...(code || text ? { survey: { ...(code ? { reasonCode: code } : {}), comment: text || null, acceptedSaveOfferId: null } } : {}),
           ...(shown ? { saveOffer: { offerId: offerId(shown.kind, shown.preset), kind: shown.kind, accepted: false } } : {}),
         };
-      }, onSuccess: refresh,
+      }, onCommitted() {
+        offers.delete(subscriptionRef);
+        if (section.isConnected) void refresh();
+      },
     });
     const offer = el('div', { 'aria-live': 'polite' });
     const panel = el('section', {}, cancel, offer, reason.wrapper, note.wrapper);

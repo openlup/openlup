@@ -461,6 +461,19 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     pair.evidence.customizations![starterSettingsHost] = hash(local);
     pair.evidence.planSha256 = hash(JSON.stringify(plan));
   });
+  if (reconcileCancellation) phase("cancellation-customization-reconciliation", () => {
+    const copyKeys = "shared/copy-keys.ts";
+    assert.notEqual(from.files[copyKeys], to.files[copyKeys]);
+    assert.equal(readFileSync(join(app, copyKeys), "utf8"), from.files[copyKeys]);
+    const files = reconcileCancellationCustomization(app, workspace, from, to, applyRefused);
+    Object.assign(owned, files);
+    for (const [path, bytes] of Object.entries(files)) pair.evidence.customizations![path] = hash(bytes);
+    writeSnapshots();
+    plan = run("plan");
+    changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
+    assert(changed.some((file: { path: string; action: string }) => file.path === copyKeys && file.action === "replace"));
+    pair.evidence.planSha256 = hash(JSON.stringify(plan));
+  });
   phase("interrupt-and-refuse", () => {
     const preload = join(workspace, "interrupt.mjs");
     writeFileSync(preload, 'import { promises as fs } from "node:fs"; const rename = fs.rename.bind(fs); fs.rename = async (...args) => { await rename(...args); process.kill(process.pid, "SIGKILL"); await new Promise(() => {}); };');
@@ -486,17 +499,11 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   phase("resume", () => {
     const resumed = run("apply");
     assert(resumed.files.some((file: { action: string }) => file.action === "already-applied"));
+    if (reconcileCancellation)
+      assert.equal(readFileSync(join(app, "shared/copy-keys.ts"), "utf8"), to.files["shared/copy-keys.ts"]);
     checkUpgradeFiles();
   });
   phase("replay", () => { assert.deepEqual(run("apply").applied, []); checkUpgradeFiles(); });
-  if (reconcileCancellation) phase("cancellation-customization-reconciliation", () => {
-    const files = reconcileCancellationCustomization(app, workspace, from, to, applyRefused);
-    Object.assign(owned, files);
-    for (const [path, bytes] of Object.entries(files)) pair.evidence.customizations![path] = hash(bytes);
-    writeSnapshots();
-    assert.deepEqual(run("apply").applied, []);
-    checkUpgradeFiles();
-  });
   rmSync(workspace, { recursive: true, force: true });
   return () => phase("installed-application-and-owned-bytes", () => {
     assertCompleteStarter(app, to); checkUpgradeFiles();
