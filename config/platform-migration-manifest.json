@@ -1339,15 +1339,15 @@
       },
       {
         "file": "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql",
-        "sha256": "e9485f6bec842ec85cb2611e8b31044b3516f1f202345ea00d149b88d5a87968"
+        "sha256": "01ab557cf6169e7015daf4a237f6e82ded2842ad1308b09c7fa40408ef1e45ce"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "ca4c27d73062cd9d9105bda5beacdf084a83ec624434cdd82f5c69aed66c1cc4"
+        "withRestore": "682b540f62a132f1fb4a87be0ac6816b1e532400f99551c53a84839ea4fef33b"
       },
       "separateMigrator": {
-        "withRestore": "2e482f1401c49ef07376989dbdbce566dc2ab040f9301eaa4eaa5ef09ca6aaae"
+        "withRestore": "b5601f615d6bf057c7dcfd872e01f9442705c06445456c7b76491e8e82b32632"
       }
     }
   },

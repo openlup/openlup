@@ -800,10 +800,22 @@ it("commits deferred publication checks through the restricted login", async () 
       throw error;
     }), publisher);
     const who = (await api.authorize(actor))!;
+    const readers = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(publisher, work) },
+      authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+    expect(await readers.reads.current(data.productId)).toEqual({ outcome: "unpublished" });
+    expect(await api.prepareCandidate({ draftId: data.draftId, draftRevision: 1, expectedHead: null }, who), sqlFailure)
+      .toMatchObject({ candidateDigest: prepared.approve.candidateDigest, preparation: { postStateDigest: expect.any(String) } });
     const approved = await api.execute(prepared.approve, who);
     expect(approved, sqlFailure).toMatchObject({ outcome: "committed" });
     const published = await api.execute(prepared.publish, who);
     expect(published, sqlFailure).toMatchObject({ outcome: "committed", receipt: { head: { revision: 1 } } });
+    if (!("receipt" in published) || !("head" in published.receipt)) throw new Error("publication receipt required");
+    const { head, commandKey } = published.receipt;
+    expect(await readers.reads.current(data.productId)).toMatchObject({ outcome: "found", head });
+    expect(await readers.readbackV2(head)).toMatchObject({ outcome: "page", head, schemaVersion: 2 });
+    expect(await readers.reads.history(data.productId, null)).toMatchObject({ outcome: "page", receipts: [{ head }] });
+    expect(await readers.receipt({ productId: data.productId, commandKey }, (await readers.authorize(actor))!))
+      .toEqual({ outcome: "found", receipt: published.receipt });
     expect((await pool.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows)
       .toEqual([{ revision: 1 }]);
     expect((await pool.query("SELECT mode,min_qty,amount_kind,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows)
