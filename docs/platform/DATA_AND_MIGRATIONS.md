@@ -830,6 +830,18 @@ foreign key or absorption duty. The parameterized
 [round-trip witness](../../tests/postgres/policyCloseDigest.test.ts) compares full
 rows and commerce continuity through restore and replay.
 
+The native `20261123192000_subscription_price_policy_close_provenance.sql`
+forward rejects direct inserts of finite revisions marked `closed_from_open`
+with `55000 subscription_price_policy_revision_close_provenance_requires_restore`.
+An open revision with the marker set still fails the existing window check.
+Use the matching connected-store restore implementation on upgraded targets.
+It enables the exception only while copying policy rows in the restore
+transaction and removes it before commit. The capability table must be empty
+at capture and restore boundaries and is excluded from the transfer packet.
+Catalogue document pointer capabilities authorize only their pointer updates.
+The forward requires no backfill and the stored digest and native reader
+contracts remain the same. The managed rail does not supply this guard.
+
 Managed divergence design: the managed rail does not supply this feature.
 A future twin adds the same marker and validated CHECK to the managed policy
 revision table, preserves existing RLS and grants, and updates the managed

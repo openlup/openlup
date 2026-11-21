@@ -5252,6 +5252,14 @@ export declare const CATALOG_MIGRATIONS: readonly [
         readonly position: number;
         readonly sha256: "2a83d6f21a923669dcab4230569dcb7c1e4218d87b6c8e99589f857854725907";
         readonly url: URL;
+    },
+    /** @experimental */
+    {
+        readonly id: "20261123192000_subscription_price_policy_close_provenance";
+        readonly catalogPath: "db/platform/migrations/20261123192000_subscription_price_policy_close_provenance.sql";
+        readonly position: number;
+        readonly sha256: "0522c432752df11a5e49787b9847137a77ddf7b969e9dc770686232117c8af96";
+        readonly url: URL;
     }
 ];
 ```

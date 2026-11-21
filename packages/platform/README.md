@@ -1304,7 +1304,9 @@ Install the complete catalogue through
 `20261122140000_subscription_price_policy_close_digest` before using the updated
 native readers. Unverifiable pre-forward closed tuples refuse with
 `subscription_price_policy_original_tuple_unverified`; historical digests are
-never replaced. The [migration and rollback guidance](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#policy-revision-close-compatibility)
+never replaced. Closed-from-open provenance can only be set by a guarded
+close or a native restore after installing
+`20261123192000_subscription_price_policy_close_provenance`. The [migration and rollback guidance](https://github.com/openlup/openlup/blob/main/docs/platform/DATA_AND_MIGRATIONS.md#policy-revision-close-compatibility)
 owns compatibility. This adds no scheduler, closing command or activation.
 
 The package witnesses in `test/pricing/` move the incumbent authority, policy,
