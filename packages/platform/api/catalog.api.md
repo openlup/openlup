@@ -1217,14 +1217,9 @@ export {};
 
 ```ts
 import type { PgQueryExecutor } from "../data/index.js";
-import type { VerifiedCatalogPublisher, CatalogPublicationReadPort } from "./publicationPorts.js";
-import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogSkuRevisionRef, CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./publicationContracts.js";
+import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
+import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
-declare const verifiedReadScope: unique symbol;
-/** @internal */
-export interface VerifiedCatalogReadScope {
-    readonly [verifiedReadScope]: true;
-}
 /** @experimental */
 export interface CatalogPublicationReadDependencies<Context> {
     transactions: {
@@ -1239,68 +1234,6 @@ export interface CatalogPublicationReadDependencies<Context> {
         ok: false;
     }>;
 }
-/** @internal */
-export interface RetainedCatalogPublicationReadDependencies<Context> extends CatalogPublicationReadDependencies<Context> {
-    /** The host verifies ownership of the accepted account, order or fulfilment line in this snapshot. */
-    acceptedSource?(db: PgQueryExecutor, context: Context, binding: CatalogRetainedSourceBinding): Promise<CatalogRetainedSourceBinding | null | "unauthorized">;
-}
-/** @internal */
-export declare function createRetainedCatalogPublicationReads<Context>(deps: RetainedCatalogPublicationReadDependencies<Context>): {
-    reads: CatalogPublicationReadPort;
-    nativeReads: {
-        current(productId: string): Promise<(CatalogPublicationFailure & {
-            message: string;
-        }) | {
-            outcome: "found";
-            head: {
-                publicationId: string;
-                revision: number;
-                documentDigest: string;
-            };
-            documentRef: string;
-            observations: readonly import("./contracts/lifecycle.js").CatalogLifecycleObservation[];
-        } | {
-            outcome: "unpublished";
-        }>;
-        history(productId: string, cursor: string | null): Promise<(CatalogPublicationFailure & {
-            message: string;
-        }) | {
-            outcome: "page";
-            receipts: CatalogPublicationReceipt[];
-            limit: 100;
-            nextCursor: string | null;
-        }>;
-    };
-    authorize: (context: Context) => Promise<VerifiedCatalogPublisher | null>;
-    receipt: (scope: {
-        productId: string;
-        commandKey: string;
-    }, capability: VerifiedCatalogPublisher) => Promise<(CatalogPublicationFailure & {
-        message: string;
-    }) | {
-        outcome: "absent";
-        receipt?: undefined;
-    } | {
-        outcome: "found";
-        receipt: CatalogPublicationReceiptV2;
-    }>;
-    readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
-    resolveRetained: (input: CatalogRetainedSourceBinding, scope: VerifiedCatalogReadScope) => Promise<(CatalogPublicationFailure & {
-        message: string;
-    }) | {
-        outcome: "found";
-        head: {
-            publicationId: string;
-            revision: number;
-            documentDigest: string;
-        };
-        product: import("./publicationContracts.js").CatalogPublishedProduct;
-        reference: CatalogSkuRevisionRef;
-        sku: import("./publicationContracts.js").CatalogPublishedSku;
-    }>;
-    authorizeReadScope(context: Context): VerifiedCatalogReadScope;
-    readPort(capability: VerifiedCatalogPublisher): CatalogPublicationReadPort;
-};
 /** Reads admitted history in one snapshot on a host-selected publication connection.
  * The host authorizes current, exact and history and supplies a verified human for receipt recovery.
  * @experimental
@@ -1345,7 +1278,6 @@ export declare function createPostgresCatalogPublicationReads<Context>(deps: Cat
     }>;
     readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
 };
-export {};
 ```
 ## dist/catalog/catalogPublicationRules.d.ts
 

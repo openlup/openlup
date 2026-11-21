@@ -1,18 +1,14 @@
 import { z } from "zod";
 import type { PgQueryExecutor } from "../data/index.js";
-import type { VerifiedCatalogPublisher, CatalogPublicationReadPort } from "./publicationPorts.js";
+import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
 import { CATALOG_PUBLICATION_LIMITS as limits } from "./publicationContracts.js";
 import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogSkuRevisionRef,
-  CatalogRetainedSourceBinding, CatalogPublicationFailure } from "./publicationContracts.js";
-import type { CatalogHeadRef, CatalogPublicationReceipt, CatalogPublicationRefusal } from "./contracts/lifecycle.js";
+  CatalogPublicationFailure } from "./publicationContracts.js";
+import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import { decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt,
   decodeStoredPublicationSku, publicationJson, publicationDigest, SKU_PAGE_DEPTH } from "./publicationCodec.js";
-import { publicationReadFailure, publicationRefuse, publicationRemedy, type AdmissionDiagnostic } from "./publicationError.js";
+import { publicationReadFailure, publicationRefuse, type AdmissionDiagnostic } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
-
-declare const verifiedReadScope: unique symbol;
-/** @internal */
-export interface VerifiedCatalogReadScope { readonly [verifiedReadScope]: true }
 
 /** @experimental */
 export interface CatalogPublicationReadDependencies<Context> {
@@ -20,20 +16,11 @@ export interface CatalogPublicationReadDependencies<Context> {
   authorizeHuman(context: Context): Promise<{ ok: true; userId: string; role: string; isMachineActor: boolean } | { ok: false }>;
 }
 
-/** @internal */
-export interface RetainedCatalogPublicationReadDependencies<Context> extends CatalogPublicationReadDependencies<Context> {
-  /** The host verifies ownership of the accepted account, order or fulfilment line in this snapshot. */
-  acceptedSource?(db: PgQueryExecutor, context: Context, binding: CatalogRetainedSourceBinding):
-    Promise<CatalogRetainedSourceBinding | null | "unauthorized">;
-}
-
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const key = z.string().min(1).refine(value => Buffer.byteLength(value) <= 200 && !value.includes("\0") && !/[\uD800-\uDFFF]/u.test(value));
 const headSchema = z.object({ publicationId: id, revision, documentDigest: digest }).strict();
-const selectorSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"]), sourceId: id, lineId: id,
-  productId: id, skuId: id, skuRevisionId: id, publicationId: id, documentRevisionId: id }).strict();
 // Every read refusal uses a code from the remedy map, so a new reason without a remedy does not compile.
 const refuse = (reason: AdmissionDiagnostic, outcome: CatalogPublicationFailure["outcome"] = "dependency_unavailable"): never =>
   publicationRefuse(reason, outcome);
@@ -42,17 +29,6 @@ function requireCondition(condition: unknown, reason: AdmissionDiagnostic = "cat
   if (!condition) refuse(reason, outcome);
 }
 
-/** Released ports narrow the reason by outcome and keep the same remedy. */
-function legacyFailure(result: CatalogPublicationFailure): CatalogPublicationRefusal {
-  // Only stored data decoding attaches a field path to validation failures in this adapter.
-  const outcome = result.outcome === "validation_issue" && result.path !== undefined
-    ? "dependency_unavailable" : result.outcome;
-  const reasons = {
-    unauthorized: "publisher_not_authorized", conflict: "head_conflict", dependency_unavailable: "publication_authority_unavailable",
-    unsupported: "publication_not_supported", validation_issue: "candidate_invalid",
-  } as const;
-  return { ...result, outcome, reason: reasons[outcome] };
-}
 function legacyReceipt(receipt: CatalogPublicationReceiptV2): CatalogPublicationReceipt {
   return { commandKey: receipt.commandKey, fingerprint: receipt.fingerprint, actorId: receipt.actorId,
     previousHead: receipt.previousHead, head: receipt.head, changes: receipt.changes };
@@ -176,10 +152,12 @@ async function observations(db: PgQueryExecutor, issue: Issue): Promise<CatalogP
   });
 }
 
-/** @internal */
-export function createRetainedCatalogPublicationReads<Context>(deps: RetainedCatalogPublicationReadDependencies<Context>) {
+/** Reads admitted history in one snapshot on a host-selected publication connection.
+ * The host authorizes current, exact and history and supplies a verified human for receipt recovery.
+ * @experimental
+ */
+export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPublicationReadDependencies<Context>) {
   const operators = new WeakMap<object, string>();
-  const readers = new WeakMap<object, { context: Context }>();
   const read = <T>(work: (db: PgQueryExecutor) => Promise<T>) => deps.transactions.run(async db => {
     await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const { rows } = await db.query(`SELECT current_setting('transaction_isolation')='repeatable read'
@@ -228,7 +206,7 @@ export function createRetainedCatalogPublicationReads<Context>(deps: RetainedCat
     } catch (error) { return publicationReadFailure(error); }
   }
 
-  const nativeReads = {
+  const reads = {
     async current(productId: string) {
       try {
         requireCondition(id.safeParse(productId).success, "catalog_publication_query_invalid", "validation_issue");
@@ -280,31 +258,6 @@ export function createRetainedCatalogPublicationReads<Context>(deps: RetainedCat
       } catch (error) { return publicationReadFailure(error); }
     },
   };
-  const reads: CatalogPublicationReadPort = {
-    async current(productId) {
-      const result = await nativeReads.current(productId);
-      return "reason" in result ? legacyFailure(result) : result;
-    },
-    async readback(head) {
-      try {
-        return await read(async db => {
-          const issue = await exact(db, head);
-          const result = { outcome: "found" as const, head: issue.head, documentRef: issue.manifest.product.document!.documentRef,
-            observations: await observations(db, issue) };
-          publicationJson(result, limits.pageBytes);
-          return result;
-        });
-      } catch (error) { return legacyFailure(publicationReadFailure(error)); }
-    },
-    async history(productId, cursor) {
-      const result = await nativeReads.history(productId, cursor);
-      return "reason" in result ? legacyFailure(result) : result;
-    },
-    async receipt() {
-      return { outcome: "unsupported", reason: "publication_not_supported", message: publicationRemedy("catalog_publication_receipt_unsupported") };
-    },
-  };
-
   async function readbackV2(head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure> {
     try {
       return await read(async db => {
@@ -345,53 +298,5 @@ export function createRetainedCatalogPublicationReads<Context>(deps: RetainedCat
     } catch (error) { return publicationReadFailure(error); }
   }
 
-  async function resolveRetained(input: CatalogRetainedSourceBinding, scope: VerifiedCatalogReadScope) {
-    try {
-      const reader = readers.get(scope);
-      requireCondition(reader, "retained_read_not_authorized", "unauthorized");
-      requireCondition(selectorSchema.safeParse(input).success, "catalog_publication_query_invalid", "validation_issue");
-      const acceptedSource = deps.acceptedSource;
-      requireCondition(acceptedSource, "retained_revision_unavailable", "unsupported");
-      return await read(async db => {
-        const accepted = await acceptedSource(db, reader.context, input);
-        requireCondition(accepted !== "unauthorized", "retained_read_not_authorized", "unauthorized");
-        requireCondition(accepted !== null, "retained_revision_unavailable", "unsupported");
-        requireCondition(equal(accepted, input), "retained_source_mismatch", "unauthorized");
-        const issue = await verifiedIssue(db, input.publicationId, input.productId);
-        requireCondition(issue, "retained_revision_unavailable", "unsupported");
-        const reference = issue.manifest.skus.find(item => item.skuId === input.skuId && item.revisionId === input.skuRevisionId);
-        requireCondition(reference && issue.manifest.product.document?.id === input.documentRevisionId, "retained_source_mismatch");
-        const [item] = await issueFacts(db, issue, [reference]);
-        const result = { outcome: "found" as const, head: issue.head, product: issue.manifest.product, reference, sku: item!.facts };
-        publicationJson(result, limits.pageBytes);
-        return result;
-      });
-    } catch (error) { return publicationReadFailure(error); }
-  }
-
-  return {
-    reads, nativeReads, authorize, receipt, readbackV2, resolveRetained,
-    authorizeReadScope(context: Context): VerifiedCatalogReadScope {
-      const scope = Object.freeze({});
-      readers.set(scope, { context });
-      return scope as VerifiedCatalogReadScope;
-    },
-    readPort(capability: VerifiedCatalogPublisher): CatalogPublicationReadPort {
-      return { ...reads, async receipt(scope) {
-        const result = await receipt(scope, capability);
-        return result.outcome === "found" ? { outcome: "found", receipt: legacyReceipt(result.receipt) }
-          : result.outcome === "absent" ? result : legacyFailure(result);
-      } };
-    },
-  };
-}
-
-
-/** Reads admitted history in one snapshot on a host-selected publication connection.
- * The host authorizes current, exact and history and supplies a verified human for receipt recovery.
- * @experimental
- */
-export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPublicationReadDependencies<Context>) {
-  const { nativeReads: reads, authorize, receipt, readbackV2 } = createRetainedCatalogPublicationReads(deps);
   return { reads, authorize, receipt, readbackV2 };
 }
