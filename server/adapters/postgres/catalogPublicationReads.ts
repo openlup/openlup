@@ -1,13 +1,12 @@
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { z } from "zod";
-import { nativeCatalogPublication, type VerifiedCatalogPublisher, type CatalogPublicationReadPort,
-  type CatalogFullPublicationV2, type CatalogPublicationReceiptV2, type CatalogSkuRevisionRef,
+import { createPostgresCatalogPublicationReads as createExactReads, nativeCatalogPublication, type VerifiedCatalogPublisher, type CatalogPublicationReadPort,
+  type CatalogPublicationReceiptV2, type CatalogSkuRevisionRef,
   type CatalogRetainedSourceBinding, type CatalogPublicationFailure } from "@openlup/platform/catalog";
 import type { CatalogHeadRef, CatalogPublicationReceipt, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
 
 const { limits, decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
-  publicationJson, publicationDigest, SKU_PAGE_DEPTH, publicationReadFailure, publicationRefuse, publicationRemedy,
-  assertPublishedSkuIdentity } = nativeCatalogPublication;
+  publicationJson, publicationDigest, SKU_PAGE_DEPTH, publicationReadFailure, publicationRefuse, publicationRemedy } = nativeCatalogPublication;
 
 type AdmissionDiagnostic = Parameters<typeof publicationRefuse>[0];
 
@@ -27,7 +26,6 @@ export interface CatalogPublicationReadDependencies<Context> {
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
-const key = z.string().min(1).refine(value => Buffer.byteLength(value) <= 200 && !value.includes("\0") && !/[\uD800-\uDFFF]/u.test(value));
 const headSchema = z.object({ publicationId: id, revision, documentDigest: digest }).strict();
 const selectorSchema = z.object({ kind: z.enum(["account", "order", "fulfilment"]), sourceId: id, lineId: id,
   productId: id, skuId: id, skuRevisionId: id, publicationId: id, documentRevisionId: id }).strict();
@@ -107,47 +105,6 @@ async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonl
   });
 }
 
-async function currentIssue(db: PgQueryExecutor, productId: string) {
-  const { rows } = await db.query(`SELECT
-    (SELECT publication_id FROM public.catalog_publication_heads WHERE product_id=$1) AS id,
-    EXISTS(SELECT 1 FROM public.catalog_products WHERE id=$1) AS product_exists,
-    public.catalog_publication_assert_head($1,false) AS admitted`, [productId]);
-  const row = rows[0];
-  requireCondition(rows.length === 1 && typeof row?.product_exists === "boolean");
-  if (row.id === null) {
-    requireCondition(!row.product_exists, "catalog_publication_lineage_unknown", "unsupported");
-    return null;
-  }
-  requireCondition(id.safeParse(row.id).success);
-  const issue = await verifiedIssue(db, row.id as string, productId);
-  requireCondition(issue);
-  return issue;
-}
-
-async function assertCurrentProjection(db: PgQueryExecutor, issue: Issue) {
-  const { product, skus } = issue.manifest;
-  const { rows } = await db.query("SELECT public.catalog_publication_live_matches($1,$2,$3) AS matches",
-    [product.id, publicationJson(product), publicationJson(skus)]);
-  if (rows[0]?.matches !== true) {
-    await assertPublishedSkuIdentity(db, product.id);
-    refuse("catalog_publication_live_drift", "conflict");
-  }
-}
-
-type Cursor = { kind: "history" | "facts"; productId: string; highWater: number; before: number };
-const encodeCursor = (value: Cursor) => Buffer.from(publicationJson({ schemaVersion: 1, ...value })).toString("base64url");
-function decodeCursor(value: string | null, productId: string, kind: Cursor["kind"]) {
-  if (value === null) return null;
-  try {
-    if (typeof value !== "string" || value.length > 1024 || !/^[A-Za-z0-9_-]+$/u.test(value)) throw new Error();
-    const schema = z.object({ schemaVersion: z.literal(1), kind: z.literal(kind), productId: z.literal(productId), highWater: revision,
-      before: z.number().int().min(0).max(2_147_483_647) }).strict();
-    const result = schema.parse(JSON.parse(Buffer.from(value, "base64url").toString("utf8")));
-    if (encodeCursor(result) !== value || kind === "history" && result.before > result.highWater) throw new Error();
-    return result;
-  } catch { return refuse("catalog_publication_cursor_invalid", "validation_issue"); }
-}
-
 async function observations(db: PgQueryExecutor, issue: Issue): Promise<CatalogPublicationReceipt["changes"]> {
   const { product, skus } = issue.manifest;
   const { rows } = await db.query(`SELECT r.id,r.sku_id,r.sku_code,r.digest,r.revision,
@@ -185,14 +142,6 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
     return work(db);
   });
 
-  async function authorize(context: Context): Promise<VerifiedCatalogPublisher | null> {
-    const auth = await deps.authorizeHuman(context);
-    if (auth?.ok !== true || auth.role !== "admin" || auth.isMachineActor !== false || !id.safeParse(auth.userId).success) return null;
-    const capability = Object.freeze({});
-    operators.set(capability, auth.userId);
-    return capability as VerifiedCatalogPublisher;
-  }
-
   async function exact(db: PgQueryExecutor, head: CatalogHeadRef) {
     requireCondition(headSchema.safeParse(head).success, "catalog_publication_query_invalid", "validation_issue");
     const issue = await verifiedIssue(db, head.publicationId);
@@ -201,44 +150,11 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
     return issue;
   }
 
-  async function receipt(scope: { productId: string; commandKey: string }, capability: VerifiedCatalogPublisher) {
-    try {
-      requireCondition(id.safeParse(scope.productId).success && key.safeParse(scope.commandKey).success,
-        "catalog_publication_query_invalid", "validation_issue");
-      return await read(async db => {
-        const actor = operators.get(capability);
-        requireCondition(actor, "publisher_not_authorized", "unauthorized");
-        const membership = await db.query("SELECT public.platform_human_membership_is_administrator($1::uuid) AS allowed", [actor]);
-        requireCondition(membership.rows.length === 1 && membership.rows[0]?.allowed === true, "publisher_not_authorized", "unauthorized");
-        const { rows } = await db.query(`SELECT p.id,r.kind,r.publication_id
-          FROM (SELECT id FROM public.catalog_publications WHERE product_id=$1 AND command_key=$2) p
-          FULL JOIN (SELECT kind,publication_id FROM public.catalog_operator_receipts
-            WHERE scope_id=$1 AND command_key=$2 AND kind='publish') r ON p.id=r.publication_id`, [scope.productId, scope.commandKey]);
-        if (!rows.length) return { outcome: "absent" as const };
-        const row = rows[0]!;
-        requireCondition(rows.length === 1 && row.kind === "publish" && row.publication_id === row.id && id.safeParse(row.id).success,
-          "catalog_publication_receipt_invalid");
-        const issue = await verifiedIssue(db, row.id as string, scope.productId);
-        requireCondition(issue?.receipt.commandKey === scope.commandKey, "catalog_publication_receipt_invalid");
-        return { outcome: "found" as const, receipt: issue.receipt };
-      });
-    } catch (error) { return publicationReadFailure(error); }
-  }
-
+  const native = createExactReads(deps);
   const reads: CatalogPublicationReadPort = {
     async current(productId) {
-      try {
-        requireCondition(id.safeParse(productId).success, "catalog_publication_query_invalid", "validation_issue");
-        return await read(async db => {
-          const issue = await currentIssue(db, productId);
-          if (!issue) return { outcome: "unpublished" };
-          await assertCurrentProjection(db, issue);
-          const result = { outcome: "found" as const, head: issue.head, documentRef: issue.manifest.product.document!.documentRef,
-            observations: await observations(db, issue) };
-          publicationJson(result, limits.pageBytes);
-          return result;
-        });
-      } catch (error) { return legacyFailure(publicationReadFailure(error)); }
+      const result = await native.reads.current(productId);
+      return "reason" in result ? legacyFailure(result) : result;
     },
     async readback(head) {
       try {
@@ -252,85 +168,13 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
       } catch (error) { return legacyFailure(publicationReadFailure(error)); }
     },
     async history(productId, cursor) {
-      try {
-        requireCondition(id.safeParse(productId).success, "catalog_publication_query_invalid", "validation_issue");
-        const pointer = decodeCursor(cursor, productId, "history");
-        return await read(async db => {
-          const start = await currentIssue(db, productId);
-          const highWater = pointer?.highWater ?? start?.head.revision ?? 0;
-          const { rows } = await db.query(`SELECT id,revision FROM public.catalog_publications
-            WHERE product_id=$1 AND revision<=$2 AND ($3::integer IS NULL OR revision<$3)
-            ORDER BY revision DESC LIMIT $4`, [productId, highWater, pointer?.before ?? null, limits.pageItems + 1]);
-          const receipts: CatalogPublicationReceipt[] = [];
-          let itemBytes = 0;
-          let nextCursor: string | null = null;
-          for (const [index, row] of rows.slice(0, limits.pageItems).entries()) {
-            requireCondition(id.safeParse(row.id).success);
-            const issue = await verifiedIssue(db, row.id as string, productId);
-            requireCondition(issue && issue.head.revision === row.revision);
-            const item = legacyReceipt(issue.receipt);
-            const continuation = index + 1 < rows.length
-              ? encodeCursor({ kind: "history", productId, highWater, before: issue.head.revision }) : null;
-            const itemSize = Buffer.byteLength(publicationJson(item)) + (index === 0 ? 0 : 1);
-            const envelope = Buffer.byteLength(publicationJson({ outcome: "page", receipts: [], limit: limits.pageItems, nextCursor: continuation }));
-            if (envelope + itemBytes + itemSize > limits.historyBytes) {
-              requireCondition(receipts.length, "catalog_publication_history_item_too_large");
-              break;
-            }
-            itemBytes += itemSize;
-            receipts.push(item);
-            nextCursor = continuation;
-          }
-          const result = { outcome: "page" as const, receipts, limit: limits.pageItems, nextCursor };
-          publicationJson(result, limits.historyBytes);
-          return result;
-        });
-      } catch (error) { return legacyFailure(publicationReadFailure(error)); }
+      const result = await native.reads.history(productId, cursor);
+      return "reason" in result ? legacyFailure(result) : result;
     },
     async receipt() {
       return { outcome: "unsupported", reason: "publication_not_supported", message: publicationRemedy("catalog_publication_receipt_unsupported") };
     },
   };
-
-  async function readbackV2(head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure> {
-    try {
-      return await read(async db => {
-        const issue = await exact(db, head);
-        const { product, skus } = issue.manifest;
-        const pointer = decodeCursor(cursor, product.id, "facts");
-        const offset = pointer?.before ?? 0;
-        requireCondition((!pointer || pointer.highWater === head.revision) && offset <= skus.length, "catalog_publication_cursor_invalid", "validation_issue");
-        const wanted = skus.slice(offset, offset + limits.pageItems);
-        const { rows } = await db.query(`SELECT id,octet_length(full_facts) AS bytes FROM public.catalog_sku_revisions
-          WHERE product_id=$1 AND id=ANY($2::uuid[])`, [product.id, wanted.map(ref => ref.revisionId)]);
-        const sizes = new Map(rows.map(row => [row.id, row.bytes]));
-        requireCondition(rows.length === wanted.length && sizes.size === wanted.length, "catalog_publication_sku_revision_invalid");
-        const selected: CatalogSkuRevisionRef[] = [];
-        const emptyPageBytes = Buffer.byteLength(publicationJson({ outcome: "page", schemaVersion: 2, head, product, items: [], nextCursor: null }));
-        let itemBytes = 0;
-        let nextCursor: string | null = null;
-        for (const [index, reference] of wanted.entries()) {
-          const bytes = sizes.get(reference.revisionId);
-          requireCondition(typeof bytes === "number" && bytes >= 2 && bytes <= limits.skuBytes, "catalog_publication_sku_revision_invalid");
-          const continuation = offset + index + 1 < skus.length
-            ? encodeCursor({ kind: "facts", productId: product.id, highWater: head.revision, before: offset + index + 1 }) : null;
-          const base = emptyPageBytes + (continuation === null ? 0 : continuation.length - 2);
-          const itemSize = Buffer.byteLength(publicationJson({ reference, facts: null })) - 4 + bytes + (index === 0 ? 0 : 1);
-          if (base + itemBytes + itemSize > limits.pageBytes) {
-            requireCondition(selected.length, "catalog_publication_readback_item_too_large");
-            break;
-          }
-          itemBytes += itemSize;
-          selected.push(reference);
-          nextCursor = continuation;
-        }
-        const result = { outcome: "page" as const, schemaVersion: 2 as const, head: issue.head, product,
-          items: await issueFacts(db, issue, selected), nextCursor };
-        publicationJson(result, limits.pageBytes);
-        return result;
-      });
-    } catch (error) { return publicationReadFailure(error); }
-  }
 
   async function resolveRetained(input: CatalogRetainedSourceBinding, scope: VerifiedCatalogReadScope) {
     try {
@@ -357,7 +201,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
   }
 
   return {
-    reads, authorize, receipt, readbackV2, resolveRetained,
+    ...native, reads, resolveRetained,
     authorizeReadScope(context: Context): VerifiedCatalogReadScope {
       const scope = Object.freeze({});
       readers.set(scope, { context });
@@ -365,7 +209,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
     },
     readPort(capability: VerifiedCatalogPublisher): CatalogPublicationReadPort {
       return { ...reads, async receipt(scope) {
-        const result = await receipt(scope, capability);
+        const result = await native.receipt(scope, capability);
         return result.outcome === "found" ? { outcome: "found", receipt: legacyReceipt(result.receipt) }
           : result.outcome === "absent" ? result : legacyFailure(result);
       } };

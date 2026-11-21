@@ -15,6 +15,7 @@ export async function readInvoicePaymentEvidence(
   provider: { readPayment(input: { providerPaymentId: string }): Promise<{
     status: "succeeded" | "failed" | "pending" | "unknown"; providerStatus: string; amountMinor: number | null; currency: string | null;
     configuredAmountMinor?: number;
+    failureReason?: string | null;
   }> } | undefined,
 ): Promise<PaymentEvidence> {
   const providerName = payment.provider;
@@ -35,8 +36,11 @@ export async function readInvoicePaymentEvidence(
       ? integerOrNull(readback.configuredAmountMinor ?? null) : null;
     const expectedAmount = integerOrNull(payment.amountCents ?? null);
     const configuredMismatch = configuredAmount !== null && expectedAmount !== null && configuredAmount !== expectedAmount;
+    const unavailableReason = readback.status === "succeeded" && readback.failureReason === "provider_amount_mismatch"
+      ? readback.failureReason
+      : configuredMismatch ? "provider_configured_amount_mismatch" : null;
     return {
-      providerStatus: configuredMismatch ? "unknown" : readback.status,
+      providerStatus: unavailableReason ? "unknown" : readback.status,
       providerAmountCents: capturedAmount,
       providerCurrency: currencyOrNull(readback.currency),
       providerEvidence: {
@@ -46,12 +50,27 @@ export async function readInvoicePaymentEvidence(
         providerStatus: readback.providerStatus.slice(0, 80),
         amountAvailable: capturedAmount !== null,
         ...(configuredAmount !== null ? { configuredComparisonAmountCents: configuredAmount } : {}),
-        ...(configuredMismatch ? { unavailableReason: "provider_configured_amount_mismatch" } : {}),
+        ...(unavailableReason ? { unavailableReason } : {}),
         currencyAvailable: currencyOrNull(readback.currency) !== null,
       },
     };
-  } catch {
+  } catch (error) {
+    if (isPaymentIdentityMismatch(error)) {
+      return {
+        ...unavailable(providerName, payment.providerPaymentId, "provider_payment_identity_mismatch"),
+        providerStatus: "unknown",
+      };
+    }
     return unavailable(providerName, payment.providerPaymentId, "provider_read_failed");
+  }
+}
+
+function isPaymentIdentityMismatch(error: unknown): boolean {
+  try {
+    return (error as { code?: unknown } | null)?.code === "provider_payment_identity_mismatch";
+  } catch {
+    // A throwing property accessor is not structured refusal evidence.
+    return false;
   }
 }
 

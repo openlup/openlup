@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { env as processEnvironment } from "node:process";
 import path from "path";
 import { flatTestTimeoutMs, type DurationSections } from "./scripts/ci-vitest-duration-keys.ts";
+import { WeightedSequencer } from "./scripts/ci-vitest-sequencer.ts";
 import { hasTargetedTestArgs } from "./scripts/disposable-docker.mjs";
 
 // The wrapper pins only its own child; a nested invocation gets a new identity.
@@ -113,6 +114,9 @@ export default defineConfig({
     // path on hosted runners.
     fileParallelism: useSerialCoverage ? false : undefined,
     maxWorkers: useSerialCoverage ? 1 : useCiCoverageWorkers ? 2 : localWorkerCap,
+    sequence: {
+      sequencer: WeightedSequencer,
+    },
     projects: [
       {
         extends: true,

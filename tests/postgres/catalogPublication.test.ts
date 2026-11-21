@@ -1101,52 +1101,6 @@ it.each([["approve", "{'bad':true}"], ["revoke", '{"value":1e999999}']] as const
   },
 );
 
-async function referencesFor(head: Graph["head"]) {
-  return (JSON.parse((await pool.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [head.publicationId]))
-    .rows[0].canonical_state) as CatalogPublicationManifestV2).skus;
-}
-it("admits the maximum inherited observation roster and refuses one more SKU", async () => {
-  const data = { ...fixture(), skuCode: randomUUID().padEnd(160, "x") };
-  const first = await transaction(pool, async db => {
-    const issue = await graph(db, data);
-    issue.facts.status = "archived";
-    await insertGraph(db, issue, { extraSkuCount: 9_998, maxCodes: true });
-    return issue;
-  });
-  const inherited = await referencesFor(first.head);
-  const latest = await transaction(pool, async db => {
-    const issue = await graph(db, data, first.head);
-    issue.facts.status = "archived";
-    await insertGraph(db, issue, { inherited, onlyNew: true, extraSkuCount: 1, maxCodes: true });
-    return issue;
-  });
-  const reader = publicationReader();
-  const current = await reader.reads.current(data.productId);
-  expect(current.outcome).toBe("found");
-  if (current.outcome !== "found") throw Error("No maximum roster returned");
-  expect(current.observations).toHaveLength(10_000);
-  expect(current.observations.every(item => item.sku.length === 160 && item.state === "withdrawn")).toBe(true);
-  const maxRevision = 2_147_483_647;
-  const maxHead = { ...current.head, revision: maxRevision };
-  const maxWire = { ...current, head: maxHead, documentRef: String.fromCharCode(1).repeat(240),
-    observations: current.observations.map(item => ({ ...item, variantRevision: maxRevision, publicationHead: maxHead,
-      draftRef: { ...item.draftRef!, revision: maxRevision } })) };
-  expect(Buffer.byteLength(json(maxWire))).toBeLessThan(CATALOG_PUBLICATION_LIMITS.pageBytes);
-  expect(await reader.reads.readback(latest.head)).toEqual(current);
-  expect(await reader.readbackV2(latest.head)).toMatchObject({ outcome: "page",
-    items: [{ reference: { skuId: current.observations[0]!.variantId } }, ...Array.from({ length: 99 }, () => expect.any(Object))] });
-  const atLimit = await referencesFor(latest.head);
-  const error = await transaction(pool, async db => insertGraph(db, await graph(db, data, latest.head),
-    { inherited: atLimit, onlyNew: true, extraSkuCount: 1, maxCodes: true })).catch(error => error);
-  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_roster_limit" });
-  const replacement = await transaction(pool, async db => {
-    const issue = await graph(db, data, latest.head);
-    await insertGraph(db, issue, { inherited: atLimit, skuRevision: 2 });
-    return issue;
-  });
-  expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: replacement.head });
-}, 120_000);
-
 it("matches the shared publication boundary vectors in native SQL", async () => {
   const issue = await transaction(pool, db => graph(db, fixture()));
   for (const vector of publicationWireVectors) {
@@ -1228,3 +1182,53 @@ it.each([
     });
   }
 });
+
+async function referencesFor(head: Graph["head"]) {
+  return (JSON.parse((await pool.query("SELECT canonical_state FROM public.catalog_publications WHERE id=$1", [head.publicationId]))
+    .rows[0].canonical_state) as CatalogPublicationManifestV2).skus;
+}
+// Run the 10,000-SKU stress test last so earlier whole-DB checks (assertConnectedCatalogPublications) do not scan its leftover SKUs.
+// Temporary 600 s bound: on slower hosted runners this case exceeds 240 s, although it takes about 25 s locally.
+// Most of its time is canonical JSON key ordering during publication admission at COMMIT. Restore 240_000 when
+// the faster canonical JSON path for publication admission lands.
+it("admits the maximum inherited observation roster and refuses one more SKU", async () => {
+  const data = { ...fixture(), skuCode: randomUUID().padEnd(160, "x") };
+  const first = await transaction(pool, async db => {
+    const issue = await graph(db, data);
+    issue.facts.status = "archived";
+    await insertGraph(db, issue, { extraSkuCount: 9_998, maxCodes: true });
+    return issue;
+  });
+  const inherited = await referencesFor(first.head);
+  const latest = await transaction(pool, async db => {
+    const issue = await graph(db, data, first.head);
+    issue.facts.status = "archived";
+    await insertGraph(db, issue, { inherited, onlyNew: true, extraSkuCount: 1, maxCodes: true });
+    return issue;
+  });
+  const reader = publicationReader();
+  const current = await reader.reads.current(data.productId);
+  expect(current.outcome).toBe("found");
+  if (current.outcome !== "found") throw Error("No maximum roster returned");
+  expect(current.observations).toHaveLength(10_000);
+  expect(current.observations.every(item => item.sku.length === 160 && item.state === "withdrawn")).toBe(true);
+  const maxRevision = 2_147_483_647;
+  const maxHead = { ...current.head, revision: maxRevision };
+  const maxWire = { ...current, head: maxHead, documentRef: String.fromCharCode(1).repeat(240),
+    observations: current.observations.map(item => ({ ...item, variantRevision: maxRevision, publicationHead: maxHead,
+      draftRef: { ...item.draftRef!, revision: maxRevision } })) };
+  expect(Buffer.byteLength(json(maxWire))).toBeLessThan(CATALOG_PUBLICATION_LIMITS.pageBytes);
+  expect(await reader.reads.readback(latest.head)).toEqual(current);
+  expect(await reader.readbackV2(latest.head)).toMatchObject({ outcome: "page",
+    items: [{ reference: { skuId: current.observations[0]!.variantId } }, ...Array.from({ length: 99 }, () => expect.any(Object))] });
+  const atLimit = await referencesFor(latest.head);
+  const error = await transaction(pool, async db => insertGraph(db, await graph(db, data, latest.head),
+    { inherited: atLimit, onlyNew: true, extraSkuCount: 1, maxCodes: true })).catch(error => error);
+  expect(catalogPublicationAdmissionRefusal(error)).toMatchObject({ reason: "publication_roster_limit" });
+  const replacement = await transaction(pool, async db => {
+    const issue = await graph(db, data, latest.head);
+    await insertGraph(db, issue, { inherited: atLimit, skuRevision: 2 });
+    return issue;
+  });
+  expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: replacement.head });
+}, 600_000);

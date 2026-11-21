@@ -49,8 +49,8 @@ const pulls = new Map<string, Promise<string>>();
 // Cold pinned pulls can take 300s. Leave bounded startup/readiness and schema
 // installation time inside the same explicit integration hook as the batch gate.
 export const postgresSetupTimeoutMs = 600_000;
-export const postgresTeardownTimeoutMs = 45_000;
-const dockerTimeoutMs = 30_000;
+export const postgresTeardownTimeoutMs = 75_000;
+const dockerTimeoutMs = 60_000;
 const poolCloseTimeoutMs = 5_000;
 
 async function docker(args: string[], operation: string, timeout = dockerTimeoutMs) {
@@ -210,10 +210,10 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
   // Port-conflict retries share one startup budget; they cannot multiply the
   // owning fixture's deadline by the number of attempts. Failed-start cleanup
   // still gets its own removal budget before this function rejects.
-  const deadline = performance.now() + 60_000;
+  const deadline = performance.now() + 90_000;
   const remaining = () => {
     const ms = Math.floor(deadline - performance.now());
-    if (ms <= 0) throw new Error(`PostgreSQL startup deadline exceeded for ${spec.name} (60000ms)`);
+    if (ms <= 0) throw new Error(`PostgreSQL startup deadline exceeded for ${spec.name} (90000ms)`);
     return Math.min(dockerTimeoutMs, ms);
   };
   let lastError: unknown;
@@ -281,8 +281,8 @@ export async function waitForPostgresTcpReady(
   connectionString: string,
   options: PostgresReadyOptions = {},
 ): Promise<boolean> {
-  const attempts = options.attempts ?? 60;
-  const intervalMs = options.intervalMs ?? 1_000;
+  const attempts = options.attempts ?? 300;
+  const intervalMs = options.intervalMs ?? 200;
   const deadline = performance.now() + (options.timeoutMs ?? 60_000);
   const pg = await import("pg");
   const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;

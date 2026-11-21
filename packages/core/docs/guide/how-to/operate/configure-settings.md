@@ -18,6 +18,11 @@ Try these arguments:
 - `show inventory_renewal_protection --json`
 - `explain commerce_setting_unknown`
 
+Try `list --goal "payment retry policy"`, `list --goal "flat shipping"` or
+`list --goal "pause presets"` to find settings the starter declares.
+An application's own settings appear when its script passes the application
+binding.
+
 Each goal word matches the start of a word in the setting’s description, key,
 domain or search terms, including words inside camelCase keys. A nonblank goal
 with no letters or decimal digits returns no results (a blank goal is refused
@@ -32,6 +37,11 @@ invariant, it gives the reason and where to read about the limit. To discover th
 run `./node_modules/.bin/openlup-context search "renewal stock protection horizon"`.
 
 ## Read the effective behavior
+
+Pass `show inventory_renewal_protection --json` to the starter's settings
+script. Then pass `check --configuration <id>` to the same script to find the
+file and symbol holding the configured value. In the demonstration, run
+`./lifecycle up --configuration <id>` with the same ID to apply the changed policy.
 
 Offline `show` for package keys returns catalogue metadata. For a declared
 app setting with a reported value, `show` also returns a file observation with
@@ -85,6 +95,9 @@ the driver or pool manage their own connections.
    `preview` if you need to estimate the effect on a store. Open a pull request
    with the file change and the check results.
 
+For a value change, a `checked` result and a passing application typecheck are
+enough. Skip the full test run and build for the setting itself.
+
 Check uses the settings app binding offline. It opens no database connection
 and performs no writes. Installed rows say “Store: not checked.” The starter
 checks installed policies for drift at boot. Check includes a file location on
@@ -94,6 +107,14 @@ Check reports the application's startup validation when supplied. It uses the
 packaged schema for known package values and the supplied Zod schema for an
 app declaration. A value without an executable schema is marked
 `not-validated` for that row.
+If loading the app or running its startup validation throws an error with a
+nonempty single-line string cause of at most 300 characters and without
+control characters, check appends that cause in parentheses.
+An offer refused with `starter_subscription_offer_invalid` reports its member
+and rule. Other starter refusals such as `starter_lines_above_representation`
+keep their code alone.
+For example, `subscriptionOffers.<mode>.days` points to `days` in the
+`classic` or `sized` offer in the owned store configuration.
 The starter checks its reported configuration ID against the registry and runs
 `assertConfig`. The actual launch and install check their command-line
 arguments and installer package availability. Seed preparation runs after
@@ -119,6 +140,9 @@ same assertion the app runs at startup. For connected effects, use
 ## Declare a setting of your own
 
 Keep the value and its business rule in your application's owned code.
+
+Keep the current value in the configuration file and omit `fallback` and
+`whyThisDefault` from the declaration.
 When a declared value is undefined, the key stays discoverable, show returns its
 descriptor with an offline observation, and check marks its value not reported. For a
 gift wrapping fee, put this in `owned/gift.config.ts` and call

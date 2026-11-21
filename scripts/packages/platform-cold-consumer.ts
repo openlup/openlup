@@ -1883,6 +1883,8 @@ try {
   for (const role of [r,s]) await bootstrap.query("CREATE ROLE " + identifier(role) + " LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS");
   const loginUrl = name => { const u = new URL(connectionString); u.username=name; return u.toString(); };
   if (roleMode === "operator-provisioned") {
+    if (expected.some(entry => entry.file === "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql"))
+      await bootstrap.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS");
     if (admin) await bootstrap.query("CREATE ROLE operator_login LOGIN NOINHERIT CREATEROLE NOCREATEDB NOSUPERUSER NOREPLICATION NOBYPASSRLS");
     const operator = admin ? new pg.Client({connectionString:loginUrl(o)}) : bootstrap;
     if (admin) await operator.connect();

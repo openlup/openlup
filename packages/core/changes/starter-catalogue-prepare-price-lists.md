@@ -1,0 +1,1 @@
+- The starter publication guide shows where Prepare reports missing or ineffective price lists and how to correct the affected draft operation before publishing.

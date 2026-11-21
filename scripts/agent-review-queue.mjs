@@ -110,7 +110,7 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   }
   return receipts;
 }
-export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 20 * 60 * 1000, runGit = git }) {
+export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 3 * 60 * 1000, runGit = git }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');
   const root = `/repos/${env.GITHUB_REPOSITORY}`; const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
   demand(['pull_request', 'merge_group'].includes(env.GITHUB_EVENT_NAME), 'only pull_request and merge_group events are supported');
@@ -157,7 +157,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
-      demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
+      if (!group) demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid, legacyRules }, now: now() }); demand(final.ok, final.reason, final.code);
       console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
@@ -167,7 +167,7 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
     invalidCommentNotice = invalid ? `; receipt comment ${invalid.id}: Review receipt machine block could not be parsed: ${diagnoseReceipt(invalid.body)}. Re-run \`node scripts/agent-review-session.mjs receipt ${prNumber}\` and post its exact output.${v2Remedy}` : '';
     console.log(`needs_agent_review: ${reason}${invalidCommentNotice}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
-  throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
+  throw new Error(`needs_agent_review: bounded 3-minute receipt wait expired; ${reason}${invalidCommentNotice}`);
 }
 // A completed source run hands an existing merge request to GitHub's queue once.
 // This code runs only from trusted main; source objects are never checked out.
@@ -212,7 +212,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   };
   const eligible = pr => pr.state === 'OPEN' && pr.isDraft === false && pr.merged === false && pr.baseRefName === 'main' && pr.headRefOid === source.head_sha;
   const readMergeable = async (checkIntent, beforeRead) => {
-    const maxReads = 7;
+    const maxReads = 13;
     for (let reads = 1; ; reads += 1) {
       if (beforeRead) await beforeRead();
       const pr = await live();
@@ -222,7 +222,7 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
       demand(pr.mergeable !== 'CONFLICTING', 'PR conflicts with main; merge main into the branch and push; auto-merge stays armed');
       demand(pr.mergeable === 'UNKNOWN', 'invalid PR mergeability response');
       demand(reads < maxReads, `PR mergeability is still unknown after ${reads} reads; re-run the Queue Handoff job`);
-      await pauseMergeability(10_000);
+      await pauseMergeability(15_000);
     }
   };
   const skipped = { status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' };

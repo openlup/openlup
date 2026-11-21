@@ -57,7 +57,7 @@ The read port exposes `listPriceLists`, `listExactBaseEntries`,
 `listExactLegacySubscriptionEntries` and `listSubscriptionPolicyHistory`.
 The PostgreSQL implementation reads active lists and active entries with an
 exact base-quantity constraint, retaining their validity intervals. Consult the
-[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
+[API report](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/api/commerce-server-postgres.api.md) and its linked implementation
 for the selection constraint. Policies
 are scoped by list, region, currency and channel.
 
@@ -69,7 +69,7 @@ with no effective revision does not fall back to legacy pricing.
 
 Use this authority for current quote money. Keep frozen renewal obligations
 on the subscription path; do not replace their saved money with a new quote.
-See the [pricing reference](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/packages/platform/README.md#pricing)
+See the [pricing reference](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/README.md#pricing)
 for the surrounding contract.
 
 ## Price a fixed one-time offer

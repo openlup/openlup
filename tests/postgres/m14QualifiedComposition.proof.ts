@@ -692,6 +692,7 @@ async function prove() {
       NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
   }
   if (selection.roleMode === "operator-provisioned") {
+    await bootstrap.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
     for (const name of ["anon", "authenticated", "service_role", "platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"]) {
       await bootstrap.query(`CREATE ROLE ${identifier(name)} NOLOGIN NOINHERIT NOSUPERUSER
         NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);

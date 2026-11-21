@@ -248,7 +248,7 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
   }
   // The old Stripe receipt preferred the requested amount. This alternate
   // identity is restricted to reading a completed historical receipt.
-  const priorAmount = object.amount ?? object.amount_received;
+  const priorAmount = typeof object.amount === "number" ? object.amount : object.amount_received;
   const historicalCaptureFingerprint = result.kind === "money" && result.outcome === "succeeded"
     && typeof priorAmount === "number" && Number.isSafeInteger(priorAmount) && priorAmount > 0
     && priorAmount !== result.money?.amountMinor && normalized.currency

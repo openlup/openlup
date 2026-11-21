@@ -410,6 +410,10 @@ export async function restoreConnectedNativeStore(input: {
       let neutralized = 0;
       for (const table of order) {
         const rows = source.get(table)!;
+        if (table === "subscription_price_policy_revisions") {
+          // Only the policy copy may retain the provenance of a guarded close.
+          await client.query("INSERT INTO public.subscription_price_policy_restore_capabilities VALUES (pg_catalog.pg_current_xact_id())");
+        }
         const b = packet.compatible.tables.find(value => value.table === table);
         // Classic subscriptions and their events use the locked owner path;
         // the generic row importer deliberately refuses their binding triggers.
@@ -455,6 +459,9 @@ export async function restoreConnectedNativeStore(input: {
               .includes(String((JSON.parse(row) as Record<string, unknown>).event_type))) fail("unsupported_table", table);
             await insert(client, rows, row);
           }
+        }
+        if (table === "subscription_price_policy_revisions") {
+          await client.query("DELETE FROM public.subscription_price_policy_restore_capabilities WHERE transaction_id=pg_catalog.pg_current_xact_id()");
         }
         if (table === "payment_provider_attempts") for (const state of source.get("payment_provider_states")!.rows) {
           const updated = await client.query(`UPDATE public.payment_provider_states s
@@ -668,16 +675,21 @@ function parentOrder(table: TableName, rows: readonly string[]): string[] {
 }
 async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
-    // Publication guards validate restored facts and the complete ledger.
-    catalog_products: ["catalog_products_publication_pointer_fence"],
-    catalog_skus: ["catalog_skus_publication_facts_admitted"],
-    catalog_publications: ["catalog_publications_issued"],
+    // Publication guards validate restored facts and the complete ledger. The
+    // live-write binding triggers are scoped to the dedicated publication login.
+    catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write"],
+    catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write"],
+    catalog_sku_identifiers: ["catalog_publication_live_write"],
+    catalog_product_document_revisions: ["catalog_publication_live_write"],
+    catalog_publications: ["catalog_publications_issued", "catalog_publication_record_write_binding", "catalog_publications_open_draft"],
+    price_entries: ["catalog_publication_live_write"],
+    catalog_price_setup_receipts: ["catalog_publication_live_write"],
     catalog_sku_revisions: ["catalog_sku_revisions_issued"],
     catalog_operator_receipts: ["catalog_receipts_issued"],
     catalog_publication_decisions: ["catalog_decisions_issued"],
     catalog_publication_heads: ["catalog_heads_issued"],
     // These guards retain final intervals and recompute the same definition digest.
-    subscription_price_policy_revisions: ["subscription_price_policy_revisions_10_prevent_overlap"],
+    subscription_price_policy_revisions: ["subscription_price_policy_revisions_00_guard_insert", "subscription_price_policy_revisions_10_prevent_overlap"],
     commerce_promotion_definitions: ["commerce_promotion_definition_fingerprint_trigger"],
     clients: ["customer_subject_capture_lifecycle_trigger"], subscription_cycles: ["trg_subscription_delivery_alignment_guard_cycle_insert"],
     commerce_orders: ["trg_commerce_orders_line_sum"], commerce_order_items: ["trg_commerce_order_items_line_sum"],

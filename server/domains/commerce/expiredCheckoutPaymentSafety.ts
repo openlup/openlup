@@ -10,6 +10,7 @@ interface PriorPaymentStatus {
   status: "succeeded" | "failed" | "pending" | "unknown";
   providerStatus: string;
   amountMinor: number | null;
+  failureReason?: string | null;
   currency: string | null;
 }
 
@@ -36,12 +37,16 @@ export function createExpiredCheckoutPaymentSafetyPort(
         let status = await provider.readPayment({
           providerPaymentId: evidence.providerPaymentId,
         });
-        if (status.status === "succeeded") return "paid";
+        if (status.status === "succeeded") {
+          return status.failureReason === "provider_amount_mismatch" ? "unavailable" : "paid";
+        }
         if (status.status !== "failed") return "unavailable";
         if (evidence.provider === "stripe" && status.providerStatus !== "canceled") {
           if (!provider.closePayment) return "unavailable";
           status = await provider.closePayment({ providerPaymentId: evidence.providerPaymentId });
-          if (status.status === "succeeded") return "paid";
+          if (status.status === "succeeded") {
+            return status.failureReason === "provider_amount_mismatch" ? "unavailable" : "paid";
+          }
           if (status.status !== "failed" || status.providerStatus !== "canceled") {
             return "unavailable";
           }

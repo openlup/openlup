@@ -1,1 +1,0 @@
-- Add machine-readable `FULFILLMENT_STATUS_EFFECTS` and `FulfillmentStatusEffect` to `@openlup/core/fulfillment` alongside the unchanged `FULFILLMENT_STATUS_MAP`, exposing domain stock, handover, notification, tracking, and off-track flags without UI prose or locale keys.

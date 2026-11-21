@@ -2,7 +2,7 @@
 
 Use the release policy to understand which application dependencies OpenLup
 promises to preserve and how to plan an upgrade. Consult the
-[versioning policy](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/.github/VERSIONING_AND_EOL.md)
+[versioning policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/VERSIONING_AND_EOL.md)
 for channel commitments, version format and support-window durations.
 
 ## Release evidence
@@ -14,7 +14,7 @@ provenance and first-party consumer evidence. The consumer evidence is a first-p
 demo store installed from npm and a first-party production deployment; no
 independent adoption is claimed. A package's `latest` tag or a
 successful source build does not establish those guarantees. The
-[install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/.github/INSTALL_SUPPORT_POLICY.md)
+[install support policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/INSTALL_SUPPORT_POLICY.md)
 defines the installation and support boundary; use the
 [current limits](limits.md) to choose an evaluation path.
 
@@ -61,6 +61,7 @@ whole public contract:
 - **Minor:** adds contracts or deprecates existing ones without breaking them.
 - **Patch:** fixes defects without intentionally changing the public contract.
 
+See the [release cadence](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/VERSIONING_AND_EOL.md#release-cadence).
 A deprecation must keep the old behavior working, name its replacement and
 explain the upgrade action. Keep the compatibility bridge for the period
 required by the versioning policy, with explicit upgrade notes before removal.
@@ -73,7 +74,7 @@ artifact does not itself contain npm packages.
 
 ## Support window
 
-Check the versioning policy for the [supported minor and maintenance scope](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/.github/VERSIONING_AND_EOL.md#support-window)
+Check the versioning policy for the [supported minor and maintenance scope](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/VERSIONING_AND_EOL.md#support-window)
 and end-of-life rules. Upgrade to the latest minor and reproduce a defect
 there before reporting it. Releases outside their advertised support window
 receive no fixes, including security fixes. Evaluation channels do not acquire
@@ -84,7 +85,7 @@ a support window merely because a later major exists.
 If the unanswered-issue period specified by the versioning policy elapses,
 the project enters exceptional cessation. A notice in that policy and at the
 top of the
-[repository README](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/README.md)
+[repository README](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/README.md)
 records the decision date, exact end-of-maintenance date and last supported
 releases. The repository is archived on or after that date; channels without a
 support commitment may be archived as soon as the condition is recorded.
@@ -131,5 +132,5 @@ Each package's release and compatibility policies, as its release contract decla
 | `@openlup/platform` | compatibilityPolicies | stable | Stable API under SemVer from 1.0.0. Unions and literal sets are open: adding a value is minor; consumers must keep a default branch for unknown values. Removing, renaming or narrowing an export, value or type is major. Symbols tagged @experimental within a stable subpath are outside this promise. |
 | `@openlup/platform` | compatibilityPolicies | testing | Test support only; not a runtime compatibility promise. |
 
-[Versioning and end-of-life policy](https://github.com/openlup/openlup/blob/openlup-core-v1.2.0/.github/VERSIONING_AND_EOL.md)
+[Versioning and end-of-life policy](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/.github/VERSIONING_AND_EOL.md)
 <!-- /generated:versioning -->

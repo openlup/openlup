@@ -8,7 +8,7 @@ import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeySelection, storeJourneyResources,
-  type JourneyInstallation } from "../helpers/storeJourney.js";
+  type JourneyInstallation, type JourneyTargetTemplate } from "../helpers/storeJourney.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const { catalogPublicationAdmissionRefusal } = nativeCatalogPublication;
@@ -17,12 +17,15 @@ const resources = storeJourneyResources();
 const at = "2026-09-15T00:00:00Z";
 const products = [randomUUID(), randomUUID(), randomUUID()];
 const latest = [randomUUID(), randomUUID()];
-let source: JourneyInstallation, target: JourneyInstallation;
+let source: JourneyInstallation, target: JourneyInstallation, targets: JourneyTargetTemplate;
 let packet: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture;
 let targetNumber = 0;
 
 beforeAll(async () => {
-  source = await resources.installation("catalog-source");
+  [source, targets] = await Promise.all([
+    resources.installation("catalog-source"),
+    resources.targetTemplate("catalog-target"),
+  ]);
   for (const [index, product] of products.entries()) {
     await source.owner.query(`INSERT INTO public.catalog_products(id,slug,name,created_at,updated_at)
       VALUES($1,$2,'Synthetic document product',$3,$3)`, [product, `document-product-${index}`, at]);
@@ -48,7 +51,7 @@ beforeAll(async () => {
 }, postgresSetupTimeoutMs);
 
 beforeEach(async () => {
-  target = await resources.installation(`catalog-target-${++targetNumber}`);
+  target = await targets.nextTarget(`catalog-target-${++targetNumber}`);
   freshTarget = await captureStoreJourney(target.owner, "catalog-document-target");
 }, postgresSetupTimeoutMs);
 afterAll(() => resources.close(), postgresTeardownTimeoutMs);
