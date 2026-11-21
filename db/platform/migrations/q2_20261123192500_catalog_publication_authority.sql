@@ -27,12 +27,31 @@ ALTER FUNCTION public.catalog_publication_record_command(jsonb) SECURITY DEFINER
 -- The deferred trigger performs only the existing draft fence no-op update.
 ALTER FUNCTION public.catalog_publication_admit() SECURITY DEFINER;
 
+-- Check the effect (including replay) under the same row fence as the native writer.
+CREATE FUNCTION public.catalog_publication_lock_effective_base_price(p_sku uuid, p_list uuid)
+RETURNS TABLE(id uuid, unit_price_minor integer)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $lock$
+BEGIN
+  PERFORM public.catalog_price_setup_require_human_admin();
+  RETURN QUERY SELECT e.id,e.unit_price_minor FROM public.price_entries e
+  JOIN public.price_lists l ON l.id=e.price_list_id
+  WHERE (e.variant_id,e.price_list_id)=(p_sku,p_list) AND e.mode='one_time' AND e.min_qty=1 AND e.active
+    AND e.amount_kind='gross' AND e.valid_from<=statement_timestamp()
+    AND (e.valid_to IS NULL OR e.valid_to>statement_timestamp())
+    AND l.status='active' AND l.region_code=public.catalog_price_setup_region_code()
+    AND l.currency=public.catalog_price_setup_settlement_currency() AND l.valid_from<=statement_timestamp()
+    AND (l.valid_to IS NULL OR l.valid_to>statement_timestamp())
+  ORDER BY e.id LIMIT 2 FOR NO KEY UPDATE OF e;
+END
+$lock$;
+REVOKE ALL ON FUNCTION public.catalog_publication_lock_effective_base_price(uuid,uuid) FROM PUBLIC;
+
 GRANT SELECT ON public.catalog_products, public.catalog_skus, public.catalog_sku_identifiers,
   public.catalog_product_document_revisions, public.catalog_draft_heads, public.catalog_draft_revisions,
   public.catalog_draft_command_receipts, public.catalog_publications, public.catalog_publication_heads,
   public.catalog_sku_revisions, public.catalog_operator_receipts, public.catalog_publication_decisions,
   public.catalog_publication_pointer_capabilities, public.price_lists, public.price_entries,
-  public.subscription_price_policy_revisions, public.catalog_price_setup_receipts
+  public.subscription_price_policy_revisions
   TO openlup_catalog_publication;
 GRANT SELECT (type_key, version, definition_digest) ON public.catalog_type_versions TO openlup_catalog_publication;
 GRANT SELECT (key, status), UPDATE (status) ON public.catalog_tax_classes TO openlup_catalog_publication;
@@ -40,7 +59,7 @@ GRANT SELECT (key, value_text) ON public.commerce_settings TO openlup_catalog_pu
 GRANT SELECT (principal_id, membership_state, role) ON public.platform_human_memberships TO openlup_catalog_publication;
 
 GRANT INSERT ON public.catalog_publication_pointer_capabilities,
-  public.catalog_attribute_projection, public.catalog_price_setup_receipts TO openlup_catalog_publication;
+  public.catalog_attribute_projection TO openlup_catalog_publication;
 GRANT INSERT (id, slug, name, status) ON public.catalog_products TO openlup_catalog_publication;
 GRANT INSERT (id, product_id, sku, title, status, min_order_qty, is_addon, sellable_standalone, sellable_in_subscription,
   attribute_values, option_values, canonical_option_bytes, combination_digest, net_weight_g, net_content_dimension,
@@ -50,8 +69,6 @@ GRANT INSERT (catalog_sku_id, issuer, identifier_kind, normalized_value, pack_ki
   ON public.catalog_sku_identifiers TO openlup_catalog_publication;
 GRANT INSERT (id, product_id, revision_no, schema_id, document_ref, source_ref, document_payload, digest, provenance)
   ON public.catalog_product_document_revisions TO openlup_catalog_publication;
-GRANT INSERT (price_list_id, variant_id, mode, min_qty, unit_price_minor, amount_kind, active, valid_from)
-  ON public.price_entries TO openlup_catalog_publication;
 
 GRANT UPDATE (current_document_revision_id, slug, name, status, type_key, type_version, variant_axes, attribute_values,
   primary_sku_id, publication_facts, updated_at) ON public.catalog_products TO openlup_catalog_publication;
@@ -63,10 +80,7 @@ GRANT UPDATE (identifier_kind, pack_kind, quantity, is_primary, scheme)
   ON public.catalog_sku_identifiers TO openlup_catalog_publication;
 GRANT UPDATE (revision) ON public.catalog_publication_heads TO openlup_catalog_publication;
 GRANT UPDATE (revision) ON public.catalog_draft_heads TO openlup_catalog_publication;
-GRANT UPDATE (active, valid_to, updated_at) ON public.price_entries TO openlup_catalog_publication;
-GRANT UPDATE (status, response_payload) ON public.catalog_price_setup_receipts TO openlup_catalog_publication;
-GRANT DELETE ON public.catalog_sku_identifiers, public.catalog_publication_pointer_capabilities,
-  public.catalog_price_setup_receipts TO openlup_catalog_publication;
+GRANT DELETE ON public.catalog_sku_identifiers, public.catalog_publication_pointer_capabilities TO openlup_catalog_publication;
 
 -- Permit the tax class row lock while rejecting any resulting update.
 CREATE POLICY publication_select ON public.catalog_tax_classes FOR SELECT TO openlup_catalog_publication USING (true);
@@ -89,16 +103,12 @@ CREATE POLICY publication_insert ON public.catalog_publication_pointer_capabilit
   WITH CHECK (transaction_id = pg_current_xact_id());
 CREATE POLICY publication_delete ON public.catalog_publication_pointer_capabilities FOR DELETE TO openlup_catalog_publication
   USING (transaction_id = pg_current_xact_id());
-CREATE POLICY publication_select ON public.catalog_price_setup_receipts FOR SELECT TO openlup_catalog_publication USING (true);
-CREATE POLICY publication_insert ON public.catalog_price_setup_receipts FOR INSERT TO openlup_catalog_publication WITH CHECK (true);
-CREATE POLICY publication_update ON public.catalog_price_setup_receipts FOR UPDATE TO openlup_catalog_publication USING (true);
-CREATE POLICY publication_delete ON public.catalog_price_setup_receipts FOR DELETE TO openlup_catalog_publication USING (status = 'in_progress');
 
 GRANT USAGE ON SCHEMA auth TO openlup_catalog_publication;
 GRANT EXECUTE ON FUNCTION auth.uid(), public.platform_human_membership_is_administrator(uuid),
   public.catalog_draft_record(uuid,integer), public.catalog_draft_get(uuid,integer,text),
-  public.catalog_price_setup_require_human_admin(), public.catalog_price_setup_claim(text,text),
-  public.catalog_price_setup_lock_context(uuid,uuid), public.catalog_price_setup_apply_claimed(jsonb,timestamptz),
+  public.catalog_price_setup_require_human_admin(), public.catalog_price_setup_apply(text,text),
+  public.catalog_price_setup_lock_context(uuid,uuid), public.catalog_publication_lock_effective_base_price(uuid,uuid),
   public.catalog_price_setup_region_code(), public.catalog_price_setup_settlement_currency(),
   public.catalog_price_setup_policy_digest(uuid,integer,uuid,text,text,text,timestamptz,timestamptz,integer,integer,text),
   public.commerce_offer_policy_v2_readiness(), public.catalog_publication_lock_projection(),

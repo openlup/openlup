@@ -772,6 +772,10 @@ it("commits deferred publication checks through the restricted login", async () 
       "INSERT INTO public.catalog_publication_decisions(actor_id) SELECT NULL::uuid WHERE false",
       "INSERT INTO public.catalog_operator_receipts(actor_id) SELECT NULL::uuid WHERE false",
       "INSERT INTO public.outbox_events(event_type) SELECT NULL::text WHERE false",
+      "INSERT INTO public.price_entries(mode) SELECT NULL::text WHERE false",
+      "INSERT INTO public.catalog_price_setup_receipts(status) SELECT NULL::text WHERE false",
+      "SELECT public.catalog_price_setup_claim(NULL,NULL)",
+      "SELECT public.catalog_price_setup_apply_claimed(NULL,NULL)",
     ]) await refuseStatement(sql);
     await refuseStatement("SELECT public.catalog_publication_record_command('{}'::jsonb)");
     await pool.query("INSERT INTO public.catalog_tax_classes VALUES ('example:standard','Standard','active')");
@@ -798,6 +802,8 @@ it("commits deferred publication checks through the restricted login", async () 
     expect(published, sqlFailure).toMatchObject({ outcome: "committed", receipt: { head: { revision: 1 } } });
     expect((await pool.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows)
       .toEqual([{ revision: 1 }]);
+    expect((await pool.query("SELECT mode,min_qty,amount_kind,unit_price_minor FROM public.price_entries WHERE variant_id=$1", [data.skuId])).rows)
+      .toEqual([{ mode: "one_time", min_qty: 1, amount_kind: "gross", unit_price_minor: 1733 }]);
     expect((await pool.query(`SELECT e.event_type, e.idempotency_key=h.publication_id::text AS matches
       FROM public.outbox_events e JOIN public.catalog_publication_heads h ON h.product_id=e.aggregate_id
       WHERE e.aggregate_id=$1`, [data.productId])).rows).toEqual([{ event_type: "catalog.publication.committed", matches: true }]);
