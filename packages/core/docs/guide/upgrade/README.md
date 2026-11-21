@@ -41,8 +41,8 @@ Plan, reconcile and apply snapshot-managed application files with
 and do not observe the database.
 
 After reconciling application files, validate owned business configuration
-offline with `npm --silent run settings -- check` (or
-`./node_modules/.bin/openlup settings check --app ./owned/settings-host.ts`)
+offline with `./node_modules/.bin/openlup settings check --app ./owned/settings-host.ts`
+(or pass `check` to your starter's `settings` script)
 before running full tests and starting the application. See
 [Configure settings](../how-to/operate/configure-settings.md).
 

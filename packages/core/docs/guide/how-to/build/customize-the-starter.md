@@ -164,11 +164,12 @@ Adding a platform language requires a separate audit of durable SQL constraints.
 
 ## Keep business configuration owned
 
-Before editing a business setting, search platform and starter keys by goal with
-`npm --silent run settings -- list --goal "<goal>"` and inspect the key's owner,
-schema and frozen-record rules. After editing owned configuration, run
-`npm --silent run settings -- check --configuration <id>` to validate the change
-offline before restarting or running full tests. See
+Before editing a business setting, search platform and starter keys by goal by
+passing `list --goal "<goal>"` to your starter's `settings` script (or running
+`./node_modules/.bin/openlup settings --app ./owned/settings-host.ts list --goal "<goal>"`)
+and inspect the key's owner, schema and frozen-record rules. After editing owned
+configuration, pass `check --configuration <id>` to the same script to validate
+the change offline before restarting or running full tests. See
 [Configure settings](../operate/configure-settings.md) for discovery, check,
 preview and MCP usage.
 

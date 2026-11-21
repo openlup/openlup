@@ -107,8 +107,9 @@ async function bindSettings({ database, app, configuration }) {
           if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
             || Object.keys(parsed).length !== 2
             || !Object.hasOwn(parsed, "fixedThroughCycle") || !Object.hasOwn(parsed, "graduationCycle")
-            || !Number.isSafeInteger(parsed.fixedThroughCycle) || parsed.fixedThroughCycle < 1
-            || !Number.isSafeInteger(parsed.graduationCycle) || parsed.graduationCycle < 1) {
+            || !Number.isSafeInteger(parsed.fixedThroughCycle) || parsed.fixedThroughCycle < 1 || parsed.fixedThroughCycle > 2147483647
+            || !Number.isSafeInteger(parsed.graduationCycle) || parsed.graduationCycle < 1 || parsed.graduationCycle > 2147483647
+            || parsed.graduationCycle <= parsed.fixedThroughCycle) {
             throw new Error("subscription_edit_invalid_sized_configuration");
           }
           return {

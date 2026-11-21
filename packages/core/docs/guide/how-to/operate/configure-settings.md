@@ -1,6 +1,6 @@
 # Configure settings
 
-The settings tool answers four questions before you change store behavior: what can be changed, where the value lives, what changing it does (including which existing records keep their original values) and how to check a proposed edit. It is available through two equivalent entry points: the command line (`openlup settings ...` or `npm --silent run settings -- ...` in a starter) and a read-only MCP server (`openlup settings mcp`). It writes nothing: discovery, check and preview are strictly read-only. The [Settings catalogue](settings-catalogue.md) covers platform settings, capabilities and invariants; your application's settings script adds settings declared by the app. This discovery surface is experimental.
+The settings tool answers four questions before you change store behavior: what can be changed, where the value lives, what changing it does (including which existing records keep their original values) and how to check a proposed edit. It is available through two equivalent entry points: the command line (`openlup settings ...` or your starter's `settings` script) and a read-only MCP server (`openlup settings mcp`). It writes nothing: discovery, check and preview are strictly read-only. The [Settings catalogue](settings-catalogue.md) covers platform settings, capabilities and invariants; your application's settings script adds settings declared by the app. This discovery surface is experimental.
 
 ## Find a setting
 
@@ -42,10 +42,14 @@ file and symbol holding the configured value. In the demonstration, run
 Offline `show` for package keys returns catalogue metadata. For a declared
 app setting with a reported value, `show` also returns a file observation with
 the configuration selected by the binding and the value it reports. For
-inventory and reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
+`inventory_renewal_protection`, `subscription_minimum_base_units`,
+`subscription_sized_intro_phase`, `shipping_flat_minor`, and (with `--app`)
+reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
-inventory row uses the platform fallback. For unpinned reminder episodes, an
+`inventory_renewal_protection` or `shipping_flat_minor` row uses the platform fallback,
+whereas an absent `subscription_minimum_base_units` or `subscription_sized_intro_phase`
+row reports `absent` (fail-closed refusal until a valid row is installed). For unpinned reminder episodes, an
 absent row uses the host call parameters for checkout recovery and the 1, 24 and
 72 hour schedule for abandoned carts. The connected read shows the live setting
 or fallback. For a pinned order and reminder kind, [the pin supplies timing](../build/checkout-recovery.md#install-reminder-stages-and-hours).
@@ -86,7 +90,7 @@ the driver or pool manage their own connections.
 To change an installed policy such as `inventory_renewal_protection` in the starter:
 
 1. Edit the configured policy value and revision in `owned/store.config.ts`.
-2. Run offline validation: `npm --silent run settings -- check --configuration <id>`.
+2. Run offline validation by passing `check --configuration <id>` to your starter's `settings` script.
 3. Preview the proposed policy against the store database with `preview` before installing.
 4. Install the updated policy with `./lifecycle up --configuration <id>`.
 5. Verify the live installed row with a connected `show --database-url ...`.
@@ -94,7 +98,7 @@ To change an installed policy such as `inventory_renewal_protection` in the star
 In the Docker Compose local demonstration, the `database` service does not publish a port on the host, while connected `openlup settings` commands require a TCP connection. Run connected `show` and `preview` inside the `application` container on the Compose network:
 
 ```sh
-docker compose exec application npm --silent run settings -- show inventory_renewal_protection --database-url postgresql://starter_runtime@database:5432/neutral_store --json
+docker compose exec application ./node_modules/.bin/openlup settings --app ./owned/settings-host.ts show inventory_renewal_protection --database-url postgresql://starter_runtime@database:5432/neutral_store --json
 ```
 
 Pass the same `--database-url` to `preview` inside `docker compose exec application` when estimating stock availability before reinstalling. To inspect the database directly with `psql`, run:
@@ -269,7 +273,9 @@ The module must avoid starting the application, writing data or printing to
 stdout. Pass an explicit `--app` only for application code you trust.
 
 List, show and explain work for platform keys without an app or database. With a
-PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
+PostgreSQL URL, the built-in readers can show the installed row (or fallback or
+absent state) for `inventory_renewal_protection`, `subscription_minimum_base_units`,
+`subscription_sized_intro_phase`, and `shipping_flat_minor`.
 A stock preview needs the application's stock source. A connected reminder
 show needs the application's checkout wave policy. A connected show of any
 installed setting requires a reader for that key. Supply `--app` to read app

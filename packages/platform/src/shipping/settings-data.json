@@ -26,9 +26,9 @@
     "examples": [],
     "fallback": null,
     "defaultBasis": {"kind": "neutral"},
-    "whyThisDefault": "With no resolveQuoteShippingPromotions callback bound (for example via createQuoteShippingPromotions from @openlup/platform/promotions), quotes perform no shipping-rate or shipping-promotion evaluation by default.",
-    "effect": {"appliesTo": "New checkout quotes call the bound resolveQuoteShippingPromotions callback from @openlup/platform/pricing (composed via createQuoteShippingPromotions from @openlup/platform/promotions) during quote calculation.", "frozenOn": ["Saved checkout quotes and order drafts retain their recorded shipping amounts and terms."], "impact": "money"},
-    "runtime": {"level": "read-only", "reason": "The callback is executable server code implementing resolveQuoteShippingPromotions / createQuoteShippingPromotions."},
+    "whyThisDefault": "When the optional resolveQuoteShippingPromotions callback property on DbBackedCommerceQuotePortDeps from @openlup/platform/pricing is omitted, createDbBackedCommerceQuotePort uses shippingFlatMinor if supplied (omitting quote shipping fields when shippingFlatMinor is also absent) and still runs resolveAutomaticQuotePromotions and applyPromotionCodesV2 (including shipping discounts).",
+    "effect": {"appliesTo": "New checkout quotes call the optional resolveQuoteShippingPromotions callback property on DbBackedCommerceQuotePortDeps from @openlup/platform/pricing (for example composed via createQuoteShippingPromotions from @openlup/platform/promotions) during quote calculation.", "frozenOn": ["Saved checkout quotes and order drafts retain their recorded shipping amounts and terms."], "impact": "money"},
+    "runtime": {"level": "read-only", "reason": "The callback is executable server code bound as the optional resolveQuoteShippingPromotions property on DbBackedCommerceQuotePortDeps from @openlup/platform/pricing (for example via createQuoteShippingPromotions from @openlup/platform/promotions)."},
     "change": {"reference": "docs/guide/how-to/build/customize-the-starter.md#compose-shipping-quotes"},
     "rules": []
   },

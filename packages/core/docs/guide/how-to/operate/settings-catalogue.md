@@ -506,7 +506,7 @@ Search terms include carrier, shipping provider, courier, shipping rate calculat
 - Owner **shipping** · kind **callback** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- With no resolveQuoteShippingPromotions callback bound (for example via createQuoteShippingPromotions from @openlup/platform/promotions), quotes perform no shipping-rate or shipping-promotion evaluation by default.
+- When the optional resolveQuoteShippingPromotions callback property on DbBackedCommerceQuotePortDeps from @openlup/platform/pricing is omitted, createDbBackedCommerceQuotePort uses shippingFlatMinor if supplied (omitting quote shipping fields when shippingFlatMinor is also absent) and still runs resolveAutomaticQuotePromotions and applyPromotionCodesV2 (including shipping discounts).
 
 Show offline: `show shipping.rateResolver --json`.
 
@@ -555,7 +555,7 @@ Search terms include sized editing, intro phase, fixed cycle, graduation cycle, 
 - Owner **subscriptions** · kind **installed** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- The platform provides no implicit introductory phase cutoff; stores must explicitly install fixedThroughCycle and graduationCycle in commerce_settings when introductory subscriptions use sized editing.
+- The platform provides no implicit introductory phase cutoff; stores must explicitly install fixedThroughCycle and graduationCycle (positive 32-bit integers with graduationCycle > fixedThroughCycle) in commerce_settings when introductory subscriptions use sized editing.
 - When absent, introductory starter-pack subscriptions fail closed in SQL with subscription_edit_invalid_sized_configuration when no valid JSON row is installed in commerce_settings.value_text. In the starter, owned/subscription-editing.ts holds the code copy while owned/demo-seed.ts installs the matching database copy; keep both aligned.
 
 Show offline: `show subscription_sized_intro_phase --json`.
@@ -642,7 +642,7 @@ Search terms include account commands, pause presets, skip, slide, cancel, react
 - Owner **subscriptions** · kind **callback** · runtime **read-only**
 - Default uses the documented behavior below.
 - Basis `neutral`.
-- Omitting admitSubscriptionCommand (SubscriptionCommandAdmission from @openlup/platform/subscriptions) preserves native command behavior across all supported lifecycle actions subject to platform state and payment fences.
+- Omitting admitSubscriptionCommand on NativeSubscriptionCommandBinding from @openlup/platform/subscriptions (typed as SubscriptionCommandAdmission from @openlup/platform/subscriptions/contracts) preserves native command behavior across all supported lifecycle actions subject to platform state and payment fences.
 
 Show offline: `show subscriptions.lifecycleCommandAdmission --json`.
 

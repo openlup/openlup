@@ -883,7 +883,7 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // Stage 4 Wave 4B packaged callback and single-row installed entries,
   // and Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5).
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("1f017cae2b47ddebe8d450b14b125fa0482576b25be14b5765aac8b3bbd3505f");
+    .toBe("6ea42484341f94df44d723a389fd7de2660f88b6e789f186435f305b00ff8550");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {
