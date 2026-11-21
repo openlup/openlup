@@ -11,6 +11,9 @@ import { generatedCarrier, SQL_REFERENCE } from './agent-review-generators.mjs';
 const INVENTORY_INPUT_PATHS = new Set([
   ...MIGRATION_REGISTRIES,
   INVENTORY_PATH,
+  'config/ci-images.json',
+  'scripts/ci-image-pull.mjs',
+  'scripts/ci-image-mirror.mjs',
   'scripts/platform-migration-manifest.ts',
   'scripts/installation-inventory-refresh.ts',
   'server/adapters/postgres/migrationRunner.ts',

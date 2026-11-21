@@ -23,8 +23,10 @@ function collectImportClosure(entry: string) {
     const walk = (node: ts.Node) => {
       if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
         checkSpecifier(node.moduleSpecifier.text);
-      } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0])) {
-        checkSpecifier(node.arguments[0].text);
+      } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        const firstArg = node.arguments[0];
+        expect(Boolean(firstArg && ts.isStringLiteralLike(firstArg)), `${path}: dynamic import must use a string literal specifier`).toBe(true);
+        if (firstArg && ts.isStringLiteralLike(firstArg)) checkSpecifier(firstArg.text);
       }
       ts.forEachChild(node, walk);
     };
