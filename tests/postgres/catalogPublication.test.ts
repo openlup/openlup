@@ -1286,7 +1286,7 @@ it.each([
 
 // Run the 10,000-SKU stress test last so earlier whole-DB checks (assertConnectedCatalogPublications) do not scan its leftover SKUs.
 // 20261124170000_catalog_publication_commit_perf.sql optimizes canonical JSON formatting and carrier scans at COMMIT,
-// keeping this stress test well within the 240 s bound.
+// but hosted merge-queue shards have exceeded 240 s here, so keep 600 s until their timings are well under it.
 it("admits the maximum inherited observation roster and refuses one more SKU", async () => {
   const { data, latest } = await publishMaximumRoster(pool);
   const reader = publicationReader();
@@ -1314,4 +1314,4 @@ it("admits the maximum inherited observation roster and refuses one more SKU", a
     return issue;
   });
   expect(await reader.reads.current(data.productId)).toMatchObject({ outcome: "found", head: replacement.head });
-}, 240_000);
+}, 600_000);
