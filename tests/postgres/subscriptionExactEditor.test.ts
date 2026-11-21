@@ -9,8 +9,10 @@ import type { ExactSubscriptionEditRequest, PackageEditorOptions } from "@openlu
 import { createPostgresAccountReadSources, createPostgresCustomerOrderHistoryReadStore } from "@openlup/platform/account-support";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery } from "@openlup/platform/communications";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
+import { checkEditDisclosureQuotePort, projectEditDisclosure, readCompleteEditBaseline } from "@openlup/platform/subscriptions";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { disclosureOwner, disclosurePresentation } from "./subscriptionEditDisclosureFixture.js";
 const at = "2026-11-05T12:00:00.000Z", next = "2026-12-05T12:00:00.000Z";
 let container: PostgresContainer | undefined, owner: Pool, installer: Pool, runtime: Pool, browser: Pool;
 let runtimeUrl: string;
@@ -121,6 +123,32 @@ const rows = async (f: Fixture) => (await owner.query("SELECT * FROM public.subs
 async function unchangedService(f: Fixture) {
   return (await owner.query("SELECT status,next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0];
 }
+it("projects exact removals and additions with the actual repriced unchanged add-on", async () => {
+  const f = await fixture();
+  const baseline = await readCompleteEditBaseline(runtime, { clientId: f.client, subscriptionId: f.subscription });
+  const deps = options(f);
+  const repricer = createExactSubscriptionRepricer({ ...deps, quotePort: checkEditDisclosureQuotePort(baseline.currency, deps.quotePort),
+    readPort: createPostgresPackageEditReadPort(runtime) });
+  const request = { subscriptionId: f.subscription, action: "swap_base_line", fromVariantId: f.sku, toVariantId: f.target } as const;
+  const quote = await repricer.quote(request);
+  if (!quote) throw new Error("fixture quote missing");
+  const { disclosure } = projectEditDisclosure({ lane: "exact", actorId: f.actor, baseline, request, quote,
+    owner: disclosureOwner(28, 700, 959), presentation: disclosurePresentation });
+  expect(disclosure.lines).toMatchObject([
+    { kind: "removed", sku: f.sku, agreed: { quantity: 4, unitAmount: { amountMinor: 100 } }, proposed: null },
+    { kind: "retained", sku: f.addon, isAddon: true, agreed: { quantity: 3, unitAmount: { amountMinor: 100 } },
+      proposed: { quantity: 3, unitAmount: { amountMinor: 137 } }, unitDelta: { amountMinor: 37 } },
+    { kind: "added", sku: f.target, agreed: null, proposed: { quantity: 4, unitAmount: { amountMinor: 137 } } },
+  ]);
+  const unchanged = { ...request, toVariantId: f.sku };
+  const noopQuote = await repricer.quote(unchanged);
+  if (!noopQuote) throw new Error("fixture quote missing");
+  const kept = projectEditDisclosure({ lane: "exact", actorId: f.actor, baseline, request: unchanged, quote: noopQuote,
+    owner: disclosureOwner(28, 700, 959), presentation: disclosurePresentation }).disclosure;
+  expect(kept.disposition).toBe("keeps_agreement");
+  expect(kept.lines.map(line => line.proposed?.unitAmount.amountMinor)).toEqual([100, 100]);
+});
+
 it("keeps swap identity observable through the owned account read and refuses a duplicate target atomically", async () => {
   const f = await fixture(), before = await rows(f), service = await unchangedService(f);
   const payload = await evidence(f, { action: "swap_base_line", fromVariantId: f.sku, toVariantId: f.target });

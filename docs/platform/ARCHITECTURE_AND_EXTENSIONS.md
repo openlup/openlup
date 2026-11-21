@@ -2418,6 +2418,13 @@ records the unchanged contribution and type-only M07 projection.
 [Characterization](../../packages/platform/test/subscriptions/renewalCycleMechanism.test.ts) preserves
 order, replay, receivers, raw errors and stored-null retry behavior.
 
+The experimental `SubscriptionEditDisclosure` type describes what the host
+renders for an edit review. Its version, locale, labels, agreed and proposed
+amounts, cadence and effective cycle are part of the sealed display. Each
+amount carries its currency and basis. A recurring estimate carries its
+display label and versioned owner evidence. The editor integration will
+consume the sealed disclosure when the consented write is available.
+
 Preserve original schedule text and all host-generated key bytes. A due listing
 is not a lease. Logical cycle numbers require evidence-bound correlation with
 activation and the native counter; legacy ambiguity stays explicit. Native

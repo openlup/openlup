@@ -5,10 +5,12 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery } from "@openlup/platform/communications";
 import type { PackageEditorOptions } from "@openlup/platform/subscriptions";
-import { createPostgresLifecycleMessages, createPostgresPackageEditor } from "@openlup/platform/subscriptions";
+import { createClassicPackageRepricer, createPostgresLifecycleMessages, createPostgresPackageEditor, createPostgresPackageEditReadPort } from "@openlup/platform/subscriptions";
 import { createDbBackedCommerceQuotePort } from "@openlup/platform/pricing";
+import { checkEditDisclosureQuotePort, projectEditDisclosure, readCompleteEditBaseline } from "@openlup/platform/subscriptions";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { disclosureOwner, disclosurePresentation } from "./subscriptionEditDisclosureFixture.js";
 
 const at = "2026-11-05T12:00:00.000Z", next = "2026-12-05T12:00:00.000Z";
 let container: PostgresContainer | undefined, owner: Pool, installer: Pool, runtime: Pool, browser: Pool;
@@ -237,20 +239,39 @@ it("re-quotes against real changed prices, refuses the stale hash without writes
     hasPromotionCodePort: false, resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
     applyPromotionCodesV2: async () => ({ discounts: [], codeRejections: [], codeRejectionDetails: [] }),
     lineContext: () => ({}), quoteContext: input => () => ({ mode: input.mode, cadenceDays: input.cadenceDays, promoCodes: input.promoCodes }) });
-  const editor = createPostgresPackageEditor({ quotePort: engine, quoteCatalogReadPort: catalog, now: () => at,
+  const options: PackageEditorOptions = { quotePort: engine, quoteCatalogReadPort: catalog, now: () => at,
     limits: { maximumPlanDays: 90, maximumBaseLines: 6, maximumAddonLines: 12, maximumQuantity: 99 },
     constraintMapper: { toCore: stored => ({ kind: "configured", version: 1, data: stored ?? {} }), fromCore: value => value.data, nominalPlanDays: () => null },
     compositionRulesPort: { validateComposition: async () => ({ ok: true }), resizeComposition: async () => null },
     async withTransaction(work) {
       const db = await runtime.connect(); try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
       catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
-    } });
+    } };
+  const editor = createPostgresPackageEditor(options);
   const request = { subscriptionId: f.subscription, planDays: 28, base: [{ variantId: f.sku, qty: 6 }], addons: [{ variantId: f.addon, qty: 3 }] };
   const old = await editor.preview({ actorId: f.actor, clientId: f.client }, request);
   await owner.query("UPDATE public.price_entries SET unit_price_minor=137 WHERE price_list_id=$1", [list]);
   await refuses(() => editor.apply({ actorId: f.actor, clientId: f.client }, "stale-live-price", { ...request, acceptedQuoteHash: old.quoteHash }), "subscription_reprice_quote_not_accepted");
   const fresh = await editor.preview({ actorId: f.actor, clientId: f.client }, request);
   expect(fresh.quoteHash).not.toBe(old.quoteHash);
+  const baseline = await readCompleteEditBaseline(runtime, { clientId: f.client, subscriptionId: f.subscription });
+  const repricer = createClassicPackageRepricer({ ...options, quotePort: checkEditDisclosureQuotePort(baseline.currency, engine),
+    readPort: createPostgresPackageEditReadPort(runtime) });
+  const disclosureInput = { lane: "classic" as const, actorId: f.actor, baseline, presentation: disclosurePresentation };
+  const { disclosure } = projectEditDisclosure({ ...disclosureInput, request, quote: await repricer.quote(request), owner: disclosureOwner(28, 725, 1258) });
+  expect(disclosure.agreed.payment.amount.amountMinor).toBe(725);
+  expect(disclosure.proposed.payment.amount.amountMinor).toBe(1258);
+  expect(disclosure.lines).toMatchObject([
+    { isAddon: false, agreed: { quantity: 4, unitAmount: { amountMinor: 100 } }, proposed: { quantity: 6, unitAmount: { amountMinor: 137 } } },
+    { isAddon: true, agreed: { quantity: 3, unitAmount: { amountMinor: 100 } }, proposed: { quantity: 3, unitAmount: { amountMinor: 137 } } },
+  ]);
+  const unchanged = { ...request, base: [{ variantId: f.sku, qty: 4 }] };
+  const noopQuote = await repricer.quote(unchanged);
+  expect(noopQuote.newRecurringPrice).not.toEqual(money(700));
+  const kept = projectEditDisclosure({ ...disclosureInput, request: unchanged, quote: noopQuote, owner: disclosureOwner(28, 725, 984) }).disclosure;
+  expect(kept).toMatchObject({ disposition: "keeps_agreement", agreed: kept.proposed, effectiveCycle: { scheduledAt: "2026-12-05T12:00:00Z" } });
+  expect(kept.proposed.payment.amount.amountMinor).toBe(725);
+  expect(kept.lines.map(line => line.proposed?.unitAmount.amountMinor)).toEqual([100, 100]);
   const acceptedRequest = { ...request, acceptedQuoteHash: fresh.quoteHash };
   const result = await editor.apply({ actorId: f.actor, clientId: f.client }, "fresh-live-price", acceptedRequest);
   expect(result).toMatchObject({ status: "applied", templateVersion: 2 });
@@ -263,6 +284,16 @@ it("re-quotes against real changed prices, refuses the stale hash without writes
   await minimum("4");
 }, 30_000);
 
+it("requires a complete owned retained template in the agreement currency", async () => {
+  const f = await fixture();
+  const subject = { clientId: f.client, subscriptionId: f.subscription };
+  await expect(readCompleteEditBaseline(runtime, { ...subject, clientId: randomUUID() })).rejects.toThrow("baseline_unavailable");
+  await owner.query("UPDATE public.subscription_renewal_terms SET currency_code='USD' WHERE subscription_id=$1", [f.subscription]);
+  await expect(readCompleteEditBaseline(runtime, subject)).rejects.toThrow("currency_mismatch");
+  await owner.query("UPDATE public.subscription_renewal_terms SET currency_code='XXX' WHERE subscription_id=$1", [f.subscription]);
+  await owner.query("DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1 AND sku=$2", [f.subscription, f.addon]);
+  await expect(readCompleteEditBaseline(runtime, subject)).rejects.toThrow("baseline_unavailable");
+});
 
 it.each([
   { kind: "unit_count", value: 8, retained: { source: "host", units: [2, 6] } },

@@ -516,6 +516,115 @@ export type SizedEditPreview = PackageEditPreview<SizedEditAction>;
 export type SizedEditApplyResult = PackageEditApplyResult<SizedEditAction>;
 export {};
 ```
+## dist/subscriptions/editConsentBaseline.d.ts
+
+```ts
+import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+/** Read a matched template and full renewal agreement in one snapshot for an authorized subject.
+ * @experimental
+ */
+export declare function readCompleteEditBaseline(db: SubscriptionQueryExecutor, subject: {
+    clientId: string;
+    subscriptionId: string;
+}): Promise<{
+    currency: string;
+    lines: {
+        lineId: string;
+        variantId: string;
+        isAddon: boolean;
+        ordinal: number;
+        sku: string;
+        quantity: number;
+        unitAmountMinor: number;
+    }[];
+    clientId: string;
+    subscriptionId: string;
+    templateVersion: number;
+    cadenceDays: number;
+    constraint: Record<string, unknown> | null;
+    scheduledAt: string;
+    editCutoffAt: string;
+}>;
+export type EditAgreementBaseline = Awaited<ReturnType<typeof readCompleteEditBaseline>>;
+```
+## dist/subscriptions/editConsentProjection.d.ts
+
+```ts
+import type { SubscriptionEditDisclosure, SubscriptionEditOwnerEvidence, SubscriptionEditRecurringTerms, SubscriptionEditAmount } from "./contracts/editConsent.js";
+import type { ExactSubscriptionEditQuote, ExactSubscriptionEditRequest } from "./contracts/exactEdit.js";
+import type { PackageEditMoney, PackageEditQuote, PackageEditQuoteLine, PackageEditRequest } from "./contracts/packageEdit.js";
+import type { SizedEditRequest } from "./contracts/sizedEdit.js";
+import type { EditAgreementBaseline } from "./editConsentBaseline.js";
+import type { quoteSizedEdit } from "./sizedEditQuote.js";
+type LaneQuote = {
+    lane: "classic";
+    request: PackageEditRequest;
+    quote: PackageEditQuote;
+} | {
+    lane: "exact";
+    request: ExactSubscriptionEditRequest;
+    quote: ExactSubscriptionEditQuote;
+} | {
+    lane: "sized";
+    request: SizedEditRequest;
+    normalizedRequest: SizedEditRequest;
+    quote: Awaited<ReturnType<typeof quoteSizedEdit>>;
+};
+type LineLabel = (line: {
+    variantId: string;
+    sku: string;
+    isAddon: boolean;
+}, side: "agreed" | "proposed") => string;
+/** The pricing owner resolves payable or a labeled estimate for the selected cycle.
+ * A bare renewal term amount does not establish its basis.
+ */
+interface EditDisclosureOwnerFacts {
+    agreedUnitBasis(line: EditAgreementBaseline["lines"][number]): {
+        basis: SubscriptionEditAmount["basis"];
+        evidence: SubscriptionEditOwnerEvidence;
+    } | undefined;
+    agreed: SubscriptionEditRecurringTerms;
+    proposed?: SubscriptionEditRecurringTerms;
+    cycleNumber: number;
+    cycleEvidence: SubscriptionEditOwnerEvidence;
+    labelLine: LineLabel;
+}
+/** Wrap only the disclosure pricing call. Check the authoritative response before
+ * a lane drops summary currency or combines it with frozen lines.
+ * @experimental
+ */
+export declare function checkEditDisclosureQuotePort<Request extends {
+    lines: readonly {
+        sku: string;
+        quantity: number;
+    }[];
+}, Result extends {
+    quote: {
+        lines: readonly PackageEditQuoteLine[];
+        totalGross: PackageEditMoney;
+        subtotalGross: PackageEditMoney;
+        discountTotalGross: PackageEditMoney;
+    };
+}>(currency: string, port: {
+    createServerAuthoritativeQuote(request: Request): Promise<Result>;
+}): {
+    createServerAuthoritativeQuote(request: Request): Promise<Result>;
+};
+/** Seal an existing lane's quoted proposal against retained terms and resolved owner facts.
+ * @experimental
+ */
+export declare function projectEditDisclosure(input: LaneQuote & {
+    actorId: string;
+    baseline: EditAgreementBaseline;
+    owner: EditDisclosureOwnerFacts;
+    presentation: SubscriptionEditDisclosure["presentation"];
+}): {
+    disclosure: SubscriptionEditDisclosure;
+    canonicalDisplay: string;
+    hash: string;
+};
+export {};
+```
 ## dist/subscriptions/exactEditQuote.d.ts
 
 ```ts
@@ -588,6 +697,8 @@ export { createPostgresSubscriptionWinback } from "./postgresWinback.js";
 export type { NativeWinbackOptions } from "./postgresWinback.js";
 export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
 export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
+export { readCompleteEditBaseline } from "./editConsentBaseline.js";
+export { checkEditDisclosureQuotePort, projectEditDisclosure } from "./editConsentProjection.js";
 export { createPostgresPackageEditor } from "./packageEditor.js";
 export { createPostgresSizedEditor, createOfferDispatchedSubscriptionEditor, mapSizedEditError } from "./sizedEditor.js";
 export { createSizedParcelProjection } from "./sizedParcelProjection.js";
@@ -824,10 +935,10 @@ export declare function createNativeSubscriptionBinding(input: {
     realizationAdmitted(orderId: string): Promise<{
         kind: "refused";
         code: string;
-    } | import("./contracts/stockWait.js").StockWaitCase | {
+    } | {
         readonly kind: "refused";
         readonly code: "disabled";
-    } | null>;
+    } | import("./contracts/stockWait.js").StockWaitCase | null>;
 };
 ```
 ## dist/subscriptions/nativeSubscriptionSchema.d.ts

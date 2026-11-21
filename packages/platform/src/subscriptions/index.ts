@@ -61,6 +61,8 @@ export type { NativeWinbackOptions } from "./postgresWinback.js";
 
 export { createClassicPackageRepricer, hashPackageEditQuote } from "./classicPackageQuote.js";
 export { createPostgresPackageEditReadPort } from "./packageEditRead.js";
+export { readCompleteEditBaseline } from "./editConsentBaseline.js";
+export { checkEditDisclosureQuotePort, projectEditDisclosure } from "./editConsentProjection.js";
 export { createPostgresPackageEditor } from "./packageEditor.js";
 export { createPostgresSizedEditor, createOfferDispatchedSubscriptionEditor, mapSizedEditError } from "./sizedEditor.js";
 export { createSizedParcelProjection } from "./sizedParcelProjection.js";

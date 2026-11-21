@@ -1,0 +1,1 @@
+- Add an experimental display contract for comparing retained and proposed subscription terms, with distinct amount bases, recurring payable or labeled estimates, cadence and the effective cycle.

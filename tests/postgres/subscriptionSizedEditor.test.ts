@@ -9,8 +9,10 @@ import { createPostgresSizedEditor, readSizedEditContext, quoteSizedEdit, create
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import type { SizedCatalogFact, SizedEditRequest, SizedEditorOptions, SizedQuoteLine, SizedRecurringQuote, SizedEditPolicy } from "@openlup/platform/subscriptions";
 import { createCapturedTransactionalDelivery, createPostgresTransactionalDeliveryStore, createTransactionalDelivery } from "@openlup/platform/communications";
+import { checkEditDisclosureQuotePort, projectEditDisclosure, readCompleteEditBaseline } from "@openlup/platform/subscriptions";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady,
   type PostgresContainer } from "../helpers/postgresContainer.js";
+import { disclosureOwner, disclosurePresentation } from "./subscriptionEditDisclosureFixture.js";
 const at = "2026-11-06T12:00:00.000Z", next = "2026-12-20T12:00:00.000Z";
 const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
 function quoteLine(sku: string, quantity: number, unit = 100): SizedQuoteLine & Record<string, unknown> {
@@ -186,6 +188,27 @@ it("quotes only changed lines, retains complete agreed bytes and add-on identity
   const after = await protectedState(f); expect(after.subscription_cycles).toEqual(before.subscription_cycles); expect(after.subscription_delivery_alignment_cases).toEqual(before.subscription_delivery_alignment_cases);
   expect((after.subscriptions as { row: Record<string, unknown> }[])[0].row.next_cycle_at).toBe((before.subscriptions as { row: Record<string, unknown> }[])[0].row.next_cycle_at);
 });
+it("projects the sized owner's merged proposal with retained add-on money", async () => {
+  const f = await fixture(); await bind(f);
+  const baseline = await readCompleteEditBaseline(runtime, { clientId: f.client, subscriptionId: f.subscription });
+  const context = await readSizedEditContext(runtime, f.client, f.subscription);
+  const input = request(f, 5, false), host = options(f);
+  const quote = await quoteSizedEdit({ db: runtime, context, request: input, policy, point: "preview",
+    host: { ...host, quotePort: checkEditDisclosureQuotePort(baseline.currency, host.quotePort) } });
+  const { disclosure } = projectEditDisclosure({ lane: "sized", actorId: f.actor, baseline, request: input, normalizedRequest: input, quote,
+    owner: disclosureOwner(20, 500, 785), presentation: disclosurePresentation });
+  expect(f.quoted).toEqual([[f.a]]);
+  expect(disclosure.lines).toMatchObject([
+    { kind: "retained", sku: f.a, agreed: { quantity: 4, unitAmount: { amountMinor: 100 } }, proposed: { quantity: 5, unitAmount: { amountMinor: 137 } } },
+    { kind: "retained", sku: f.addon, isAddon: true, agreed: { quantity: 1, unitAmount: { amountMinor: 100 } },
+      proposed: { quantity: 1, unitAmount: { amountMinor: 100 } }, unitDelta: { amountMinor: 0 } },
+  ]);
+  const unchanged = request(f, 4, false);
+  const noopQuote = await quoteSizedEdit({ db: runtime, context, request: unchanged, policy, point: "preview", host });
+  expect(projectEditDisclosure({ lane: "sized", actorId: f.actor, baseline, request: unchanged, normalizedRequest: unchanged,
+    quote: noopQuote, owner: disclosureOwner(20, 500, 500), presentation: disclosurePresentation }).disclosure.disposition).toBe("keeps_agreement");
+});
+
 it("preserves zero/unknown-stock agreements and refuses increases beyond the absolute cap", async () => {
   const f = await fixture(), opted = await accepted(f, request(f, 6)); await opted.editor.apply(actor(f), randomUUID(), opted.input);
   f.time = "2026-11-06T12:00:01.000Z"; f.stock = 0;
