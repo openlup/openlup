@@ -3266,6 +3266,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/scripts/documentation-sql-inventory.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/scripts/neutrality-shell-fold.ts",
       "class": "public-output"
     },
