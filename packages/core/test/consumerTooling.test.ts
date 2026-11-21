@@ -198,6 +198,13 @@ describe("packed consumer dependency roots", () => {
     assertArtifactRefused("CHANGELOG.md", source, providerLeak);
   });
 
+  it("refuses query and fragment suffixes on adapter subpaths and dist references", () => {
+    for (const suffix of ["?raw", "#x"]) {
+      assertArtifactRefused("CHANGELOG.md", paymentSubpath + suffix, providerLeak);
+      assertArtifactRefused("CHANGELOG.md", `dist/payments/${paymentAdapter}/index.d.ts${suffix}`, providerLeak);
+    }
+  });
+
   it("still checks packed dependency declarations", () => {
     const dependencies = { [paymentAdapter]: "1.0.0" };
     assertArtifactRefused("package.json", JSON.stringify({ dependencies }), providerLeak, { dependencies });

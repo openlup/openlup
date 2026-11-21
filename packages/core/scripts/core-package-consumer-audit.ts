@@ -63,9 +63,9 @@ const documentedAdapters = [
 const adapterSubpaths = documentedAdapters.map(([family, names]) => `${family}/(?:${names.join("|")})`).join("|");
 const adapterReports = documentedAdapters.map(([family, names]) => `${family}-(?:${names.join("|")})`).join("|");
 const packagedAdapterReference = new RegExp([
-  String.raw`(?<![\w./@\\-])(?:@openlup/platform/)?(?:${adapterSubpaths})(?![\w/@\\-]|\.[\w./\\-])`,
+  String.raw`(?<![\w./@\\-])(?:@openlup/platform/)?(?:${adapterSubpaths})(?![\w/@?#\\-]|\.[\w./?#\\-])`,
   // Mask only the directory so the file name itself remains subject to the audit.
-  String.raw`(?<![\w./@\\-])dist/(?:${adapterSubpaths})(?=/[\w-]+(?:\.[\w-]+)*(?![\w./@\\-]))`,
+  String.raw`(?<![\w./@\\-])dist/(?:${adapterSubpaths})(?=/[\w-]+(?:\.[\w-]+)*(?![\w./@?#\\-]))`,
   `^### \`packages/platform/api/(?:${adapterReports})\\.api\\.md\`$`,
 ].join("|"), "gm");
 const approvedPublicSecurityContact = "dev@openlup.com";
