@@ -4,7 +4,7 @@
       "legacy": {
         "count": 168,
         "exactTailCount": 58,
-        "objectInventorySha256": "3e80623bd109b2243ffdf6a4adfecca466978b36bbbf478660792e2fe376eb95",
+        "objectInventorySha256": "8661e7a79e07314e129ee6bcf85f0ff69eb050e21515121ff1801b6b2c5a00b4",
         "tail": [
           {
             "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
@@ -12,7 +12,7 @@
           },
           {
             "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-            "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+            "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
           },
           {
             "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
@@ -683,7 +683,7 @@
       "bootstrap": {
         "count": 173,
         "exactTailCount": 58,
-        "objectInventorySha256": "b4e7b4c377fda86ebe1a4e3225199666f6b055c50ef3befc249de7ec0237c1b0",
+        "objectInventorySha256": "29e0ad7228d7608c01912f158dce1a1c265f63ce942289bab5daa303596accfb",
         "tail": [
           {
             "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
@@ -691,7 +691,7 @@
           },
           {
             "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-            "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+            "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
           },
           {
             "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
@@ -1382,7 +1382,7 @@
       "separate": {
         "count": 173,
         "exactTailCount": 58,
-        "objectInventorySha256": "4d1016c1662fc37311bcacc1ce52d7fbe62ec936dba179d87433c878a4fc8bf4",
+        "objectInventorySha256": "2ebccfa08e67de3390f21fcc8cb4b68b42b95a0def9244e25372712770470c64",
         "tail": [
           {
             "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
@@ -1390,7 +1390,7 @@
           },
           {
             "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-            "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+            "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
           },
           {
             "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
@@ -2081,7 +2081,7 @@
       "admin-managed": {
         "count": 172,
         "exactTailCount": 58,
-        "objectInventorySha256": "bb29e3ea084b332691183a7d2bb7b41e8f5409250ea9beb7cdf332af476bc16a",
+        "objectInventorySha256": "4aee19ff9ae070a20dc159e996d9b558ed3b433868c6a60c94e9d071ede0a3f1",
         "tail": [
           {
             "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
@@ -2089,7 +2089,7 @@
           },
           {
             "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-            "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+            "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
           },
           {
             "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
@@ -2776,7 +2776,7 @@
       "admin-operator": {
         "count": 172,
         "exactTailCount": 58,
-        "objectInventorySha256": "5f6798e9a362961215bc0d4b511d4f9da6e2027505c8e668552e3cbd2e950fe4",
+        "objectInventorySha256": "72cb6a48d33bd9f274c81146a4506fb48b0641d4a1e8b52a3c4820e39c5b7938",
         "tail": [
           {
             "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
@@ -2784,7 +2784,7 @@
           },
           {
             "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-            "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+            "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
           },
           {
             "file": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",

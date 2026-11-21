@@ -142,6 +142,8 @@ for (const profile of ['legacy','bootstrap','separate','admin-managed','admin-op
     expect((await f.port.upsertAddress(f.principal, { ...request, line1: 'Ignored replay payload' }))?.addresses[0]?.label).toBe('Later value'); expect(await rows(f.client)).toEqual(before); expect(await events(f.client)).toEqual(history);
     const broken = savedAddressPort({ query: async (sql, values) => { if (sql.includes('customer_saved_address_upsert_atomic')) throw new Error('customer_saved_address_event_append_failed'); return db.runtime.query(sql, values); } }, f.principal, f.client);
     await expect(broken.upsertAddress(f.principal, { ...input(), addressId: id, label: 'Must not persist' })).rejects.toMatchObject({ code: 'address_event_append_failed' });
+    // Real in-DB rollback: customer_account_event_append raises 22023 on NULL payload after customer_saved_address_write.
+    await expect(db.runtime.query('SELECT public.customer_saved_address_upsert_atomic($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::timestamptz)', [f.principal, f.client, 'customer.address_upserted', randomUUID(), false, 'shipping', id, null, JSON.stringify({ client_id: f.client, kind: 'shipping', label: 'Must roll back in DB', line1: 'Example Street 1', city: 'Example', postal_code: '12-345', country: 'ZZ', is_default: false }), null, at])).rejects.toMatchObject({ code: '22023' });
     expect((await f.port.getAddressBook(f.principal))?.addresses[0]?.label).toBe('Later value'); expect(await events(f.client)).toEqual(history);
   });
   it('refuses malformed requests and denies raw tables and routines to browser roles', async () => {

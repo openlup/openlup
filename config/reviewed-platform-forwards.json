@@ -8757,7 +8757,7 @@
     },
     {
       "path": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-      "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831",
+      "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721",
       "functions": []
     },
     {

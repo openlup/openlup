@@ -667,14 +667,14 @@
     },
     {
       "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-      "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+      "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
     },
     {
       "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
       "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284"
     }
   ],
-  "objectInventorySha256": "3e80623bd109b2243ffdf6a4adfecca466978b36bbbf478660792e2fe376eb95",
+  "objectInventorySha256": "8661e7a79e07314e129ee6bcf85f0ff69eb050e21515121ff1801b6b2c5a00b4",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1363,7 +1363,7 @@
       },
       {
         "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-        "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+        "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
       },
       {
         "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
@@ -1372,10 +1372,10 @@
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "b4e7b4c377fda86ebe1a4e3225199666f6b055c50ef3befc249de7ec0237c1b0"
+        "withRestore": "29e0ad7228d7608c01912f158dce1a1c265f63ce942289bab5daa303596accfb"
       },
       "separateMigrator": {
-        "withRestore": "4d1016c1662fc37311bcacc1ce52d7fbe62ec936dba179d87433c878a4fc8bf4"
+        "withRestore": "2ebccfa08e67de3390f21fcc8cb4b68b42b95a0def9244e25372712770470c64"
       }
     }
   },
@@ -2063,7 +2063,7 @@
       },
       {
         "file": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
-        "sha256": "a19a85ee70e011886c74015a514edf64d0f62da11120d1b6ec8b5c3dcd258831"
+        "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721"
       },
       {
         "file": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
@@ -2071,8 +2071,8 @@
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "bb29e3ea084b332691183a7d2bb7b41e8f5409250ea9beb7cdf332af476bc16a",
-      "operatorProvisioned": "5f6798e9a362961215bc0d4b511d4f9da6e2027505c8e668552e3cbd2e950fe4"
+      "installerManaged": "4aee19ff9ae070a20dc159e996d9b558ed3b433868c6a60c94e9d071ede0a3f1",
+      "operatorProvisioned": "72cb6a48d33bd9f274c81146a4506fb48b0641d4a1e8b52a3c4820e39c5b7938"
     }
   }
 }

@@ -383,6 +383,15 @@ it('recordLabel advances atomically via fulfillment_record_label_atomic, preserv
  const replayed=await carrierSpine.recordLabel({idempotencyKey:labelKey,shipmentId:carrierShipment,externalRef:'LBL-ATOMIC-1',metadata:{source:'test'}});
  expect(replayed).toMatchObject({shipmentId:carrierShipment,orderId:carrierFixture.order,status:'label_created',replayed:true});
 
+ // No-evidence branch (externalRef omitted) returns v_labelled and replays with only the 3 advance step keys.
+ const noRefFixture=await fixture(h.pool);
+ await h.pool.query("UPDATE public.fulfillment_shipments SET port_key='label-carrier-port',provider_type='direct-carrier' WHERE id=$1",[noRefFixture.shipment]);
+ const noRefKey=`label-noref-${noRefFixture.shipment}`;
+ expect(await carrierSpine.recordLabel({idempotencyKey:noRefKey,shipmentId:noRefFixture.shipment})).toMatchObject({shipmentId:noRefFixture.shipment,status:'label_created',replayed:false});
+ expect(await carrierSpine.recordLabel({idempotencyKey:noRefKey,shipmentId:noRefFixture.shipment})).toMatchObject({shipmentId:noRefFixture.shipment,status:'label_created',replayed:true});
+ const noRefKeys=(await h.pool.query('SELECT idempotency_key FROM public.fulfillment_shipment_operations WHERE shipment_id=$1 ORDER BY idempotency_key',[noRefFixture.shipment])).rows.map(row=>row.idempotency_key);
+ expect(noRefKeys).toEqual([`${noRefKey}:label-created`,`${noRefKey}:label-pending`,`${noRefKey}:packed`]);
+
  // Archetype that forbids label creation (3pl) rolls back the entire transaction (never stays half-advanced in 'packed').
  const houseFixture=await fixture(h.pool);
  const houseSpine=createPostgresFulfillmentShipmentSpinePort(executor(h.pool),{portKey:'fixture-port'});
