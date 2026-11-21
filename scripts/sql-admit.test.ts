@@ -84,6 +84,61 @@ function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePa
   value.nativeStoreForwardClass!.slots.push(entry); value.nativeStoreForwards!.push({ path: nativePath, sha256: sqlSha256(text), functions });
   f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: nativePath, sha256: sha256(text) }])); f.put(nativePath, text);
 }
+
+describe("qualified catalogue read grant in sql:admit and hosted checks", () => {
+  const text = `DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
+    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL
+  THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_offer_memberships_page(text,jsonb,integer,text),
+      public.catalog_publication_activation_readiness(text[],text) TO openlup_catalog_publication;';
+  END IF;
+END; $$;
+`;
+  const predecessors = ["20261124120000_catalog_publication_reads.sql", "20261124140000_catalog_publication_readiness.sql"]
+    .map(file => `db/platform/migrations/${file}`);
+  const coLocated = "reviewed replacement admission machinery must be approved separately before co-located SQL/pins";
+  const unissued = `reviewed native store qualified catalogue read predecessor must already be issued: ${predecessors[0]}`;
+  const pass = ["PASS"];
+  const refuse = (message: string) => ["REFUSED", message];
+
+  function stagePredecessors(f: Fixture) {
+    const value = registry();
+    value.nativeStoreForwardClass!.slots = production.nativeStoreForwardClass!.slots.filter(entry => predecessors.includes(entry.path));
+    value.nativeStoreForwards = production.nativeStoreForwards!.filter(pin => predecessors.includes(pin.path));
+    for (const path of predecessors) f.put(path, readFileSync(path));
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    const rows = value.nativeStoreForwards.map(pin => ({ file: pin.path, sha256: pin.sha256 }));
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest(rows));
+    return { value, rows };
+  }
+
+  it.each([
+    ["issued predecessors", 0, [pass, pass, pass, pass]],
+    ["a co-located rule change", 1, [pass, pass, refuse(coLocated), refuse(coLocated)]],
+    ["co-introduced predecessors", 1, [pass, pass, refuse(unissued), refuse(unissued), refuse(unissued), refuse(unissued)]],
+  ] as const)("checks %s for the qualified catalogue read grant", (scenario, exit, expected) => {
+    const f = fixture(), { value, rows } = stagePredecessors(f);
+    const base = scenario === "co-introduced predecessors" ? f.base : f.commit();
+    const entry = slot(nativePath, "catalogue-read-grant");
+    entry.grantOnlyFunctions = ["public.catalog_offer_memberships_page(text,jsonb,integer,text)", "public.catalog_publication_activation_readiness(text[],text)"]
+      .map(signature => ({ signature, grantTo: ["openlup_catalog_publication"], revokeFrom: [] }));
+    value.nativeStoreForwardClass!.slots.push(entry);
+    value.nativeStoreForwards!.push({ path: nativePath, sha256: sqlSha256(text), functions: [] });
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([...rows, { file: nativePath, sha256: sha256(text) }]));
+    f.put(nativePath, text);
+    if (scenario === "a co-located rule change") f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
+    const head = f.commit();
+    const result = cli(f.root, ["--base", base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(exit);
+    const reported = verdictLines(result.stdout);
+    expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
+    expect(reported).toEqual(expected);
+  }, 20_000);
+});
+
 type Case = { name: string; exit: number; refusal?: string; hint?: string; queue?: "not run"; build: (f: Fixture) => { base: string; head: string }; also?: (f: Fixture, base: string, head: string, fork: string) => void };
 const cases: Case[] = [
   { name: "an admitted native forward with its slot, pin and manifest row", exit: 0, build: (f) => { stageNativeForward(f); return { base: f.base, head: f.commit() }; } },
