@@ -8796,6 +8796,11 @@
       "path": "supabase/migrations/20261123152000_managed_oms_queue_performance.sql",
       "sha256": "1db193da33bd9acb57d00e0e3c261fedeb91f67eb6d2192d678173111ae53fb8",
       "prefixSha256": "8afde8ba1dfa4e0f2873295ce776febbcd1eeae68980f545a1bab54b7e21bd6c"
+    },
+    {
+      "path": "supabase/migrations/20261123153000_managed_reconciliation_replay_strip.sql",
+      "sha256": "5020f980d02e79e85acda827f4e8d8c77e9ff1aa9a383305e3c1d14cf75b6f7f",
+      "prefixSha256": "e17c2f3b214f896664a0b1fd214be611094bb0eb75633a675d2d11df022bd89d"
     }
   ]
 }
