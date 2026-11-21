@@ -35,8 +35,10 @@ const committed: Modules = { policy, check, bump, release, releaseScript: fileUR
 const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
 const identity = { GIT_AUTHOR_NAME: "fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", env: { ...inherited, ...identity }, stdio: ["ignore", "pipe", "pipe"] }).trim();
+const taggerDate = "2026-01-02T03:04:05Z";
+const cadence = { now: () => Date.parse("2026-01-23T03:04:05Z") };
 /** The annotated tag the release workflow makes: the release App as tagger, the release message. */
-const appTag = (cwd: string, name: string, version: string, commit: string, message = `OpenLup package @openlup/${name} ${version}.`) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "tag", "-a", "-m", message, `openlup-${name}-v${version}`, commit], { cwd, env: { ...inherited, ...identity, GIT_COMMITTER_NAME: "openlup-release[bot]", GIT_COMMITTER_EMAIL: "334697227+openlup-release[bot]@users.noreply.github.com" }, stdio: "ignore" });
+const appTag = (cwd: string, name: string, version: string, commit: string, message = `OpenLup package @openlup/${name} ${version}.`) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "tag", "-a", "-m", message, `openlup-${name}-v${version}`, commit], { cwd, env: { ...inherited, ...identity, GIT_COMMITTER_NAME: "openlup-release[bot]", GIT_COMMITTER_EMAIL: "334697227+openlup-release[bot]@users.noreply.github.com", GIT_COMMITTER_DATE: taggerDate }, stdio: "ignore" });
 let scratch = "";
 /** Answers release:bump's registry read: every replaced version is published at this many packed bytes. */
 const PUBLISHED_BYTES = 1000000;
@@ -191,7 +193,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
   "release:bump --set moves every publishable package and every exact pin on one": async (m) => {
     const { root, read } = fixture();
     const asked: string[] = [];
-    expect(m.bump.bumpSet(root, "0.5.0", (name, version) => { asked.push(`${name}@${version}`); return 123456; }).sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/docs/guide/upgrade/v0-5-0.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/core/release-gates.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json", "packages/kit/release-gates.json"]);
+    expect(m.bump.bumpSet(root, "0.5.0", (name, version) => { asked.push(`${name}@${version}`); return 123456; }, cadence).sort()).toEqual(["package-lock.json", "packages/core/CHANGELOG.md", "packages/core/docs/guide/upgrade/v0-5-0.md", "packages/core/package-lock.json", "packages/core/package.json", "packages/core/release-gates.json", "packages/demo/package.json", "packages/kit/CHANGELOG.md", "packages/kit/package-lock.json", "packages/kit/package.json", "packages/kit/release-gates.json"]);
     expect(asked, "each baseline reads the version the set replaces").toEqual(["@openlup/core@0.4.0", "@openlup/kit@0.4.0"]);
     for (const name of ["core", "kit"]) expect(JSON.parse(read(`packages/${name}/release-gates.json`)).pack.baseline, name).toEqual({ version: "0.4.0", packedBytes: 123456 });
     const manifest = (name: string) => JSON.parse(read(`packages/${name}/package.json`));
@@ -221,7 +223,7 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     alone.write("packages/core/package.json", alone.read("packages/core/package.json").replace('"version": "0.4.0"', '"version": "0.0.0"'));
     expect(() => m.bump.bumpRelease(alone.root, "core", "0.0.1", published)).toThrow("@openlup/core is publishable, so its next version is a set version: use 0.N.P (N >= 1) or MAJOR.MINOR.PATCH (MAJOR >= 1), not 0.0.1");
     alone.write("packages/core/package.json", alone.read("packages/core/package.json").replace('"version": "0.0.0"', '"version": "0.4.0"'));
-    expect(m.bump.bumpRelease(alone.root, "core", "0.5.0", published)).toContain("packages/core/package.json");
+    expect(m.bump.bumpRelease(alone.root, "core", "0.5.0", published, cadence)).toContain("packages/core/package.json");
     expect(JSON.parse(alone.read("packages/kit/package.json")).peerDependencies).toEqual({ "@openlup/core": "0.5.0" });
   },
   "a package's tag, release and npm state decide skip, resume or full": async (m) => {

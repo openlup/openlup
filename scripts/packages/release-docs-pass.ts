@@ -48,9 +48,14 @@ export function parseReleaseChanges(output: string): ReleaseChange[] {
   return changes;
 }
 
+export function previousPackageTag(root: string, name: string): string | undefined {
+  const pattern = `openlup-${name}-v*`;
+  if (!documentationGit(root, ["tag", "--merged", "HEAD", "--list", pattern]).toString("utf8").trim()) return undefined;
+  return documentationGit(root, ["describe", "--tags", "--abbrev=0", "--match", pattern, "HEAD"]).toString("utf8").trim();
+}
+
 export function previousCoreTag(root: string): string | undefined {
-  if (!documentationGit(root, ["tag", "--merged", "HEAD", "--list", "openlup-core-v*"]).toString("utf8").trim()) return undefined;
-  return documentationGit(root, ["describe", "--tags", "--abbrev=0", "--match", "openlup-core-v*", "HEAD"]).toString("utf8").trim();
+  return previousPackageTag(root, "core");
 }
 
 function releaseChanges(root: string, since: string): ReleaseChange[] {

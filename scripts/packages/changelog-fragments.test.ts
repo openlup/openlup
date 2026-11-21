@@ -48,7 +48,7 @@ describe("changelog fragment preparation", () => {
     expect(f.read("packages/outbox/changes/not-consumed.md")).toBe("- Other package.\n");
   });
   it.each(["", " \n", "# Heading\n", "## [1.0.0]\n", "<<<<<<< ours\n- Note\n", "- Note\n=======\n", "\0bad"])("refuses invalid content before any write: %j", (content) => {
-    const f = fixture(); f.write(fragment, content); const before = f.read("package-lock.json"), manifest = f.read("packages/core/package.json"), changelog = f.read("packages/core/CHANGELOG.md");
+    const f = fixture(); f.commit(); f.write(fragment, content); const before = f.read("package-lock.json"), manifest = f.read("packages/core/package.json"), changelog = f.read("packages/core/CHANGELOG.md");
     expect(() => bumpSet(f.root, "0.5.0")).toThrow(/fragment/);
     expect(f.read("package-lock.json")).toBe(before); expect(f.read("packages/core/package.json")).toBe(manifest); expect(f.read("packages/core/CHANGELOG.md")).toBe(changelog); expect(f.read(fragment)).toBe(content);
   });

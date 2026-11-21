@@ -836,6 +836,10 @@ A release takes three steps:
    not authorize a release. Read the candidate version from the manifests, and
    publication only from the immutable releases and the npm registry: a version bump by itself
    publishes nothing.
+
+   - Pass `--major-approved` after the version to prepare a major release approved under the [release cadence](#release-cadence).
+   - Pass `--cadence-exception=security` or `--cadence-exception=money` after the version to prepare a minor release within 21 days of the previous minor tag when the defect meets the [release cadence](#release-cadence) exception.
+
 2. **Dispatch.** In Actions, choose **Publish Package → Run workflow** on
    **main** and enter `all` (or one package directory name, such as `core`), the
    version, the reviewed full target commit SHA on `main` and the exact release

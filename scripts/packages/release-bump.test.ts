@@ -2,8 +2,9 @@ import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bumpRelease, bumpSet, npmPublishedPackedBytes, setVersionFields } from "./release-bump.ts";
+import { bumpRelease as bumpPackageVersion, bumpSet as bumpSetVersion, npmPublishedPackedBytes, setVersionFields } from "./release-bump.ts";
 import * as docs from "./release-docs-pass.ts";
 
 
@@ -43,11 +44,27 @@ function fixture(): { root: string; files: Record<string, string> } {
     "packages/kit/package.json": '{ "name": "@openlup/kit", "version": "2.1.0", "private": true }\n',
   };
   for (const [path, contents] of Object.entries(files)) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), contents); }
+  git(root, "init", "-q"); git(root, "add", "."); git(root, "commit", "-qm", "fixture");
   return { root, files };
 }
 const read = (root: string, files: Record<string, string>) => Object.fromEntries(Object.keys(files).map((path) => [path, readFileSync(join(root, path), "utf8")]));
 const changedLines = (before: string, after: string) => before.split("\n").map((text, index) => [text, after.split("\n")[index]]).filter(([was, now]) => was !== now);
 const git = (root: string, ...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8" }).trim();
+const day = 24 * 60 * 60 * 1000;
+const minorTagDate = Date.parse("2026-01-02T03:04:05Z");
+const tagRelease = (root: string, tag: string, date = minorTagDate) => execFileSync("git",
+  ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "tag", "-a", "-m", "Fixture release", tag],
+  { cwd: root, env: {
+    PATH: processEnvironment.PATH,
+    GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_COMMITTER_DATE: new Date(date).toISOString(),
+  } },
+);
+const bumpSet = (root: string, version: string, packed?: Parameters<typeof bumpSetVersion>[2], cadence?: Parameters<typeof bumpSetVersion>[3]) =>
+  bumpSetVersion(root, version, packed, { now: () => minorTagDate + 30 * day, ...cadence });
+const bumpRelease = (root: string, name: string, version: string, packed?: Parameters<typeof bumpPackageVersion>[3], cadence?: Parameters<typeof bumpPackageVersion>[4]) =>
+  bumpPackageVersion(root, name, version, packed, { now: () => minorTagDate + 30 * day, ...cadence });
 const page = "packages/core/docs/guide/upgrade/v0-9-0.md";
 // The configuration-keys generator reads package sources, links the platform API reports and
 // omits provider-specific names through the repository neutrality scanner (stdin mode only).
@@ -72,13 +89,73 @@ function setFixture() {
     "packages/kit/changes/keep.md": "- Unconsumed change.\n",
   });
   for (const [path, source] of Object.entries(f.files)) { mkdirSync(dirname(join(f.root, path)), { recursive: true }); writeFileSync(join(f.root, path), source); }
-  git(f.root, "init", "-q"); git(f.root, "add", "."); git(f.root, "commit", "-qm", "fixture"); git(f.root, "tag", "openlup-core-v0.7.0");
+  git(f.root, "add", "."); git(f.root, "commit", "-qm", "set fixture"); tagRelease(f.root, "openlup-core-v0.7.0");
   return f;
 }
 
+describe.each(["set", "package"] as const)("release:bump cadence for a %s", (form) => {
+  function cadenceFixture() {
+    const { root, files } = form === "set" ? setFixture() : fixture();
+    if (form === "package") tagRelease(root, "openlup-core-v0.7.0");
+    const bump = (version: string, cadence: Parameters<typeof bumpSetVersion>[3]) => form === "set"
+      ? bumpSet(root, version, undefined, cadence)
+      : bumpRelease(root, "core", version, undefined, cadence);
+    const expectUntouched = () => {
+      expect(read(root, files)).toEqual(files);
+      expect(git(root, "status", "--porcelain")).toBe("");
+    };
+    return { root, bump, expectUntouched };
+  }
+
+  it("requires approval for a major increase", () => {
+    const { bump, expectUntouched } = cadenceFixture();
+    expect(() => bump("1.0.0", {})).toThrow(/--major-approved.*at most once a year.*deprecated.*compatibility bridge.*#release-cadence/u);
+    expectUntouched();
+    expect(bump("1.0.0", { majorApproved: true })).toContain("packages/core/package.json");
+  });
+
+  it("waits until 21 days have elapsed from the minor tagger date", () => {
+    const { bump, expectUntouched } = cadenceFixture();
+    expect(() => bump("0.8.0", { now: () => minorTagDate + 20 * day })).toThrow("wait until 2026-01-23");
+    expectUntouched();
+    expect(bump("0.8.0", { now: () => minorTagDate + 21 * day })).toContain("packages/core/package.json");
+  });
+
+  it.each(["security", "money"] as const)("accepts a %s cadence exception after three days", (exception) => {
+    const { bump } = cadenceFixture();
+    expect(bump("0.8.0", { now: () => minorTagDate + 3 * day, exception })).toContain("packages/core/package.json");
+  });
+
+  it("accepts a patch after one day without reading a minor tagger date", () => {
+    const { bump } = cadenceFixture();
+    const readTagDate = vi.fn(() => minorTagDate);
+    expect(bump("0.7.1", { now: () => minorTagDate + day, readTagDate })).toContain("packages/core/package.json");
+    expect(readTagDate).not.toHaveBeenCalled();
+  });
+
+  it("uses the released patch's minor-series tag when the manifest has already advanced", () => {
+    const { root, bump, expectUntouched } = cadenceFixture();
+    git(root, "tag", "-d", "openlup-core-v0.7.0");
+    tagRelease(root, "openlup-core-v0.6.2");
+    const readTagDate = vi.fn(() => minorTagDate);
+    expect(() => bump("0.7.1", { now: () => minorTagDate + day, readTagDate })).toThrow("wait until 2026-01-23");
+    expect(readTagDate).toHaveBeenCalledExactlyOnceWith(root, "openlup-core-v0.6.0");
+    expect(() => bump("0.7.1", {})).toThrow("Cannot read the annotated tagger date for openlup-core-v0.6.0");
+    expectUntouched();
+  });
+});
+
 describe("release:bump", () => {
+  it("reads the named package's release tag for a per-package bump", () => {
+    const { root, files } = fixture();
+    tagRelease(root, "openlup-core-v0.7.0");
+    tagRelease(root, "openlup-kit-v2.1.0");
+    expect(() => bumpRelease(root, "kit", "2.2.0", undefined, { now: () => minorTagDate + day })).toThrow("wait until 2026-01-23");
+    expect(read(root, files)).toEqual(files);
+  });
+
   it.each(["1.0.0", "1.2.3"])("prepares coherent set %s", version => {
-    const { root } = setFixture(); bumpSet(root, version, () => undefined);
+    const { root } = setFixture(); bumpSet(root, version, undefined, { majorApproved: true });
     for (const name of ["core", "outbox"]) expect(JSON.parse(readFileSync(join(root, `packages/${name}/package.json`), "utf8")).version).toBe(version);
   });
   it.each(["1.0", "01.0.0", "1.0.0-rc.1"])("refuses malformed set %s", version => {
@@ -179,24 +256,31 @@ describe("release:bump", () => {
     expect(() => setVersionFields("a.json", '{"version": "0.8.0"}', [["version"]], "0.7.0", "0.9.0")).toThrow(/is "0\.8\.0", not the current 0\.7\.0/u);
   });
 
-  it("runs from the command line and refuses anything but a package and one release version", () => {
-    const { root } = fixture();
+  it("refuses malformed command-line arguments with usage and runs valid package bumps", () => {
+    const { root, files } = fixture();
+    tagRelease(root, "openlup-core-v0.7.0");
     const script = resolve("scripts/packages/release-bump.ts");
     const run = (...args: string[]) => { try { return { code: 0, out: execFileSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script, ...args], { cwd: root, encoding: "utf8", stdio: "pipe" }) }; } catch (error) { return { code: (error as { status: number }).status, out: String((error as { stderr: string }).stderr) }; } };
-    expect(run()).toMatchObject({ code: 2 });
-    expect(run("9")).toMatchObject({ code: 2 });
-    expect(run("core", "0.9")).toMatchObject({ code: 2 });
-    expect(run("core", "0.9.0", "extra")).toMatchObject({ code: 2 });
+    const usage = expect.stringContaining("usage: npm run release:bump -- --set <MAJOR.MINOR.PATCH>, or npm run release:bump -- <package directory name> <MAJOR.MINOR.PATCH>");
+    for (const args of [
+      [], ["9"], ["core", "0.9"], ["core", "0.9.0", "extra"], ["--set", "0.9.0", "--unknown"],
+      ["--set", "0.9.0", "--cadence-exception=other"], ["core", "0.9.0", "--cadence-exception="],
+      ["core", "0.9.0", "--cadence-exception", "security"], ["core", "1.0.0", "--major-approved=true"],
+      ["core", "1.0.0", "--major-approved", "--major-approved"],
+      ["--set", "0.9.0", "--cadence-exception=security", "--cadence-exception=money"],
+    ]) expect(run(...args), args.join(" ")).toEqual({ code: 2, out: usage });
     expect(run("core", "0.7.0")).toMatchObject({ code: 1, out: expect.stringMatching(/refused: @openlup\/core is at 0\.7\.0/u) });
-    expect(run("core", "0.9.0")).toMatchObject({ code: 0, out: expect.stringContaining("release:bump: rewrote packages/core/CHANGELOG.md") });
+    expect(run("core", "1.0.0")).toMatchObject({ code: 1, out: expect.stringContaining("Pass --major-approved") });
+    expect(read(root, files)).toEqual(files);
+    expect(run("core", "1.0.0", "--major-approved")).toMatchObject({ code: 0, out: expect.stringContaining("release:bump: rewrote packages/core/CHANGELOG.md") });
   });
 
   it("logs removed fragments and stages their deletions and the upgrade page from the set command", () => {
     const { root } = fixture(), fragment = "packages/core/changes/a-one.md";
     mkdirSync(dirname(join(root, fragment)), { recursive: true }); writeFileSync(join(root, fragment), "- A change.\n");
-    git(root, "init", "-q"); git(root, "add", "."); git(root, "commit", "-qm", "fixture"); git(root, "tag", "openlup-core-v0.7.0");
+    git(root, "add", "."); git(root, "commit", "-qm", "fragment fixture"); tagRelease(root, "openlup-core-v0.7.0");
     writeFileSync(join(root, "packages/kit/package.json"), readFileSync(join(root, "packages/kit/package.json"), "utf8") + "\n");
-    const output = execFileSync(process.execPath, ["--experimental-strip-types", resolve("scripts/packages/release-bump.ts"), "--set", "0.9.0"], { cwd: root, encoding: "utf8" });
+    const output = execFileSync(process.execPath, ["--experimental-strip-types", resolve("scripts/packages/release-bump.ts"), "--set", "0.9.0", "--cadence-exception=security"], { cwd: root, encoding: "utf8" });
     expect(output).toContain(`release:bump: removed ${fragment}`);
     expect(output).not.toContain(`rewrote ${fragment}`);
     expect(output).toContain(`release:bump: rewrote ${page}`);
