@@ -205,6 +205,24 @@ describe("packed consumer dependency roots", () => {
     }
   });
 
+  it("only masks adapter references in the observed release-note contexts", () => {
+    const path = "CHANGELOG.md";
+    const dist = `dist/payments/${paymentAdapter}/index.d.ts`;
+    auditPackedFixture(path, "`" + paymentSubpath + "`", {});
+    auditPackedFixture(path, " " + dist + "\n", {});
+
+    for (let code = 32; code <= 126; code++) {
+      const character = String.fromCharCode(code);
+      if (character !== "`") {
+        assertArtifactRefused(path, character + paymentSubpath + "`", providerLeak);
+        assertArtifactRefused(path, "`" + paymentSubpath + character, providerLeak);
+      }
+      if (character !== " ") assertArtifactRefused(path, character + dist, providerLeak);
+      // A letter or digit extends the filename's final extension, not its boundary.
+      if (!/[A-Za-z0-9]/.test(character)) assertArtifactRefused(path, " " + dist + character, providerLeak);
+    }
+  }, 30_000);
+
   it("still checks packed dependency declarations", () => {
     const dependencies = { [paymentAdapter]: "1.0.0" };
     assertArtifactRefused("package.json", JSON.stringify({ dependencies }), providerLeak, { dependencies });

@@ -218,7 +218,9 @@ describe("release:bump", () => {
   it("carries the starter settings command into the released Core changelog and guide", () => {
     const { root } = setFixture();
     const fragment = "packages/core/changes/settings-discovery-starter.md";
-    const notes = readFileSync(resolve(fragment), "utf8");
+    const upgrade = readFileSync(new URL("../../packages/core/docs/guide/upgrade/v1-3-0.md", import.meta.url), "utf8");
+    const notes = /^### Discover and preview settings with the package command\n[\s\S]*?(?=^#{2,3} )/mu.exec(upgrade)?.[0];
+    if (!notes) throw new Error("Missing released starter settings command section");
     writeFileSync(join(root, fragment), notes);
     git(root, "add", fragment);
     bumpSet(root, "0.9.0");
