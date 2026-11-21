@@ -4417,7 +4417,7 @@ import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
-import type { CatalogSkuRevisionRef } from "./publicationContracts.js";
+import { type CatalogSkuRevisionRef } from "./publicationContracts.js";
 /** @experimental */
 export type CatalogMembershipCursor = {
     skuId: string;
@@ -4828,6 +4828,8 @@ import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./contrac
 import type { RulesIdentifier, RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
+export declare const GOVERNED_PRODUCT_FACTS_VERSION = 3;
+export declare const GOVERNED_SKU_FACTS_VERSION = 3;
 /** @experimental */
 export declare const CATALOG_PUBLICATION_LIMITS: {
     readonly skuBytes: 2097152;
@@ -4846,17 +4848,16 @@ export interface CatalogPublishedProduct extends RulesProduct {
     document: CatalogDocumentRevisionRef | null;
     source: CatalogDraftClaimV3;
     content: CatalogPublishedContent;
-    schemaVersion?: 3;
+    schemaVersion?: typeof GOVERNED_PRODUCT_FACTS_VERSION;
     lifecycleState?: PublicationLifecycleState;
     definitionDigest?: string;
 }
 /** @internal */
 export interface CatalogPublishedSku extends RulesSku {
     source: CatalogDraftClaimV3;
-    schemaVersion?: 3;
+    schemaVersion?: typeof GOVERNED_SKU_FACTS_VERSION;
     lifecycleState?: PublicationLifecycleState;
     optionDigest?: string;
-    demandPolicyRef?: string;
 }
 /** @experimental */
 export interface CatalogSkuRevisionRef {
@@ -4911,13 +4912,13 @@ export interface CatalogPublicationFailure {
 }
 /** @experimental */
 export interface CatalogPublishedProductV3 extends CatalogPublishedProduct {
-    schemaVersion: 3;
+    schemaVersion: typeof GOVERNED_PRODUCT_FACTS_VERSION;
     lifecycleState: PublicationLifecycleState;
     definitionDigest: string;
 }
 /** @experimental */
 export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
-    schemaVersion: 3;
+    schemaVersion: typeof GOVERNED_SKU_FACTS_VERSION;
     lifecycleState: PublicationLifecycleState;
     optionDigest: string;
 }
@@ -5063,7 +5064,6 @@ export interface CatalogPublicationEvidence {
         product: PublicationLifecycleState;
         skus: Readonly<Record<string, {
             state: PublicationLifecycleState;
-            demandPolicyRef?: string;
         }>>;
     } | null;
 }
@@ -5119,7 +5119,6 @@ export declare const lifecycleEvidenceSchema: z.ZodObject<{
             archived: "archived";
             withdrawn: "withdrawn";
         }>;
-        demandPolicyRef: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
 declare const lifecycleOperation: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -5172,12 +5171,8 @@ export type PublicationLifecycleState = z.infer<typeof state>;
 export type PublicationLifecycleOperation = z.infer<typeof lifecycleOperation>;
 type LegacyOperation = CatalogDraftPayloadV3["publication"]["operations"][number];
 export type PublicationOperation = LegacyOperation | PublicationLifecycleOperation;
-type IntentSku = CatalogDraftPayloadV3["skus"][number] & {
-    demandPolicyRef?: string | undefined;
-};
-export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication" | "skus"> & {
+export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication"> & {
     schemaVersion: 3 | 4;
-    skus: IntentSku[];
     publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & {
         operations: PublicationOperation[];
     };

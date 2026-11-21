@@ -642,7 +642,6 @@ describe("publication activation prices", () => {
     const sku = payload.skus[0]!;
     sku.grossMass = { ...sku.netContent!, unscaled: "110" };
     sku.logisticsRef = "example:logistics";
-    sku.demandPolicyRef = "example:retained-policy";
     payload.publication.operations.push({ op: "set_sku_metadata", skuCode: data.code, logisticsRef: sku.logisticsRef });
     const reads = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(pool, work) },
       authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
@@ -679,7 +678,7 @@ describe("publication activation prices", () => {
     expect(dark).toMatchObject({ schemaVersion: 3, product: { lifecycleState: "withdrawn" }, items: [{
       facts: { status: "active", lifecycleState: "withdrawn", memberships: [{ admitted: true, offerVersion: membership.offerVersion }],
         sellableStandalone: false, sellableInSubscription: false, netContent: sku.netContent, grossMass: sku.grossMass,
-        demandPolicyRef: sku.demandPolicyRef, source: { revision: 3 } },
+        source: { revision: 3 } },
     }] });
     await expect(pool.query("UPDATE public.catalog_products SET status='draft' WHERE id=$1", [data.productId]))
       .rejects.toMatchObject({ constraint: "catalog_lifecycle_raw_status_fenced" });

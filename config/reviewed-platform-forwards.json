@@ -6307,7 +6307,7 @@
       },
       {
         "row": "catalog-governed-lifecycle",
-        "path": "db/platform/migrations/20261124200000_catalog_governed_lifecycle.sql",
+        "path": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
         "replacedFunctions": [
           {
             "signature": "public.catalog_draft_apply(text,text,text)",
@@ -9224,13 +9224,13 @@
       "functions": []
     },
     {
-      "path": "db/platform/migrations/20261124200000_catalog_governed_lifecycle.sql",
-      "sha256": "772c27e142152db6cef4e9a5708ec94355564d3ad0dc4a5f70d7d61bafb24cc9",
+      "path": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
+      "sha256": "2e2db165a85644815632a917401b5b264d76ac24a764ea9f6e8be368f39be0da",
       "functions": [
         {
           "signature": "public.catalog_draft_apply(text,text,text)",
           "beforeSha256": "554ddda70f3e7b7eba6d23d839404887dd1842ee7c71df6b70e66082df71857c",
-          "afterSha256": "85409ab67d93543d779acdb87624ba1257e4fb40da184fbe861f503357cbed2a"
+          "afterSha256": "bc58a4851ffe1d024ccf887ba900e1dab2e079d76aa89854d0cb1d4aa4034d6c"
         },
         {
           "signature": "public.catalog_publication_candidate_source(uuid,text,text)",
@@ -9245,7 +9245,7 @@
         {
           "signature": "public.catalog_publication_sku_projection(uuid,uuid,text,jsonb,boolean)",
           "beforeSha256": "b73afa7b2aaed3fe2f615f0276c5c653e519ad798225be6c37d1df9b135cd9d5",
-          "afterSha256": "996f0c38d4cbe86711d22095c4d0eb9029f8d4a9ca2d622522cb28426d46d0c4"
+          "afterSha256": "35daf7b9664fd51181d6ce98d06af06bc6bc7eba587ec3a76c06db2a6dbbc79a"
         },
         {
           "signature": "public.catalog_publication_sku_facts(public.catalog_sku_revisions)",

@@ -247,7 +247,6 @@ it("preserves raw v4 revisions across save, abandon, resume, list and receipt re
     await owner.query(readFileSync(file, "utf8"));
   const draftId = randomUUID(), legacy = v3(), skuCode = legacy.skus[0]!.code!;
   const payload: CatalogDraftPayloadV4 = { ...legacy, schemaVersion: 4,
-    skus: legacy.skus.map(sku => ({ ...sku, demandPolicyRef: "example:policy" })),
     publication: { ...legacy.publication, operations: [
       { op: "set_eligibility", skuCode, sellableStandalone: true, sellableInSubscription: false },
       { op: "restore_sku", skuCode, expectedState: "withdrawn" },

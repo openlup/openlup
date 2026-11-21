@@ -1,7 +1,7 @@
 import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogHeadRef, CatalogPublishCommand } from "./contracts/lifecycle.js";
 import type { CatalogProductTypeDefinition } from "./contracts/productTypes.js";
-import type { CatalogPublishedSku } from "./publicationContracts.js";
+import { GOVERNED_PRODUCT_FACTS_VERSION, GOVERNED_SKU_FACTS_VERSION, type CatalogPublishedSku } from "./publicationContracts.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { validateCatalogAttributes } from "./attributeValidation.js";
 import { prepareCatalogAttributeProjection } from "./attributeProjection.js";
@@ -149,10 +149,7 @@ export async function readPreviousPublication(db: PgQueryExecutor, productId: st
     head, product: manifest?.product ?? null, skus,
     ...(manifest?.schemaVersion === 3 ? { lifecycle: {
       product: manifest.product.lifecycleState,
-      skus: Object.fromEntries(skus.map(sku => [sku.code, {
-        state: sku.lifecycleState!,
-        ...(sku.demandPolicyRef === undefined ? {} : { demandPolicyRef: sku.demandPolicyRef }),
-      }])),
+      skus: Object.fromEntries(skus.map(sku => [sku.code, { state: sku.lifecycleState! }])),
     } } : {}),
     documents: documents.map(row => ({ reference: row.reference as CatalogPublicationDocument["reference"],
       canonicalText: typeof row.canonical === "string" ? row.canonical : "", provenance: row.provenance as CatalogPublicationDocument["provenance"] })),
@@ -440,10 +437,9 @@ export async function stagePublication(db: PgQueryExecutor, previous: Awaited<Re
     } else if (operation.op === "create_sku") {
       const sku = plan.creations.get(index);
       requireProjection(sku, "catalog_publication_sku_revision_invalid");
-      if (product.schemaVersion === 3) {
+      if (product.schemaVersion === GOVERNED_PRODUCT_FACTS_VERSION) {
         const final = skus.find(row => row.id === sku.id)!;
-        Object.assign(sku, { schemaVersion: 3, lifecycleState: "draft", optionDigest: final.optionDigest,
-          ...(final.demandPolicyRef === undefined ? {} : { demandPolicyRef: final.demandPolicyRef }) });
+        Object.assign(sku, { schemaVersion: GOVERNED_SKU_FACTS_VERSION, lifecycleState: "draft", optionDigest: final.optionDigest });
       }
       await storeSku(db, sku, definition, product.axes, true);
     }

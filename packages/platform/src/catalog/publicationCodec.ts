@@ -8,7 +8,7 @@ import { isValidGtin, catalogDocumentRevisionRefSchema } from "./foundationSchem
 import { catalogProductTypeRefSchema, catalogQuantitySchema, catalogOptionValueSchema, catalogDimensionKeySchema } from "./productTypeSchemas.js";
 import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3, CatalogPublicationManifestV3 } from "./publicationContracts.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
-import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
+import { CATALOG_PUBLICATION_LIMITS, GOVERNED_PRODUCT_FACTS_VERSION, GOVERNED_SKU_FACTS_VERSION } from "./publicationContracts.js";
 import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationIssue, publicationReadFailure, publicationRefuse, publicationRemedy, type Issue, type PlatformCode, type PlatformIssue } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 
@@ -153,7 +153,7 @@ const skuShape = z.object({
   memberships: z.array(z.object({ offerVersion: ref, admitted: z.boolean() }).strict()), source: claimSchema,
 }).strict();
 const governedSkuShape = skuShape.extend({
-  schemaVersion: z.literal(3), lifecycleState, optionDigest: digest, demandPolicyRef: ref.optional(),
+  schemaVersion: z.literal(GOVERNED_SKU_FACTS_VERSION), lifecycleState, optionDigest: digest,
 }).strict();
 export const catalogPublishedSkuSchema: z.ZodType<CatalogPublishedSku> = z.discriminatedUnion("schemaVersion", [skuShape.extend({ schemaVersion: z.undefined().optional() }), governedSkuShape]).superRefine((sku, context) => {
   if ("lifecycleState" in sku && (sku.status !== lifecycleProjection(sku.lifecycleState)
@@ -184,7 +184,7 @@ const productShape = z.object({
   content: contentSchema,
 }).strict();
 const governedProductShape = productShape.extend({
-  schemaVersion: z.literal(3), lifecycleState, definitionDigest: digest,
+  schemaVersion: z.literal(GOVERNED_PRODUCT_FACTS_VERSION), lifecycleState, definitionDigest: digest,
 }).strict().refine(product => product.status === lifecycleProjection(product.lifecycleState));
 export const catalogPublishedProductSchema: z.ZodType<CatalogPublishedProduct> = z.discriminatedUnion("schemaVersion", [productShape.extend({ schemaVersion: z.undefined().optional() }), governedProductShape]);
 export function assertNativeProductDocument(product: CatalogPublishedProduct): void {
@@ -360,7 +360,7 @@ export function decodePublicationPacket(input: { manifest: unknown } | PacketRow
       if (decoded.value.schemaVersion === 3 && !governedRevisions.has(ref.revisionId)) {
         try {
           const facts = decodeStoredPublicationSku(revision.full_facts);
-          if (facts.schemaVersion !== 3 || facts.id !== ref.skuId || facts.productId !== decoded.value.product.id
+          if (facts.schemaVersion !== GOVERNED_SKU_FACTS_VERSION || facts.id !== ref.skuId || facts.productId !== decoded.value.product.id
             || facts.code !== revision.sku_code || publicationDigest(facts, CATALOG_PUBLICATION_LIMITS.skuBytes, SKU_PAGE_DEPTH) !== ref.digest)
             return storedField(revisionCode, `skus.${index}.facts`);
         } catch {

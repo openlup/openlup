@@ -9,7 +9,7 @@ import type { CatalogDraftIssue, CatalogProductTypeDefinition, CatalogQuantity }
 import type { CatalogDraftPayloadV3, CatalogPublicationFacts } from "./contracts/draftV3.js";
 import type { CatalogDraftClaimV3, CatalogDraftMediaClaimV3 } from "./contracts/draftV3.js";
 import type { CatalogPublishedProduct, CatalogPublishedSku } from "./publicationContracts.js";
-import { CATALOG_PUBLICATION_LIMITS } from "./publicationContracts.js";
+import { CATALOG_PUBLICATION_LIMITS, GOVERNED_PRODUCT_FACTS_VERSION, GOVERNED_SKU_FACTS_VERSION } from "./publicationContracts.js";
 import { adopterIssue, CatalogPublicationError, publicationDiagnostic, publicationIssue, publicationRefuse,
   type EvaluationIssue, type Issue, type PlatformCode } from "./publicationError.js";
 import { assertNativeProductDocument, assertNativeProductReferences, assertNativeSkuNetWeight, assertPublicationRegistration, assertPublishedFacts, assertPublishedPresentation, assertPublishedSkuDocumentExclusion, catalogPublishedProductSchema, catalogPublishedSkuSchema, comparePublicationText, decodePublishedProduct, decodePublishedSku, publicationContent,
@@ -585,9 +585,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       }
     }
     position.subject = definition.key;
-    const { publication: _publication, skus: intentSkus, ...base } = payload;
-    const validationPayload: CatalogDraftPayloadV2 = { ...base, schemaVersion: 2,
-      skus: intentSkus.map(({ demandPolicyRef: _policy, ...sku }) => sku) };
+    const { publication: _publication, ...base } = payload;
+    const validationPayload: CatalogDraftPayloadV2 = { ...base, schemaVersion: 2 };
     position.path = "product.sharedContent";
     const validation = await validateDraftV2Issues(validationPayload, { resolve: () => ({ ...definition,
       validateContent: !withdrawalOnly && rules ? rules.validateContent : () => [] }) }, attributeReferences);
@@ -1081,10 +1080,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
           existingCombinations.add(identity);
           skus.set(sku.code, sku); created.add(sku.code);
           creations.set(index, structuredClone(sku));
-          if (governed) {
-            const demandPolicyRef = incoming.get(sku.code)?.demandPolicyRef;
-            skuStates.set(sku.code, { state: "draft", ...(demandPolicyRef === undefined ? {} : { demandPolicyRef }) });
-          }
+          if (governed) skuStates.set(sku.code, { state: "draft" });
         } else if (operation.op === "create_identifier") {
           const sku = knownSku(operation.skuCode);
           need(created.has(sku.code), "catalog_publication_identifier_requires_created_sku");
@@ -1217,10 +1213,8 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         position.subject = sku.code;
         const draft = incoming.get(sku.code);
         if (draft && !created.has(sku.code)) {
-          const policyUnchanged = draft.demandPolicyRef === undefined || draft.demandPolicyRef === skuStates.get(sku.code)?.demandPolicyRef;
-          if (!withdrawalOnly) need(policyUnchanged, "sku_identity_change_requires_new_sku");
           const overlay = { attributes: draft.attributes ?? sku.attributes, grossMass: draft.grossMass ?? sku.grossMass, assetRefs: draft.assetRefs ?? sku.assetRefs };
-          if (withdrawalOnly) need(policyUnchanged && equal(overlay, { attributes: sku.attributes, grossMass: sku.grossMass, assetRefs: sku.assetRefs })
+          if (withdrawalOnly) need(equal(overlay, { attributes: sku.attributes, grossMass: sku.grossMass, assetRefs: sku.assetRefs })
             && (draft.logisticsRef === undefined || draft.logisticsRef === sku.logisticsRef), "catalog_lifecycle_withdrawal_overlay_refused");
           else Object.assign(sku, overlay);
         }
@@ -1260,7 +1254,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
       need((!promotions.product || result.status === "active") && promotions.skus.every(code => skus.get(code)?.status === "active"),
         "catalog_publication_activation_effect_missing");
       if (governed && productState) Object.assign(result, {
-        schemaVersion: 3, lifecycleState: productState, definitionDigest: input.installedDefinitionDigest,
+        schemaVersion: GOVERNED_PRODUCT_FACTS_VERSION, lifecycleState: productState, definitionDigest: input.installedDefinitionDigest,
       });
       const sorted = [...skus.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
       for (const sku of sorted) {
@@ -1271,8 +1265,7 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
         if (governed && state) {
           const optionDigest = combination(sku);
           need(before?.optionDigest === undefined || before.optionDigest === optionDigest, "sku_identity_change_requires_new_sku");
-          Object.assign(sku, { schemaVersion: 3, lifecycleState: state.state, optionDigest,
-            ...(state.demandPolicyRef === undefined ? {} : { demandPolicyRef: state.demandPolicyRef }) });
+          Object.assign(sku, { schemaVersion: GOVERNED_SKU_FACTS_VERSION, lifecycleState: state.state, optionDigest });
         }
         sku.source = before && equal({ ...sku, source: before.source }, before) ? before.source : claim;
         const finalSku = decodePublishedSku(sku, "skus", sku.code);

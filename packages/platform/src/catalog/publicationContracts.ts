@@ -4,6 +4,9 @@ import type { RulesIdentifier, RulesProduct, RulesSku } from "./contracts/public
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 
+export const GOVERNED_PRODUCT_FACTS_VERSION = 3;
+export const GOVERNED_SKU_FACTS_VERSION = 3;
+
 /** @experimental */
 export const CATALOG_PUBLICATION_LIMITS = { skuBytes: 2_097_152, manifestBytes: 16_777_216,
   receiptBytes: 8_388_608, historyBytes: 16_777_216, pageBytes: 8_388_608, pageItems: 100 } as const;
@@ -17,17 +20,16 @@ export interface CatalogPublishedProduct extends RulesProduct {
   document: CatalogDocumentRevisionRef | null;
   source: CatalogDraftClaimV3;
   content: CatalogPublishedContent;
-  schemaVersion?: 3;
+  schemaVersion?: typeof GOVERNED_PRODUCT_FACTS_VERSION;
   lifecycleState?: PublicationLifecycleState;
   definitionDigest?: string;
 }
 /** @internal */
 export interface CatalogPublishedSku extends RulesSku {
   source: CatalogDraftClaimV3;
-  schemaVersion?: 3;
+  schemaVersion?: typeof GOVERNED_SKU_FACTS_VERSION;
   lifecycleState?: PublicationLifecycleState;
   optionDigest?: string;
-  demandPolicyRef?: string;
 }
 /** @experimental */
 export interface CatalogSkuRevisionRef { skuId: string; revisionId: string; revision: number; digest: string }
@@ -56,11 +58,11 @@ export interface CatalogPublicationFailure {
 
 /** @experimental */
 export interface CatalogPublishedProductV3 extends CatalogPublishedProduct {
-  schemaVersion: 3; lifecycleState: PublicationLifecycleState; definitionDigest: string;
+  schemaVersion: typeof GOVERNED_PRODUCT_FACTS_VERSION; lifecycleState: PublicationLifecycleState; definitionDigest: string;
 }
 /** @experimental */
 export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
-  schemaVersion: 3; lifecycleState: PublicationLifecycleState; optionDigest: string;
+  schemaVersion: typeof GOVERNED_SKU_FACTS_VERSION; lifecycleState: PublicationLifecycleState; optionDigest: string;
 }
 /** @experimental */
 export interface CatalogPublicationManifestV3 { schemaVersion: 3; product: CatalogPublishedProductV3; skus: CatalogSkuRevisionRef[] }

@@ -229,18 +229,16 @@ BEGIN
            END LOOP;
           END LOOP;
           IF EXISTS(SELECT 1 FROM jsonb_array_elements(p->'skus') a
-            WHERE (a ? 'demandPolicyRef' AND jsonb_typeof(a->'demandPolicyRef') IS DISTINCT FROM 'string')
-               OR (a ? 'assetRefs' AND CASE WHEN jsonb_typeof(a->'assetRefs')='array'
+            WHERE a ? 'assetRefs' AND CASE WHEN jsonb_typeof(a->'assetRefs')='array'
                  THEN jsonb_array_length(a->'assetRefs')>32 OR EXISTS(
                    SELECT 1 FROM jsonb_array_elements(a->'assetRefs') r WHERE jsonb_typeof(r)<>'string')
-                 ELSE true END)) THEN EXIT v4_grammar; END IF;
+                 ELSE true END) THEN EXIT v4_grammar; END IF;
           -- The draft wire bounds references in UTF-16 and uses JavaScript trim.
           FOR ref_text IN
             SELECT e->>'commandKey' FROM jsonb_array_elements(inputs#>'{evidence,drafts}') e
             UNION ALL SELECT e->>'mediaRef' FROM jsonb_array_elements(inputs#>'{evidence,media}') e
             UNION ALL SELECT a#>>'{}' FROM jsonb_array_elements(inputs#>'{evidence,media}') e,
               LATERAL jsonb_array_elements(e->'assetRefs') a
-            UNION ALL SELECT a->>'demandPolicyRef' FROM jsonb_array_elements(p->'skus') a WHERE a ? 'demandPolicyRef'
             UNION ALL SELECT r#>>'{}' FROM jsonb_array_elements(p->'skus') a, LATERAL jsonb_array_elements(a->'assetRefs') r
           LOOP
             IF ref_text='' OR ref_text<>btrim(ref_text,trim_space)
@@ -281,7 +279,7 @@ BEGIN
         RETURN jsonb_build_object('outcome','validation_issue','reason','sku_reference_invalid');
       END IF;
       IF c->'schemaVersion' IN ('2'::jsonb, '3'::jsonb, '4'::jsonb) THEN
-        IF EXISTS (SELECT FROM jsonb_object_keys(s) k WHERE k NOT IN ('id','productId','code','options','netContent','identifiers','assetRefs','grossMass','logisticsRef','attributes','priceOperations') AND NOT (c->'schemaVersion'='4'::jsonb AND k='demandPolicyRef'))
+        IF EXISTS (SELECT FROM jsonb_object_keys(s) k WHERE k NOT IN ('id','productId','code','options','netContent','identifiers','assetRefs','grossMass','logisticsRef','attributes','priceOperations'))
           OR (s ? 'attributes' AND jsonb_typeof(s->'attributes') IS DISTINCT FROM 'object')
           OR (s ? 'priceOperations' AND jsonb_typeof(s->'priceOperations') IS DISTINCT FROM 'array') THEN
           RETURN jsonb_build_object('outcome','validation_issue','reason','payload_invalid');
@@ -514,14 +512,13 @@ BEGIN
    OR NOT (body ?& ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
      'netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source'])
    OR body - ARRAY['id','productId','code','title','status','minQuantity','isAddon','sellableStandalone','sellableInSubscription',
-     'netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source'] - (CASE WHEN body->'schemaVersion'='3'::jsonb THEN ARRAY['schemaVersion', 'lifecycleState', 'optionDigest', 'demandPolicyRef'] ELSE ARRAY[]::text[] END) <> '{}'::jsonb
+     'netContent','grossMass','options','attributes','facts','identifiers','assetRefs','logisticsRef','memberships','source'] - (CASE WHEN body->'schemaVersion'='3'::jsonb THEN ARRAY['schemaVersion', 'lifecycleState', 'optionDigest'] ELSE ARRAY[]::text[] END) <> '{}'::jsonb
    OR (body->'schemaVersion'='3'::jsonb AND (
     jsonb_typeof(body->'lifecycleState')='string'
     AND body->>'lifecycleState' IN ('draft','active','withdrawn','archived')
     AND body->>'status'=CASE WHEN body->>'lifecycleState'='withdrawn' THEN 'active' ELSE body->>'lifecycleState' END
     AND jsonb_typeof(body->'optionDigest')='string'
     AND body->>'optionDigest' ~ '^[a-f0-9]{64}$'
-    AND (NOT (body ? 'demandPolicyRef') OR public.catalog_publication_text_valid(body->'demandPolicyRef',240,true))
     AND (body->>'lifecycleState'='active' OR (body->'sellableStandalone',body->'sellableInSubscription')=('false'::jsonb,'false'::jsonb))
    ) IS DISTINCT FROM true)
    OR body->'id' IS DISTINCT FROM to_jsonb(p_sku) OR body->'productId' IS DISTINCT FROM to_jsonb(p_product)

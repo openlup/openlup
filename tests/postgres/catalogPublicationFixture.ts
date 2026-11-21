@@ -6,7 +6,7 @@ import type { CatalogPublishedSku, CatalogPublishedProduct, CatalogSkuRevisionRe
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 export const catalogueReadGrant = "db/platform/migrations/20261124180000_catalogue_read_grant.sql";
 export const cataloguePublicationAuthority = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
-export const catalogueGovernedForward = "db/platform/migrations/20261124200000_catalog_governed_lifecycle.sql";
+export const catalogueGovernedForward = "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql";
 
 export async function installAfter(pool: Pool, predecessor: string) {
   const index = platformForwards.findIndex(unit => unit.file === predecessor);
@@ -181,8 +181,7 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   if (options.lifecycle !== undefined) {
     const state = options.lifecycle, status = state === "withdrawn" ? "active" : state;
     Object.assign(product, { schemaVersion: 3, lifecycleState: state, status, definitionDigest });
-    Object.assign(facts, { schemaVersion: 3, lifecycleState: state, status, optionDigest: hash(json(facts.options)),
-      demandPolicyRef: "example:policy", sellableStandalone: state === "active" });
+    Object.assign(facts, { schemaVersion: 3, lifecycleState: state, status, optionDigest: hash(json(facts.options)), sellableStandalone: state === "active" });
   }
   const head = { publicationId: issueId, revision, documentDigest: document.digest };
   const base = { revision, ...data, approvalId, decision, decisionKey, candidateDigest, candidateRef, commandKey, fingerprint, head,

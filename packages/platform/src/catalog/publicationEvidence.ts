@@ -45,7 +45,7 @@ export interface CatalogPublicationEvidence {
   /** Selected sources, including the candidate. Retained sources are ordered by descending publication sequence, then by draft ID. */
   drafts: readonly CatalogPublicationDraftEvidence[];
   /** Omit for a confirmed historic head. Null means the authoritative state could not be read. */
-  lifecycle?: { product: PublicationLifecycleState; skus: Readonly<Record<string, { state: PublicationLifecycleState; demandPolicyRef?: string }>> } | null;
+  lifecycle?: { product: PublicationLifecycleState; skus: Readonly<Record<string, { state: PublicationLifecycleState }>> } | null;
 }
 
 /** Observations supplied by the host's read owners.

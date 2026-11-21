@@ -702,11 +702,11 @@
       "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a"
     },
     {
-      "file": "db/platform/migrations/20261124200000_catalog_governed_lifecycle.sql",
-      "sha256": "772c27e142152db6cef4e9a5708ec94355564d3ad0dc4a5f70d7d61bafb24cc9"
+      "file": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
+      "sha256": "2e2db165a85644815632a917401b5b264d76ac24a764ea9f6e8be368f39be0da"
     }
   ],
-  "objectInventorySha256": "1382c3b195a2ffa6270d68b6134b72ccf468b26c2322951406de9e1ff94c758e",
+  "objectInventorySha256": "1d9897676b7935722c9b41294c271a03ba30ae5beed418deebb1ce76636e9087",
   "qualified": {
     "baseline": {
       "file": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
@@ -1434,16 +1434,16 @@
         "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a"
       },
       {
-        "file": "db/platform/migrations/20261124200000_catalog_governed_lifecycle.sql",
-        "sha256": "772c27e142152db6cef4e9a5708ec94355564d3ad0dc4a5f70d7d61bafb24cc9"
+        "file": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
+        "sha256": "2e2db165a85644815632a917401b5b264d76ac24a764ea9f6e8be368f39be0da"
       }
     ],
     "objectInventorySha256": {
       "bootstrapMigrator": {
-        "withRestore": "3f92746d7b92f3129c9a86b4dbea0da8ff0fc365373756cc4b14eb53397f0779"
+        "withRestore": "4922df6bfc30f9d2de0a0e9a671154c02098cb82982957c4ddd22f9cc6ea2021"
       },
       "separateMigrator": {
-        "withRestore": "741635ff8dc6e84f7494992a002ace6b6c06d523c33b1e0f9728a6a079490d47"
+        "withRestore": "1bf778e46855917a9670420f46e1bafaecdbfa354186f37844b3c70548cd8bdf"
       }
     }
   },
@@ -2166,13 +2166,13 @@
         "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a"
       },
       {
-        "file": "db/platform/migrations/20261124200000_catalog_governed_lifecycle.sql",
-        "sha256": "772c27e142152db6cef4e9a5708ec94355564d3ad0dc4a5f70d7d61bafb24cc9"
+        "file": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
+        "sha256": "2e2db165a85644815632a917401b5b264d76ac24a764ea9f6e8be368f39be0da"
       }
     ],
     "objectInventorySha256": {
-      "installerManaged": "af926980c1382e9a94947db685d43589053d29c1a2c3c79f7dbfcc42cd5c2907",
-      "operatorProvisioned": "f4e1e26f074ac58087f7f5fde658db0444817524de503d03b06da2c9894617cf"
+      "installerManaged": "4ec898da010d94eb757fde325b5a29c8c77bd428bee6eefd71d95d82a83ceed1",
+      "operatorProvisioned": "cc55cc269fe028f793a1b15103c9339d1f875b9632f9fea3b2d17978775e3c19"
     }
   }
 }

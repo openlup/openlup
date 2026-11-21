@@ -83,7 +83,7 @@ function draftHandler<Context, Record extends PublicationDraftRecord, Page exten
         let readiness: CatalogDraftReadiness | undefined;
         if (command.payload) {
           const validation = command.payload.schemaVersion !== 1
-            ? await validateCatalogDraftV2(command.payload.schemaVersion === 4 ? { product: command.payload.product, schemaVersion: 2, skus: command.payload.skus.map(({ demandPolicyRef: _policy, ...sku }) => sku) }
+            ? await validateCatalogDraftV2(command.payload.schemaVersion === 4 ? { product: command.payload.product, schemaVersion: 2, skus: command.payload.skus }
               : command.payload.schemaVersion === 3 ? catalogDraftV3ValidationPayload(command.payload) : command.payload, deps.registry, deps.attributeReferences)
             : validateCatalogDraft(command.payload, deps.registry);
           if (!validation.valid) return { outcome: "validation_issue", reason: "draft_payload_invalid", issues: validation.issues };

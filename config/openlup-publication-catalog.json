@@ -1566,7 +1566,7 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261124200000_catalog_governed_lifecycle.sql",
+      "path": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
       "class": "public-output"
     },
     {
@@ -5078,7 +5078,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261124200000_catalog_governed_lifecycle.sql",
+      "path": "packages/platform/sql/20261124220000_catalog_governed_lifecycle.sql",
       "class": "public-output"
     },
     {

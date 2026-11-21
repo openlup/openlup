@@ -7,7 +7,7 @@ import { catalogDraftProductV2Schema, catalogDraftSkuV2Schema } from "./draftV2S
 
 const state = z.enum(["draft", "active", "withdrawn", "archived"]);
 export const lifecycleEvidenceSchema = z.object({ product: state,
-  skus: z.record(z.string(), z.object({ state, demandPolicyRef: z.string().min(1).optional() }).strict()) }).strict();
+  skus: z.record(z.string(), z.object({ state }).strict()) }).strict();
 const destination = z.enum(["active", "withdrawn", "archived"]);
 const code = z.string().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/u);
 const slug = z.string().min(1).max(64).regex(/^[a-z0-9][a-z0-9_-]*$/u);
@@ -23,10 +23,8 @@ export type PublicationLifecycleState = z.infer<typeof state>;
 export type PublicationLifecycleOperation = z.infer<typeof lifecycleOperation>;
 type LegacyOperation = CatalogDraftPayloadV3["publication"]["operations"][number];
 export type PublicationOperation = LegacyOperation | PublicationLifecycleOperation;
-type IntentSku = CatalogDraftPayloadV3["skus"][number] & { demandPolicyRef?: string | undefined };
-export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication" | "skus"> & {
+export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication"> & {
   schemaVersion: 3 | 4;
-  skus: IntentSku[];
   publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & { operations: PublicationOperation[] };
 };
 /** @experimental */
@@ -46,9 +44,7 @@ export function lifecycleWithdrawalOnly(payload: PublicationIntent): boolean {
 
 const v4Wire = z.object({ schemaVersion: z.literal(4),
   product: catalogDraftProductV2Schema.extend({ sharedContent: z.unknown() }).strict(),
-  skus: z.array(catalogDraftSkuV2Schema.extend({
-    demandPolicyRef: z.string().min(1).max(240).refine(value => value.trim() === value).optional(),
-  })).max(10_000),
+  skus: z.array(catalogDraftSkuV2Schema).max(10_000),
   publication: z.object({ kind: z.enum(["release", "compensation"]), operations: z.array(z.unknown()), evidence: z.unknown() }).strict(),
 }).strict();
 const summary = catalogDraftSummarySchema.extend({ payload: z.unknown() }).strict();
@@ -78,7 +74,6 @@ export function publicationIntent(input: unknown, onInvalid?: (path: string, uns
   const lifecycle = publication.operations.map(operation => lifecycleOperation.safeParse(operation));
   const commonIndexes = lifecycle.flatMap((op, index) => op.success ? [] : [index]);
   const common = (stored ? catalogDraftPayloadV3Schema : catalogPublicationDraftPayloadSchema).safeParse({ ...wire.data, schemaVersion: 3,
-    skus: skus.map(({ demandPolicyRef: _policy, ...sku }) => sku),
     publication: { ...publication, operations: publication.operations.filter((_operation, index) => !lifecycle[index]!.success) },
   });
   if (!common.success) {
