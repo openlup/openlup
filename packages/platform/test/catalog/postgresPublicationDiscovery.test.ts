@@ -207,6 +207,41 @@ it("refuses a rejecting async assessor without an unhandled rejection", async ()
   }
 });
 
+it("observes a rejecting thenable whose then function has no prototype", async () => {
+  const { lane } = owner(batch([subject, absentItem]));
+  const reads: PropertyKey[] = [], receivers: unknown[] = [];
+  let assessment: object | undefined;
+  const assess = () => {
+    const rejection = Promise.reject(new Error("installed thenable failed"));
+    function then(this: unknown, onFulfilled: () => void, onRejected: () => void) {
+      receivers.push(this);
+      return rejection.then(onFulfilled, onRejected);
+    }
+    Object.setPrototypeOf(then, null);
+    assessment = new Proxy({ then }, {
+      get(target, key, receiver) {
+        reads.push(key);
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    return assessment;
+  };
+  const installed = { registry, assess: assess as unknown as CatalogInstalledReadiness["assess"] };
+  const unhandled = vi.fn();
+  process.on("unhandledRejection", unhandled);
+  try {
+    expect(await readPostgresCatalogActivationReadiness(lane, installed, readiness))
+      .toEqual({ outcome: "dependency_unavailable", reason: "catalog_installed_readiness_invalid" });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(reads).toEqual(["then"]);
+    expect(receivers).toHaveLength(1);
+    expect(receivers[0]).toBe(assessment);
+  } finally {
+    process.off("unhandledRejection", unhandled);
+  }
+});
+
 it("assesses detached certified subjects after the owner lane closes and keeps price reasons in SQL", async () => {
   const { lane, isOpen } = owner(batch([{ ...subject, primaryPresent: false, priceReasons: ["price_readiness_missing", "price_shape_invalid"] }, absentItem]));
   const assess = vi.fn((...args: unknown[]) => {

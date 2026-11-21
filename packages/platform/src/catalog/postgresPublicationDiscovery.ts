@@ -200,7 +200,7 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
       const then = (assessment as Partial<PromiseLike<unknown>> | null | undefined)?.then;
       if (typeof then === "function") {
         // The assessor contract is synchronous. Observe a returned thenable before refusing it.
-        void Promise.resolve({ then: then.bind(assessment) }).catch(() => undefined);
+        Reflect.apply(then, assessment, [() => undefined, () => undefined]);
         return installedInvalid;
       }
       const extra = installedReasons.safeParse(assessment);
