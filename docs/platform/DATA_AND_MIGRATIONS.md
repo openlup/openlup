@@ -2392,6 +2392,13 @@ contains a single `pg_temp` entry in the final position. The other function and
 data lists are empty. The whole-file pin covers exactly the listed
 `ALTER FUNCTION … SET search_path` statements in order. The PostgreSQL catalog
 check allows only the pinned `search_path` changes.
+A later ordinary slot treats a landed settings-only slot's exact pinned
+`ALTER FUNCTION` statements as known DDL, so it can still replace a hardened
+function or grant privileges on it. A replacement may tighten a single
+top-level `SET search_path` list of unquoted ASCII identifiers, using `=` or
+`TO`. It must append exactly one final `pg_temp` to a list with no `pg_temp` or
+`pg_temp_<N>` entry. The rest of the header must match with whitespace between
+tokens normalized and literal and quoted identifier tokens kept byte-exact.
 The standing [definer search-path check](../../tests/postgres/definerSearchPath.test.ts)
 requires `pg_temp` last, with no earlier `pg_temp` or `pg_temp_<N>` entry, for every
 installed definer outside the shrink-only `DEFINER_SEARCH_PATH_PENDING` list.
@@ -2450,11 +2457,11 @@ pin. Its before-hash must equal that predecessor's after-hash. An unbound
 predecessor refuses. The actual latest definition in the complete ordered prefix
 must also match that before-hash; a first replacement without an earlier class
 creation or replacement still binds the pre-class definition. Replacement headers
-and search_path stay identical to that preimage apart from CREATE OR REPLACE —
-or strictly appending trailing `, pg_temp` to an existing ASCII `SET search_path`
-clause that did not already list `pg_temp` or `pg_temp_<N>`, with the slot's
-pinned `searchPath` updated to match — and
-the PostgreSQL catalog preserves owner and ACL. Issued contents, positions and the sealed-prefix rule stay fixed.
+retain the preimage attributes and `search_path` apart from `CREATE OR REPLACE`
+and the parsed-list tightening described with the settings-only slots above.
+The slot's pinned `searchPath` must match the tightened list. The PostgreSQL
+catalog preserves owner and ACL. Issued contents, positions and the sealed-prefix
+rule stay fixed.
 
 The class-local identity reader normalizes scalar aliases, schema-qualified composite/table arguments and
 arrays against exact listed signatures; earlier identity readers stay unchanged.
@@ -2683,11 +2690,9 @@ duties. Synthetic shape acceptance establishes no implemented destination API.
 Each created function must revoke all PUBLIC privileges before its grants and
 conditional blocks. SECURITY DEFINER requires the slot's exact pinned
 `search_path`, such as `pg_catalog, pg_temp`. A replacement may preserve a legacy
-compact `SET search_path=pg_catalog` header: extraction normalizes the assignment
-for its schema-list pin only; the header itself must remain byte-for-byte equal,
-except for strictly appending trailing `, pg_temp` to an existing ASCII
-`SET search_path` clause that did not already name `pg_temp` or `pg_temp_<N>`
-(matching the slot's pinned `searchPath`).
+compact `SET search_path=pg_catalog` header or tighten the list under the
+settings-only slot rules above. In both cases the slot's pinned `searchPath`
+must match the resulting list.
 New functions retain their existing spaced spelling, and no other SET grammar,
 schema-token or catalogue proconfig check changes. Grant-only signatures must
 exist in the pre-class native prefix and be disjoint from the replaced/created lists.

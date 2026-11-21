@@ -1509,6 +1509,17 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     await checkForward(pool,slot,forward(CREATED_OK,replacement),false,setup);
     await expect(checkForward(pool,slot,forward(CREATED_OK,replacement.replace("search_path=pg_catalog","search_path=public")),false,setup)).rejects.toThrow(/changed attributes or ACL/u);
   });
+  it("matches PostgreSQL's proconfig when tightening a compact search_path list", async () => {
+    const signature = "public.cat_compact(text)";
+    const beforePath = "SET search_path=pg_catalog,public";
+    const searchPath = "pg_catalog, public, pg_temp";
+    const definition = `CREATE FUNCTION public.cat_compact(p text) RETURNS text LANGUAGE sql SECURITY INVOKER ${beforePath} AS $$ SELECT p $$;`;
+    const setup = `${definition} REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`;
+    const replacement = definition.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")
+      .replace(beforePath, `SET search_path = ${searchPath}`);
+    const slot = { ...SYNTHETIC_SLOT, replacedFunctions: [...SYNTHETIC_SLOT.replacedFunctions, { signature, beforeSha256: null, searchPath }] };
+    await checkForward(pool, slot, forward(CREATED_OK, replacement), false, setup);
+  });
   const addedColumn="ALTER TABLE public.cat_parameters ADD COLUMN parent_id int;";
   const addedFk="ALTER TABLE public.cat_parameters ADD CONSTRAINT cat_parent_fk FOREIGN KEY (parent_id) REFERENCES public.cat_existing_table(id) ON DELETE SET NULL NOT VALID;";
   const fkSlot={...SYNTHETIC_SLOT,existingTableStatements:[addedColumn,addedFk]};
