@@ -519,6 +519,9 @@ test('operator escalation uses configured recipients and narrow captured fields'
     const second = await purchase(page), next = await failedRenewal(second); await runCare(market.defaultLocale);
     expect((await messages()).filter(row => row.kind === 'operator_escalation' && row.caseId === obligation.caseId)).toHaveLength(2);
     expect((await messages()).filter(row => row.kind === 'operator_escalation' && row.caseId === next.caseId)).toHaveLength(1);
+    // Move these verified fixtures outside the price-readiness window for other tests.
+    await owner.query("UPDATE public.commerce_orders SET created_at=created_at-interval '1 day' WHERE id=ANY($1::uuid[])",
+      [[f.orderRef, second.orderRef]]);
   } finally { await recipients.close(); }
 });
 
