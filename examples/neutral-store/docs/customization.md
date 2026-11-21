@@ -120,11 +120,19 @@ marker and preserved only across restarts of the same container.
 
 ## Catalogue authoring and storefront
 
-`owned/catalogue.ts` supplies the draft type. If `owned/catalogue-rules.cjs`
-is present, `./lifecycle up` installs its rules and the operator form uses
-them. Use **Load draft example**, save it, and select **Prepare saved draft**.
+Add product types in `owned/catalogue.ts` and update the shared rules in
+`owned/catalogue-rules.cjs`. When present, the rules file applies to every type
+in the registry returned by `createCatalogProductTypeRegistry`. For starter preview,
+omit `taxClass` and `subscriptionProfileRef` from those types. The installer
+supplies neither reference. Run
+`./lifecycle up` to install a rules version for each type. **Load draft
+example** picks the first registered type with an installed rules build. To use
+another type, enter its key and authoring version in the draft JSON. Save it
+and select **Prepare saved draft**.
 Older drafts keep the rules they were saved with. Keep the local catalogue
-build volume with the demonstration database when restarting the store.
+build volume with the demonstration database. If a saved draft needs a
+retained build that the current files cannot install, restore that build from
+the volume backup or save a new revision with a registered authoring version.
 Without a rules bundle, drafts use the existing validator in `owned/catalogue.ts`.
 The native draft writer owns the command. The host supplies the command key
 and session actor outside the JSON payload.

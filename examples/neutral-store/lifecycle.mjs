@@ -24,6 +24,21 @@ function delegate(executable, argv) {
   process.exitCode = result.status ?? 1;
 }
 
+function printInstallationRefusal(code, error) {
+  process.stderr.write(`${code}\n`);
+  const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
+  if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
+}
+
+function rulesRefusalMessage(error) {
+  if (!(error instanceof Error) || error.name !== 'CatalogPublicationError' || !/^catalog_publication_rules?_[a-z_]+$/u.test(error.code))
+    return;
+  const { message } = error;
+  const hook = /^Product rule (\w+) must be a function\. Export it as a function( or omit it)?\.$/u.exec(message);
+  if (hook) return `Export ${hook[1]} as a function${hook[2] ?? ''}. Product rule ${hook[1]} must be a function.`;
+  return message.replace(/^(Product rule [^.]+ failed\.) (.+)$/u, '$2 $1');
+}
+
 function configurationArgument(argv) {
   let configuration;
   for (let index = 0; index < argv.length; index += 2) {
@@ -67,6 +82,8 @@ if (command === 'candidate') {
   try {
     const config = selectConfiguration(configurationArgument(args));
     assertConfig(config);
+    const { prepareStarterCatalogueRules, readStarterCatalogueRules } = await import('./host/editor-catalogue.ts');
+    prepareStarterCatalogueRules(readStarterCatalogueRules());
     run('docker', ['compose', 'build']);
     run('docker', ['compose', 'up', '--wait', 'database']);
     run('docker', ['compose', 'run', '--rm', '--no-deps', 'installation',
@@ -81,9 +98,9 @@ if (command === 'candidate') {
     if (healthcheck) override.services.application.healthcheck = healthcheck;
     run('docker', ['compose', '-f', 'compose.yaml', '-f', '-', 'up', '--wait', 'application'], JSON.stringify(override));
   } catch (error) {
-    const code = error instanceof Error && knownStarterRefusal.test(error.message)
-      ? error.message : 'starter_installation_failed';
-    process.stderr.write(`${code}\n`);
+    const code = rulesRefusalMessage(error)
+      ?? (error instanceof Error && knownStarterRefusal.test(error.message) ? error.message : 'starter_installation_failed');
+    printInstallationRefusal(code, error);
     process.exitCode = 2;
   }
 } else if (command === 'serve-demo') {
@@ -117,9 +134,7 @@ if (command === 'candidate') {
     await installDemonstration(selectConfiguration(configurationArgument(args)), bootstrapDemonstration);
   } catch (error) {
     const code = error instanceof Error ? error.message : 'starter_installation_failed';
-    process.stderr.write(`${code}\n`);
-    const hint = [error?.hint, error?.cause?.hint].find(value => typeof value === 'string' && value.trim());
-    if (hint) process.stderr.write(`${hint.trim().replace(/\s+/gu, ' ').slice(0, installationHintLimit)}\n`);
+    printInstallationRefusal(code, error);
     if (code === 'starter_seed_demonstration_database_required') {
       process.stderr.write('See node_modules/@openlup/core/docs/guide/how-to/build/customize-the-starter.md#reset-an-interrupted-first-install for the local demonstration reset recipe.\n');
     }

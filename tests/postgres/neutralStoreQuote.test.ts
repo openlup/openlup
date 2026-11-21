@@ -165,13 +165,10 @@ const shippingScript = String.raw`
   } finally {await new Promise(resolve=>{server.close(resolve);server.closeIdleConnections();});await bindings.close();await runtime.end();await owner.end();}
 `;
 
-// About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
-// The child measured at most 2.703 s; retain its separate 20 s deadline.
-for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
-  const caseStarted = performance.now();
-  const container = await runPostgresContainer({ name: `starter-quote-${configuration}-${multiSize ? "multi" : "single"}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
+async function startStarterDatabase(name: string) {
+  const container = await runPostgresContainer({ name: `starter-${name}-${process.pid}`,database: 'neutral_store',password: 'synthetic-conformance' });
   containers.push(container);
-  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter quote PostgreSQL unavailable');
+  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Starter PostgreSQL unavailable');
   const owner = new Pool({ connectionString: container.connectionString }); pools.push(owner);
   for (const role of ['starter_runtime','starter_restore']) await owner.query(`CREATE ROLE ${role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'`);
   const selection = { generation: 'qualified-v2',roleMode: 'installer-managed',migrationLogin: 'postgres',bootstrapLogin: 'postgres',runtimeLogin: 'starter_runtime',restoreLogin: 'starter_restore' } as const;
@@ -180,6 +177,14 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
   await runner.apply();expect((await runner.status()).pending).toEqual([]);
   await owner.query("COMMENT ON DATABASE neutral_store IS 'openlup-neutral-store-demo-v1'");
   const runtime = new URL(container.connectionString);runtime.username = 'starter_runtime';runtime.password = 'synthetic-conformance';
+  return { ownerUrl: container.connectionString, runtimeUrl: runtime.toString() };
+}
+
+// About 4x the slowest hosted run (23,351 ms), rounded up to 5 s.
+// The child measured at most 2.703 s; retain its separate 20 s deadline.
+for (const { configuration, multiSize } of [{ configuration: 'supplements', multiSize: false }, { configuration: 'coffee', multiSize: false }, { configuration: 'coffee', multiSize: true }]) it(multiSize ? 'multi-size checkout selects its SKU and refuses a SKU absent from the shared product document' : `${configuration}: installed seed, strict quotes, capability refusal and retained-promise acceptance`, async () => {
+  const caseStarted = performance.now();
+  const { ownerUrl, runtimeUrl } = await startStarterDatabase(`quote-${configuration}-${multiSize ? 'multi' : 'single'}`);
   const probe = createServer();
   await new Promise<void>(resolve => probe.listen(0,'127.0.0.1',resolve));
   const address = probe.address();
@@ -352,13 +357,13 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
       console.log(JSON.stringify({configuration:config.id,unit:1420,subtotal:4260,second:3958,capabilityRefused:true,secondPromiseRefresh:true,retainedCapture:true}));
     } finally {await runtime.end();await owner.end();}
   `;
-  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${script}`);
+  writeFileSync(join(consumer,'scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,multiSize,port,ownerUrl,runtimeUrl })};\n${script}`);
   const childStarted = performance.now();
   let output: string;
   try { output = execFileSync(process.execPath,['--experimental-strip-types','scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000 }); }
   catch (error) { throw new Error((error as { stderr?: Buffer }).stderr?.toString() ?? 'Starter quote child failed',{ cause: error }); }
   expect(JSON.parse(output.trim())).toMatchObject({ configuration,unit: 1420,subtotal: 4260,second: 3958,capabilityRefused: true,secondPromiseRefresh: true,retainedCapture: true });
-  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,port,ownerUrl: container.connectionString,runtimeUrl: runtime.toString() })};\n${shippingScript.replaceAll('\\`','`')}`);
+  writeFileSync(join(consumer,'shipping-scenario.mjs'),`const fixture = ${JSON.stringify({ configuration,port,ownerUrl,runtimeUrl })};\n${shippingScript.replaceAll('\\`','`')}`);
   const shippingRun = () => execFileSync(process.execPath,['--experimental-strip-types','shipping-scenario.mjs','--configuration',configuration,'--port',String(port)], { cwd: consumer,encoding: 'utf8',timeout: 20_000,stdio: 'pipe' });
   let shippingOutput: string;
   try { shippingOutput = shippingRun(); }
@@ -380,3 +385,221 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
   }
   console.info(JSON.stringify({ configuration, caseMs: performance.now() - caseStarted, childMs: performance.now() - childStarted }));
 }, 95_000);
+
+it('installs rules and previews the second product type from a copy with only the owned catalogue changed', async () => {
+  const app = join(consumer, 'catalogue-application');
+  cpSync(join(consumer, 'application'), app, { recursive: true });
+  const path = join(app, 'owned/catalogue.ts');
+  const original = readFileSync(path, 'utf8');
+  const registration = 'export const catalogDraftRegistry = createCatalogProductTypeRegistry(types);';
+  expect(original).toContain(registration);
+  const key = 'example:accessory', version = 7;
+  const customized = original.replace(registration,
+    `for (const version of [${version}, ${version + 1}]) types.push({ ...types[0]!, key: ${JSON.stringify(key)}, version });
+${registration}`);
+  writeFileSync(path, customized);
+  const fixture = { ...await startStarterDatabase('catalogue-types'), key, version };
+  const run = (check: string) => runCatalogueCheck(app, fixture, check);
+  run(String.raw`
+    await install();
+    await install();
+    const types = await installedTypes();
+    assert.deepEqual(types.map(row => row.type_key), [fixture.key, fixture.key, 'starter:item'], 'all catalogue rule definitions installed');
+    assert.ok(types.every(row => row.version > 1 && row.validator_ref === rulesRef), 'all definitions pin the rules artifact');
+    const catalogue = starterCatalogue();
+    const pin = version => catalogue.currentFor({key: fixture.key, version});
+    const installed = pin(fixture.version), next = pin(fixture.version + 1);
+    assert.ok(types.some(row => row.type_key === installed.key && row.version === installed.version));
+    assert.ok(types.some(row => row.type_key === next.key && row.version === next.version));
+    const runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const bindings = [];
+    function compose() {
+      const binding = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+      bindings.push(binding);
+      return binding.actions['operator.catalogDrafts'];
+    }
+    const receipt = ref => '.context/catalogue-builds/' + encodeURIComponent(ref.key) + '@' + ref.version + '.json';
+    const rules = 'owned/catalogue-rules.cjs';
+    try {
+      const action = compose();
+      const context = {config, actor: {customerRef: null, operatorRef: randomUUID()}, commandKey: randomUUID()};
+      const example = await action({action: 'example'}, context);
+      assert.equal(example.ok, true, example.code);
+      assert.equal(example.value.product.type.key, 'starter:item');
+      const payload = example.value;
+      const starterReceipt = receipt(payload.product.type);
+      const starterBytes = readFileSync(starterReceipt);
+      unlinkSync(starterReceipt);
+      try {
+        const fallback = await compose()({action: 'example'}, context);
+        assert.equal(fallback.value?.product.type.version, installed.version, 'first installed example skips the unavailable first receipt');
+        const missing = await compose()({action: 'create', draftId: randomUUID(), expectedRevision: 0, payload}, context);
+        assert.match(missing.issues?.[0]?.message ?? '', /run \.+\/lifecycle up/u, 'current missing pin can be installed by up');
+      } finally { writeFileSync(starterReceipt, starterBytes); }
+      payload.product.type = {key: fixture.key, version: fixture.version};
+      const draftId = randomUUID();
+      const command = {action: 'create', draftId, expectedRevision: 0, payload};
+      const saved = await action(command, context);
+      assert.equal(saved.ok, true, 'save second type: ' + saved.code);
+      assert.deepEqual(saved.value.record.payload.product.type, {key: fixture.key, version: installed.version}, 'second type pinned to its installed rules');
+      assert.equal((await action(command, context)).replayed, true);
+      const changed = structuredClone(command);
+      changed.payload.product.type.version++;
+      assert.equal((await action(changed, context)).code, 'catalog_draft_command_key_reused', 'same key changed-version replay conflicts');
+      const preview = await action({action: 'prepare', draftId, expectedRevision: 1}, context);
+      assert.equal(preview.ok, true, 'preview second type: ' + preview.code);
+      assert.equal(preview.value.structural.outcome, 'unknown');
+      const revised = await action({...changed, action: 'revise', expectedRevision: 1}, {...context, commandKey: randomUUID()});
+      assert.equal(revised.ok, true, revised.code);
+      assert.equal(revised.value.record.payload.product.type.version, next.version, 'same key revision uses the requested authoring version');
+
+      const retainedReceipt = receipt(installed);
+      const authoringRecord = retainedReceipt.replace(/\.json$/u, '.authoring');
+      const authoringBytes = readFileSync(authoringRecord);
+      unlinkSync(authoringRecord);
+      appendFileSync(rules, '\n// Updated rules build\n');
+      const retained = compose();
+      assert.equal((await retained(command, context)).replayed, true, 'retained legacy receipt preserves an exact replay');
+      assert.equal((await retained(changed, context)).code, 'catalog_draft_command_key_reused', 'retained legacy receipt cannot replay another version');
+      writeFileSync(authoringRecord, authoringBytes);
+      unlinkSync(retainedReceipt);
+      const recovery = compose();
+      const before = await draftEffects();
+      assert.equal((await recovery(command, context)).replayed, true, 'detached authoring version preserves exact replay after build loss');
+      assert.equal((await recovery(changed, context)).code, 'catalog_draft_command_key_reused', 'detached authoring version refuses changed-version reuse after build loss');
+      const stale = await recovery({action: 'prepare', draftId, expectedRevision: 1}, context);
+      assert.equal(stale.code, 'catalog_definition_drift');
+      assert.match(stale.issues?.[0]?.message ?? '', /Restore its retained catalogue build/u, 'retained preview directs restoration');
+      assert.equal(stale.issues[0].message.includes('./lifecycle up'), false);
+      const unknown = structuredClone(command);
+      unknown.draftId = randomUUID();
+      unknown.payload.product.type.key = 'example:unknown';
+      const refused = await recovery(unknown, {...context, commandKey: randomUUID()});
+      assert.match(refused.issues?.[0]?.message ?? '', /example:unknown@7 is not registered.*owned\/catalogue\.ts/u, 'unknown key directs registration');
+      assert.equal(refused.issues[0].message.includes('./lifecycle up'), false);
+      assert.deepEqual(await draftEffects(), before, 'recovery guidance makes no durable changes');
+    } finally {
+      for (const binding of bindings) await binding.close();
+      await runtime.end();
+    }
+  `);
+  writeFileSync(path, customized.replace(registration, `const registry = createCatalogProductTypeRegistry(types);
+export const catalogDraftRegistry = { resolve: registry.resolve };`));
+  run(String.raw`
+    const types = await installedTypes();
+    await assert.rejects(install(), {
+      message: 'starter_catalogue_rules_registry_required',
+      hint: /owned\/catalogue\.ts.*createCatalogProductTypeRegistry/u,
+    });
+    assert.deepEqual(await installedTypes(), types);
+  `);
+}, 95_000);
+
+it('keeps the shipped single-type receipt bytes and replays an exact legacy create after build loss', async () => {
+  const app = join(consumer, 'single-catalogue-application');
+  cpSync(join(consumer, 'application'), app, { recursive: true });
+  const fixture = await startStarterDatabase('catalogue-single');
+  const request = JSON.parse(runCatalogueCheck(app, fixture, String.raw`
+    await install();
+    const pin = starterCatalogue().current;
+    assert.deepEqual({key: pin.key, version: pin.version}, {key: 'starter:item', version: 714101500});
+    const receipt = '.context/catalogue-builds/' + pin.version + '.json';
+    // SHA-256 of the complete receipt emitted by the shipped stager at 1125dd97f.
+    assert.equal(createHash('sha256').update(readFileSync(receipt)).digest('hex'),
+      'cd36418dee1de7afbe9a5bf5748ef3aaad3a962990cd7ff617208bd1593eb5bb', 'fresh receipt matches base bytes');
+    const runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const first = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+    let restarted;
+    try {
+      const action = first.actions['operator.catalogDrafts'];
+      const context = {config, actor: {customerRef: null, operatorRef: randomUUID()}, commandKey: randomUUID()};
+      const example = await action({action: 'example'}, context);
+      assert.equal(example.ok, true, example.code);
+      const payload = example.value;
+      payload.product.type.version = 1;
+      const command = {action: 'create', draftId: randomUUID(), expectedRevision: 0, payload};
+      const saved = await action(command, context);
+      assert.equal(saved.ok, true, saved.code);
+      const before = await draftEffects();
+      unlinkSync(receipt);
+      // Existing base installations did not write an authoring record.
+      rmSync('.context/catalogue-builds/' + encodeURIComponent(pin.key) + '@' + pin.version + '.authoring', {force: true});
+      appendFileSync('owned/catalogue-rules.cjs', '\n// Updated rules build\n');
+      assert.notEqual(starterCatalogue().current.version, pin.version);
+      restarted = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+      const retry = restarted.actions['operator.catalogDrafts'];
+      const replayed = await retry(command, context);
+      assert.equal(replayed.replayed, true, 'legacy exact replay uses the committed pin after build loss');
+      assert.equal(replayed.value.record.payload.product.type.version, pin.version);
+      const changed = structuredClone(command);
+      changed.payload.product.type.version = 2;
+      assert.equal((await retry(changed, context)).code, 'catalog_draft_command_key_reused');
+      assert.deepEqual(await draftEffects(), before, 'retry keeps the database command receipt and draft revision unchanged');
+      console.log(JSON.stringify({ command: changed, actor: context.actor, commandKey: context.commandKey }));
+    } finally {
+      await restarted?.close();
+      await first.close();
+      await runtime.end();
+    }
+  `));
+  const ownedFile = join(app, 'owned/catalogue.ts');
+  const owned = readFileSync(ownedFile, 'utf8');
+  expect(owned).toContain("key: 'starter:item', version: 1");
+  writeFileSync(ownedFile, owned.replace("key: 'starter:item', version: 1", "key: 'starter:item', version: 2"));
+  const upgraded = { ...fixture, request };
+  runCatalogueCheck(app, upgraded, String.raw`
+    const runtime = new pg.Pool({connectionString: fixture.runtimeUrl});
+    const binding = composeOperatorCapabilities({executor: runtime, connectionString: fixture.runtimeUrl});
+    try {
+      const {command, actor, commandKey} = fixture.request;
+      const before = await draftEffects();
+      const reply = await binding.actions['operator.catalogDrafts'](command, {config, actor, commandKey});
+      assert.equal(reply.code, 'catalog_draft_command_key_reused', 'a new sole authoring version cannot replay a lost legacy build');
+      assert.deepEqual(await draftEffects(), before);
+    } finally {
+      await binding.close();
+      await runtime.end();
+    }
+  `);
+}, 95_000);
+
+function runCatalogueCheck(app: string, fixture: Awaited<ReturnType<typeof startStarterDatabase>>, check: string) {
+  return execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module'], {
+    cwd: app, input: `const fixture = ${JSON.stringify(fixture)};\n${installCatalogueScript}\n${check}`,
+    encoding: 'utf8', timeout: 20_000, stdio: 'pipe',
+  });
+}
+
+const installCatalogueScript = String.raw`
+  import assert from 'node:assert/strict';
+  import {createHash, randomUUID} from 'node:crypto';
+  import {appendFileSync, readFileSync, rmSync, unlinkSync, writeFileSync} from 'node:fs';
+  import pg from 'pg';
+  import {installDemonstration} from './installation/install.ts';
+  import {readStarterCatalogueRules, starterCatalogue} from './host/editor-catalogue.ts';
+  import {composeOperatorCapabilities} from './host/operator-composition.ts';
+  import {configurations} from './owned/store.config.ts';
+  import {createPostgresFulfillmentStockSyncPort} from '@openlup/platform/fulfillment';
+  const config = configurations.supplements;
+  const catalogueRules = readStarterCatalogueRules();
+  const rulesRef = 'sha256:' + createHash('sha256').update(catalogueRules).digest('hex');
+  const install = () => installDemonstration(config, async () => {
+    const connection = new pg.Client({connectionString: fixture.ownerUrl});
+    await connection.connect();
+    const stock = createPostgresFulfillmentStockSyncPort(connection,
+      {sourceKey: 'starter-demo:' + config.id, readLocalInventoryStock: async () => []});
+    return {connection, stock, catalogueRules, installRole: 'postgres', runtimeRole: 'starter_runtime',
+      close: () => connection.end()};
+  });
+  const installedTypes = () => readOwner("SELECT type_key, version, validator_ref FROM public.catalog_type_versions ORDER BY type_key");
+  const draftEffects = () => readOwner("SELECT (SELECT count(*) FROM public.catalog_draft_heads) AS heads, (SELECT count(*) FROM public.catalog_draft_revisions) AS revisions, (SELECT count(*) FROM public.catalog_draft_command_receipts) AS receipts");
+  async function readOwner(sql) {
+    const owner = new pg.Client({connectionString: fixture.ownerUrl});
+    await owner.connect();
+    try {
+      return (await owner.query(sql)).rows;
+    } finally {
+      await owner.end();
+    }
+  }
+`;

@@ -1332,6 +1332,11 @@ The default is 74; only the tagged `JSON.parse` site gives 64. Integrity failure
 are excluded from the input allowlist and give 74. PASS grants no installation,
 migration, publication or activation authority.
 
+`createCatalogProductTypeRegistry` exposes immutable `definitions` in
+registration order. The member is optional on `CatalogProductTypeRegistry`.
+Custom registries can implement `resolve` alone. The starter installer uses
+the definitions when an application supplies a shared rules file.
+
 Catalogue pack authoring adds `defineCatalogPack` and `draftsFor` to
 `./catalog/contracts`. Descriptors preserve readonly literal type, unit, option,
 tax-class and profile references. `defineCatalogPack` recursively freezes the descriptor and returns a recursively
