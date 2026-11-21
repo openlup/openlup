@@ -323,3 +323,131 @@ describe("upstream exact managed migration approval", () => {
       .toThrow("exact managed forward managed prefix differs");
   });
 });
+
+describe("CD-SEC-1 SECURITY DEFINER search_path admission via sql:admit and hosted checks", () => {
+  const signature = "public.fixture_sec_definer(uuid)";
+  const nativeFnSql = (security: "DEFINER" | "INVOKER", searchPathSql: string | null) => {
+    const clause = searchPathSql === null ? "" : ` SET search_path = ${searchPathSql}`;
+    const def = `CREATE FUNCTION public.fixture_sec_definer(p_id uuid) RETURNS text LANGUAGE sql SECURITY ${security}${clause} AS $$ SELECT 'ok'; $$;`;
+    return { def, text: `${def}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n` };
+  };
+
+  it.each([
+    ["omitted SET search_path", null, null],
+    ["public, pg_catalog (missing pg_temp)", "public, pg_catalog", "public, pg_catalog"],
+    ["pg_temp, pg_catalog (pg_temp not last)", "pg_temp, pg_catalog", "pg_temp, pg_catalog"],
+    ["pg_temp, public, pg_temp (duplicate pg_temp)", "pg_temp, public, pg_temp", "pg_temp, public, pg_temp"],
+  ])("refuses a new native-store SECURITY DEFINER forward with %s in sql:admit and direct checks", (_label, searchPathSql, slotSearchPath) => {
+    const f = fixture();
+    const { def, text } = nativeFnSql("DEFINER", searchPathSql);
+    const entry = slot(nativePath);
+    entry.createdFunctions = [{ signature, searchPath: slotSearchPath }];
+    stageNativeForward(f, text, entry, [{ signature, beforeSha256: null, afterSha256: sqlSha256(def) }]);
+    const head = f.commit();
+    const result = cli(f.root, ["--base", f.base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(1);
+    const expected = `SECURITY DEFINER function ${signature} must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)`;
+    expect(result.stdout).toContain(expected);
+    expect(verdictLines(result.stdout)).toEqual(directVerdicts(f, f.base, head).verdicts);
+  }, 20_000);
+
+  it.each([
+    ["DEFINER with pg_catalog, pg_temp", "DEFINER", "pg_catalog, pg_temp", "pg_catalog, pg_temp"],
+    ["DEFINER with public, pg_catalog, pg_temp", "DEFINER", "public, pg_catalog, pg_temp", "public, pg_catalog, pg_temp"],
+    ["INVOKER with public, pg_catalog", "INVOKER", "public, pg_catalog", "public, pg_catalog"],
+  ] as const)("admits a new native-store forward with %s in sql:admit and direct checks", (_label, security, searchPathSql, slotSearchPath) => {
+    const f = fixture();
+    const { def, text } = nativeFnSql(security, searchPathSql);
+    const entry = slot(nativePath);
+    entry.createdFunctions = [{ signature, searchPath: slotSearchPath }];
+    stageNativeForward(f, text, entry, [{ signature, beforeSha256: null, afterSha256: sqlSha256(def) }]);
+    const head = f.commit();
+    const result = cli(f.root, ["--base", f.base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(verdictLines(result.stdout)).toEqual(directVerdicts(f, f.base, head).verdicts);
+  }, 20_000);
+
+  const managedPath = "supabase/migrations/20271106100000_definer_check.sql";
+  const stageManaged = (f: Fixture, sqlText: string) => {
+    const value = registry();
+    value.managedExactForwards = [{ path: managedPath, sha256: sqlSha256(sqlText), prefixSha256: managedForwardPrefixSha256(f.root, f.base, managedPath) }];
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    const approval = f.commit();
+    f.put(managedPath, sqlText);
+    return { approval, head: f.commit() };
+  };
+
+  it.each([
+    ["omitted SET search_path", "CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1; $$;\n"],
+    ["public, pg_catalog", "CREATE OR REPLACE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_catalog AS $$ SELECT 1; $$;\n"],
+    ["pg_temp, pg_catalog", "CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = pg_temp, pg_catalog AS $$ SELECT 1; $$;\n"],
+    ["pg_temp, public, pg_temp", "CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = pg_temp, public, pg_temp AS $$ SELECT 1; $$;\n"],
+    ["duplicate quoted SEARCH_PATH", 'CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET "SEARCH_PATH" = public AS $$ SELECT 1; $$;\n'],
+  ])("refuses a newly added managed exact forward with %s across sql:admit, self-check and queue", (_label, sqlText) => {
+    const f = fixture();
+    const { approval, head } = stageManaged(f, sqlText);
+    const expected = "SECURITY DEFINER function public.fixture_managed(uuid) must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)";
+    expect(() => assertAdmittedPlatformForward(f.root, approval, head, managedPath, Buffer.from(sqlText))).toThrow(expected);
+    expect(() => assertCoLocatedForwardApproval(f.root, approval, head)).toThrow(expected);
+    const result = cli(f.root, ["--base", approval, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain(expected);
+    expect(verdictLines(result.stdout)).toEqual(directVerdicts(f, approval, head).verdicts);
+  }, 20_000);
+
+  it.each([
+    ["CREATE PROCEDURE SECURITY DEFINER without pg_temp", "CREATE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN NULL; END; $$;\n", "SECURITY DEFINER procedure public.fixture_proc(uuid) must place pg_temp last in SET search_path"],
+    ["ALTER FUNCTION SECURITY DEFINER without search_path", "ALTER FUNCTION public.fixture_managed(uuid) SECURITY DEFINER;\n", "SECURITY DEFINER function public.fixture_managed(uuid) must place pg_temp last in SET search_path"],
+    ["ALTER FUNCTION RESET search_path", "ALTER FUNCTION public.fixture_managed(uuid) RESET search_path;\n", "ALTER FUNCTION public.fixture_managed(uuid) must not reset search_path"],
+    ["ALTER ROUTINE RESET ALL", "ALTER ROUTINE public.fixture_managed RESET ALL;\n", "ALTER ROUTINE public.fixture_managed must not reset search_path"],
+    ["ALTER FUNCTION SET search_path = public", "ALTER FUNCTION public.fixture_managed(uuid) SET search_path = public;\n", "ALTER FUNCTION public.fixture_managed(uuid) must place pg_temp last in SET search_path"],
+  ])("refuses a newly added managed exact forward with %s across self-check and queue", (_label, sqlText, expected) => {
+    const f = fixture();
+    const { approval, head } = stageManaged(f, sqlText);
+    expect(() => assertAdmittedPlatformForward(f.root, approval, head, managedPath, Buffer.from(sqlText))).toThrow(expected);
+    expect(() => assertCoLocatedForwardApproval(f.root, approval, head)).toThrow(expected);
+  });
+
+  it("grandfathers only the exact frozen historical managed exact forward bytes and refuses any 1-byte modification", () => {
+    const historicalPath = "supabase/migrations/20261123144000_checkout_account_ownership.sql";
+    const exactBytes = readFileSync(historicalPath);
+    const f = fixture();
+    const value = registry();
+    value.managedExactForwards = [{ path: historicalPath, sha256: sqlSha256(exactBytes), prefixSha256: managedForwardPrefixSha256(f.root, f.base, historicalPath) }];
+    f.put(REVIEWED_FORWARD_PATH, encode(value));
+    const approval = f.commit();
+    f.put(historicalPath, exactBytes);
+    const exactHead = f.commit();
+    expect(() => assertAdmittedPlatformForward(f.root, approval, exactHead, historicalPath, exactBytes)).not.toThrow();
+    expect(() => assertCoLocatedForwardApproval(f.root, approval, exactHead)).not.toThrow();
+
+    const modifiedBytes = Buffer.concat([exactBytes, Buffer.from("\n")]);
+    const f2 = fixture();
+    const value2 = registry();
+    value2.managedExactForwards = [{ path: historicalPath, sha256: sqlSha256(modifiedBytes), prefixSha256: managedForwardPrefixSha256(f2.root, f2.base, historicalPath) }];
+    f2.put(REVIEWED_FORWARD_PATH, encode(value2));
+    const approval2 = f2.commit();
+    f2.put(historicalPath, modifiedBytes);
+    const modifiedHead = f2.commit();
+    expect(() => assertAdmittedPlatformForward(f2.root, approval2, modifiedHead, historicalPath, modifiedBytes)).toThrow(/must place pg_temp last in SET search_path/u);
+    expect(() => assertCoLocatedForwardApproval(f2.root, approval2, modifiedHead)).toThrow(/must place pg_temp last in SET search_path/u);
+  });
+
+  it.each([
+    ["quoted public, pg_catalog, pg_temp", 'CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = "public", "pg_catalog", "pg_temp" AS $$ SELECT 1; $$;\n'],
+    ["uppercase PG_CATALOG, PG_TEMP", "CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = PG_CATALOG, PG_TEMP AS $$ SELECT 1; $$;\n"],
+    ["SECURITY INVOKER without pg_temp", "CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY INVOKER SET search_path = public, pg_catalog AS $$ SELECT 1; $$;\n"],
+  ])("admits a newly added managed exact forward with %s", (_label, sqlText) => {
+    const f = fixture();
+    const { approval, head } = stageManaged(f, sqlText);
+    expect(() => assertAdmittedPlatformForward(f.root, approval, head, managedPath, Buffer.from(sqlText))).not.toThrow();
+    expect(() => assertCoLocatedForwardApproval(f.root, approval, head)).not.toThrow();
+    const result = cli(f.root, ["--base", approval, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(verdictLines(result.stdout)).toEqual(directVerdicts(f, approval, head).verdicts);
+  }, 20_000);
+});

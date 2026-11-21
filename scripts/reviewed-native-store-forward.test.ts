@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -1943,5 +1943,163 @@ describe("closed successor storage RESTRICT tables", () => {
   });
   it.each(refusals)("refuses successor storage statement: %s", (_label, statement) => {
     expect(() => check(`${sql()}\n${statement}`)).toThrow(/reviewed native store/u);
+  });
+});
+
+describe("CD-SEC-1 SECURITY DEFINER trailing pg_temp search_path", () => {
+  const fnSql = (clauses: string, body = "AS $$ SELECT 'ok'; $$", kind = "CREATE") =>
+    `${kind} FUNCTION public.fixture_definer(p_id uuid) RETURNS text LANGUAGE sql ${clauses} ${body};`;
+
+  it.each([
+    ["omitted SET search_path", fnSql("SECURITY DEFINER")],
+    ["CREATE OR REPLACE omitting SET search_path", fnSql("SECURITY DEFINER", "AS $$ SELECT 'ok'; $$", "CREATE OR REPLACE")],
+    ["public, pg_catalog without pg_temp", fnSql("SECURITY DEFINER SET search_path = public, pg_catalog")],
+    ["pg_catalog without pg_temp", fnSql("SECURITY DEFINER SET search_path = pg_catalog")],
+    ["pg_temp first instead of last", fnSql("SECURITY DEFINER SET search_path = pg_temp, pg_catalog")],
+    ["pg_temp in the middle", fnSql("SECURITY DEFINER SET search_path = public, pg_temp, pg_catalog")],
+    ["duplicate pg_temp", fnSql("SECURITY DEFINER SET search_path = pg_temp, public, pg_temp")],
+    ["numbered pg_temp earlier", fnSql("SECURITY DEFINER SET search_path = pg_temp_1, pg_catalog, pg_temp")],
+    ["SET search_path FROM CURRENT", fnSql("SECURITY DEFINER SET search_path FROM CURRENT")],
+    ["SET search_path = DEFAULT", fnSql("SECURITY DEFINER SET search_path = DEFAULT")],
+    ["empty string search_path", fnSql("SECURITY DEFINER SET search_path = ''")],
+    ["double-quoted uppercase PG_TEMP", fnSql('SECURITY DEFINER SET search_path = "pg_catalog", "PG_TEMP"')],
+    ["single-quoted comma list", fnSql("SECURITY DEFINER SET search_path = 'pg_catalog, pg_temp'")],
+    ["duplicate SET search_path clauses", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET search_path = public")],
+    ["SET search_path only inside line comment", fnSql("SECURITY DEFINER -- SET search_path = pg_catalog, pg_temp\n")],
+    ["SET search_path only inside block comment", fnSql("SECURITY DEFINER /* SET search_path = pg_catalog, pg_temp */")],
+    ["SET search_path only inside dollar body", fnSql("SECURITY DEFINER", "AS $$ SET search_path = pg_catalog, pg_temp; SELECT 'ok'; $$")],
+    ["SET search_path only inside BEGIN ATOMIC body", fnSql("SECURITY DEFINER", "BEGIN ATOMIC SET search_path = pg_catalog, pg_temp; SELECT 'ok'; END")],
+    ["SECURITY DEFINER after BEGIN ATOMIC END", fnSql("", "BEGIN ATOMIC SELECT 'ok'; END SECURITY DEFINER")],
+    ["SECURITY DEFINER with RETURN expression body", fnSql("SECURITY DEFINER", "RETURN 'ok'")],
+    ["block-comment split SECURITY DEFINER", fnSql("SECURITY/* gap */DEFINER SET search_path = public, pg_catalog")],
+    ["trailing SECURITY DEFINER after body", fnSql("", "AS $$ SELECT 'ok'; $$ SECURITY DEFINER SET search_path = public, pg_catalog")],
+    ["quoted uppercase SEARCH_PATH GUC without pg_temp", fnSql('SECURITY DEFINER SET "SEARCH_PATH" = public, pg_catalog')],
+    ["duplicate search_path via quoted uppercase SEARCH_PATH", fnSql('SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET "SEARCH_PATH" = public')],
+    ["schema-qualified pg_catalog.search_path GUC", fnSql("SECURITY DEFINER SET pg_catalog.search_path = pg_catalog, pg_temp")],
+    ["splitter desync via standard-conforming backslash quote", `SELECT '\\'; ${fnSql("SECURITY DEFINER")} --';`],
+    ["splitter desync via identifier-adjacent dollar tag", `SELECT a$tag$; ${fnSql("SECURITY DEFINER", "AS $tag$ SELECT 'ok'; $tag$")}`],
+    ["splitter desync via E'...' quotecontinue escape mode", `SELECT E'a'\n'b\\'' ; ${fnSql("SECURITY DEFINER")} --'\n;`],
+    ["SET search_path quotecontinue across newline", fnSql("SECURITY DEFINER SET search_path = 'pg_catalog', 'pg_temp'\n'x'")],
+    ["SET search_path quotecontinue across -- comment", fnSql("SECURITY DEFINER SET search_path = 'pg_catalog', 'pg_temp' -- comment\n'x'")],
+    ["SET search_path stray string literal after multiline block comment", fnSql("SECURITY DEFINER SET search_path = 'pg_catalog', 'pg_temp' /* a\nb */ 'x'")],
+    ["SET search_path stray string literal on same line", fnSql("SECURITY DEFINER SET search_path = 'pg_catalog', 'pg_temp' 'x'")],
+    ["decoy BEGIN ATOMIC with SELECT 1 AS case before hidden definer", `CREATE FUNCTION public.decoy1() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT 1 AS case; END; ${fnSql("SECURITY DEFINER")}`],
+    ["BEGIN ATOMIC with AS end before body SET search_path = pg_temp", "CREATE FUNCTION public.fixture_definer(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER BEGIN ATOMIC INSERT INTO public.t SELECT 1 AS end ON CONFLICT (id) DO UPDATE SET search_path = pg_temp; END;"],
+    ["BEGIN ATOMIC with THEN atomic END before body SET search_path = pg_temp", "CREATE FUNCTION public.fixture_definer(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER BEGIN ATOMIC INSERT INTO public.t SELECT CASE WHEN true THEN atomic END FROM (SELECT 1 AS atomic) t ON CONFLICT (id) DO UPDATE SET search_path = pg_temp; END;"],
+    ["decoy BEGIN ATOMIC with SELECT begin atomic before hidden definer", `BEGIN; CREATE FUNCTION public.decoy() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) t; END; ${fnSql("SECURITY DEFINER")} END;`],
+    ["single-routine BEGIN ATOMIC with SELECT begin atomic followed by SECURITY DEFINER", "CREATE FUNCTION public.fixture_definer(p_id uuid) RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) t; END SECURITY DEFINER; BEGIN; END;"],
+    ["empty BEGIN ATOMIC END followed by SECURITY DEFINER", fnSql("", "BEGIN ATOMIC END SECURITY DEFINER")],
+    ["single-quoted backslash default without search_path", "CREATE FUNCTION public.fixture_definer(p_id uuid) RETURNS text LANGUAGE sql SECURITY DEFINER AS 'SELECT ''\\\\''';"],
+  ])("refuses %s with an actionable signature error", (_label, statement) => {
+    expect(() => assertSecurityDefinerSearchPath(statement))
+      .toThrow("SECURITY DEFINER function public.fixture_definer(uuid) must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)");
+  });
+
+  it.each([
+    ["CRLF control bytes", `${fnSql("SECURITY DEFINER")}\r\n`, /control characters/u],
+    ["CRLF before hidden definer", `SELECT 1;\r\n${fnSql("SECURITY DEFINER")}`, /control characters/u],
+    ["NUL control byte", `SELECT '\u0000'; ${fnSql("SECURITY DEFINER")}`, /control characters/u],
+    ["Unicode escape GUC name", fnSql('SECURITY DEFINER SET U&"\\0073earch_path" = pg_catalog, pg_temp'), /Unicode escape syntax/u],
+    ["Unicode escape schema name", fnSql('SECURITY DEFINER SET search_path = pg_catalog, U&"pg_temp"'), /Unicode escape syntax/u],
+    ["UESCAPE clause in routine header", fnSql("SECURITY DEFINER SET search_path = U&'pg_temp' UESCAPE '\\'"), /Unicode escape syntax/u],
+    ["ALTER FUNCTION Unicode escape reset", 'ALTER FUNCTION public.fixture_definer(uuid) RESET U&"\\0073earch_path";', /Unicode escape syntax/u],
+    ["CREATE PROCEDURE omitting SET search_path", "CREATE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY DEFINER AS $$ BEGIN NULL; END; $$;", /SECURITY DEFINER procedure public\.fixture_proc\(uuid\) must place pg_temp last in SET search_path/u],
+    ["CREATE OR REPLACE PROCEDURE missing pg_temp", "CREATE OR REPLACE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog AS $$ BEGIN NULL; END; $$;", /SECURITY DEFINER procedure public\.fixture_proc\(uuid\) must place pg_temp last in SET search_path/u],
+    ["ALTER FUNCTION setting SECURITY DEFINER without search_path", "ALTER FUNCTION public.fixture_definer(uuid) SECURITY DEFINER;", /SECURITY DEFINER function public\.fixture_definer\(uuid\) must place pg_temp last in SET search_path/u],
+    ["ALTER PROCEDURE setting SECURITY DEFINER without search_path", "ALTER PROCEDURE public.fixture_proc(uuid) SECURITY DEFINER;", /SECURITY DEFINER procedure public\.fixture_proc\(uuid\) must place pg_temp last in SET search_path/u],
+    ["ALTER ROUTINE without arglist setting SECURITY DEFINER", "ALTER ROUTINE public.fixture_routine SECURITY DEFINER;", /SECURITY DEFINER routine public\.fixture_routine must place pg_temp last in SET search_path/u],
+    ["ALTER FUNCTION RESET search_path", "ALTER FUNCTION public.fixture_definer(uuid) RESET search_path;", /ALTER FUNCTION public\.fixture_definer\(uuid\) must not reset search_path/u],
+    ["ALTER FUNCTION RESET quoted uppercase SEARCH_PATH", 'ALTER FUNCTION public.fixture_definer(uuid) RESET "SEARCH_PATH";', /ALTER FUNCTION public\.fixture_definer\(uuid\) must not reset search_path/u],
+    ["ALTER PROCEDURE RESET ALL", "ALTER PROCEDURE public.fixture_proc(uuid) RESET ALL;", /ALTER PROCEDURE public\.fixture_proc\(uuid\) must not reset search_path/u],
+    ["ALTER ROUTINE RESET ALL", "ALTER ROUTINE public.fixture_routine RESET ALL;", /ALTER ROUTINE public\.fixture_routine must not reset search_path/u],
+    ["ALTER FUNCTION SET search_path without pg_temp", "ALTER FUNCTION public.fixture_definer(uuid) SET search_path = public, pg_catalog;", /ALTER FUNCTION public\.fixture_definer\(uuid\) must place pg_temp last in SET search_path/u],
+    ["ALTER FUNCTION SET search_path FROM CURRENT", "ALTER FUNCTION public.fixture_definer(uuid) SET search_path FROM CURRENT;", /ALTER FUNCTION public\.fixture_definer\(uuid\) must place pg_temp last in SET search_path/u],
+    ["ALTER FUNCTION SET search_path = DEFAULT", "ALTER FUNCTION public.fixture_definer(uuid) SET search_path = DEFAULT;", /ALTER FUNCTION public\.fixture_definer\(uuid\) must place pg_temp last in SET search_path/u],
+    ["ALTER FUNCTION SECURITY DEFINER + valid SET + RESET search_path", "ALTER FUNCTION public.fixture_definer(uuid) SECURITY DEFINER SET search_path = pg_catalog, pg_temp RESET search_path;", /must not reset search_path/u],
+    ["nested CREATE FUNCTION inside BEGIN ATOMIC", "CREATE FUNCTION public.outer_fn() RETURNS void LANGUAGE sql BEGIN ATOMIC CREATE FUNCTION public.inner_evil() RETURNS void LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1; $$; END;", /nested routine DDL inside BEGIN ATOMIC is not permitted/u],
+    ["nested ALTER FUNCTION inside BEGIN ATOMIC after earlier statement", "CREATE FUNCTION public.outer_fn() RETURNS void LANGUAGE sql BEGIN ATOMIC SELECT 1; ALTER FUNCTION public.fixture_definer(uuid) RESET search_path; END;", /nested routine DDL inside BEGIN ATOMIC is not permitted/u],
+  ])("refuses hardened edge case: %s", (_label, statement, pattern) => {
+    expect(() => assertSecurityDefinerSearchPath(statement)).toThrow(pattern);
+  });
+
+  it.each([
+    ["pg_catalog, pg_temp", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp")],
+    ["public, pg_catalog, pg_temp", fnSql("SECURITY DEFINER SET search_path = public, pg_catalog, pg_temp")],
+    ["uppercase PG_CATALOG, PG_TEMP", fnSql("SECURITY DEFINER SET search_path = PG_CATALOG, PG_TEMP")],
+    ["double-quoted lowercase identifiers", fnSql('SECURITY DEFINER SET search_path = "public", "pg_catalog", "pg_temp"')],
+    ["single-quoted schema items", fnSql("SECURITY DEFINER SET search_path = 'pg_catalog', 'pg_temp'")],
+    ["SET search_path TO syntax", fnSql("SECURITY DEFINER SET search_path TO public, pg_catalog, pg_temp")],
+    ["quoted search_path GUC name", fnSql('SECURITY DEFINER SET "search_path" = pg_catalog, pg_temp')],
+    ["quoted mixed-case Search_Path GUC name", fnSql('SECURITY DEFINER SET "Search_Path" = pg_catalog, pg_temp')],
+    ["SET search_path before SECURITY DEFINER", fnSql("SET search_path = pg_catalog, pg_temp SECURITY DEFINER")],
+    ["pg_temp alone", fnSql("SECURITY DEFINER SET search_path = pg_temp")],
+    ["BEGIN ATOMIC with trailing pg_temp", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp", "BEGIN ATOMIC SELECT 'ok'; END")],
+    ["BEGIN ATOMIC with $1 positional parameter", "CREATE FUNCTION public.fixture_pos(int) RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp BEGIN ATOMIC SELECT $1 + 1; END;"],
+    ["BEGIN ATOMIC with CASE ... END and $1", "CREATE FUNCTION public.fixture_pos_case(int) RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp BEGIN ATOMIC SELECT CASE WHEN $1 > 0 THEN $1 ELSE 0 END; END;"],
+    ["BEGIN ATOMIC selecting column named case (c.case)", "CREATE FUNCTION public.fixture_col_case(p_id uuid) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp BEGIN ATOMIC SELECT c.case FROM public.cases c WHERE c.id = p_id; END;"],
+    ["BEGIN ATOMIC aliasing 1 AS case", "CREATE FUNCTION public.fixture_as_case() RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp BEGIN ATOMIC SELECT 1 AS case; END;"],
+    ["BEGIN ATOMIC aliasing 1 AS end and column t.end", "CREATE FUNCTION public.fixture_as_end() RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp BEGIN ATOMIC SELECT t.end AS end FROM public.t; END;"],
+    ["BEGIN ATOMIC selecting begin aliased as atomic", "CREATE FUNCTION public.fixture_begin_atomic_alias() RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) t; END;"],
+    ["empty BEGIN ATOMIC END with trailing pg_temp", "CREATE FUNCTION public.fixture_empty_atomic() RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp BEGIN ATOMIC END;"],
+    ["SET search_path with quotecontinue building pg_temp", fnSql("SECURITY DEFINER SET search_path = 'pg_catalog', 'pg_'\n'temp'")],
+    ["SECURITY INVOKER with RETURN $1 + 1", "CREATE FUNCTION public.fixture_pos_invoker(int) RETURNS int LANGUAGE sql SECURITY INVOKER RETURN $1 + 1;"],
+    ["SECURITY DEFINER with trailing pg_temp and RETURN $1 + 1", "CREATE FUNCTION public.fixture_pos_definer(int) RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp RETURN $1 + 1;"],
+    ["standard-conforming backslash in DEFAULT and single-quoted body", "CREATE FUNCTION public.fixture_bs(p_pat text DEFAULT '\\s+') RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS 'SELECT ''\\\\''';"],
+    ["CREATE PROCEDURE with trailing pg_temp", "CREATE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ BEGIN NULL; END; $$;"],
+    ["CREATE PROCEDURE SECURITY INVOKER without pg_temp", "CREATE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_catalog AS $$ BEGIN NULL; END; $$;"],
+    ["ALTER FUNCTION SECURITY DEFINER with trailing pg_temp", "ALTER FUNCTION public.fixture_definer(uuid) SECURITY DEFINER SET search_path = pg_catalog, pg_temp;"],
+    ["ALTER FUNCTION SET search_path with trailing pg_temp", "ALTER FUNCTION public.fixture_definer(uuid) SET search_path = pg_catalog, pg_temp;"],
+    ["ALTER FUNCTION unrelated OWNER / SET SCHEMA / INVOKER", "ALTER FUNCTION public.fixture_definer(uuid) OWNER TO postgres; ALTER FUNCTION public.fixture_definer(uuid) SET SCHEMA public; ALTER FUNCTION public.fixture_definer(uuid) SECURITY INVOKER;"],
+    ["SECURITY INVOKER without pg_temp", fnSql("SECURITY INVOKER SET search_path = public, pg_catalog")],
+    ["SECURITY INVOKER without SET search_path", fnSql("SECURITY INVOKER")],
+    ["default invoker without SECURITY clause", fnSql("SET search_path = pg_catalog")],
+    ["RETURNS TABLE with security/definer column names", "CREATE FUNCTION public.fixture_table_ret() RETURNS TABLE (security text, definer text) LANGUAGE sql AS $$ SELECT 'a', 'b'; $$;"],
+  ])("accepts %s", (_label, statement) => {
+    expect(() => assertSecurityDefinerSearchPath(statement)).not.toThrow();
+  });
+
+  const nativeDefinerCheck = (security: "DEFINER" | "INVOKER", searchPathSql: string | null, slotSearchPath: string | null) => {
+    const signature = "public.fixture_cd_sec_1(uuid)";
+    const clause = searchPathSql === null ? "" : ` SET search_path = ${searchPathSql}`;
+    const definition = `CREATE FUNCTION public.fixture_cd_sec_1(p_id uuid) RETURNS text LANGUAGE sql SECURITY ${security}${clause} AS $$ SELECT 'ok'; $$;`;
+    const text = `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`;
+    const value = registry();
+    const slot = value.nativeStoreForwardClass!.slots[0]!;
+    slot.replacedFunctions = [];
+    slot.createdFunctions = [{ signature, searchPath: slotSearchPath }];
+    value.nativeStoreForwards = [{ path: slot.path, sha256: sqlSha256(text), functions: [{ signature, beforeSha256: null, afterSha256: sqlSha256(definition) }] }];
+    assertNativeStoreForward(value, slot.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
+  };
+
+  it.each([
+    ["omitted SET search_path", null, null],
+    ["public, pg_catalog", "public, pg_catalog", "public, pg_catalog"],
+    ["pg_temp, pg_catalog", "pg_temp, pg_catalog", "pg_temp, pg_catalog"],
+    ["pg_temp, public, pg_temp", "pg_temp, public, pg_temp", "pg_temp, public, pg_temp"],
+  ])("refuses new native-store SECURITY DEFINER with %s even when slot searchPath matches", (_label, searchPathSql, slotSearchPath) => {
+    expect(() => nativeDefinerCheck("DEFINER", searchPathSql, slotSearchPath))
+      .toThrow("SECURITY DEFINER function public.fixture_cd_sec_1(uuid) must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)");
+  });
+
+  it.each([
+    ["DEFINER with pg_catalog, pg_temp", "DEFINER", "pg_catalog, pg_temp", "pg_catalog, pg_temp"],
+    ["DEFINER with public, pg_catalog, pg_temp", "DEFINER", "public, pg_catalog, pg_temp", "public, pg_catalog, pg_temp"],
+    ["DEFINER with uppercase PG_CATALOG, PG_TEMP", "DEFINER", "PG_CATALOG, PG_TEMP", "pg_catalog, pg_temp"],
+    ["INVOKER with public, pg_catalog", "INVOKER", "public, pg_catalog", "public, pg_catalog"],
+    ["INVOKER without search_path", "INVOKER", null, null],
+  ] as const)("admits new native-store %s", (_label, security, searchPathSql, slotSearchPath) => {
+    expect(() => nativeDefinerCheck(security, searchPathSql, slotSearchPath)).not.toThrow();
+  });
+
+  it("preserves admission of every already-landed historical native-store slot on main", () => {
+    const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as { baseline: { file: string }; forward: { file: string }[] };
+    const all = [manifest.baseline, ...manifest.forward].map(unit => ({ path: unit.file, bytes: readFileSync(unit.file) }));
+    const landedSlots = production.nativeStoreForwardClass!.slots;
+    expect(landedSlots.length).toBeGreaterThanOrEqual(77);
+    for (const slot of landedSlots) {
+      const bytes = readFileSync(slot.path);
+      const prefix = all.filter(unit => unit.path < slot.path);
+      expect(() => assertNativeStoreForward(production, slot.path, bytes, prefix), slot.path).not.toThrow();
+    }
   });
 });
