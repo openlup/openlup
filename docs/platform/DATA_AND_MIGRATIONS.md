@@ -1627,6 +1627,11 @@ reference the current revision of an open draft for that product. Column values
 inside an approved publication are trusted to the native runner, as on the owner
 path.
 
+As in other runtime paths, the human-admin and actor checks trust the host to
+bind actor claims to the transaction. The publication credential authenticates
+the host, and the database cannot verify the human identity behind claims
+supplied by a holder of that credential.
+
 Historically, delivery used three separately landed checkpoints: reader support,
 then an exact pin-only approval, then the identical active SQL and its selected
 manifest row. The current rule below permits class data, pins and SQL together
