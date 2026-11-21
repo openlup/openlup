@@ -59,7 +59,7 @@ export type {
 } from "./truth.js";
 export type { PaymentIngressPort } from "./evidence.js";
 export type {
-  ProviderReconciliationStatusKind, ProviderReconciliationStatus,
+  PaymentReadbackIdentityMismatch, ProviderReconciliationStatusKind, ProviderReconciliationStatus,
   PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort,
   InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence,
   InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult,

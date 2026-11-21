@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import type { PaymentReadbackIdentityMismatch } from "@openlup/platform/payments/contracts";
 import { readInvoicePaymentEvidence } from "../../src/invoicing/index.js";
 
 it("reads the supplied payment identity and preserves normalized, unknown and unavailable evidence", async () => {
@@ -39,4 +40,18 @@ it.each([
   });
   expect(result.providerEvidence.unavailableReason).toBe(expectedReason);
   expect(result.providerEvidence.configuredComparisonAmountCents).toBe(observed === null ? configured : undefined);
+});
+
+it.each([
+  { name: "a custom identity refusal", error: { code: "provider_payment_identity_mismatch" } satisfies PaymentReadbackIdentityMismatch,
+    status: "unknown", reason: "provider_payment_identity_mismatch" },
+  { name: "an ordinary error with the same message", error: new Error("provider_payment_identity_mismatch"),
+    status: "unavailable", reason: "provider_read_failed" },
+  { name: "an error with an unreadable code", error: { get code() { throw new Error("unreadable"); } },
+    status: "unavailable", reason: "provider_read_failed" },
+])("classifies $name by its code", async ({ error, status, reason }) => {
+  const payment = { provider: "money-a", providerPaymentId: "final-claimed-id" };
+  await expect(readInvoicePaymentEvidence(payment, { readPayment: async () => { throw error; } })).resolves.toMatchObject({
+    providerStatus: status, providerEvidence: { unavailableReason: reason },
+  });
 });
