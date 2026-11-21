@@ -183,3 +183,33 @@ test('the cancellation save offer keeps its own owned pause default, admitted by
   delete care.retention.pausePreset;
   assert.doesNotThrow(() => assertConfig(config));
 });
+
+test('cancel_never_requires_offer_or_reason: lifecycle eligibility overrides legacy owned action lists', () => {
+  const care = demoSubscriptionCare();
+  for (const key of Object.keys(care.actions) as (keyof typeof care.actions)[]) {
+    care.actions[key] = care.actions[key].filter(action => action !== 'cancel');
+  }
+  assertSubscriptionCare(care);
+  for (const subscriptionStatus of ['active', 'paused']) {
+    for (const paymentBlocker of [null, 'payment_blocked', 'payment_expired']) {
+      assert.equal(careAvailability({ ...row, status: subscriptionStatus, action: paymentBlocker ? { blockedReason: paymentBlocker } : null }, 'cancel', care), null);
+      assert.doesNotThrow(() => admitCareCommand(care, { action: 'cancel', reason: null, pausePreset: null, subscriptionStatus, paymentBlocker }));
+    }
+  }
+  assert.throws(() => admitCareCommand(care, { action: 'cancel', reason: null, pausePreset: null,
+    subscriptionStatus: 'cancelled', paymentBlocker: null }), { message: 'starter_subscription_action_not_admitted' });
+});
+
+test('ask_first_offer_only_after_yes: startup accepts omission or a known presentation mode', () => {
+  const config = structuredClone(Object.values(configurations)[0]!);
+  const retention = config.renewal.subscriptionCare.retention;
+  for (const mode of [undefined, 'ask_permission_first', 'off'] as const) {
+    if (mode === undefined) delete retention.offerPresentation;
+    else retention.offerPresentation = mode;
+    assert.doesNotThrow(() => assertConfig(config));
+  }
+  Object.assign(retention, { offerPresentation: 'automatic' });
+  assert.throws(() => assertConfig(config), {
+    message: 'starter_offer_presentation_invalid: subscriptionCare.retention.offerPresentation must be ask_permission_first or off',
+  });
+});

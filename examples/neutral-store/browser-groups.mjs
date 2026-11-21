@@ -18,4 +18,5 @@ export const browserJourneyGroups = journeySelections([
   'operator operations |returns portal |shipment operations ',
   'payment guidance |account preferences |embedded browser |billing profiles ',
   'payment retry ',
+  'cancel_never_requires_offer_or_reason|ask_first_offer_only_after_yes',
 ]);

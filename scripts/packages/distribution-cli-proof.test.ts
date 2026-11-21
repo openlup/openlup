@@ -287,6 +287,49 @@ it.each([false, true])("replaces the managed subscription offer and preserves re
   if (local) expect(readFileSync(join(app, local.path), "utf8")).toContain("// Adopter offer policy notes.");
 });
 
+it.each([false, true])("upgrades direct cancellation and ask-first copy from 1.3.0, customized=%s", customized => {
+  const { directory: app, write } = fixture(), { directory: target, write: candidate } = fixture();
+  const portal = "client/pages/account.ts", managed = [portal, "shared/copy-keys.ts"], owned = ["owned/copy.ts", starterSettingsHost];
+  const ownership = { managed, owned, generated: [] };
+  write("ownership.json", ownership); candidate("ownership.json", ownership);
+  for (const path of ["AGENTS.md", ...managed, ...owned]) {
+    const source = path === "AGENTS.md" ? "AGENTS.template.md" : path;
+    write(path, execFileSync("git", ["show", `openlup-core-v1.3.0:examples/neutral-store/${source}`], { encoding: "utf8" }));
+    candidate(path, readFileSync(resolve("examples/neutral-store", source), "utf8"));
+  }
+  const from = starterUpgradeSnapshot(app, "1.3.0"), to = starterUpgradeSnapshot(target, "999999.0.0");
+  migrateStarterOwned(app, target, from, to);
+  for (const path of owned) {
+    expect(from.files[path]).toBe(readFileSync(join(app, path), "utf8"));
+    expect(to.files[path]).toBe(readFileSync(join(target, path), "utf8"));
+  }
+  const apply = (status: number) => {
+    candidate("from.json", from); candidate("to.json", to);
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply",
+      "--root", app, "--from", join(target, "from.json"), "--to", join(target, "to.json"), "--schema-version", "0", "--json"],
+    { encoding: "utf8" });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  if (customized) for (const path of [portal, ...owned]) {
+    const previous = from.files[path]!, next = to.files[path]!, local = "// Local portal customization.\n";
+    write(path, previous + local);
+    assertUpgradeConflict(apply(1), path);
+    expect(readFileSync(join(app, path), "utf8")).toBe(previous + local);
+    candidate("predecessor.ts", previous);
+    const reconciled = execFileSync("git", ["merge-file", "-p", join(app, path), join(target, "predecessor.ts"), join(target, path)], { encoding: "utf8" });
+    expect(reconciled).toBe(next + local);
+    write(path, reconciled);
+    delete from.files[path];
+    delete to.files[path];
+  }
+  expect(apply(0).applied).toEqual(expect.arrayContaining(customized ? ["shared/copy-keys.ts"] : [...managed, ...owned]));
+  expect(apply(0).applied).toEqual([]);
+  expect(readFileSync(join(app, portal), "utf8")).toContain("submit: 'cancelSubscription'");
+  expect(readFileSync(join(app, "owned/copy.ts"), "utf8")).toContain("careOfferPermission");
+  expect(readFileSync(join(app, starterSettingsHost), "utf8")).toContain("offerPresentation");
+});
+
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "starter-next-set-"))); directories.push(directory);
   const source = join(directory, "source"), app = join(directory, "app"), target = join(directory, "target");

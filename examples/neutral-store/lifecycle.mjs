@@ -10,7 +10,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const [command, ...args] = process.argv.slice(2);
 const packageNames = ['core', 'outbox', 'platform'];
 const installationHintLimit = 240;
-const knownStarterRefusal = /^(?:starter_[a-z_]+|inventory_renewal_protection_policy_invalid|checkout_recovery_reminder_schedule_invalid|saved_address_policy_invalid|starter_locale_unsupported: [A-Za-z0-9_-]{1,32}|starter_locale_copy_missing: [A-Za-z0-9_.\[\]-]{1,120} \([a-z]{2}\))$/;
+const knownStarterRefusal = /^(?:starter_[a-z_]+|starter_offer_presentation_invalid: subscriptionCare\.retention\.offerPresentation must be ask_permission_first or off|inventory_renewal_protection_policy_invalid|checkout_recovery_reminder_schedule_invalid|saved_address_policy_invalid|starter_locale_unsupported: [A-Za-z0-9_-]{1,32}|starter_locale_copy_missing: [A-Za-z0-9_.\[\]-]{1,120} \([a-z]{2}\))$/;
 
 function run(executable, argv, input) {
   execFileSync(executable, argv, { cwd: root,

@@ -141,6 +141,12 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
     }
     includeSettingsHost(app, target, to);
   }
+  if (from.version === "1.3.0" && to.version !== from.version && to.files["shared/copy-keys.ts"]?.includes("'careOfferPermission'")) {
+    for (const path of ["owned/copy.ts", starterSettingsHost]) {
+      from.files[path] = readFileSync(join(app, path), "utf8");
+      to.files[path] = readFileSync(join(target, path), "utf8");
+    }
+  }
   if (to.version === "1.1.0" && ["0.43.0", "1.0.0"].includes(from.version))
     writeFileSync(join(app, "owned/renewal.config.ts"), readFileSync(join(target, "owned/renewal.config.ts")));
   if (from.version !== "0.43.0" || !["1.0.0", "1.1.0"].includes(to.version)) return;
@@ -298,8 +304,8 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
   const hash = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
   const owned: Record<string, Buffer> = {};
   const settingsHost = join(app, starterSettingsHost);
-  if (existsSync(settingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
   phase("migrate-owned-contracts", () => { migrateStarterOwned(app, pair.to, from, to); });
+  if (existsSync(settingsHost) && !Object.hasOwn(from.files, starterSettingsHost)) owned[starterSettingsHost] = readFileSync(settingsHost);
   phase("customize-owned", () => {
     for (const [path, before, after] of [
       ["owned/store.config.ts", "#3d6657", "#663d57"],
@@ -405,7 +411,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     changed = plan.files.filter((file: { action: string }) => ["replace", "create"].includes(file.action));
     pair.evidence.planSha256 = hash(JSON.stringify(plan));
   });
-  if (Object.hasOwn(to.files, starterSettingsHost)) phase("settings-host-reconciliation", () => {
+  if (Object.hasOwn(to.files, starterSettingsHost) && !Object.hasOwn(from.files, starterSettingsHost)) phase("settings-host-reconciliation", () => {
     const local = Buffer.from(readFileSync(join(pair.to, starterSettingsHost), "utf8") + "\n// Adopter settings bindings.\n");
     writeFileSync(join(app, starterSettingsHost), local, { flag: "wx" });
     assertUpgradeConflict(applyRefused(), starterSettingsHost);

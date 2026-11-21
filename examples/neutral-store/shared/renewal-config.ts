@@ -1,4 +1,4 @@
-import type { SubscriptionCommandAdmission, SubscriptionLifecycleTerms } from '@openlup/platform/subscriptions/contracts';
+import type { SubscriptionCommandAdmission, SubscriptionLifecycleTerms, SubscriptionSaveOfferPresentation } from '@openlup/platform/subscriptions/contracts';
 import type { NativeLifecycleMessagesOptions } from '@openlup/platform/subscriptions';
 import { assertChoice, type Choice } from './policy.ts';
 import { assertLocaleCopy, supportedLocales, configuredLocales, type Locale, type LocaleCopy } from './locales.ts';
@@ -55,6 +55,7 @@ export interface SubscriptionCareConfig {
   terms: SubscriptionLifecycleTerms;
   retentionReasons: readonly string[];
   retention: { offerByReason: Readonly<Record<string, SaveOfferKind>>; defaultOffer: SaveOfferKind;
+    offerPresentation?: SubscriptionSaveOfferPresentation;
     /** Pause choice preselected in the cancellation save offer; defaults to pausePresets.default. */
     pausePreset?: PausePreset };
   actions: Record<'active' | 'paused' | 'cancelled' | 'whilePaymentBlocked' | 'whilePaymentExpired', readonly CareAction[]>;
@@ -96,6 +97,7 @@ export type CareAction = typeof careActions[number];
 const pausePresetVocabulary = ['2_weeks', '1_month', 'indefinite'] as const;
 export type PausePreset = typeof pausePresetVocabulary[number];
 function carePolicyRefusal(config: SubscriptionCareConfig, status: string, paymentBlocker: string | null, action: string): string | null {
+  if (action === 'cancel') return status === 'active' || status === 'paused' ? null : 'not_active';
   const actions = Object.hasOwn(config.actions, status) ? config.actions[status as keyof typeof config.actions] : [];
   if (!actions.some(allowed => allowed === action)) return 'action_disabled';
   // Reactivation already has its own native payment/confirmation fences. Historical
@@ -113,8 +115,9 @@ export function admitCareCommand(config: SubscriptionCareConfig, facts: Paramete
 /** UI availability mirrors the lifecycle rail; the server still authorizes every command. */
 export function careAvailability(row: PortalSubscription, action: CareAction, config: SubscriptionCareConfig, now = Date.now()): string | null {
   if (action === 'reactivate') return row.status === 'cancelled' ? carePolicyRefusal(config, row.status, row.action?.blockedReason ?? null, action) : 'not_active';
+  if (action === 'cancel') return carePolicyRefusal(config, row.status, null, action);
   if (action === 'resume' && row.status !== 'paused') return 'not_active';
-  if (action !== 'resume' && row.status !== 'active' && !(action === 'cancel' && row.status === 'paused')) return 'not_active';
+  if (action !== 'resume' && row.status !== 'active') return 'not_active';
   const blocked = row.action?.blockedReason;
   const policyRefusal = carePolicyRefusal(config, row.status, blocked ?? null, action);
   if (policyRefusal) return policyRefusal;
@@ -134,6 +137,9 @@ export function assertRetention(config: SubscriptionCareConfig): void {
       !config.retentionReasons.includes(reason) || !kinds.includes(kind))
     || policy.pausePreset !== undefined && !config.pausePresets?.allowed.includes(policy.pausePreset)) {
     throw new Error('starter_retention_configuration_invalid');
+  }
+  if (policy.offerPresentation !== undefined && policy.offerPresentation !== 'ask_permission_first' && policy.offerPresentation !== 'off') {
+    throw new Error('starter_offer_presentation_invalid: subscriptionCare.retention.offerPresentation must be ask_permission_first or off');
   }
 }
 export function saveOfferKind(reason: string, config: SubscriptionCareConfig): SaveOfferKind {

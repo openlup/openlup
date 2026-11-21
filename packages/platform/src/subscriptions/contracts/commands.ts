@@ -7,6 +7,10 @@ export interface SubscriptionLifecycleTerms {
   pauseDays: number; pauseMonths: number; slideMinDays: number; slideMaxDays: number;
   orderNowDelayMinutes: number; reactivateDelayDays: number;
 }
+/** Account save-offer presentation. Direct cancellation can use a null reason
+ * and omit the survey and save offer.
+ * @experimental */
+export type SubscriptionSaveOfferPresentation = "ask_permission_first" | "off";
 export interface SubscriptionCancelSurvey {
   reasonCode?: string; comment?: string | null; acceptedSaveOfferId?: string | null;
 }

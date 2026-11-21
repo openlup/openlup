@@ -220,41 +220,48 @@ refuse the affected field. See [saved-address policy and defaults](../../concept
 
 ## Configure cancellation offers
 
-In starter releases from 1.1.0 onward, edit `subscriptionCare.retention` in
+Edit `subscriptionCare.retention` in
 `owned/renewal.config.ts`, composed through `renewal` in `owned/store.config.ts`:
 
 ```ts
 const retention = {
   offerByReason: { too_much_product: 'skip', delivery_issue: 'reschedule' },
   defaultOffer: 'pause',
+  offerPresentation: 'ask_permission_first',
 } as const;
 ```
 
-These defaults preserve the starter's existing offers. Every other configured
-reason uses `defaultOffer`. Keys must belong to `retentionReasons`; values and
-the default must be `skip`, `reschedule` or `pause`. `assertRetention`, called
-from `assertConfig`, refuses unknown keys or kinds with
-`starter_retention_configuration_invalid`. The browser uses the same map for
-the displayed offer and its submitted kind. Reason codes, accepted-offer IDs
-and native command authorization keep their existing meaning.
+Active and paused subscription cards provide a direct **Cancel subscription**
+button. Feedback is optional. With `ask_permission_first` (also the default
+when omitted), the customer can choose to see one available offer. The starter
+uses the selected reason at that point or `defaultOffer` when no mapping applies.
+The Cancel button stays available throughout. Set `offerPresentation: 'off'`
+to offer direct cancellation and optional feedback without the question.
+
+Map keys must belong to `retentionReasons`. The supported offers are `skip`,
+`reschedule` and `pause`. An unknown presentation mode refuses startup with
+the setting path and both valid choices. Customize the question and answers in
+`owned/copy.ts` for each configured locale.
 
 ## Configure account actions and pauses
 
-In the 1.2.0 starter, `renewal.subscriptionCare` is composed from
+`renewal.subscriptionCare` is composed from
 `owned/renewal.config.ts`. Its `actions.active`, `actions.paused` and
 `actions.cancelled` lists choose account controls; `whilePaymentBlocked` and
 `whilePaymentExpired` narrow those choices during payment recovery. Use only
 `skip`, `slide`, `order_now`, `pause`, `cancel`, `resume` and `reactivate`.
-Empty lists disable choices. Unknown or duplicate actions and missing lists
+These lists may contain legacy `cancel` entries. Active and paused subscriptions
+can cancel regardless of the lists and payment blockers. Empty lists disable
+the other choices. Unknown or duplicate actions and missing lists
 refuse startup with `starter_subscription_actions_invalid`.
 
 Set `pausePresets` with the starter-local `choice(default, ...allowed)` helper.
 The native preset vocabulary is `2_weeks`, `1_month` and `indefinite`; durations
 still come from owned lifecycle `terms`. `assertChoice` refuses an empty,
 duplicate or unknown selection, or a default outside it, with
-`starter_pause_presets_invalid`. Both pause forms offer `allowed`. The account
-pause form preselects `default` (`2_weeks` in the demonstration); the
-cancellation save offer preselects `retention.pausePreset` (`1_month`), which
+`starter_pause_presets_invalid`. The account pause form offers `allowed` and preselects `default` (`2_weeks` in
+the demonstration). The cancellation save offer uses `retention.pausePreset`
+(`1_month`), which
 must be allowed and falls back to `default` when omitted.
 
 The managed host binds the same data through

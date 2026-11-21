@@ -650,10 +650,10 @@ From this application directory, with the selected package set installed, run
 `./lifecycle browser`. It reads the selections from `browser-groups.mjs`. Each
 group gets a fresh pair of throwaway PostgreSQL 16 databases with the public
 qualified installation and owned demo catalogue, plus two restricted hosts.
-The seven groups are subscription care; portal; recovery extension; combined
+The eight groups are subscription care; portal; recovery extension; combined
 operator operations, returns portal and shipment operations; combined payment
 guidance, account preferences, embedded browser and billing profiles; payment
-retry; and the remainder. They run every test selected by `playwright.database.config.ts` once,
+retry; direct cancellation and save-offer permission; and the remainder. They run every test selected by `playwright.database.config.ts` once,
 with one worker. The command
 creates both the UI-origin file and the private
 `.context/care-browser/fixtures.json` required only by the database subscription

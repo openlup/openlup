@@ -88,7 +88,7 @@ describe('installed starter browser CI', () => {
         started.push(index);
         if (index === 0) throw failure;
       }, () => 'journeys')).rejects.toBe(failure);
-      expect(started).toEqual([0, 1, 2, 3, 4, 5, 6]);
+      expect(started).toEqual(browserJourneyGroups.map((_, index) => index));
       expect(report).toHaveBeenCalledWith('Starter browser group 1 failed during journeys');
     } finally { report.mockRestore(); }
   });
@@ -115,7 +115,7 @@ describe('installed starter browser CI', () => {
     const source = readFileSync('scripts/starter-browser-ci.mjs', 'utf8');
     expect(source).toContain("phase, options.groups)");
   });
-  it.each(['', '0,0', '-1', '7', '1,7', '1.5', '01', '0,', ',0', '0, 1', '1e0', 'NaN'])('refuses an invalid group subset: %s', groups => {
+  it.each(['', '0,0', '-1', '8', '1,8', '1.5', '01', '0,', ',0', '0, 1', '1e0', 'NaN'])('refuses an invalid group subset: %s', groups => {
     expect(() => parseArguments([...args, '--groups', groups])).toThrow('starter_browser_arguments_invalid');
   });
   it.each([[], args.slice(0, -1), [...args, '--preview', 'true'], [...args, '--manifest', 'duplicate.json'],
