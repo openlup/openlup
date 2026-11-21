@@ -1145,10 +1145,11 @@ function findAtomicBodyEnd(tokens: readonly SecurityDefinerToken[], beginIndex: 
 function tokenizeSecurityDefinerStatements(source: string, path?: string): SecurityDefinerToken[][] {
   const ctx = path ? ` in ${path}` : "";
   const tokens: SecurityDefinerToken[] = [];
-  const dollarTagPattern = /\$(?:[A-Za-z_\u0080-\uffff][A-Za-z0-9_\u0080-\uffff]*)?\$/uy;
+  const dollarTagPattern = /\$(?:[A-Za-z_\u{80}-\u{10ffff}][A-Za-z0-9_\u{80}-\u{10ffff}]*)?\$/uy;
   const paramPattern = /\$[0-9]+/uy;
-  const wordPattern = /[A-Za-z_\u0080-\uffff][A-Za-z0-9_$\u0080-\uffff]*/uy;
+  const wordPattern = /[A-Za-z_\u{80}-\u{10ffff}][A-Za-z0-9_$\u{80}-\u{10ffff}]*/uy;
   const numberPattern = /[0-9]+(?:\.[0-9]+)?/uy;
+  const identCharPattern = /^[A-Za-z0-9_$\u{80}-\u{10ffff}]$/u;
   for (let index = 0; index < source.length;) {
     const start = index, ch = source[index]!;
     if (ch === " " || ch === "\t" || ch === "\n") { index++; continue; }
@@ -1167,7 +1168,11 @@ function tokenizeSecurityDefinerStatements(source: string, path?: string): Secur
       if (depth > 0) throw new Error(`SECURITY DEFINER check found unterminated block comment${ctx}`);
       continue;
     }
-    const prevIdent = index > 0 && /[A-Za-z0-9_$\u0080-\uffff]/u.test(source[index - 1]!);
+    const prevUnit = index > 0 ? source.charCodeAt(index - 1) : -1;
+    const prevChar = index > 0
+      ? (prevUnit >= 0xdc00 && prevUnit <= 0xdfff && index >= 2 ? source.slice(index - 2, index) : source[index - 1]!)
+      : "";
+    const prevIdent = prevChar !== "" && identCharPattern.test(prevChar);
     if (!prevIdent && (ch === "U" || ch === "u") && source[index + 1] === "&" && (source[index + 2] === "'" || source[index + 2] === '"')) {
       const quote = source[index + 2]!;
       if (quote === "'") {
@@ -1342,7 +1347,9 @@ export function assertSecurityDefinerSearchPath(sql: string | Buffer, path?: str
     }
     let isSecurityDefiner = false;
     let resetsSearchPath = false;
+    let hasSetSchemaLiteral = false;
     const searchPathClauses: boolean[] = [];
+    const schemaLiteralKinds = new Set<SecurityDefinerToken["kind"]>(["string", "escape-string", "dollar-string", "unicode-escape"]);
     let attrDepth = 0;
     for (let index = attrStart; index < tokens.length; index++) {
       if (secSymbol(tokens, index, "(")) { attrDepth++; continue; }
@@ -1362,7 +1369,7 @@ export function assertSecurityDefinerSearchPath(sql: string | Buffer, path?: str
         index++;
         continue;
       }
-      if (isAlterRoutine && secWord(tokens, index, "RESET")) {
+      if (secWord(tokens, index, "RESET")) {
         if (secWord(tokens, index + 1, "ALL")
           || secIdentifier(tokens[index + 1])?.toLowerCase() === "search_path"
           || (secSymbol(tokens, index + 2, ".") && secIdentifier(tokens[index + 3])?.toLowerCase() === "search_path")) {
@@ -1371,6 +1378,11 @@ export function assertSecurityDefinerSearchPath(sql: string | Buffer, path?: str
         continue;
       }
       if (secWord(tokens, index, "SET")) {
+        if (secWord(tokens, index + 1, "SCHEMA") && tokens[index + 2] !== undefined && schemaLiteralKinds.has(tokens[index + 2]!.kind)) {
+          hasSetSchemaLiteral = true;
+          index += 2;
+          continue;
+        }
         const directSearchPath = secIdentifier(tokens[index + 1])?.toLowerCase() === "search_path";
         const qualifiedSearchPath = !directSearchPath && secSymbol(tokens, index + 2, ".") && secIdentifier(tokens[index + 3])?.toLowerCase() === "search_path";
         if (qualifiedSearchPath) {
@@ -1415,6 +1427,9 @@ export function assertSecurityDefinerSearchPath(sql: string | Buffer, path?: str
       if (resetsSearchPath) {
         throw new Error(`ALTER ${routineKind} ${signature} must not reset search_path (use SET search_path = pg_catalog, pg_temp for SECURITY DEFINER routines)`);
       }
+      if (hasSetSchemaLiteral) {
+        throw new Error(`ALTER ${routineKind} ${signature} must use explicit SET search_path = ..., pg_temp instead of SET SCHEMA literal`);
+      }
       if (isSecurityDefiner && (searchPathClauses.length !== 1 || !searchPathClauses[0])) {
         throw new Error(`SECURITY DEFINER ${routineKind.toLowerCase()} ${signature} must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)`);
       }
@@ -1422,6 +1437,12 @@ export function assertSecurityDefinerSearchPath(sql: string | Buffer, path?: str
         throw new Error(`ALTER ${routineKind} ${signature} must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)`);
       }
       continue;
+    }
+    if (isSecurityDefiner && resetsSearchPath) {
+      throw new Error(`SECURITY DEFINER ${routineKind.toLowerCase()} ${signature} must not reset search_path (use SET search_path = pg_catalog, pg_temp)`);
+    }
+    if (isSecurityDefiner && hasSetSchemaLiteral) {
+      throw new Error(`SECURITY DEFINER ${routineKind.toLowerCase()} ${signature} must use explicit SET search_path = ..., pg_temp instead of SET SCHEMA literal`);
     }
     if (isSecurityDefiner && (searchPathClauses.length !== 1 || !searchPathClauses[0])) {
       throw new Error(`SECURITY DEFINER ${routineKind.toLowerCase()} ${signature} must place pg_temp last in SET search_path (for example: SET search_path = pg_catalog, pg_temp)`);

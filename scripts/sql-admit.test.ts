@@ -404,6 +404,10 @@ describe("CD-SEC-1 SECURITY DEFINER search_path admission via sql:admit and host
     ["ALTER FUNCTION RESET search_path", "ALTER FUNCTION public.fixture_managed(uuid) RESET search_path;\n", "ALTER FUNCTION public.fixture_managed(uuid) must not reset search_path"],
     ["ALTER ROUTINE RESET ALL", "ALTER ROUTINE public.fixture_managed RESET ALL;\n", "ALTER ROUTINE public.fixture_managed must not reset search_path"],
     ["ALTER FUNCTION SET search_path = public", "ALTER FUNCTION public.fixture_managed(uuid) SET search_path = public;\n", "ALTER FUNCTION public.fixture_managed(uuid) must place pg_temp last in SET search_path"],
+    ["CREATE FUNCTION SECURITY DEFINER RESET search_path", "CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp RESET search_path AS $$ SELECT 1; $$;\n", "SECURITY DEFINER function public.fixture_managed(uuid) must not reset search_path"],
+    ["CREATE FUNCTION SECURITY DEFINER SET SCHEMA literal", "CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET SCHEMA 'public' AS $$ SELECT 1; $$;\n", "must use explicit SET search_path = ..., pg_temp instead of SET SCHEMA literal"],
+    ["ALTER FUNCTION SET SCHEMA literal", "ALTER FUNCTION public.fixture_managed(uuid) SET SCHEMA 'public';\n", "ALTER FUNCTION public.fixture_managed(uuid) must use explicit SET search_path = ..., pg_temp instead of SET SCHEMA literal"],
+    ["astral Unicode dollar-tag body hiding search_path", "CREATE FUNCTION public.fixture_managed(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER AS $😀$ SET search_path = pg_catalog, pg_temp; SELECT 1; $😀$;\n", "SECURITY DEFINER function public.fixture_managed(uuid) must place pg_temp last in SET search_path"],
   ])("refuses a newly added managed exact forward with %s across self-check and queue", (_label, sqlText, expected) => {
     const f = fixture();
     const { approval, head } = stageManaged(f, sqlText);

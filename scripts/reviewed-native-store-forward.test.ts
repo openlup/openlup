@@ -1989,6 +1989,9 @@ describe("CD-SEC-1 SECURITY DEFINER trailing pg_temp search_path", () => {
     ["decoy BEGIN ATOMIC with SELECT begin atomic before hidden definer", `BEGIN; CREATE FUNCTION public.decoy() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) t; END; ${fnSql("SECURITY DEFINER")} END;`],
     ["single-routine BEGIN ATOMIC with SELECT begin atomic followed by SECURITY DEFINER", "CREATE FUNCTION public.fixture_definer(p_id uuid) RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT begin atomic FROM (SELECT 1 AS begin) t; END SECURITY DEFINER; BEGIN; END;"],
     ["empty BEGIN ATOMIC END followed by SECURITY DEFINER", fnSql("", "BEGIN ATOMIC END SECURITY DEFINER")],
+    ["astral Unicode dollar-quote tag hiding SET search_path in body", "CREATE FUNCTION public.fixture_definer(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER AS $😀$ SET search_path = pg_catalog, pg_temp; SELECT 1; $😀$;"],
+    ["astral Unicode dollar-quote tag splitter desync", "SELECT $😀$'; $😀$; CREATE FUNCTION public.fixture_definer(p_id uuid) RETURNS void LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1; $$; SELECT $😀$' $😀$;"],
+    ["astral Unicode identifier-adjacent dollar tag", `SELECT foo😀$tag$; ${fnSql("SECURITY DEFINER", "AS $tag$ SELECT 'ok'; $tag$")}`],
     ["single-quoted backslash default without search_path", "CREATE FUNCTION public.fixture_definer(p_id uuid) RETURNS text LANGUAGE sql SECURITY DEFINER AS 'SELECT ''\\\\''';"],
   ])("refuses %s with an actionable signature error", (_label, statement) => {
     expect(() => assertSecurityDefinerSearchPath(statement))
@@ -2018,6 +2021,19 @@ describe("CD-SEC-1 SECURITY DEFINER trailing pg_temp search_path", () => {
     ["ALTER FUNCTION SECURITY DEFINER + valid SET + RESET search_path", "ALTER FUNCTION public.fixture_definer(uuid) SECURITY DEFINER SET search_path = pg_catalog, pg_temp RESET search_path;", /must not reset search_path/u],
     ["nested CREATE FUNCTION inside BEGIN ATOMIC", "CREATE FUNCTION public.outer_fn() RETURNS void LANGUAGE sql BEGIN ATOMIC CREATE FUNCTION public.inner_evil() RETURNS void LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1; $$; END;", /nested routine DDL inside BEGIN ATOMIC is not permitted/u],
     ["nested ALTER FUNCTION inside BEGIN ATOMIC after earlier statement", "CREATE FUNCTION public.outer_fn() RETURNS void LANGUAGE sql BEGIN ATOMIC SELECT 1; ALTER FUNCTION public.fixture_definer(uuid) RESET search_path; END;", /nested routine DDL inside BEGIN ATOMIC is not permitted/u],
+    ["CREATE FUNCTION SECURITY DEFINER + SET + RESET search_path", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp RESET search_path"), /SECURITY DEFINER function public\.fixture_definer\(uuid\) must not reset search_path/u],
+    ["CREATE FUNCTION SECURITY DEFINER + SET + RESET ALL", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp RESET ALL"), /SECURITY DEFINER function public\.fixture_definer\(uuid\) must not reset search_path/u],
+    ["CREATE FUNCTION SECURITY DEFINER + SET + RESET pg_catalog.search_path", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp RESET pg_catalog.search_path"), /SECURITY DEFINER function public\.fixture_definer\(uuid\) must not reset search_path/u],
+    ["CREATE PROCEDURE SECURITY DEFINER + SET + RESET search_path", "CREATE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp RESET search_path AS $$ BEGIN NULL; END; $$;", /SECURITY DEFINER procedure public\.fixture_proc\(uuid\) must not reset search_path/u],
+    ["CREATE PROCEDURE SECURITY DEFINER + SET + RESET ALL", "CREATE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp RESET ALL AS $$ BEGIN NULL; END; $$;", /SECURITY DEFINER procedure public\.fixture_proc\(uuid\) must not reset search_path/u],
+    ["CREATE FUNCTION SECURITY DEFINER + SET SCHEMA single-quoted", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET SCHEMA 'public'"), /use explicit SET search_path = \.\.\., pg_temp instead of SET SCHEMA literal/u],
+    ["CREATE FUNCTION SECURITY DEFINER + SET SCHEMA escape-string", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET SCHEMA E'public'"), /use explicit SET search_path = \.\.\., pg_temp instead of SET SCHEMA literal/u],
+    ["CREATE FUNCTION SECURITY DEFINER + SET SCHEMA dollar-string", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET SCHEMA $$public$$"), /use explicit SET search_path = \.\.\., pg_temp instead of SET SCHEMA literal/u],
+    ["CREATE FUNCTION SECURITY DEFINER + SET SCHEMA unicode-escape", fnSql("SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET SCHEMA U&'public'"), /Unicode escape syntax|SET SCHEMA literal/u],
+    ["CREATE PROCEDURE SECURITY DEFINER + SET SCHEMA single-quoted", "CREATE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp SET SCHEMA 'public' AS $$ BEGIN NULL; END; $$;", /SECURITY DEFINER procedure public\.fixture_proc\(uuid\) must use explicit SET search_path = \.\.\., pg_temp instead of SET SCHEMA literal/u],
+    ["ALTER FUNCTION SET SCHEMA single-quoted", "ALTER FUNCTION public.fixture_definer(uuid) SET SCHEMA 'public';", /ALTER FUNCTION public\.fixture_definer\(uuid\) must use explicit SET search_path = \.\.\., pg_temp instead of SET SCHEMA literal/u],
+    ["ALTER PROCEDURE SET SCHEMA dollar-string", "ALTER PROCEDURE public.fixture_proc(uuid) SET SCHEMA $$public$$;", /ALTER PROCEDURE public\.fixture_proc\(uuid\) must use explicit SET search_path = \.\.\., pg_temp instead of SET SCHEMA literal/u],
+    ["ALTER ROUTINE SET SCHEMA escape-string", "ALTER ROUTINE public.fixture_routine SET SCHEMA E'public';", /ALTER ROUTINE public\.fixture_routine must use explicit SET search_path = \.\.\., pg_temp instead of SET SCHEMA literal/u],
   ])("refuses hardened edge case: %s", (_label, statement, pattern) => {
     expect(() => assertSecurityDefinerSearchPath(statement)).toThrow(pattern);
   });
@@ -2049,7 +2065,8 @@ describe("CD-SEC-1 SECURITY DEFINER trailing pg_temp search_path", () => {
     ["CREATE PROCEDURE SECURITY INVOKER without pg_temp", "CREATE PROCEDURE public.fixture_proc(p_id uuid) LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_catalog AS $$ BEGIN NULL; END; $$;"],
     ["ALTER FUNCTION SECURITY DEFINER with trailing pg_temp", "ALTER FUNCTION public.fixture_definer(uuid) SECURITY DEFINER SET search_path = pg_catalog, pg_temp;"],
     ["ALTER FUNCTION SET search_path with trailing pg_temp", "ALTER FUNCTION public.fixture_definer(uuid) SET search_path = pg_catalog, pg_temp;"],
-    ["ALTER FUNCTION unrelated OWNER / SET SCHEMA / INVOKER", "ALTER FUNCTION public.fixture_definer(uuid) OWNER TO postgres; ALTER FUNCTION public.fixture_definer(uuid) SET SCHEMA public; ALTER FUNCTION public.fixture_definer(uuid) SECURITY INVOKER;"],
+    ["ALTER FUNCTION unrelated OWNER / SET SCHEMA / INVOKER", 'ALTER FUNCTION public.fixture_definer(uuid) OWNER TO postgres; ALTER FUNCTION public.fixture_definer(uuid) SET SCHEMA app_internal; ALTER FUNCTION public.fixture_definer(uuid) SET SCHEMA "app_internal"; ALTER FUNCTION public.fixture_definer(uuid) SECURITY INVOKER;'],
+    ["astral Unicode dollar-quote tag with valid trailing pg_temp", "CREATE FUNCTION public.fixture_astral() RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $😀$ SELECT 1; $😀$;"],
     ["SECURITY INVOKER without pg_temp", fnSql("SECURITY INVOKER SET search_path = public, pg_catalog")],
     ["SECURITY INVOKER without SET search_path", fnSql("SECURITY INVOKER")],
     ["default invoker without SECURITY clause", fnSql("SET search_path = pg_catalog")],
