@@ -336,27 +336,27 @@ expires.
 The [retry ladder](subscription-engine.md#the-retry-ladder-terminates) uses delays
 after each preceding failure. `[24, 72, 168]` hours means retries on days 1, 4
 and 11 after the initial decline if each runs and fails when due. Days 1, 3 and
-7 would require `[24, 48, 96]`; that setting does not reach every path today:
+7 use `[24, 48, 96]`:
 
 | Failure-recording path | Timing used |
 | --- | --- |
 | Fresh failures through `createPostgresRetryLifecycleBinding` or `createNativeRetryDriver` | Trusted `retryCadence.backoffHours`; the starter's `host/renewal-sandbox.ts:composeRenewalSandbox` passes `retryBackoffHours` to this driver. `createPostgresRetryStore(db, cadence).applyFailure` calls the four-argument SQL overload. |
-| Provider-recorded renewal failures through `payment_provider_result_apply` | The three-argument `subscription_retry_apply_failure(uuid,text,jsonb)` supplies `[24,72,168]`. The driver replays the provider's immutable failure receipt; its configured cadence cannot reschedule it. |
+| Provider-recorded renewal failures through `payment_provider_result_apply` | Accepts an optional 3-rung `p_cadence` (`{"backoffHours":[h1,h2,h3]}`) via `PostgresPaymentTruthOptions.retryCadence` in `createPostgresProviderPaymentControlPort`, forwarding to the four-argument `subscription_retry_apply_failure`. Omitting `p_cadence` (or calling the 11-argument overload) retains `[24, 72, 168]`. Replaying an already-recorded failure receipt keeps its originally pinned schedule. |
 
 Sandbox observation recording is separate from provider-result recording;
 configuring the starter sandbox does not establish provider retry timing.
 The current definitions are `payment_provider_result_apply` in
-[`20261121090000_payment_provider_profiles.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261121090000_payment_provider_profiles.sql)
+`20261124140000_native_provider_retry_cadence.sql`
 and both failure overloads in
 [`20261109100000_subscription_retry_resume.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261109100000_subscription_retry_resume.sql).
 Verify your selected catalogue or applied prefix with the
 [current-definition lookup](../upgrade/database-migrations.md#find-the-current-function-definition).
 
-Adopters can configure timing and budget for fresh native failure recording,
-but cannot configure the provider-result ladder through today's public
-composition. The current source starter requires exactly three configured retry
-rungs at startup (`starter_database_retry_budget`), matching the database's
-attempt-four exhaustion guards. Full ladder configurability is tracked separately.
+Adopters can configure 3-rung timing (`retryCadence.backoffHours` with length 3)
+for both direct and provider-recorded native failure paths. The database's
+attempt-four exhaustion guards (`retry_attempt >= 4`) and the source starter's
+`starter_database_retry_budget` require exactly three rungs; variable rung counts
+remain out of scope for 1.x.
 Neither a custom cadence nor receipt replay removes the `hard_do_not_retry` stop. Browser
 request data cannot configure timing. Managed dunning, recovery and due-list
 guards retain their fixed exhaustion threshold; custom core timing does not

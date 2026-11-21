@@ -187,6 +187,7 @@ Find the SQL files each package ships, listed by file name. This is an inventory
 | [`20261124110000_shipment_label_and_address_upsert_atomic.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124110000_shipment_label_and_address_upsert_atomic.sql) |
 | [`20261124120000_catalog_publication_reads.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124120000_catalog_publication_reads.sql) |
 | [`20261124130000_definer_search_path_pin.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124130000_definer_search_path_pin.sql) |
+| [`20261124140000_native_provider_retry_cadence.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/20261124140000_native_provider_retry_cadence.sql) |
 | [`q2_00000000000000_platform_baseline.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_00000000000000_platform_baseline.sql) |
 | [`q2_20260810180001_self_host_actor_auth.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260810180001_self_host_actor_auth.sql) |
 | [`q2_20260816140000_acquisition_case_foundation.sql`](https://github.com/openlup/openlup/blob/openlup-core-v1.3.0/packages/platform/sql/q2_20260816140000_acquisition_case_foundation.sql) |

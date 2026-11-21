@@ -6208,6 +6208,25 @@
           }
         ],
         "dataStatements": []
+      },
+      {
+        "row": "native-provider-retry-cadence",
+        "path": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
+            "beforeSha256": "5050f34460b12de2b9757df40dcfe2344155a4b13b8b8f3cc1f2672475973bb3",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "createdFunctions": [
+          {
+            "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text,jsonb)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8931,6 +8950,22 @@
       "path": "db/platform/migrations/20261124130000_definer_search_path_pin.sql",
       "sha256": "e44f6ef7d720efdf2f31dc3396369706657b8bfcd0bc34420be56735d2788a75",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261124140000_native_provider_retry_cadence.sql",
+      "sha256": "2dafd53c5f0c3abe5d7e19b6476680567b6a271b58bbe32de6f816a9f79c86ee",
+      "functions": [
+        {
+          "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text)",
+          "beforeSha256": "5050f34460b12de2b9757df40dcfe2344155a4b13b8b8f3cc1f2672475973bb3",
+          "afterSha256": "b7e079c250ac60f867a8312f979d53752b1a3612d220199e3320d54b1082cb28"
+        },
+        {
+          "signature": "public.payment_provider_result_apply(text,uuid,uuid,text,timestamptz,text,text,text,text,text,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "fc92b8758ebc0341ef935f4108400aefe611806db3d7421319699cabd82826c8"
+        }
+      ]
     }
   ],
   "managedExactForwards": [
