@@ -1,0 +1,1 @@
+- Qualified-v2 installations can use the catalogue publication login to read governed offer memberships and activation readiness. Apply the complete catalogue through `20261124180000_catalogue_read_grant.sql`. Where provisioned, `service_role` remains supported.

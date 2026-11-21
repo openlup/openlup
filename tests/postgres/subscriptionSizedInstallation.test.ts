@@ -9,6 +9,7 @@ import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, 
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { connectedNativeStoreTables } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { cataloguePublicationAuthority, catalogueReadGrant, membershipSignature, readinessSignature } from "./catalogPublicationFixture.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)("installs the sized editor on %s with the selected ownership and binding ACLs", async profile => {
@@ -19,6 +20,8 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Sized editor PostgreSQL unavailable");
     const owner = pool(container.connectionString), password = randomUUID(), m = "sized_m", r = "sized_r", s = "sized_s", o = "sized_o";
     const admin = profile.startsWith("admin-"), separate = profile === "separate" || admin, operatorMode = profile === "admin-operator";
+    const withoutPublicationAuthority = profile === "legacy" || admin;
+    if (withoutPublicationAuthority) await owner.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT");
     const login = (name: string) => { const url = new URL(container.connectionString); url.username = name; if (name !== "postgres") url.password = password; return url.toString(); };
     if (separate) { await owner.query(`CREATE ROLE ${m} LOGIN ${admin ? "NOINHERIT NOSUPERUSER" : "INHERIT SUPERUSER"} ${admin && !operatorMode ? "CREATEROLE" : "NOCREATEROLE"} NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`); await owner.query(`ALTER DATABASE postgres OWNER TO ${m}`); }
     if (profile !== "legacy") for (const name of [r, s]) await owner.query(`CREATE ROLE ${name} LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
@@ -38,19 +41,35 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
         : { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: separate ? m : "postgres", runtimeLogin: r, restoreLogin: s };
     const migrationUrl = login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin);
     const migrator = pool(migrationUrl, installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation) : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined);
+    let measuredSha256: string | undefined;
     const runner = createPostgresMigrationRunner({ connectionString: migrationUrl }, { installation, poolFactory: () => migrator,
       catalogProjectionPayload: async client => {
         const payload = installation.generation === "qualified-v2" ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
           : installation.generation === "qualified-admin" ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
             : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
-        expect(hash(payload)).toBe(installationInventory.current.profiles[profile].objectInventorySha256);
-        mkdirSync(".context/scratch/sized-edit", { recursive: true });
-        writeFileSync(`.context/scratch/sized-edit/inventory-${profile}.json`, JSON.stringify({ profile, sha256: hash(payload) })); return payload;
+        measuredSha256 = hash(payload);
+        return payload;
       } });
-    await runner.apply(); expect((await runner.apply()).applied).toEqual([]);
-    expect((await owner.query("SELECT count(*)::int n FROM public.platform_schema_migrations")).rows[0].n).toBe(installationInventory.current.profiles[profile].count);
+    // Legacy projects the extra cluster role. SQL commits before the final
+    // inventory check, so inspect the grants before restoring the measured profile.
+    if (profile === "legacy") await expect(runner.apply()).rejects.toThrow(
+      "platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch");
+    else await runner.apply();
     const completeLedger = (await owner.query("SELECT catalog_path,sha256 FROM public.platform_schema_migrations ORDER BY position DESC")).rows;
+    if (withoutPublicationAuthority) {
+      const paths = completeLedger.map(unit => unit.catalog_path);
+      expect(paths).toContain(catalogueReadGrant);
+      expect(paths).not.toContain(cataloguePublicationAuthority);
+      expect((await owner.query(`SELECT has_function_privilege('openlup_catalog_publication',signature,'EXECUTE') AS allowed
+        FROM unnest($1::text[]) AS targets(signature)`, [[membershipSignature, readinessSignature]])).rows).toEqual([{ allowed: false }, { allowed: false }]);
+    }
+    if (profile === "legacy") await owner.query("DROP ROLE openlup_catalog_publication");
+    expect((await runner.apply()).applied).toEqual([]);
+    expect((await owner.query("SELECT count(*)::int n FROM public.platform_schema_migrations")).rows[0].n).toBe(installationInventory.current.profiles[profile].count);
     const measured = installationInventory.current.profiles[profile];
+    expect(measuredSha256).toBe(measured.objectInventorySha256);
+    mkdirSync(".context/scratch/sized-edit", { recursive: true });
+    writeFileSync(`.context/scratch/sized-edit/inventory-${profile}.json`, JSON.stringify({ profile, sha256: measuredSha256 }));
     expect(completeLedger).toEqual(measured.tail.map(unit => ({ catalog_path: unit.file, sha256: unit.sha256 })));
     expect(completeLedger.findIndex(unit => unit.catalog_path === "db/platform/migrations/20261109150000_subscription_auto_resume_paid_history.sql")).toBe(measured.exactTailCount);
     if (profile === "separate") {

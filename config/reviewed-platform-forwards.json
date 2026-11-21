@@ -6281,6 +6281,29 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "catalogue-read-grant",
+        "path": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [
+          {
+            "signature": "public.catalog_offer_memberships_page(text,jsonb,integer,text)",
+            "grantTo": [
+              "openlup_catalog_publication"
+            ],
+            "revokeFrom": []
+          },
+          {
+            "signature": "public.catalog_publication_activation_readiness(text[],text)",
+            "grantTo": [
+              "openlup_catalog_publication"
+            ],
+            "revokeFrom": []
+          }
+        ],
+        "dataStatements": []
       }
     ]
   },
@@ -9068,6 +9091,11 @@
           "afterSha256": "97e7dc6dfa13ecc069dffaebfeb06cc49ec9089825c9d11731962a24c89631bc"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
+      "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a",
+      "functions": []
     }
   ],
   "managedExactForwards": [

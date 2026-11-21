@@ -64,6 +64,7 @@ for (const profile of profiles) for (const shape of shapes) {
         runtimeLockPrivilegesProved: true, runtimeCompletionProved: true, ownerPathResolutionProved: true,
         nativeObservationRuntimeProved: profile.name === "target" && shape.name === "separate-restore",
         connectionRecipeProved: profile.name === "target" && shape.name === "separate-restore",
+        catalogueReadsProved: true, catalogueReadGuardProved: profile.name === "target" && shape.name === "separate-restore",
         discriminators: profile.name === "target" && shape.name === "separate-restore",
       });
       console.info(`qualified-production ${profile.name}/${shape.name} ${stdout.trim()}`);

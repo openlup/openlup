@@ -993,7 +993,7 @@ across governed products. See the installed
 for paging and refusal behavior.
 
 The [readiness forward](../../db/platform/migrations/20261124140000_catalog_publication_readiness.sql)
-adds a batch read executable only by the service role. The snapshot and price
+adds a batch read executable by the service role. The snapshot and price
 helpers are owner-only.
 Outside a `READ COMMITTED` read-write transaction it refuses before locking.
 Otherwise it takes `SHARE` on `catalog_products`, which conflicts with the
@@ -1003,6 +1003,24 @@ compare the live product and its SKU roster with the sealed evidence. A
 mismatch refuses the batch.
 It writes nothing. See the
 [catalogue entry](../../packages/platform/README.md#read-activation-readiness).
+
+**Qualified publication authority**
+
+The [catalogue read grant](../../db/platform/migrations/20261124180000_catalogue_read_grant.sql)
+requires the cluster login and the database's exact qualified-v2 publication
+authority ledger entry. See the [closed native store grant shape](#closed-native-store-forwards)
+for the pinned functions and ledger check.
+
+| Installation profile | Effect on `openlup_catalog_publication` |
+| --- | --- |
+| Qualified-v2 bootstrap migrator | Grants both read entry points |
+| Qualified-v2 separate migrator | Grants both read entry points |
+| Legacy | No-op |
+| Qualified-admin installer-managed | No-op |
+| Qualified-admin operator-provisioned | No-op |
+
+Both qualified-v2 role modes receive the grants. Where provisioned,
+`service_role` retains both reads.
 
 The [`catalog_publication` forward](../../db/platform/migrations/20261123190000_catalog_publication.sql)
 adds native publication history.

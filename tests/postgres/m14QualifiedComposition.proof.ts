@@ -20,10 +20,12 @@ import { createPostgresFulfillmentObservationLifecycle } from "../../server/adap
 import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { createM08FulfillmentReferenceBinding } from "../../server/runtime/public-reference/m08FulfillmentBinding.js";
 import { createNativeFulfillmentBinding } from "@openlup/platform/fulfillment/native";
-import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readIssuedPlatformManifest, withIssuedPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
+import { selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { readIssuedPlatformManifest, withIssuedPlatformCatalog, withPlatformCatalog } from "../helpers/issuedPlatformCatalog.js";
 import { profile, request } from "../helpers/fulfillmentComposition.js";
 import { fixture, openCase } from "../helpers/fulfillmentNative.js";
+import { cataloguePublicationAuthority, catalogueReadGrant, fixture as catalogueFixture, graph, insertGraph,
+  installPublicationActors, membershipSignature, readinessSignature, transaction } from "./catalogPublicationFixture.js";
 
 const input: { connectionString: string; selection: QualifiedPostgresInstallation; expectedInventory: string;
   discriminators: boolean } = JSON.parse(process.argv[2]!);
@@ -645,6 +647,96 @@ async function proveRuntimeLockPrivileges(bootstrap: Pool): Promise<void> {
   await assertRuntime(runtime);
 }
 
+const readTargets = [membershipSignature, readinessSignature];
+const expectedReadAcl = readTargets.map(signature => ({ signature, privilege: "EXECUTE", grantable: false }));
+const isReadGrant = ({ signature }: { signature: string }) => readTargets.includes(signature);
+async function publisherFunctionAcl(db: Pool | PoolClient) {
+  return (await db.query<{ signature: string; privilege: string; grantable: boolean; grantor: string }>(`
+    SELECT coalesce(targets.signature,fn.oid::regprocedure::text) AS signature,
+      acl.privilege_type AS privilege, acl.is_grantable AS grantable, acl.grantor::regrole::text AS grantor
+    FROM pg_catalog.pg_proc fn
+    CROSS JOIN LATERAL pg_catalog.aclexplode(fn.proacl) acl
+    JOIN pg_catalog.pg_roles publisher ON publisher.oid=acl.grantee
+    LEFT JOIN unnest($1::text[]) AS targets(signature) ON fn.oid=targets.signature::regprocedure
+    WHERE publisher.rolname='openlup_catalog_publication'
+    ORDER BY 1,2,3,4`, [readTargets])).rows;
+}
+
+type PublisherFunctionAcl = Awaited<ReturnType<typeof publisherFunctionAcl>>;
+const readGrants = (acl: PublisherFunctionAcl) => acl.filter(isReadGrant).map(({ grantor: _grantor, ...grant }) => grant);
+
+function catalogueReadPrefix(source: Extract<PlatformMigrationManifest, { schemaVersion: 3 }>, includeGrant: boolean) {
+  const prefix = structuredClone(source);
+  for (const plan of [prefix, prefix.qualified, prefix.qualifiedAdmin]) {
+    const position = plan.forward.findIndex(({ file }) => file === catalogueReadGrant);
+    assert.ok(position >= 0, "catalogue read grant is missing from the migration plan");
+    plan.forward.length = position + Number(includeGrant);
+  }
+  // Pin the two boundaries at which the production runner verifies its inventory.
+  prefix.qualified.objectInventorySha256 = includeGrant ? {
+    bootstrapMigrator: { withRestore: "df04bdf1590aae92df0fe1885a90a6f7d8c25075a38b3e57a5a66f9bb358eadb" },
+    separateMigrator: { withRestore: "0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153" },
+  } : {
+    bootstrapMigrator: { withRestore: "eb5c051e959907eb6dc02ddb907292e56d58e57c1b537bb0f8c84db86d3e6520" },
+    separateMigrator: { withRestore: "0dd8490c5d8e521cae59ba391091e493358e1600e4c7e4da7853e89e8af75b40" },
+  };
+  return prefix;
+}
+
+async function proveCatalogueReads(bootstrap: Pool) {
+  await installPublicationActors(bootstrap);
+  await bootstrap.query(`INSERT INTO public.commerce_settings(key,value_text)
+    VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO NOTHING`);
+  const offer = "test:qualified-read";
+  const issue = await transaction(bootstrap, async db => {
+    const issue = await graph(db, catalogueFixture());
+    issue.product.status = "active";
+    issue.facts.status = "active";
+    issue.facts.sellableStandalone = true;
+    issue.facts.memberships = [{ offerVersion: offer, admitted: true }];
+    await db.query("UPDATE public.catalog_products SET status='active' WHERE id=$1", [issue.productId]);
+    await insertGraph(db, issue, {});
+    return issue;
+  });
+  await bootstrap.query(`ALTER ROLE openlup_catalog_publication PASSWORD '${password}'`);
+  const publisher = pool(loginUrl("openlup_catalog_publication"));
+  assert.deepEqual((await publisher.query("SELECT current_user AS role, session_user AS login")).rows,
+    [{ role: "openlup_catalog_publication", login: "openlup_catalog_publication" }]);
+  const { result: page } = (await publisher.query("SELECT public.catalog_offer_memberships_page($1,NULL,1,'one_time') AS result", [offer])).rows[0];
+  assert.equal(page.kind, "page");
+  assert.equal(page.value.protocol, "governed");
+  assert.match(page.value.headDigest, /^[a-f0-9]{64}$/u);
+  assert.deepEqual(page.value.items.map(({ skuId, skuCode }: { skuId: string; skuCode: string }) => ({ skuId, skuCode })),
+    [{ skuId: issue.skuId, skuCode: issue.facts.code }]);
+  const batch = await transaction(publisher, async db => {
+    await db.query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED READ WRITE");
+    return (await db.query("SELECT public.catalog_publication_activation_readiness($1::text[],$2) AS result",
+      [[issue.facts.code], page.value.headDigest])).rows[0].result;
+  });
+  assert.equal(batch.kind, "batch", JSON.stringify(batch));
+  assert.equal(batch.value.protocol, "governed");
+  assert.equal(batch.value.headDigest, page.value.headDigest);
+  assert.equal(batch.value.items.length, 1);
+  assert.equal(batch.value.items[0].skuCode, issue.facts.code);
+  assert.equal(batch.value.items[0].evidence.sku.id, issue.skuId);
+}
+
+async function proveCatalogueReadGuard(bootstrap: Pool) {
+  const sql = readFileSync(catalogueReadGrant, "utf8");
+  await transaction(bootstrap, async db => {
+    const before = await publisherFunctionAcl(db);
+    await db.query("SAVEPOINT authority");
+    assert.equal((await db.query("UPDATE public.platform_schema_migrations SET sha256=repeat('0',64) WHERE catalog_path=$1",
+      [cataloguePublicationAuthority])).rowCount, 1);
+    await db.query(sql);
+    assert.deepEqual(await publisherFunctionAcl(db), before, "a wrong authority hash must confer no grants");
+    assert.equal((await db.query("DELETE FROM public.platform_schema_migrations WHERE catalog_path=$1", [cataloguePublicationAuthority])).rowCount, 1);
+    await db.query(sql);
+    assert.deepEqual(await publisherFunctionAcl(db), before, "an absent authority row must confer no grants");
+    await db.query("ROLLBACK TO SAVEPOINT authority");
+  });
+}
+
 async function prove() {
   const started = performance.now();
   const fixtureUrl = new URL(input.connectionString);
@@ -655,7 +747,9 @@ async function prove() {
   assert.equal(fixtureUrl.pathname, "/postgres");
   assert.equal(fixtureUrl.search, "");
   assert.match(import.meta.resolve("@openlup/platform/migrations"), /\/dist\/migrations\/index\.js$/u);
-  const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", {
+  const source = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as PlatformMigrationManifest;
+  assert.equal(source.schemaVersion, 3);
+  const manifest = selectPlatformMigrationManifest(source, "qualified-v2", {
     migrationIsBootstrap: selection.migrationLogin === selection.bootstrapLogin, hasRestore: selection.restoreLogin !== undefined,
   });
   const issued = selectPlatformMigrationManifest(readIssuedPlatformManifest(), "qualified-v2", {
@@ -736,9 +830,29 @@ async function prove() {
     return applied.applied;
   });
   assert.deepEqual(await runner.status(), { applied: prefixApplied, pending: expected.slice(prefixApplied.length).map(entry => entry.file) });
+  const grantPosition = expected.findIndex(({ file }) => file === catalogueReadGrant);
+  assert.ok(grantPosition >= prefixApplied.length);
+  const beforeGrant = await withPlatformCatalog(catalogueReadPrefix(source, false), root =>
+    createPostgresMigrationRunner({ connectionString }, { root, installation: selection }).apply());
+  assert.deepEqual(beforeGrant.applied, expected.slice(prefixApplied.length, grantPosition).map(entry => entry.file));
+  if (input.discriminators) await proveCatalogueReadGuard(bootstrap);
+  const aclBeforeGrant = await publisherFunctionAcl(bootstrap);
+  assert.deepEqual(readGrants(aclBeforeGrant), []);
+  const grantApplied = await withPlatformCatalog(catalogueReadPrefix(source, true), root =>
+    createPostgresMigrationRunner({ connectionString }, {
+      root, installation: selection,
+      catalogProjectionPayload: async client => {
+        // The runner has committed the grant forward and has yet to validate its inventory.
+        const aclAfterGrant = await publisherFunctionAcl(client);
+        assert.deepEqual(readGrants(aclAfterGrant), expectedReadAcl, "the forward must add exactly both read grants");
+        assert.deepEqual(aclAfterGrant.filter(row => !isReadGrant(row)), aclBeforeGrant, "the forward changed other publisher routine ACLs");
+        return qualifiedPostgresCatalogPayload(client, selection, lockName);
+      },
+    }).apply());
+  assert.deepEqual(grantApplied.applied, [catalogueReadGrant]);
   const suffixApplied = await runner.apply();
-  assert.deepEqual(suffixApplied.applied, expected.slice(prefixApplied.length).map(entry => entry.file));
-  const appliedNow = { applied: [...prefixApplied, ...suffixApplied.applied] };
+  assert.deepEqual(suffixApplied.applied, expected.slice(grantPosition + 1).map(entry => entry.file));
+  const appliedNow = { applied: [...prefixApplied, ...beforeGrant.applied, ...grantApplied.applied, ...suffixApplied.applied] };
   assert.deepEqual(appliedNow, { applied: expected.map(entry => entry.file) });
   const ledger = async () => (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM public.platform_schema_migrations ORDER BY position")).rows;
   const installed = await ledger();
@@ -746,8 +860,12 @@ async function prove() {
   const healthy = { applied: expected.map(entry => entry.file), pending: [] };
   const after = await runner.status();
   assert.deepEqual(after, healthy);
+  await proveCatalogueReads(bootstrap);
+  const publisherAcl = await publisherFunctionAcl(bootstrap);
+  assert.deepEqual(readGrants(publisherAcl), expectedReadAcl);
   const replay = await runner.apply();
   assert.deepEqual(replay, { applied: [] });
+  assert.deepEqual(await publisherFunctionAcl(bootstrap), publisherAcl);
   assert.deepEqual(await ledger(), installed);
   const inventorySha256 = await observeInventory(manifest.objectInventorySha256);
   await proveRetainedRuntime(bootstrap);
@@ -837,6 +955,7 @@ async function prove() {
     pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true, runtimeLockPrivilegesProved: true,
     runtimeCompletionProved: true, ownerPathResolutionProved: true, nativeObservationRuntimeProved: input.discriminators,
     connectionRecipeProved: input.discriminators,
+    catalogueReadsProved: true, catalogueReadGuardProved: input.discriminators,
     discriminators: input.discriminators, elapsedMs: Math.round(performance.now() - started) };
 }
 
