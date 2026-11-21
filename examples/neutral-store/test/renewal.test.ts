@@ -104,6 +104,9 @@ test('startup accepts three retry rungs and refuses budgets inconsistent with SQ
     config.renewal.retryBackoffHours = ladder;
     assert.throws(() => assertConfig(config), { message: 'starter_database_retry_budget' });
   }
+  const zero = structuredClone(Object.values(configurations)[0]!);
+  zero.renewal.retryBackoffHours = [0, 24, 48];
+  assert.throws(() => assertConfig(zero), { message: 'starter_renewal_configuration_invalid' });
   const config = structuredClone(Object.values(configurations)[0]!);
   config.renewal.retryBackoffHours = [24, 72, 168];
   assert.doesNotThrow(() => assertConfig(config));

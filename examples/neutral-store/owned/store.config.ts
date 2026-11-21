@@ -108,7 +108,7 @@ const inputs = {
     },
     documents: { sandbox: { enabled: true, providerRef: 'captured-demo' } },
     returns: { reasons: [{ code: 'changed_mind', label: { en: 'Changed my mind', pl: 'Zmiana decyzji' } },
-      { code: 'damaged_item', label: { en: 'Damaged item', pl: 'Uszkodzony produkt' } }] },
+      { code: 'damaged', label: { en: 'Damaged item', pl: 'Uszkodzony produkt' } }] },
     orderControls: { holdReasons: [
       { code: 'payment_not_succeeded', label: { en: 'Payment review', pl: 'Weryfikacja płatności' } },
       { code: 'inventory_review', label: { en: 'Inventory review', pl: 'Weryfikacja zapasu' } },
@@ -205,7 +205,7 @@ const inputs = {
     },
     documents: { sandbox: { enabled: true, providerRef: 'captured-demo' } },
     returns: { reasons: [{ code: 'changed_mind', label: { en: 'Changed my mind', pl: 'Zmiana decyzji' } },
-      { code: 'damaged_item', label: { en: 'Damaged item', pl: 'Uszkodzony produkt' } }] },
+      { code: 'damaged', label: { en: 'Damaged item', pl: 'Uszkodzony produkt' } }] },
     orderControls: { holdReasons: [
       { code: 'payment_not_succeeded', label: { en: 'Payment review', pl: 'Weryfikacja płatności' } },
       { code: 'inventory_review', label: { en: 'Inventory review', pl: 'Weryfikacja zapasu' } },

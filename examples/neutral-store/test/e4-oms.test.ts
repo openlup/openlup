@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 import { composePortalCapabilities, composeE4Capabilities } from '../host/e4-composition.ts';
 import { configurations } from '../owned/store.config.ts';
 import { type ActionContext } from '../host/bindings.ts';
+import { returnRequestCreateSchema } from '@openlup/platform/commerce';
 import { createCustomerSavedAddressRequestSchemas } from '@openlup/platform/shipping';
 import { savedAddressValidation } from '../owned/acquisition-policy.ts';
 
@@ -180,6 +181,33 @@ test('return commands reject caller identities and validate native decisions bef
   for (const operation of ['operator.returnApprove','operator.returnReject'] as const)
     for (let replay = 0; replay < 3; replay++) assert.deepEqual(await denied[operation]!({ returnRef: ref }, context), { ok: false, code: 'operator_required' });
   assert.equal(checks, 6);
+});
+
+test('every configured starter return reason is admitted by the native return schema', () => {
+  const ref = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  for (const config of Object.values(configurations)) {
+    for (const reason of config.returns.reasons) {
+      assert.equal(
+        returnRequestCreateSchema.safeParse({
+          idempotencyKey: context.commandKey,
+          orderId: ref,
+          reasonCode: reason.code,
+          lines: [{ orderItemId: ref, quantity: 1 }],
+        }).success,
+        true,
+        `${config.id}: ${reason.code}`,
+      );
+    }
+  }
+  assert.equal(
+    returnRequestCreateSchema.safeParse({
+      idempotencyKey: context.commandKey,
+      orderId: ref,
+      reasonCode: 'damaged_item',
+      lines: [{ orderItemId: ref, quantity: 1 }],
+    }).success,
+    false,
+  );
 });
 
 for (const operation of ['operator.label','operator.handoff','operator.delivery'] as const) {

@@ -223,7 +223,11 @@ it("preserves and reconciles an existing value-only host after a manifest refusa
   expect(listed.exit).toBe(0);
   expect(listed.stderr).toBe("");
   expect(JSON.parse(listed.stdout).entries.map(({ key }: { key: string }) => key)).toEqual(expect.arrayContaining(starterKeys));
-  expect(runStarterSettings(app, defaultCheck.args)).toEqual({ exit: defaultCheck.exit, stdout: defaultCheck.stdout, stderr: "" });
+  expect(runStarterSettings(app, defaultCheck.args)).toEqual({
+    exit: defaultCheck.exit,
+    stdout: defaultCheck.stdout.replace(subscriptionOffersBeforeEffect, subscriptionOffersEffect),
+    stderr: "",
+  });
 });
 
 it("refuses an extracted starter without the settings script", () => {
@@ -477,6 +481,36 @@ it.each([
   }
 });
 
+const subscriptionOffersGoal = "Choose allowed subscription delivery intervals, default cadence, unit and line limits, and per-SKU quantity rules for classic and sized offers.";
+const subscriptionOffersBeforeEffect = "A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.";
+const subscriptionOffersEffect = "Fresh subscription checkouts check the deployed classic offer (cadence, unit/line limits and per-SKU rules). Starter terms admission checks edits against the classic or sized offer for the edit's mode.";
+const subscriptionOffersSchema = (() => {
+  const positiveInt32 = z.number().int().min(1).max(2147483647);
+  const numbersDomain = z.union([
+    z.strictObject({ kind: z.literal("set"), values: z.array(positiveInt32).min(1) }),
+    z.strictObject({ kind: z.literal("range"), min: positiveInt32, max: positiveInt32, step: positiveInt32 }),
+  ]);
+  const skuOfferRule = z.strictObject({ days: numbersDomain, quantities: numbersDomain });
+  const subscriptionOfferSchema = z.strictObject({
+    days: numbersDomain,
+    checkoutDays: numbersDomain.optional(),
+    preferredDays: numbersDomain.optional(),
+    checkoutMinimumBaseUnits: positiveInt32.optional(),
+    defaultDays: positiveInt32,
+    minimumBaseUnits: positiveInt32,
+    maximumUnits: positiveInt32,
+    maximumBaseLines: positiveInt32,
+    maximumAddonLines: positiveInt32,
+    bySku: z.record(z.string().min(1), z.array(skuOfferRule).min(1)),
+  });
+  return z.strictObject({
+    classic: subscriptionOfferSchema,
+    sized: subscriptionOfferSchema,
+  }).describe(
+    "assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied, maximumUnits must be at least minimumBaseUnits, line counts and SKU quantities stay within checkout bounds (50 lines, 99 units per line), and SKU cadences do not repeat across rules. assertQuoteConfiguration requires the classic offer to include the graduation cadence.",
+  );
+})();
+
 function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
   const [command] = captured.args;
   const { setting: before } = JSON.parse(discoveryCase("show", key, "--json").stdout);
@@ -485,8 +519,16 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
   const runtimeReason = "Edit the application configuration and deploy.";
   const defaultReason = "The application config supplies the value.";
   const editWindowGoal = "Set how many hours before a renewal customers can edit a newly created subscription (edit cutoff, change deadline, activation window).";
-  const goal = key === "subscriptionCreation.editWindowHours" ? editWindowGoal : before.goal;
-  const displayedSchema = z.toJSONSchema(z.fromJSONSchema(before.schema), { target: "draft-07", io: "input", reused: "inline" });
+  const goal = key === "subscriptionCreation.editWindowHours"
+    ? editWindowGoal
+    : key === "subscriptionOffers.deliveryCycles"
+      ? subscriptionOffersGoal
+      : before.goal;
+  const appliesTo = key === "subscriptionOffers.deliveryCycles" ? subscriptionOffersEffect : before.effect.appliesTo;
+  const displayedSchema = z.toJSONSchema(
+    key === "subscriptionOffers.deliveryCycles" ? subscriptionOffersSchema : z.fromJSONSchema(before.schema),
+    { target: "draft-07", io: "input", reused: "inline" },
+  );
   const fileObservation = { state: "file", configuration: check.configuration, value };
   if (captured.args.includes("--json")) {
     const document = JSON.parse(captured.stdout);
@@ -495,6 +537,7 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
     setting.goal = goal;
     setting.runtime.reason = runtimeReason;
     if (command !== "list") {
+      setting.effect.appliesTo = appliesTo;
       setting.schema = displayedSchema;
       setting.fallback = null;
       setting.defaultBasis = { kind: "neutral" };
@@ -506,6 +549,7 @@ function expectedStarterDiscovery(captured: CapturedSettings, key: string) {
   let expected = captured.stdout.replace(before.goal, goal);
   if (command !== "list") {
     expected = expected.replace(before.runtime.reason, runtimeReason)
+      .replace(before.effect.appliesTo, appliesTo)
       .replace(`Default: ${JSON.stringify(before.fallback)}\n`, "Default: null\n")
       .replace(/^Basis: .*$/mu, "Basis: neutral")
       .replace(before.whyThisDefault, defaultReason)
@@ -558,7 +602,8 @@ it.each(baseline.checks)("reports exactly the baseline and new starter check row
       return rowKey === undefined || keys.has(rowKey) ? block : block.replace(/^[\s\S]*?^ {2}Effect: .*\n/mu, "");
     }).join("");
   }
-  expect({ ...actual, stdout: existing }).toEqual({ exit: captured.exit, stdout: captured.stdout, stderr: "" });
+  const expectedStdout = captured.stdout.replace(subscriptionOffersBeforeEffect, subscriptionOffersEffect);
+  expect({ ...actual, stdout: existing }).toEqual({ exit: captured.exit, stdout: expectedStdout, stderr: "" });
 });
 
 it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {

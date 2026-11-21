@@ -73,12 +73,35 @@ export function createSettingsBindings({ db, configuration }: {
     'subscriptionOffers.deliveryCycles': { value: config.subscriptionOffers, location: { file, symbol: 'subscriptionOffers' },
       descriptor: {
         domain: 'subscriptions',
-        goal: "Choose the allowed delivery interval and default cadence for subscriptions.",
-        schema: z.looseObject({}).describe(
-          "assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence.",
+        goal: "Choose allowed subscription delivery intervals, default cadence, unit and line limits, and per-SKU quantity rules for classic and sized offers.",
+        schema: (() => {
+          const positiveInt32 = z.number().int().min(1).max(2147483647);
+          const numbersDomain = z.union([
+            z.strictObject({ kind: z.literal('set'), values: z.array(positiveInt32).min(1) }),
+            z.strictObject({ kind: z.literal('range'), min: positiveInt32, max: positiveInt32, step: positiveInt32 }),
+          ]);
+          const skuOfferRule = z.strictObject({ days: numbersDomain, quantities: numbersDomain });
+          const subscriptionOfferSchema = z.strictObject({
+            days: numbersDomain,
+            checkoutDays: numbersDomain.optional(),
+            preferredDays: numbersDomain.optional(),
+            checkoutMinimumBaseUnits: positiveInt32.optional(),
+            defaultDays: positiveInt32,
+            minimumBaseUnits: positiveInt32,
+            maximumUnits: positiveInt32,
+            maximumBaseLines: positiveInt32,
+            maximumAddonLines: positiveInt32,
+            bySku: z.record(z.string().min(1), z.array(skuOfferRule).min(1)),
+          });
+          return z.strictObject({
+            classic: subscriptionOfferSchema,
+            sized: subscriptionOfferSchema,
+          });
+        })().describe(
+          "assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied, maximumUnits must be at least minimumBaseUnits, line counts and SKU quantities stay within checkout bounds (50 lines, 99 units per line), and SKU cadences do not repeat across rules. assertQuoteConfiguration requires the classic offer to include the graduation cadence.",
         ),
         effect: {
-          appliesTo: "A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.",
+          appliesTo: "Fresh subscription checkouts check the deployed classic offer (cadence, unit/line limits and per-SKU rules). Starter terms admission checks edits against the classic or sized offer for the edit's mode.",
           frozenOn: ["A saved starter-pack quote records the graduation cadence captured at checkout."],
           impact: 'customer-promise',
         },
