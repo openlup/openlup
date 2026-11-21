@@ -42,10 +42,14 @@ file and symbol holding the configured value. In the demonstration, run
 Offline `show` for package keys returns catalogue metadata. For a declared
 app setting with a reported value, `show` also returns a file observation with
 the configuration selected by the binding and the value it reports. For
-inventory and reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
+`inventory_renewal_protection`, `subscription_minimum_base_units`,
+`subscription_sized_intro_phase`, `shipping_flat_minor`, and (with `--app`)
+reminders, a connected `show <key> --database-url <read-capable-url>` also reports the
 observation. Use a connection authorized to read settings from the intended
 store. The existing installed row may be an explicit override. An absent
-inventory row uses the platform fallback. For unpinned reminder episodes, an
+`inventory_renewal_protection` or `shipping_flat_minor` row uses the platform fallback,
+whereas an absent `subscription_minimum_base_units` or `subscription_sized_intro_phase`
+row reports `absent` (fail-closed refusal until a valid row is installed). For unpinned reminder episodes, an
 absent row uses the host call parameters for checkout recovery and the 1, 24 and
 72 hour schedule for abandoned carts. The connected read shows the live setting
 or fallback. For a pinned order and reminder kind, [the pin supplies timing](../build/checkout-recovery.md#install-reminder-stages-and-hours).
@@ -269,7 +273,9 @@ The module must avoid starting the application, writing data or printing to
 stdout. Pass an explicit `--app` only for application code you trust.
 
 List, show and explain work for platform keys without an app or database. With a
-PostgreSQL URL, the built-in stock policy reader can show the installed horizon.
+PostgreSQL URL, the built-in readers can show the installed row (or fallback or
+absent state) for `inventory_renewal_protection`, `subscription_minimum_base_units`,
+`subscription_sized_intro_phase`, and `shipping_flat_minor`.
 A stock preview needs the application's stock source. A connected reminder
 show needs the application's checkout wave policy. A connected show of any
 installed setting requires a reader for that key. Supply `--app` to read app

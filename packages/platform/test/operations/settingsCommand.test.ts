@@ -874,7 +874,7 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // "Default: none (see behavior below)" for null fallbacks (K6),
   // and Stage 4 Wave 4B packaged callback and single-row installed entries.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("2553f9d0b2830fe71dc3cd13aa35d19accb84b4be1a6dc28ed6ba21bc45ce803");
+    .toBe("170485254d8241f369cdd76c7d389534a38d30322e3d4a35360c79b94e9e7e38");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {

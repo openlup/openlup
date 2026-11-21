@@ -830,9 +830,9 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "With no resolveQuoteShippingPromotions callback bound (for example via createQuoteShippingPromotions from @openlup/platform/promotions), quotes perform no shipping-rate or shipping-promotion evaluation by default.",
+      "whyThisDefault": "When the optional resolveQuoteShippingPromotions callback property on DbBackedCommerceQuotePortDeps from @openlup/platform/pricing is omitted, createDbBackedCommerceQuotePort uses shippingFlatMinor if supplied (omitting quote shipping fields when shippingFlatMinor is also absent) and still runs resolveAutomaticQuotePromotions and applyPromotionCodesV2 (including shipping discounts).",
       "effect": {
-        "appliesTo": "New checkout quotes call the bound resolveQuoteShippingPromotions callback from @openlup/platform/pricing (composed via createQuoteShippingPromotions from @openlup/platform/promotions) during quote calculation.",
+        "appliesTo": "New checkout quotes call the optional resolveQuoteShippingPromotions callback property on DbBackedCommerceQuotePortDeps from @openlup/platform/pricing (for example composed via createQuoteShippingPromotions from @openlup/platform/promotions) during quote calculation.",
         "frozenOn": [
           "Saved checkout quotes and order drafts retain their recorded shipping amounts and terms."
         ],
@@ -840,7 +840,7 @@
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The callback is executable server code implementing resolveQuoteShippingPromotions / createQuoteShippingPromotions."
+        "reason": "The callback is executable server code bound as the optional resolveQuoteShippingPromotions property on DbBackedCommerceQuotePortDeps from @openlup/platform/pricing (for example via createQuoteShippingPromotions from @openlup/platform/promotions)."
       },
       "change": {
         "reference": "docs/guide/how-to/build/customize-the-starter.md#compose-shipping-quotes"
@@ -989,9 +989,9 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "The platform provides no implicit introductory phase cutoff; stores must explicitly install fixedThroughCycle and graduationCycle in commerce_settings when introductory subscriptions use sized editing.",
+      "whyThisDefault": "The platform provides no implicit introductory phase cutoff; stores must explicitly install fixedThroughCycle and graduationCycle (positive 32-bit integers with graduationCycle > fixedThroughCycle) in commerce_settings when introductory subscriptions use sized editing.",
       "effect": {
-        "appliesTo": "Sized subscription edit commands for introductory starter-pack subscriptions evaluate fixedThroughCycle and graduationCycle from the installed commerce_settings row in SQL alongside the configured SizedEditPolicy in TypeScript (in the starter, keep owned/subscription-editing.ts aligned with the database row seeded by owned/demo-seed.ts).",
+        "appliesTo": "Sized subscription edit commands for introductory starter-pack subscriptions evaluate fixedThroughCycle and graduationCycle (positive 32-bit integers with graduationCycle > fixedThroughCycle) from the installed commerce_settings row in SQL alongside the configured SizedEditPolicy in TypeScript (in the starter, keep owned/subscription-editing.ts aligned with the database row seeded by owned/demo-seed.ts).",
         "frozenOn": [
           "Already completed edit command receipts and past paid cycles retain their recorded state."
         ],
@@ -1011,12 +1011,12 @@
           "fixedThroughCycle": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 9007199254740991
+            "maximum": 2147483647
           },
           "graduationCycle": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 9007199254740991
+            "maximum": 2147483647
           }
         },
         "required": [
@@ -1169,9 +1169,9 @@
       "defaultBasis": {
         "kind": "neutral"
       },
-      "whyThisDefault": "Omitting admitSubscriptionCommand (SubscriptionCommandAdmission from @openlup/platform/subscriptions) preserves native command behavior across all supported lifecycle actions subject to platform state and payment fences.",
+      "whyThisDefault": "Omitting admitSubscriptionCommand on NativeSubscriptionCommandBinding from @openlup/platform/subscriptions (typed as SubscriptionCommandAdmission from @openlup/platform/subscriptions/contracts) preserves native command behavior across all supported lifecycle actions subject to platform state and payment fences.",
       "effect": {
-        "appliesTo": "Fresh subscription lifecycle previews and commands invoke the bound SubscriptionCommandAdmission callback (admitSubscriptionCommand from @openlup/platform/subscriptions) after replay checks and before durable writes.",
+        "appliesTo": "Fresh subscription lifecycle previews and commands invoke the bound admitSubscriptionCommand callback on NativeSubscriptionCommandBinding from @openlup/platform/subscriptions (implementing SubscriptionCommandAdmission from @openlup/platform/subscriptions/contracts) after replay checks and before durable writes.",
         "frozenOn": [
           "Completed command receipts and existing pauses or cycle dates replay and retain their stored outcomes."
         ],
@@ -1179,7 +1179,7 @@
       },
       "runtime": {
         "level": "read-only",
-        "reason": "The callback is executable server code implementing SubscriptionCommandAdmission from @openlup/platform/subscriptions."
+        "reason": "The callback is executable server code implementing SubscriptionCommandAdmission from @openlup/platform/subscriptions/contracts via admitSubscriptionCommand on NativeSubscriptionCommandBinding from @openlup/platform/subscriptions."
       },
       "change": {
         "reference": "docs/guide/how-to/build/customize-the-starter.md#configure-account-actions-and-pauses"
