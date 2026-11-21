@@ -455,7 +455,7 @@ export function createSettingsBindings({ db, configuration }: {
           "Positive 32-bit integer in seconds governing when the starter's checkout recovery runner treats an unpaid checkout as timed out.",
         ),
         effect: {
-          appliesTo: "On its next run, the starter's checkout recovery scheduler applies the deployed timeout threshold to open unpaid checkouts when deciding whether they can be expired.",
+          appliesTo: "On its next run, the starter's checkout recovery scheduler applies this timeout to provisional subscription initial checkouts with no recorded payment attempt (cancelling them and enqueuing expired notices). One-time unpaid checkouts expire by purchase.reservationMinutes.",
           frozenOn: ["Already expired or completed checkouts keep their recorded terminal state."],
           impact: 'customer-promise',
         },
@@ -645,10 +645,10 @@ export function createSettingsBindings({ db, configuration }: {
             }),
           });
         })().describe(
-          "assertEditorConfig checks positive safe integers for preferredSize and nominalSizes, distinct nonblank full and reduced mode names, and finite positive factors with full.factor greater than reduced.factor.",
+          "assertEditorConfig checks positive safe integers for preferredSize and nominalSizes, distinct non-empty full and reduced mode names, and finite positive factors with full.factor greater than reduced.factor.",
         ),
         effect: {
-          appliesTo: "Sized subscription editor proposals and starter portion calculations use the deployed preferred size, nominal sizes, and portion-mode factors for new edit sessions.",
+          appliesTo: "The sized subscription editor uses the deployed preferredSize and nominalSizes for editor UI and size constraints, and validates portionModes for constraint checks and shortfall display. Demand-driven portion resizing is unconfigured in the starter and refuses with starter_subscription_resize_unconfigured.",
           frozenOn: ["Existing subscriptions keep their saved package lines and terms until a new edit is accepted."],
           impact: 'customer-promise',
         },
