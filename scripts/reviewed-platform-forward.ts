@@ -126,7 +126,7 @@ const deferredTriggerMessages = {
   field: (name: unknown, field: string, rule: string) => `createdTriggers entry ${typeof name === "string" ? name : "<unnamed>"}: ${field} ${rule}`,
 };
 type NativeCreatedTrigger = { name: string; table: string; sha256: string; deferred?: never } | NativeDeferredTrigger;
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] } };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; ownerWindowRole?: string; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] } };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 type ManagedExactForward = { path: string; sha256: string; prefixSha256: string };
 export type ReviewedForwardRegistry = { managedExactForwards?: ManagedExactForward[]; nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
@@ -2921,6 +2921,53 @@ function assertNativeStoreSettingsTargets(settings: readonly NativeStoreFunction
 const renderNativeStoreSetting = ({ signature, searchPath }: NativeStoreFunctionSetting) =>
   `ALTER FUNCTION ${signature} SET search_path = ${searchPath};`;
 
+export function renderNativeStoreSettingsOwnerWindow(settings: readonly NativeStoreFunctionSetting[], role: string): string {
+  return `DO $settings_owner_window$
+BEGIN
+  IF NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles AS r WHERE r.rolname OPERATOR(pg_catalog.=) current_user) THEN
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members AS a
+      WHERE a.roleid OPERATOR(pg_catalog.=) (SELECT r.oid FROM pg_catalog.pg_roles AS r WHERE r.rolname OPERATOR(pg_catalog.=) '${role}')
+        AND a.member OPERATOR(pg_catalog.=) (SELECT r.oid FROM pg_catalog.pg_roles AS r WHERE r.rolname OPERATOR(pg_catalog.=) current_user)
+        AND a.grantor OPERATOR(pg_catalog.=) a.member) THEN
+      RAISE EXCEPTION 'installer already holds a self-granted membership in ${role}' USING ERRCODE = '42501',
+        HINT = 'Revoke that membership with REVOKE ${role} FROM the installer GRANTED BY the installer, then rerun the migration.';
+    END IF;
+    EXECUTE pg_catalog.format('GRANT ${role} TO %I WITH ADMIN FALSE, INHERIT TRUE, SET FALSE GRANTED BY %I', current_user, current_user);
+  END IF;
+END
+$settings_owner_window$;
+${settings.map(renderNativeStoreSetting).join("\n")}
+DO $settings_owner_window$
+BEGIN
+  IF NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles AS r WHERE r.rolname OPERATOR(pg_catalog.=) current_user) THEN
+    EXECUTE pg_catalog.format('REVOKE ${role} FROM %I GRANTED BY %I', current_user, current_user);
+  END IF;
+END
+$settings_owner_window$;
+`;
+}
+
+function nativeStoreOwnerWindowFields(slot: NativeStoreSlot, settingsOnly: boolean): string[] {
+  if (!Object.hasOwn(slot, "ownerWindowRole")) return [];
+  if (!settingsOnly) throw new Error("reviewed native store ownerWindowRole is allowed only on a settings-only slot. Remove ownerWindowRole from this slot.");
+  const role = slot.ownerWindowRole;
+  if (typeof role !== "string" || !/^[a-z_][a-z0-9_]{0,62}$/u.test(role) || role.startsWith("pg_")) {
+    throw new Error("reviewed native store ownerWindowRole must be an unquoted lowercase role name of at most 63 ASCII characters matching ^[a-z_][a-z0-9_]{0,62}$ and must not start with pg_.");
+  }
+  return ["ownerWindowRole"];
+}
+
+function assertNativeStoreSettingsOwnerWindow(settings: readonly NativeStoreFunctionSetting[], role: string, bytes: Buffer): void {
+  const rendered = renderNativeStoreSettingsOwnerWindow(settings, role);
+  if (bytes.equals(Buffer.from(rendered))) return;
+  const lines = (text: string) => text.match(/[^\n]*\n|[^\n]+$/gu) ?? [];
+  const expected = lines(rendered), actual = lines(bytes.toString("utf8"));
+  const first = expected.findIndex((line, index) => line !== actual[index]);
+  const index = first === -1 ? expected.length : first;
+  const show = (line: string | undefined) => JSON.stringify(line) ?? "<end of file>";
+  throw new Error(`reviewed native store settings-only owner window must match the rendered file exactly. Line ${index + 1}: expected ${show(expected[index])}; actual ${show(actual[index])}.`);
+}
+
 function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<string>): void {
   const control = registry.nativeStoreForwardClass;
   if (control === undefined) {
@@ -2933,7 +2980,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   for (const slot of control.slots) {
     const time = nativeStoreTime(slot.path);
     const settingsOnly = Object.hasOwn(slot, "settingsOnlyFunctions");
-    const fields = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row"];
+    const fields = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...nativeStoreOwnerWindowFields(slot, settingsOnly)];
     if (settingsOnly) fields.push("settingsOnlyFunctions");
     else {
       fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables"].filter(key => Object.hasOwn(slot, key)));
@@ -3304,6 +3351,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   validateNativeStoreClass(registry, new Set());
   const control = registry.nativeStoreForwardClass, slot = control?.slots.find(slot => slot.path === path);
   const forward = registry.nativeStoreForwards?.find(pin => pin.path === path);
+  if (slot?.ownerWindowRole !== undefined) assertNativeStoreSettingsOwnerWindow(slot.settingsOnlyFunctions!, slot.ownerWindowRole, bytes);
   if (!slot || !forward || sqlSha256(bytes) !== forward.sha256) throw new Error("reviewed native store path or file hash drifted");
   if (bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) throw new Error("reviewed native store refuses control characters");
   if (preceding[0]?.path !== PLATFORM_BASELINE_FILE || preceding.some((source, index) => !/^db\/platform\/migrations\/\d{14}_[a-zA-Z0-9_-]+\.sql$/u.test(source.path) || source.path >= path || (index > 0 && source.path <= preceding[index - 1]!.path))) throw new Error("reviewed native store requires an ordered same-rail prefix and baseline");
@@ -3330,9 +3378,10 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
   if (slot.settingsOnlyFunctions) {
     const expected = slot.settingsOnlyFunctions.map(renderNativeStoreSetting);
+    const settingsStatements = slot.ownerWindowRole === undefined ? statements : statements.slice(1, -1);
     const refusal = "reviewed native store settings-only forward must contain exactly its ordered ALTER FUNCTION search_path statements";
-    if (statements.length !== expected.length) throw new Error(`${refusal}. Expected ${expected.length} statements, found ${statements.length}.`);
-    const difference = expected.findIndex((statement, index) => statement !== statements[index]);
+    if (settingsStatements.length !== expected.length) throw new Error(`${refusal}. Expected ${expected.length} statements, found ${settingsStatements.length}.`);
+    const difference = expected.findIndex((statement, index) => statement !== settingsStatements[index]);
     if (difference !== -1) throw new Error(`${refusal}. At index ${difference} (zero-based), expected: ${expected[difference]}`);
     assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, preceding);
     return { slot, ordinaryProof };
