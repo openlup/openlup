@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve, dirname, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
@@ -137,6 +137,36 @@ test('settings show leaves frozen values empty for admission rules and notice wi
   for (const key of ['offer.minUnits', 'offer.maxUnits', 'renewal.subscriptionCare.pausePresets', 'renewal.subscriptionCare.notices']) {
     const shown = await starterSettings('supplements', ['show', key]);
     assert.deepEqual(shown.setting.effect.frozenOn, [], key);
+  }
+});
+
+test('settings check names the offer member when zero cadence prevents configuration loading', async () => {
+  await mkdir(dirname(scratch), { recursive: true });
+  const target = await mkdtemp(scratch);
+  try {
+    execFileSync(process.execPath, ['extract.mjs', target], { cwd: root, stdio: 'pipe' });
+    const store = resolve(target, 'owned/store.config.ts');
+    const source = await readFile(store, 'utf8');
+    assert.ok(source.includes('offers(set(28, 56), 28,'));
+    await writeFile(store, source.replace('offers(set(28, 56), 28,', 'offers(set(0, 56), 28,'));
+    const app = resolve(target, 'owned/settings-host.ts');
+    let stdout = '';
+    const status = await runSettingsCommand(['check', '--app', app, '--json'], {
+      write: text => { stdout += text; },
+      readStdin: async () => '',
+    }, {
+      bind: async input => createSettingsBindings(input),
+      loadCheck: async input => (await import(pathToFileURL(input.app).href)).createSettingsBindings(input),
+    });
+    assert.equal(status, 1, stdout);
+    const checked = JSON.parse(stdout);
+    assert.equal(checked.state, 'invalid');
+    assert.equal(checked.appValidation.state, 'failed');
+    assert.equal(checked.appValidation.phase, 'load');
+    assert.match(checked.appValidation.message, /^starter_subscription_offer_invalid \(subscriptionOffers\.<mode>\.days: .+\)$/);
+    assert.deepEqual(checked.rows, []);
+  } finally {
+    await rm(target, { recursive: true, force: true });
   }
 });
 

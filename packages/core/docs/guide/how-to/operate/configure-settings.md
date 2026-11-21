@@ -107,6 +107,11 @@ Check reports the application's startup validation when supplied. It uses the
 packaged schema for known package values and the supplied Zod schema for an
 app declaration. A value without an executable schema is marked
 `not-validated` for that row.
+If loading the app or running its startup validation throws an error with a
+nonempty string cause of at most 300 characters, check appends that cause in
+parentheses. In the starter, an invalid offer reports its member and rule.
+For example, `subscriptionOffers.<mode>.days` points to `days` in the
+`classic` or `sized` offer in the owned store configuration.
 The starter checks its reported configuration ID against the registry and runs
 `assertConfig`. The actual launch and install check their command-line
 arguments and installer package availability. Seed preparation runs after
