@@ -36,6 +36,34 @@ rather than requiring any particular textual spelling of the clamp.
 Installed readers follow the
 [package-local lookup](../../packages/core/docs/guide/upgrade/database-migrations.md#find-the-current-function-definition).
 
+## Native outbox partial indexes and atomic label/address RPCs
+
+The [outbox active partial indexes forward](../../db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql)
+(mirrored byte-for-byte in `@openlup/platform/sql` and `@openlup/outbox/sql/0002_outbox_active_partial_indexes.sql`)
+adds three partial indexes on `public.outbox_events` scoped to active rows
+(`pending`, `processing`, `failed`) so `outbox_claim_batch` and
+`hasPendingEventType` stay bounded by active rows even when terminal rows are
+retained indefinitely.
+
+The [atomic label and address upsert forward](../../db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql)
+adds two additive RPCs:
+
+- `public.fulfillment_record_label_atomic(text,uuid,text,text,jsonb,timestamptz)`
+  (`SECURITY INVOKER`, `SET search_path = public, pg_catalog`) executes the
+  `packed` -> `label_pending` -> `label_created` transitions and optional
+  `label` evidence recording in one transaction while preserving the historical
+  `:packed`, `:label-pending`, `:label-created`, and `:label-evidence`
+  idempotency keys.
+- `public.customer_saved_address_upsert_atomic(uuid,uuid,text,text,boolean,text,uuid,text,jsonb,jsonb,timestamptz)`
+  (`SECURITY DEFINER`, `SET search_path = pg_catalog, pg_temp`) executes
+  ownership verification, idempotency replay, optional default clearing,
+  canonical lookup, address write, account event append, and final read in one
+  atomic transaction, rolling back default clearing and address writes on
+  failure.
+
+Both functions revoke `PUBLIC`, `anon`, and `authenticated` privileges and
+conditionally grant `EXECUTE` to `service_role`.
+
 ## Native fulfillment shipment lock order
 
 The [shipment lock-order forward](../../db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql)
@@ -957,7 +985,7 @@ transactions and exact-prefix/replay behavior remain.
 
 ### Sealed native catalog publication history
 
-The [membership read forward](../../db/platform/migrations/20261123193000_catalog_publication_reads.sql)
+The [membership read forward](../../db/platform/migrations/20261124120000_catalog_publication_reads.sql)
 adds a service-executable page and owner-only evidence helpers. The page uses
 the caller's statement snapshot. Its cursor binds the latest sealed issue
 across governed products. See the installed

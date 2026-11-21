@@ -2,14 +2,41 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+// eslint-disable-next-line no-restricted-imports -- landing needs the trusted SQL inventory owner before workspace packages are installed
+import { renderSqlInventory } from '../packages/core/scripts/documentation-sql-inventory.ts';
 import { checkPlatformMigrationProjection } from './packages/platform-migration-projection.ts';
 import { readDocumentationState } from './documentation-routing.ts';
 import { renderDocumentationSourceMap } from './documentation-navigation.ts';
 import { createPublicPublicationCatalog } from './oss-publication-policy.ts';
 
+export const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
+
+export function syncSqlReference(root) {
+  const source = readFileSync(join(root, SQL_REFERENCE), 'utf8');
+  let opened = 0;
+  for (const [, closing, name] of source.matchAll(/<!-- (\/?)generated:(.*?) -->/gu)) {
+    if (!/^sql:[a-z]+$/u.test(name)) throw new Error(`${SQL_REFERENCE}: unknown generated region ${name}`);
+    if (!closing) opened++;
+  }
+  let closed = 0;
+  const result = source.replace(/(<!-- generated:(sql:[a-z]+) -->\n)[\s\S]*?(<!-- \/generated:\2 -->)/gu, (_, start, name, end) => {
+    const body = renderSqlInventory(name, root);
+    if (body === undefined) throw new Error(`${SQL_REFERENCE}: unknown generated region ${name}`);
+    closed++;
+    return start + body + end;
+  });
+  if (/^(?:<<<<<<< |\|{7} |>>>>>>> |=======$)/mu.test(result)) {
+    throw new Error(`landing: authored conflicts remain: ${SQL_REFERENCE}`);
+  }
+  if (opened !== closed) {
+    throw new Error(`${SQL_REFERENCE}: a generated region is not closed by its matching marker`);
+  }
+  return result;
+}
+
 export function generatedCarrier(path) {
   return ['packages/platform/sql/manifest.json', 'packages/platform/src/migrations/catalog.ts',
-    'config/openlup-publication-catalog.json', 'docs/platform/SOURCE_MAP.md'].includes(path) ||
+    'config/openlup-publication-catalog.json', 'docs/platform/SOURCE_MAP.md', SQL_REFERENCE].includes(path) ||
     /^packages\/platform\/sql\/[A-Za-z0-9_-]+\.sql$/u.test(path);
 }
 export function runLandingGenerators(root, paths) {
@@ -19,6 +46,7 @@ export function runLandingGenerators(root, paths) {
   const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
   writeFileSync(catalogPath, createPublicPublicationCatalog(catalog.publicPaths, catalog.guardViability).contents);
   writeFileSync(join(root, 'docs/platform/SOURCE_MAP.md'), renderDocumentationSourceMap(readDocumentationState(root, paths)));
+  writeFileSync(join(root, SQL_REFERENCE), syncSqlReference(root));
 }
 export function withPredictedTree(cwd, tree, action) {
   const git = args => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', cwd, '-c', 'core.hooksPath=/dev/null', ...args],

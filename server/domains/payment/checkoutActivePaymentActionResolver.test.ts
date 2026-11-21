@@ -5,7 +5,7 @@ import {
   projectCheckoutActionReadProviders,
 } from "./checkoutActivePaymentActionResolver.js";
 import type { PaymentProviderRecoveryProvider } from "./checkoutRecoveryPaymentResolver.js";
-import type { VerifiableAttemptSnapshot } from "./paymentVerifyNowService.js";
+import type { VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
 import { PSP_PROVIDER_KINDS } from "../../../src/domains/payment/pspIntegrationPlan.js";
 
 const EMBEDDED_RAIL = PSP_PROVIDER_KINDS[0];

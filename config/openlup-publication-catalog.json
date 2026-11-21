@@ -1526,15 +1526,19 @@
       "class": "public-output"
     },
     {
-      "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "db/platform/migrations/20261123194500_catalog_publication_readiness.sql",
-      "class": "public-output"
-    },
-    {
       "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
       "class": "public-output"
     },
     {
@@ -3274,6 +3278,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/scripts/documentation-sql-inventory.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/scripts/neutrality-shell-fold.ts",
       "class": "public-output"
     },
@@ -3927,6 +3935,10 @@
     },
     {
       "path": "packages/outbox/sql/0001_outbox.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/sql/0002_outbox_active_partial_indexes.sql",
       "class": "public-output"
     },
     {
@@ -4994,15 +5006,19 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/sql/20261123193000_catalog_publication_reads.sql",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/sql/20261123194500_catalog_publication_readiness.sql",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/sql/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124100000_outbox_active_partial_indexes.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124120000_catalog_publication_reads.sql",
       "class": "public-output"
     },
     {
@@ -20574,15 +20590,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/payment/paymentVerifyNowHandler.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/payment/paymentVerifyNowService.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/payment/paymentVerifyNowService.ts",
       "class": "public-output"
     },
     {
@@ -28930,6 +28938,14 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261123151000_managed_inventory_atp_aggregate_credits.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261123152000_managed_oms_queue_performance.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -30191,10 +30207,6 @@
     },
     {
       "path": "tests/postgres/catalogPublicationFixture.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "tests/postgres/catalogPublicationReadiness.test.ts",
       "class": "public-output"
     },
     {

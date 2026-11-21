@@ -779,6 +779,10 @@ export interface PaymentMethodHealthExpectations {
  * provider that invents a handoff no client implements must widen this union
  * together with the surface that renders it, rather than have a repair page
  * present a control that leads nowhere.
+ *
+ * @deprecated Legacy 1.x literal union (`"embedded_client_secret" | "payer_supplied_code"`),
+ * scheduled for unification with `"redirect" | "client-confirmed" | "customer-authorization"` in 2.0.0.
+ * In 1.x, bridge with `toCoreCaptureHandoff` / `fromCoreCaptureHandoff` from `@openlup/platform/payments`.
  */
 export type PaymentMethodCaptureHandoff = "embedded_client_secret" | "payer_supplied_code";
 /**

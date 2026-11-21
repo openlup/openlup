@@ -114,8 +114,8 @@ describe("fixture-path summarizers versus the SQL counters", () => {
 
   it("agrees with the SQL paid-summary counters on gmv, aov and order count", () => {
     const paid = parsePaidSummary(migration);
-    expect(paid.paymentPredicate).toBe("payment.payment_status = 'succeeded'");
-    expect(paid.amountMinorExpression).toBe("coalesce(sum(orders.total_cents)::bigint, 0)");
+    expect(paid.paymentPredicate).toBe("payment.status IN ('succeeded', 'paid')");
+    expect(paid.amountMinorExpression).toBe("coalesce(sum(paid_orders.total_cents)::bigint, 0)");
     expect(paid.orderCountExpression).toBe("count(*)::integer");
 
     const totals = summarizeOmsListTotals([
@@ -142,7 +142,7 @@ describe("fixture-path summarizers versus the SQL counters", () => {
   it("records that the TS subscription counter omits the SQL subscription_id filter", () => {
     const paid = parsePaidSummary(migration);
     expect(paid.subscriptionFilter).toBe(
-      "orders.mode = 'subscription_cycle' AND orders.subscription_id IS NOT NULL",
+      "paid_orders.mode = 'subscription_cycle' AND paid_orders.subscription_id IS NOT NULL",
     );
 
     // A subscription_cycle order with no subscription_id: SQL excludes it, TS
@@ -164,7 +164,7 @@ describe("fixture-path summarizers versus the SQL counters", () => {
     // the current page's orders, so on any multi-page queue the two figures
     // differ by construction.
     const paid = parsePaidSummary(migration);
-    expect(paid.fromRelation).toBe("candidate_orders orders");
+    expect(paid.fromRelation).toBe("scoped_orders orders");
     expect(paid.windowPredicates).toEqual([
       "v_from IS NULL OR payment.paid_at >= v_from",
       "v_to IS NULL OR payment.paid_at <= v_to",
@@ -277,9 +277,23 @@ function parseSummaryCounters(sql: string): { key: string; predicate: string }[]
   const end = sql.indexOf("'summaryTotals',");
   if (start < 0 || end < 0 || end < start) throw new Error("no summaryCounts block parsed");
   const block = sql.slice(start, end);
-  const counters = [
+  const direct = [
     ...block.matchAll(/'([A-Za-z]+)',\s*\(SELECT count\(\*\) FROM operational WHERE ([^)]+)\)/g),
   ].map((match) => ({ key: match[1], predicate: normalize(match[2]) }));
+  if (direct.length > 0) return direct;
+
+  const opStart = sql.indexOf("op_counts AS (");
+  const opEnd = opStart >= 0 ? sql.indexOf("FROM operational", opStart) : -1;
+  if (opStart < 0 || opEnd < 0) throw new Error("no op_counts CTE parsed");
+  const predicatesByAlias = new Map<string, string>();
+  for (const match of sql.slice(opStart, opEnd).matchAll(/count\(\*\)\s+FILTER\s*\(WHERE\s+([^)]+)\)\s+AS\s+([a-z_]+)/g)) {
+    predicatesByAlias.set(match[2], normalize(match[1]));
+  }
+  const counters = [...block.matchAll(/'([A-Za-z]+)',\s*([a-z_]+)/g)].map((match) => {
+    const predicate = predicatesByAlias.get(match[2]);
+    if (!predicate) throw new Error(`no op_counts predicate for alias ${match[2]}`);
+    return { key: match[1], predicate };
+  });
   if (counters.length === 0) throw new Error("no summaryCounts entries parsed");
   return counters;
 }
@@ -292,7 +306,7 @@ function parsePaidSummary(sql: string): {
   fromRelation: string;
   windowPredicates: string[];
 } {
-  const start = sql.indexOf("paid_summary AS (");
+  const start = sql.search(/paid_summary AS (?:MATERIALIZED )?\(/);
   if (start < 0) throw new Error("no paid_summary CTE parsed");
   const block = sql.slice(start, sql.indexOf("SELECT jsonb_build_object", start));
   const grab = (pattern: RegExp, label: string): string => {
@@ -305,10 +319,10 @@ function parsePaidSummary(sql: string): {
     orderCountExpression: grab(/,\s*([^,]*?)\s+AS order_count/, "order_count"),
     subscriptionFilter: grab(/count\(\*\) FILTER \(\s*WHERE([\s\S]*?)\)::integer AS new_subscription_count/, "subscription filter"),
     paymentPredicate: grab(
-      /JOIN latest_summary_payment[\s\S]*?WHERE\s+([\s\S]*?)\s+AND \(v_from/,
+      /(payment\.status IN \('succeeded', 'paid'\)|payment\.payment_status = 'succeeded')/,
       "payment predicate",
     ),
-    fromRelation: grab(/FROM\s+([\s\S]*?)\s+JOIN latest_summary_payment/, "paid_summary FROM"),
+    fromRelation: grab(/JOIN\s+(scoped_orders orders)\s+ON|FROM\s+(candidate_orders orders)\s+JOIN latest_summary_payment/, "paid_summary FROM"),
     windowPredicates: [...block.matchAll(/\(\s*(v_(?:from|to) IS NULL OR payment\.paid_at [<>]= v_(?:from|to))\s*\)/g)].map(
       (match) => normalize(match[1]),
     ),

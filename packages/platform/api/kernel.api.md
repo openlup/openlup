@@ -22,6 +22,7 @@ export type PlatformBundleId = (typeof PLATFORM_BUNDLE_IDS)[number];
 /**
  * Fallback used when `PLATFORM_BUNDLE` is absent or unknown during bundle resolution.
  * Readiness still refuses an unknown nonempty `PLATFORM_BUNDLE` value.
+ * @deprecated The `"vercel-supabase"` default is scheduled to change in 2.0.0; configure `PLATFORM_BUNDLE` explicitly (for example `"node-postgres"`).
  */
 export declare const DEFAULT_PLATFORM_BUNDLE: PlatformBundleId;
 export declare const isPlatformBundleId: import("@openlup/core/platform-runtime").PlatformBundleIdGuard<"vercel-supabase" | "node-supabase" | "node-postgres">;

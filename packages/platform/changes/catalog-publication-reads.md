@@ -1,2 +1,2 @@
 - Added the experimental `readPostgresCatalogMembershipPage` catalogue export. It reads governed offer memberships and their sealed evidence using one caller-owned statement.
-- Apply the complete catalogue through `20261123193000_catalog_publication_reads.sql` before calling the reader.
+- Apply the complete catalogue through `20261124120000_catalog_publication_reads.sql` before calling the reader.

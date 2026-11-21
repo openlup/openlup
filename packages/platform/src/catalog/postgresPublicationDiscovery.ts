@@ -94,11 +94,14 @@ const invalid = { outcome: "validation_issue", reason: "catalog_offer_membership
 const invalidBatch = { outcome: "validation_issue", reason: "catalog_publication_readiness_input_invalid" } as const;
 const installedInvalid = { outcome: "dependency_unavailable", reason: "catalog_installed_readiness_invalid" } as const;
 
-function readError(error: unknown, entryPoint: string): CatalogDiscoveryRefusal {
+function readError(error: unknown): CatalogDiscoveryRefusal {
   if (!(error instanceof Error) || !("code" in error)) return unavailable;
   if (error.code === "40001") return { outcome: "conflict", reason: "catalog_publication_transaction_conflict", retryable: true };
   if (error.code === "55P03") return { outcome: "conflict", reason: "catalog_publication_read_busy", retryable: true };
-  if (error.code === "42501" && !("where" in error && error.where) && error.message === `permission denied for function ${entryPoint}`) {
+  // In this single-function SELECT, aclcheck_error reports position for schema lookup
+  // and where for a denial inside the function. Entry-point EXECUTE denial has neither.
+  if (error.code === "42501" && "routine" in error && error.routine === "aclcheck_error"
+    && !("position" in error && error.position) && !("where" in error && error.where)) {
     return { outcome: "unauthorized", reason: "catalog_publication_read_not_authorized" };
   }
   return unavailable;
@@ -116,7 +119,7 @@ export async function readPostgresCatalogMembershipPage(db: PgQueryExecutor, inp
   try {
     ({ rows } = await db.query("SELECT public.catalog_offer_memberships_page($1,$2,$3,$4) AS result", [offerVersion, after ?? null, limit, requestedMode]));
   } catch (error) {
-    return readError(error, "catalog_offer_memberships_page");
+    return readError(error);
   }
   if (rows.length !== 1) return unavailable;
   const decoded = wire.safeParse(rows[0]?.result);

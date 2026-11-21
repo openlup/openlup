@@ -969,9 +969,20 @@ Locale overrides (`LC_*`), a system gitconfig and `OPENLUP_STACK_BASE` are also
 removed; other local environment variables pass through unchanged.
 
 Run `npm run preflight -- --fast` before reporting a change ready and before starting reviewers.
-It checks worktree cleanliness, mergeability against `origin/main`, both neutrality gates,
-ast-grep, publication policy and inventory, and DCO. If fetch fails, it uses the local `origin/main`.
+It checks worktree cleanliness, mergeability against `origin/main` (skipped when `OPENLUP_STACK_BASE`
+points to an unlanded stack base), both neutrality gates, ast-grep scan and hygiene, the
+published-tree self-check (`oss:published-tree -- --self-check`), changelog fragments, added
+test-line date/expiry warnings, `gitleaks`, conditional guide-contract and package-manifest checks,
+and DCO sign-off across all commits (merge commits included). `WARN` and `SKIP` statuses surface
+without failing `--fast`. If fetch fails, it uses the local `origin/main`.
 The fast tier does not replace full preflight or hosted CI.
+
+Run `npm run preflight -- --area` for a Docker-free, area-scoped check over changes since
+`git merge-base HEAD origin/main` plus uncommitted and untracked files: it runs `eslint changed`,
+triggered Docker-free, consumer-pack-free tooling guard tests from `scripts/ci-test-scope.mjs` (plus
+`scripts/catalog-document-boundary.test.ts` on catalog, script or doc edits) through `test:hosted`,
+and `sql admit` when SQL under `db/` or `packages/*/sql/` changed. `--fast` and `--area` are
+mutually exclusive.
 
 Without flags, `npm run preflight` is advisory and exits non-zero
 only when a check reports `FAIL`. It reads the change since
@@ -1498,6 +1509,20 @@ sees the updated Git inventory; no other changes are staged. Follow the
 [release preparation sequence](docs/platform/DEVELOPMENT_AND_RELEASE.md#releasing-a-package)
 for the read-only documentation listing and guide edits. Historical sections
 remain byte-identical. Merging it authorizes no release.
+
+Release preparation follows four authoring rules:
+
+- Keep release notes minimal, and back every behavioural claim with a named test
+  or `file:line` reference in the PR.
+- Commit changelog fragments before running `release:bump`, rather than
+  hand-editing assembled release sections after the bump.
+- Prefer an explicit allowlist over a blacklist for text and audit exceptions;
+  `--policy` and `--self-check` audit tracked fragments and the simulated upgrade
+  page against the packed core release-note rules and size cap before release
+  preparation.
+- When changing an error message or operator remedy, include an executed recovery
+  transcript showing the exact command and observed output in the PR.
+
 A release is then dispatched with `publish-package.yml` and package `all` for the
 reviewed commit, and one maintainer approval of the protected `release`
 environment authorizes every package of the set. Dispatching the set again
@@ -1729,8 +1754,8 @@ rows retain the existing closed registry union.
 Integration proof classifies an exact merge of the reviewed head and a commit
 on `origin/main` as `derived` only for a closed carrier set: migration registry
 unions, the package SQL manifest and selection mirror, publication catalogue,
-generated source map, and the current installation data file. Trusted owner
-generators run on a temporary prediction, without
+generated source map, generated SQL reference page, and the current installation
+data file. Trusted owner generators run on a temporary prediction, without
 executing candidate tooling or touching the checkout. Output must equal committed
 bytes. Every SQL byte and mode must equal the mechanical merge; other changes
 remain a `resolution` delta with its existing review floor. Size caps and release

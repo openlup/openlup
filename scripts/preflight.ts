@@ -1,5 +1,6 @@
 // Local checks before review. The default checks the change since the fork
-// point plus working-tree edits; --fast runs the cheap readiness gate.
+// point plus working-tree edits; --fast runs the cheap readiness gate;
+// --area runs ESLint, Docker-free area tooling guards, and SQL admission.
 import { spawnSync, type SpawnSyncOptions } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +9,7 @@ import { env as processEnvironment } from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { INVENTORY_PATH } from "./agent-review-derived.mjs";
+import { TOOLING_INPUTS, excludedToolingTests } from "./ci-test-scope.mjs";
 import { readCommits, signOffVerdict } from "./dco-signoff-check.ts";
 import { isChangelogFragment, isChangelogFragmentArea } from "./packages/changelog-fragments.ts";
 
@@ -184,12 +186,12 @@ function astGrep(options?: SpawnSyncOptions): CheckResult {
     : { check: "ast-grep", status: "FAIL", detail: "structural rule errors", notes: tail(result.output) };
 }
 
-function astGrepHygiene(): CheckResult {
+function astGrepHygiene(options?: SpawnSyncOptions): CheckResult {
   const filewide = execute(process.execPath, ["scripts/ast-grep/check-filewide-ignore.mjs"]);
   if (filewide.code !== 0) {
     return { check: "ast-grep hygiene", status: "FAIL", detail: `file-wide ast-grep-ignore check failed (${filewide.seconds} s)`, notes: tail(filewide.output) };
   }
-  const tests = execute("npx", ["--no", "--", "ast-grep", "test", "--skip-snapshot-tests"]);
+  const tests = execute("npx", ["--no", "--", "ast-grep", "test", "--skip-snapshot-tests"], options);
   const seconds = filewide.seconds + tests.seconds;
   return tests.code === 0
     ? { check: "ast-grep hygiene", status: "PASS", detail: `no file-wide ignores and rule tests pass (${seconds} s)` }
@@ -261,7 +263,7 @@ function gitleaks(base: string, untracked: readonly string[]): CheckResult {
   if (execute("gitleaks", ["version"]).missing) return { check: "gitleaks", status: "SKIP", detail: "gitleaks is not on PATH; the required gitleaks job still scans the pull request" };
   const options = ["--config", "config/gitleaks.toml", "--gitleaks-ignore-path", ".gitleaksignore", "--redact", "--no-banner", "--no-color"];
   const scans: string[][] = [];
-  if (Number(git(["rev-list", "--count", `${base}..HEAD`]).trim()) > 0) scans.push(["git", ".", ...options, "--log-opts", `${base}..HEAD`]);
+  if (Number(git(["rev-list", "--count", `${base}..HEAD`], "stdout").trim()) > 0) scans.push(["git", ".", ...options, "--log-opts", `${base}..HEAD`]);
   scans.push(["git", ".", ...options, "--pre-commit", "--staged"], ["git", ".", ...options, "--pre-commit"]);
   for (const path of untracked) scans.push(["dir", path, ...options]);
   let seconds = 0;
@@ -356,12 +358,13 @@ function neutrality(base: string): CheckResult {
   return neutralityVerdict(result.code, result.output, result.seconds);
 }
 
-function changedTestLines(base: string, changes: readonly Change[], untracked: ReadonlySet<string>): AddedLine[] | null {
+function changedTestLines(base: string, changes: readonly Change[], untracked: ReadonlySet<string>, target?: string): AddedLine[] | null {
   const files = changes.filter(({ path, deleted }) => !deleted && isTestFile(path)).map(({ path }) => path);
   if (files.length === 0) return null;
+  const range = target ? [base, target] : [base];
   return files.flatMap((path) => untracked.has(path)
     ? readFileSync(path, "utf8").split("\n").map((text, index) => ({ path, line: index + 1, text }))
-    : addedLines(path, git(["diff", "-U0", "--no-color", "--no-ext-diff", base, "--", path])));
+    : addedLines(path, git(["diff", "-U0", "--no-color", "--no-ext-diff", ...range, "--", path], "stdout")));
 }
 
 function print(result: CheckResult): void {
@@ -371,7 +374,54 @@ function print(result: CheckResult): void {
   if (notes.length > 40) console.log(`    ... ${notes.length - 40} more`);
 }
 
-function fastPreflight(): number {
+const STACK_BASE_SHA = /^[0-9a-f]{40}$/u;
+const GUIDE_TRIGGER = /^(?:packages\/core\/docs\/guide\/|AGENTS\.md$|CONTRIBUTING\.md$|packages\/[^/]+\/(?:AGENTS|README)\.md$)/u;
+const PACKAGE_MANIFEST_TRIGGER = /^(?:packages\/[^/]+\/package\.json|config\/openlup-packages\.json)$/u;
+
+const AREA_EXCLUDED_TESTS = new Set([
+  "scripts/packages/outbox-consumer-proof.test.ts",
+  "scripts/packages/distribution-cli-proof.test.ts",
+  "scripts/packages/distribution-cli-settings.test.ts",
+  "scripts/packages/platform-cold-consumer.test.ts",
+  "scripts/packages/reference-delegation-consumer.test.ts",
+]);
+const CATALOG_BOUNDARY_TEST = "scripts/catalog-document-boundary.test.ts";
+const CATALOG_BOUNDARY_PREFIXES = [
+  "packages/platform/src/catalog/",
+  "packages/core/src/catalog/",
+  "src/domains/catalog/",
+  "server/domains/catalog/",
+  "db/platform/",
+  "server/adapters/postgres/",
+  "scripts/",
+  "docs/",
+];
+
+/** Docker-free, consumer-pack-free area tooling guard tests triggered by `changedPaths`. */
+export function areaGuardTests(changedPaths: readonly string[]): string[] {
+  if (changedPaths.length === 0) return [];
+  const excluded = new Set(excludedToolingTests(changedPaths));
+  const selected = new Set(
+    Object.keys(TOOLING_INPUTS).filter(
+      (test) => !excluded.has(test) && !AREA_EXCLUDED_TESTS.has(test) && !test.startsWith("tests/postgres/"),
+    ),
+  );
+  if (changedPaths.some((path) => CATALOG_BOUNDARY_PREFIXES.some((prefix) => path.startsWith(prefix)))) {
+    selected.add(CATALOG_BOUNDARY_TEST);
+  }
+  return [...selected].sort();
+}
+
+function areaToolingGuards(changes: readonly Change[]): CheckResult {
+  const files = areaGuardTests([...new Set(changes.map(({ path }) => path))]);
+  if (files.length === 0) return { check: "area guards", status: "SKIP", detail: "no area tooling guard tests triggered" };
+  const result = execute(process.execPath, ["scripts/test-hosted.mjs", ...files]);
+  return result.code === 0
+    ? { check: "area guards", status: "PASS", detail: `${files.length} area guard file(s) passed in hosted parity (${result.seconds} s)` }
+    : { check: "area guards", status: "FAIL", detail: `npm run test:hosted -- ${files.join(" ")} exited ${result.code ?? "on a signal"}`, notes: tail(result.output, 60) };
+}
+
+function fastPreflight(now: Date): number {
   const head = git(["rev-parse", "HEAD"], "stdout").trim();
   if (execute("git", ["fetch", "origin", "main"], { timeout: 5_000 }).code !== 0) {
     console.error("preflight: git fetch origin main failed. Using local origin/main.");
@@ -384,24 +434,43 @@ function fastPreflight(): number {
   };
   let fork: string | undefined;
   const forkPoint = (): string => (fork ??= git(["merge-base", "HEAD", "origin/main"], "stdout").trim());
-  const checks: Array<[string, () => CheckResult]> = [
+  let cachedChanges: Change[] | undefined;
+  const fastChanges = (): Change[] => (cachedChanges ??= parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", forkPoint(), "HEAD"], "stdout")));
+  const checks: Array<[string, () => CheckResult | CheckResult[]]> = [
     ["clean", () => ({
       check: "clean",
       status: git(["status", "--porcelain", "--untracked-files=all"], "stdout").trim() ? "FAIL" : "PASS",
       detail: "worktree has uncommitted changes. Commit or remove them.",
     })],
-    ["merge-clean", () => command("merge-clean", "git", ["merge-tree", "--write-tree", "origin/main", "HEAD"])],
+    ["merge-clean", () => {
+      const stackBase = processEnvironment.OPENLUP_STACK_BASE;
+      if (stackBase !== undefined && STACK_BASE_SHA.test(stackBase)
+        && execute("git", ["merge-base", "--is-ancestor", stackBase, "HEAD"]).code === 0
+        && execute("git", ["merge-base", "--is-ancestor", stackBase, "origin/main"]).code === 1) {
+        return { check: "merge-clean", status: "SKIP", detail: "unlanded OPENLUP_STACK_BASE; merge-tree skipped" };
+      }
+      return command("merge-clean", "git", ["merge-tree", "--write-tree", "origin/main", "HEAD"]);
+    }],
     ["neutrality", () => neutrality(forkPoint())],
     ["ui-neutrality", () => command("ui-neutrality", process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts"])],
     ["ast-grep", () => astGrep(offlineNpm)],
-    ["publication-policy", () => command("publication-policy", "npm", [
-      "run", "oss:published-tree", "--", "--policy",
+    ["ast-grep-hygiene", () => astGrepHygiene(offlineNpm)],
+    ["publication", () => command("publication", "npm", [
+      "run", "oss:published-tree", "--", "--self-check",
       ...(processEnvironment.OPENLUP_STACK_BASE !== undefined ? [] : ["--docs-base", forkPoint()]),
     ], offlineNpm)],
-    ["publication-inventory", () => command("publication-inventory", "npm", ["run", "oss:published-tree", "--", "--inventory"], offlineNpm)],
+    ["fragments", () => fragments(fastChanges())],
+    ["test-lines", () => testLineChecks(changedTestLines(forkPoint(), fastChanges(), new Set(), "HEAD"), now)],
+    ["gitleaks", () => gitleaks(forkPoint(), [])],
+    ["guide-check", () => fastChanges().some(({ path }) => GUIDE_TRIGGER.test(path))
+      ? command("guide-check", process.execPath, ["--experimental-strip-types", "packages/core/scripts/documentation-contract.ts", "--check-guide", "packages/core"])
+      : { check: "guide-check", status: "SKIP", detail: "no guide or rule files changed" }],
+    ["package-manifest", () => fastChanges().some(({ path }) => PACKAGE_MANIFEST_TRIGGER.test(path))
+      ? command("package-manifest", "npm", ["run", "packages:check", "--", "--manifest-only"], offlineNpm)
+      : { check: "package-manifest", status: "SKIP", detail: "no package manifests or config/openlup-packages.json changed" }],
     ["dco", () => {
       const upstream = git(["rev-parse", "origin/main"], "stdout").trim();
-      const commits = readCommits(process.cwd(), upstream, head).filter(({ parents }) => parents.length < 2);
+      const commits = readCommits(process.cwd(), upstream, head);
       const { missing } = signOffVerdict(commits);
       return { check: "dco", status: missing.length ? "FAIL" : "PASS",
         detail: `missing Signed-off-by on ${missing.map(({ sha }) => sha.slice(0, 12)).join(", ")}` };
@@ -409,58 +478,56 @@ function fastPreflight(): number {
   ];
   const failed: string[] = [];
   for (const [name, check] of checks) {
-    let result: CheckResult;
+    let outcome: CheckResult[];
     try {
-      result = check();
+      outcome = [check()].flat();
     } catch (error) {
       const detail = (error as Error).message;
-      result = { check: name, status: "FAIL", detail, notes: tail(detail) };
+      outcome = [{ check: name, status: "FAIL", detail, notes: tail(detail) }];
     }
-    if (result.status === "PASS") {
-      console.log(`${name}: ok`);
-      continue;
+    for (const result of outcome) {
+      const label = outcome.length > 1 ? result.check : name;
+      if (result.status === "PASS") {
+        console.log(`${label}: ok`);
+        continue;
+      }
+      if (result.status === "SKIP") {
+        console.log(`${label}: skip ${lastLine(result.detail)}`);
+        continue;
+      }
+      if (result.status === "WARN") {
+        console.log(`${label}: warn ${lastLine(result.detail)}`);
+        for (const line of (result.notes ?? []).slice(-15)) console.log(`    ${line}`);
+        continue;
+      }
+      failed.push(label);
+      const notes = result.notes ?? [];
+      const increases = label === "neutrality" ? notes.filter((line) => NEUTRALITY_INCREASE.test(line)) : [];
+      const detail = label === "neutrality" && !increases.length ? notes[0] ?? result.detail : result.detail;
+      console.log(`${label}: FAIL ${lastLine(detail)}`);
+      for (const line of increases.length ? increases : notes.slice(-15)) console.log(`    ${line}`);
     }
-    failed.push(name);
-    const notes = result.notes ?? [];
-    const increases = name === "neutrality" ? notes.filter((line) => NEUTRALITY_INCREASE.test(line)) : [];
-    const detail = name === "neutrality" && !increases.length ? notes[0] ?? result.detail : result.detail;
-    console.log(`${name}: FAIL ${lastLine(detail)}`);
-    for (const line of increases.length ? increases : notes.slice(-15)) console.log(`    ${line}`);
   }
   console.log(JSON.stringify({ preflight: "fast", result: failed.length ? "fail" : "pass", head, failed }));
   return failed.length ? 1 : 0;
 }
 
-export function main(now: Date, args: readonly string[] = []): number {
-  const fast = args.includes("--fast");
-  process.chdir(git(["rev-parse", "--show-toplevel"], fast ? "stdout" : "output").trim());
-  if (fast) return fastPreflight();
-  const started = Date.now();
+type ForkChanges = { base: string; untrackedPaths: string[]; changes: Change[] };
+
+function readForkChanges(): ForkChanges | { error: CheckResult } {
   let base: string;
   try {
-    base = git(["merge-base", "HEAD", "origin/main"]).trim();
+    base = git(["merge-base", "HEAD", "origin/main"], "stdout").trim();
   } catch (error) {
-    print({ check: "fork point", status: "FAIL", detail: `${(error as Error).message}; fetch origin main first` });
-    return 1;
+    return { error: { check: "fork point", status: "FAIL", detail: `${(error as Error).message}; fetch origin main first` } };
   }
-  const untrackedPaths = git(["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean);
-  const changes = [...parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", base])), ...untrackedPaths.map((path) => ({ path, deleted: false }))];
+  const untrackedPaths = git(["ls-files", "--others", "--exclude-standard", "-z"], "stdout").split("\0").filter(Boolean);
+  const changes = [...parseNameStatus(git(["diff", "--name-status", "--no-renames", "-z", base], "stdout")), ...untrackedPaths.map((path) => ({ path, deleted: false }))];
   console.log(`preflight: ${changes.length} changed path(s) since fork point ${base.slice(0, 12)} with origin/main, including uncommitted files`);
-  let selection: TestSelection | undefined;
-  const checks: Array<[string, () => CheckResult | CheckResult[]]> = [
-    ["ast-grep", astGrep],
-    ["ast-grep hygiene", astGrepHygiene],
-    ["neutrality", () => neutrality(base)],
-    ["fragments", () => fragments(changes)],
-    ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
-    ["gitleaks", () => gitleaks(base, untrackedPaths)],
-    ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
-    ["eslint changed", () => eslintChanged(changes)],
-    ["sql admit", () => sqlAdmit(changes)],
-    ["typecheck", typecheck],
-    ["inventory", () => inventory(changes)],
-    ["hosted tests", () => hostedTests(selection)],
-  ];
+  return { base, untrackedPaths, changes };
+}
+
+function runChecks(started: number, checks: ReadonlyArray<readonly [string, () => CheckResult | CheckResult[]]>): number {
   const results: CheckResult[] = [];
   for (const [name, check] of checks) {
     process.stderr.write(`preflight: running ${name}\n`);
@@ -476,6 +543,55 @@ export function main(now: Date, args: readonly string[] = []): number {
   const count = (status: Status) => results.filter((result) => result.status === status).length;
   console.log(`preflight: ${count("PASS")} PASS, ${count("WARN")} WARN, ${count("SKIP")} SKIP, ${count("FAIL")} FAIL in ${Math.round((Date.now() - started) / 1000)} s`);
   return count("FAIL") > 0 ? 1 : 0;
+}
+
+function areaPreflight(): number {
+  const started = Date.now();
+  const fork = readForkChanges();
+  if ("error" in fork) {
+    print(fork.error);
+    return 1;
+  }
+  const { changes } = fork;
+  return runChecks(started, [
+    ["eslint changed", () => eslintChanged(changes)],
+    ["area guards", () => areaToolingGuards(changes)],
+    ["sql admit", () => sqlAdmit(changes)],
+  ]);
+}
+
+export function main(now: Date, args: readonly string[] = []): number {
+  const fast = args.includes("--fast");
+  const area = args.includes("--area");
+  if (fast && area) {
+    console.error("preflight: --fast and --area are mutually exclusive");
+    return 2;
+  }
+  process.chdir(git(["rev-parse", "--show-toplevel"], "stdout").trim());
+  if (fast) return fastPreflight(now);
+  if (area) return areaPreflight();
+  const started = Date.now();
+  const fork = readForkChanges();
+  if ("error" in fork) {
+    print(fork.error);
+    return 1;
+  }
+  const { base, untrackedPaths, changes } = fork;
+  let selection: TestSelection | undefined;
+  return runChecks(started, [
+    ["ast-grep", astGrep],
+    ["ast-grep hygiene", () => astGrepHygiene()],
+    ["neutrality", () => neutrality(base)],
+    ["fragments", () => fragments(changes)],
+    ["test lines", () => testLineChecks(changedTestLines(base, changes, new Set(untrackedPaths)), now)],
+    ["gitleaks", () => gitleaks(base, untrackedPaths)],
+    ["test discovery", () => { selection = discoverTests(changes); return testDiscoveryVerdict(selection); }],
+    ["eslint changed", () => eslintChanged(changes)],
+    ["sql admit", () => sqlAdmit(changes)],
+    ["typecheck", typecheck],
+    ["inventory", () => inventory(changes)],
+    ["hosted tests", () => hostedTests(selection)],
+  ]);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = main(new Date(), process.argv.slice(2));

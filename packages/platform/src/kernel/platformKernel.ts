@@ -21,6 +21,7 @@ export type PlatformBundleId = (typeof PLATFORM_BUNDLE_IDS)[number];
 /**
  * Fallback used when `PLATFORM_BUNDLE` is absent or unknown during bundle resolution.
  * Readiness still refuses an unknown nonempty `PLATFORM_BUNDLE` value.
+ * @deprecated The `"vercel-supabase"` default is scheduled to change in 2.0.0; configure `PLATFORM_BUNDLE` explicitly (for example `"node-postgres"`).
  */
 export const DEFAULT_PLATFORM_BUNDLE: PlatformBundleId = "vercel-supabase";
 

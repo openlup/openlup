@@ -6060,8 +6060,47 @@
         ]
       },
       {
+        "row": "fulfillment-advance-shipment-lock-order",
+        "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+        "replacedFunctions": [
+          {
+            "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog",
+            "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416"
+          }
+        ],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "outbox-active-partial-indexes",
+        "path": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "shipment-label-and-address-upsert-atomic",
+        "path": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_record_label_atomic(text,uuid,text,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.customer_saved_address_upsert_atomic(uuid,uuid,text,text,boolean,text,uuid,text,jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
         "row": "catalog-membership-reads",
-        "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
+        "path": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
         "replacedFunctions": [],
         "createdFunctions": [
           {
@@ -6089,41 +6128,6 @@
             "searchPath": "pg_catalog, pg_temp"
           }
         ],
-        "grantOnlyFunctions": [],
-        "dataStatements": []
-      },
-      {
-        "row": "catalog-activation-readiness",
-        "path": "db/platform/migrations/20261123194500_catalog_publication_readiness.sql",
-        "replacedFunctions": [],
-        "createdFunctions": [
-          {
-            "signature": "public.catalog_publication_price_reasons(uuid[],timestamptz)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",
-            "searchPath": "pg_catalog, pg_temp"
-          },
-          {
-            "signature": "public.catalog_publication_activation_readiness(text[],text)",
-            "searchPath": "pg_catalog, pg_temp"
-          }
-        ],
-        "grantOnlyFunctions": [],
-        "dataStatements": []
-      },
-      {
-        "row": "fulfillment-advance-shipment-lock-order",
-        "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
-        "replacedFunctions": [
-          {
-            "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
-            "searchPath": "public, pg_catalog",
-            "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416"
-          }
-        ],
-        "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
       }
@@ -8778,7 +8782,39 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261123193000_catalog_publication_reads.sql",
+      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
+      "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded",
+      "functions": [
+        {
+          "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416",
+          "afterSha256": "a2a2505f4b031e3ab3c20c8c0585a8bd1575cf0c7a3836410edbe125ed3f5b32"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+      "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721",
+      "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+      "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284",
+      "functions": [
+        {
+          "signature": "public.fulfillment_record_label_atomic(text,uuid,text,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "fea47c83291ad2aaca07f1184c23c1e83f49ca9c512f3e8bf959b823b5ad4024"
+        },
+        {
+          "signature": "public.customer_saved_address_upsert_atomic(uuid,uuid,text,text,boolean,text,uuid,text,jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "bbb7a8b76cd5538c4b84284efaf1a8fa50f41020e9a368c6e83e00a229593550"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124120000_catalog_publication_reads.sql",
       "sha256": "08e7e4d83b1a5f87bdd268ec9367e816daf226db0fd73f956c0995e3a7a932cb",
       "functions": [
         {
@@ -8812,38 +8848,6 @@
           "afterSha256": "4a43e9a8e2bca28d0d619a24aefcce70c89ecee49b0d0e4db5e3c4f7b89836a3"
         }
       ]
-    },
-    {
-      "path": "db/platform/migrations/20261123194500_catalog_publication_readiness.sql",
-      "sha256": "1cf71b8fc57f1c6f2b5b5375b05326dfe4f89743999a7d1b1462d9d9c737b229",
-      "functions": [
-        {
-          "signature": "public.catalog_publication_price_reasons(uuid[],timestamptz)",
-          "beforeSha256": null,
-          "afterSha256": "c363cfd663b991fbf2d5e5bbc3e756243a44f98957b07405f54b08da6ae78568"
-        },
-        {
-          "signature": "public.catalog_publication_readiness_snapshot(text[],text,timestamptz)",
-          "beforeSha256": null,
-          "afterSha256": "bea2cb4f4c38ba6c5c51f1e20bfddece5f339d099f215bc035eb06a1b54a1b67"
-        },
-        {
-          "signature": "public.catalog_publication_activation_readiness(text[],text)",
-          "beforeSha256": null,
-          "afterSha256": "aa28da6fb9c8cdb7a5e588eb8c9d53164fd717adc24c1dad7f7b221c0739d40e"
-        }
-      ]
-    },
-    {
-      "path": "db/platform/migrations/20261124090000_fulfillment_advance_shipment_lock_order.sql",
-      "sha256": "008be174f50052a76d76a60f34ae02ca20a5394d78300ccf7b48d7fe65416ded",
-      "functions": [
-        {
-          "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
-          "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416",
-          "afterSha256": "a2a2505f4b031e3ab3c20c8c0585a8bd1575cf0c7a3836410edbe125ed3f5b32"
-        }
-      ]
     }
   ],
   "managedExactForwards": [
@@ -8856,6 +8860,11 @@
       "path": "supabase/migrations/20261123151000_managed_inventory_atp_aggregate_credits.sql",
       "sha256": "3f794136b6b4fec62cd0db515589345ad291332592ad92adbb715e084d4bfc8f",
       "prefixSha256": "59eb1ab84d8a19f2b984542a3116922242aa0d2b7e69c63ba3a9aa2a3d8c4caf"
+    },
+    {
+      "path": "supabase/migrations/20261123152000_managed_oms_queue_performance.sql",
+      "sha256": "1db193da33bd9acb57d00e0e3c261fedeb91f67eb6d2192d678173111ae53fb8",
+      "prefixSha256": "8afde8ba1dfa4e0f2873295ce776febbcd1eeae68980f545a1bab54b7e21bd6c"
     }
   ]
 }

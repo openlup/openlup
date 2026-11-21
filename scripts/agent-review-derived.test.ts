@@ -4,14 +4,16 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symli
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { INVENTORY_PATH, MIGRATION_REGISTRIES, migrationRegistryUnion } from './agent-review-derived.mjs';
+import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { runLandingGenerators } from './agent-review-generators.mjs';
-import { landingMerge } from './agent-review-landing.mjs';
+import { isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
 import { prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
 
 const source = process.cwd();
 let root: string, base: string, reviewed: string, main: string, merged: string;
+let initialLandingCommands: { command: string; args: string[] }[] = [];
+let initialLandingResult: { head: string; main: string; inventoryRefreshed: boolean };
 const git = (...args: string[]) => execFileSync('/usr/bin/git', ['--no-replace-objects', '-C', root, '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgSign=false', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 128 * 1024 * 1024 }).trim();
 const read = (path: string) => readFileSync(join(root, path), 'utf8');
 const write = (path: string, value: string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
@@ -30,6 +32,9 @@ function append(slot: string) {
   runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean).concat([file, `packages/platform/sql/${slot}_landing_fixture.sql`]));
 }
 const CATALOGUE = 'config/openlup-publication-catalog.json';
+const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
+const SQL_HEADING = '# SQL catalogue';
+const MAIN_SQL_HEADING = '# Package SQL catalogue';
 // Main adds a package command after the reviewed head forked; main's own owner
 // writes its catalogue in a new process, as a contributor's generator run would.
 function addPackageCommand() {
@@ -55,19 +60,56 @@ beforeAll(async () => {
   git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
   append('20990101010000'); reviewed = commit();
-  git('checkout', '-q', '--detach', base); append('20990101020000'); addPackageCommand(); main = commit();
+  git('checkout', '-q', '--detach', base); append('20990101020000'); addPackageCommand();
+  write(SQL_REFERENCE, read(SQL_REFERENCE).replace(SQL_HEADING, MAIN_SQL_HEADING));
+  main = commit();
   git('update-ref', 'refs/remotes/origin/main', main); git('checkout', '-q', '--detach', reviewed);
-  merged = (await landingMerge(root)).head;
+  initialLandingCommands = [];
+  initialLandingResult = await landingMerge(root, {
+    runCommand: (command, args) => {
+      initialLandingCommands.push({ command, args });
+      execFileSync(command, args, { cwd: root, stdio: 'inherit', timeout: 900000 });
+    },
+  });
+  merged = initialLandingResult.head;
 }, 180000);
 afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
 async function proof(head = merged) {
   return proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, reviewed), await captureCommittedReviewCandidate(root, main, head));
 }
 it('lands two independently appended real forwards through the CLI as derived', async () => {
+  await expect(sourceGit(root, 'merge-tree', '--write-tree', '--name-only', '--no-messages', '-z', reviewed, main))
+    .rejects.toMatchObject({ code: 1, stdout: expect.stringContaining(`${SQL_REFERENCE}\0`) });
+  const page = git('show', `${merged}:${SQL_REFERENCE}`);
+  expect(git('show', `${reviewed}:${SQL_REFERENCE}`)).toContain(SQL_HEADING);
+  expect(page).toContain(MAIN_SQL_HEADING);
+  expect(page).toContain('/packages/platform/sql/20990101010000_landing_fixture.sql)');
+  expect(page).toContain('/packages/platform/sql/20990101020000_landing_fixture.sql)');
   expect(await proof()).toMatchObject({ kind: 'derived', derived: true });
   expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
   expect(git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
 }, 50000);
+it('leaves the merge in place when both sides edit the SQL reference prose', async () => {
+  git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
+  try {
+    write(SQL_REFERENCE, read(SQL_REFERENCE).replace(SQL_HEADING, '# Reviewed SQL catalogue'));
+    const left = commit();
+    await expect(landingMerge(root)).rejects.toThrow(`landing: authored conflicts remain: ${SQL_REFERENCE}`);
+    expect(git('rev-parse', 'HEAD')).toBe(left);
+    expect(git('rev-parse', 'MERGE_HEAD')).toBe(main);
+    expect(git('diff', '--name-only', '--diff-filter=U')).toContain(SQL_REFERENCE);
+    expect(read(SQL_REFERENCE)).toContain('# Reviewed SQL catalogue');
+    expect(read(SQL_REFERENCE)).toContain(MAIN_SQL_HEADING);
+  } finally { git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged); }
+}, 50000);
+it('refuses a non-SQL generated region on the SQL reference', () => {
+  git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+  try {
+    write(SQL_REFERENCE, read(SQL_REFERENCE).replaceAll('generated:sql:platform', 'generated:exports:platform'));
+    expect(() => runLandingGenerators(root, git('ls-files', '-z').split('\0').filter(Boolean)))
+      .toThrow(`${SQL_REFERENCE}: unknown generated region exports:platform`);
+  } finally { git('reset', '--hard', merged); }
+});
 it('keeps a package command that main added after the reviewed head forked', () => {
   const names = (revision: string) => JSON.parse(git('show', `${revision}:${CATALOGUE}`)).packageCommands.map(({ name }) => name);
   expect(names(reviewed)).not.toContain('fixture:landing');
@@ -100,7 +142,7 @@ it('carries reviewed coverage through the derived edge and replays its recorded 
   await validateEconomySession(root, session);
 // Two full-tree generator passes plus receipt replay exceeded the 10 s unit default.
 }, 90000);
-it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
+it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong generator bytes', 'missing SQL reference row', 'other byte', 'SQL byte', 'wrong lineage'])('refuses %s on live Git objects', async scenario => {
   git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
   if (scenario === 'historical byte') write(INVENTORY_PATH, read(INVENTORY_PATH).replace('"historical": {}', '"historical": { }'));
   if (scenario === 'edited existing entry') {
@@ -110,13 +152,23 @@ it.each(['historical byte', 'edited existing entry', 'duplicate slot', 'wrong ge
     const path = MIGRATION_REGISTRIES[1], data = JSON.parse(read(path)); data.nativeStoreForwardClass.slots.push(data.nativeStoreForwardClass.slots.at(-1)); write(path, json(data));
   }
   if (scenario === 'wrong generator bytes') write('packages/platform/sql/manifest.json', read('packages/platform/sql/manifest.json') + ' ');
+  if (scenario === 'missing SQL reference row') {
+    write(SQL_REFERENCE, read(SQL_REFERENCE).split('\n').filter(line => !line.startsWith('| [`20990101010000_landing_fixture.sql`]')).join('\n'));
+  }
   if (scenario === 'other byte') write('README.md', read('README.md') + '\nUnexpected edit\n');
   if (scenario === 'SQL byte') write('db/platform/migrations/20990101010000_landing_fixture.sql', 'SELECT 2;\n');
   git('add', '-A'); const tree = git('write-tree');
   const args = scenario === 'wrong lineage' ? ['-p', reviewed] : ['-p', reviewed, '-p', main];
   const head = git('commit-tree', tree, ...args, '-m', 'Synthetic refusal');
   if (scenario === 'wrong lineage') await expect(proof(head)).rejects.toThrow('integration parents differ');
-  else expect((await proof(head)).kind).toBe('resolution');
+  else {
+    const decision = await proof(head);
+    expect(decision.kind).toBe('resolution');
+    if (scenario === 'missing SQL reference row') {
+      expect(decision.derived).toBeUndefined();
+      expect(decision.resolution).toContain(SQL_REFERENCE);
+    }
+  }
 }, 50000);
 it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry union boundary', scenario => {
   const original = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`), side = JSON.parse(original);
@@ -126,6 +178,7 @@ it.each(['edited existing entry', 'duplicate slot'])('refuses %s at the registry
 });
 
 it.each([
+  { path: SQL_REFERENCE, unresolved: true, expected: 'refusal' },
   { path: 'docs/platform/SOURCE_MAP.md', unresolved: true, expected: 'refusal' },
   { path: 'packages/platform/sql/manifest.json', unresolved: true, expected: 'refusal' },
   { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: true, expected: 'refusal' },
@@ -133,7 +186,8 @@ it.each([
   { path: 'packages/platform/sql/00000000000000_platform_baseline.sql', unresolved: false, expected: 'resolution' },
 ])('requires $expected for $path with unresolved=$unresolved despite other derived carriers', async ({ path, unresolved, expected }) => {
   try {
-    const original = await sourceGit(root, 'show', `${base}:${path}`);
+    // Use the same generated rows on both sides so the SQL page has only a prose conflict.
+    const original = await sourceGit(root, 'show', `${path === SQL_REFERENCE ? merged : base}:${path}`);
     git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
     write(path, 'Reviewed carrier variant\n' + original); const left = commit();
     git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
@@ -149,6 +203,11 @@ it.each([
     expect(prediction).toMatch(/^[a-f0-9]{40}$/);
     const markers = await sourceGit(root, 'show', `${prediction}:${path}`);
     expect(markers).toContain('<<<<<<<');
+    if (path === SQL_REFERENCE) {
+      expect(markers).toMatch(/^<<<<<<< .+\nReviewed carrier variant\n/mu);
+      const regions = '<!-- generated:sql:outbox -->';
+      expect(markers.slice(markers.indexOf(regions))).toBe(original.slice(original.indexOf(regions)));
+    }
     // Keep the correct measured inventory and exact registry unions from the
     // successful landing, changing only the selected carrier to Git's raw blob.
     git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
@@ -176,3 +235,161 @@ it.each([
     git('update-ref', 'refs/remotes/origin/main', main);
   }
 }, 50000);
+
+it('runs incremental package build before inventory refresh when PR touches SQL', () => {
+  expect(initialLandingResult.inventoryRefreshed).toBe(true);
+  expect(initialLandingCommands.map(({ args }) => args)).toEqual([
+    [join(root, 'scripts/build-packages-incremental.mjs')],
+    ['--import', 'tsx', join(root, 'scripts/installation-inventory-refresh.ts')],
+  ]);
+});
+
+it('classifies SQL and migration-inventory inputs conservatively', () => {
+  for (const path of [
+    'db/platform/migrations/20990101010000_fixture.sql',
+    'db/bootstrap/vanilla-pg/00_roles.sql',
+    'supabase/migrations/20990101010000_fixture.sql',
+    'packages/platform/sql/20990101010000_fixture.sql',
+    'packages/platform/src/migrations/catalog.ts',
+    ...MIGRATION_REGISTRIES,
+    INVENTORY_PATH,
+    'config/ci-images.json',
+    'scripts/ci-image-pull.mjs',
+    'scripts/ci-image-mirror.mjs',
+    'scripts/platform-migration-manifest.ts',
+    'scripts/installation-inventory-refresh.ts',
+    'server/adapters/postgres/migrationRunner.ts',
+    'server/adapters/postgres/qualifiedInstall.ts',
+    'server/adapters/postgres/selectedCatalogProjection.ts',
+    'server/adapters/postgres/connectedStoreCapture.ts',
+  ]) expect(isInventoryInputPath(path), path).toBe(true);
+
+  for (const path of [
+    'README.md',
+    'scripts/agent-review-landing.mjs',
+    'docs/platform/README.md',
+    CATALOGUE,
+    'packages/core/src/index.ts',
+  ]) expect(isInventoryInputPath(path), path).toBe(false);
+});
+
+it.each(['clean', 'derived-carrier'])('skips build and Docker inventory refresh on non-SQL PR (%s) even when main changed SQL and inventory', async mode => {
+  try {
+    // Build a main commit that changed SQL, registries, publication catalogue, AND measured inventory.
+    git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
+    const baseInvSource = read(INVENTORY_PATH);
+    const invEnvelope = inventoryEnvelope(baseInvSource);
+    const updatedCurrent = structuredClone(invEnvelope.value.current);
+    const digests: Record<string, string> = {
+      legacy: '1'.repeat(64),
+      bootstrap: '2'.repeat(64),
+      separate: '3'.repeat(64),
+      'admin-managed': '4'.repeat(64),
+      'admin-operator': '5'.repeat(64),
+    };
+    for (const [profile, sha] of Object.entries(digests)) updatedCurrent.profiles[profile].objectInventorySha256 = sha;
+    write(INVENTORY_PATH, invEnvelope.before + JSON.stringify(updatedCurrent, null, 2).replaceAll('\n', '\n  ') + invEnvelope.after);
+    const mainManifest = JSON.parse(read(MIGRATION_REGISTRIES[0]));
+    mainManifest.objectInventorySha256 = digests.legacy;
+    mainManifest.qualified.objectInventorySha256 = { bootstrapMigrator: { withRestore: digests.bootstrap }, separateMigrator: { withRestore: digests.separate } };
+    mainManifest.qualifiedAdmin.objectInventorySha256 = { installerManaged: digests['admin-managed'], operatorProvisioned: digests['admin-operator'] };
+    write(MIGRATION_REGISTRIES[0], json(mainManifest));
+    const mergedGenerators = pathToFileURL(join(root, 'scripts/agent-review-generators.mjs')).href;
+    execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync } from 'node:fs';
+      const owners = await import(${JSON.stringify(mergedGenerators)});
+      owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));`],
+    { cwd: root, input: git('ls-files', '-z'), timeout: 30000 });
+    const mainWithInventory = commit();
+    git('update-ref', 'refs/remotes/origin/main', mainWithInventory);
+
+    // Create a non-SQL PR forked from base (stale inventory, no SQL changes).
+    git('reset', '--hard', base); git('checkout', '-q', '--detach', base);
+    if (mode === 'clean') {
+      write('README.md', read('README.md') + '\nNon-SQL PR note\n');
+    } else {
+      // Bumping core version updates generated SQL reference links without touching SQL or inventory inputs,
+      // conflicting with main's appended SQL row in packages/core/docs/guide/reference/sql.md.
+      const corePkg = JSON.parse(read('packages/core/package.json'));
+      corePkg.version = `${corePkg.version}-fixture`;
+      write('packages/core/package.json', json(corePkg));
+      execFileSync(process.execPath, ['--input-type=module', '-e', `import { readFileSync } from 'node:fs';
+        const owners = await import(${JSON.stringify(mergedGenerators)});
+        owners.runLandingGenerators(process.cwd(), readFileSync(0, 'utf8').split('\\0').filter(Boolean));`],
+      { cwd: root, input: git('ls-files', '-z'), timeout: 30000 });
+    }
+    const nonSqlHead = commit();
+
+    const invoked: string[][] = [];
+    const landed = await landingMerge(root, {
+      runCommand: (_command, args) => {
+        invoked.push(args);
+        throw new Error('non-SQL landing must not invoke build or inventory refresh');
+      },
+    });
+    expect(invoked).toEqual([]);
+    expect(landed.inventoryRefreshed).toBe(false);
+    expect(git('show', `${landed.head}:${INVENTORY_PATH}`)).toBe(git('show', `${mainWithInventory}:${INVENTORY_PATH}`));
+    expect(git('show', `${landed.head}:${INVENTORY_PATH}`)).not.toBe(git('show', `${nonSqlHead}:${INVENTORY_PATH}`));
+
+    const integration = await proveReviewIntegration(
+      root,
+      await captureCommittedReviewCandidate(root, base, nonSqlHead),
+      await captureCommittedReviewCandidate(root, mainWithInventory, landed.head),
+    );
+    expect(integration).toMatchObject(mode === 'clean' ? { kind: 'git' } : { kind: 'derived', derived: true });
+  } finally {
+    git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
+    git('update-ref', 'refs/remotes/origin/main', main);
+  }
+}, 50000);
+
+it('deduplicates byte-for-byte identical stacked rows in migrationRegistryUnion and still refuses conflicts', () => {
+  const baseManifest = git('show', `${base}:${MIGRATION_REGISTRIES[0]}`);
+  const baseForwards = git('show', `${base}:${MIGRATION_REGISTRIES[1]}`);
+  const inv = git('show', `${base}:${INVENTORY_PATH}`);
+
+  const pred = { file: 'db/platform/migrations/20990101010000_pred.sql', sha256: 'a'.repeat(64) };
+  const leftOnly = { file: 'db/platform/migrations/20990101030000_stack.sql', sha256: 'b'.repeat(64) };
+  const rightOnly = { file: 'db/platform/migrations/20990101020000_main.sql', sha256: 'c'.repeat(64) };
+
+  const manifestLeft = JSON.parse(baseManifest);
+  const manifestRight = JSON.parse(baseManifest);
+  for (const plan of [manifestLeft, manifestLeft.qualified, manifestLeft.qualifiedAdmin]) plan.forward.push(pred, leftOnly);
+  for (const plan of [manifestRight, manifestRight.qualified, manifestRight.qualifiedAdmin]) plan.forward.push(pred, rightOnly);
+  const mergedManifest = JSON.parse(migrationRegistryUnion(MIGRATION_REGISTRIES[0], baseManifest, json(manifestLeft), json(manifestRight), inv));
+  expect(mergedManifest.forward.slice(-3)).toEqual([pred, rightOnly, leftOnly]);
+
+  // Same key with different content MUST still refuse.
+  const manifestDifferentSha = JSON.parse(baseManifest);
+  for (const plan of [manifestDifferentSha, manifestDifferentSha.qualified, manifestDifferentSha.qualifiedAdmin]) {
+    plan.forward.push({ ...pred, sha256: 'd'.repeat(64) });
+  }
+  expect(() => migrationRegistryUnion(MIGRATION_REGISTRIES[0], baseManifest, json(manifestLeft), json(manifestDifferentSha), inv))
+    .toThrow('derived: duplicate entry');
+
+  // Same slot with different filename MUST still refuse.
+  const manifestDifferentFile = JSON.parse(baseManifest);
+  for (const plan of [manifestDifferentFile, manifestDifferentFile.qualified, manifestDifferentFile.qualifiedAdmin]) {
+    plan.forward.push({ file: 'db/platform/migrations/20990101010000_other.sql', sha256: pred.sha256 });
+  }
+  expect(() => migrationRegistryUnion(MIGRATION_REGISTRIES[0], baseManifest, json(manifestLeft), json(manifestDifferentFile), inv))
+    .toThrow('derived: duplicate slot');
+
+  // Also verify reviewed-platform-forwards.json deduplication and conflict refusal.
+  const predSlot = { row: 'pred', path: pred.file, replacedFunctions: [], createdFunctions: [] };
+  const predForward = { path: pred.file, sha256: pred.sha256, functions: [] };
+  const leftForwards = JSON.parse(baseForwards);
+  const rightForwards = JSON.parse(baseForwards);
+  leftForwards.nativeStoreForwardClass.slots.push(predSlot, { row: 'stack', path: leftOnly.file, replacedFunctions: [], createdFunctions: [] });
+  leftForwards.nativeStoreForwards.push(predForward, { path: leftOnly.file, sha256: leftOnly.sha256, functions: [] });
+  rightForwards.nativeStoreForwardClass.slots.push(predSlot, { row: 'main', path: rightOnly.file, replacedFunctions: [], createdFunctions: [] });
+  rightForwards.nativeStoreForwards.push(predForward, { path: rightOnly.file, sha256: rightOnly.sha256, functions: [] });
+  const mergedForwards = JSON.parse(migrationRegistryUnion(MIGRATION_REGISTRIES[1], baseForwards, json(leftForwards), json(rightForwards)));
+  expect(mergedForwards.nativeStoreForwards.slice(-3).map((row: { path: string }) => row.path)).toEqual([pred.file, rightOnly.file, leftOnly.file]);
+
+  const conflictForwards = JSON.parse(baseForwards);
+  conflictForwards.nativeStoreForwardClass.slots.push({ ...predSlot, row: 'changed-row' });
+  conflictForwards.nativeStoreForwards.push(predForward);
+  expect(() => migrationRegistryUnion(MIGRATION_REGISTRIES[1], baseForwards, json(leftForwards), json(conflictForwards)))
+    .toThrow('derived: duplicate entry');
+});
