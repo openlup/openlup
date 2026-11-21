@@ -48,8 +48,8 @@ export async function runCatalogue(command, args, path, json, { emit, refuse, re
       await checkApplicationScratch(sourcePath, scratch);
       fix = "Check that --trusted-packs resolves to a module exporting catalogueConformance with JSON fixture data and registered content validators.";
       const { catalogueConformance } = await import(pathToFileURL(sourcePath).href);
-      // eslint-disable-next-line no-restricted-syntax -- the installed bin alone uses the internal compiled projector
-      const { projectCatalogExtensionConformance } = await import("../../dist/catalog/testing/catalogExtensionConformance.js");
+      // eslint-disable-next-line no-restricted-syntax -- the installed bin loads the internal projector through a package-private import
+      const { projectCatalogExtensionConformance } = await import("#catalog-testing/projector");
       const projection = projectCatalogExtensionConformance(catalogueConformance);
       fix = "Check that the OS temporary directory is writable and the scratch subject stays intact.";
       const subjectPath = join(await fs.mkdtemp(join(scratch, "openlup-catalogue-")), "subject.json");
