@@ -148,7 +148,7 @@
       "kind": "cap",
       "runtime": {
         "level": "read-only",
-        "reason": "Native order controls record a fixed manual hold reason."
+        "reason": "Native order controls enforce a fixed six-reason hold vocabulary (payment_not_succeeded, inventory_review, risk_review, address_review, fulfillment_exception, manual_support). Applications can subset or relabel these codes in their own UI, but custom hold reasons are rejected by the schema and database."
       },
       "change": {
         "reference": "docs/guide/how-to/operate/settings-catalogue.md#commercemanualholdreasons"

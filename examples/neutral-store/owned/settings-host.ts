@@ -83,12 +83,35 @@ export function createSettingsBindings({ db, configuration }: {
       location: { file, symbol: 'subscriptionOffers' },
       descriptor: {
         domain: 'subscriptions',
-        goal: "Choose the allowed delivery interval and default cadence for subscriptions.",
-        schema: z.looseObject({}).describe(
-          "assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied. assertQuoteConfiguration requires the classic offer to include the graduation cadence.",
+        goal: "Choose allowed subscription delivery intervals, default cadence, unit and line limits, and per-SKU quantity rules for classic and sized offers.",
+        schema: (() => {
+          const positiveInt32 = z.number().int().min(1).max(2147483647);
+          const numbersDomain = z.union([
+            z.strictObject({ kind: z.literal('set'), values: z.array(positiveInt32).min(1) }),
+            z.strictObject({ kind: z.literal('range'), min: positiveInt32, max: positiveInt32, step: positiveInt32 }),
+          ]);
+          const skuOfferRule = z.strictObject({ days: numbersDomain, quantities: numbersDomain });
+          const subscriptionOfferSchema = z.strictObject({
+            days: numbersDomain,
+            checkoutDays: numbersDomain.optional(),
+            preferredDays: numbersDomain.optional(),
+            checkoutMinimumBaseUnits: positiveInt32.optional(),
+            defaultDays: positiveInt32,
+            minimumBaseUnits: positiveInt32,
+            maximumUnits: positiveInt32,
+            maximumBaseLines: positiveInt32,
+            maximumAddonLines: positiveInt32,
+            bySku: z.record(z.string().min(1), z.array(skuOfferRule).min(1)),
+          });
+          return z.strictObject({
+            classic: subscriptionOfferSchema,
+            sized: subscriptionOfferSchema,
+          });
+        })().describe(
+          "assertSubscriptionOffer checks days as a nonempty set of distinct integers from 1 through 3660 or a range within those bounds with an integer step from 1 through 2147483647. The default must be in days and in checkoutDays when supplied, maximumUnits must be at least minimumBaseUnits, line counts and SKU quantities stay within checkout bounds (50 lines, 99 units per line), and SKU cadences do not repeat across rules. assertQuoteConfiguration requires the classic offer to include the graduation cadence.",
         ),
         effect: {
-          appliesTo: "A fresh subscription checkout checks the deployed classic offer. Starter terms admission checks cadence against the offer for the edit's mode.",
+          appliesTo: "Fresh subscription checkouts check the deployed classic offer (cadence, unit/line limits and per-SKU rules). Starter terms admission checks edits against the classic or sized offer for the edit's mode.",
           frozenOn: ["A saved starter-pack quote records the graduation cadence captured at checkout."],
           impact: 'customer-promise',
         },
@@ -116,11 +139,11 @@ export function createSettingsBindings({ db, configuration }: {
       descriptor: {
         domain: 'subscriptions',
         goal: "Set the hours between payment retries after a failed renewal charge (payment retry policy, dunning schedule, retry ladder, backoff).",
-        schema: z.array(z.number().int().min(0).max(2147483647)).length(3).describe(
-          "assertRenewalConfig checks exactly three whole-hour delays from 0 through 2147483647.",
+        schema: z.array(z.number().int().min(1).max(2147483647)).length(3).describe(
+          "assertRenewalConfig checks exactly three whole-hour delays from 1 through 2147483647.",
         ),
         effect: {
-          appliesTo: "The sandbox renewal job reads the deployed retry ladder when it schedules retries after a failed charge.",
+          appliesTo: "The starter's renewal retry driver reads the deployed 3-step ladder when scheduling retries after a failed charge. Provider-recorded payment failures applied in SQL still use the fixed 24, 72 and 168 hour ladder; see subscriptions.retrySchedule.",
           frozenOn: ["A waiting retry obligation keeps its scheduled retry time."],
           impact: 'operations',
         },
@@ -196,17 +219,17 @@ export function createSettingsBindings({ db, configuration }: {
       descriptor: {
         domain: 'checkout',
         goal: "Set the checkout attempt rate limits per requester and per email (rate limit, throttling, abuse protection).",
-        schema: z.looseObject({
+        schema: z.strictObject({
           windowMs: z.number().int().min(1),
           maxPerRequester: z.number().int().min(1),
           maxPerEmail: z.number().int().min(1),
           retentionMs: z.number().int().min(1),
           maxEntries: z.number().int().min(1),
-        }).partial().catchall(z.number().int().min(1)).describe(
+        }).describe(
           "assertConfig checks positive safe integers for the attempt limits and requires retentionMs to be at least windowMs.",
         ),
         effect: {
-          appliesTo: "The starter's checkout limiter and attempt bindings use the deployed quotas, windows and capacity when a process initializes them.",
+          appliesTo: "The starter's checkout limiter and attempt bindings use the deployed quotas, windows and capacity when a process initializes them. Warning: this is an abuse-protection threshold — raising quotas weakens brute-force and card-testing throttling, while setting them too low blocks legitimate buyers behind shared IPs. The built-in starter limiter is in-memory per process and resets on restart.",
           frozenOn: [],
           impact: 'operations',
         },

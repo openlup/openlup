@@ -32,7 +32,7 @@ test('native starter declaration schemas accept and reject the same values as th
     ['subscriptionCreation.editWindowHours', { type: 'integer', minimum: 1, maximum: 720 },
       [1, 72, 720], [0, 721, '72']],
     ['subscriptionOffers.deliveryCycles', { type: 'object' },
-      [{ classic: {}, sized: {} }], [[]]],
+      [configurations.supplements!.subscriptionOffers], [[]]],
     ['subscriptions.lifecycleNoticeRetryBudget', { type: 'integer', minimum: 1, maximum: int32Max },
       [1, 6, int32Max], [0, int32Max + 1, '6']],
   ] as const;
@@ -49,6 +49,15 @@ test('native starter declaration schemas accept and reject the same values as th
         assert.equal(current.safeParse(value).success, expected, message);
       }
     }
+  }
+  const offersSchema = binding.file.entries['subscriptionOffers.deliveryCycles']?.descriptor?.schema;
+  assert.ok(offersSchema);
+  const badMinimum = structuredClone(configurations.supplements!.subscriptionOffers);
+  badMinimum.classic.minimumBaseUnits = 0;
+  const missingBySku = structuredClone(configurations.supplements!.subscriptionOffers);
+  delete (missingBySku.classic as Partial<typeof missingBySku.classic>).bySku;
+  for (const invalid of [{ classic: {}, sized: {} }, badMinimum, missingBySku]) {
+    assert.equal(offersSchema.safeParse(invalid).success, false, JSON.stringify(invalid));
   }
 });
 
@@ -106,27 +115,37 @@ test('settings check includes all new declarations and their edit locations in b
   }
 });
 
-test('settings check identifies five invalid object members in scratch configurations', async () => {
+test('settings check identifies invalid object and array members in scratch configurations', async () => {
   const configuration = 'settings-review-scratch';
-  const cases: readonly [string, string[], (config: typeof configurations[string]) => void][] = [
-    ['purchase.attemptLimits', ['maxPerEmail'], config => { config.purchase.attemptLimits.maxPerEmail = 0; }],
-    ['renewal.subscriptionCare.terms', ['pauseDays'], config => { config.renewal.subscriptionCare.terms.pauseDays = 0; }],
-    ['renewal.subscriptionCare.pausePresets', ['allowed', '0'], config => {
+  const cases: readonly [string, string[], 'passed' | 'failed', (config: typeof configurations[string]) => void][] = [
+    ['renewal.retryBackoffHours', ['0'], 'failed', config => { config.renewal.retryBackoffHours = [0, 24, 48]; }],
+    ['subscriptionOffers.deliveryCycles', ['classic', 'minimumBaseUnits'], 'failed', config => {
+      config.subscriptionOffers.classic.minimumBaseUnits = 0;
+    }],
+    ['purchase.attemptLimits', ['maxPerEmail'], 'failed', config => { config.purchase.attemptLimits.maxPerEmail = 0; }],
+    ['purchase.attemptLimits', ['maxEntries'], 'passed', config => {
+      delete (config.purchase.attemptLimits as Partial<typeof config.purchase.attemptLimits>).maxEntries;
+    }],
+    ['purchase.attemptLimits', [], 'passed', config => {
+      Object.assign(config.purchase.attemptLimits, { extraLimit: 10 });
+    }],
+    ['renewal.subscriptionCare.terms', ['pauseDays'], 'failed', config => { config.renewal.subscriptionCare.terms.pauseDays = 0; }],
+    ['renewal.subscriptionCare.pausePresets', ['allowed', '0'], 'failed', config => {
       Object.assign(config.renewal.subscriptionCare.pausePresets, { allowed: ['forever'] });
     }],
-    ['renewal.subscriptionCare.notices', ['operatorMaxAttempts'], config => {
+    ['renewal.subscriptionCare.notices', ['operatorMaxAttempts'], 'failed', config => {
       config.renewal.subscriptionCare.notices.operatorMaxAttempts = 0;
     }],
-    ['market', ['country'], config => { config.market.country = 'USA'; }],
+    ['market', ['country'], 'failed', config => { config.market.country = 'USA'; }],
   ];
-  for (const [key, path, change] of cases) {
+  for (const [key, path, appValidationState, change] of cases) {
     const config = { ...structuredClone(configurations.supplements!), id: configuration };
     change(config);
     configurations[configuration] = config;
     try {
       const checked = await starterSettings(configuration, ['check'], 1);
       assert.equal(checked.state, 'invalid', key);
-      assert.equal(checked.appValidation.state, 'failed', key);
+      assert.equal(checked.appValidation.state, appValidationState, key);
       const row = checked.rows.find((entry: { key: string }) => entry.key === key);
       assert.deepEqual(row?.validation, { state: 'invalid', paths: [path] }, key);
     } finally {
@@ -173,6 +192,8 @@ test('settings check names the offer member when zero cadence prevents configura
 
 test('settings list finds starter declarations by customer and operator goals', async () => {
   const goals = [
+    ['per-SKU quantity rules', 'subscriptionOffers.deliveryCycles'],
+    ['delivery interval', 'subscriptionOffers.deliveryCycles'],
     ['payment retry', 'renewal.retryBackoffHours'],
     ['dunning schedule', 'renewal.retryBackoffHours'],
     ['flat shipping', 'offer.shippingMinor'],

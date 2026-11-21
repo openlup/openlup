@@ -26,7 +26,7 @@ export interface RenewalConfig {
 }
 
 export function assertRenewalConfig(config: RenewalConfig, locales: readonly Locale[] = configuredLocales): void {
-  if (!config || !Array.isArray(config.retryBackoffHours) || config.retryBackoffHours.some(value => !Number.isInteger(value) || value < 0 || value > 2147483647) || typeof config.enabled !== 'boolean' || typeof config.population !== 'string'
+  if (!config || !Array.isArray(config.retryBackoffHours) || config.retryBackoffHours.some(value => !Number.isInteger(value) || value < 1 || value > 2147483647) || typeof config.enabled !== 'boolean' || typeof config.population !== 'string'
     || !/^[a-zA-Z0-9:-]{1,100}$/.test(config.population)
     || [config.cadenceSeconds, config.leaseSeconds, config.recovery?.activeGraceSeconds,
       config.recovery?.exhaustedTtlSeconds].some(value => !Number.isSafeInteger(value) || value < 1 || value > 2147483647)

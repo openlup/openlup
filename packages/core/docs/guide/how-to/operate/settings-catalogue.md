@@ -63,7 +63,7 @@ Distinguish separate reasons for manually holding an order.
 Search terms include store orders, checkout processing.
 
 - Owner **commerce** · kind **cap** · runtime **read-only**
-- Native order controls record a fixed manual hold reason.
+- Native order controls enforce a fixed six-reason hold vocabulary (payment_not_succeeded, inventory_review, risk_review, address_review, fulfillment_exception, manual_support). Applications can subset or relabel these codes in their own UI, but custom hold reasons are rejected by the schema and database.
 
 Show offline: `show commerce.manualHoldReasons --json`.
 
