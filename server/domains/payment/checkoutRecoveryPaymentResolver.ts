@@ -9,9 +9,11 @@ import { terminalAmountMismatch } from "./paymentProviderReconciliationEvidence.
 import {
   toClaimedAttemptShape,
   verifyPaymentAttemptNow,
-  type PaymentVerifyReadPort,
-  type VerifiableAttemptSnapshot,
-} from "./paymentVerifyNowService.js";
+} from "@openlup/platform/payments";
+import type {
+  PaymentVerifyReadPort,
+  VerifiableAttemptSnapshot,
+} from "@openlup/platform/payments/contracts";
 
 export type CheckoutRecoveryPaymentResolution =
   | { kind: "paid" }

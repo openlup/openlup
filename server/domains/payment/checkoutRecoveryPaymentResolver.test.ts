@@ -4,7 +4,7 @@ import {
   type PaymentProviderRecoveryProvider,
   type ProviderRecoveryRead,
 } from "./checkoutRecoveryPaymentResolver.js";
-import type { VerifiableAttemptSnapshot } from "./paymentVerifyNowService.js";
+import type { VerifiableAttemptSnapshot } from "@openlup/platform/payments/contracts";
 import type { ProviderReconciliationStatus } from "./paymentProviderReconciliationContracts.js";
 
 const orderId = "11111111-1111-4111-8111-111111111111";
@@ -245,6 +245,7 @@ describe("checkout recovery payment resolver", () => {
           status: terminal,
           providerStatus: terminal,
           failureReason: terminal === "failed" ? "declined" : null,
+          ...(terminal === "succeeded" ? { capturedAmountBasis: "provider_capture_v1" as const } : {}),
         }),
         identityMatches: true,
         manualReviewRequired: false,
