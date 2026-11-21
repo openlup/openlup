@@ -452,16 +452,29 @@ test('released extraction pins and commits registry artifacts with deterministic
       f.ownership.managed.push(path);
       await writeFile(resolve(f.source, path), bytes);
     }
-    f.ownership.managed.push('entry.mjs', 'entry.cjs');
-    await f.put('examples/neutral-store/entry.mjs', '#!/usr/bin/env node\r\nexport {};\r\n');
-    await f.put('examples/neutral-store/entry.cjs', '#!/usr/bin/env node');
+    const scripts = [
+      ['lone-cr.mjs', '#!/usr/bin/env node\rconst text = `before\nafter`;\n',
+        `#!/usr/bin/env node\r// ${managedHint}\nconst text = \`before\nafter\`;\n`],
+      ['entry.mjs', '#!/usr/bin/env node\r\nexport {};\r\n', `#!/usr/bin/env node\r\n// ${managedHint}\nexport {};\r\n`],
+      ['entry.js', '#!/usr/bin/env node\nexport {};\n', `#!/usr/bin/env node\n// ${managedHint}\nexport {};\n`],
+      ['line-separator.d.mts', '#!/usr/bin/env node\u2028export {};\n',
+        `#!/usr/bin/env node\u2028// ${managedHint}\nexport {};\n`],
+      ['paragraph-separator.ts', '#!/usr/bin/env node\u2029export {};\n',
+        `#!/usr/bin/env node\u2029// ${managedHint}\nexport {};\n`],
+      ['entry.cjs', '#!/usr/bin/env node', `#!/usr/bin/env node\n// ${managedHint}\n`],
+    ] as const;
+    for (const [path, source] of scripts) {
+      f.ownership.managed.push(path);
+      await f.put(`examples/neutral-store/${path}`, source);
+    }
     await f.put('examples/neutral-store/ownership.json', { ...f.ownership, managedEditRoutes: {} });
     const first = f.run(), second = f.run('second');
     for (const [path, bytes] of Object.entries(indexed)) {
       assert.deepEqual(await readFile(resolve(first, path)), bytes, path);
     }
-    assert.equal(await readFile(resolve(first, 'entry.mjs'), 'utf8'), `#!/usr/bin/env node\r\n// ${managedHint}\nexport {};\r\n`, 'entry.mjs');
-    assert.equal(await readFile(resolve(first, 'entry.cjs'), 'utf8'), `#!/usr/bin/env node\n// ${managedHint}\n`, 'entry.cjs');
+    for (const [path, , expected] of scripts) {
+      assert.deepEqual(await readFile(resolve(first, path)), Buffer.from(expected), path);
+    }
     const identity = JSON.parse(await readFile(resolve(first, '.starter-origin.json'), 'utf8'));
     assert.equal(identity.mode, 'released'); assert.equal(identity.setVersion, f.version);
     assert.equal(identity.sourceRevision, f.revision); assert.equal(identity.sourceRevisionVerification, 'supplied');

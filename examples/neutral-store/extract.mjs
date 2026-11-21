@@ -165,7 +165,13 @@ for (const path of files) {
     const header = managedHeader(path, managedHint(path));
     if (bytes.subarray(0, bom.length).equals(bom)) throw new Error(`starter_managed_file_bom: ${path}`);
     const shebang = (path === 'lifecycle' || header.startsWith('//')) && bytes[0] === 35 && bytes[1] === 33;
-    const afterShebang = shebang ? bytes.indexOf(10) + 1 : 0;
+    let afterShebang = 0;
+    if (shebang && path === 'lifecycle') afterShebang = bytes.indexOf(10) + 1;
+    else if (shebang) {
+      // Match U+2028 and U+2029 as UTF-8 bytes to preserve the original offset.
+      const terminator = /\r\n|[\r\n]|\xe2\x80[\xa8\xa9]/.exec(bytes.toString('latin1'));
+      if (terminator) afterShebang = terminator.index + terminator[0].length;
+    }
     const offset = shebang ? afterShebang || bytes.length : 0;
     const separator = shebang && afterShebang === 0 ? '\n' : '';
     const parts = [bytes.subarray(0, offset), Buffer.from(separator + header + '\n'), bytes.subarray(offset)];
