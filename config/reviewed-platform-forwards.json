@@ -6072,6 +6072,31 @@
         "createdFunctions": [],
         "grantOnlyFunctions": [],
         "dataStatements": []
+      },
+      {
+        "row": "outbox-active-partial-indexes",
+        "path": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
+      },
+      {
+        "row": "shipment-label-and-address-upsert-atomic",
+        "path": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.fulfillment_record_label_atomic(text,uuid,text,text,jsonb,timestamptz)",
+            "searchPath": "public, pg_catalog"
+          },
+          {
+            "signature": "public.customer_saved_address_upsert_atomic(uuid,uuid,text,text,boolean,text,uuid,text,jsonb,jsonb,timestamptz)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -8731,6 +8756,27 @@
           "signature": "public.fulfillment_advance_shipment(text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": "7cb25ec25a3c38e9de179b786e718f9feb7304d6e1f36354e1d8a6a034b36416",
           "afterSha256": "a2a2505f4b031e3ab3c20c8c0585a8bd1575cf0c7a3836410edbe125ed3f5b32"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261124100000_outbox_active_partial_indexes.sql",
+      "sha256": "40b72906886c83679a456be7c2057c30073b54cccee13591d52ecefb743ec721",
+      "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261124110000_shipment_label_and_address_upsert_atomic.sql",
+      "sha256": "547ee019f330f87ba9cee80c87d956d84f75b0762850660afadb57cbc28ee284",
+      "functions": [
+        {
+          "signature": "public.fulfillment_record_label_atomic(text,uuid,text,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "fea47c83291ad2aaca07f1184c23c1e83f49ca9c512f3e8bf959b823b5ad4024"
+        },
+        {
+          "signature": "public.customer_saved_address_upsert_atomic(uuid,uuid,text,text,boolean,text,uuid,text,jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "bbb7a8b76cd5538c4b84284efaf1a8fa50f41020e9a368c6e83e00a229593550"
         }
       ]
     }

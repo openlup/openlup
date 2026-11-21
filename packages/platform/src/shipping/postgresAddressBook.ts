@@ -22,7 +22,7 @@ export type CustomerSavedAddressRefusalCode = 'address_scope_mismatch' | 'addres
 export class CustomerSavedAddressRefused extends Error {
   constructor(readonly code: CustomerSavedAddressRefusalCode, message = code as string) { super(message); }
 }
-/** Each query call commits separately, matching default-clear/write/event failure and replay behavior. */
+/** Upserts commit atomically through `customer_saved_address_upsert_atomic`; deletes retain per-query semantics. */
 export function createPostgresCustomerSavedAddressPort(executor: SavedAddressQueryExecutor, scope: CustomerSavedAddressScope,
   options: CustomerSavedAddressOptions): CustomerSavedAddressPort {
   const principal = z.guid().parse(scope.principalId), client = z.guid().parse(scope.clientId);
@@ -68,20 +68,38 @@ export function createPostgresCustomerSavedAddressPort(executor: SavedAddressQue
       verify(userId);
       const parsed = requests.customerAddressUpsertRequestSchema.safeParse(input);
       if (!parsed.success) refuse('address_invalid_input');
-      if (await ownedRows() === null) return null;
       const data = { ...parsed.data, country: parsed.data.country ?? country };
       const eventType = 'customer.address_upserted';
-      if (await call('customer_saved_address_replayed', [eventType, data.idempotencyKey]) === true) return book();
+      const now = options.now();
       const canonical = (value: Parameters<typeof canonicalAddressKey>[0]) => canonicalAddressKey(value, country);
-      const row = { ...addressRow(client, data, canonical), updated_at: options.now() };
-      if (data.isDefault) await store.clearDefaultAddress(client, data.kind, options.now());
-      const addressId = data.addressId ?? await store.findCanonicalAddressId(client, row.canonical_key);
-      let saved: unknown;
-      try { saved = await call('customer_saved_address_write', [addressId, JSON.stringify(row), row.updated_at]); }
-      catch (error) { if (error instanceof Error && error.message === 'customer_saved_address_not_found') refuse('address_not_found'); throw error; }
-      if (typeof saved !== 'string') refuse('address_scope_mismatch');
-      await append(eventType, saved, data);
-      return book();
+      const row = { ...addressRow(client, data, canonical), updated_at: now };
+      let rawRows: unknown;
+      try {
+        rawRows = await call('customer_saved_address_upsert_atomic', [
+          eventType,
+          data.idempotencyKey,
+          Boolean(data.isDefault),
+          data.kind,
+          data.addressId ?? null,
+          row.canonical_key ?? null,
+          JSON.stringify(row),
+          JSON.stringify(data),
+          now,
+        ]);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'customer_saved_address_not_found') refuse('address_not_found');
+        if (error instanceof Error && error.message === 'customer_saved_address_scope_mismatch') refuse('address_scope_mismatch');
+        if (error instanceof Error && error.message === 'customer_saved_address_event_append_failed') refuse('address_event_append_failed');
+        throw error;
+      }
+      if (rawRows === null) return null;
+      if (!Array.isArray(rawRows) || rawRows.some(item => item === null || typeof item !== 'object' || Array.isArray(item))) refuse('address_invalid_response');
+      const rows = rawRows as Record<string, unknown>[];
+      return {
+        contractVersion: 'customer.addresses.v1' as const,
+        ordererProfiles: await readOrdererProfiles(store, client),
+        addresses: await readAddresses({ ...store, readAddresses: async () => rows }, client),
+      };
     },
     async deleteAddress(userId, input) {
       verify(userId);
