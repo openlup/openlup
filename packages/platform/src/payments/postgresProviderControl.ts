@@ -36,8 +36,18 @@ export interface ProviderPaymentResultInput {
   failureClassDecidedBy?: string | null;
 }
 
+function serializeRetryCadence(cadence: PostgresPaymentTruthOptions["retryCadence"]): string | null {
+  if (!cadence) return null;
+  const hours = cadence.backoffHours;
+  if (!Array.isArray(hours) || hours.length !== 3 || !hours.every((value) => typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 2_147_483_647)) {
+    throw new Error("subscription_retry_cadence_invalid");
+  }
+  return JSON.stringify({ backoffHours: [...hours] });
+}
+
 /** Explicit lifecycle admission; historical native intents are never backfilled. */
 export function createPostgresProviderPaymentControlPort(db: PaymentProviderExecutor, options: PostgresPaymentTruthOptions) {
+  const cadenceJson = serializeRetryCadence(options.retryCadence);
   return {
     ...createPostgresPreparedAttemptPersistencePort(db),
     async createIntent(input: ProviderPaymentIntentInput) {
@@ -61,12 +71,17 @@ export function createPostgresProviderPaymentControlPort(db: PaymentProviderExec
       return parsed.data.paymentAttempt;
     },
     async applyPaymentResult(input: ProviderPaymentResultInput) {
+      const baseArgs = [
+        input.idempotencyKey, input.paymentIntentId, input.paymentEventId, input.resultStatus, input.occurredAt,
+        input.failureReason, input.failureClass ?? null, input.failureClassDecidedBy ?? null,
+        options.dunningTemplateSlug, options.recoveryUrlPath, options.recoveryTemplateSlug,
+      ];
+      const sql = cadenceJson === null
+        ? "SELECT public.payment_provider_result_apply($1,$2::uuid,$3::uuid,$4,$5::timestamptz,$6,$7,$8,$9,$10,$11) AS response"
+        : "SELECT public.payment_provider_result_apply($1,$2::uuid,$3::uuid,$4,$5::timestamptz,$6,$7,$8,$9,$10,$11,$12::jsonb) AS response";
       const parsed = z.object({ paymentResult: z.object({ replayed: z.boolean(), paymentIntentId: z.guid(),
         paymentAttemptId: z.guid(), paymentId: z.guid(), orderId: z.guid(), status: z.string(), kind: z.string() }) }).safeParse(
-        (await db.query("SELECT public.payment_provider_result_apply($1,$2::uuid,$3::uuid,$4,$5::timestamptz,$6,$7,$8,$9,$10,$11) AS response",
-          [input.idempotencyKey, input.paymentIntentId, input.paymentEventId, input.resultStatus, input.occurredAt,
-            input.failureReason, input.failureClass ?? null, input.failureClassDecidedBy ?? null,
-            options.dunningTemplateSlug, options.recoveryUrlPath, options.recoveryTemplateSlug])).rows[0]?.response);
+        (await db.query(sql, cadenceJson === null ? baseArgs : [...baseArgs, cadenceJson])).rows[0]?.response);
       if (!parsed.success) throw new Error("payment_provider_result_readback_invalid");
       return parsed.data.paymentResult;
     },

@@ -1550,6 +1550,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124150000_native_provider_retry_cadence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5039,6 +5043,10 @@
     },
     {
       "path": "packages/platform/sql/20261124140000_catalog_publication_readiness.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261124150000_native_provider_retry_cadence.sql",
       "class": "public-output"
     },
     {
