@@ -73,11 +73,13 @@ export function stockWaitPaymentSql(graph: Graph) {
   )`;
   if (graph === "managed") return `${requested}
     SELECT c.id,c.kind,i.status FROM requested c
-    JOIN public.commerce_orders o ON o.id=c."orderId" AND o.client_id=c."clientId"
-    JOIN public.subscription_cycles cycle ON (cycle.id,cycle.subscription_id,cycle.scheduled_at)=
-      (c."cycleId",c."subscriptionId",c."scheduledAt")
-    JOIN public.commerce_payment_intents i ON (i.order_id,i.subscription_id,i.subscription_cycle_id)=
-      (o.id,c."subscriptionId",cycle.id) AND i.target_kind='subscription_cycle'`;
+    JOIN public.commerce_orders o ON (o.id,o.client_id,o.subscription_id,o.subscription_cycle_id)=
+      (c."orderId",c."clientId",c."subscriptionId",c."cycleId")
+    JOIN public.subscription_cycles cycle ON (cycle.id,cycle.subscription_id,cycle.scheduled_at,cycle.order_id)=
+      (c."cycleId",c."subscriptionId",c."scheduledAt",o.id)
+    JOIN public.commerce_payments payment ON payment.id=cycle.payment_id AND payment.order_id=o.id
+    JOIN public.commerce_payment_intents i ON (i.order_id,i.subscription_id,i.subscription_cycle_id,i.payment_id)=
+      (o.id,c."subscriptionId",cycle.id,payment.id) AND i.target_kind='subscription_cycle'`;
   return `${requested}
     SELECT c.id,c.kind,i.status FROM requested c
     JOIN public.commerce_orders o ON o.id=c."orderId" AND o.subscription_cycle_id=c."cycleId"
@@ -111,12 +113,16 @@ export function stockWaitNoticesSql(graph: Graph) {
   const requested = `SELECT id,kind FROM jsonb_to_recordset($1::jsonb) AS cases(id uuid,kind text)`;
   if (graph === "managed") return `
     WITH requested AS (${requested})
-    SELECT c.id,c.kind,d.template_slug AS "templateSlug",d.status,d.last_error_code AS "lastErrorCode",
+    SELECT c.id,'legacy' AS kind,d.template_slug AS "templateSlug",d.status,d.last_error_code AS "lastErrorCode",
       to_jsonb(d.updated_at) AS "updatedAt"
     FROM requested c JOIN public.communication_email_deliveries d ON d.aggregate_id=c.id::text
+      AND c.kind='legacy' AND d.aggregate_type='subscription_stock_wait'
     WHERE d.template_slug IN ('subscription-stock-wait-started','subscription-stock-wait-resumed')
     ORDER BY d.updated_at DESC,d.id`;
-  // A wait-open fact alone does not establish delivery progress or acceptance.
+  // Processing without a receipt uses the outbox's latest claim.
+  const updatedAt = `coalesce(r.updated_at, CASE WHEN e.status='processing'
+    THEN coalesce((e.metadata->>'lastClaimedAt')::timestamptz,e.created_at)
+    ELSE coalesce(e.processed_at,e.created_at) END)`;
   return `
     WITH requested AS (${requested})
     SELECT c.id,c.kind,
@@ -126,10 +132,10 @@ export function stockWaitNoticesSql(graph: Graph) {
         WHEN e.status='pending' THEN 'queued' WHEN e.status='processing' THEN 'processing'
         ELSE 'unknown' END AS status,
       r.error_code AS "lastErrorCode",
-      to_jsonb(coalesce(r.updated_at,e.processed_at,e.created_at)) AS "updatedAt"
+      to_jsonb(${updatedAt}) AS "updatedAt"
     FROM requested c JOIN public.outbox_events e ON e.aggregate_id=c.id AND e.aggregate_type='subscription_stock_wait'
       AND c.kind='legacy' AND e.event_type IN ('subscription_stock_wait.started','subscription_stock_wait.resumed')
       AND e.idempotency_key='subscription_stock_wait:'||c.id::text||':'||split_part(e.event_type,'.',2)
     LEFT JOIN public.transactional_delivery_receipts r ON r.idempotency_key=e.idempotency_key
-    ORDER BY coalesce(r.updated_at,e.processed_at,e.created_at) DESC,e.id`;
+    ORDER BY ${updatedAt} DESC,e.id`;
 }

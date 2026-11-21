@@ -2837,6 +2837,14 @@ open cases ordered by opening time. The reader applies eligibility after the
 limit and keeps stock-secured cases visible. Pass evidence and the observation
 time to `stockWaitHealth` to identify stalls and check notice freshness.
 
+Managed operator pages with bound orders require a PostgreSQL executor with read
+access to `commerce_orders.subscription_id`, `commerce_orders.subscription_cycle_id`,
+`subscription_cycles.order_id`, `subscription_cycles.payment_id`,
+`commerce_payments.id`, and `commerce_payments.order_id` in addition to the existing
+managed read columns. Native case projections report
+`stock_wait_read_generation_missing: <case-id>` if the linked renewal operation
+is absent or disagrees with the case. Check the operation binding for that case.
+
 ## Invoicing contracts
 
 See [invoicing composition, duties and read helpers](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/invoicing.md).

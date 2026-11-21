@@ -14,7 +14,7 @@ const pageInput = z.object({ state: filter, page: z.int().positive(), pageSize: 
 const accountScope = z.object({ principalId: id, clientId: id, subscriptionIds: z.array(id) });
 const coordinates = z.object({
   schemaVersion: z.literal(2), caseKind: z.string().min(1), id,
-  carrierAvailable: z.literal(true),
+  carrierAvailable: z.boolean(),
   subscriptionId: id, clientId: id, state, cycleNumber: z.int().positive(), scheduledAt: stamp,
   orderId: id.nullable(), cycleId: id.nullable(), fulfillmentId: id.nullable(),
   openedAt: stamp, lastCheckedAt: stamp, stockSecuredAt: stamp.nullable(), resumedAt: stamp.nullable(), closedAt: stamp.nullable(),
@@ -77,8 +77,11 @@ export function createPostgresStockWaitReads(options: {
   }
 
   async function project(db: SubscriptionQueryExecutor, value: unknown, openOnly: boolean): Promise<StockWaitReadProjection[]> {
-    const rows = z.array(coordinates).parse(value)
-      .filter(row => !openOnly || row.state === "stock_secured" || row.automaticRecoveryEligible);
+    const projected = z.array(coordinates).parse(value);
+    for (const row of projected) {
+      if (!row.carrierAvailable) throw new Error(`stock_wait_read_generation_missing: ${row.id}`);
+    }
+    const rows = projected.filter(row => !openOnly || row.state === "stock_secured" || row.automaticRecoveryEligible);
     if (!rows.length) return [];
     const notices = new Map<string, StockWaitReadNotice[]>();
     const requests = rows.map(({ id, caseKind }) => ({ id, kind: caseKind }));

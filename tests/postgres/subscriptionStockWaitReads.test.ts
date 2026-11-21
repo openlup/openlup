@@ -94,14 +94,14 @@ const cases = [
     await db.query("DELETE FROM public.subscription_renewal_operations WHERE id=$1", [operationB]);
     await db.query("SET LOCAL session_replication_role = origin");
     const port = readers();
-    await expect(port.listAdmin(page())).rejects.toThrow("carrierAvailable");
-    await expect(port.listEvidence()).rejects.toThrow("carrierAvailable");
-    await expect(port.listCustomer()).rejects.toThrow("carrierAvailable");
+    await expect(port.listAdmin(page())).rejects.toThrow(`stock_wait_read_generation_missing: ${caseB}`);
+    await expect(port.listEvidence()).rejects.toThrow(`stock_wait_read_generation_missing: ${caseB}`);
+    await expect(port.listCustomer()).rejects.toThrow(`stock_wait_read_generation_missing: ${caseB}`);
   }],
   ["LC10-D-295 a renewal operation with the wrong cycle coordinates is refused", async () => {
     await seed();
     await db.query("UPDATE public.subscription_renewal_operations SET cycle_number=3 WHERE id=$1", [operationB]);
-    await expect(readers().listAdmin(page())).rejects.toThrow("carrierAvailable");
+    await expect(readers().listAdmin(page())).rejects.toThrow(`stock_wait_read_generation_missing: ${caseB}`);
   }],
   ["LC10-D-292 no order lookup with no IDs", async () => {
     await seed();
@@ -125,6 +125,21 @@ const cases = [
     }));
     await expect(port.listAdmin(page())).rejects.toThrow("payment unavailable");
   }],
+  ...([0, 31] as const).map(minutes => [`processing notice uses its claim from ${minutes} minutes ago`, async () => {
+    await seed();
+    const key = `subscription_stock_wait:${caseA}:started`;
+    const claimedAt = new Date(now.getTime() - minutes * 60_000);
+    await db.query("DELETE FROM public.transactional_delivery_receipts WHERE idempotency_key=$1", [key]);
+    await db.query(`UPDATE public.outbox_events SET status='processing',created_at=$2::timestamptz-interval '60 min',
+      metadata=jsonb_build_object('lastClaimedAt',$3::timestamptz) WHERE idempotency_key=$1`, [key, now, claimedAt]);
+    const owned = (await readers().listCustomer()).filter(row => row.id === caseA);
+    const notice = owned[0]?.notices.find(row => row.templateSlug === "subscription-stock-wait-started");
+    expect.soft(Date.parse(notice?.updatedAt ?? "")).toBe(claimedAt.getTime());
+    expect(stockWaitHealth(owned, now)).toEqual({
+      evidence: [{ subscriptionId: subscription, scheduledAt: owned[0]?.scheduledAt, healthy: minutes === 0 }],
+      stalledCount: minutes === 0 ? 0 : 1,
+    });
+  }] as const),
   ["LC10-D-293 scoped notices, latest first, nullable error and milestone fields", async () => {
     await seed();
     const { cases: rows } = await readers().listAdmin(page());
@@ -445,3 +460,33 @@ async function seedMany(count: number) {
       ON op.subscription_id=('00000000-0000-4000-8000-' || lpad((10000+n)::text,12,'0'))::uuid`, [client, now, count]);
   await db.query("SET LOCAL session_replication_role = origin");
 }
+
+it("native ownership and case reads share a read-only repeatable-read snapshot", async () => {
+  await seed();
+  await db.query("COMMIT");
+  let transferred = false;
+  const port = readers({
+    readOwnedAccount: async () => ({ principalId: principal, clientId: client, subscriptionIds: [subscription] }),
+    async withReadSnapshot(work) {
+      const snapshot = await pool.connect();
+      try {
+        await snapshot.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        return await work({
+          async query(sql, args) {
+            const result = await snapshot.query(sql, args);
+            if (result.rows[0]?.allowed === true && !transferred) {
+              await db.query("UPDATE public.subscriptions SET client_id=$2 WHERE id=$1", [subscription, other]);
+              transferred = true;
+            }
+            return result;
+          },
+        });
+      } finally {
+        try { await snapshot.query("ROLLBACK"); } finally { snapshot.release(); }
+      }
+    },
+  });
+  expect((await port.listCustomer()).map(row => row.id)).toEqual([caseA]);
+  expect(transferred).toBe(true);
+  await expect(port.listCustomer()).rejects.toThrow("stock_wait_customer_forbidden");
+});
