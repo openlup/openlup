@@ -45,7 +45,9 @@ function unionRows(base, left, right) {
   };
   [base, left, right].forEach(validate);
   for (const side of [left, right]) check(base.every((row, index) => json(row) === json(side[index])), 'edited existing entry');
-  const additions = [...left.slice(base.length), ...right.slice(base.length)];
+  const leftAdditions = left.slice(base.length);
+  const leftSerialized = new Set(leftAdditions.map(json));
+  const additions = [...leftAdditions, ...right.slice(base.length).filter(row => !leftSerialized.has(json(row)))];
   validate([...base, ...additions]);
   const slots = new Set(base.map(slot));
   for (const row of additions) { check(!slots.has(slot(row)), 'duplicate slot'); slots.add(slot(row)); }

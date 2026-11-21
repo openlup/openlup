@@ -1,5 +1,8 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
+import { env as processEnvironment } from 'node:process';
 import { gzipSync } from 'node:zlib';
 import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,21 +10,60 @@ import { admit, carryOver, COMPRESSED_RECEIPT_MARKER, digest, ECONOMY_RECEIPT_MA
 import { carryOverSourceReview, diagnoseReceipt, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
-it('keeps the native queue static import closure free of npm dependencies', () => {
+function collectImportClosure(entry: string) {
   const visited = new Set<string>();
   const visit = (path: string) => {
     if (visited.has(path)) return;
     visited.add(path);
     const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest);
-    for (const statement of source.statements) {
-      if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
-      const specifier = statement.moduleSpecifier;
-      if (!specifier || !ts.isStringLiteral(specifier)) continue;
-      expect(specifier.text, path).toMatch(/^(?:node:|\.\.?\/)/u);
-      if (!specifier.text.startsWith('node:')) visit(resolve(dirname(path), specifier.text));
-    }
+    const checkSpecifier = (specifier: string) => {
+      expect(specifier, path).toMatch(/^(?:node:|\.\.?\/)/u);
+      if (!specifier.startsWith('node:')) visit(resolve(dirname(path), specifier));
+    };
+    const walk = (node: ts.Node) => {
+      if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+        checkSpecifier(node.moduleSpecifier.text);
+      } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0])) {
+        checkSpecifier(node.arguments[0].text);
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(source);
   };
-  visit(resolve('scripts/agent-review-queue.mjs'));
+  visit(entry);
+  return visited;
+}
+
+it('keeps the native queue static and dynamic import closure free of npm dependencies', () => {
+  const closure = collectImportClosure(resolve('scripts/agent-review-queue.mjs'));
+  expect(closure.size).toBeGreaterThan(0);
+});
+
+it('imports agent-review-queue.mjs and agent-review-session.mjs in bare Node with zero node_modules', () => {
+  const repoRoot = resolve('.');
+  const closure = collectImportClosure(resolve(repoRoot, 'scripts/agent-review-queue.mjs'));
+  const isolated = mkdtempSync(join(tmpdir(), 'openlup-bare-node-'));
+  try {
+    for (let dir = isolated; ; dir = dirname(dir)) {
+      expect(existsSync(join(dir, 'node_modules')), `ancestor ${dir} must not contain node_modules`).toBe(false);
+      if (dir === dirname(dir)) break;
+    }
+    for (const file of closure) {
+      const rel = relative(repoRoot, file);
+      expect(rel.startsWith('..'), file).toBe(false);
+      const target = join(isolated, rel);
+      mkdirSync(dirname(target), { recursive: true });
+      cpSync(file, target);
+    }
+    const output = execFileSync(
+      process.execPath,
+      ['--input-type=module', '-e', "const q = await import('./scripts/agent-review-queue.mjs'); const s = await import('./scripts/agent-review-session.mjs'); console.log(typeof q.enqueueAfterChecks, typeof s.proveReviewIntegration);"],
+      { cwd: isolated, env: { PATH: processEnvironment.PATH ?? '' }, encoding: 'utf8', timeout: 30000 },
+    );
+    expect(output.trim()).toBe('function function');
+  } finally {
+    rmSync(isolated, { recursive: true, force: true });
+  }
 });
 
 const time = 1000;
