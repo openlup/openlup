@@ -637,8 +637,9 @@ UUID for each new request unless retrying a command.
 1. Save a version 3 draft. Send `{action: "prepare", draftId, expectedRevision}`
    to `operator.catalogDrafts` using the saved revision. Review the returned
    `issues` and `preparation`. The response includes the `expectedHead` resolved
-   from the saved product. A draft with prices can have a
-   `preparation.postStateDigest` while its price check is still pending.
+   from the saved product. Prepare reports a missing or ineffective price list
+   in `issues` at the affected field, for example
+   `skus.0.priceOperations.0.priceListId`. Correct the issue before approval.
 2. Have the administrator review the proposed effects and send
    `{action: "approve", productId, candidateRef, candidateDigest, postStateDigest}`
    to `operator.catalogPublication`. Use the product ID and digests from
@@ -646,7 +647,8 @@ UUID for each new request unless retrying a command.
 3. Send `{action: "publish", productId, candidateRef, candidateDigest, expectedHead, changes: []}`
    to the same operation with a distinct publication key. Keep the request body
    and its key until you have the publication receipt. The example issues a
-   draft SKU. Offer admission remains an application decision.
+   draft SKU. Publish also refuses a missing or ineffective list. Offer
+   admission remains an application decision.
 4. If the response is lost, sign in and send
    `{action: "receipt", productId, commandKey}` with the original publication
    key in the body. Use a fresh transport header for the lookup. The authorized
@@ -661,8 +663,12 @@ UUID for each new request unless retrying a command.
 
 ### Correct a price-list refusal
 
-A publish response with `price_list_not_found` identifies
-`skus.priceOperations.priceListId` and carries the rejected ID as `subject`.
+Prepare reports `price_list_not_found` for a missing list or
+`price_list_not_active` for a list that is inactive, outside its validity window,
+or for a different settlement region or currency. Each issue names the field
+with zero-based SKU and operation indexes, such as
+`skus.0.priceOperations.0.priceListId`. Publish also refuses the list, and a
+`price_list_not_found` publish response identifies the rejected ID as `subject`.
 Find the effective list for the selected configuration in `owned/demo-seed.ts`.
 The demonstration's `buildDemoSeed(config).priceLists[0].id` is derived from
 the configuration ID and market currency. Revise the affected operation to use
