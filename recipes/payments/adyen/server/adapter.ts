@@ -1,4 +1,5 @@
 import { classifyPaymentFailure, type PaymentFailureHint } from "@openlup/core/payment";
+import { brandTransientSecret } from "@openlup/platform/payments";
 import type {
   PaymentAdapter,
   PaymentAdapterCapabilities,
@@ -7,7 +8,6 @@ import type {
   PaymentReadbackEnvelope,
   PaymentReadbackPort,
   PaymentRefusalEnvelope,
-  TransientSecret,
 } from "@openlup/platform/payments/contracts";
 import {
   AdyenTransportError,
@@ -95,10 +95,6 @@ export function projectAdyenStaticCapabilities(
 ): Record<string, unknown> {
   const { assessMandate: _omittedFunction, ...serializable } = capabilities;
   return JSON.parse(JSON.stringify(serializable)) as Record<string, unknown>;
-}
-
-function brandTransientSecret(value: string): TransientSecret {
-  return value as TransientSecret;
 }
 
 function assertHttpsUrl(value: string, label: string): string {

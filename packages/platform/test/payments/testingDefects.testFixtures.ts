@@ -212,6 +212,22 @@ export function paymentTestingDefects(provider: string, fixture: () => { subject
       await expect(runPaymentAdapterConformance(subjects)).rejects.toThrow(`${scenario} never success`);
     });
   }
+  it(`${provider}: accepts canonical sent_to_provider attempt status on uncertain timeout-after-dispatch`, async () => {
+    const subjects = fixture().subjects;
+    const subject = subjects[0];
+    const transport = subject.safety!.transport["timeout-after-dispatch"];
+    const execute = transport.execute;
+    transport.execute = async () => {
+      try { await execute(); } catch { /* Adapter converts uncertain timeout into canonical sent_to_provider envelope. */ }
+      return {
+        outcome: { kind: "attempt", status: "sent_to_provider" },
+        dispatch: { kind: "unknown" },
+        diagnostics: { reason: "timeout_after_dispatch" },
+      };
+    };
+    const report = await runPaymentAdapterConformance(subjects);
+    expect(report.cases.some((row) => row.name.includes("timeout-after-dispatch") && row.passed)).toBe(true);
+  });
   for (const scenario of ["timeout-after-dispatch", "redelivery-409"] as const) {
     it(`${provider}: detects invented exact non-dispatch after ${scenario}`, async () => {
       const subjects = fixture().subjects;

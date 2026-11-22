@@ -3,6 +3,7 @@ import {
   createPaymentProviderRegistry,
   createPostgresProviderPaymentRail,
   createVerifiedPaymentIngress,
+  type PaymentWebhookControlPort,
 } from "@openlup/platform/payments";
 import {
   createAdyenHttpClient,
@@ -55,7 +56,7 @@ describe("recipes/payments/adyen — Stage 3 real-flow mount proof (+ negative c
     const appliedSettlements: Array<{ intentRef: string; status: string }> = [];
     const savedMethods: Array<{ methodRef: string; customerRef: string | null }> = [];
 
-    const paymentControlPort: Parameters<typeof createVerifiedPaymentIngress>[0]["paymentControlPort"] = {
+    const paymentControlPort: PaymentWebhookControlPort = {
       async ingestPaymentEvent(input) {
         const key = `${input.provider}:${input.providerEventId}`;
         const replayed = seenEvents.has(key);

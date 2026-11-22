@@ -408,6 +408,8 @@ export {};
 export { executePreparedAttemptMechanism } from "./preparedAttempt.js";
 export { paymentSourceFingerprint, paymentPayloadFingerprint, paymentTruthFingerprint, paymentReconciliationFingerprint, assertPaymentTruthEvent } from "./paymentTruth.js";
 export { createVerifiedPaymentIngress } from "./verifiedIngress.js";
+export type { ProviderPaymentWebhookKind, NormalizedProviderPaymentWebhook, PaymentWebhookControlPort, PaymentWebhookMethodRefPort, PaymentWebhookAfterProcessed, PaymentWebhookProcessingPorts, } from "./verifiedIngress.js";
+export { brandTransientSecret } from "./transientSecret.js";
 export { METHOD_SCHEME_SNAPSHOT_KEY, METHOD_LAST_DIGITS_SNAPSHOT_KEY, METHOD_EXPIRES_AT_SNAPSHOT_KEY, methodFactSnapshotKeys, expiryForMethodRefWrite, readMethodLifecycleEvent, } from "./paymentMethodLifecycle.js";
 export type { ProviderWebhookWithMethodLifecycle } from "./paymentMethodLifecycle.js";
 export { evidenceToken, evidenceRecord, serializeFailureEvidence, failureEvidencePayload, } from "./paymentFailureEvidence.js";
@@ -423,6 +425,7 @@ export { runExecutionConformance, runDurableEventConformance } from "./eventConf
 export { runPaymentAdapterConformance } from "./adapterConformance.js";
 export { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
 export { createPostgresPreparedAttemptPersistencePort } from "./postgresPreparedAttempt.js";
+export type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
 export { createPostgresPaymentWebhookControlPort } from "./postgresProviderWebhook.js";
 export { createPostgresProviderPaymentControlPort } from "./postgresProviderControl.js";
 export { createPostgresProviderPaymentRecoveryGuidancePort, createPostgresProviderExpiredCheckoutSafety } from "./providerRecoveryReaders.js";
@@ -1377,6 +1380,16 @@ export declare function createScriptedPaymentFake<Calls extends Record<string, u
     invoke<K extends keyof Calls>(call: K): Promise<Calls[K]>;
     assertDrained(): void;
 };
+```
+## dist/payments/transientSecret.d.ts
+
+```ts
+import type { TransientSecret } from "./contracts/adapter.js";
+/**
+ * Brand a validated, non-empty browser-handoff credential as a `TransientSecret`.
+ * Keeps adapter code free of raw type assertions while failing closed on empty values.
+ */
+export declare function brandTransientSecret(value: string): TransientSecret;
 ```
 ## dist/payments/verifiedIngress.d.ts
 

@@ -2706,6 +2706,10 @@
       "class": "public-output"
     },
     {
+      "path": "examples/neutral-store/owned/payment-rail.ts",
+      "class": "public-output"
+    },
+    {
       "path": "examples/neutral-store/owned/quote-copy.ts",
       "class": "public-output"
     },
@@ -2951,6 +2955,10 @@
     },
     {
       "path": "examples/neutral-store/test/origin-policy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "examples/neutral-store/test/payment-rail.test.ts",
       "class": "public-output"
     },
     {
@@ -8758,6 +8766,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/contracts/paymentForm.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/contracts/preparedAttempt.ts",
       "class": "public-output"
     },
@@ -9087,6 +9099,10 @@
     },
     {
       "path": "packages/platform/src/payments/tpay/webhookNormalizer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/transientSecret.ts",
       "class": "public-output"
     },
     {
@@ -11987,6 +12003,10 @@
     },
     {
       "path": "packages/platform/test/payments/tpay/webhookNormalizer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/transientSecret.test.ts",
       "class": "public-output"
     },
     {

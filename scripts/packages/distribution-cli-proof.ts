@@ -84,6 +84,12 @@ export const starterOptionalCatalogueFiles: ReadonlySet<string> = new Set([
   "owned/catalogue-rules.cjs", "owned/catalogue-rules.test.cjs",
 ]);
 
+/** Optional application-owned composition templates introduced after 1.1.0; existing upgraded stores keep their current wiring. */
+export const starterOptionalOwnedFiles: ReadonlySet<string> = new Set([
+  ...starterOptionalCatalogueFiles,
+  "owned/payment-rail.ts",
+]);
+
 export const starterSettingsHost = "owned/settings-host.ts";
 const settingsHeading = "\n## Change a business setting\n";
 const starterAgentGuide = "AGENTS.md";
@@ -125,7 +131,7 @@ export function migrateStarterOwned(app: string, target: string, from: ReturnTyp
     const ownership = JSON.parse(readFileSync(join(target, "ownership.json"), "utf8"));
     for (const path of ownership.owned) {
       if (path === created || path === starterSettingsHost) continue; // The CLI creates required files from the target snapshot.
-      if (starterOptionalCatalogueFiles.has(path) && !existsSync(join(app, path))) continue;
+      if (starterOptionalOwnedFiles.has(path) && !existsSync(join(app, path))) continue;
       assert(readFileSync(join(app, path)).equals(readFileSync(join(target, path))), `starter owned migration did not match target: ${path}`);
     }
   }

@@ -28,6 +28,7 @@
     "owned/quote.config.ts",
     "owned/quote-copy.ts",
     "owned/quote-shipping.ts",
+    "owned/payment-rail.ts",
     "owned/renewal-policy.ts",
     "owned/market.config.ts"
   ],
@@ -41,6 +42,7 @@
     "shared/renewal-config.ts",
     "test/renewal.test.ts",
     "test/renewal-policy.test.ts",
+    "test/payment-rail.test.ts",
     "test/notice-artifact.test.ts",
     ".dockerignore",
     ".gitignore",
