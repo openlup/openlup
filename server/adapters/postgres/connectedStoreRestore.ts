@@ -540,17 +540,20 @@ export async function restoreConnectedNativeStore(input: {
     if (facts.mode !== "origin" || facts.cluster !== fresh.observation.cluster || facts.database !== fresh.observation.database
       || facts.login !== fresh.observation.login || facts.login !== installation.migrationLogin) fail("invalid_input");
     const ledgerBefore = await readRestoreLedger(client, expectedLedger);
+    const restricted = installation.generation === "qualified-admin";
+    // Qualify the sealed catalogue before the restricted migrator tries to lock any relation.
+    const inventoryAtRest = restricted ? await catalogPayload(client, installation) : undefined;
+    if (inventoryAtRest !== undefined && digest(inventoryAtRest) !== catalogueId) fail("schema_conflict");
     const relations = (await client.query<Relation>(`SELECT n.nspname AS schema,c.relname AS table
       FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
       WHERE pg_catalog.left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
       AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
-    const restricted = installation.generation === "qualified-admin";
     const publicRelations = restricted ? relations.filter(relation => relation.schema === "public") : relations;
     const privateRelations = restricted ? relations.filter(relation => relation.schema !== "public") : [];
     await lockRestoreRelations(client, publicRelations);
     if (await readRestoreLedger(client, expectedLedger) !== ledgerBefore) fail("schema_conflict");
-    const lockedInventory = await catalogPayload(client, installation);
-    if (digest(lockedInventory) !== catalogueId) fail("schema_conflict");
+    const lockedInventory = inventoryAtRest ?? await catalogPayload(client, installation);
+    if (!restricted && digest(lockedInventory) !== catalogueId) fail("schema_conflict");
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
@@ -590,7 +593,7 @@ export async function restoreConnectedNativeStore(input: {
 
     if (restricted) {
       await openRestrictedOwnerWindow(client, installation);
-      await lockRestoreRelations(client, privateRelations);
+      await lockRestoreRelations(client, privateRelations, true);
       await assertOutsideEmpty(client, privateRelations);
     }
     const keyIdentity = await client.query(keyIdentitySql);
@@ -740,9 +743,14 @@ async function readRestoreLedger(client: PoolClient, expected: readonly LedgerEn
   return JSON.stringify(ledger.map(({ value }) => value));
 }
 
-async function lockRestoreRelations(client: PoolClient, relations: readonly Relation[]): Promise<void> {
+async function lockRestoreRelations(client: PoolClient, relations: readonly Relation[], nowait = false): Promise<void> {
   for (const relation of relations) {
-    await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
+    try {
+      await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE${nowait ? " NOWAIT" : ""}`);
+    } catch (error) {
+      if (nowait && (error as { code?: unknown })?.code === "55P03") fail("target_conflict", `${relation.schema}.${relation.table}`);
+      throw error;
+    }
   }
 }
 

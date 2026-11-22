@@ -188,6 +188,8 @@ Acquisition cases, history and all other nonempty private relations still refuse
   mismatch, provision a matching qualified target and capture its pristine
   baseline again. For exact replay, use the already-restored target with the
   original source packet and pristine-target capture.
+  If `target_conflict` names a private relation locked by a target writer,
+  exclude every target writer, then retry.
 
 `public.customer_identity_challenges` is intentionally not carried: its single-use,
 short-lived token hashes are live authorization state; customers sign in again after restore.
