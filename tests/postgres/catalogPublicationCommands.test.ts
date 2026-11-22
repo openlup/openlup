@@ -615,7 +615,7 @@ describe("publication activation prices", () => {
       .toMatchObject({ ready: true, reasons: [] });
   }
 
-  async function seedBasePrice(skuId: string, db = pool, priceListId = listId) {
+  async function seedBasePrice(skuId: string, db = pool, priceListId: string = listId) {
     const id = randomUUID();
     await db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from)
       VALUES($1,$2,$3,'one_time',1000,statement_timestamp()-interval '1 minute')`, [id, priceListId, skuId]);
