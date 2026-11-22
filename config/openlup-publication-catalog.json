@@ -1582,6 +1582,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261125000000_acquisition_definer_search_path_pin.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/20261125010000_catalog_purchase_admission.sql",
       "class": "public-output"
     },
@@ -5163,6 +5167,10 @@
     },
     {
       "path": "packages/platform/sql/20261124230000_subscription_profiles.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261125000000_acquisition_definer_search_path_pin.sql",
       "class": "public-output"
     },
     {

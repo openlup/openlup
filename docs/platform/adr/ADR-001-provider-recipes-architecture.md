@@ -30,6 +30,7 @@ Empirical measurements of `@openlup/platform@1.3.0` (`packages/platform/release-
 ### 2. Incubate Tier 3 Recipes in a Strictly Splittable Top-Level `recipes/` Directory
 - All new provider integrations are authored as **Provider Recipes** under `recipes/<domain>/<provider>/` (or `recipes/multi/<provider>/` for multi-domain providers).
 - `recipes/` incubates inside the OpenLup monorepo during early ecosystem development for instant contract coherence, but **must remain 100% repo-splittable** into a future standalone public repository (`openlup/recipes`) via a mechanical `git subtree split --prefix=recipes` with zero code rewrites.
+- Quantitative split triggers, pre-split hot-file elimination (deterministic post-merge `index.json` generation), and the six-pillar post-split cross-repo consistency architecture (cold-consumer npm spine, RC exemplar `repository_dispatch` gate, nightly `compatibility-matrix.json`, directory-scoped CI, versioned guardrails, and two-step Tier 1 port evolution) are codified in [Master Plan §4.1](../PROVIDER_RECIPES_MASTER_PLAN.md#41-monorepo-vs-standalone-openluprecipes-scaling-impact-split-triggers--cross-repo-consistency).
 
 ### 3. Hard Dependency & Isolation Contract for Every Recipe
 Every file under `recipes/` MUST obey all of the following rules:
