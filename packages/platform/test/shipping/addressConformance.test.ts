@@ -69,7 +69,7 @@ it("military_code_admitted_by_policy_only", () => {
 
 it("refuses invalid destinations and diagnoses their cause without committing a policy result", () => {
   expect(validateV2(destination)).toMatchObject({ code: "address_policy_unavailable", field: "countryCode" });
-  expect(validateV2(destination, { ...destinationPolicy, countryCode: "YY" })).toMatchObject({ code: "address_policy_unavailable", field: "countryCode" });
+  expect(validateV2(destination, { ...destinationPolicy, countryCode: "XB" })).toMatchObject({ code: "address_policy_unavailable", field: "countryCode" });
   for (const [field, value] of [["line1", "\u0000"], ["line1", "\u0085"], ["line2", "\uD800"], ["city", "😀".repeat(31)],
     ["line2", "😀".repeat(51)], ["line1", " "], ["countryCode", "éX"], ["subdivisionCode", " "]]) {
     expect(validateV2({ ...destination, [field!]: value }, destinationPolicy)).toMatchObject({ code: "address_invalid_input", field });
@@ -87,11 +87,11 @@ it("refuses invalid destinations and diagnoses their cause without committing a 
 
 it("destination_v2_digest_vectors", () => {
   const policy: AddressPolicyV1 = {
-    ...destinationPolicy, countryCode: "PL", allowedSubdivisionCodes: ["PL-LD", "PL-TEST"], subdivisionAliases: {},
+    ...destinationPolicy, countryCode: "XA", allowedSubdivisionCodes: ["XA-01", "XA-02"], subdivisionAliases: {},
     postalRule: { upperAscii: false, stripAsciiSpaces: false,
       alternatives: [["digit", "digit", { literal: "-" }, "digit", "digit", "digit"]] }, classificationRules: [],
   };
-  const address: DestinationAddressV2 = { city: "Ło\u0301dz\u0301", line1: " A 😀 ", line2: "2", postalCode: "00-001", countryCode: "pl", subdivisionCode: "pl-ld" };
+  const address: DestinationAddressV2 = { city: "Ze\u0301lvo\u0301rë", line1: " A 😀 ", line2: "2", postalCode: "00-001", countryCode: "xa", subdivisionCode: "xa-01" };
   function canonical(input: DestinationAddressV2, tag = "commerce.destination.v2") {
     const result = validateV2(input, policy);
     if (result.outcome !== "valid") throw new Error(result.remedy);
@@ -99,16 +99,17 @@ it("destination_v2_digest_vectors", () => {
     return canonicalCatalogDraftJson([tag, { ...rest, country: countryCode, ...(subdivisionCode ? { subdivision: subdivisionCode } : {}) }]);
   }
   const digest = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
-  const golden = '["commerce.destination.v2",{"city":"Łódź","country":"PL","line1":"A 😀","line2":"2","postalCode":"00-001","subdivision":"PL-LD"}]';
+  const golden = '["commerce.destination.v2",{"city":"Zélvórë","country":"XA","line1":"A 😀","line2":"2","postalCode":"00-001","subdivision":"XA-01"}]';
   expect(canonical(address)).toBe(golden);
-  expect(digest(canonical(address))).toBe("0b5c54f82f478aef103c0565c70c085ad6f3df22b61093d039b9ee68f306f191");
+  expect(canonical({ ...address, city: "Zélvórë" })).toBe(golden);
+  expect(digest(canonical(address))).toBe("a2882b0f667052364ed70a0287c97661f94d334da944e62e580a6fbd489646f9");
   const { line2: _line2, subdivisionCode: _subdivision, ...minimal } = address;
-  expect(canonical(minimal)).toBe('["commerce.destination.v2",{"city":"Łódź","country":"PL","line1":"A 😀","postalCode":"00-001"}]');
+  expect(canonical(minimal)).toBe('["commerce.destination.v2",{"city":"Zélvórë","country":"XA","line1":"A 😀","postalCode":"00-001"}]');
   expect(canonical({ ...minimal, line2: "  " })).toBe(canonical(minimal));
   expect(validateV2({ ...address, line2: null }, policy)).toMatchObject({ outcome: "refused", field: "line2" });
   expect(validateV2(null, policy)).toMatchObject({ outcome: "refused", field: "address" });
   expect(canonical({ ...address, line1: 'A "\\' })).toContain(String.raw`"line1":"A \"\\"`);
-  for (const change of [{ line1: "B" }, { line2: "3" }, { city: "Łódź A" }, { postalCode: "00-002" }, { subdivisionCode: "PL-TEST" }]) {
+  for (const change of [{ line1: "B" }, { line2: "3" }, { city: "Zélvórë A" }, { postalCode: "00-002" }, { subdivisionCode: "XA-02" }]) {
     expect(digest(canonical({ ...address, ...change }))).not.toBe(digest(golden));
   }
   expect(digest(canonical(address, "commerce.destination.document.v2"))).not.toBe(digest(golden));
