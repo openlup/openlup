@@ -2713,11 +2713,16 @@ const qualifiedPriceListBasisSelectSql = qualifiedCatalogueReadSql.replace(
   "GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication;",
 );
 
-// The shape admits exactly one grant-only file, byte-identical to the frozen guarded EXECUTE block for public.catalog_price_setup_apply_v2(text,text,uuid) and public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), once per registry, only after earlier issued native slots created both functions, resolved from the registry with their file path and SHA-256 pins and their effective definition after-hashes. No other function, role, privilege or grant option. Changes reached only through dynamic SQL in earlier admitted routines are covered by PB-1's PostgreSQL witness, not the static scan.
-const qualifiedPriceSetupExecuteTargets = [
-  "public.catalog_price_setup_apply_v2(text,text,uuid)",
-  "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)",
-] as const;
+// Each entry admits one exact guarded EXECUTE file after the target definitions are issued.
+const qualifiedExecuteGrants = {
+  "price-setup-execute": [
+    "public.catalog_price_setup_apply_v2(text,text,uuid)",
+    "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)",
+  ],
+  "catalog-publication-subscription-profile-identity-execute": ["public.catalog_publication_subscription_profile_identity(text,integer,text)"],
+} as const;
+const qualifiedExecuteEntry = (row: string) => Object.hasOwn(qualifiedExecuteGrants, row)
+  ? row as keyof typeof qualifiedExecuteGrants : "price-setup-execute";
 
 const checkoutOwnerRow = "catalog-checkout-owner-execute";
 const checkoutOwnerControls = [
@@ -3287,7 +3292,8 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
         path: slot.path, row: slot.row, createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], dataStatements: [],
         [grantOnlyFlag]: true,
       };
-      if (control.slots.some(other => other !== slot && other[grantOnlyFlag])) {
+      if (control.slots.some(other => other !== slot && other[grantOnlyFlag]
+        && (grantOnlyFlag !== "qualifiedPriceSetupExecute" || qualifiedExecuteEntry(other.row) === qualifiedExecuteEntry(slot.row)))) {
         throw new Error(`reviewed native store allows one ${grantOnlyFlag} slot`);
       }
       const grant = grantOnlyFlag === "qualifiedPriceListBasisSelect" ? "qualified price list basis SELECT" : "qualified price setup EXECUTE";
@@ -3791,8 +3797,7 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
 }
 
 function assertExecutePredecessors(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[],
-  preceding: { path: string; bytes: Buffer }[], checkout = false): ForwardBinding[] {
-  const signatures = checkout ? checkoutOwnerRoutines : qualifiedPriceSetupExecuteTargets;
+  preceding: { path: string; bytes: Buffer }[], signatures: readonly string[], checkout = false): ForwardBinding[] {
   const allowed = new Set<string>(signatures);
   const targets = signatures.map(signature => {
     const slot = earlierSlots.find(entry => entry.createdFunctions.some(fn => fn.signature === signature));
@@ -3887,10 +3892,10 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if (slot.qualifiedPriceListBasisSelect && !bytes.equals(Buffer.from(qualifiedPriceListBasisSelectSql))) {
     throw new Error("reviewed native store qualified price list basis SELECT forward must contain only the exact guarded grant with final LF");
   }
+  const executeTargets = qualifiedExecuteGrants[qualifiedExecuteEntry(slot.row)];
   if (slot.qualifiedPriceSetupExecute) {
-    const [apply, lock] = qualifiedPriceSetupExecuteTargets;
     const sql = qualifiedCatalogueReadSql.replace(/GRANT EXECUTE ON FUNCTION [^;]+;/u,
-      `GRANT EXECUTE ON FUNCTION ${apply},\n      ${lock} TO ${cataloguePublicationRole};`);
+      `GRANT EXECUTE ON FUNCTION ${executeTargets.join(",\n      ")} TO ${cataloguePublicationRole};`);
     if (!bytes.equals(Buffer.from(sql))) throw new Error("reviewed native store qualified price setup EXECUTE forward must contain only the exact guarded grant with final LF");
   }
   const earlierSlots = control!.slots.slice(0, control!.slots.indexOf(slot));
@@ -3927,7 +3932,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
   if (checkoutPredecessor) {
     try {
-      const [predecessor, ...other] = assertExecutePredecessors(registry, earlierSlots, preceding, true);
+      const [predecessor, ...other] = assertExecutePredecessors(registry, earlierSlots, preceding, checkoutOwnerRoutines, true);
       if (!predecessor || other.length || predecessor.path !== checkoutPredecessor.path) throw checkoutPredecessorRefusal(checkoutPredecessor.path);
       return { slot, ordinaryProof, checkoutPredecessor: { slot: checkoutPredecessor, pin: predecessor } };
     } catch {
@@ -3938,7 +3943,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     return { slot, ordinaryProof, priceListBasisPredecessor: assertPriceListBasisPredecessor(registry, earlierSlots, preceding) };
   }
   if (slot.qualifiedPriceSetupExecute) {
-    return { slot, ordinaryProof, priceSetupPredecessors: assertExecutePredecessors(registry, earlierSlots, preceding) };
+    return { slot, ordinaryProof, priceSetupPredecessors: assertExecutePredecessors(registry, earlierSlots, preceding, executeTargets) };
   }
   if (slot.previewNoopAcceptance) {
     assertPreviewNoopAcceptance(bytes, preceding);
