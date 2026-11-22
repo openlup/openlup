@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
 import { canonicalCatalogDraftJson, catalogPackManifest, createCatalogDefinitionWriteGuard, createCatalogProductTypeRegistry,
   installCatalogDefinitions, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
-import { observeCatalogSubscriptionCadenceBound, selectCatalogProfileCadence } from "@openlup/platform/subscriptions";
+import { selectCatalogProfileCadence } from "@openlup/platform/subscriptions";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
@@ -12,7 +12,6 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPo
 
 const root = "db/platform/migrations/";
 const profileForward = `${root}20261124210000_subscription_profiles.sql`;
-const cadenceForward = `${root}20261122190000_subscription_cadence_bound.sql`;
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const artifact = readFileSync("examples/neutral-store/owned/catalogue-rules.cjs");
 const ref = { key: "example:repeat", version: 1 };
@@ -28,7 +27,7 @@ const pack = (id: string, profile?: CatalogSubscriptionProfileV1): CatalogPackIn
 });
 const pools: Pool[] = [];
 let container: PostgresContainer, owner: Pool, runtime: Pool;
-let legacyReceipt: Awaited<ReturnType<typeof installCatalogDefinitions>>, olderBound: number | null;
+let legacyReceipt: Awaited<ReturnType<typeof installCatalogDefinitions>>;
 
 beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-profiles-${process.pid}`, password: "synthetic-profiles" });
@@ -38,7 +37,6 @@ beforeAll(async () => {
   const login = new URL(container.connectionString); login.username = "profile_owner";
   owner = new Pool({ connectionString: login.toString() }); pools.push(owner);
   for (const { file } of [manifest.baseline, ...manifest.forward]) {
-    if (file === cadenceForward) olderBound = await observeCatalogSubscriptionCadenceBound(owner);
     if (file === profileForward) legacyReceipt = await installCatalogDefinitions(owner, pack("reference-only"));
     await owner.query(readFileSync(file, "utf8"));
   }
@@ -112,10 +110,7 @@ it("requires the matching installed declaration in an opted-in metadata readines
   expect(write).toHaveBeenCalledTimes(1);
 });
 
-it("SP1-D-026 refuses reserved months at the native install boundary and observes fixed-day limits", async () => {
-  expect(olderBound).toBe(90);
-  const nativeMaxFixedDays = await observeCatalogSubscriptionCadenceBound(runtime);
-  expect(nativeMaxFixedDays).toBe(3660);
+it("SP1-D-026 refuses reserved months and out-of-range declarations at install", async () => {
   const profile = { ...declaration, key: "example:limits", maxFixedDays: 120 };
   const input = pack("cadence", profile);
   const calendar = { schemaVersion: 1, kind: "calendar_months", months: 1 } as const;
@@ -123,19 +118,33 @@ it("SP1-D-026 refuses reserved months at the native install boundary and observe
   await expect(installCatalogDefinitions(owner, pack("cadence", unsupported))).rejects.toMatchObject({
     issue: { code: "cadence_kind_unsupported", path: "/subscriptionProfileDefinitions/0/allowedCadences/0" },
   });
+  const excessive = [
+    { definition: { ...profile, allowedCadences: [fixed(3661)] }, path: "allowedCadences/0/days" },
+    { definition: { ...profile, maxFixedDays: 3661 }, path: "maxFixedDays" },
+  ];
+  for (const { definition, path } of excessive) {
+    await expect(installCatalogDefinitions(owner, pack("cadence", definition))).rejects.toMatchObject({
+      issue: { code: "definition_profile_invalid", path: `/subscriptionProfileDefinitions/0/${path}` },
+      fix: expect.stringContaining("1 to 3660"),
+    });
+  }
   const { digest: _digest, ...projection } = catalogPackManifest(input);
   const sqlInstall = (definition: CatalogSubscriptionProfileV1, profileDigest: string) => owner.query(
     "SELECT public.catalog_definition_install($1,$2,$3) AS receipt", [input.id, input.version, {
       manifest: canonicalCatalogDraftJson({ ...projection, subscriptionProfileDefinitions: [{ ...definition, profileDigest }] }),
       types: [], taxClasses: [],
     }]);
+  for (const { definition } of excessive) {
+    const digest = createHash("sha256").update(canonicalCatalogDraftJson(definition)).digest("hex");
+    await expect(sqlInstall(definition, digest)).rejects.toMatchObject({ message: "definition_profile_invalid", code: "22023" });
+  }
   const monthDigest = createHash("sha256").update(canonicalCatalogDraftJson(unsupported)).digest("hex");
   await expect(sqlInstall(unsupported, monthDigest)).rejects.toMatchObject({ message: "cadence_kind_unsupported", code: "22023" });
   await expect(sqlInstall(profile, "f".repeat(64))).rejects.toMatchObject({ message: "definition_profile_invalid", code: "22023" });
   expect(await readInstalledCatalogSubscriptionProfile(owner, profile)).toBeNull();
   await installCatalogDefinitions(owner, input);
   const installed = (await readInstalledCatalogSubscriptionProfile(owner, profile))!;
-  const selection = { mode: "recurring", profileRef: profile, profile: { declaration: profile, installed }, nativeMaxFixedDays,
+  const selection = { mode: "recurring", profileRef: profile, profile: { declaration: profile, installed },
     storeChoices: choices, skuChoices: choices, offerChoices: choices, commandChoices: choices } as const;
   expect(selectCatalogProfileCadence({ ...selection, choice: fixed(120) })).toEqual({ cadenceDays: 120 });
   expect(selectCatalogProfileCadence({ ...selection, choice: fixed(121) })).toEqual({ code: "cadence_not_offered" });
@@ -152,28 +161,35 @@ it("SP1-D-026 refuses reserved months at the native install boundary and observe
   }
 });
 
-it("refuses an installed preview with an earlier guard or a commented-out bound", async () => {
+it("SP1-D-026 leaves a narrower installed cadence limit to the native write guard", async () => {
   const connection = await owner.connect();
+  const client = randomUUID(), subscription = randomUUID(), priceList = randomUUID();
+  const profile = { ...declaration, key: "example:narrow-native-limit", allowedCadences: [fixed(90), fixed(91)] };
   try {
     await connection.query("BEGIN");
-    const { rows } = await connection.query<{ definition: string }>(`SELECT pg_get_functiondef(
-      'public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)'::regprocedure) AS definition`);
-    const original = rows[0].definition;
-    const guard = "  IF v_cadence_days NOT BETWEEN 1 AND 3660 OR v_expected_version < 1 THEN";
-    expect(original).toContain(guard);
-    for (const replacement of [
-      `  IF v_cadence_days > 120 THEN RAISE EXCEPTION 'subscription_edit_invalid_request'; END IF;
-${guard}`,
-      `  /*
-${guard}
-  */
-  IF v_cadence_days < 1 OR v_cadence_days > 90 OR v_expected_version < 1 THEN`,
-    ]) {
-      await connection.query(original.replace(guard, replacement));
-      expect(await observeCatalogSubscriptionCadenceBound(connection)).toBeNull();
-    }
+    // Restore the original issued quote constraint in this fixture transaction.
+    await connection.query(`ALTER TABLE public.subscription_edit_quotes DROP CONSTRAINT subscription_edit_quotes_cadence_check;
+      ALTER TABLE public.subscription_edit_quotes ADD CONSTRAINT subscription_edit_quotes_cadence_check
+        CHECK (proposed_cadence_days BETWEEN 1 AND 90)`);
+    await installCatalogDefinitions(connection, pack("narrow-native-limit", profile));
+    const installed = (await readInstalledCatalogSubscriptionProfile(connection, profile))!;
+    const selection = { mode: "recurring", profileRef: profile, profile: { declaration: profile, installed },
+      storeChoices: profile.allowedCadences, skuChoices: profile.allowedCadences,
+      offerChoices: profile.allowedCadences, commandChoices: profile.allowedCadences } as const;
+    expect(selectCatalogProfileCadence({ ...selection, choice: fixed(91) })).toEqual({ cadenceDays: 91 });
+
+    await connection.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `${client}@example.invalid`]);
+    await connection.query(`INSERT INTO public.price_lists(id,name,region_code,currency,valid_from)
+      VALUES($1,'Cadence fixture','ZZ','XXX',now())`, [priceList]);
+    await connection.query(`INSERT INTO public.subscriptions(id,client_id,status,cadence_days,next_cycle_at,started_at,price_list_id,currency_code)
+      VALUES($1,$2,'active',90,now()+interval '90 days',now(),$3,'XXX')`, [subscription, client, priceList]);
+    const writeQuote = (days: number) => connection.query(`INSERT INTO public.subscription_edit_quotes(subscription_id,idempotency_key,
+      request_fingerprint,quote_hash,expected_template_version,proposed_lines,proposed_cadence_days,current_total_minor,new_total_minor,currency_code,expires_at)
+      VALUES($1,$2,$3,$3,1,'[]',$4,100,100,'XXX',now()+interval '15 minutes') RETURNING proposed_cadence_days`,
+    [subscription, `cadence-quote-${days}`, createHash("sha256").update(String(days)).digest("hex"), days]);
+    expect((await writeQuote(90)).rows).toEqual([{ proposed_cadence_days: 90 }]);
+    await expect(writeQuote(91)).rejects.toMatchObject({ code: "23514", constraint: "subscription_edit_quotes_cadence_check" });
   } finally {
     try { await connection.query("ROLLBACK"); } finally { connection.release(); }
   }
-  expect(await observeCatalogSubscriptionCadenceBound(runtime)).toBe(3660);
 });

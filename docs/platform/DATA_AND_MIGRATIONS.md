@@ -620,6 +620,12 @@ and target transaction capabilities remain host-owned; an opaque catalogue label
 does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
 
+Connected restore keeps an append-only list of admitted source inventories.
+A forward that changes the qualified inventory appends the preceding main
+inventory when every captured row shape is compatible without conversion.
+If the source shape differs, restore reports `schema_conflict` with the
+remedy “upgrade the source, then capture.”
+
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
 takes its final finite connected-table graph and application's complete private
 `objects/tmp` capture only after its finite source writers and observed server
@@ -1022,7 +1028,8 @@ digest format and contents.
 The exact-key lookup uses the existing migration owner. Its result contains
 the profile and policy identities. Connected restore verifies the live target
 inventory before calling the receipt validator. The validator checks all
-retained manifest bindings before restore writes, and insert guards run in an
+retained manifest bindings and canonical pack bytes before restore writes.
+Insert guards run in an
 explicit `READ COMMITTED` transaction.
 There is no data backfill. See [Install subscription profiles](../../packages/platform/README.md#install-subscription-profiles).
 

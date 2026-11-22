@@ -31,11 +31,14 @@ BEGIN
     RETURN false;
   END IF;
   manifest := canonical::jsonb;
-  RETURN coalesce(manifest->'id' = to_jsonb(p_pack_id)
+  RETURN coalesce(public.catalog_publication_canonical(manifest, 0) = canonical
+    AND manifest->'id' = to_jsonb(p_pack_id)
     AND manifest->'version' = to_jsonb(p_pack_version)
     AND p_receipt->'packId' = manifest->'id' AND p_receipt->'packVersion' = manifest->'version'
     AND p_receipt->'types' = manifest->'types'
     AND p_receipt->'subscriptionProfileDefinitions' = manifest->'subscriptionProfileDefinitions', false);
+EXCEPTION WHEN invalid_parameter_value OR check_violation THEN
+  RETURN false;
 END;
 $$;
 

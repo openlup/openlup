@@ -11,7 +11,8 @@ import { createNativeRenewalCodec, createPostgresRenewalStore, createPostgresRen
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
 import { createPostgresFulfillmentStockSyncPort } from "@openlup/platform/fulfillment";
 import { createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
-import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { createPlatformPostgresMigrationRunner, type PlatformPostgresMigrationRunnerOptions } from "@openlup/platform/migrations";
+import { readPlatformMigrationManifest, readPlatformMigrations, selectPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
@@ -53,7 +54,7 @@ export function storeJourneyResources() {
   const zone = ["Etc/GMT-9", "Etc/GMT+5"].includes(runnerZone) ? runnerZone : undefined;
   const pool = (connectionString: string) => { const value = new Pool({ connectionString }); pools.push(value); return value; };
   return {
-    async installation(label: string): Promise<JourneyInstallation> {
+    async installation(label: string, catalog?: PlatformPostgresMigrationRunnerOptions["catalog"]): Promise<JourneyInstallation> {
       if (!await dockerAvailable()) throw new Error("Store journey requires disposable PostgreSQL; Docker absence is missing proof");
       const container = await runPostgresContainer({ name: `store-journey-${label}-${process.pid}`, password: "synthetic-journey",
         ...(zone ? { command: ["postgres", "-c", `timezone=${zone}`] } : {}) });
@@ -70,12 +71,16 @@ export function storeJourneyResources() {
         return value.toString();
       };
       const owner = pool(url(journeySelection.migrationLogin, true));
-      const runner = createPostgresMigrationRunner({ connectionString: url(journeySelection.migrationLogin) },
-        { installation: journeySelection, poolFactory: () => owner });
-      expect(await runner.apply()).toEqual({ applied: [manifest.baseline, ...manifest.forward].map(unit => unit.file) });
+      const selected = catalog ? selectPlatformMigrationManifest(catalog.readManifest(process.cwd()) as PlatformMigrationManifest,
+        "qualified-v2", { migrationIsBootstrap: false, hasRestore: true }) : manifest;
+      const runner = createPlatformPostgresMigrationRunner({ connectionString: url(journeySelection.migrationLogin) }, {
+        installation: journeySelection, poolFactory: () => owner,
+        catalog: catalog ?? { readMigrations: readPlatformMigrations, readManifest: readPlatformMigrationManifest },
+      });
+      expect(await runner.apply()).toEqual({ applied: [selected.baseline, ...selected.forward].map(unit => unit.file) });
       expect((await runner.status()).pending).toEqual([]);
       expect((await owner.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
-        .toEqual([manifest.baseline, ...manifest.forward].map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
+        .toEqual([selected.baseline, ...selected.forward].map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })));
       await bootstrap.end();
       const runtimeUrl = url(journeySelection.runtimeLogin), runtime = pool(runtimeUrl);
       await assertJourneyRuntime(runtime);
@@ -219,8 +224,8 @@ export async function captureAndActivateJourney(store: JourneyInstallation, draf
 }
 export type StoreJourney = Awaited<ReturnType<typeof captureAndActivateJourney>>;
 
-export async function captureStoreJourney(owner: Pool, sourceId: string) {
-  return captureConnectedNativeStore({ sourceId, catalogueId: manifest.objectInventorySha256, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+export async function captureStoreJourney(owner: Pool, sourceId: string, catalogueId = manifest.objectInventorySha256) {
+  return captureConnectedNativeStore({ sourceId, catalogueId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
     source: { async withSnapshot(work) {
       const client = await owner.connect();
       try {

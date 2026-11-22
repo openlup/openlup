@@ -15,7 +15,6 @@ export interface CatalogProfileCadenceInput {
   readonly skuChoices: readonly CadenceChoiceV1[];
   readonly offerChoices: readonly CadenceChoiceV1[];
   readonly commandChoices: readonly CadenceChoiceV1[];
-  readonly nativeMaxFixedDays: number | null;
   readonly profileRef?: CatalogSubscriptionProfileRef;
   readonly profile?: { readonly declaration: CatalogSubscriptionProfileV1; readonly installed: InstalledCatalogSubscriptionProfile };
 }
@@ -24,14 +23,13 @@ export interface CatalogProfileCadenceInput {
 export type CatalogProfileCadenceResult =
   | { readonly cadenceDays: number }
   | { readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch"
-    | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported"
-    | "profile_cadence_bound_unavailable" };
+    | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported" };
 
 /** Verify a day choice before passing its projection to the owning day-based operation.
  * @experimental
  */
 export function selectCatalogProfileCadence(input: CatalogProfileCadenceInput): CatalogProfileCadenceResult {
-  const { nativeMaxFixedDays, profileRef, profile } = input;
+  const { profileRef, profile } = input;
   if (input.mode === "prepaid" && !profileRef && !profile) {
     return { code: NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.refusalCode };
   }
@@ -40,9 +38,6 @@ export function selectCatalogProfileCadence(input: CatalogProfileCadenceInput): 
   if (!choice || choice.kind !== "fixed_days") return { code: "cadence_not_offered" };
   const { days } = choice;
   if (input.cadenceDays !== undefined && input.cadenceDays !== days) return { code: "cadence_day_projection_mismatch" };
-  if (nativeMaxFixedDays === null || !Number.isSafeInteger(nativeMaxFixedDays) || nativeMaxFixedDays < 1) {
-    return { code: "profile_cadence_bound_unavailable" };
-  }
   const choices = [input.storeChoices, input.skuChoices, input.offerChoices, input.commandChoices];
   if (profileRef || profile) {
     if (!profile || !profileRef || profileRef.key !== profile.declaration.key || profileRef.version !== profile.declaration.version) {
@@ -60,7 +55,7 @@ export function selectCatalogProfileCadence(input: CatalogProfileCadenceInput): 
     if (declared.profile.maxFixedDays !== undefined && days > declared.profile.maxFixedDays) return { code: "cadence_not_offered" };
     choices.push(declared.profile.allowedCadences);
   }
-  if (days > nativeMaxFixedDays || !choices.every(list => list.some(option =>
+  if (!choices.every(list => list.some(option =>
     option.schemaVersion === 1 && option.kind === "fixed_days" && option.days === days))) return { code: "cadence_not_offered" };
   return { cadenceDays: days };
 }

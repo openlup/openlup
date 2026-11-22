@@ -129,7 +129,6 @@ export interface CatalogProfileCadenceInput {
     readonly skuChoices: readonly CadenceChoiceV1[];
     readonly offerChoices: readonly CadenceChoiceV1[];
     readonly commandChoices: readonly CadenceChoiceV1[];
-    readonly nativeMaxFixedDays: number | null;
     readonly profileRef?: CatalogSubscriptionProfileRef;
     readonly profile?: {
         readonly declaration: CatalogSubscriptionProfileV1;
@@ -140,7 +139,7 @@ export interface CatalogProfileCadenceInput {
 export type CatalogProfileCadenceResult = {
     readonly cadenceDays: number;
 } | {
-    readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch" | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported" | "profile_cadence_bound_unavailable";
+    readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch" | "profile_missing" | "policy_binding_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported";
 };
 /** Verify a day choice before passing its projection to the owning day-based operation.
  * @experimental
@@ -628,7 +627,6 @@ export declare function createExactSubscriptionRepricer(deps: PackageEditQuotePo
 ```ts
 export { renewalIdentity } from "./renewalIdentity.js";
 export { selectCatalogProfileCadence, type CatalogProfileCadenceInput, type CatalogProfileCadenceResult } from "./catalogProfileBinding.js";
-export { observeCatalogSubscriptionCadenceBound } from "./observeProfileCadenceBound.js";
 export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
@@ -937,15 +935,6 @@ export declare function nativeSubscriptionSchema(catalogue: {
     version: string;
     migration: string;
 }): RequiredSchema;
-```
-## dist/subscriptions/observeProfileCadenceBound.d.ts
-
-```ts
-import type { SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
-/** Read the bound for an exact known native preview and quote-check installation.
- * @experimental
- */
-export declare function observeCatalogSubscriptionCadenceBound(db: SubscriptionQueryExecutor): Promise<number | null>;
 ```
 ## dist/subscriptions/packageEditContracts.d.ts
 

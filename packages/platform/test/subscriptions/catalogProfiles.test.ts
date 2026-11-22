@@ -3,7 +3,7 @@ import { parseCadenceChoiceV1, type CadenceChoiceV1 } from "@openlup/core/subscr
 import { describe, expect, it, vi } from "vitest";
 import { catalogPackManifest } from "../../src/catalog/catalogPackManifest.js";
 import { catalogSubscriptionProfileIdentity } from "../../src/catalog/installedSubscriptionProfiles.js";
-import { createPostgresSubscriptionCommandStore, observeCatalogSubscriptionCadenceBound, selectCatalogProfileCadence, type CatalogProfileCadenceInput } from "../../src/subscriptions/index.js";
+import { createPostgresSubscriptionCommandStore, selectCatalogProfileCadence, type CatalogProfileCadenceInput } from "../../src/subscriptions/index.js";
 
 const fixed = (days: number) => ({ schemaVersion: 1, kind: "fixed_days", days } as const);
 const calendar = { schemaVersion: 1, kind: "calendar_months", months: 1 } as const;
@@ -14,7 +14,7 @@ const declaration: CatalogSubscriptionProfileV1 = {
 };
 const installed = catalogSubscriptionProfileIdentity(declaration);
 const request = (choice: CadenceChoiceV1): CatalogProfileCadenceInput => ({
-  choice, mode: "recurring", nativeMaxFixedDays: 3660,
+  choice, mode: "recurring",
   storeChoices: declaration.allowedCadences, skuChoices: declaration.allowedCadences,
   offerChoices: declaration.allowedCadences, commandChoices: declaration.allowedCadences,
   profileRef: ref, profile: { declaration, installed },
@@ -66,8 +66,6 @@ describe("SP1-D-026 fixed-day bounds", () => {
     const profile = { declaration: capped, installed: catalogSubscriptionProfileIdentity(capped) };
     expect(selectCatalogProfileCadence({ ...request(fixed(120)), profile })).toEqual({ cadenceDays: 120 });
     expect(selectCatalogProfileCadence({ ...request(fixed(121)), profile })).toEqual({ code: "cadence_not_offered" });
-    expect(selectCatalogProfileCadence({ ...request(fixed(121)), nativeMaxFixedDays: 120 })).toEqual({ code: "cadence_not_offered" });
-    expect(selectCatalogProfileCadence({ ...request(fixed(1)), nativeMaxFixedDays: null })).toEqual({ code: "profile_cadence_bound_unavailable" });
   });
 
   it("round-trips the reserved choice but refuses it at install and execution", () => {
@@ -83,13 +81,6 @@ describe("SP1-D-026 fixed-day bounds", () => {
     expect(selectCatalogProfileCadence({ ...request(fixed(30)), cadenceDays: 31 })).toEqual({ code: "cadence_day_projection_mismatch" });
     expect(validateCatalogSubscriptionProfile({ ...declaration, allowedCadences: [fixed(30), fixed(30)] }))
       .toMatchObject({ issue: { code: "definition_profile_invalid" } });
-  });
-
-  it("treats missing, unrecognized and inaccessible database evidence as unavailable", async () => {
-    for (const query of [async () => ({ rows: [] }), async () => ({ rows: [{ command: "unknown" }] }),
-      async () => { throw Object.assign(new Error("permission denied"), { code: "42501" }); }]) {
-      await expect(observeCatalogSubscriptionCadenceBound({ query })).resolves.toBeNull();
-    }
   });
 });
 

@@ -1330,13 +1330,12 @@ for every referenced profile. The existing reference-only pack form remains
 available.
 
 `readInstalledCatalogSubscriptionProfile` reads one exact key and version
-with the migration-owner executor. At a day-based boundary, supply that identity,
-the declaration and the bound from `observeCatalogSubscriptionCadenceBound`
-to `selectCatalogProfileCadence`. The observer recognizes complete installed
-preview definitions and the validated quote check, and returns no bound for an
-unknown combination. The selector returns a whole-day projection when the choice
-is offered by every supplied owner. The selector is available
-for explicit composition in `@openlup/platform/subscriptions`.
+with the migration-owner executor. Profile installation requires whole numbers
+from 1 to 3660 for fixed-day choices and for an optional `maxFixedDays`.
+At a day-based boundary, supply the installed identity and declaration to
+`selectCatalogProfileCadence` from `@openlup/platform/subscriptions`. The selector
+returns a whole-day projection when every supplied owner offers the choice.
+The native write guards enforce the limits of the installed database.
 
 ### Read governed offer memberships
 

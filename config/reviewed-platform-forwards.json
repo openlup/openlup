@@ -9157,7 +9157,7 @@
     },
     {
       "path": "db/platform/migrations/20261124210000_subscription_profiles.sql",
-      "sha256": "751515da1e00d1664bacee1917c9d33d70ce85fc26cf430e2c141167a923a127",
+      "sha256": "34fcf90101042d8e2d45c8dc61eb4fa86cf12e0ead02f5495c71e27bde37e654",
       "functions": [
         {
           "signature": "public.catalog_definition_install(text,integer,jsonb)",
@@ -9172,7 +9172,7 @@
         {
           "signature": "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "3dc1beb748f9815c37b72794ac41b5298392639ce16c84a0c9aacbafebf4a35d"
+          "afterSha256": "313b5be738796a98e6f2d8e1d9b56f6de3f628975e492906e9fa972cc9af5001"
         },
         {
           "signature": "public.catalog_definition_install_profile_immutable()",

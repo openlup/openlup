@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readPlatformMigrationManifest, readPlatformMigrations, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -233,4 +234,46 @@ it("restores the pre-ledger packet shape with an empty ledger and requires it in
     .toEqual([{ name: "Predecessor product" }]);
   expect(await ledgerRows(target.owner)).toEqual([]);
   expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: true });
+}, 105_000);
+
+it("restores a capture from checkout-ledger main and gives the upgrade remedy for changed row shapes", async () => {
+  const checkoutForward = "db/platform/migrations/20261124200000_checkout_attempt_ledger.sql";
+  const baseInventory = "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385";
+  const root = process.cwd();
+  const manifest = readPlatformMigrationManifest(root) as PlatformMigrationManifest;
+  if (manifest.schemaVersion !== 3) throw new Error("Expected all three installation histories");
+  const excluded = new Set<string>();
+  for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
+    const end = plan.forward.findIndex(({ file }) => file === checkoutForward);
+    expect(end).toBeGreaterThan(-1);
+    for (const { file } of plan.forward.splice(end + 1)) excluded.add(file);
+  }
+  manifest.qualified.objectInventorySha256.separateMigrator.withRestore = baseInventory;
+  const { migrations, errors } = readPlatformMigrations(root);
+  const source = await resources.installation("checkout-ledger-main-source", {
+    readManifest: () => manifest,
+    readMigrations: () => ({ migrations: migrations.filter(({ file }) => !excluded.has(file)), errors }),
+  });
+  expect(await attempt(source.runtime)).toEqual(allowed);
+  const savedLedger = await ledgerRows(source.owner);
+  const packet = await captureStoreJourney(source.owner, "checkout-ledger-main-source", baseInventory);
+  const targets = await resources.targetTemplate("checkout-ledger-main-target");
+  const target = await targets.nextTarget();
+  const freshTarget = await captureStoreJourney(target.owner, "checkout-ledger-main-target");
+  const restore = (retained: typeof packet) => restoreConnectedNativeStore({
+    owner: target.owner, installation: journeySelection, packet: retained, freshTarget,
+  });
+
+  await source.owner.query(`ALTER TABLE ${table} ADD COLUMN synthetic_shape_change text`);
+  const changed = await captureStoreJourney(source.owner, "checkout-ledger-changed-shape", baseInventory);
+  await expect(restore(changed)).rejects.toMatchObject({
+    code: "schema_conflict", table: "commerce_checkout_attempt_ledger", remedy: "upgrade the source, then capture",
+  });
+  expect(await ledgerRows(target.owner)).toEqual([]);
+
+  expect(await restore(packet)).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
+  const ledger = packet.compatible.tables.find(entry => entry.table === "commerce_checkout_attempt_ledger")!;
+  expect(ledger.rows).toHaveLength(1);
+  expect(await ledgerRows(target.owner)).toEqual(savedLedger);
+  expect(await restore(packet)).toMatchObject({ replayed: true });
 }, 105_000);

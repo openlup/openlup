@@ -2,6 +2,7 @@ import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogPackInput } from "./contracts/catalogPack.js";
 import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInstall.js";
 import { canonicalCatalogDraftJson } from "./contracts/draft.js";
+import { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 import { catalogDefinitionJson } from "./catalogDefinitionDigest.js";
 import { catalogPackManifest } from "./catalogPackManifest.js";
 import { catalogPackIssues } from "./productTypeIssues.js";
@@ -12,7 +13,10 @@ import { verifyCatalogRulesAtInstall } from "./publicationRules.js";
  */
 export async function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt> {
   const issue = catalogPackIssues(pack)[0];
-  if (issue) throw Object.assign(new Error("invalid_catalog_pack"), { issue });
+  if (issue) {
+    throw Object.assign(new Error("invalid_catalog_pack"), { issue,
+      ...(issue.code === "definition_profile_invalid" && { fix: CATALOG_CONFORMANCE_RULES[issue.code].fix }) });
+  }
   verifyCatalogRulesAtInstall(pack);
   const manifest = catalogPackManifest(pack);
   if (!Number.isSafeInteger(pack.version) || pack.version < 1 || pack.version > 2147483647

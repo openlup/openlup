@@ -31,6 +31,20 @@ const beforeCheckoutAttemptLedger = {
   "installer-managed": "955596b9524fa304df1240b3e170d920c1ba27aefc366fb436c78bf7abb326b5",
   "operator-provisioned": "443cb07abc88ad43dd3c712310b31204f242b50793fc40d0a5e5ba8765995017",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
+type RestoreProfile = keyof typeof beforePublicationCommands;
+// Append immediately preceding main inventories when a forward preserves
+// every captured row shape. The two older pins retain their existing conversions.
+const admittedRestoreSourceInventories: readonly Record<RestoreProfile, string>[] = [
+  beforePublicationCommands,
+  beforeCheckoutAttemptLedger,
+  // Main after the checkout attempt ledger (#980).
+  {
+    bootstrap: "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20",
+    separate: "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385",
+    "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
+    "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
+  },
+];
 const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
@@ -317,7 +331,9 @@ export async function restoreConnectedNativeStore(input: {
   if (installation.generation === "qualified-admin") assertQualifiedAdminPostgresSelection(installation);
   const profile = installation.generation === "qualified-admin" ? installation.roleMode
     : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
-  const packet = copyCapture(input.packet, profile), fresh = copyCapture(input.freshTarget);
+  const manifest = expectedManifest(installation);
+  const packet = copyCapture(input.packet, { profile, currentCatalogueId: manifest.objectInventorySha256 });
+  const fresh = copyCapture(input.freshTarget);
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
   const source = tables(packet), baseline = tables(fresh);
@@ -349,12 +365,9 @@ export async function restoreConnectedNativeStore(input: {
       pg_catalog.pg_current_xact_id()::pg_catalog.text AS xid,pg_catalog.current_setting('session_replication_role') AS mode`)).rows[0]!;
     if (facts.mode !== "origin" || facts.cluster !== fresh.observation.cluster || facts.database !== fresh.observation.database
       || facts.login !== fresh.observation.login || facts.login !== installation.migrationLogin) fail("invalid_input");
-    const manifest = expectedManifest(installation);
     const expectedLedger = [manifest.baseline, ...manifest.forward];
     const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
-    if (fresh.compatible.catalogueId !== manifest.objectInventorySha256
-      || !older && packet.compatible.catalogueId !== beforeCheckoutAttemptLedger[profile]
-        && packet.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
+    if (fresh.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");
     if (ledger.rows.length !== expectedLedger.length
@@ -401,7 +414,7 @@ export async function restoreConnectedNativeStore(input: {
       const convert = older && table === "catalog_sku_identifiers";
       const expected = convert ? actual.slice(0, -1) : actual;
       if (JSON.stringify(expected) !== JSON.stringify(stored.columns.map(({ name, type }) => ({ name, type }))))
-        fail("schema_conflict", table);
+        failSourceSchema(table);
       if (convert) {
         if (actual.at(-1)?.name !== "scheme" || actual.at(-1)?.type !== "text") fail("schema_conflict", table);
         const { rows } = await client.query<{ row: string }>(`SELECT (value::jsonb || '{"scheme":null}'::jsonb)::text AS row
@@ -571,7 +584,9 @@ export async function restoreConnectedNativeStore(input: {
   return result;
 }
 
-function copyCapture(input: ConnectedNativeStoreCapture, sourceProfile?: keyof typeof beforePublicationCommands): ConnectedNativeStoreCapture {
+function copyCapture(input: ConnectedNativeStoreCapture,
+  source?: { profile: RestoreProfile; currentCatalogueId: string },
+): ConnectedNativeStoreCapture {
   try {
     const copy = JSON.parse(JSON.stringify(input)) as ConnectedNativeStoreCapture;
     const { sha256, ...body } = copy;
@@ -593,10 +608,16 @@ function copyCapture(input: ConnectedNativeStoreCapture, sourceProfile?: keyof t
     }
     const all = tables(copy);
     const catalogueId = copy.compatible.catalogueId;
-    const predatesLedger = sourceProfile !== undefined && (catalogueId === beforePublicationCommands[sourceProfile]
-      || catalogueId === beforeCheckoutAttemptLedger[sourceProfile]);
+    const historical = source !== undefined && catalogueId !== source.currentCatalogueId;
+    if (historical && !admittedRestoreSourceInventories.some(inventory => inventory[source.profile] === catalogueId))
+      failSourceSchema();
+    const predatesLedger = source !== undefined && (catalogueId === beforePublicationCommands[source.profile]
+      || catalogueId === beforeCheckoutAttemptLedger[source.profile]);
     const expected = predatesLedger ? connectedNativeStoreTables.filter(table => table !== checkoutAttemptLedger) : connectedNativeStoreTables;
-    if (all.size !== expected.length || expected.some(table => !all.has(table))) fail("invalid_input");
+    if (all.size !== expected.length || expected.some(table => !all.has(table))) {
+      if (historical) failSourceSchema();
+      fail("invalid_input");
+    }
     let count = 0, bytes = 0;
     for (const table of all.values()) {
       for (const column of table.columns) quoted(column.name);
@@ -808,6 +829,11 @@ function quoted(value: string): string {
   return `"${value}"`;
 }
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
+function failSourceSchema(table?: string): never {
+  const error = new PostgresTransferError("schema_conflict", table);
+  const remedy = "upgrade the source, then capture";
+  throw Object.assign(error, { message: `${error.message}: ${remedy}`, remedy });
+}
 function fail(code: "invalid_input" | "schema_conflict" | "target_conflict" | "unsupported_table" | "limit_exceeded" | "insert_trigger_requires_owner", table?: string): never {
   throw new PostgresTransferError(code, table);
 }

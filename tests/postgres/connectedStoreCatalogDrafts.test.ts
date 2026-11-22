@@ -5,7 +5,6 @@ import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { canonicalCatalogDraftJson, installCatalogDefinitions, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
   type CatalogDraftPublicationStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
-import { observeCatalogSubscriptionCadenceBound } from "@openlup/platform/subscriptions";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
   type JourneyInstallation } from "../helpers/storeJourney.js";
@@ -159,7 +158,6 @@ beforeAll(async () => {
     VALUES($1,17,'example:stale',1,0,'text','stale-projection-must-not-travel')`, [liveId]);
   target = await resources.installation("catalog-draft-target");
   pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
-  expect(await observeCatalogSubscriptionCadenceBound(target.runtime)).toBe(3660);
   before = await journeyCensus(source.owner);
   expect(before.catalog_attribute_projection).toHaveLength(1);
   // The whole target census must match retained authority with an empty projection.
@@ -272,6 +270,27 @@ it("U-1 refuses stripped profile evidence under the original digest before write
   for (const pack of packs) {
     expect(await installCatalogDefinitions(destination.owner, pack)).toEqual(await installCatalogDefinitions(source.owner, pack));
   }
+}, postgresSetupTimeoutMs);
+
+it("C-2 rejects a noncanonical profile manifest even when its digest matches", async () => {
+  const destination = await resources.installation("catalog-canonical-manifest-target");
+  const freshTarget = await captureStoreJourney(destination.owner, "pristine:catalog-canonical-manifest");
+  const original = await journeyCensus(destination.owner);
+  const corrupted = await withChangedInstallReceipts(row => {
+    const value = JSON.parse(row);
+    if (!value.receipt.subscriptionProfileDefinitions) return row;
+    value.receipt.canonicalManifest = ` ${value.receipt.canonicalManifest}`;
+    const digest = `profiles-v1:${createHash("sha256").update(value.receipt.canonicalManifest).digest("hex")}`;
+    value.manifest_digest = digest;
+    value.receipt.manifestDigest = digest;
+    return JSON.stringify(value);
+  });
+  const statements = await traceRestore(destination.owner, async () => {
+    await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet: corrupted, freshTarget }))
+      .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: "catalog_profile_install_manifest_mismatch" });
+  });
+  expectNoWrites(statements);
+  expect(await journeyCensus(destination.owner)).toEqual(original);
 }, postgresSetupTimeoutMs);
 
 const validator = "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)";
