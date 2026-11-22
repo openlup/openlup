@@ -247,7 +247,7 @@ async function obligations(db: PoolClient) {
     "SELECT public.catalog_bound_obligations_v2($1) AS result", [data.skuId])).rows[0]!.result;
 }
 
-async function obligationOrder(db: PoolClient, client: string, status: string, skuId = data.skuId) {
+async function obligationOrder(db: PoolClient, client: string, status: string, skuId: string = data.skuId) {
   const order = randomUUID();
   await db.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,$3,'XXX',100)",
     [order, client, status]);
