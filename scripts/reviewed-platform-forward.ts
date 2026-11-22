@@ -2730,9 +2730,9 @@ const checkoutOwnerControls = [
 const isCheckoutOwnerSlot = (slot: NativeStoreSlot) => slot.row === checkoutOwnerRow || checkoutOwnerGrantPath.test(slot.path)
   || Array.isArray(slot.grantOnlyFunctions) && slot.grantOnlyFunctions.some(entry =>
     [entry?.grantTo, entry?.revokeFrom].some(roles => Array.isArray(roles) && roles.includes(checkoutOwnerLogin)));
-const checkoutSlotRefusal = (path: string) => new Error(`n1_checkout_slot_invalid: ${path}. Use the single reviewed checkout-owner grant-only slot and pin.`);
-const checkoutForwardRefusal = (path: string) => new Error(`n1_checkout_forward_unverified: ${path}. Replay the reviewed grant bytes after landing the rule and its definitions.`);
-const checkoutPredecessorRefusal = (subject: string) => new Error(`n1_checkout_predecessor_unverified: ${subject}. Recover the original issued definition and its approval binding.`);
+const checkoutSlotRefusal = (path: string) => new Error(`checkout_owner_slot_invalid: ${path}. Use the single reviewed checkout-owner grant-only slot and pin.`);
+const checkoutForwardRefusal = (path: string) => new Error(`checkout_owner_forward_unverified: ${path}. Replay the reviewed grant bytes after landing the rule and its definitions.`);
+const checkoutPredecessorRefusal = (subject: string) => new Error(`checkout_owner_predecessor_unverified: ${subject}. Recover the original issued definition and its approval binding.`);
 
 const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
 

@@ -82,7 +82,7 @@ it.each([
     if (label !== "TEMP") await admin.query("REVOKE TEMP ON DATABASE postgres FROM PUBLIC");
     if (change) await admin.query(change);
     await admittedSession(client => expect(assertQualifiedPostgresSession(client, [], selection, lockName))
-      .rejects.toThrow(new RegExp(`n1_checkout_login_unready: openlup_checkout_owner.*${reason.source}`, "u")));
+      .rejects.toThrow(new RegExp(`checkout_owner_login_unready: openlup_checkout_owner.*${reason.source}`, "u")));
   } finally {
     if (reset) await admin.query(reset);
     await admin.query("GRANT TEMP ON DATABASE postgres TO PUBLIC; DROP ROLE openlup_checkout_owner");

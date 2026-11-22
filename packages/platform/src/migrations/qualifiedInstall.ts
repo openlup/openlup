@@ -33,10 +33,10 @@ const PREDEFINED = ["pg_database_owner", "pg_read_all_data", "pg_write_all_data"
 const SAFE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
 function fail(code: string): never { throw new Error(`qualified PostgreSQL installation refused: ${code}`); }
 function checkoutLoginUnready(reason: string): never {
-  return fail(`n1_checkout_login_unready: ${checkoutOwnerLogin}. ${reason}`);
+  return fail(`checkout_owner_login_unready: ${checkoutOwnerLogin}. ${reason}`);
 }
 function checkoutAclMismatch(subject: string): never {
-  return fail(`n1_checkout_acl_mismatch: ${subject}. Restore the issued owner and ACL, then verify catalog readback.`);
+  return fail(`checkout_owner_acl_mismatch: ${subject}. Restore the issued owner and ACL, then verify catalog readback.`);
 }
 function attributes(row: CatalogRow): Attributes {
   const value: unknown = JSON.parse(row.attributes);

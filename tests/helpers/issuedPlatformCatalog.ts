@@ -149,7 +149,7 @@ export async function proveCheckoutOwnerGrant(connectionString: string, ordinary
       for (const [position, message] of [[0, "rail"], [prefix.length - 1, "predecessor"]] as const) {
         await client.query("SAVEPOINT refused_grant");
         await client.query(`UPDATE public.platform_schema_migrations SET sha256=repeat('0',64) WHERE position=$1`, [position]);
-        await assert.rejects(append(client, files[1]!), new RegExp(`n1_checkout_${message}_unverified`, "u"));
+        await assert.rejects(append(client, files[1]!), new RegExp(`checkout_owner_${message}_unverified`, "u"));
         await client.query("ROLLBACK TO SAVEPOINT refused_grant");
         assert.deepEqual((await client.query(`SELECT catalog_path,sha256,position FROM ${ledger} ORDER BY position`)).rows, prefix);
         assert.deepEqual((await acl(client)).map(row => row.grants), [[], [], []]);

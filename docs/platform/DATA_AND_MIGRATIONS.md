@@ -2881,12 +2881,18 @@ entries and a ready login are required for the unit to commit.
 For either qualified generation and role mode, the host provisions
 `openlup_checkout_owner` outside the migration session. Use a dedicated login
 with `NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
-no owned objects, memberships, or role defaults. On PostgreSQL 16, have the
-bootstrap authority clear any creator membership issued by the actual
-grantor. Give the login effective database CONNECT and use the existing
-public schema USAGE. Revoke database TEMP inherited through PUBLIC and
-preserve TEMP for supported principals who need it. Keep role and ACL changes
-out of the migration window through catalog readback.
+no owned objects, memberships, or role defaults. Give it effective database
+CONNECT and public schema USAGE. TEMP usually comes from the database owner's
+grant to PUBLIC. Inspect `pg_database` with `aclexplode(datacl)` (use the
+database default ACL if `datacl` is null) to identify the grantor. On PostgreSQL 16,
+a non-superuser who creates the login with `CREATEROLE` receives membership in
+it from the bootstrap authority. Use `pg_auth_members` to find the membership
+and its grantor, then have the grantor clear it. With the database owner's
+approval, grant TEMP directly to each supported role that needs it, then revoke
+TEMP from PUBLIC. Before the migration window, use `has_database_privilege` to
+verify each supported role's intended TEMP access and the checkout login's lack
+of TEMP. If the host or provider cannot provision this exact login or clear
+these edges, the installer refuses the grant with `checkout_owner_login_unready`.
 
 Either qualified projector omits the dormant login. After the guarded unit is
 recorded, readback requires the three non-grantable EXECUTE grants from the

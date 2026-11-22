@@ -72,7 +72,7 @@ describe("checkout owner execute admission", () => {
   }
 
   it("reserves the path without registration and renders the exact UTF-8 bytes", () => {
-    const golden = "395235d4e4f1dea350b0b029733eb652a0de26c54ce22a86b7bfc31515d50e61";
+    const golden = "e56e35abec5bb509efee95d6f85d51441a1430c6122c34d59ef7e65ac4bfde7b";
     expect(isNativeStoreMigrationPath(grantPath, [])).toBe(true);
     expect(sqlSha256(renderCheckoutOwnerGrant(definitionPath, "0".repeat(64)))).toBe(golden);
     expect(checkGrant().checkoutPredecessor).toEqual({ slot: definitionSlot, pin: definitionPin() });
@@ -94,7 +94,7 @@ describe("checkout owner execute admission", () => {
     ["role guard", grantSql.replace("rolinherit OR ", "")],
     ["final LF", grantSql.trimEnd()],
   ])("refuses repinned %s without exposing repair values", (_name, text) => {
-    expect(() => checkGrant(candidate(text), text)).toThrow(new RegExp(`^n1_checkout_forward_unverified: ${grantPath}\\. Replay the reviewed grant bytes after landing the rule and its definitions\\.$`, "u"));
+    expect(() => checkGrant(candidate(text), text)).toThrow(new RegExp(`^checkout_owner_forward_unverified: ${grantPath}\\. Replay the reviewed grant bytes after landing the rule and its definitions\\.$`, "u"));
   });
 
   it.each(["row", "path", "order", "grantee", "extra field", "pin"])("refuses malformed %s before generic admission", kind => {
@@ -105,7 +105,7 @@ describe("checkout owner execute admission", () => {
     if (kind === "grantee") slot.grantOnlyFunctions[0]!.grantTo.push("authenticated");
     if (kind === "extra field") slot.qualifiedPriceSetupExecute = true;
     if (kind === "pin") value.nativeStoreForwards![1]!.functions.push(definitionPin().functions[0]!);
-    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/^n1_checkout_slot_invalid:/u);
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/^checkout_owner_slot_invalid:/u);
   });
 
   it.each([
@@ -115,13 +115,13 @@ describe("checkout owner execute admission", () => {
     "REASSIGN OWNED BY postgres TO service_role;",
     "DROP TABLE public.clients CASCADE;",
   ])("refuses predecessor drift via %s", drift => {
-    expect(() => checkGrant(candidate(), grantSql, definitionSql, drift)).toThrow(/^n1_checkout_predecessor_unverified:/u);
+    expect(() => checkGrant(candidate(), grantSql, definitionSql, drift)).toThrow(/^checkout_owner_predecessor_unverified:/u);
   });
 
   it("refuses an invoker definition even if the grant and after-hash match", () => {
     const definitions = definitionSql.replace("SECURITY DEFINER", "SECURITY INVOKER");
     const text = renderCheckoutOwnerGrant(definitionPath, sqlSha256(definitions));
-    expect(() => checkGrant(candidate(text, definitions), text, definitions)).toThrow(/^n1_checkout_predecessor_unverified:/u);
+    expect(() => checkGrant(candidate(text, definitions), text, definitions)).toThrow(/^checkout_owner_predecessor_unverified:/u);
   });
 });
 

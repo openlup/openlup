@@ -1657,7 +1657,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       await bind(definitionPath, definitionSql, 1);
       await db.query("ALTER ROLE openlup_checkout_owner NOLOGIN");
       await db.query("SAVEPOINT unready_grant");
-      await expect(db.query(grantSql)).rejects.toThrow("n1_checkout_login_unready");
+      await expect(db.query(grantSql)).rejects.toThrow("checkout_owner_login_unready");
       await db.query("ROLLBACK TO SAVEPOINT unready_grant");
       expect(await access()).toEqual([{ grants: 0 }]);
       expect((await db.query("SELECT count(*)::int AS count FROM public.platform_schema_migrations")).rows).toEqual([{ count: 2 }]);

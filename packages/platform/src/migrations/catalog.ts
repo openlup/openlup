@@ -311,7 +311,7 @@ const adminDigest = "a19f78b5e948f96d5bdca6cc14159230cf5197c5ff7fe94f7fc10f26e58
 
 export function renderCheckoutOwnerGrant(path: string, sha256: string): string {
   if (!checkoutOwnerDefinitionPath.test(path) || !/^[0-9a-f]{64}$/u.test(sha256)) {
-    throw new Error("n1_checkout_predecessor_unverified. Recover the issued checkout routine definition binding.");
+    throw new Error("checkout_owner_predecessor_unverified. Recover the issued checkout routine definition binding.");
   }
   return `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
@@ -324,19 +324,19 @@ export function renderCheckoutOwnerGrant(path: string, sha256: string): string {
     WHERE position OPERATOR(pg_catalog.=) 0 AND (
       (catalog_path OPERATOR(pg_catalog.=) 'db/platform/migrations/q2_${baseline}' AND sha256 OPERATOR(pg_catalog.=) '${qualifiedDigest}')
       OR (catalog_path OPERATOR(pg_catalog.=) 'db/platform/migrations/qa_${baseline}' AND sha256 OPERATOR(pg_catalog.=) '${adminDigest}'))) THEN
-    RAISE EXCEPTION 'n1_checkout_rail_unverified';
+    RAISE EXCEPTION 'checkout_owner_rail_unverified';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations
     WHERE position OPERATOR(pg_catalog.>) 0
       AND catalog_path OPERATOR(pg_catalog.=) '${path}'
       AND sha256 OPERATOR(pg_catalog.=) '${sha256}') THEN
-    RAISE EXCEPTION 'n1_checkout_predecessor_unverified';
+    RAISE EXCEPTION 'checkout_owner_predecessor_unverified';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles
     WHERE rolname OPERATOR(pg_catalog.=) '${checkoutOwnerLogin}'
       AND rolcanlogin AND NOT (rolinherit OR rolsuper OR rolcreatedb
         OR rolcreaterole OR rolreplication OR rolbypassrls)) THEN
-    RAISE EXCEPTION 'n1_checkout_login_unready';
+    RAISE EXCEPTION 'checkout_owner_login_unready';
   END IF;
   EXECUTE 'GRANT EXECUTE ON FUNCTION ${checkoutOwnerRoutines.join(",\n    ")} TO ${checkoutOwnerLogin};';
 END; $$;

@@ -89,10 +89,10 @@ function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePa
 describe("checkout owner execute on self-check, queue and release", () => {
   it.each([
     ["issued definitions", undefined],
-    ["co-introduced definitions", "n1_checkout_predecessor_unverified"],
-    ["missing reservation", "n1_checkout_slot_invalid"],
-    ["co-located control", "n1_checkout_forward_unverified"],
-    ["guard drift", "n1_checkout_forward_unverified"],
+    ["co-introduced definitions", "checkout_owner_predecessor_unverified"],
+    ["missing reservation", "checkout_owner_slot_invalid"],
+    ["co-located control", "checkout_owner_forward_unverified"],
+    ["guard drift", "checkout_owner_forward_unverified"],
   ])("applies the same grant verdict with %s", (scenario, refusal) => {
     const f = fixture(), value = registry();
     const bindDefinition = { file: definitionPath, sha256: sqlSha256(definitionSql) };
