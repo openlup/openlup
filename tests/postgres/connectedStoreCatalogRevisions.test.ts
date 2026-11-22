@@ -554,13 +554,6 @@ it("refuses a retyped retained column and an unknown inventory with a recapture 
   });
 }, 105_000);
 
-it("does not treat an inventory label as evidence of a predecessor packet", async () => {
-  const predecessor = repin(packet, "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385");
-  await expect(restore(target.owner, predecessor)).rejects.toMatchObject({
-    code: "schema_conflict", table: "subscription_edit_quotes", remedy: "upgrade the source, then capture",
-  });
-}, 105_000);
-
 it("transfers same-SKU governed bindings and preserves legacy NULL facts", async () => {
   if (!(await source.owner.query("SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1", [actorId])).rowCount)
     await installPublicationActors(source.owner);

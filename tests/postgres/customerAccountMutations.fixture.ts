@@ -9,15 +9,8 @@ import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, 
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 export type AccountProfile = "legacy" | "bootstrap" | "separate" | "admin-managed" | "admin-operator";
-export const subscriptionProfilesPredecessor = {
-  legacy: "37eaad4927661af8b5edc939ce9c8132af7892ed1bb1473c2fc5707c3f3b4e13",
-  bootstrap: "c6fea6b7fe85a7963f952994c34e1dfbca87045952e3dadbbf947c4b89aab5f6",
-  separate: "d0a803fd96d5fe048179cff18181c437ede56daa3a8dc14b2ee0a62381753619",
-  "admin-managed": "412caa25526d6ba70bb5bb761d5bed2336e7307811a879658295819ad5ab15f5",
-  "admin-operator": "d413c04713b9fb5f5f9d8f01dc66c68c67d131f6cc94bcbf12becef47abd4f42",
-} satisfies Record<AccountProfile, string>;
-
-export const acquisitionSearchPathPredecessor = {
+// The migration test installs this prefix before applying the search-path forward.
+const acquisitionSearchPathPredecessor = {
   legacy: "82568ad14720d9c74a8368924eaba4f4eaa0de4d7831c7b68518a3c12cc86509",
   bootstrap: "cffdddea783d1cdbc1460c6a9d6caf5bad4a94096eacd38938bdb6b6b28bc256",
   separate: "d7a7452c78bc5d1b3fc3920d483a2465f8a64caf2198238d9e8e494f52e168c5",
@@ -35,13 +28,12 @@ const acquisitionSearchPathInstalled = {
 } satisfies Record<AccountProfile, string>;
 
 type CompleteManifest = Extract<PlatformMigrationManifest, { schemaVersion: 3 }>;
-type AcquisitionBoundary = "before-subscription-profiles" | "before-pin" | "through-pin";
+type AcquisitionBoundary = "before-pin" | "through-pin";
 
 export function acquisitionSearchPathManifest(current: CompleteManifest, boundary: AcquisitionBoundary): CompleteManifest {
   const manifest = structuredClone(current);
-  const pins = boundary === "before-subscription-profiles" ? subscriptionProfilesPredecessor
-    : boundary === "before-pin" ? acquisitionSearchPathPredecessor : acquisitionSearchPathInstalled;
-  const suffix = boundary === "before-subscription-profiles" ? "_subscription_profiles.sql" : "_acquisition_definer_search_path_pin.sql";
+  const pins = boundary === "before-pin" ? acquisitionSearchPathPredecessor : acquisitionSearchPathInstalled;
+  const suffix = "_acquisition_definer_search_path_pin.sql";
   manifest.objectInventorySha256 = pins.legacy;
   manifest.qualified.objectInventorySha256 = {
     bootstrapMigrator: { withRestore: pins.bootstrap },
@@ -72,7 +64,7 @@ function writeAcquisitionRoot(root: string, manifest: CompleteManifest) {
 }
 
 export async function installAtAcquisitionSearchPathBoundary(
-  profile: AccountProfile, label: string, boundary: AcquisitionBoundary, upgradeCatalogue: "through-pin" | "current" = "through-pin",
+  profile: AccountProfile, label: string, boundary: AcquisitionBoundary,
 ) {
   const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
   if (manifest?.schemaVersion !== 3) throw new Error("Expected the complete platform migration catalogue");
@@ -81,11 +73,8 @@ export async function installAtAcquisitionSearchPathBoundary(
   try {
     const root = join(scratch, boundary);
     writeAcquisitionRoot(root, acquisitionSearchPathManifest(manifest, boundary));
-    let upgradeRoot: string | undefined;
-    if (upgradeCatalogue === "through-pin" && boundary !== "before-subscription-profiles") {
-      upgradeRoot = join(scratch, "through-pin");
-      if (upgradeRoot !== root) writeAcquisitionRoot(upgradeRoot, acquisitionSearchPathManifest(manifest, "through-pin"));
-    }
+    const upgradeRoot = join(scratch, "through-pin");
+    if (upgradeRoot !== root) writeAcquisitionRoot(upgradeRoot, acquisitionSearchPathManifest(manifest, "through-pin"));
     const store = await installAccountMutations(profile, false, label, root, upgradeRoot);
     const close = store.close;
     store.close = async () => {

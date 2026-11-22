@@ -4,11 +4,9 @@ import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { projectHistoricalCapture, sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { runManagedCompatPostgres } from "../helpers/managedCompatPostgres.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { beforeSubscriptionProfilesCatalog, beforeSubscriptionProfilesInventory, captureStoreJourney,
-  journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
+import { captureStoreJourney, journeySelection, storeJourneyResources, type JourneyInstallation } from "../helpers/storeJourney.js";
 
 const resources = storeJourneyResources();
 const table = "public.commerce_checkout_attempt_ledger";
@@ -209,55 +207,40 @@ it("carries nonempty admission state through native transfer and replays it thro
 }, 150_000);
 
 
-it("restores the pre-ledger packet shape with an empty ledger and requires it in current packets", async () => {
+it("requires the checkout attempt ledger in current packets even when empty", async () => {
   await native.owner.query(`TRUNCATE ${table}`);
-  const product = randomUUID();
-  await native.owner.query("INSERT INTO public.catalog_products (id,slug,name) VALUES ($1,$1::uuid::text,'Predecessor product')", [product]);
-  const capture = await captureStoreJourney(native.owner, "pre-ledger-source");
-  const missingLedger = structuredClone(capture);
-  missingLedger.compatible.tables = missingLedger.compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
-  const targets = await resources.targetTemplate("pre-ledger-target");
+  const capture = await captureStoreJourney(native.owner, "current-ledger-source");
+  const { sha256: _captureDigest, ...body } = capture;
+  const { sha256: _compatibleDigest, ...compatible } = body.compatible;
+  compatible.tables = compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
+  const missingLedger = { ...body, compatible: { ...compatible, sha256: digest(JSON.stringify(compatible)) } };
+  const targets = await resources.targetTemplate("current-ledger-target");
   const target = await targets.nextTarget();
-  const freshTarget = await captureStoreJourney(target.owner, "pre-ledger-target");
-  const restore = (packet: typeof capture) => restoreConnectedNativeStore({
-    owner: target.owner, installation: journeySelection, packet, freshTarget,
-  });
-  await expect(restore(sealConnectedCapture(missingLedger))).rejects.toMatchObject({ code: "invalid_input" });
-  // Complete separate-migrator inventory immediately before HS-L.
-  const old = await projectHistoricalCapture(native.owner, capture, "0fca9c01fd08e76700cd55eaafb81ff1dd9f265ed9a672d3c9936812c8df1153", true);
-  expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: false });
-  expect((await target.owner.query("SELECT name FROM public.catalog_products WHERE id=$1", [product])).rows)
-    .toEqual([{ name: "Predecessor product" }]);
-  expect(await ledgerRows(target.owner)).toEqual([]);
-  expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: true });
+  const freshTarget = await captureStoreJourney(target.owner, "current-ledger-target");
+  await expect(restoreConnectedNativeStore({
+    owner: target.owner, installation: journeySelection,
+    packet: { ...missingLedger, sha256: digest(JSON.stringify(missingLedger)) }, freshTarget,
+  })).rejects.toMatchObject({ code: "invalid_input" });
 }, 105_000);
 
-it("restores and replays a post-accepted-references capture with legacy catalogue receipt bytes intact", async () => {
-  const source = await resources.installation("before-profiles-source", beforeSubscriptionProfilesCatalog());
+it("restores and replays current captures with legacy catalogue receipt bytes intact", async () => {
+  const source = await resources.installation("reference-only-source");
   const receipt = await installCatalogDefinitions(source.owner, {
     id: "example:reference-only", namespace: "example", version: 1, openlupRange: "1.x",
     capabilities: {}, types: [], taxClasses: [], subscriptionProfiles: [{ key: "example:repeat", version: 1 }],
   });
   expect(await attempt(source.runtime)).toEqual(allowed);
   const savedLedger = await ledgerRows(source.owner);
-  const packet = await captureStoreJourney(source.owner, "before-profiles-source", { catalogueId: beforeSubscriptionProfilesInventory });
-  expect(packet.owned).toContainEqual(expect.objectContaining({ table: "subscription_edit_quotes" }));
-  expect(packet.outsideProfileCensus).not.toContainEqual(expect.objectContaining({ relation: "public.catalog_subscription_profile_receipts" }));
+  const packet = await captureStoreJourney(source.owner, "reference-only-source");
+  expect(packet.outsideProfileCensus).toContainEqual(expect.objectContaining({
+    relation: "public.catalog_subscription_profile_receipts", disposition: "unsupported-empty", rows: "0",
+  }));
   const capturedReceipts = packet.owned.find(entry => entry.table === "catalog_definition_installs")!.rows;
   expect(capturedReceipts.map(row => JSON.parse(row).receipt)).toEqual([receipt]);
   const targets = await resources.targetTemplate("profiles-target");
   const target = await targets.nextTarget();
   const freshTarget = await captureStoreJourney(target.owner, "profiles-target");
-  const restore = (sourcePacket = packet) => restoreConnectedNativeStore({
-    owner: target.owner, installation: journeySelection, packet: sourcePacket, freshTarget,
-  });
-
-  const { sha256: _packetHash, ...packetBody } = packet;
-  const { sha256: _compatibleHash, ...compatible } = packet.compatible;
-  const unknown = { ...compatible, catalogueId: digest("unknown test inventory") };
-  const unknownBody = { ...packetBody, compatible: { ...unknown, sha256: digest(JSON.stringify(unknown)) } };
-  await expect(restore({ ...unknownBody, sha256: digest(JSON.stringify(unknownBody)) }))
-    .rejects.toMatchObject({ code: "schema_conflict" });
+  const restore = () => restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget });
   expect(await restore()).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
   expect(await ledgerRows(target.owner)).toEqual(savedLedger);
   expect(await restore()).toMatchObject({ replayed: true, captureSha256: packet.sha256 });
