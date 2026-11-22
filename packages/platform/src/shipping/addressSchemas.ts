@@ -37,6 +37,8 @@ const asciiUpper = (value: string) => value.replace(/[a-z]/gu, char => char.toUp
 const trimSpaces = (value: string) => value.replace(/^ +| +$/gu, "");
 const normalize = (value: string) => trimSpaces(value.normalize("NFC"));
 const bytes = new TextEncoder();
+const maxLine1Bytes = 200;
+const maxPostalBytes = 32;
 
 const addressInput = z.strictObject({
   line1: z.string(), line2: z.string().optional(), city: z.string(), subdivisionCode: z.string().optional(),
@@ -47,13 +49,16 @@ const token = z.union([z.enum(["digit", "letter"]), z.strictObject({ literal: z.
 const key = z.string().max(64).regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/u);
 const code = z.string().regex(subdivision);
 const reference = z.string().min(1).max(180).refine(value => value === value.trim() && !unsafeText.test(value));
-const line1Prefix = z.string().min(1).refine(value => !value.startsWith(" ") && !unsafeText.test(value))
-  .transform(value => value.normalize("NFC")).refine(value => bytes.encode(value).byteLength <= 200);
+const line1Prefix = z.string().min(1).refine(value => !unsafeText.test(value))
+  .transform(value => value.normalize("NFC")).refine(prefix => {
+    const suffixBytes = prefix.endsWith(" ") ? 1 : 0;
+    return !prefix.startsWith(" ") && bytes.encode(prefix).byteLength + suffixBytes <= maxLine1Bytes;
+  });
 const policyInput = z.strictObject({
   schemaVersion: z.literal(1), policyRef: reference, policyRevision: reference, countryCode: z.string().regex(country),
   requiredFields: z.array(addressFields).max(6), allowedSubdivisionCodes: z.array(code), subdivisionAliases: z.record(code, code),
   postalRule: z.strictObject({
-    upperAscii: z.boolean(), stripAsciiSpaces: z.boolean(), alternatives: z.array(z.array(token).min(1).max(32)).min(1).max(16),
+    upperAscii: z.boolean(), stripAsciiSpaces: z.boolean(), alternatives: z.array(z.array(token).min(1).max(maxPostalBytes)).min(1).max(16),
   }),
   classificationRules: z.array(z.union([
     z.strictObject({ key, subdivisionCode: code }),
@@ -88,11 +93,17 @@ const invalidPolicy = () => refuse("address_policy_invalid", "policyRef", "The h
 const invalidInput = (field: string, reason: string) => refuse("address_invalid_input", field, `${reason} Correct ${field} and resubmit the destination address.`);
 const blankSubdivision = () => refuse("address_invalid_input", "subdivisionCode", "Omit an empty subdivision, or supply one of the policy's subdivision codes.");
 
-function hasReachablePostalMask({ upperAscii, stripAsciiSpaces, alternatives }: AddressPolicyV1["postalRule"]): boolean {
-  return alternatives.some(mask => mask.every((part, index) => typeof part !== "object" || (
-    (!upperAscii || asciiUpper(part.literal) === part.literal)
-    && (part.literal !== " " || (!stripAsciiSpaces && index > 0 && index < mask.length - 1))
-  )));
+function applyPostalRule(value: string, { upperAscii, stripAsciiSpaces }: AddressPolicyV1["postalRule"]): string {
+  if (upperAscii) value = asciiUpper(value);
+  return stripAsciiSpaces ? value.replaceAll(" ", "") : value;
+}
+
+function hasReachablePostalMask(rule: AddressPolicyV1["postalRule"]): boolean {
+  return rule.alternatives.some(mask => {
+    // These digit and letter witnesses survive either normalization flag.
+    const sample = mask.map(part => typeof part === "object" ? part.literal : part === "digit" ? "0" : "A").join("");
+    return applyPostalRule(normalize(sample), rule) === sample;
+  });
 }
 
 function matchesPostalMask(postal: string, alternatives: AddressPolicyV1["postalRule"]["alternatives"]): boolean {
@@ -137,6 +148,7 @@ export function validateDestinationAddressV2(input: unknown, policy?: AddressPol
   const allowed = new Set(allowedSubdivisionCodes.map(asciiUpper));
   const aliases = new Map(Object.entries(subdivisionAliases).map(([from, to]) => [asciiUpper(from), asciiUpper(to)]));
   if (new Set(requiredFields).size !== requiredFields.length || allowed.size !== allowedSubdivisionCodes.length
+    || (requiredFields.includes("subdivisionCode") && allowed.size === 0)
     || aliases.size !== Object.keys(subdivisionAliases).length
     || [...aliases].some(([source, target]) => allowed.has(source) || !allowed.has(target))
     || new Set(classificationRules.map(rule => rule.key)).size !== classificationRules.length
@@ -158,9 +170,8 @@ export function validateDestinationAddressV2(input: unknown, policy?: AddressPol
   if (address.subdivisionCode !== undefined && !allowed.has(address.subdivisionCode)) {
     return refuse("address_subdivision_unrecognized", "subdivisionCode", "This policy does not admit the subdivision. Select a subdivision accepted for the destination country.");
   }
-  if (postalRule.upperAscii) address.postalCode = asciiUpper(address.postalCode);
-  if (postalRule.stripAsciiSpaces) address.postalCode = address.postalCode.replaceAll(" ", "");
-  for (const [field, max] of [["line1", 200], ["line2", 200], ["city", 120], ["postalCode", 32]] as const) {
+  address.postalCode = applyPostalRule(address.postalCode, postalRule);
+  for (const [field, max] of [["line1", maxLine1Bytes], ["line2", 200], ["city", 120], ["postalCode", maxPostalBytes]] as const) {
     if (bytes.encode(address[field] ?? "").byteLength > max) return invalidInput(field, `The normalized field exceeds ${max} UTF-8 bytes.`);
   }
   if (!matchesPostalMask(address.postalCode, postalRule.alternatives)) {

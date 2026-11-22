@@ -106,6 +106,82 @@ it("keeps postal policies with a reachable alternative", () => {
     .toMatchObject({ outcome: "valid", address: { postalCode: "0 1" } });
 });
 
+it("refuses a policy that requires a subdivision without allowing any code", () => {
+  const policy: AddressPolicyV1 = {
+    ...destinationPolicy, requiredFields: ["subdivisionCode"], allowedSubdivisionCodes: [],
+    subdivisionAliases: {}, classificationRules: [],
+  };
+  for (const address of [destination, { ...destination, subdivisionCode: "XX-M" }]) {
+    expect(validateV2(address, policy)).toMatchObject({ outcome: "refused", code: "address_policy_invalid", field: "policyRef" });
+  }
+});
+
+it("reserves a byte after a trailing space in a bounded line 1 prefix", () => {
+  const text = "é".repeat(99) + "X";
+  const prefix = text + " ";
+  const policy: AddressPolicyV1 = { ...destinationPolicy, classificationRules: [{ key: "bounded", line1Prefix: prefix }] };
+  expect(validateV2({ ...destination, line1: prefix }, policy))
+    .toMatchObject({ outcome: "refused", code: "address_policy_invalid", field: "policyRef" });
+  for (const line1Prefix of [prefix.slice(0, -2) + " ", text + "X"]) {
+    const line1 = line1Prefix.endsWith(" ") ? line1Prefix + "1" : line1Prefix;
+    expect(validateV2({ ...destination, line1 }, { ...policy, classificationRules: [{ key: "bounded", line1Prefix }] }))
+      .toMatchObject({ outcome: "valid", classificationKeys: ["bounded"] });
+  }
+});
+
+it("constructs witnesses for every rule and required field in a seeded policy sample", () => {
+  const sampleSize = 1024;
+  let state = 0x41a529d3;
+  function pick<T>(choices: readonly T[]): T {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return choices[Math.floor(state / 2 ** 32 * choices.length)]!;
+  }
+  const flags = [false, true];
+  const reachablePrefixes = ["PO BOX ", "E\u0301tage ", "é".repeat(100), "é".repeat(99) + " "];
+  const prefixes = [...reachablePrefixes, " Sample", "é".repeat(99) + "X ", "é".repeat(101)];
+  const masks: AddressPolicyV1["postalRule"]["alternatives"] = [
+    ["digit", "digit"], ["letter", { literal: "-" }, "digit"], [{ literal: "a" }, "digit"],
+    ["digit", { literal: " " }, "digit"], [{ literal: " " }, "letter"], Array<"digit">(32).fill("digit"),
+  ];
+  let admitted = 0;
+  for (let index = 0; index < sampleSize; index++) {
+    const allowedSubdivisionCodes = pick<readonly string[]>([[], ["XX-A"], ["xx-a", "XX-B"]]);
+    const requiredFields: (keyof DestinationAddressV2)[] = ["line1", "city", "postalCode", "countryCode"];
+    if (pick(flags)) requiredFields.push("subdivisionCode");
+    if (pick(flags)) requiredFields.push("line2");
+    const line1Prefix = pick(pick(flags) ? reachablePrefixes : prefixes);
+    const classificationRules: AddressPolicyV1["classificationRules"][number][] = [{ key: "prefix", line1Prefix }];
+    if (pick(flags) && allowedSubdivisionCodes.length) {
+      classificationRules.push({ key: "region", subdivisionCode: pick(allowedSubdivisionCodes) });
+    }
+    const alternatives = pick(flags) ? [pick(masks)] : [pick(masks), masks[0]!];
+    const [aliasTarget] = allowedSubdivisionCodes;
+    const policy: AddressPolicyV1 = {
+      ...destinationPolicy, allowedSubdivisionCodes, requiredFields, classificationRules,
+      subdivisionAliases: aliasTarget && pick(flags) ? { region: aliasTarget } : {},
+      postalRule: { upperAscii: pick(flags), stripAsciiSpaces: pick(flags), alternatives },
+    };
+    const composed = validateV2(destination, policy);
+    if (composed.outcome === "refused" && composed.code === "address_policy_invalid") continue;
+    admitted++;
+
+    const postalCodes = alternatives.map(mask => mask.map(token => token === "digit" ? "8" : token === "letter" ? "Q" : token.literal).join(""));
+    for (const rule of [undefined, ...classificationRules]) {
+      const prefix = rule && "line1Prefix" in rule ? rule.line1Prefix : "Sample";
+      const line1 = prefix.endsWith(" ") ? prefix + "1" : prefix;
+      const subdivisionCode = rule && "subdivisionCode" in rule ? rule.subdivisionCode : allowedSubdivisionCodes[0];
+      const witnessed = postalCodes.some(postalCode => {
+        const result = validateV2({ ...destination, line1, line2: "Unit 1", subdivisionCode, postalCode }, policy);
+        return result.outcome === "valid" && requiredFields.every(field => Boolean(result.address[field]))
+          && (!rule || result.classificationKeys.includes(rule.key));
+      });
+      expect(witnessed, `policy sample ${index}, ${rule?.key ?? "required fields"}`).toBe(true);
+    }
+  }
+  expect(admitted).toBeGreaterThanOrEqual(500);
+  expect(admitted).toBeLessThan(sampleSize);
+});
+
 it.each([{ requiredFields: [] }, { requiredFields: ["subdivisionCode"] }] as const)("gives the same blank subdivision remedy with required fields $requiredFields", ({ requiredFields }) => {
   const policy: AddressPolicyV1 = { ...destinationPolicy, requiredFields };
   for (const subdivisionCode of ["", " ", "\t", "\u00a0"]) {
