@@ -150,8 +150,8 @@ END; $$;
 });
 
 describe("qualified price list basis SELECT in sql:admit and hosted checks", () => {
-  const column = "db/platform/migrations/20990101000000_price_list_basis_column.sql";
-  const outside = "db/platform/migrations/20990102000000_price_list_basis_outside_slot.sql";
+  const column = "db/platform/migrations/20990102000000_price_list_basis_column.sql";
+  const outside = "db/platform/migrations/20990101000000_price_list_basis_outside_slot.sql";
   const path = "db/platform/migrations/20990103000000_price_list_basis_read.sql";
   const guarded = `DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
@@ -187,7 +187,7 @@ END; $$;
     const rows = pins.map(pin => ({ file: pin.path, sha256: pin.sha256 }));
     if (scenario === "the grant outside a declared slot") {
       f.put(outside, guarded);
-      rows.splice(1, 0, { file: outside, sha256: sha256(guarded) });
+      rows.unshift({ file: outside, sha256: sha256(guarded) });
     }
     f.put(path, guarded);
     f.put(REVIEWED_FORWARD_PATH, encode(value));

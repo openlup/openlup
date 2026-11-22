@@ -3467,48 +3467,100 @@ export function expectedReplacedFunctionAttrs(oldAttrs: Record<string, unknown>,
   return { ...oldAttrs, proconfig: oldConfig.map(item => item === oldEntry ? target : item) };
 }
 
+const priceListMention = /price_lists|u&"/iu;
+function isPriceListRowMutation(tokens: readonly PlatformSqlToken[]): boolean {
+  const word = (index: number, value: string) => nativeWord(tokens, index, value);
+  const update = word(0, "UPDATE");
+  if (!update && !(word(0, "INSERT") && word(1, "INTO")) && !(word(0, "DELETE") && word(1, "FROM"))) return false;
+  const start = update ? 1 : 2;
+  const target = start + Number(word(start, "ONLY"));
+  const first = nativeIdentifier(tokens[target]);
+  if (!nativeSymbol(tokens, target + 1, ".")) return first === "price_lists";
+  if (first === null) return false;
+  const schema = nativeSymbol(tokens, target + 3, ".") ? target + 2 : target;
+  return nativeQualified(tokens, schema)?.name === "public.price_lists";
+}
+
+function assertNoInterveningPriceListChange(path: string, bytes: Buffer): void {
+  const sql = bytes.toString("utf8");
+  if (!priceListMention.test(sql)) return;
+
+  const drift = (reason: string) => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${path}. ${reason}`);
+  const incomplete = "Cannot completely tokenize an intervening file that may reference public.price_lists.";
+  // Check raw control characters before splitting. For example, a CR can end
+  // a PostgreSQL line comment earlier than the splitter would end it.
+  if (!Buffer.from(sql, "utf8").equals(bytes) || bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) {
+    throw drift(incomplete);
+  }
+  let statements: string[];
+  try {
+    statements = sqlStatements(sql, false, false, true);
+  } catch {
+    throw drift(incomplete);
+  }
+  for (const statement of statements) {
+    const { tokens, complete } = platformSqlTokens(statement, false, true);
+    if (!complete) throw drift(incomplete);
+    if (!priceListMention.test(statement)) continue;
+    // A raw mention catches qualified, quoted and opaque references without
+    // resolving a relation name. An escaped identifier may hide the name.
+    if (/u&"/iu.test(statement)) throw drift("An escaped identifier prevents checking the price-list reference.");
+    const word = (index: number, value: string) => nativeWord(tokens, index, value);
+    const privilegesOrComment = word(0, "GRANT") || word(0, "REVOKE") || (word(0, "COMMENT") && word(1, "ON"));
+    if (!privilegesOrComment && !isPriceListRowMutation(tokens)) {
+      throw drift("Only direct price_lists row DML, privilege changes and comments may reference price_lists between the column and its grant.");
+    }
+  }
+}
+
 // Only the approved nullable text column and its optional two-value CHECK can be the grant preimage.
 const priceListBasisCheck = /^add constraint ([a-z_][a-z_0-9]{0,62}) check \( (?:amount_basis is null or )?amount_basis in \( (?:"tax_inclusive" , "tax_exclusive"|"tax_exclusive" , "tax_inclusive") \) \)(?: not valid)?$/u;
 function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[], preceding: { path: string; bytes: Buffer }[]): ForwardBinding {
   const slots = new Map(earlierSlots.map(slot => [slot.path, slot]));
   let predecessor: { path: string; bytes: Buffer } | undefined, checkName: string | undefined;
-  for (const source of preceding) for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
-    if (!nativeWord(tokens, 1, "TABLE")) continue;
-    const publicPriceLists = (index: number) => nativeQualified(tokens, index)?.name === "public.price_lists"
-      || (nativeIdentifier(tokens[index]) === "price_lists" && !nativeSymbol(tokens, index + 1, ".") && !nativeSymbol(tokens, index - 1, "."));
-    const drift = () => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${source.path}`);
-    if (nativeWord(tokens, 0, "DROP") && tokens.some((_token, index) => index >= 2 && publicPriceLists(index))) throw drift();
-    if (!nativeWord(tokens, 0, "ALTER")) continue;
-    const targetStart = nativeWord(tokens, 2, "IF") && nativeWord(tokens, 3, "EXISTS") ? 4 : 2;
-    const target = targetStart + Number(nativeWord(tokens, targetStart, "ONLY"));
-    if (!publicPriceLists(target)) continue;
-    const actionStart = nativeQualified(tokens, target)?.next ?? target + 1;
-    if (!complete || (nativeWord(tokens, actionStart, "SET") && nativeWord(tokens, actionStart + 1, "SCHEMA"))
-      || (nativeWord(tokens, actionStart, "RENAME") && nativeWord(tokens, actionStart + 1, "TO"))) throw drift();
-    // The native-store inventory only accepts plain qualified ALTER TABLE statements.
-    const listed = slots.get(source.path)?.existingTableStatements?.includes(statement);
-    const alter = nativeStoreAlter(statement);
-    const actions = alter?.actions ?? [statement.slice(tokens[actionStart]?.start, tokens.at(-1)?.start)];
-    for (const action of actions) {
-      const parsed = platformSqlTokens(action, false, true);
-      const identifiers = parsed.tokens.map(nativeIdentifier);
-      if (!identifiers.includes("amount_basis") && (!checkName || !identifiers.includes(checkName))) continue;
-      if (!listed || !parsed.complete) throw drift();
-      const shape = parsed.tokens.map(token => {
-        if (token.kind === "string") return JSON.stringify(token.value);
-        if (token.kind === "word") return token.value.toLowerCase();
-        return token.kind === "symbol" ? token.value : "";
-      }).join(" ");
-      if (!predecessor && /^add column amount_basis (?:pg_catalog \. )?text(?: null)?$/u.test(shape)) {
-        predecessor = source;
-        continue;
+  for (const source of preceding) {
+    if (predecessor) {
+      assertNoInterveningPriceListChange(source.path, source.bytes);
+      continue;
+    }
+    for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
+      if (!nativeWord(tokens, 1, "TABLE")) continue;
+      const publicPriceLists = (index: number) => nativeQualified(tokens, index)?.name === "public.price_lists"
+        || (nativeIdentifier(tokens[index]) === "price_lists" && !nativeSymbol(tokens, index + 1, ".") && !nativeSymbol(tokens, index - 1, "."));
+      const drift = () => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${source.path}`);
+      if (nativeWord(tokens, 0, "DROP") && tokens.some((_token, index) => index >= 2 && publicPriceLists(index))) throw drift();
+      if (!nativeWord(tokens, 0, "ALTER")) continue;
+      const targetStart = nativeWord(tokens, 2, "IF") && nativeWord(tokens, 3, "EXISTS") ? 4 : 2;
+      const target = targetStart + Number(nativeWord(tokens, targetStart, "ONLY"));
+      if (!publicPriceLists(target)) continue;
+      const actionStart = nativeQualified(tokens, target)?.next ?? target + 1;
+      if (!complete || (nativeWord(tokens, actionStart, "SET") && nativeWord(tokens, actionStart + 1, "SCHEMA"))
+        || (nativeWord(tokens, actionStart, "RENAME") && nativeWord(tokens, actionStart + 1, "TO"))) throw drift();
+      // The native-store inventory only accepts plain qualified ALTER TABLE statements.
+      const listed = slots.get(source.path)?.existingTableStatements?.includes(statement);
+      const alter = nativeStoreAlter(statement);
+      const actions = alter?.actions ?? [statement.slice(tokens[actionStart]?.start, tokens.at(-1)?.start)];
+      for (const action of actions) {
+        const parsed = platformSqlTokens(action, false, true);
+        const identifiers = parsed.tokens.map(nativeIdentifier);
+        if (!identifiers.includes("amount_basis") && (!checkName || !identifiers.includes(checkName))) continue;
+        if (!listed || !parsed.complete) throw drift();
+        const shape = parsed.tokens.map(token => {
+          if (token.kind === "string") return JSON.stringify(token.value);
+          if (token.kind === "word") return token.value.toLowerCase();
+          return token.kind === "symbol" ? token.value : "";
+        }).join(" ");
+        if (!predecessor && /^add column amount_basis (?:pg_catalog \. )?text(?: null)?$/u.test(shape)) {
+          predecessor = source;
+          continue;
+        }
+        if (source === predecessor) {
+          const check = priceListBasisCheck.exec(shape);
+          if (!checkName && check) { checkName = check[1]!; continue; }
+          if (checkName && shape === `validate constraint ${checkName}`) continue;
+        }
+        throw drift();
       }
-      if (source === predecessor) {
-        const check = priceListBasisCheck.exec(shape);
-        if (!checkName && check) { checkName = check[1]!; continue; }
-        if (checkName && shape === `validate constraint ${checkName}`) continue;
-      }
-      throw drift();
     }
   }
   if (!predecessor) throw new Error("reviewed native store qualified price list basis SELECT requires an earlier slot introducing public.price_lists.amount_basis");

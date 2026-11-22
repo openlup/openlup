@@ -2818,9 +2818,13 @@ in `existingTableStatements`. If that slot declares a CHECK for the column,
 it must allow only `tax_inclusive`, `tax_exclusive` and NULL. Admission resolves
 the column from the earlier slot's approved statement inventory, checks the
 whole-file SHA-256 against the registry, and requires that file and binding in
-the grant's approval base. The grant refuses intervening changes to the relation,
-column or CHECK. The feature lands the column forward first and introduces the
-dedicated grant-only forward after the column is issued.
+the grant's approval base. Every intervening file that mentions `price_lists`
+or uses Unicode-escaped identifier syntax must tokenize completely. Only direct
+row DML on `price_lists`, GRANT, REVOKE and COMMENT may reference the table in
+those files.
+Unresolved identifiers and other statement forms refuse. The feature lands the
+column forward first and introduces the dedicated grant-only forward after the
+column is issued.
 
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON

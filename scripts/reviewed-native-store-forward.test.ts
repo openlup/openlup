@@ -692,7 +692,17 @@ END; $$;
   ])("refuses a coherently repinned predecessor with %s", (_label, statements) => {
     expect(setup(guarded, statements).admit).toThrow("predecessor definition drifted");
   });
+  const restrictiveCheck = "ADD CHECK (amount_basis = 'tax_exclusive');";
   it.each([
+    ["a three-part target", `ALTER TABLE postgres.public.price_lists ${restrictiveCheck}`],
+    ["a quoted target", `ALTER TABLE "public"."price_lists" ${restrictiveCheck}`],
+    ["a quoted three-part target", `ALTER TABLE "postgres"."public"."price_lists" ${restrictiveCheck}`],
+    ["an unqualified target", `ALTER TABLE price_lists ${restrictiveCheck}`],
+    ["a Unicode-escaped target", String.raw`ALTER TABLE public.U&"price_lis\0074s" ${restrictiveCheck}`],
+    ["a target with a custom Unicode escape", `ALTER TABLE public.U&"price_list!0073" UESCAPE '!' ${restrictiveCheck}`],
+    ["an IF EXISTS ONLY target", `ALTER TABLE IF EXISTS ONLY postgres.public.price_lists ${restrictiveCheck}`],
+    ["unclassified DDL on the table", "ALTER TABLE public.PRICE_LISTS ADD COLUMN other text;"],
+    ["DML with a different target", "UPDATE public.fixture_metadata SET relation_name = 'price_lists';"],
     ["the column type", "ALTER TABLE ONLY public.price_lists ALTER COLUMN amount_basis TYPE integer;"],
     ["the CHECK", "ALTER TABLE public.price_lists DROP CONSTRAINT price_lists_basis_check;"],
     ["the relation", "ALTER TABLE public.price_lists RENAME TO old_price_lists;"],
@@ -700,6 +710,25 @@ END; $$;
     const { preceding, admit } = setup();
     preceding.push({ path: "db/platform/migrations/20990102000000_changed_basis.sql", bytes: Buffer.from(text) });
     expect(admit).toThrow("predecessor definition drifted");
+  });
+  it("refuses incomplete tokenization anywhere in an intervening mentioning file", () => {
+    const { preceding, admit } = setup();
+    const text = `UPDATE public.price_lists SET amount_basis = 'tax_inclusive';
+COMMENT ON COLUMN public.unrelated.";" IS 'metadata';`;
+    preceding.push({ path: "db/platform/migrations/20990102000000_incomplete_scan.sql", bytes: Buffer.from(text) });
+    expect(admit).toThrow("Cannot completely tokenize an intervening file");
+  });
+  it.each([
+    ["DML only", "UPDATE public.price_lists SET amount_basis = 'tax_inclusive' WHERE id IS NOT NULL;"],
+    ["INSERT rows", "INSERT INTO public.price_lists (amount_basis) VALUES ('tax_exclusive');"],
+    ["DELETE rows", "DELETE FROM ONLY public.price_lists WHERE id IS NOT NULL;"],
+    ["three-part UPDATE rows", 'UPDATE "postgres"."public"."price_lists" SET amount_basis = NULL;'],
+    ["privilege changes", "GRANT SELECT ON TABLE public.price_lists TO service_role; REVOKE SELECT ON TABLE public.price_lists FROM service_role;"],
+    ["a comment", "COMMENT ON COLUMN public.price_lists.amount_basis IS 'List basis';"],
+  ])("admits an intervening file with %s", (_label, text) => {
+    const { preceding, admit, pin } = setup();
+    preceding.push({ path: "db/platform/migrations/20990102000000_price_list_metadata_or_data.sql", bytes: Buffer.from(text) });
+    expect(admit().priceListBasisPredecessor).toEqual(pin);
   });
 });
 
