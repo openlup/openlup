@@ -675,8 +675,25 @@ const PREVIEW_CATALOG_DENY_LIST = {
 
 // A relid/subid-zero address owns its columns. Match dependencies of all subids
 // of a whole object, and match an individual subobject only by its own subid.
+// The preimage proof compares the preview table's pg_depend closure with its expected
+// snapshot, excluding only non-internal triggers on the table (pg_trigger NOT tgisinternal),
+// their constraint-trigger pg_constraint rows (contype = 't') and the pg_depend rows those bring.
+// Every column, every other constraint kind (c, f, p, u, x) including the acceptance CHECK,
+// and internal RI triggers stay compared. User triggers cannot change which rows the CHECK
+// accepts or what the byte-exact forward does; the static history scan allows exactly trigger
+// DDL, so both layers follow one rule.
 const PREVIEW_GRAPH_SQL = `
   WITH RECURSIVE root AS (SELECT to_regclass($1)::oid AS oid),
+  user_triggers AS (
+    SELECT t.oid, t.tgconstraint FROM pg_trigger t JOIN root r ON r.oid=t.tgrelid
+    WHERE NOT t.tgisinternal
+  ),
+  excluded(classid, objid) AS (
+    SELECT 'pg_trigger'::regclass::oid, oid FROM user_triggers
+    UNION ALL
+    SELECT 'pg_constraint'::regclass::oid, c.oid
+    FROM pg_constraint c JOIN user_triggers t ON t.tgconstraint=c.oid WHERE c.contype='t'
+  ),
   dependents(classid, objid, objsubid) AS (
     SELECT 'pg_class'::regclass::oid, root.oid, 0 FROM root WHERE oid IS NOT NULL
     UNION
@@ -684,6 +701,7 @@ const PREVIEW_GRAPH_SQL = `
     FROM dependents AS parent JOIN pg_depend d
       ON d.refclassid=parent.classid AND d.refobjid=parent.objid
       AND (parent.objsubid=0 OR d.refobjsubid=parent.objsubid)
+    WHERE NOT EXISTS (SELECT FROM excluded e WHERE e.classid=d.classid AND e.objid=d.objid AND d.objsubid=0)
   ),
   addresses(classid, objid, objsubid, owned) AS (
     SELECT classid, objid, objsubid, true FROM dependents
@@ -1386,10 +1404,11 @@ async function reminderCreationProbes(pool: Pool) {
   return outcomes;
 }
 
-async function provePreviewAcceptance(pool: Pool) {
+async function provePreviewAcceptance(pool: Pool, setup = "") {
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
+    if (setup) await db.query(setup);
     const client = (await db.query("INSERT INTO public.clients(email) VALUES ('preview-proof@example.invalid') RETURNING id")).rows[0].id;
     const subscription = (await db.query(`INSERT INTO public.subscriptions(client_id,cadence_days,next_cycle_at)
       VALUES ($1,28,now()) RETURNING id`, [client])).rows[0].id;
@@ -1407,6 +1426,8 @@ async function provePreviewAcceptance(pool: Pool) {
       if (withReceipt) {
         const role = (await db.query("SELECT current_user::text AS role")).rows[0].role as string;
         await assertPreviewAcceptancePreimage(db, role);
+        // Clear deferred events queued by the pre-forward inserts before ALTER TABLE.
+        await db.query("SET CONSTRAINTS ALL IMMEDIATE");
         const before = await pinned(db, () => snapshot(db));
         await db.query(previewNoopAcceptanceSql);
         const slot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], previewNoopAcceptance: true,
@@ -1439,12 +1460,38 @@ async function provePreviewAcceptance(pool: Pool) {
   } finally { await db.query("ROLLBACK"); db.release(); }
 }
 
-async function replayChain(connectionString: string) {
+const previewTriggerFunction = `CREATE FUNCTION public.preview_preimage_fixture() RETURNS trigger
+  LANGUAGE plpgsql SECURITY INVOKER AS $$ BEGIN RETURN NULL; END; $$;`;
+const previewPreimageProbes = [
+  { label: "a deferred constraint trigger", setup: `${previewTriggerFunction}
+    CREATE CONSTRAINT TRIGGER preview_preimage_fixture_deferred AFTER INSERT OR UPDATE OR DELETE ON ${PREVIEW_TABLE}
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.preview_preimage_fixture();` },
+  { label: "an ordinary trigger", setup: `${previewTriggerFunction}
+    CREATE TRIGGER preview_preimage_fixture_ordinary AFTER INSERT ON ${PREVIEW_TABLE}
+    FOR EACH ROW EXECUTE FUNCTION public.preview_preimage_fixture();` },
+  { label: "an extra column", setup: `ALTER TABLE ${PREVIEW_TABLE} ADD COLUMN preimage_probe_column text;`,
+    drift: `unexpected pg_attribute ${PREVIEW_TABLE}.preimage_probe_column` },
+  { label: "an extra CHECK", setup: `ALTER TABLE ${PREVIEW_TABLE} ADD CONSTRAINT preimage_probe_check CHECK (id IS NOT NULL);`,
+    drift: `unexpected pg_constraint preimage_probe_check on ${PREVIEW_TABLE}` },
+  { label: "an extra foreign key", setup: `ALTER TABLE ${PREVIEW_TABLE} ADD CONSTRAINT preimage_probe_fk FOREIGN KEY (client_id) REFERENCES public.clients(id);`,
+    drift: `unexpected pg_constraint preimage_probe_fk on ${PREVIEW_TABLE}` },
+  { label: "disabled internal RI triggers", setup: `ALTER TABLE ${PREVIEW_TABLE} DISABLE TRIGGER ALL;`,
+    drift: `changed pg_trigger ${PREVIEW_TABLE}/subscription_quote_previews_client_id_fkey/"RI_FKey_check_ins"() (tgenabled)` },
+];
+
+async function replayChain(connectionString: string, probePreimage: boolean) {
   const outcomes = new Map<string, Error | null>();
   let creationOutcomes = new Map<string, Error | null>();
   let applied = 0;
   let previewAcceptanceError: Error | null | undefined;
   const chainDb = new Pool({ connectionString });
+  const preimageProbeErrors = new Map<string, Error | null>();
+  const provePreview = async () => {
+    previewAcceptanceError = await provePreviewAcceptance(chainDb).then(() => null, (error: Error) => error);
+    if (probePreimage) for (const { label, setup } of previewPreimageProbes) {
+      preimageProbeErrors.set(label, await provePreviewAcceptance(chainDb, setup).then(() => null, (error: Error) => error));
+    }
+  };
   const prefix: Parameters<typeof assertNativeStoreForward>[3] = [];
   const steps = [...chain.map(unit => ({ path: unit.path, unit })), ...bound.map(entry => ({ path: entry.pin.path, entry }))].sort((x, y) => x.path.localeCompare(y.path));
   try {
@@ -1452,7 +1499,7 @@ async function replayChain(connectionString: string) {
       const { path } = step, bytes = "unit" in step ? step.unit.bytes : readFileSync(path);
       if ("unit" in step) { await chainDb.query(bytes.toString("utf8")); applied += 1; }
       else {
-        if (step.entry.slot.previewNoopAcceptance) previewAcceptanceError = await provePreviewAcceptance(chainDb).then(() => null, (error: Error) => error);
+        if (step.entry.slot.previewNoopAcceptance) await provePreview();
         const error = await verifyForward(chainDb, registry, path, bytes, prefix, true).then(() => null, (error: Error) => error);
         outcomes.set(path, error);
         if (error) continue;
@@ -1461,9 +1508,9 @@ async function replayChain(connectionString: string) {
       }
       prefix.push({ path, bytes });
     }
-    if (previewAcceptanceError === undefined) previewAcceptanceError = await provePreviewAcceptance(chainDb).then(() => null, (error: Error) => error);
+    if (previewAcceptanceError === undefined) await provePreview();
   } finally { await chainDb.end(); }
-  return { outcomes, creationOutcomes, applied, previewAcceptanceError };
+  return { outcomes, creationOutcomes, applied, previewAcceptanceError, preimageProbeErrors };
 }
 
 export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole: boolean }) {
@@ -1479,7 +1526,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       if (serviceRole) await admin.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
       await admin.query("CREATE DATABASE native_chain");
       await admin.query("CREATE DATABASE synthetic");
-      replay = await replayChain(container.connectionStringFor("native_chain"));
+      replay = await replayChain(container.connectionStringFor("native_chain"), serviceRole);
       // The closed roles exist after the chain; the synthetic database needs them either way.
       for (const role of ["anon", "authenticated"]) await admin.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN CREATE ROLE ${role} NOLOGIN; END IF; END; $$`);
     } finally { await admin.end(); }
@@ -1574,6 +1621,14 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
   it("proves every receipt-backed preview acceptance combination on the installed chain", () => {
     if (replay.previewAcceptanceError) throw replay.previewAcceptanceError;
     expect(replay.previewAcceptanceError).toBeNull();
+  });
+  it.each(serviceRole ? previewPreimageProbes : [])("checks the preview preimage with $label", ({ label, drift }) => {
+    const error = replay.preimageProbeErrors.get(label);
+    if (drift) expect(error?.message).toContain(drift);
+    else {
+      if (error) throw error;
+      expect(error).toBeNull();
+    }
   });
   it("allows only the pinned function setting and requires identical membership rows for an owner window", async () => {
     const signature = "public.cat_replaced(text,boolean)", role = "authenticated";

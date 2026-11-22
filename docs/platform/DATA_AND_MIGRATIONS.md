@@ -2710,10 +2710,13 @@ quotes are allowed. A routine body mentioning previews must contain none of
 the keywords ALTER, DROP, CREATE, TRUNCATE or RENAME. The scan refuses all other
 mentions.
 Immediately before the forward, the PostgreSQL proof compares the table and its
-full `pg_depend` closure, including triggers, with one expected catalogue
-snapshot. The [proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts)
-uses stable names and omits only the named deny-list of instance-specific
-fields. Database-wide state is out of scope.
+`pg_depend` closure with one expected catalogue snapshot, excluding only
+non-internal triggers on the preview table, their `pg_constraint` rows of type
+`t`, and the dependencies those bring. All columns, other constraints including
+the acceptance CHECK, and internal RI triggers remain in the comparison. The
+[proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts) uses stable names
+and omits only the named deny-list of instance-specific fields. Database-wide
+state is out of scope.
 The [installation matrix](../../tests/postgres/subscriptionExactInstallation.test.ts)
 runs the same check on all five shipped profiles.
 
