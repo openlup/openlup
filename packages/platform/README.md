@@ -2686,6 +2686,18 @@ neutral observation status/event aliases retain legacy fields and event keys.
 
 ## Subscription contracts and renewal port
 
+Use `selectCatalogProfileCadence` from `@openlup/platform/subscriptions` to
+intersect fixed-day choices from the store, SKU, offer and command. For a
+profiled request, pass the declared profile, its reference and the matching
+profile and policy identity pins from your binding. The selector also
+intersects the profile's choices and applies its optional fixed-day cap. An
+invalid declaration returns the Core field issue with `policy_binding_missing`.
+
+Pass a successful day projection to the owning operation. Native write
+guards still enforce their limits. Profiled prepaid requests return
+`prepaid_unsupported`. Unprofiled requests retain the existing
+`multi_cycle_prepaid_unsupported` response.
+
 `createPostgresSizedEditor` adds agreed-plan editing and explicit classic-to-sized
 opt-in on the selected sized SQL forward. Compose it with the classic binding
 through `createOfferDispatchedSubscriptionEditor`. Unchanged exact SKU/count/

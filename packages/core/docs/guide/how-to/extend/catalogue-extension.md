@@ -192,14 +192,21 @@ Check availability: `npx --no -- openlup catalogue project --trusted-packs ./own
 
 ## Subscription profile
 
-Edit metadata in `pack.ts`: `subscriptionProfiles: [{key:
-"stationery:repeat", version: 1}]`, with the same `subscriptionProfileRef` on a
-type. Reference checking is available. Cadence bounds, demand pools, unit
-compatibility, overflow and runtime composition await the profile owner; request
-`requiredChecks: ["profiles"]` for those checks. Never infer a database cadence
-bound. New closed grammar kinds require upstream work. Usual codes:
-`definition_profile_ref_invalid`, `definition_unknown_profile_ref`.
-Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
+To check pack references, list the key and version in `subscriptionProfiles`
+and use the same `subscriptionProfileRef` on the product type.
+
+Validate a complete declaration with `validateCatalogSubscriptionProfile`
+from `@openlup/core/catalog`. Supply a profile key and version, distinct
+`allowedCadences`, a versioned `policyRef`, and a lowercase SHA-256
+hex `policyDigest`. Each fixed-day choice uses
+`{ schemaVersion: 1, kind: "fixed_days", days: 28 }`. Use whole days from 1 to
+3660 for choices and the optional `maxFixedDays`. The declaration refuses
+`calendar_months` with `cadence_kind_unsupported`.
+
+On refusal, use the field path and remedy in `issue`. For a valid declaration,
+pass the returned profile to `canonicalCatalogSubscriptionProfileJson` and hash
+the UTF-8 bytes with SHA-256 to derive its declaration digest. The profile and
+policy digest pin different inputs.
 
 ## Upgrade a definition
 

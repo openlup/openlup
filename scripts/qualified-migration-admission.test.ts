@@ -18,6 +18,17 @@ import {
   readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, sqlStatements, type ReviewedForwardRegistry,
 } from "./reviewed-platform-forward.js";
 
+it.each([
+  ["a literal spelling", '"row"'],
+  ["an escaped spelling", String.raw`"\u0072ow"`],
+])("refuses a duplicate JSON key with %s in a reviewed registry slot", (_kind, key) => {
+  const source = readFileSync(REVIEWED_FORWARD_PATH, "utf8");
+  const duplicate = source.replace('"row": "G6"', `${key}: false, "row": "G6"`);
+  expect(() => readReviewedForwardRegistry(Buffer.from(duplicate))).toThrow(
+    `${REVIEWED_FORWARD_PATH}: duplicate JSON key "row" at $["nativeStoreForwardClass"]["slots"][0]["row"]`,
+  );
+});
+
 // Observe both trusted entry points without replacing their actual Git/SQL checks.
 vi.mock("./reviewed-platform-forward.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./reviewed-platform-forward.js")>();
