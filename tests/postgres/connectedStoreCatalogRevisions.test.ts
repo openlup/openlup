@@ -495,6 +495,15 @@ function rehash(value: ConnectedNativeStoreCapture) {
   value.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
 }
 
+function repin(input: ConnectedNativeStoreCapture, catalogueId: string, tables = input.compatible.tables) {
+  const { sha256: _captureDigest, ...body } = input;
+  const { sha256: _compatDigest, ...fields } = body.compatible;
+  const encoded = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const projected = { ...fields, catalogueId, tables };
+  const result = { ...body, compatible: { ...projected, sha256: encoded(projected) } };
+  return { ...result, sha256: encoded(result) };
+}
+
 async function captureTradeIdentifier(issuer: string, marker: string | null) {
   const sku = randomUUID();
   await source.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$2,$3,'Legacy trade item')",
@@ -526,20 +535,20 @@ it("accepts the pinned predecessor packet shape and refuses a packet with an unk
   table.columns = table.columns.filter(column => column.name !== "scheme");
   table.rows = (await source.owner.query(`SELECT (value::jsonb-'scheme')::text AS row
     FROM unnest($1::text[]) AS rows(value)`, [table.rows])).rows.map(row => row.row);
-  function repin(input: ConnectedNativeStoreCapture, catalogueId: string, tables = input.compatible.tables) {
-    const { sha256: _captureDigest, ...body } = input;
-    const { sha256: _compatDigest, ...fields } = body.compatible;
-    const encoded = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-    const projected = { ...fields, catalogueId, tables };
-    const result = { ...body, compatible: { ...projected, sha256: encoded(projected) } };
-    return { ...result, sha256: encoded(result) };
-  }
   await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({ code: "schema_conflict" });
   const historicalTables = capture.compatible.tables.filter(entry => entry.table !== "commerce_checkout_attempt_ledger");
   expect(await restore(target.owner, repin(capture, historic, historicalTables))).toMatchObject({ replayed: false });
   expect((await target.owner.query("SELECT 1 FROM public.commerce_checkout_attempt_ledger")).rows).toEqual([]);
   expect((await target.owner.query("SELECT scheme FROM public.catalog_sku_identifiers WHERE id=$1", [identifier])).rows)
     .toEqual([{ scheme: null }]);
+}, 105_000);
+
+it("restores and replays the separate-migrator inventory from before governed lifecycle", async () => {
+  const predecessor = repin(packet, "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385");
+  expect(await restore(target.owner, predecessor)).toMatchObject({ captureSha256: predecessor.sha256, replayed: false });
+  expect((await target.owner.query("SELECT current_document_revision_id FROM public.catalog_products WHERE id=$1", [products[0]])).rows)
+    .toEqual([{ current_document_revision_id: latest[0] }]);
+  expect(await restore(target.owner, predecessor)).toMatchObject({ captureSha256: predecessor.sha256, replayed: true });
 }, 105_000);
 
 it("transfers same-SKU governed revisions and preserves legacy NULL facts", async () => {

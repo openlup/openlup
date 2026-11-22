@@ -307,7 +307,10 @@ it("checks the complete existing-routine dispatch path after all eight approved 
   expect(blocked).toEqual([]);
 });
 
-it("retains native notice sources and accepted receipts through connected capture and restore", async () => {
+it.each([
+  ["current", undefined],
+  ["before governed lifecycle", "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20"],
+] as const)("retains native notice sources and accepted receipts from the %s bootstrap inventory", async (_inventory, sourceCatalogueId) => {
   const target = await runPostgresContainer({ name: `m19-g8-transfer-${process.pid}`, password: "synthetic-conformance" });
   const pools: Pool[] = [];
   try {
@@ -323,8 +326,8 @@ it("retains native notice sources and accepted receipts through connected captur
     });
     await runner.apply();
     const manifest = selectPlatformMigrationManifest(readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true });
-    const capture = (db: Pool, sourceId: string) => captureConnectedNativeStore({ sourceId,
-      catalogueId: manifest.objectInventorySha256, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
+    const capture = (db: Pool, sourceId: string, catalogueId = manifest.objectInventorySha256) => captureConnectedNativeStore({ sourceId,
+      catalogueId, maximumRows: 10000, maximumBytes: 64 * 1024 * 1024,
       source: { async withSnapshot(work) {
         const client = await db.connect();
         try {
@@ -335,7 +338,7 @@ it("retains native notice sources and accepted receipts through connected captur
         finally { client.release(); }
       } },
     });
-    const packet = await capture(admin, "native-notices"), freshTarget = await capture(owner, "new-target");
+    const packet = await capture(admin, "native-notices", sourceCatalogueId), freshTarget = await capture(owner, "new-target");
     const tables = ["subscription_dunning_cases", "subscription_dunning_notifications", "subscription_reminder_ledger", "transactional_delivery_receipts"];
     for (const table of tables) expect(packet.owned.find(rows => rows.table === table)!.rows.length).toBeGreaterThan(0);
     const input = { owner, installation: selection, packet, freshTarget };
