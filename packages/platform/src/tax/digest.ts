@@ -69,7 +69,9 @@ function verifyEvidence(
   };
   for (const [field, [actual, expected]] of Object.entries(pairs)) {
     if (actual !== expected) {
-      return refuse("tax_reference_conflict", "/evidence/" + field, "Supply evidence from the original quote request.");
+      return refuse("tax_reference_conflict", "/evidence/" + field, field === "status"
+        ? "Use the original quote's purpose for the evidence status and any result kind."
+        : "Supply evidence from the original quote request.");
     }
   }
 
@@ -194,7 +196,7 @@ function verifyMoney(input: TaxQuoteInputV1["money"], money: CatalogueMoneyV2Res
 type Cell = TaxQuoteInputV1["required"][number];
 type Row = TaxCalculationEvidenceV1["coverage"]["vector"][number];
 type Assessment = { id: string; minor: number; path: string } & (
-  { kind: "tax"; target: "line" | "delivery"; key: string; jurisdiction: string; rate?: string } | { kind: "fee" }
+  { kind: "tax"; rate?: string } | { kind: "fee" }
 );
 type Located = { assessment: Assessment; candidates: readonly Cell[] };
 
@@ -229,7 +231,7 @@ function collectAssessments(input: TaxQuoteInputV1, money: CatalogueMoneyV2Resul
         if (!candidates) return refuse("tax_breakdown_incomplete", path + "/jurisdictionRef",
           "Re-obtain the position or fee for a required cell of the original request.");
         identities.set(id, fingerprint);
-        rows.push({ assessment: { kind: "tax", id, minor, path, target, key, jurisdiction, rate }, candidates });
+        rows.push({ assessment: { kind: "tax", id, minor, path, rate }, candidates });
       }
     }
   }
@@ -241,6 +243,29 @@ function collectAssessments(input: TaxQuoteInputV1, money: CatalogueMoneyV2Resul
     rows.push({ assessment: { kind: "fee", id, minor, path }, candidates });
   }
   return rows;
+}
+
+function cellRepair(actual: Record<string, unknown>, candidates: readonly Record<string, unknown>[], path: string) {
+  for (const candidate of candidates) {
+    const fields = Object.keys(candidate).filter(key => !isDeepStrictEqual(actual[key], candidate[key]));
+    if (fields.length === 1) {
+      const [field] = fields;
+      return { field: path + "/" + field, remedy: "Use " + JSON.stringify(candidate[field]) + " from the matching required cell." };
+    }
+  }
+  return { field: path, remedy: "Copy the complete matching required cell from the request." };
+}
+
+function feeCellValues({ jurisdiction, feeKind, scope }: TaxCalculationEvidenceV1["positions"]["fees"][number]) {
+  return { jurisdiction, feeKind, scope };
+}
+
+function feeCell(cell: Cell) {
+  return {
+    jurisdiction: cell.jurisdiction, feeKind: cell.taxKind,
+    scope: cell.target.kind === "fee" && cell.target.deliveryKey !== undefined
+      ? { kind: "delivery", key: cell.target.deliveryKey } : { kind: "order" },
+  };
 }
 
 function verifyAssessments(rows: readonly Located[], evidence: TaxCalculationEvidenceV1, coverage: ReadonlyMap<string, Row>): TaxRefusal | undefined {
@@ -257,23 +282,8 @@ function verifyAssessments(rows: readonly Located[], evidence: TaxCalculationEvi
     const entry = metadata.get(tag);
     const decision = (candidate: Cell) => coverage.get(cellKey(candidate))!.decision;
     const admissible = candidates.filter(candidate => permitsAssessment(kind, decision(candidate), minor));
-    let cell: Cell | undefined, field = "";
-    if (entry?.kind === "tax" && assessment.kind === "tax") {
-      const { row } = entry;
-      cell = candidates.find(candidate => sameCell(candidate, row.cell));
-      if (!cell) field = row.cell.target.kind === assessment.target && row.cell.target.key === assessment.key
-        && row.cell.jurisdiction !== assessment.jurisdiction ? "/cell/jurisdiction" : "/cell/target";
-      else if (row.ratePercent !== assessment.rate) field = "/ratePercent";
-    } else if (entry?.kind === "fee") {
-      const { row } = entry;
-      const scope = row.scope.kind === "delivery" ? row.scope.key : undefined;
-      cell = candidates.find(candidate => candidate.jurisdiction === row.jurisdiction && candidate.taxKind === row.feeKind
-        && candidate.target.kind === "fee" && candidate.target.deliveryKey === scope);
-      if (!cell) {
-        const jurisdictions = admissible.filter(candidate => candidate.jurisdiction === row.jurisdiction);
-        field = !jurisdictions.length ? "/jurisdiction" : jurisdictions.some(candidate => candidate.taxKind === row.feeKind) ? "/scope" : "/feeKind";
-      }
-    }
+    const cell = entry?.kind === "tax" ? candidates.find(candidate => sameCell(candidate, entry.row.cell))
+      : entry && candidates.find(candidate => isDeepStrictEqual(feeCell(candidate), feeCellValues(entry.row)));
 
     // A matched cell governs its amount. Otherwise, choose a repair from admissible candidates without picking a cell.
     if (cell ? !permitsAssessment(kind, decision(cell), minor) : !admissible.length) {
@@ -284,17 +294,24 @@ function verifyAssessments(rows: readonly Located[], evidence: TaxCalculationEvi
       }
       return refuse("tax_breakdown_incomplete", assessmentRef(assessment),
         decisions.every(decision => decision === "out_of_scope")
-          ? "Omit the out-of-scope fee." : "Obtain the missing proof before emitting an assessment.");
+          ? "Omit the out-of-scope fee and its metadata, then reconcile payable." : "Obtain the missing proof before emitting an assessment.");
     }
-    if (!entry) return refuse("tax_breakdown_incomplete", assessmentRef(assessment), "Supply one matching row.");
-    if (field) return refuse("tax_breakdown_incomplete", entry.path + field,
-      "Bind metadata to the original breakdown for that required cell." + (field === "/ratePercent" ? " Match the optional rate exactly." : ""));
+    if (!entry) return refuse("tax_breakdown_incomplete", assessmentRef(assessment), "Supply one matching metadata row in the evidence.");
+    if (!cell) {
+      const { field, remedy } = entry.kind === "tax"
+        ? cellRepair(entry.row.cell, admissible, entry.path + "/cell")
+        : cellRepair(feeCellValues(entry.row), admissible.map(feeCell), entry.path);
+      return refuse("tax_breakdown_incomplete", field, remedy);
+    }
+    if (entry.kind === "tax" && assessment.kind === "tax" && entry.row.ratePercent !== assessment.rate) {
+      return refuse("tax_breakdown_incomplete", entry.path + "/ratePercent", "Copy the money position's rate or omit it when absent.");
+    }
     used.add(tag);
   }
 
   for (const [key, { kind, path }] of metadata) {
     if (!used.has(key)) return refuse("tax_breakdown_incomplete", path + (kind === "tax" ? "/positionRef" : "/feeKey"),
-      "Remove the specific orphan.");
+      "Remove this metadata row.");
   }
 }
 
@@ -342,7 +359,9 @@ export function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuot
   const decoded = quoteEvidenceSchema.safeParse(parsed.evidence);
   if (!decoded.success) return refuse(decoded.error.code, "/evidence" + decoded.error.field, decoded.error.message);
   if (parsed.kind !== decoded.data.status) {
-    return refuse("tax_calculation_unusable", "/evidence/status", "Return evidence with the correct result status.");
+    return decoded.data.status === checked.input.purpose
+      ? refuse("tax_calculation_unusable", "/kind", "Use the original quote's purpose as the result kind.")
+      : refuse("tax_calculation_unusable", "/evidence/status", "Return evidence with the correct result status.");
   }
   return verifyEvidence(checked, decoded.data, parsed.evidenceDigest, assessments);
 }

@@ -95,7 +95,8 @@ export type TaxReverseRequestV1 = Readonly<{ scope: TaxScopeV1; originalRef: str
 export type TaxReverseResultV1 = Readonly<{ kind: "reversed"; providerReversalRef: string; positions: List<Delta> }>
   | TaxRefusal | TaxUnavailable;
 export type TaxCapabilitiesV1 = Readonly<{ scope: TaxScopeV1; markets: List<string>; currencies: List<string>;
-  bases: List<"exclusive">; sourcing: List<Sourcing>;
+  /** Inclusive bases are not supported by this contract version. */
+  bases: readonly ["exclusive"]; sourcing: List<Sourcing>;
   evidence: Readonly<{ lines: boolean; delivery: boolean; fees: boolean }>;
   registrations: "effective_intervals" | "unsupported"; validity: "read_only" | "unsupported";
   calculationLifetimeMs: number; posting: "provider" | "unsupported"; reversals: List<"full" | "lines" | "amount">;

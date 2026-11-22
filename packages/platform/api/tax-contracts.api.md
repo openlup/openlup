@@ -407,7 +407,8 @@ export type TaxCapabilitiesV1 = Readonly<{
     scope: TaxScopeV1;
     markets: List<string>;
     currencies: List<string>;
-    bases: List<"exclusive">;
+    /** Inclusive bases are not supported by this contract version. */
+    bases: readonly ["exclusive"];
     sourcing: List<Sourcing>;
     evidence: Readonly<{
         lines: boolean;

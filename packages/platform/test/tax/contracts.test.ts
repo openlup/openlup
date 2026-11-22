@@ -397,6 +397,201 @@ describe("tax document decoders", () => {
     return { kind: bound.status, money: assessment, evidence: bound, evidenceDigest: taggedDigest("evidence", bound) } as TaxQuoteResultV1;
   };
 
+  it("applies each assessment and coverage refusal remedy and verifies the repaired quote", () => {
+    type Success = Extract<TaxQuoteResultV1, { kind: "final" | "estimate" }>;
+    type Example = { original: TaxQuoteRequestV1; result: Success };
+    type Edit = readonly [path: string, value: unknown];
+    type Probe = {
+      field: string; remedy: string; code: Extract<TaxQuoteResultV1, { kind: "refused" }>["code"];
+      broken: readonly Edit[]; repair?: readonly string[]; base?: Example; shared?: boolean; stale?: Edit;
+    };
+    const example = (original = request, result = resultWith(original)): Example => {
+      if (result.kind !== "final" && result.kind !== "estimate") throw new Error("Expected calculation evidence.");
+      return { original, result };
+    };
+    const edit = (document: Example, [path, value]: Edit) => {
+      const keys = path.slice(1).split("/");
+      const key = keys.pop()!;
+      const parent = keys.reduce((node, key) => (node as Record<string, unknown>)[key], document as unknown);
+      if (Array.isArray(parent) && value === undefined) parent.splice(Number(key), 1);
+      else if (value === undefined) delete (parent as Record<string, unknown>)[key];
+      else (parent as Record<string, unknown>)[key] = structuredClone(value);
+    };
+    const read = (document: Example, path: string) => path.slice(1).split("/")
+      .reduce((node, key) => (node as Record<string, unknown>)[key], document as unknown);
+
+    const recompute = (document: Example, edits: readonly Edit[], stale?: Edit) => {
+      const { original, result } = document;
+      if (edits.some(([path]) => path.startsWith("/result/money/"))) {
+        const { components, fees, netTotal } = result.money;
+        const states = components.map(({ ref, initial, allocations }) => ({
+          ref, states: [initial, ...allocations.map(row => row.after)].map(({ amountMinor, taxPositions }, index) =>
+            ({ afterSequence: index === 0 ? 0 : allocations[index - 1].sequence, amountMinor, taxPositions })),
+        }));
+        const taxTotal = states.flatMap(row => row.states.at(-1)!.taxPositions).reduce((sum, row) => sum + row.taxMinor, 0);
+        const payableMinor = netTotal + taxTotal + fees.reduce((sum, fee) => sum + fee.amountMinor, 0);
+        edit(document, ["/result/money", calculateCatalogueMoneyV2({ ...original.input.money, fees }, {
+          kind: "provider", components: states, payableMinor,
+        })]);
+      }
+
+      const { evidence } = result;
+      const hash = (path: string, digest: string) => edit(document, [path, stale?.[0] === path ? stale[1] : digest]);
+      hash("/original/inputDigest", taggedDigest("input", original.input));
+      evidence.positions.tax.forEach((position, index) =>
+        hash("/result/evidence/positions/tax/" + index + "/resolutionDigest", taggedDigest("resolution", position.resolution)));
+      hash("/result/evidence/coverage/digest", taggedDigest("coverage", evidence.coverage.vector));
+      hash("/result/evidence/fiscalDigest", fiscalHash(evidence));
+      hash("/result/evidenceDigest", taggedDigest("evidence", evidence));
+    };
+
+    const tax = "/evidence/positions/tax/0";
+    const fee = "/evidence/positions/fees/0";
+    const position = "/money/components/0/initial/taxPositions/0";
+    const moneyFee = "/money/fees/0";
+    const rowIndex = vector.findIndex(row => row.cell.target.key === "item-a");
+    const covered = "/evidence/coverage/vector/" + rowIndex;
+    const feeIndex = vector.findIndex(row => row.cell.target.kind === "fee");
+    const feeCoverage = "/result/evidence/coverage/vector/" + feeIndex;
+    const estimated = makeTaxQuoteRequest("estimate-remedies", { ...request.input, purpose: "estimate" });
+    const estimate = example(estimated);
+    const zero = { ...money.fees[0], amountMinor: 0 };
+    const exempt = (target: typeof vector[number]["cell"]["target"]["kind"]) => vector.map(row => row.cell.target.kind === target
+      ? { ...row, decision: "in_scope_exempt" as const, treatment: { ...taxable, kind: "exempt" as const } } : row);
+    const feeExempt = example(request, resultWith(request, localMoney(request.input.money, "district-a", "8.125000", [zero]), receipt, exempt("fee")));
+    const zeroTax = { ...receipt, positions: { ...receipt.positions, tax: [{ ...receipt.positions.tax[0], ratePercent: "0" }] } };
+    const taxExempt = example(request, resultWith(request, localMoney(request.input.money, "district-a", "0"), zeroTax, exempt("line")));
+    const omitted = makeTaxQuoteRequest("omit-fee", { ...estimated.input, coverage: { ...estimated.input.coverage,
+      declarations: estimated.input.coverage.declarations.map(row => row.taxKind !== "fee-a" ? row
+        : { ...row, status: "not_registered_acknowledged" as const, acknowledgementRef: "ack" }),
+    } });
+    const absentFee = { ...receipt, positions: { ...receipt.positions, fees: [] } };
+    const outOfScope = example(omitted, resultWith(omitted, localMoney(omitted.input.money, "district-a", "8.125000", []), absentFee,
+      vector.map(row => row.cell.target.kind === "fee" ? { cell: row.cell, decision: "out_of_scope" as const,
+        declaration: omitted.input.coverage.declarations.find(row => row.taxKind === "fee-a"),
+        registration: { ...active, state: "inactive" as const },
+      } : row)));
+    const unrepeated = calculateCatalogueMoneyV2({ ...request.input.money, fees: money.fees }, {
+      kind: "local", components: planCatalogueMoneyV2(request.input.money).components.map(({ ref }) => ({
+        ref, rates: ref.kind === "delivery" ? [] : [{
+          positionRef: ref.lineKey, jurisdictionRef: ref.lineKey === "item-z" ? "district-a" : "district-b", rateDecimal: "8.125000",
+        }],
+      })),
+    });
+    const distinct = example(request, resultWith(request, unrepeated, { ...receipt, positions: {
+      fees: receipt.positions.fees, tax: ["item-z", "item-a"].map((positionRef, index) => ({
+        ...receipt.positions.tax[0], positionRef, cell: cell(positionRef, index === 0 ? "district-a" : "district-b"),
+      })),
+    } }));
+
+    const editField = (code: Probe["code"], field: string, remedy: string, value: unknown, options: Partial<Probe> = {}): Probe =>
+      ({ code, field, remedy, broken: [["/result" + field, value]], ...options });
+    const assessment = (field: string, remedy: string, value: unknown, options?: Partial<Probe>) =>
+      editField("tax_breakdown_incomplete", field, remedy, value, options);
+    const binding = (field: string, remedy: string, value: unknown, options?: Partial<Probe>) =>
+      editField("tax_reference_conflict", field, remedy, value, { shared: true, ...options });
+    const stale = (field: string, remedy: string, path = "/result" + field) =>
+      binding(field, remedy, digest, { broken: [], stale: [path, digest], repair: [] });
+    const replaceCell = "Copy the complete matching required cell from the request.";
+    const moneyIdentity = "Re-obtain the position or fee for a required cell of the original request.";
+    const zeroAssessment = "Re-obtain the calculation with zero assessment for the covered exemption or exclusion and reconcile payable.";
+    const observed = "Reconcile the named cell from effective observations.";
+    const supplyRow = "Supply one matching metadata row in the evidence.";
+    const originalEvidence = "Supply evidence from the original quote request.";
+    const probes: Probe[] = [
+      stale("/inputDigest", "Replay the original request or rebuild it with a new key.", "/original/inputDigest"),
+      stale("/evidenceDigest", "Supply the original evidence and its digest."),
+      stale("/evidence/coverage/digest", "Supply the coverage vector with its original digest."),
+      stale(tax + "/resolutionDigest", "Recompute the digest from this rule resolution."),
+      stale("/evidence/fiscalDigest", "Recompute the digest from the documented fiscal payload."),
+      ...Object.entries({
+        scope: { ...scope, adapterVersion: "2" }, taxDate: "2030-01-02T00:00:00.000Z",
+        inputDigest: digest, destinationDigest: "b".repeat(64), shipFromRef: "different-origin",
+        policyRevision: "different-policy", classMapRevision: "different-classes",
+      }).map(([field, value]) => binding("/evidence/" + field, originalEvidence, value)),
+      binding("/evidence/status", "Use the original quote's purpose for the evidence status and any result kind.", "estimate", {
+        broken: [["/result/evidence/status", "estimate"], ["/result/kind", "estimate"]],
+        repair: ["/result/evidence/status", "/result/kind"],
+      }),
+      editField("tax_calculation_unusable", "/evidence/status", "Return evidence with the correct result status.", "estimate"),
+      editField("tax_calculation_unusable", "/kind", "Use the original quote's purpose as the result kind.", "estimate"),
+      binding("/evidence/coverage/vector", "Reconcile the original quote's required cells.", vector.filter((_, i) => i !== rowIndex)),
+      binding(covered + "/declaration", "Reconcile coverage with the original quote's effective merchant declaration.",
+        { ...vector[rowIndex].declaration, actorRef: "other" }),
+      editField("tax_calculation_unusable", covered + "/decision", observed, "undeclared", { base: estimate, shared: true }),
+      editField("tax_calculation_unusable", covered + "/decision", observed, "undeclared", { shared: true }),
+      editField("tax_calculation_unusable", covered + "/decision", observed, "in_scope_exempt", { shared: true }),
+      editField("tax_invalid_input", "/evidence/coverage/vector/1", "Supply uniquely ordered coverage cells.", vector[0], { shared: true }),
+      editField("tax_invalid_input", covered + "/declaration", "Supply the effective declaration for this cell.",
+        { ...vector[rowIndex].declaration, jurisdiction: "other" }, { shared: true }),
+      editField("tax_invalid_input", covered + "/registration", "Supply the registration effective on the tax date.",
+        { ...active, effective: { from: later } }, { shared: true }),
+      editField("tax_invalid_input", "/evidence/expiresAt", "Supply an expiry after calculation.", date, { shared: true }),
+      editField("tax_invalid_input", tax + "/resolution/effective", "Supply a rule resolution effective on the tax date.", { from: later }, { shared: true }),
+      binding(tax + "/resolution/assignmentRef", "Use the original component's tax assignment.", "other-assignment"),
+      binding(tax + "/resolution/policyRevision", "Use the original quote's policy revision.", "other-policy"),
+      binding(tax + "/ruleRef", "Use the matched coverage treatment's rule reference.", "other-rule"),
+      assessment(position + "/jurisdictionRef", moneyIdentity, "district-b"),
+      assessment(moneyFee + "/feeKey", moneyIdentity, "other-fee"),
+      assessment("/money/components/1/initial/taxPositions/0/positionRef",
+        "Re-obtain consistent position identities across states. Supply distinct refs for distinct positions.", "item-z", { base: distinct }),
+      assessment(position + "/positionRef", supplyRow, undefined, { broken: [["/result" + tax, undefined]], repair: ["/result" + tax] }),
+      assessment(moneyFee + "/feeKey", supplyRow, undefined, { broken: [["/result" + fee, undefined]], repair: ["/result" + fee] }),
+      ...(["tax", "fees"] as const).flatMap(kind => {
+        const path = "/evidence/positions/" + kind + "/1";
+        const field = kind === "tax" ? "positionRef" : "feeKey";
+        return [
+          assessment(path, "Remove the duplicate identity.", receipt.positions[kind][0], { shared: true }),
+          assessment(path + "/" + field, "Remove this metadata row.", undefined, {
+            broken: [["/result" + path, { ...receipt.positions[kind][0], [field]: "orphan" }]], repair: ["/result" + path],
+          }),
+        ];
+      }),
+      ...Object.entries({ jurisdiction: "district-b", target: cell("item-a").target, sourcing: "ship_from", level: "other", taxKind: "other" })
+        .map(([key, value]) => assessment(tax + "/cell/" + key, "Use " + JSON.stringify(read(example(), "/result" + tax + "/cell/" + key))
+          + " from the matching required cell.", value)),
+      assessment(tax + "/cell", replaceCell, cell("item-a", "district-b")),
+      assessment(tax + "/cell", replaceCell, { ...cell(), sourcing: "ship_from", level: "other" }),
+      ...Object.entries({ jurisdiction: "district-b", feeKind: "sale", scope: { kind: "order" } })
+        .map(([key, value]) => assessment(fee + "/" + key, "Use " + JSON.stringify(read(example(), "/result" + fee + "/" + key))
+          + " from the matching required cell.", value)),
+      assessment(fee, replaceCell, { ...receipt.positions.fees[0], jurisdiction: "district-b", scope: { kind: "order" } }, {
+        repair: ["/result" + fee + "/jurisdiction", "/result" + fee + "/feeKind", "/result" + fee + "/scope"],
+      }),
+      assessment(tax + "/ratePercent", "Copy the money position's rate or omit it when absent.", undefined),
+      assessment(position + "/taxMinor", zeroAssessment, 1, { base: taxExempt }),
+      assessment(moneyFee + "/amountMinor", zeroAssessment, 5, { base: feeExempt }),
+      assessment(moneyFee + "/feeKey", "Omit the out-of-scope fee and its metadata, then reconcile payable.", undefined, {
+        base: outOfScope, broken: [["/result" + moneyFee, zero], ["/result" + fee, receipt.positions.fees[0]]],
+        repair: ["/result" + moneyFee, "/result" + fee],
+      }),
+      assessment(moneyFee + "/feeKey", "Obtain the missing proof before emitting an assessment.", undefined, {
+        base: estimate, broken: [[feeCoverage, { cell: vector[feeIndex].cell, decision: "unavailable_evidence",
+          declaration: vector[feeIndex].declaration }]], repair: [feeCoverage],
+      }),
+    ];
+
+    for (const { base = example(), code, field, remedy, broken, repair = ["/result" + field], stale, shared } of probes) {
+      const label = field + " " + remedy + " (" + base.result.kind + ")";
+      const changed = structuredClone(base);
+      const verify = () => verifyTaxQuoteResult(changed.original, changed.result);
+      const verifyFiscal = () => verifyTaxQuoteRequest({ ...fiscal, original: changed.original,
+        evidence: changed.result.evidence, evidenceDigest: changed.result.evidenceDigest });
+      for (const change of broken) edit(changed, change);
+      recompute(changed, broken, stale);
+      const failure = { kind: "refused", code, field, remedy };
+      expect(verify(), label).toEqual(failure);
+      if (shared) expect(verifyFiscal(), "fiscal " + label).toEqual(field === "/inputDigest"
+        ? { ...failure, field: "/original/inputDigest" } : failure);
+
+      const corrections = repair.map(path => [path, read(base, path)] as const);
+      for (const correction of corrections) edit(changed, correction);
+      recompute(changed, corrections);
+      expect(verify(), "repaired " + label).toBeUndefined();
+      if (shared) expect(verifyFiscal(), "repaired fiscal " + label).toBeUndefined();
+    }
+  });
+
   it.each(["order", "delivery"] as const)("uses the same coverage amount rule for %s fees in final and estimate results", kind => {
     const feeScope = kind === "order" ? { kind } : { kind, key: "shipping-a" };
     const required = request.input.required.map(row => {
@@ -439,7 +634,7 @@ describe("tax document decoders", () => {
       } : row);
       expect(verifyTaxQuoteResult(original, resultWith(original, zero, receipt, rows))).toEqual({
         kind: "refused", code: "tax_breakdown_incomplete", field: "/money/fees/0/feeKey",
-        remedy: excluded ? "Omit the out-of-scope fee." : "Obtain the missing proof before emitting an assessment.",
+        remedy: excluded ? "Omit the out-of-scope fee and its metadata, then reconcile payable." : "Obtain the missing proof before emitting an assessment.",
       });
     }
   });
@@ -447,7 +642,6 @@ describe("tax document decoders", () => {
   it("diagnoses tax and fee identity on the repairable side with or without metadata", () => {
     const { tax, fees } = receipt.positions;
     const moneyFix = "Re-obtain the position or fee for a required cell of the original request.";
-    const evidenceFix = "Bind metadata to the original breakdown for that required cell.";
     for (const present of [false, true]) {
       // The second jurisdiction exists only on a different merchandise line.
       for (const jurisdiction of ["unknown-district", "district-b"]) {
@@ -468,20 +662,23 @@ describe("tax document decoders", () => {
     const rows = coverageFor(original);
     const result = localMoney(original.input.money, another.jurisdiction);
     expect(verifyTaxQuoteResult(original, resultWith(original, result, receipt, rows))).toEqual({
-      kind: "refused", code: "tax_breakdown_incomplete", field: "/evidence/positions/tax/0/cell/jurisdiction", remedy: evidenceFix,
+      kind: "refused", code: "tax_breakdown_incomplete", field: "/evidence/positions/tax/0/cell/jurisdiction", remedy: 'Use "district-b" from the matching required cell.',
     });
     expect(verifyTaxQuoteResult(original, resultWith(original, result, { ...receipt, positions: { tax: [], fees } }, rows))).toEqual({
-      kind: "refused", code: "tax_breakdown_incomplete", field: "/money/components/0/initial/taxPositions/0/positionRef", remedy: "Supply one matching row.",
+      kind: "refused", code: "tax_breakdown_incomplete", field: "/money/components/0/initial/taxPositions/0/positionRef", remedy: "Supply one matching metadata row in the evidence.",
     });
     const corrected = { ...receipt, positions: { tax: [{ ...tax[0], cell: another }], fees } };
     expect(verifyTaxQuoteResult(original, resultWith(original, result, corrected, rows))).toBeUndefined();
 
-    for (const [change, field] of [
-      [{ jurisdiction: "district-b" }, "/jurisdiction"], [{ feeKind: "sale" }, "/feeKind"], [{ scope: { kind: "order" } }, "/scope"],
+    for (const [change, field, value] of [
+      [{ jurisdiction: "district-b" }, "/jurisdiction", fees[0].jurisdiction],
+      [{ feeKind: "sale" }, "/feeKind", fees[0].feeKind],
+      [{ scope: { kind: "order" } }, "/scope", fees[0].scope],
     ] as const) {
       const altered = { ...receipt, positions: { tax, fees: [{ ...fees[0], ...change }] } };
       expect(verifyTaxQuoteResult(request, resultWith(request, money, altered))).toEqual({
-        kind: "refused", code: "tax_breakdown_incomplete", field: "/evidence/positions/fees/0" + field, remedy: evidenceFix,
+        kind: "refused", code: "tax_breakdown_incomplete", field: "/evidence/positions/fees/0" + field,
+        remedy: "Use " + JSON.stringify(value) + " from the matching required cell.",
       });
     }
     expect(verifyTaxQuoteResult(request, resultWith(request))).toBeUndefined();
