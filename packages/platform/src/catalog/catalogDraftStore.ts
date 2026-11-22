@@ -9,12 +9,15 @@ import { catalogDraftStoredApplyResultSchema, catalogDraftStoredRecordSchema } f
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
 import { catalogDraftPublicationStoredApplyResultSchema, catalogDraftPublicationStoredRecordSchema } from "./draftV3Schemas.js";
+import { catalogDraftCommandV4Schema, lifecycleStoredRecordSchema, lifecycleStoredResultSchema } from "./lifecycleDraftSchemas.js";
+import type { CatalogLifecycleDraftStorePort } from "./draftPorts.js";
+import type { PublicationDraftRecord } from "./publicationIntent.js";
 import type { z } from "./validation.js";
 import { CatalogDraftStoreError, type CatalogDraftStorePort } from "./draftPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 
 /** Dark owner-only storage. Composition must verify the operator before use. */
-function draftStore<Record extends CatalogDraftPublicationStoredRecord>(client: PgQueryExecutor, schemas: {
+function draftStore<Record extends PublicationDraftRecord>(client: PgQueryExecutor, schemas: {
   record: z.ZodType<Record>; result: z.ZodType<{ outcome: "committed" | "replayed"; record: Record } | CatalogDraftRefusal>;
 }, maxVersion: number): CatalogDraftStorePort<Record> {
   const { record: catalogDraftRecordSchema, result: catalogDraftApplyResultSchema } = schemas;
@@ -33,11 +36,12 @@ function draftStore<Record extends CatalogDraftPublicationStoredRecord>(client: 
   return {
     async apply(request) {
       try {
-        if (maxVersion < 3) {
-          let version: unknown;
-          try { version = JSON.parse(request.canonicalCommand)?.schemaVersion; } catch { /* SQL retains legacy malformed-input refusals. */ }
-          if (typeof version === "number" && version > maxVersion) return { outcome: "validation_issue", reason: "command_invalid" };
-        }
+        let command: { schemaVersion?: unknown } | null = null;
+        try { command = JSON.parse(request.canonicalCommand); } catch { /* SQL retains malformed-input refusals. */ }
+        const version = command?.schemaVersion;
+        if (typeof version === "number" && (version > maxVersion
+          || version === 4 && !catalogDraftCommandV4Schema.safeParse(command).success))
+          return { outcome: "validation_issue", reason: "command_invalid" };
         const result = await call(
           "SELECT public.catalog_draft_apply($1::text, $2::text, $3::text) AS result",
           [request.canonicalCommand, request.fingerprint, request.actorId],
@@ -98,4 +102,25 @@ function refusal(error: unknown): CatalogDraftRefusal {
   if (code === "22023") return { outcome: "validation_issue", reason: "invalid_store_request" };
   if (code === "23505") return { outcome: "conflict", reason: "identity_reserved" };
   return { outcome: "dependency_unavailable", reason: "store_unavailable" };
+}
+
+/** Opt in to governed draft writes and exact stored revisions on list.
+ * @experimental
+ */
+export function createPostgresCatalogDraftStoreV4(client: PgQueryExecutor): CatalogLifecycleDraftStorePort {
+  const store = draftStore(client, { record: lifecycleStoredRecordSchema, result: lifecycleStoredResultSchema }, 4);
+  return {
+    ...store,
+    async list(query, actorId) {
+      const page = await store.list(query, actorId);
+      const items = await Promise.all(page.items.map(async summary => {
+        const record = await store.get({ draftId: summary.draftId, revision: summary.revision }, actorId);
+        if (!record || record.draftId !== summary.draftId || record.revision !== summary.revision
+          || record.fingerprint !== summary.fingerprint)
+          throw new CatalogDraftStoreError({ outcome: "dependency_unavailable", reason: "invalid_store_response" });
+        return record;
+      }));
+      return { ...page, items };
+    },
+  };
 }

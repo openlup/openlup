@@ -1,11 +1,11 @@
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { z } from "zod";
 import { createPostgresCatalogPublicationReads as createExactReads, nativeCatalogPublication, type VerifiedCatalogPublisher, type CatalogPublicationReadPort,
-  type CatalogPublicationReceiptV2, type CatalogSkuRevisionRef,
+  type CatalogSkuRevisionRef,
   type CatalogRetainedSourceBinding, type CatalogPublicationFailure } from "@openlup/platform/catalog";
 import type { CatalogHeadRef, CatalogPublicationReceipt, CatalogPublicationRefusal } from "@openlup/platform/catalog/contracts";
 
-const { limits, decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
+const { legacyPublicationReceipt, limits, decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt, decodeStoredPublicationSku,
   publicationJson, publicationDigest, SKU_PAGE_DEPTH, publicationReadFailure, publicationRefuse, publicationRemedy } = nativeCatalogPublication;
 
 type AdmissionDiagnostic = Parameters<typeof publicationRefuse>[0];
@@ -48,10 +48,6 @@ function legacyFailure(result: CatalogPublicationFailure): CatalogPublicationRef
   } as const;
   return { ...result, outcome, reason: reasons[outcome] };
 }
-function legacyReceipt(receipt: CatalogPublicationReceiptV2): CatalogPublicationReceipt {
-  return { commandKey: receipt.commandKey, fingerprint: receipt.fingerprint, actorId: receipt.actorId,
-    previousHead: receipt.previousHead, head: receipt.head, changes: receipt.changes };
-}
 const equal = (left: unknown, right: unknown) => publicationJson(left) === publicationJson(right);
 
 async function verifiedIssue(db: PgQueryExecutor, publicationId: string, productId?: string) {
@@ -78,7 +74,7 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
   requireCondition(manifest.product.id === row.product_id && manifest.product.document?.digest === head.documentDigest
     && publicationDigest(manifest) === row.digest, "catalog_publication_manifest_invalid");
   const receipt = decodeStoredPublicationReceipt(row.result);
-  requireCondition(receipt.productId === manifest.product.id && receipt.publicationDigest === row.digest && equal(receipt.head, head)
+  requireCondition(receipt.schemaVersion === manifest.schemaVersion && receipt.productId === manifest.product.id && receipt.publicationDigest === row.digest && equal(receipt.head, head)
     && receipt.commandKey === row.command_key && receipt.fingerprint === row.command_fingerprint && receipt.actorId === row.actor_id
     && receipt.committedAt === row.committed_at,
     "catalog_publication_receipt_invalid");
@@ -98,7 +94,7 @@ async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonl
     requireCondition(row && row.sku_id === reference.skuId && row.digest === reference.digest && row.revision === reference.revision,
       "catalog_publication_sku_revision_invalid");
     const facts = decodeStoredPublicationSku(row.full_facts);
-    requireCondition(facts.id === reference.skuId && facts.productId === issue.manifest.product.id && facts.code === row.sku_code
+    requireCondition((facts.schemaVersion ?? 2) === issue.manifest.schemaVersion && facts.id === reference.skuId && facts.productId === issue.manifest.product.id && facts.code === row.sku_code
       && publicationDigest(facts, limits.skuBytes, SKU_PAGE_DEPTH) === reference.digest,
     "catalog_publication_sku_revision_invalid");
     return { reference, facts };
@@ -108,7 +104,7 @@ async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonl
 async function observations(db: PgQueryExecutor, issue: Issue): Promise<CatalogPublicationReceipt["changes"]> {
   const { product, skus } = issue.manifest;
   const { rows } = await db.query(`SELECT r.id,r.sku_id,r.sku_code,r.digest,r.revision,
-    r.full_facts::jsonb->>'status' AS status,p.draft_id,p.draft_revision
+    coalesce(r.full_facts::jsonb->>'lifecycleState',r.full_facts::jsonb->>'status') AS status,p.draft_id,p.draft_revision
     FROM public.catalog_sku_revisions r
     JOIN public.catalog_publications p ON (p.product_id,p.id)=(r.product_id,r.publication_id)
     WHERE r.product_id=$1 AND r.id=ANY($2::uuid[])`,
@@ -121,7 +117,7 @@ async function observations(db: PgQueryExecutor, issue: Issue): Promise<CatalogP
       "catalog_publication_sku_revision_invalid");
     const { sku_code: sku, status, draft_id: draftId, draft_revision: draftRevision } = row;
     requireCondition(typeof sku === "string" && typeof draftId === "string" && typeof draftRevision === "number"
-      && (status === "draft" || status === "active" || status === "archived"), "catalog_publication_sku_revision_invalid");
+      && (status === "draft" || status === "active" || status === "archived" || status === "withdrawn"), "catalog_publication_sku_revision_invalid");
     return { productId: product.id, variantId: reference.skuId, sku,
       state: status === "archived" ? "withdrawn" : status, variantRevision: reference.revision,
       publicationHead: issue.head, draftRef: { draftId, revision: draftRevision } };
@@ -210,7 +206,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
     readPort(capability: VerifiedCatalogPublisher): CatalogPublicationReadPort {
       return { ...reads, async receipt(scope) {
         const result = await native.receipt(scope, capability);
-        return result.outcome === "found" ? { outcome: "found", receipt: legacyReceipt(result.receipt) }
+        return result.outcome === "found" ? { outcome: "found", receipt: legacyPublicationReceipt(result.receipt) }
           : result.outcome === "absent" ? result : legacyFailure(result);
       } };
     },

@@ -521,8 +521,9 @@ const cases: Case[] = [
   { id: "an incomplete authoritative roster is unavailable", fixture: "revision", arrange: data => {
     withdrawnDraft(data); data.evidence.lifecycle!.skus = {};
   }, governed: governedDraft, expected: reason("catalog_lifecycle_evidence_unavailable"), outcome: "unknown",
+  message: "Load the current publication evidence",
   diagnostic: { phase: "structural", path: "publication", subject: "example:article" }, routeCalls: [1, 1, 1] },
-  { id: "a governed withdrawal preserves the retained content and provenance", fixture: "revision", governed: withdraw,
+  { id: "a governed withdrawal preserves retained content and issues changed lifecycle facts", fixture: "revision", governed: withdraw,
     rulesAsset: productRefusal, preserve: true, routeCalls: [0, 0, 0] },
   { id: "a governed withdrawal refuses an unrelated overlay", fixture: "revision", governed: data => {
     const payload = withdraw(data);
@@ -603,8 +604,8 @@ const cases: Case[] = [
     diagnostic: { path: "skus.0.identifiers", phase: "structural", subject: "ARTICLE" } },
   { id: "A-3 a withdrawn product and SKU require restore before becoming sellable", fixture: "revision",
     arrange: withdrawnDraft, governed: governedDraft, expected: reason("catalog_lifecycle_fresh_sale_refused") },
-  { id: "B-5 restore after the enabling prefix is too late", fixture: "revision", arrange: withdrawnDraft,
-    governed: data => restoredDraft(data, false), expected: reason("catalog_lifecycle_fresh_sale_refused") },
+  { id: "B-5 an enabling prefix takes effect only after its paired restore", fixture: "revision", arrange: withdrawnDraft,
+    governed: data => restoredDraft(data, false) },
   { id: "B-5 eligible after both authoritative states are restored", fixture: "revision", arrange: withdrawnDraft,
     governed: data => restoredDraft(data, true) },
   { id: "Y-1 incomplete SKU roster stops before the ordered restore and eligibility checks", fixture: "revision", arrange(data) {
@@ -929,8 +930,9 @@ it.each(cases)("shared evaluator parity $id", async ({ fixture, arrange, expecte
       const compiled = await result;
       expect(compiled.product.id).toBe(data.record.productId);
       if (preserve) {
-        expect(compiled.product).toMatchObject({ content: data.evidence.product!.content, source: data.evidence.product!.source });
-        expect(compiled.skus).toMatchObject([{ facts: data.evidence.skus[0]!.facts, source: data.evidence.skus[0]!.source,
+        expect(compiled.product).toMatchObject({ content: data.evidence.product!.content,
+          source: catalogPublicationClaim(record), lifecycleState: "withdrawn" });
+        expect(compiled.skus).toMatchObject([{ facts: data.evidence.skus[0]!.facts, source: catalogPublicationClaim(record), lifecycleState: "withdrawn",
           sellableStandalone: false, sellableInSubscription: false }]);
         expect(compiled.lifecycle?.product).toBe("withdrawn");
       }

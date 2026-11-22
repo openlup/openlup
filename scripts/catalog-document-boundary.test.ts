@@ -35,6 +35,11 @@ const OPAQUE_CARRIERS = new Map([
     "AND coalesce(origin.payload #> '{product,sharedContent,document}',d.document_payload)=d.document_payload",
     "THEN public.catalog_publication_read_json(operation->>'canonicalText',d.digest,NULL)=d.document_payload END",
   ]],
+  ["db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql", [
+    "CROSS JOIN LATERAL (SELECT d.document_payload AS payload) stored",
+    "AND coalesce(origin.payload #> '{product,sharedContent,document}',d.document_payload)=d.document_payload",
+    "THEN public.catalog_publication_read_json(operation->>'canonicalText',d.digest,NULL)=d.document_payload END",
+  ]],
   ["db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql", [
     "GRANT INSERT (id, product_id, revision_no, schema_id, document_ref, source_ref, document_payload, digest, provenance)",
     "GRANT SELECT (id, product_id, revision_no, schema_id, document_ref, source_ref, document_payload, digest, provenance)",
