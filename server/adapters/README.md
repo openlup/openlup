@@ -151,7 +151,12 @@ parents precede documents/bindings and ledger actors. Owner snapshot authority,
 writer exclusion, unknown-table refusal, PostgreSQL row encoding and cumulative
 row/byte limits remain required. A target writer running during restore violates
 the writer-exclusion prerequisite and can make the restore wait, deadlock or refuse,
-so exclude every target writer and dispatcher before retrying. Both address relations
+so exclude every target writer and dispatcher before retrying. Autovacuum and
+`VACUUM` or `ANALYZE` run outside an explicit transaction block are safe during
+restore, and explicit transactions that touch both private and public target
+relations (including multi-statement maintenance inside `BEGIN` and `COMMIT`)
+must stay outside the restore window because they can deadlock with the restore,
+in which case PostgreSQL rolls back one transaction and you can retry. Both address relations
 have table-specific limit and filtered-login witnesses. Reference strings may identify people; use
 opaque values. This retained transfer is not address privacy export or erasure;
 no such path exists yet for those address relations. Sensitive streams include
