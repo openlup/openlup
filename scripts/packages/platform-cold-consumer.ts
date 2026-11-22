@@ -953,7 +953,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import * as portability from "@openlup/platform/portability";
-assert.deepEqual(Object.keys(portability).sort(),["ObjectTransferError","PostgresTransferError","captureCompatiblePostgresRows","copyTransferObjects","createFilesystemTransferObjects","restoreCompatiblePostgresRows"].sort());
+assert.deepEqual(Object.keys(portability).sort(),["ObjectTransferError","PostgresTransferError","assertCompatiblePostgresPacket","assertCompatiblePostgresTarget","captureCompatiblePostgresRows","copyTransferObjects","createFilesystemTransferObjects","restoreCompatiblePostgresRows"].sort());
 const {copyTransferObjects,createFilesystemTransferObjects,captureCompatiblePostgresRows,restoreCompatiblePostgresRows}=portability;
 const root=await mkdtemp(join(await realpath(process.cwd()),"portability-"));
 try {
