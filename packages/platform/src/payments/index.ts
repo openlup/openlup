@@ -3,6 +3,15 @@ export { executePreparedAttemptMechanism } from "./preparedAttempt.js";
 export { paymentSourceFingerprint, paymentPayloadFingerprint, paymentTruthFingerprint,
   paymentReconciliationFingerprint, assertPaymentTruthEvent } from "./paymentTruth.js";
 export { createVerifiedPaymentIngress } from "./verifiedIngress.js";
+export type {
+  ProviderPaymentWebhookKind,
+  NormalizedProviderPaymentWebhook,
+  PaymentWebhookControlPort,
+  PaymentWebhookMethodRefPort,
+  PaymentWebhookAfterProcessed,
+  PaymentWebhookProcessingPorts,
+} from "./verifiedIngress.js";
+export { brandTransientSecret } from "./transientSecret.js";
 export {
   METHOD_SCHEME_SNAPSHOT_KEY,
   METHOD_LAST_DIGITS_SNAPSHOT_KEY,
@@ -57,6 +66,7 @@ export { runPaymentAdapterConformance } from "./adapterConformance.js";
 
 export { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
 export { createPostgresPreparedAttemptPersistencePort } from "./postgresPreparedAttempt.js";
+export type { PaymentProviderExecutor } from "./postgresPreparedAttempt.js";
 export { createPostgresPaymentWebhookControlPort } from "./postgresProviderWebhook.js";
 export { createPostgresProviderPaymentControlPort } from "./postgresProviderControl.js";
 export { createPostgresProviderPaymentRecoveryGuidancePort, createPostgresProviderExpiredCheckoutSafety } from "./providerRecoveryReaders.js";

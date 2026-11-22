@@ -1,3 +1,4 @@
+// Generated from scripts/platform-migration-manifest.ts. Edit the owner file and regenerate per packages/platform/README.md#install-the-portable-postgresql-schema
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { calculateCatalogueMoneyV2, CatalogueMoneyV2Error } from "@openlup/core/pricing";
 import type { CatalogueMoneyV2ComponentRef, CatalogueMoneyV2Result, CatalogueMoneyV2State } from "@openlup/core/pricing";
-import { canonicalCatalogDraftJson } from "../catalog/contracts/index.js";
+import { CATALOG_DRAFT_MAX_BYTES, canonicalCatalogDraftJson } from "../catalog/contracts/index.js";
 import { array, bounded, checked, exclusiveTaxRemedy, invalid, object, oneOf, taxReferenceRemedy, variant } from "./contracts/decode.js";
 import { cellKey, compareCells, compareDeclarations, decisionIsPossible, declarationKey, effectiveDeclarations, permitsAssessment, sameCell } from "./contracts/identity.js";
 import {
@@ -47,12 +47,20 @@ const remedies = {
   tax_breakdown_incomplete: "Recover and replay the complete original calculation breakdown for the intended request and key.",
 } as const;
 
+const sizeRemedy = "Reduce the document below 1,048,576 bytes of canonical JSON.";
+class SnapshotSizeError extends Error {
+  constructor(readonly field: string) { super(sizeRemedy); }
+}
+
 type VerifierCode = keyof typeof remedies;
 export function refuseVerification(code: VerifierCode, field: string): TaxRefusal {
   return { kind: "refused", code, field, remedy: remedies[code] };
 }
 
 function decodeRefusal(error: unknown, root = ""): TaxRefusal {
+  if (error instanceof SnapshotSizeError) {
+    return { kind: "refused", code: "tax_invalid_input", field: root + error.field, remedy: sizeRemedy };
+  }
   if (error instanceof Error && "field" in error && typeof error.field === "string"
     && "code" in error && typeof error.code === "string" && Object.hasOwn(remedies, error.code)) {
     return refuseVerification(error.code as VerifierCode, root + error.field);
@@ -66,7 +74,22 @@ function referenceConflict(field: string): never {
 
 function snapshotDocument<T>(document: T, field = ""): T {
   try { return JSON.parse(canonicalCatalogDraftJson(document)) as T; }
-  catch { return referenceConflict(field); }
+  catch {
+    let envelope: T | undefined;
+    let oversized = false;
+    try {
+      if (field === "" && document && typeof document === "object" && Object.hasOwn(document, "original")) {
+        const { evidence, ...fields } = Object.getOwnPropertyDescriptors(document) as PropertyDescriptorMap;
+        if (evidence && "value" in evidence && evidence.value === undefined) {
+          envelope = Object.create(Object.getPrototypeOf(document), fields) as T;
+        }
+      }
+      if (!envelope) oversized = new TextEncoder().encode(JSON.stringify(document)).byteLength > CATALOG_DRAFT_MAX_BYTES;
+    } catch { return referenceConflict(field); }
+    if (envelope) return snapshotDocument(envelope, field);
+    if (oversized) throw new SnapshotSizeError(field);
+    return referenceConflict(field);
+  }
 }
 
 function withSnapshot<T, R>(document: T, verify: (snapshot: T) => R): R | TaxRefusal {
@@ -450,6 +473,7 @@ function snapshotQuoteResult(result: TaxQuoteResultV1): TaxQuoteResultV1 {
 
   if (!evidence) return snapshot;
   if (!("value" in evidence)) referenceConflict("/evidence");
+  if (evidence.value === undefined) return snapshot;
   return { ...snapshot, evidence: snapshotDocument(evidence.value, "/evidence") } as TaxQuoteResultV1;
 }
 

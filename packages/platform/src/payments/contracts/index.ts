@@ -77,3 +77,8 @@ export type { SandboxPaymentOutcome, SandboxMethodFacts, SandboxPaymentObservati
   SandboxPaymentSimulator, SandboxPaymentSimulatorOptions } from "./sandbox.js";
 
 export type { PaymentProviderProfile } from "./providerProfile.js";
+export type {
+  PaymentFormCopy,
+  PaymentFormSettlement,
+  RecoveryPaymentSetupFormCopy,
+} from "./paymentForm.js";

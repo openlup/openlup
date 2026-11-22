@@ -3270,10 +3270,12 @@ later tax instant and compare the verified results with
 `compareTaxRecalculationProbe`.
 
 Call `verifyTaxQuoteRequest` for quotes and fiscal-validity requests and
-`verifyTaxQuoteResult` before using successful results. They check the integrity
-of the snapshots first and give one remedy per refusal code. Replay matching
-originals with their key and digests. Obtain fresh charge-time input under the
-original scope for validity. The port maps a verifier refusal to effect-free
+`verifyTaxQuoteResult` before using successful results. The verifiers check the
+integrity of a plain JSON copy first. Capture requests and results as plain
+data, pass those copies to the verifier and use them once verified. Each
+refusal has one fixed remedy per code and issue kind. Replay matching originals
+with their key and digests. Obtain fresh charge-time input under the original
+scope for validity. The port maps a verifier refusal to effect-free
 `tax_fiscal_validity_unavailable`.
 
 Use the `./tax/contracts` schemas for the field named by the JSON Pointer. An
@@ -3285,7 +3287,9 @@ Reduce the combined merchandise and delivery basis if the aggregate overflows.
 
 The quote request and the calculation evidence each have a 1 MiB snapshot limit.
 The complete fiscal-validity request has a 1 MiB limit, including its original
-request, evidence and current input. Result money is bounded by the decoder's
+request, evidence and current input. For `tax_invalid_input`, the remedy tells
+you whether to supply the documented value or reduce the canonical JSON size
+of the document named by the pointer. Result money is bounded by the decoder's
 count caps. The result envelope without evidence uses a plain JSON snapshot
 with no separate byte cap.
 

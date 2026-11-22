@@ -5,12 +5,14 @@ import { createHash } from "node:crypto";
 import { expect, it } from "vitest";
 import { checkPlatformMigrationProjection } from "./platform-migration-projection.ts";
 
-it("generates exact canonical identities and refuses manifest/SQL drift", () => {
+it("generates the owner header and exact canonical bodies, and refuses projection drift", () => {
   const root = mkdtempSync(join(tmpdir(), "platform-projection-"));
   try {
     mkdirSync(join(root, "scripts"));
     mkdirSync(join(root, "packages/platform/src/migrations"), {recursive:true});
-    writeFileSync(join(root, "scripts/platform-migration-manifest.ts"), "export {};\n");
+    const ownerPath = "scripts/platform-migration-manifest.ts";
+    const owner = Buffer.from("export {};\r\n");
+    writeFileSync(join(root, ownerPath), owner);
     mkdirSync(join(root, "config")); mkdirSync(join(root, "db/platform/migrations"), {recursive:true});
     mkdirSync(join(root, "packages/platform/sql"), {recursive:true});
     const content = "SELECT 1;\n", file = "db/platform/migrations/00000000000000_platform_baseline.sql";
@@ -18,8 +20,17 @@ it("generates exact canonical identities and refuses manifest/SQL drift", () => 
     writeFileSync(join(root, "config/platform-migration-manifest.json"), JSON.stringify(canonical));
     writeFileSync(join(root,file),content);
     expect(checkPlatformMigrationProjection(root,true)).toEqual([]);
-    writeFileSync(join(root, "packages/platform/src/migrations/catalog.ts"), "// drift\n");
-    expect(checkPlatformMigrationProjection(root)).toContain("packaged migration selection drift: scripts/platform-migration-manifest.ts");
+    const selectionPath = join(root, "packages/platform/src/migrations/catalog.ts");
+    const selection = readFileSync(selectionPath);
+    const headerEnd = selection.indexOf(0x0a) + 1;
+    const header = "// Generated from scripts/platform-migration-manifest.ts. Edit the owner file and regenerate per packages/platform/README.md#install-the-portable-postgresql-schema\n";
+    expect(selection.subarray(0, headerEnd).toString()).toBe(header);
+    expect(selection.subarray(headerEnd)).toEqual(owner);
+    const fix = "edit scripts/platform-migration-manifest.ts and regenerate with the command in packages/platform/README.md#install-the-portable-postgresql-schema";
+    writeFileSync(selectionPath, header + "// drift\n");
+    expect(checkPlatformMigrationProjection(root)).toContain(`packaged migration selection drift: ${fix}`);
+    rmSync(selectionPath);
+    expect(checkPlatformMigrationProjection(root)).toContain(`packaged migration selection missing: ${fix}`);
     checkPlatformMigrationProjection(root,true);
     const manifest = join(root,"packages/platform/sql/manifest.json"), sql = join(root,"packages/platform/sql/00000000000000_platform_baseline.sql");
     expect(JSON.parse(readFileSync(manifest,"utf8")).catalog).toEqual(canonical);
