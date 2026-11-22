@@ -686,26 +686,30 @@ describe("publication activation prices", () => {
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
   });
 
-  it.each([[82, 1], [83, 100]])("quotes published requested SKU %i with factorless %i grams and independent gross", async (sequence, grams) => {
+  it.each([[82, 1], [83, 100], [84, 2_147_483_647]])("quotes published requested SKU %i with factorless %i grams and independent gross", async (sequence, grams) => {
     const { api, who, command, code, skuId, slug } = await approvedActivation(sequence, false, undefined, grams);
     await seedBasePrice(skuId);
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
     expect((await pool.query("SELECT net_weight_g, gross_mass_unscaled::text AS gross FROM public.catalog_skus WHERE id=$1", [skuId])).rows)
       .toEqual([{ net_weight_g: grams, gross: String(grams + 10) }]);
-    // Scope the fixture to its own product without changing the V1 query or its requested-code lookup.
-    const db: PgQueryExecutor = { query(sql, values) {
-      if (!sql.includes("sku.sku = ANY($3::text[])")) return pool.query(sql, values);
-      return pool.query(sql, [values?.[0], values?.[1], [code], ...(values ?? []).slice(3)]);
-    } };
-    const catalog = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (payload, envelope) => {
-      expect(payload).toEqual(authoredPublicationDocument(slug));
-      expect(envelope.documentRevision.digest).toBe(hash(canonicalCatalogDraftJson(payload)));
-    } });
-    const quote = createCharacterizationQuote(pricing, catalog, pricing.createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)));
-    const result = await quote.createServerAuthoritativeQuote({ mode: "one_time", promoCodes: [], lines: [{ sku: code, quantity: 2 }] });
-    // Main's immutable grams, gross parcel mass and price are independent facts.
-    expect(result.quote).toMatchObject({ totalGross: { amountMinor: 2000, currency: "XXX" }, context: { grams: [grams] },
-      lines: [{ sku: code, productSlug: slug, quantity: 2, unitPriceGross: { amountMinor: 1000, currency: "XXX" } }] });
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      // Hide unrelated fixtures for this read, leaving the issued SKU and the released scan untouched.
+      await db.query(`UPDATE public.catalog_skus SET sellable_standalone=false, sellable_in_subscription=false
+        WHERE id<>$1 AND status='active' AND (sellable_standalone OR sellable_in_subscription)`, [skuId]);
+      const catalog = createPostgresCommerceQuoteCatalogReadPort(db, { verifyDocument: async (payload, envelope) => {
+        expect(payload).toEqual(authoredPublicationDocument(slug));
+        expect(envelope.documentRevision.digest).toBe(hash(canonicalCatalogDraftJson(payload)));
+      } });
+      const quote = createCharacterizationQuote(pricing, catalog, pricing.createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)));
+      const result = await quote.createServerAuthoritativeQuote({ mode: "one_time", promoCodes: [], lines: [{ sku: code, quantity: 2 }] });
+      // Main's immutable grams, gross parcel mass and price are independent facts.
+      expect(result.quote).toMatchObject({ totalGross: { amountMinor: 2000, currency: "XXX" }, context: { grams: [grams] },
+        lines: [{ sku: code, productSlug: slug, quantity: 2, unitPriceGross: { amountMinor: 1000, currency: "XXX" } }] });
+    } finally {
+      await db.query("ROLLBACK").finally(() => db.release());
+    }
   });
 
   it("holds the reused LC3 context after readiness and through issuance", async () => {
