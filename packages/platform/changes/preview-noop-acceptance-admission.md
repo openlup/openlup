@@ -1,0 +1,1 @@
+Native migration admission allows one exact slot that adds a nullable receipt reference and widens the subscription quote preview acceptance CHECK to allow receipt-backed no-ops. The admission requires the issued CHECK preimage and keeps both existing acceptance states valid.

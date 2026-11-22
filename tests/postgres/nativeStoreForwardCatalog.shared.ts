@@ -3,19 +3,23 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements" | "previewNoopAcceptance">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
 // would resolve to an operator for (oid, integer), which a forward can create in pg_catalog to hide the objects it adds.
 const OID_FLOOR = `${FIRST_USER_OID}::pg_catalog.oid`;
 const PURPOSE_CONSTRAINT = "public.communication_native_sync_state.communication_native_sync_state_purpose_check";
+const PREVIEW_TABLE = "public.subscription_quote_previews";
+const PREVIEW_CHECK = "subscription_quote_previews_acceptance_check";
+const PREVIEW_OLD_DEFINITION = "CHECK ((((status = 'previewed'::text) AND (accepted_at IS NULL) AND (accepted_idempotency_key IS NULL) AND (accepted_event_id IS NULL)) OR ((status = 'accepted'::text) AND (accepted_at IS NOT NULL) AND (accepted_idempotency_key IS NOT NULL) AND (accepted_event_id IS NOT NULL))))";
+const PREVIEW_NEW_DEFINITION = "CHECK ((((status = 'previewed'::text) AND (accepted_at IS NULL) AND (accepted_idempotency_key IS NULL) AND (accepted_event_id IS NULL) AND (accepted_noop_receipt_id IS NULL)) OR ((status = 'accepted'::text) AND (accepted_at IS NOT NULL) AND (accepted_idempotency_key IS NOT NULL) AND (accepted_event_id IS NOT NULL) AND (accepted_noop_receipt_id IS NULL)) OR ((status = 'accepted'::text) AND (accepted_at IS NOT NULL) AND (accepted_idempotency_key IS NOT NULL) AND (accepted_event_id IS NULL) AND (accepted_noop_receipt_id IS NOT NULL))))";
 const GRANT_OPTION = " WITH GRANT OPTION";
 // Node trees (default arguments, rules, policies, trigger conditions) store where the parser read them in the file, which
 // moves when the same statement sits at another offset. That is compared as nothing; everything else in a tree is compared.
@@ -506,6 +510,14 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
     if (!oldDef || !newDef || oldDef.columns.some(column => !entry.columns.includes(column)) || (oldDef.nullsNotDistinct && !entry.nullsNotDistinct) || JSON.stringify(newDef) !== JSON.stringify({ columns: entry.columns, nullsNotDistinct: entry.nullsNotDistinct })) fail(`UNIQUE changed beyond its listed superset: ${def}`);
   }
   const protectedTables = new Set([...checks, ...uniques].map(entry => entry.table));
+  if (slot.previewNoopAcceptance) {
+    const isPreviewCheck = (row: Snapshot["constraints"][number]) => row.rel === PREVIEW_TABLE && row.name === PREVIEW_CHECK;
+    const old = before.constraints.find(isPreviewCheck), current = after.constraints.find(isPreviewCheck);
+    if (old?.kind !== "c" || !old.validated || old.def !== PREVIEW_OLD_DEFINITION
+      || !before.relations.some(row => row.name === PREVIEW_TABLE && row.kind === "r")
+      || !before.columns.some(row => row.rel === PREVIEW_TABLE && row.name === "status" && row.attrs.attnotnull === true)) fail("preview acceptance CHECK installed preimage drifted");
+    if (current?.kind !== "c" || !current.validated || current.def !== PREVIEW_NEW_DEFINITION) fail("preview acceptance CHECK must match the three validated branches");
+  }
   for (const old of before.columns.filter(column => protectedTables.has(column.rel))) {
     const now = after.columns.find(column => column.rel === old.rel && column.name === old.name);
     // DROP NOT NULL is the existing-table weakening; all other stored column facts stay fixed.
@@ -514,6 +526,7 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
   }
   for (const old of before.constraints) {
     if (checks.some(entry => entry.table === old.rel && entry.constraint === old.name) || uniques.some(entry => entry.table === old.rel && entry.constraint === old.name)) continue;
+    if (slot.previewNoopAcceptance && old.rel === PREVIEW_TABLE && old.name === PREVIEW_CHECK) continue;
     const def = nowConstraints.get(constraintKey(old));
     if (constraintKey(old) === PURPOSE_CONSTRAINT && def !== undefined && def !== old.def) {
       const oldValues = purposeValues(old.def), newValues = purposeValues(def);
@@ -952,10 +965,64 @@ async function reminderCreationProbes(pool: Pool) {
   } finally { db.release(); }
   return outcomes;
 }
+
+async function provePreviewAcceptance(pool: Pool) {
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+    const client = (await db.query("INSERT INTO public.clients(email) VALUES ('preview-proof@example.invalid') RETURNING id")).rows[0].id;
+    const subscription = (await db.query(`INSERT INTO public.subscriptions(client_id,cadence_days,next_cycle_at)
+      VALUES ($1,28,now()) RETURNING id`, [client])).rows[0].id;
+    const event = (await db.query(`INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key)
+      VALUES ($1,'fixture.preview.native','preview-event') RETURNING id`, [subscription])).rows[0].id;
+    const actor = (await db.query("SELECT gen_random_uuid() AS id")).rows[0].id;
+    const receipt = (await db.query(`INSERT INTO public.subscription_command_receipts(actor_id,idempotency_key,subscription_id,client_id,command_fingerprint,command,result,status)
+      VALUES ($1,'preview-noop',$2,$3,repeat('a',64),'{}','{}','noop') RETURNING id`, [actor, subscription, client])).rows[0].id;
+    const quote = `INSERT INTO public.subscription_quote_previews(subscription_id,client_id,actor_id,action,quote_hash,template_version,
+      expires_at,request_payload,quote_snapshot,totals,status,accepted_at,accepted_idempotency_key,accepted_event_id`;
+    const values = `VALUES ($1,$2,$3,'fixture.edit',encode(sha256(gen_random_uuid()::text::bytea),'hex'),1,
+      now(),'{}','{}','{}',$4,CASE WHEN $5::boolean THEN now() END,$6,$7`;
+    const statuses = ["previewed", "accepted", "other", null];
+    for (const withReceipt of [false, true]) {
+      if (withReceipt) {
+        const before = await pinned(db, () => snapshot(db));
+        await db.query(previewNoopAcceptanceSql);
+        const slot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], previewNoopAcceptance: true,
+          existingTableStatements: [previewNoopAcceptanceSql.split("\n", 1)[0]!] };
+        const role = (await db.query("SELECT current_user::text AS role")).rows[0].role as string;
+        await pinned(db, async () => assertSlotCatalog(db, slot, before, await snapshot(db), role, previewNoopAcceptanceSql));
+        expect((await db.query(`SELECT status, accepted_noop_receipt_id FROM ${PREVIEW_TABLE} ORDER BY status`)).rows)
+          .toEqual([{ status: "accepted", accepted_noop_receipt_id: null }, { status: "previewed", accepted_noop_receipt_id: null }]);
+      }
+      for (const status of statuses) for (let mask = 0; mask < (withReceipt ? 16 : 8); mask++) {
+        const params = [subscription, client, actor, status, Boolean(mask & 1), mask & 2 ? "preview-key" : null, mask & 4 ? event : null];
+        if (withReceipt) params.push(mask & 8 ? receipt : null);
+        const insert = () => db.query(withReceipt ? `${quote},accepted_noop_receipt_id) ${values},$8)` : `${quote}) ${values})`, params);
+        const allowed = (status === "previewed" && mask === 0) || (status === "accepted" && (mask === 7 || (withReceipt && mask === 11)));
+        const label = `status=${status}, mask=${mask}, receipt column=${withReceipt}`;
+        if (allowed) {
+          expect((await insert()).rowCount, label).toBe(1);
+        } else {
+          await db.query("SAVEPOINT invalid_preview");
+          const error = status === null ? { code: "23502", column: "status" }
+            : status === "other" ? { code: "23514" } : { code: "23514", constraint: PREVIEW_CHECK };
+          await expect(insert(), label).rejects.toMatchObject(error);
+          await db.query("ROLLBACK TO SAVEPOINT invalid_preview");
+          await db.query("RELEASE SAVEPOINT invalid_preview");
+        }
+      }
+    }
+    await expect(db.query(`${quote},accepted_noop_receipt_id) ${values},gen_random_uuid())`,
+      [subscription, client, actor, "accepted", true, "missing-receipt", null])).rejects
+      .toMatchObject({ code: "23503", constraint: "subscription_quote_previews_accepted_noop_receipt_id_fkey" });
+  } finally { await db.query("ROLLBACK"); db.release(); }
+}
+
 async function replayChain(connectionString: string) {
   const outcomes = new Map<string, Error | null>();
   let creationOutcomes = new Map<string, Error | null>();
   let applied = 0;
+  let previewAcceptanceError: Error | null | undefined;
   const chainDb = new Pool({ connectionString });
   const prefix: Parameters<typeof assertNativeStoreForward>[3] = [];
   const steps = [...chain.map(unit => ({ path: unit.path, unit })), ...bound.map(entry => ({ path: entry.pin.path, entry }))].sort((x, y) => x.path.localeCompare(y.path));
@@ -964,6 +1031,7 @@ async function replayChain(connectionString: string) {
       const { path } = step, bytes = "unit" in step ? step.unit.bytes : readFileSync(path);
       if ("unit" in step) { await chainDb.query(bytes.toString("utf8")); applied += 1; }
       else {
+        if (step.entry.slot.previewNoopAcceptance) previewAcceptanceError = await provePreviewAcceptance(chainDb).then(() => null, (error: Error) => error);
         const error = await verifyForward(chainDb, registry, path, bytes, prefix, true).then(() => null, (error: Error) => error);
         outcomes.set(path, error);
         if (error) continue;
@@ -972,14 +1040,15 @@ async function replayChain(connectionString: string) {
       }
       prefix.push({ path, bytes });
     }
+    if (previewAcceptanceError === undefined) previewAcceptanceError = await provePreviewAcceptance(chainDb).then(() => null, (error: Error) => error);
   } finally { await chainDb.end(); }
-  return { outcomes, creationOutcomes, applied };
+  return { outcomes, creationOutcomes, applied, previewAcceptanceError };
 }
 
 export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole: boolean }) {
   let container: PostgresContainer | undefined;
   let pool: Pool;
-  let replay = { outcomes: new Map<string, Error | null>(), creationOutcomes: new Map<string, Error | null>(), applied: 0 };
+  let replay: Awaited<ReturnType<typeof replayChain>>;
   beforeAll(async () => {
     if (!await dockerAvailable()) throw new Error("The native store catalog proof requires real PostgreSQL");
     container = await runPostgresContainer({ name: `native-catalog-${serviceRole ? "role" : "bare"}-${process.pid}`, password: "synthetic-conformance" });
@@ -1081,6 +1150,10 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     await expect(checkForward(pool, BASELINE_SLOT, forward(CREATED_OK, BASELINE_SQL + grant))).rejects.toThrow(/invalid privilege type .* for column/u);
   });
   it("replays every unbound native chain unit", () => { expect(replay.applied).toBe(chain.length); });
+  it("proves every receipt-backed preview acceptance combination on the installed chain", () => {
+    if (replay.previewAcceptanceError) throw replay.previewAcceptanceError;
+    expect(replay.previewAcceptanceError).toBeNull();
+  });
   it("allows only the pinned function setting and requires identical membership rows for an owner window", async () => {
     const signature = "public.cat_replaced(text,boolean)", role = "authenticated";
     const settings = [{ signature, searchPath: "pg_catalog, pg_temp" }];
