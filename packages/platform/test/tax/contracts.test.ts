@@ -105,8 +105,8 @@ describe("tax document decoders", () => {
     const request = makeTaxQuoteRequest("key", input);
     expect(verifyTaxQuoteRequest(request)).toBeUndefined();
     const altered = taxQuoteRequestV1Schema.parse({ ...request, input: { ...input, currency: "XTS" } });
-    expect(verifyTaxQuoteRequest(altered)).toEqual({
-      kind: "refused", code: "tax_reference_conflict", field: "/inputDigest", remedy: "Replay the original request or rebuild it with a new key.",
+    expect(verifyTaxQuoteRequest(altered)).toMatchObject({
+      kind: "refused", code: "tax_reference_conflict", field: "/inputDigest", remedy: writeExpected, expected: makeTaxQuoteRequest("key", altered.input).inputDigest,
     });
     expect(request.inputDigest).toBe("b661bc4d7148712db7c1006eb630ec07ac54721bd3e17678c360558f64620f1a");
     expect(makeTaxQuoteRequest("other-key", {
@@ -406,7 +406,7 @@ describe("tax document decoders", () => {
     type Edit = readonly [path: string, value: unknown];
     type Probe = {
       field: string; remedy?: string; code: Refusal["code"];
-      broken: readonly Edit[]; base?: Example; shared?: boolean; stale?: Edit;
+      broken: readonly Edit[]; base?: Example; shared?: boolean; fiscalPatch?: boolean; stale?: Edit;
     };
     const example = (original = request, result = resultWith(original)): Example => {
       if (result.kind !== "final" && result.kind !== "estimate") throw new Error("Expected calculation evidence.");
@@ -490,40 +490,22 @@ describe("tax document decoders", () => {
       })),
     } }));
 
-    const rateEdits = (rate: string | undefined): Edit[] => [
-      ["/result" + position + "/rateDecimal", rate],
-      ...money.components[0].allocations.map((_, index) =>
-        ["/result/money/components/0/allocations/" + index + "/after/taxPositions/0/rateDecimal", rate] as const),
-    ];
     const noRate = structuredClone(example());
-    const omitRate = rateEdits(undefined);
+    const omitRate: Edit[] = [
+      ["/result/money/components/0/initial/taxPositions/0/rateDecimal", undefined],
+      ...money.components[0].allocations.map((_, index) =>
+        ["/result/money/components/0/allocations/" + index + "/after/taxPositions/0/rateDecimal", undefined] as const),
+    ];
     for (const change of omitRate) edit(noRate, change);
     edit(noRate, ["/result" + tax + "/ratePercent", undefined]);
     recompute(noRate, omitRate);
-
     const otherCell = cell("item-a");
-    const alternateSale = { ...cell(), taxKind: "sale-b" };
-    const feeCell = request.input.required.find(row => row.target.kind === "fee")!;
-    const alternateFee = { ...feeCell, taxKind: "fee-b" };
-    const split = (alternates: readonly (typeof alternateSale)[]) => makeTaxQuoteRequest("split-binding", {
-      ...request.input,
+    const split = makeTaxQuoteRequest("split-binding", { ...request.input,
       lines: request.input.lines.map(line => line.lineKey === "item-a" ? { ...line, assignmentRef: "assignment-b" } : line),
-      required: [...request.input.required.map(cell => cell.target.key === "item-a" ? otherCell : cell), ...alternates],
-      coverage: { ...request.input.coverage, declarations: [...request.input.coverage.declarations,
-        ...alternates.map(cell => ({ ...registered(cell.jurisdiction), taxKind: cell.taxKind }))] },
+      required: request.input.required.map(cell => cell.target.key === "item-a" ? otherCell : cell),
     });
-    const splitExample = (original: TaxQuoteRequestV1, cell = receipt.positions.tax[0].cell) => example(original,
-      resultWith(original, money, { ...receipt, positions: { ...receipt.positions, tax: [{ ...receipt.positions.tax[0], cell }] } },
-        coverageFor(original).map(row => row.cell.target.key === "item-a" ? { ...row, treatment: { ...taxable, ruleRef: "rule-b" } } : row)));
-    const wrongTargetRow = { ...receipt.positions.tax[0], cell: otherCell,
-      resolution: { ...resolution, assignmentRef: "assignment-b" }, ruleRef: "rule-b" };
-
-    const foreignScope = { ...scope, mode: "live" as const, accountRef: "account-b" };
-    const foreign = makeTaxQuoteRequest("foreign-quote", { ...request.input, scope: foreignScope,
-      coverage: { ...request.input.coverage, accountRef: foreignScope.accountRef } });
-    const foreignResult = example(foreign, resultWith(foreign, money,
-      { ...receipt, scope: foreignScope, calculationRef: "foreign-calculation" })).result;
-    expect(verifyTaxQuoteResult(foreign, structuredClone(foreignResult))).toBeUndefined();
+    const splitResult = example(split, resultWith(split, money, receipt, coverageFor(split).map(row =>
+      row.cell.target.key === "item-a" ? { ...row, treatment: { ...taxable, ruleRef: "rule-b" } } : row)));
 
     const editField = (code: Probe["code"], field: string, remedy: string | undefined, value: unknown, options: Partial<Probe> = {}): Probe =>
       ({ code, field, remedy, broken: [["/result" + field, value]], ...options });
@@ -531,43 +513,31 @@ describe("tax document decoders", () => {
       editField("tax_breakdown_incomplete", field, remedy, value, options);
     const binding = (field: string, remedy: string | undefined, value: unknown, options?: Partial<Probe>) =>
       editField("tax_reference_conflict", field, remedy, value, { shared: true, ...options });
-    const stale = (field: string, remedy: string, path = "/result" + field) =>
-      binding(field, remedy, digest, { broken: [], stale: [path, digest] });
-    const originalCalculation = "Obtain the calculation for the original request and account.";
-    const originalEvidence = "Replay the original evidence and its digest.";
-    const rebindMetadata = "Obtain the original metadata for the required cell, component assignment and coverage treatment.";
-    const reconcileRate = "Re-obtain the calculation. The money result and evidence disagree on the rate.";
-    const ambiguous = "The required cell is ambiguous. Return the original breakdown that identifies the tax kind or fee scope.";
+    const stale = (field: string, path = "/result" + field) =>
+      binding(field, undefined, digest, { broken: [], stale: [path, digest] });
     const moneyIdentity = "Re-obtain the position or fee for a required cell of the original request.";
     const zeroAssessment = "Re-obtain the calculation with zero assessment for the covered exemption or exclusion and reconcile payable.";
     const observed = "Reconcile the named cell from effective observations.";
     const supplyRow = "Supply one matching metadata row in the evidence.";
     const probes: Probe[] = [
-      stale("/inputDigest", "Replay the original request or rebuild it with a new key.", "/original/inputDigest"),
-      stale("/evidenceDigest", originalEvidence),
-      stale("/evidence/coverage/digest", "Replay the original coverage vector and its digest."),
-      stale(tax + "/resolutionDigest", "Replay the original rule resolution and its digest."),
-      stale("/evidence/fiscalDigest", "Replay the original fiscal evidence and its digests."),
-      binding("/evidenceDigest", originalEvidence, undefined, {
-        broken: [["/result/evidence/expiresAt", "2030-03-01T00:00:00.000Z"]],
-        stale: ["/result/evidenceDigest", taggedDigest("evidence", receipt)],
-      }),
-      binding("/evidence/scope", originalCalculation, undefined, { broken: [["/result", foreignResult]] }),
-      binding("/evidence/inputDigest", originalCalculation, undefined, {
-        broken: [["/result", foreignResult], ["/result/evidence/scope", scope]],
-      }),
+      stale("/inputDigest", "/original/inputDigest"),
+      stale("/evidenceDigest"),
+      stale("/evidence/coverage/digest"),
+      stale(tax + "/resolutionDigest"),
+      stale("/evidence/fiscalDigest"),
       ...Object.entries({
         scope: { ...scope, adapterVersion: "2" }, taxDate: "2030-01-02T00:00:00.000Z",
         inputDigest: digest, destinationDigest: "b".repeat(64), shipFromRef: "different-origin",
         policyRevision: "different-policy", classMapRevision: "different-classes",
-      }).map(([field, value]) => binding("/evidence/" + field, originalCalculation, value)),
-      binding("/evidence/status", "Obtain the calculation for the original quote's purpose.", "estimate", {
+      }).map(([field, value]) => binding("/evidence/" + field, undefined, value)),
+      binding("/evidence/status", "Use the original quote's purpose for the evidence status and any result kind.", "estimate", {
         broken: [["/result/evidence/status", "estimate"], ["/result/kind", "estimate"]],
+        fiscalPatch: true,
       }),
-      editField("tax_calculation_unusable", "/evidence/status", "Obtain the calculation evidence for the original quote's purpose.", "estimate"),
-      editField("tax_calculation_unusable", "/kind", "Obtain the result for the original quote's purpose.", "estimate"),
+      editField("tax_calculation_unusable", "/evidence/status", undefined, "estimate"),
+      editField("tax_calculation_unusable", "/kind", undefined, "estimate"),
       binding("/evidence/coverage/vector", "Reconcile the original quote's required cells.", vector.filter((_, i) => i !== rowIndex)),
-      binding(covered + "/declaration", "Reconcile coverage with the original quote's effective merchant declaration.",
+      binding(covered + "/declaration", undefined,
         { ...vector[rowIndex].declaration, actorRef: "other" }),
       editField("tax_calculation_unusable", covered + "/decision", observed, "undeclared", { base: estimate, shared: true }),
       editField("tax_calculation_unusable", covered + "/decision", observed, "undeclared", { shared: true }),
@@ -581,8 +551,8 @@ describe("tax document decoders", () => {
       editField("tax_invalid_input", tax + "/resolution/effective", "Supply a rule resolution effective on the tax date.", { from: later }, { shared: true }),
       binding(tax + "/resolution/assignmentRef", undefined, "other-assignment"),
       binding(tax + "/resolution/policyRevision", undefined, "other-policy"),
-      binding(tax + "/ruleRef", "Obtain the calculation with the rule from the matched coverage treatment.", "other-rule"),
-      binding(tax, rebindMetadata, { ...receipt.positions.tax[0],
+      binding(tax + "/ruleRef", undefined, "other-rule"),
+      binding(tax, undefined, { ...receipt.positions.tax[0],
         resolution: { ...resolution, assignmentRef: "wrong-assignment" }, ruleRef: "wrong-rule",
       }),
       assessment(position + "/jurisdictionRef", moneyIdentity, "district-b"),
@@ -605,22 +575,16 @@ describe("tax document decoders", () => {
         .map(([key, value]) => assessment(tax + "/cell/" + key, undefined, value)),
       assessment(tax + "/cell", undefined, cell("item-a", "district-b")),
       assessment(tax + "/cell", undefined, { ...cell(), sourcing: "ship_from", level: "other" }),
-      assessment(tax, rebindMetadata, wrongTargetRow, { base: splitExample(split([])) }),
-      assessment(tax + "/cell", ambiguous, undefined, {
-        base: splitExample(split([alternateSale]), alternateSale), broken: [["/result" + tax, wrongTargetRow]],
-      }),
-      binding(tax, ambiguous, { ...receipt.positions.tax[0], ruleRef: "wrong-rule" }, {
-        base: splitExample(split([alternateSale])),
-      }),
+      assessment(tax, undefined, { ...receipt.positions.tax[0], cell: otherCell,
+        resolution: { ...resolution, assignmentRef: "assignment-b" }, ruleRef: "rule-b",
+      }, { base: splitResult }),
       ...Object.entries({ jurisdiction: "district-b", feeKind: "sale", scope: { kind: "order" } })
         .map(([key, value]) => assessment(fee + "/" + key, undefined, value)),
-      assessment(fee, "Obtain fee metadata with the required jurisdiction, fee kind and scope.",
-        { ...receipt.positions.fees[0], jurisdiction: "district-b", scope: { kind: "order" }, providerPositionRef: "provider-fee" }),
-      assessment(fee, ambiguous, { ...receipt.positions.fees[0], jurisdiction: "district-b" }, { base: splitExample(split([alternateFee])) }),
-      assessment(tax + "/ratePercent", reconcileRate, undefined),
-      assessment(tax + "/ratePercent", reconcileRate, "9"),
-      assessment(tax + "/ratePercent", reconcileRate, "9", { base: noRate }),
-      assessment(tax + "/ratePercent", reconcileRate, undefined, { broken: rateEdits("99") }),
+      assessment(fee, undefined, { ...receipt.positions.fees[0], jurisdiction: "district-b", scope: { kind: "order" },
+        providerPositionRef: "provider-fee" }),
+      assessment(tax + "/ratePercent", undefined, undefined),
+      assessment(tax + "/ratePercent", undefined, "9"),
+      assessment(tax, undefined, undefined, { base: noRate, broken: [["/result" + tax + "/ratePercent", "9"]] }),
       assessment(position + "/taxMinor", zeroAssessment, 1, { base: taxExempt }),
       assessment(moneyFee + "/amountMinor", zeroAssessment, 5, { base: feeExempt }),
       assessment(moneyFee + "/feeKey", "Omit the out-of-scope fee and its metadata, then reconcile payable.", undefined, {
@@ -632,7 +596,7 @@ describe("tax document decoders", () => {
       }),
     ];
 
-    const checkRepair = (verify: () => Refusal | undefined, root: unknown, refreshDigests: () => void,
+    const checkRepair = (verify: () => Refusal | undefined, root: unknown, refreshDigests: (value: Edit) => void,
       field: string, code: Probe["code"], remedy: string | undefined, label: string) => {
       const refusal = verify();
       expect(refusal, label).toMatchObject({ kind: "refused", code, field, remedy: remedy ?? writeExpected });
@@ -641,27 +605,29 @@ describe("tax document decoders", () => {
         return;
       }
       expect(refusal?.expected, label).toBeDefined();
-      edit(root, [refusal!.field, refusal!.expected]);
-      refreshDigests();
+      const replacement: Edit = [refusal!.field, refusal!.expected];
+      edit(root, replacement);
+      refreshDigests(replacement);
       expect(verify(), "repaired " + label).toBeUndefined();
     };
 
-    for (const { base = example(), code, field, remedy, broken, stale, shared } of probes) {
+    for (const { base = example(), code, field, remedy, broken, stale, shared, fiscalPatch } of probes) {
       const changed = structuredClone(base);
-      const label = field + " (" + changed.result.kind + ")";
-      expect(verifyTaxQuoteResult(changed.original, changed.result), "control " + label).toBeUndefined();
       for (const change of broken) edit(changed, change);
       recompute(changed, broken, stale);
       const validity = structuredClone({ ...fiscal, original: changed.original,
         evidence: changed.result.evidence, evidenceDigest: changed.result.evidenceDigest });
 
       const inRequest = Object.hasOwn(changed.original, field.split("/")[1]);
+      const label = field + " (" + base.result.kind + ")";
+      expect(verifyTaxQuoteResult(base.original, base.result), "control " + label).toBeUndefined();
       checkRepair(() => verifyTaxQuoteResult(changed.original, changed.result), inRequest ? changed.original : changed.result,
-        () => refresh(changed), field, code, remedy, label);
+        ([path, value]) => refresh(changed, [(inRequest ? "/original" : "/result") + path, value]), field, code, remedy, label);
       if (shared) {
         const fiscalField = inRequest ? "/original" + field : field;
         checkRepair(() => verifyTaxQuoteRequest(validity), validity,
-          () => refresh({ original: validity.original, result: validity }), fiscalField, code, remedy, "fiscal " + label);
+          ([path, value]) => refresh({ original: validity.original, result: validity },
+            [inRequest ? path : "/result" + path, value]), fiscalField, code, fiscalPatch ? undefined : remedy, "fiscal " + label);
       }
     }
   });

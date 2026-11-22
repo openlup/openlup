@@ -111,12 +111,10 @@ export interface TaxRefusal {
   readonly kind: "refused"; readonly code: TaxRefusalCode; readonly field: string; readonly remedy: string;
   readonly jurisdiction?: string; readonly taxKind?: string;
   /**
-   * The exact JSON replacement at `field`, limited to one MiB (1,048,576 canonical JSON bytes).
-   * Present only for a unique metadata repair determined by the request: a required tax cell or its fields,
-   * its component assignment or resolution policy revision, a rule supplied by the request's coverage
-   * document, or a coordinate of the unique required fee cell for that key.
-   * Never supplied for digests, quote scope or identity, request or evidence bindings, status,
-   * or values supplied only by the calculation result. An ambiguous required cell has no repair value.
+   * The exact JSON value to write at `field` to repair the refused document.
+   * Present when the verifier can determine it. Replace the value at that JSON Pointer.
+   * Uses request and evidence data or digests derived from them. Excludes credentials and raw provider payloads.
+   * Limited to one MiB (1,048,576 bytes) of canonical JSON.
    * @experimental
    */
   readonly expected?: JsonValue;

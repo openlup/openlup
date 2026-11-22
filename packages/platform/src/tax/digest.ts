@@ -37,14 +37,12 @@ export function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuo
   return bounded({ key: parsedKey, input: normalized, inputDigest: taxDigest("input", normalized) });
 }
 
-function refuse(code: TaxRefusal["code"], field: string, remedy: string): TaxRefusal {
-  return { kind: "refused", code, field, remedy };
-}
-
-function requestRepair(refusal: TaxRefusal, value: unknown): TaxRefusal {
+function refuse(code: TaxRefusal["code"], field: string, remedy: string, expected?: unknown): TaxRefusal {
+  const refusal = { kind: "refused" as const, code, field, remedy };
+  if (expected === undefined) return refusal;
   try {
-    const expected = JSON.parse(canonicalCatalogDraftJson(value)) as TaxRefusal["expected"];
-    return { ...refusal, expected, remedy: "Write `expected` at `field`, then refresh the digests." };
+    const value = JSON.parse(canonicalCatalogDraftJson(expected)) as TaxRefusal["expected"];
+    return { ...refusal, expected: value, remedy: "Write `expected` at `field`, then refresh the digests." };
   } catch {
     return refusal;
   }
@@ -52,11 +50,11 @@ function requestRepair(refusal: TaxRefusal, value: unknown): TaxRefusal {
 
 function verifyDigest(tag: DigestTag, document: unknown, digest: string, field: string, remedy: string): TaxRefusal | undefined {
   try {
-    if (taxDigest(tag, document) === digest) return;
+    const expected = taxDigest(tag, document);
+    if (expected !== digest) return refuse("tax_reference_conflict", field, remedy, expected);
   } catch {
-    // A payload outside the canonical limit cannot match the original digest.
+    return refuse("tax_reference_conflict", field, remedy);
   }
-  return refuse("tax_reference_conflict", field, remedy);
 }
 
 function verifyInputDigest(request: TaxQuoteRequestV1, path = ""): TaxRefusal | undefined {
@@ -67,7 +65,7 @@ function verifyInputDigest(request: TaxQuoteRequestV1, path = ""): TaxRefusal | 
 function verifyEvidence(
   request: TaxQuoteRequestV1, evidence: TaxCalculationEvidenceV1, digest: string, assessments?: readonly Located[],
 ): TaxRefusal | undefined {
-  const badDigest = verifyDigest("evidence", evidence, digest, "/evidenceDigest", "Replay the original evidence and its digest.");
+  const badDigest = verifyDigest("evidence", evidence, digest, "/evidenceDigest", "Supply the original evidence and its digest.");
   if (badDigest) return badDigest;
 
   const input = request.input;
@@ -80,14 +78,17 @@ function verifyEvidence(
   };
   for (const [field, [actual, expected]] of Object.entries(pairs)) {
     if (isDeepStrictEqual(actual, expected)) continue;
-    return refuse("tax_reference_conflict", "/evidence/" + field, field === "status"
-      ? "Obtain the calculation for the original quote's purpose."
-      : "Obtain the calculation for the original request and account.");
+    const remedy = field === "status" ? "Use the original quote's purpose for the evidence status and any result kind."
+      : "Supply evidence from the original quote request.";
+    const corrected = { ...evidence, [field]: expected };
+    const correctStatus = field !== "status" || !assessments;
+    const validEvidence = (field !== "taxDate" && field !== "status") || quoteEvidenceSchema.safeParse(corrected).success;
+    return refuse("tax_reference_conflict", "/evidence/" + field, remedy, correctStatus && validEvidence ? expected : undefined);
   }
 
   const { vector } = evidence.coverage;
   const badCoverage = verifyDigest("coverage", vector, evidence.coverage.digest, "/evidence/coverage/digest",
-    "Replay the original coverage vector and its digest.");
+    "Supply the coverage vector with its original digest.");
   if (badCoverage) return badCoverage;
   const required = [...input.required].sort(compareCells);
   if (vector.length !== required.length || vector.some((row, index) => !sameCell(row.cell, required[index]))) {
@@ -103,7 +104,8 @@ function verifyEvidence(
     const declaration = declarations.get(declarationKey(row.cell));
     if (!isDeepStrictEqual(row.declaration, declaration)) {
       return refuse("tax_reference_conflict", "/evidence/coverage/vector/" + index + "/declaration",
-        "Reconcile coverage with the original quote's effective merchant declaration.");
+        "Reconcile coverage with the original quote's effective merchant declaration.",
+        decisionIsPossible({ ...row, declaration }) ? declaration : undefined);
     }
   }
 
@@ -111,16 +113,16 @@ function verifyEvidence(
   const lines = new Map(input.lines.map(item => [item.lineKey, item.assignmentRef]));
   const buckets = new Map(input.delivery.map(item => [item.bucketKey, item.assignmentRef]));
   const assignmentFor = ({ target }: Cell) => (target.kind === "line" ? lines : buckets).get(target.key);
-  const mismatch = assessments && verifyAssessments(assessments, evidence, coverage, assignmentFor, input.policyRevision);
+  const mismatch = assessments && verifyAssessments(assessments, evidence, coverage, assignmentFor);
   if (mismatch) return mismatch;
 
   for (const [index, row] of evidence.positions.tax.entries()) {
     const path = "/evidence/positions/tax/" + index;
-    const binding = verifyTaxMetadata(row, path, row.cell, required, assignmentFor(row.cell), input.policyRevision,
-      coverage.get(cellKey(row.cell))?.treatment?.ruleRef ?? row.ruleRef, "tax_reference_conflict");
+    const binding = verifyTaxMetadata(row, path, row.cell, assignmentFor(row.cell), evidence.policyRevision,
+      coverage.get(cellKey(row.cell))?.treatment?.ruleRef ?? row.ruleRef, row.ratePercent, "tax_reference_conflict");
     if (binding) return binding;
     const badResolution = verifyDigest("resolution", row.resolution, row.resolutionDigest, path + "/resolutionDigest",
-      "Replay the original rule resolution and its digest.");
+      "Recompute the digest from this rule resolution.");
     if (badResolution) return badResolution;
   }
 
@@ -129,7 +131,7 @@ function verifyEvidence(
   const fiscal = { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision,
     coverage: vector, tax, fees: positions.fees };
   return verifyDigest("fiscal", fiscal, evidence.fiscalDigest, "/evidence/fiscalDigest",
-    "Replay the original fiscal evidence and its digests.");
+    "Recompute the digest from the documented fiscal payload.");
 }
 
 function checkedQuoteRequest(request: TaxQuoteRequestV1): TaxQuoteRequestV1 | TaxRefusal {
@@ -246,40 +248,43 @@ function collectAssessments(input: TaxQuoteInputV1, money: CatalogueMoneyV2Resul
   return rows;
 }
 
-const ambiguousCell = "The required cell is ambiguous. Return the original breakdown that identifies the tax kind or fee scope.";
+function changedFields(actual: Record<string, unknown>, expected: Record<string, unknown>): string[] {
+  return Object.keys(expected).filter(key => !isDeepStrictEqual(actual[key], expected[key]));
+}
 
-function cellRepair(path: string, actual: Record<string, unknown>, required: Record<string, unknown>, fee = false) {
-  const fields = Object.keys(required).filter(key => !isDeepStrictEqual(actual[key], required[key]));
-  if (fields.length === 1) {
-    const [key] = fields;
-    return requestRepair(refuse("tax_breakdown_incomplete", path + "/" + key, "Use the matching required cell field."), required[key]);
-  }
-  if (fee) return refuse("tax_breakdown_incomplete", path, "Obtain fee metadata with the required jurisdiction, fee kind and scope.");
-  return requestRepair(refuse("tax_breakdown_incomplete", path, "Bind the metadata to the matching required cell."), required);
+function cellRepair(path: string, actual: Record<string, unknown>, expected: Record<string, unknown>, replacement = expected) {
+  const fields = changedFields(actual, expected);
+  const key = fields[0];
+  return fields.length === 1
+    ? refuse("tax_breakdown_incomplete", path + "/" + key, "Use the matching required cell field.", expected[key])
+    : refuse("tax_breakdown_incomplete", path, "Bind the metadata to the matching required cell.", replacement);
 }
 
 type TaxMetadata = TaxCalculationEvidenceV1["positions"]["tax"][number];
 
-function verifyTaxMetadata(row: TaxMetadata, path: string, cell: Cell, required: readonly Cell[], assignmentRef: string | undefined,
-  policyRevision: string, ruleRef: string, code: TaxRefusal["code"]): TaxRefusal | undefined {
+function verifyTaxMetadata(row: TaxMetadata, path: string, cell: Cell, assignmentRef: string | undefined,
+  policyRevision: string, ruleRef: string, rate: string | undefined, code: TaxRefusal["code"]): TaxRefusal | undefined {
+  if (assignmentRef === undefined) {
+    return refuse(code, path + "/resolution/assignmentRef", "Use the original component's tax assignment.");
+  }
+  const resolution = { ...row.resolution, assignmentRef, policyRevision };
   const bindings = ([
     ["/resolution/assignmentRef", row.resolution.assignmentRef, assignmentRef, "Use the original component's tax assignment."],
     ["/resolution/policyRevision", row.resolution.policyRevision, policyRevision, "Use the original quote's policy revision."],
-    ["/ruleRef", row.ruleRef, ruleRef, "Obtain the calculation with the rule from the matched coverage treatment."],
+    ["/ruleRef", row.ruleRef, ruleRef, "Use the matched coverage treatment's rule reference."],
+    ["/ratePercent", row.ratePercent, rate, "Copy the money position's rate or omit it when absent."],
   ] as const).filter(([, actual, expected]) => actual !== expected);
   const cellChanged = !sameCell(row.cell, cell);
   if (!cellChanged && !bindings.length) return;
-  if (required.filter(candidate => cellCoordinates(candidate) === cellCoordinates(cell)).length !== 1) {
-    return refuse(code, path, ambiguousCell);
-  }
   if (cellChanged && !bindings.length) return cellRepair(path + "/cell", row.cell, cell);
-  if (cellChanged || bindings.length > 1) {
-    return refuse(code, path, "Obtain the original metadata for the required cell, component assignment and coverage treatment.");
+  if (!cellChanged && bindings.length === 1) {
+    const [field, , expected, remedy] = bindings[0];
+    if (expected !== undefined) return refuse(code, path + field, remedy, expected);
   }
-  const [field, , value, remedy] = bindings[0];
-  const refusal = refuse(code, path + field, remedy);
-  // The request's coverage document contains declarations, not treatment rules.
-  return field === "/ruleRef" || value === undefined ? refusal : requestRepair(refusal, value);
+  const { ratePercent: _rate, ...base } = row;
+  return refuse(code, path, "Rebind the metadata row to the original component and coverage treatment.", {
+    ...base, cell, ruleRef, resolution, resolutionDigest: taxDigest("resolution", resolution), ...(rate !== undefined && { ratePercent: rate }),
+  });
 }
 
 function feeCellValues({ jurisdiction, feeKind, scope }: TaxCalculationEvidenceV1["positions"]["fees"][number]) {
@@ -295,7 +300,7 @@ function feeCell(cell: Cell) {
 }
 
 function verifyAssessments(rows: readonly Located[], evidence: TaxCalculationEvidenceV1, coverage: ReadonlyMap<string, Row>,
-  assignmentFor: (cell: Cell) => string | undefined, policyRevision: string): TaxRefusal | undefined {
+  assignmentFor: (cell: Cell) => string | undefined): TaxRefusal | undefined {
   type Positions = TaxCalculationEvidenceV1["positions"];
   type Entry = { path: string } & ({ kind: "tax"; row: Positions["tax"][number] } | { kind: "fee"; row: Positions["fees"][number] });
   const metadata = new Map<string, Entry>([
@@ -317,7 +322,7 @@ function verifyAssessments(rows: readonly Located[], evidence: TaxCalculationEvi
     const cell = entry?.kind === "tax" ? candidates.find(candidate => sameCell(candidate, entry.row.cell))
       : entry && candidates.find(candidate => isDeepStrictEqual(feeCell(candidate), feeCellValues(entry.row)));
 
-    // A matched cell governs its amount. Coverage cannot disambiguate request cells for a repair.
+    // A matched cell governs its amount. Otherwise, choose a repair from admissible candidates without picking a cell.
     if (cell ? !permitsAssessment(kind, decision(cell), minor) : !admissible.length) {
       const decisions = (cell ? [cell] : candidates).map(decision);
       if (minor > 0 && decisions.some(decision => permitsAssessment(kind, decision, 0))) {
@@ -329,22 +334,19 @@ function verifyAssessments(rows: readonly Located[], evidence: TaxCalculationEvi
           ? "Omit the out-of-scope fee and its metadata, then reconcile payable." : "Obtain the missing proof before emitting an assessment.");
     }
     if (!entry) return refuse("tax_breakdown_incomplete", assessmentRef(assessment), "Supply one matching metadata row in the evidence.");
-    if (entry.kind === "tax" && assessment.kind === "tax" && entry.row.ratePercent !== assessment.rate) {
-      return refuse("tax_breakdown_incomplete", entry.path + "/ratePercent",
-        "Re-obtain the calculation. The money result and evidence disagree on the rate.");
+    const shape = entry.kind === "tax" ? (candidate: Cell) => candidate : feeCell;
+    const actual = entry.kind === "tax" ? entry.row.cell : feeCellValues(entry.row);
+    const applicable = cell ? [] : admissible.filter(candidate => permitsAssessment(kind, decision(candidate), highest.get(tag)!));
+    const bound = cell ?? applicable.find(candidate => changedFields(actual, shape(candidate)).length === 1) ?? applicable[0];
+    if (!bound) return refuse("tax_breakdown_incomplete", assessmentRef(assessment),
+      "Re-obtain the calculation with one covered assessment cell across all states.");
+    if (entry.kind === "fee" && !cell) {
+      const coordinates = feeCell(bound);
+      return cellRepair(entry.path, feeCellValues(entry.row), coordinates, { ...entry.row, ...coordinates });
     }
-    if (!cell) {
-      if (candidates.length !== 1) {
-        return refuse("tax_breakdown_incomplete", entry.path + (entry.kind === "tax" ? "/cell" : ""), ambiguousCell);
-      }
-      const [required] = candidates;
-      if (!permitsAssessment(kind, decision(required), highest.get(tag)!)) {
-        return refuse("tax_breakdown_incomplete", assessmentRef(assessment),
-          "Re-obtain the calculation with one covered assessment cell across all states.");
-      }
-      if (entry.kind === "fee") return cellRepair(entry.path, feeCellValues(entry.row), feeCell(required), true);
-      return verifyTaxMetadata(entry.row, entry.path, required, candidates, assignmentFor(required), policyRevision,
-        coverage.get(cellKey(required))?.treatment?.ruleRef ?? entry.row.ruleRef, "tax_breakdown_incomplete");
+    if (entry.kind === "tax" && assessment.kind === "tax" && (!cell || entry.row.ratePercent !== assessment.rate)) {
+      return verifyTaxMetadata(entry.row, entry.path, bound, assignmentFor(bound), evidence.policyRevision,
+        coverage.get(cellKey(bound))?.treatment?.ruleRef ?? entry.row.ruleRef, assessment.rate, "tax_breakdown_incomplete");
     }
     used.add(tag);
   }
@@ -400,8 +402,9 @@ export function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuot
   if (!decoded.success) return refuse(decoded.error.code, "/evidence" + decoded.error.field, decoded.error.message);
   if (parsed.kind !== decoded.data.status) {
     return decoded.data.status === checked.input.purpose
-      ? refuse("tax_calculation_unusable", "/kind", "Obtain the result for the original quote's purpose.")
-      : refuse("tax_calculation_unusable", "/evidence/status", "Obtain the calculation evidence for the original quote's purpose.");
+      ? refuse("tax_calculation_unusable", "/kind", "Use the original quote's purpose as the result kind.", checked.input.purpose)
+      : refuse("tax_calculation_unusable", "/evidence/status", "Return evidence with the correct result status.",
+        quoteEvidenceSchema.safeParse({ ...decoded.data, status: parsed.kind }).success ? parsed.kind : undefined);
   }
   return verifyEvidence(checked, decoded.data, parsed.evidenceDigest, assessments);
 }
