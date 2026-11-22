@@ -87,7 +87,10 @@ describe("SP1-D-026 fixed-day bounds", () => {
     expect(selectCatalogProfileCadence({ ...request(calendar), cadenceDays: 30 })).toEqual({ code: "cadence_kind_unsupported" });
     expect(selectCatalogProfileCadence({ ...request(fixed(30)), cadenceDays: 31 })).toEqual({ code: "cadence_day_projection_mismatch" });
     expect(validateCatalogSubscriptionProfile({ ...declaration, allowedCadences: [fixed(30), fixed(30)] }))
-      .toMatchObject({ issue: { code: "definition_profile_invalid" } });
+      .toEqual({ issue: {
+        code: "definition_profile_invalid", path: "/allowedCadences",
+        fix: "Use distinct fixed-day choices with whole days from 1 to 3660.",
+      } });
   });
 });
 
@@ -112,6 +115,8 @@ it.each([
   ["policyDigest", { policyDigest: "abc" }, "Supply policyDigest as a 64-character lowercase SHA-256 hex digest."],
   ["policyRef/displayLabel", { policyRef: { ...declaration.policyRef, displayLabel: "example" } },
     'Remove the unexpected property "displayLabel".'],
+  ["allowedCadences", { allowedCadences: fixed(30) },
+    'Wrap the cadence choice in an array: allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days }].'],
   ["allowedCadences/0/schemaVersion", { allowedCadences: [{ ...fixed(30), schemaVersion: 2 }] },
     "Use schemaVersion 1 for this cadence choice."],
 ] as const)("preserves the remedy for an invalid %s from declaration to selector", (path, change, fix) => {

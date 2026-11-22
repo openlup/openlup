@@ -47,11 +47,15 @@ export type CatalogSubscriptionProfileIssue = {
 
 const cadenceFix = `Use distinct fixed-day choices with whole days from 1 to ${MAX_CADENCE_DAYS}.`;
 
-function fieldFix([field, child, property]: readonly PropertyKey[]): string {
+function fieldFix(issue: z.ZodIssue): string {
+  const [field, child, property] = issue.path;
   switch (field) {
     case "policyDigest":
       return "Supply policyDigest as a 64-character lowercase SHA-256 hex digest.";
     case "allowedCadences":
+      if (child === undefined && issue.code === "invalid_type" && issue.expected === "array") {
+        return 'Wrap the cadence choice in an array: allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days }].';
+      }
       return property === "schemaVersion" ? "Use schemaVersion 1 for this cadence choice." : cadenceFix;
     case "maxFixedDays":
       return `Supply a whole number from 1 to ${MAX_CADENCE_DAYS} for maxFixedDays or omit it.`;
@@ -79,7 +83,7 @@ export function validateCatalogSubscriptionProfile(input: unknown):
     const unexpected = issue.code === "unrecognized_keys" ? issue.keys[0] : undefined;
     const segments = unexpected === undefined ? issue.path : [...issue.path, unexpected];
     const path = segments.map(value => `/${String(value).replaceAll("~", "~0").replaceAll("/", "~1")}`).join("");
-    const fix = unexpected === undefined ? fieldFix(issue.path) : `Remove the unexpected property ${JSON.stringify(unexpected)}.`;
+    const fix = unexpected === undefined ? fieldFix(issue) : `Remove the unexpected property ${JSON.stringify(unexpected)}.`;
     return { issue: { code: "definition_profile_invalid", path, fix } };
   }
   const { allowedCadences, maxFixedDays, ...profile } = parsed.data;
