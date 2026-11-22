@@ -1671,6 +1671,24 @@ authority. Review evidence grants no merge, release, settings or credential righ
    implementation starts. If implementation contradicts the specification,
    amend the specification before continuing. For a trivial fix, a few lines
    in the task record can serve as the specification.
+
+   The specification also records simplicity and DX impact. Each record applies
+   whenever its condition holds, even in a short specification.
+
+   Before adding a mechanism (table, trigger, lock, version or dialect, scanner,
+   wrapper, setting, test harness or process step), record the current requirement
+   or reachable failure it serves and the smallest adequate alternative considered.
+   Prefer removing the cause, deleting a rule, using an existing seam or default, or
+   documenting a limit. A new process control needs a concrete failure that required
+   CI and the change's own review would miss. Preserve correctness, required
+   compatibility and proof when simplifying.
+
+   For changes to public APIs, starters or examples, reader docs, errors, CLI,
+   configuration and settings, or extension points, record the DX impact for the
+   affected task, including the concepts, steps and files an adopter or their coding
+   agent must handle. Minimize adopter-visible concepts, keep internal mechanisms
+   private, name the cause and fix in errors, and write adopter docs around tasks.
+   Keep the adopter's local edit-and-test loop fast.
 3. **Implement, test and document in the same PR.** Implement the change, add
    tests, and update the documentation it makes stale; this is implementation
    work, and the reviewer checks it. Locally run only the tests being written,
@@ -1688,21 +1706,6 @@ authority. Review evidence grants no merge, release, settings or credential righ
 4. **Describe the task in the PR description.** Include the specification as
    the task record, with its acceptance criteria, the risk, actual delivery
    authority and evidence. Keep the record current through fixes and handoffs.
-
-   Before adding a mechanism (table, trigger, lock, version or dialect, scanner,
-   wrapper, setting, test harness or process step), record the current requirement
-   or reachable failure it serves and the smallest adequate alternative considered.
-   Prefer removing the cause, deleting a rule, using an existing seam or default, or
-   documenting a limit. A new process control needs a concrete failure that required
-   CI and the change's own review would miss. Preserve correctness, required
-   compatibility and proof when simplifying.
-
-   For changes to public APIs, starters or examples, reader docs, errors, CLI,
-   configuration and settings, or extension points, record the DX impact for the
-   affected task, including the concepts, steps and files an adopter or their coding
-   agent must handle. Minimize adopter-visible concepts, keep internal mechanisms
-   private, name the cause and fix in errors, and write adopter docs around tasks.
-   Keep the adopter's local edit-and-test loop fast.
 5. **Sign, push and open ready for review.** Commit with DCO sign-off, push and
    open the ready pull request within submission authority. End its description
    with the author's `Signed-off-by:` line: the queue uses it as the merge-commit
