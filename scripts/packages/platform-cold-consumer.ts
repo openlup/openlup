@@ -37,6 +37,8 @@ export const NON_ADAPTER_ENTRIES = [
   "company-identity/contracts",
   "company-identity/server",
   "market-packs",
+  "tax",
+  "tax/contracts",
   "lifecycle",
   "portability",
   "operations",
@@ -1090,6 +1092,12 @@ void setting;void pipeline;void wrong;void hostChannel;
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
   const file = join(consumer, "consumer.ts");
   const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
+  if (entries.includes("tax") && entries.includes("tax/contracts")) surfaces.push(
+    'import { makeTaxQuoteRequest } from "@openlup/platform/tax";',
+    'import { taxQuoteRequestV1Schema, type TaxCalculationPort, type TaxQuoteInputV1 } from "@openlup/platform/tax/contracts";',
+    'declare const taxAdapter: TaxCalculationPort, taxInput: TaxQuoteInputV1;',
+    'export const taxQuote = taxAdapter.quote(taxQuoteRequestV1Schema.parse(makeTaxQuoteRequest("quote", taxInput)));',
+  );
   if (entries.includes("marketing") && entries.includes("marketing/contracts")) surfaces.push([
     'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema, buildHeadDescriptor, organizationLd } from "@openlup/platform/marketing";',
     'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort, AcquisitionCasePort, AcquisitionEvidencePort, PrelaunchAcquisitionListRequest, ContactContent, LegalDocumentContent, PrivacyProcessorDisclosure } from "@openlup/platform/marketing/contracts";',
@@ -2634,6 +2642,21 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     compileConsumer(consumer, entries, compiler);
     compileReferenceDelegationTypes(consumer, compiler);
     for (const proof of RISK_WORKFLOW_PROOFS) proveRiskWorkflowConsumer(consumer, compiler, proof);
+    consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { reconcileTaxCoverage } from "@openlup/platform/tax";
+import { taxCoverageV1Schema } from "@openlup/platform/tax/contracts";
+const scope = { adapter: "example", adapterVersion: "1", accountRef: "account", mode: "test" };
+const taxDate = "2030-01-01T00:00:00.000Z", effective = { from: taxDate };
+const cell = { target: { kind: "line", key: "item" }, jurisdiction: "district-a", taxKind: "sale", level: "district", sourcing: "destination" };
+const declaration = { jurisdiction: cell.jurisdiction, taxKind: cell.taxKind, status: "registered", effective, actorRef: "operator", recordedAt: taxDate };
+const coverage = taxCoverageV1Schema.parse({ schemaVersion: 1, accountRef: scope.accountRef, revision: "coverage", declarations: [declaration] });
+const input = { scope, taxDate, coverage, required: [cell], observations: [{ cell, assessedMinor: 0,
+  registration: { state: "active", evidenceRef: "registration", effective },
+  treatment: { kind: "taxable", reason: "standard", ruleRef: "rule" } }] };
+assert.equal(reconcileTaxCoverage(input).posting, "required");
+assert.equal(reconcileTaxCoverage({ ...input, coverage: { ...coverage, declarations: [] } }).code, "tax_coverage_undeclared");
+`);
     consumerNode(consumer, MARKET_PACK_CONSUMER_PROOF);
     consumerNode(consumer, MARKET_DESCRIPTOR_CONSUMER_PROOF);
     consumerNode(consumer, REFERENCE_DELEGATION_CONSUMER_PROOF);

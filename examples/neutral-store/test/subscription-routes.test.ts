@@ -2,7 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
 import type { Pool } from 'pg';
+import type { PaymentAdapter } from '@openlup/platform/payments/contracts';
+import { createNativeRenewalCodec } from '@openlup/platform/subscriptions';
 import { composeSubscriptionEditors } from '../host/subscription-editors.ts';
+import { composeStripePortableRail } from '../host/provider-portable.ts';
 import { composeSubscriptionCare, composeSubscriptionCommands } from '../host/native-composition.ts';
 import { dispatchAction, type VerifiedActor } from '../host/bindings.ts';
 import { createApplication } from '../host/server.ts';
@@ -136,3 +139,86 @@ test('the composed command retains editor and care ownership checks without fall
   }
   assert.equal(calls.length,2);
 });
+
+for (const capturedAmountBasis of ['provider_capture_v1', undefined] as const) {
+  test(`portable renewal preserves prototype readback fields with ${capturedAmountBasis ?? 'undefined basis'}`, async () => {
+    const at = '2099-01-01T12:00:00.000Z', recordedAt = '2099-01-01T12:00:00.000000Z';
+    const money = { amountMinor: 200, currency: 'XXX' }, provider = 'fixture-card';
+    const request = { ...money, settlementIntentId: id(10), orderId: id(11), subscriptionId: id(12), externalAttemptRef: 'pi_fixture' };
+    const codec = createNativeRenewalCodec();
+    const cycleSnapshot = codec.encode(codec.freeze({
+      subscription_id: request.subscriptionId, client_id: id(13), cadence_days: 28, next_cycle_number: 1,
+      activation_cycle_id: id(14), activation_cycle_paid: true, paid_cycle_count: 1, template_version: 1,
+      currency_code: money.currency, stock_source_key: 'fixture', settlement_channel_key: provider,
+      authorization_ref: 'fixture', unattended_charge_authorized_at: at,
+      purchase_facts: { templateId: 'fixture', shippingAmountMinor: 0 },
+      lines: [{ lineOrdinal: 1, sku: 'FIXTURE', quantity: 1, unitAmountMinor: money.amountMinor }],
+    }, { subscriptionId: request.subscriptionId, scheduledAt: at, scheduledInstant: Date.parse(at) }));
+    const evidence: unknown[] = [], applied: unknown[] = [];
+    const executor = { async query(sql: string, values?: unknown[]) {
+      if (sql.includes('JOIN public.subscription_renewal_operations op')) return { rows: [{
+        id: id(15), order_id: request.orderId, subscription_id: request.subscriptionId, amount_minor: money.amountMinor,
+        currency_code: money.currency, operation_fingerprint: 'a'.repeat(64), cycle_snapshot: cycleSnapshot,
+      }] };
+      if (sql.includes('public.payment_provider_attempt_read(')) return { rows: [{ response: {
+        ...money, orderId: request.orderId, intentStatus: 'processing', settlementStatus: applied.length ? 'settled' : 'created',
+        requestPayload: {}, responsePayload: {}, paymentAttempt: { id: id(16), paymentIntentId: request.settlementIntentId,
+          paymentId: id(17), provider, status: 'processing', providerAttemptId: request.externalAttemptRef,
+          providerSessionId: request.externalAttemptRef, idempotencyKey: 'fixture' },
+      } }] };
+      if (sql.includes('public.commerce_payment_control_record_reconciliation(')) {
+        evidence.push(JSON.parse(String(values?.[9])));
+        return { rows: [{ response: { paymentReconciliation: { id: id(18) } } }] };
+      }
+      if (sql.includes('public.commerce_payment_control_apply_reconciliation_result(')) {
+        applied.push(JSON.parse(String(values?.[13])));
+        return { rows: [{ response: { paymentReconciliationApply: { paymentReconciliation: { id: id(18) },
+          correctionStatus: 'corrected', replayed: false, paymentResult: { orderId: request.orderId,
+            paymentIntentId: request.settlementIntentId, paymentAttemptId: id(16), paymentId: id(17),
+            status: 'succeeded', kind: 'applied', replayed: false } } } }] };
+      }
+      throw new Error('unexpected_portable_renewal_query');
+    } };
+    const unavailable = () => { throw new Error('unexpected_portable_renewal_call'); };
+    const adapter: PaymentAdapter = {
+      capabilities: {
+        providerKind: provider, supportedCurrencies: [money.currency], captureFlows: [],
+        requiresStoredMandateEvidence: false, assessMandate: unavailable, unattendedChargeFlow: 'off_session_payment',
+        payerContext: { requiresPayerBlock: false, customerRefFallsBackToContactEmail: false },
+        methodHealth: { requiresCustomerRef: true, requiredMethodKind: null, requiresPayerContact: false },
+        terminalOutcomeReporting: { kind: 'status_field', silenceBecomesSuspectAfterMinutes: 15 },
+        mandateUpsertIsSubscriptionScoped: false, unattended: 'unsupported', readback: 'supported',
+        close: 'unsupported', exactAbsence: 'unsupported', refundObservation: 'unsupported',
+        refundCreate: 'unsupported', authorizationCaptureSplit: 'unsupported',
+      },
+      attemptPort: { validateInput: unavailable, execute: unavailable },
+      verifyPort: { verifyAndNormalize: unavailable },
+      readbackPort: { async readPayment({ identity, expectedMoney, purpose }) {
+        const readback = new class {
+          readonly kind = 'succeeded' as const;
+          readonly identity = identity;
+          readonly expectedMoney = expectedMoney;
+          readonly purpose = purpose;
+          readonly capturedAmountBasis = capturedAmountBasis;
+          get observedMoney() { return money; }
+          get providerOccurredAt() { return at; }
+        }();
+        assert.equal(Object.hasOwn(readback, 'observedMoney'), false);
+        assert.equal(Object.hasOwn(readback, 'providerOccurredAt'), false);
+        return readback;
+      } },
+    };
+    const composition = composeStripePortableRail({
+      enabled: true, mode: 'test', executor, withTransaction: unavailable, adapter,
+      searchPaymentIntentsByMetadata: unavailable, ensureCustomer: unavailable,
+      resolveMethodOwner: unavailable, resolveSavedMethodOwner: unavailable,
+      retry: { readFrozenMandate: unavailable, retryInput: unavailable },
+      failureTemplate: 'fixture-failure', recoveredTemplate: 'fixture-recovered', recoveryPath: '/fixture', now: () => at,
+    });
+    const result = await composition.subscriptionPorts.paymentRails.resolve(provider)!.readOutcome(request);
+    const historical = { observedMoney: money, providerOccurredAt: recordedAt };
+    assert.deepEqual(evidence, [historical]);
+    assert.deepEqual(applied, capturedAmountBasis ? [{ ...historical, capturedAmountBasis }] : []);
+    assert.equal(result.status, capturedAmountBasis ? 'succeeded' : 'unknown');
+  });
+}

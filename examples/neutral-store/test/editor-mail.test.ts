@@ -26,7 +26,7 @@ test('describeParcel uses frozen quantities, exact retained physical identities 
   assert.deepEqual(f.calls.filter(call => call.sql.includes('FROM public.catalog_skus')).map(call => call.values),market.locales.flatMap(() => [[id(4)],[id(5)]]));
   assert.ok(f.calls.every(call => !call.sql.includes('s.cadence_days') && !call.sql.includes('subscription_lines')));
 });
-for (const kind of ['identity','quantity','correlation','acquisition','binding','unreadable'] as const) {
+for (const kind of ['identity','quantity','correlation','acquisition','binding','unreadable','fractional mass'] as const) {
   test(`describeParcel omits unprovable ${kind} facts`, async () => {
     const f = fixture();
     if (kind === 'identity') f.retained.get(id(4))!.sku = 'SIBLING';
@@ -35,6 +35,7 @@ for (const kind of ['identity','quantity','correlation','acquisition','binding',
     if (kind === 'acquisition') f.header.cycle_snapshot.cycle.logicalCycleNumber = 1;
     if (kind === 'binding') f.header.binding = 'classic';
     if (kind === 'unreadable') f.retained.get(id(4))!.net_weight_g = 0;
+    if (kind === 'fractional mass') f.retained.get(id(4))!.net_weight_g = 1.5;
     assert.equal(await f.note(id(1),market.defaultLocale,new AbortController().signal),null);
   });
 }

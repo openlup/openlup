@@ -1,6 +1,6 @@
 import { build } from "esbuild";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, posix, relative } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
@@ -235,6 +235,7 @@ describe("package source boundary", () => {
       "catalog/adminBundleWritePort.ts", "catalog/adminBundleHandler.ts", "catalog/adminBundleReadHandler.ts", "catalog/sellableBundleHandler.ts",
       "catalog/contracts/bundleAdmin.ts", "catalog/contracts/bundleRead.ts", "catalog/contracts/bundleAvailability.ts",
       "pricing/index.ts", "pricing/browser/index.ts", "pricing/contracts/index.ts",
+      "tax/index.ts", "tax/contracts/index.ts",
       "promotions/index.ts", "promotions/contracts/index.ts",
       "promotions/adminBindings.ts", "promotions/adminPromotionsHandler.ts", "promotions/adminPromotionCodesHandler.ts",
       "promotions/adminPromotionsContracts.ts", "promotions/adminPromotionCodesContracts.ts",
@@ -314,6 +315,19 @@ describe("package source boundary", () => {
       bundle: true, platform: "browser", format: "esm", write: false,
       treeShaking: false, logLevel: "silent",
     })).rejects.toThrow(/node:fs|node:crypto|node:path/);
+  });
+
+  it("bundles tax contracts for a browser without the tax server entry or provider code", async () => {
+    const root = fileURLToPath(new URL("../../../", import.meta.url));
+    const tax = join(SOURCE_ROOT, "tax/contracts");
+    const pricing = join(root, "packages/core/dist/pricing");
+    const result = await build({
+      absWorkingDir: root, entryPoints: [join(tax, "index.ts")],
+      bundle: true, platform: "browser", format: "esm", write: false, metafile: true, logLevel: "silent",
+    });
+    const inputs = Object.keys(result.metafile!.inputs).map(path => resolve(root, path));
+    expect(inputs).toContain(join(tax, "schemas.ts"));
+    expect(inputs.filter(path => !path.startsWith(tax + sep) && !path.startsWith(pricing + sep))).toEqual([]);
   });
 
   it("bundles the commerce browser entry without Node built-ins or the server entry", async () => {

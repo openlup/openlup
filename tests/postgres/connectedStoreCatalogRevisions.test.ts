@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
+import { actorId, catalogQuantityCharacterization, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -47,6 +47,13 @@ beforeAll(async () => {
     }
     await source.owner.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [product, latest[index]]);
   }
+  for (const [index, { grams, tuple }] of catalogQuantityCharacterization.entries()) {
+    await source.owner.query(`INSERT INTO public.catalog_skus(product_id,sku,title,net_weight_g,
+      net_content_dimension,net_content_unit,net_content_unscaled,net_content_scale)
+      VALUES ($1,$2,'Legacy quantity',$3,$4,$5,$6,$7)`, [
+      products[0], `QUANTITY-LEGACY-${index}`, grams, tuple?.[0] ?? null, tuple?.[1] ?? null, tuple?.[2] ?? null, tuple ? 0 : null,
+    ]);
+  }
   packet = await captureStoreJourney(source.owner, "catalog-document-source");
 }, postgresSetupTimeoutMs);
 
@@ -87,6 +94,12 @@ it("carries two revisions per revised product, resolves the latest pointer and r
   expect(before.catalog_product_document_revisions).toHaveLength(4);
   expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(await journeyCensus(target.owner)).toEqual(before);
+  expect((await target.owner.query(`SELECT net_weight_g,net_content_dimension,net_content_unit,
+    net_content_unscaled::text,net_content_scale FROM public.catalog_skus WHERE sku LIKE 'QUANTITY-LEGACY-%' ORDER BY sku`)).rows)
+    .toEqual(catalogQuantityCharacterization.map(({ grams, tuple }) => ({
+      net_weight_g: grams, net_content_dimension: tuple?.[0] ?? null, net_content_unit: tuple?.[1] ?? null,
+      net_content_unscaled: tuple ? String(tuple[2]) : null, net_content_scale: tuple ? 0 : null,
+    })));
   expect((await target.owner.query(`SELECT p.id,p.current_document_revision_id,r.product_id,r.revision_no,
     r.id=(SELECT r2.id FROM public.catalog_product_document_revisions r2
       WHERE r2.product_id=p.id ORDER BY r2.revision_no DESC LIMIT 1) AS latest
