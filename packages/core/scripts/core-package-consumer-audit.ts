@@ -70,6 +70,7 @@ const extensionlessTextPackFiles = new Set(["LICENSE"]);
 const packagedAdapterReference = new RegExp([
   // Released subpaths are inline code; generated dist references end their line.
   "(?<=`)(?:@openlup/platform/)?(?:" + adapterSubpaths + ")(?=`)",
+  "^(?:Added|Removed) package subpath `\\./(?:" + adapterSubpaths + ")`\\.$",
   // Mask only the directory so the file name itself remains subject to the audit.
   String.raw`(?<= )dist/(?:${adapterSubpaths})(?=/[A-Za-z0-9-]+(?:\.[A-Za-z0-9]+)*(?:\n|(?![\s\S])))`,
   `^### \`packages/platform/api/(?:${adapterReports})\\.api\\.md\`$`,

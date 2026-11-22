@@ -1160,12 +1160,16 @@ it("admits the generated tax adapter section and inline fragment reference", () 
   const fragment = "packages/core/changes/tax-adapter.md";
   const inline = "Use `@openlup/platform/" + subpath + "`.";
   put(root, fragment, inline + "\n");
+  put(root, "packages/platform/release-gates.json", JSON.stringify({
+    packageSurface: { ["./" + subpath]: { snapshot: "api/tax-" + provider + ".api.md" } },
+  }));
   put(root, report, "## dist/" + subpath + "/index.d.ts\n\n```ts\nexport declare const factory: unknown;\n```\n");
   commit(root);
 
   const upgrade = assertSimulatedUpgradePage(root)?.text;
   expect(upgrade).toContain("### `" + report + "`");
   expect(upgrade).toContain(inline);
+  expect(upgrade).toContain("Added package subpath `./" + subpath + "`.");
   put(root, fragment, inline + " Bare " + provider + " prose.\n");
   commit(root);
   expect(() => assertSimulatedUpgradePage(root)).toThrow(/downstream provider dependency/u);
