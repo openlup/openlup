@@ -160,9 +160,20 @@ ALTER TABLE public.subscription_quote_previews ADD CONSTRAINT subscription_quote
 describe("receipt-backed preview acceptance", () => {
   const sql = previewNoopSql;
   const [column, drop, add, previewed, event, noop] = sql.split("\n") as [string, string, string, string, string, string];
-  const path = "db/platform/migrations/20990101000000_preview_noop_acceptance.sql";
+  const path = "db/platform/migrations/20990103000000_preview_noop_acceptance.sql";
   const preimage = "db/platform/migrations/20261109120000_subscription_package_editor.sql";
   const history = "db/platform/migrations/20261109140000_subscription_sized_editor.sql";
+  const triggerForward = {
+    path: "db/platform/migrations/20990101000000_preview_catalog_trigger.sql",
+    bytes: Buffer.from(`CREATE FUNCTION public.preview_catalog_final() RETURNS trigger LANGUAGE plpgsql AS $trigger$
+BEGIN
+  PERFORM (SELECT id FROM public.subscription_quote_previews WHERE id = NEW.id);
+  RETURN NULL;
+END;
+$trigger$;
+CREATE CONSTRAINT TRIGGER subscription_quote_previews_catalog_final AFTER INSERT OR UPDATE OR DELETE ON public.subscription_quote_previews DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final();
+`),
+  };
   const slotError = "preview acceptance requires one slot listing only the receipt column";
   const sqlError = "preview acceptance forward requires exactly the receipt column and adjacent validated CHECK replacement";
   const preimageError = "preview acceptance CHECK preimage file or hash drifted";
@@ -181,7 +192,7 @@ describe("receipt-backed preview acceptance", () => {
   }
   it("admits the exact receipt column and adjacent validated CHECK replacement", () => {
     expect(isExpandOnlyPlatformForward(column)).toBe(true);
-    expect(admit().slot).toEqual(entry());
+    expect(admit(sql, [...prefix(), triggerForward]).slot).toEqual(entry());
     const directory = "db/platform/migrations";
     const cutoff = production.nativeStoreForwardClass!.slots.find(slot => slot.previewNoopAcceptance)?.path ?? path;
     const preceding = readdirSync(directory).filter(file => /^\d{14}_.*\.sql$/u.test(file))
@@ -199,9 +210,71 @@ describe("receipt-backed preview acceptance", () => {
     expect(() => admit(sql, sources)).toThrow(preimageError);
   });
   it("refuses a later rewrite of the pinned CHECK", () => {
-    const path = "db/platform/migrations/20980101000000_rewritten_check.sql";
+    const path = "db/platform/migrations/20990102000000_rewritten_check.sql";
     const bytes = Buffer.from(`${drop}\n${add}status IS NOT NULL);`);
     expect(() => admit(sql, [...prefix(), { path, bytes }])).toThrow(`preview acceptance CHECK refuses other preview history: ${path}`);
+  });
+  it.each([
+    ["a deferred constraint trigger and its preview-reading function", triggerForward.bytes],
+    ["a replacement trigger", "CREATE OR REPLACE TRIGGER preview_final AFTER UPDATE ON public.subscription_quote_previews FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final();"],
+    ["a trigger procedure call with arguments", "CREATE TRIGGER preview_final AFTER UPDATE ON public.subscription_quote_previews FOR EACH ROW WHEN (NEW.id IS NOT NULL) EXECUTE PROCEDURE public.preview_catalog_final(');', 2);"],
+    ["a trigger drop", 'DROP TRIGGER IF EXISTS "preview_final" ON "subscription_quote_previews";'],
+    ["a trigger comment", `COMMENT ON TRIGGER preview_final ON "public"."subscription_quote_previews" IS 'Finalizes the preview';`],
+    ["a grant", "GRANT SELECT ON TABLE public.subscription_quote_previews TO authenticated;"],
+    ["a revoke", "REVOKE SELECT ON subscription_quote_previews FROM authenticated;"],
+    ["a preview-reading procedure", "CREATE PROCEDURE public.preview_read() LANGUAGE plpgsql AS $$ BEGIN PERFORM (SELECT count(*) FROM public.subscription_quote_previews); END; $$;"],
+  ])("admits earlier preview history with %s", (_label, earlierSql) => {
+    const bytes = typeof earlierSql === "string" ? Buffer.from(earlierSql) : earlierSql;
+    expect(admit(sql, [...prefix(), { ...triggerForward, bytes }]).slot).toEqual(entry());
+  });
+  const trailingBackslash = String.raw`COMMENT ON TABLE public.other IS 'ends in \';`;
+  it("ignores an unrelated file with the review's trailing-backslash comment", () => {
+    expect(admit(sql, [...prefix(), { ...triggerForward, bytes: Buffer.from(trailingBackslash) }]).slot).toEqual(entry());
+  });
+  const triggerCall = "CREATE TRIGGER preview_final AFTER UPDATE ON public.subscription_quote_previews FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final";
+  it.each([
+    ["an unclosed argument list", "(;", "cannot split SQL: close all parentheses before the statement terminator"],
+    ["trailing tokens after the call", "() trailing;", "preview reference outside the trigger, table privilege and routine-body allowlist"],
+  ])("refuses a preview trigger with %s", (_label, tail, reason) => {
+    const bytes = Buffer.from(triggerCall + tail);
+    expect(() => admit(sql, [...prefix(), { ...triggerForward, bytes }]))
+      .toThrow(`preview acceptance CHECK refuses other preview history: ${triggerForward.path}: ${reason}`);
+  });
+  it.each([
+    ["schema-qualified ALTER TABLE", "ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid;"],
+    ["unqualified ALTER TABLE", "alter table SUBSCRIPTION_QUOTE_PREVIEWS add column other uuid;"],
+    ["quoted ALTER TABLE", 'ALTER TABLE "public" /* schema */ . "subscription_quote_previews" ADD COLUMN other uuid;'],
+    ["ALTER TABLE ONLY", "ALTER TABLE ONLY (public.subscription_quote_previews) ADD COLUMN other uuid;"],
+    ["ALTER TABLE IF EXISTS", "ALTER TABLE IF EXISTS ONLY subscription_quote_previews ADD COLUMN other uuid;"],
+    ["CREATE TABLE", 'CREATE UNLOGGED TABLE IF NOT EXISTS public."subscription_quote_previews" (id uuid);'],
+    ["DROP TABLE", "DROP TABLE IF EXISTS public.retired_previews, subscription_quote_previews;"],
+    ["a constraint on previews", "ALTER TABLE public.subscription_quote_previews ADD CONSTRAINT preview_check CHECK (true);"],
+    ["a constraint referencing previews", "ALTER TABLE public.other ADD CONSTRAINT preview_fk FOREIGN KEY (preview_id) REFERENCES public.subscription_quote_previews(id);"],
+    ["a rename from the preview name", "ALTER TABLE public.subscription_quote_previews RENAME TO retired_previews;"],
+    ["a rename into the preview name", 'ALTER TABLE public.other RENAME TO "subscription_quote_previews";'],
+    ["a unique index", "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS preview_unique ON ONLY public.subscription_quote_previews(id);"],
+    ["a non-unique index", "CREATE INDEX preview_status ON public.subscription_quote_previews(status);"],
+    ["an index drop", "DROP INDEX public.subscription_quote_previews_lookup;"],
+    ["a table in a different schema", "ALTER TABLE private.subscription_quote_previews ADD COLUMN other uuid;"],
+    ["a table comment", "COMMENT ON TABLE public.subscription_quote_previews IS 'Preview rows';"],
+    ["the review's CRLF before ADD COLUMN", "ALTER TABLE public.subscription_quote_previews\r\nADD COLUMN other uuid;"],
+    ["the review's Unicode schema", 'ALTER TABLE U&"public".subscription_quote_previews ADD COLUMN other uuid;'],
+    ["the review's quoted semicolon before a foreign key", 'CREATE TABLE public.other (";" uuid, preview_id uuid REFERENCES public.subscription_quote_previews(id));'],
+    ["the review's three-part table name", "ALTER TABLE postgres.public.subscription_quote_previews ADD COLUMN other uuid;"],
+    ["the review's dollar sign in the preceding drop target", "DROP TABLE public.other$archive, public.subscription_quote_previews;"],
+    ["the review's literal DDL in a DO block", "DO $$ BEGIN ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid; END; $$;"],
+    ["the review's foreign key in a CREATE SCHEMA subcommand", "CREATE SCHEMA review_fixture CREATE TABLE other (preview_id uuid REFERENCES public.subscription_quote_previews(id));"],
+    ["the review's primary-key index rename", "ALTER INDEX public.subscription_quote_previews_pkey RENAME TO renamed_preview_pkey;"],
+    ["the review's trailing-backslash split error in a mentioning file", trailingBackslash + "\nGRANT SELECT ON public.subscription_quote_previews TO authenticated;"],
+    ["a trigger targeting another schema", "CREATE TRIGGER subscription_quote_previews_trigger AFTER UPDATE ON private.subscription_quote_previews FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final();"],
+    ["a trigger targeting a dollar-suffixed table", "CREATE TRIGGER preview_trigger AFTER UPDATE ON public.subscription_quote_previews$archive FOR EACH ROW EXECUTE FUNCTION public.preview_catalog_final();"],
+    ["a reference in a routine header", "CREATE FUNCTION public.preview_read() RETURNS SETOF public.subscription_quote_previews LANGUAGE sql AS $$ SELECT 1 $$;"],
+    ["a routine body with dynamic DDL", "CREATE PROCEDURE public.preview_write() LANGUAGE plpgsql AS $$ BEGIN EXECUTE 'ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid'; END; $$;"],
+    ["a file with both allowed and unlisted statements", "GRANT SELECT ON public.subscription_quote_previews TO authenticated; COMMENT ON TABLE public.subscription_quote_previews IS 'Preview rows';"],
+    ["a preview mention outside any statement", "-- subscription_quote_previews\nSELECT 1;"],
+  ])("refuses earlier preview history with %s", (_label, earlierSql) => {
+    expect(() => admit(sql, [...prefix(), { ...triggerForward, bytes: Buffer.from(earlierSql) }]))
+      .toThrow(`preview acceptance CHECK refuses other preview history: ${triggerForward.path}`);
   });
   it.each([
     ["a missing branch", sql.replace(`${event}\n`, "")],
@@ -228,7 +301,7 @@ describe("receipt-backed preview acceptance", () => {
     expect(() => admit(sql, prefix(), [slot])).toThrow(slotError);
   });
   it("refuses a second slot for the same replacement", () => {
-    const second = { ...entry(), row: "second-preview-acceptance", path: "db/platform/migrations/20990102000000_repeat.sql" };
+    const second = { ...entry(), row: "second-preview-acceptance", path: "db/platform/migrations/20990104000000_repeat.sql" };
     expect(() => admit(sql, prefix(), [entry(), second])).toThrow(slotError);
   });
 
@@ -244,12 +317,16 @@ describe("receipt-backed preview acceptance", () => {
     ["a co-introduced predecessor", 1, [unapproved, unissued, unapproved, unissued, unissued]],
   ] as const)("checks %s for receipt-backed preview acceptance", (scenario, exit, verdicts) => {
     const f = fixture(), source = readFileSync(preimage);
-    const row = { file: preimage, sha256: sha256(source) };
+    const rows = [{ file: preimage, sha256: sha256(source) }];
     f.put(preimage, source);
-    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([row]));
+    if (scenario !== "a co-introduced predecessor") {
+      f.put(triggerForward.path, triggerForward.bytes);
+      rows.push({ file: triggerForward.path, sha256: sha256(triggerForward.bytes) });
+    }
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest(rows));
     const base = scenario === "a co-introduced predecessor" ? f.base : f.commit();
     stageNativeForward(f, sql, entry());
-    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([row, { file: path, sha256: sha256(sql) }]));
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([...rows, { file: path, sha256: sha256(sql) }]));
     if (scenario === "a co-located rule change") f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
     if (scenario === "a co-located installation matrix change") f.put("tests/postgres/subscriptionExactInstallation.test.ts", "// Changed installation proof.\n");
     const head = f.commit();

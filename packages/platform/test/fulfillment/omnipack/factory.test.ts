@@ -6,6 +6,7 @@ import { dispatchResult, shadowDispatchEvidence } from "../../../src/fulfillment
 import type { DispatchRecord, FulfillmentDispatchResult } from "../../../src/fulfillment/contracts/index.js";
 import { runFulfillmentProductSyncWorker } from "../../../src/fulfillment/providerProductSyncWorker.js";
 import * as entry from "../../../src/fulfillment/omnipack/index.js";
+import { buildOmnipackProductPayload } from "../../../src/fulfillment/omnipack/omnipackProductPayload.js";
 import type { OmnipackFulfillmentAdapterConfig } from "../../../src/fulfillment/omnipack/index.js";
 import type { DispatchEvidence, FulfillmentDispatchRequest, FulfillmentStockSyncPort, StockSnapshot, SyncCursor } from "../../../src/fulfillment/contracts/index.js";
 import { runFulfillmentStockSyncWorker as run } from "../../../src/fulfillment/index.js";
@@ -419,6 +420,13 @@ it("keeps product reads pull-only and strips donor response bags from explicit w
   await writer.adapter.productSync.addProductPack("SKU-A", { ean: "0000000000012", quantity: 2 });
   expect(writer.fetchImpl.mock.calls.map(([, init]) => init?.method)).toEqual(["POST", "POST"]);
   await expect(writer.adapter.productSync.addProductPack("SKU-A", { ean: secret, quantity: 0 })).rejects.toMatchObject({ reason: "malformed", phase: "sync", retryable: false });
+});
+it("preserves the gross parcel weight field and validation code", () => {
+  const input = { sku: "SKU-A", ean: "0000000000012", title: "Example", productGroup: "Example",
+    pack: { weightGrams: 350, lengthMm: 1, widthMm: 2, heightMm: 3 } };
+  expect(buildOmnipackProductPayload(input)).toHaveProperty("dimensions.weight", 350);
+  expect(() => buildOmnipackProductPayload({ ...input, pack: { ...input.pack, weightGrams: 0 } }))
+    .toThrow(expect.objectContaining({ code: "invalid_pack_weight" }));
 });
 it("never leaks transport failures through sync or readback", async () => {
   const f = fixture(() => { throw Error(JSON.stringify(plants)); });

@@ -15,7 +15,7 @@ it("projects exact retained physical identity and frozen cadence without a packi
   order!.lines.push({ sku: "second", quantity: 2, retainedId: ids.b, physicalSize: 250 }); ports.read = async () => order;
   expect(await projection("order", new AbortController().signal)).toMatchObject({ quantity: 6, sizes: [{ physicalSize: 250, quantity: 2 }, { physicalSize: 375, quantity: 4 }] });
 });
-it.each(["binding", "acquisition", "cycle", "subscription", "identity", "sku", "quantity", "size", "read"])("omits unprovable %s receipt facts", async reason => {
+it.each(["binding", "acquisition", "cycle", "subscription", "identity", "sku", "quantity", "size", "fractional mass", "read"])("omits unprovable %s receipt facts", async reason => {
   const ports = fixture(), order = await ports.read("order");
   if (reason === "binding") order!.binding = "classic";
   if (reason === "acquisition") order!.cycle!.number = 1;
@@ -25,6 +25,7 @@ it.each(["binding", "acquisition", "cycle", "subscription", "identity", "sku", "
   if (reason === "sku") ports.readExactPhysicalSize = async id => ({ id, sku: "other", physicalSize: 250 });
   if (reason === "quantity") order!.lines[0].quantity = 0;
   if (reason === "size") order!.lines[0].physicalSize = -1;
+  if (reason === "fractional mass") ports.readExactPhysicalSize = async id => ({ id, sku: "refill", physicalSize: 1.5 });
   ports.read = reason === "read" ? async () => { throw new Error("unavailable"); } : async () => order;
   expect(await createSizedParcelProjection(ports)("order", new AbortController().signal)).toBeNull();
 });

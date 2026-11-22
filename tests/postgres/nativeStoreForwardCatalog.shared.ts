@@ -4,15 +4,16 @@ import { isDeepStrictEqual } from "node:util";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, previewNoopAcceptanceSql, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements" | "previewNoopAcceptance">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "qualifiedCatalogueStorageSelect" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements" | "previewNoopAcceptance">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
+const catalogueAuthorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
 // would resolve to an operator for (oid, integer), which a forward can create in pg_catalog to hide the objects it adds.
 const OID_FLOOR = `${FIRST_USER_OID}::pg_catalog.oid`;
@@ -412,7 +413,18 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
       if ((await db.query("SELECT pg_get_indexdef($1::regclass) AS definition", [name])).rows[0].definition !== index!.definition) fail(`listed index ${name} differs from its pinned CREATE`);
     } finally { await db.query("ROLLBACK TO SAVEPOINT pinned_index"); }
   }
-  for (const old of before.relations) if (!replacedUniqueIndexes.has(old.oid) && !droppedIndexes.has(old.oid) && JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
+  const storageAcl = slot.qualifiedCatalogueStorageSelect && (await db.query(`SELECT
+    EXISTS (SELECT 1 FROM pg_roles WHERE rolname='openlup_catalog_publication')
+    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations WHERE catalog_path=$1 AND sha256=$2) AS present`,
+  [catalogueAuthorityPath, sqlSha256(readFileSync(catalogueAuthorityPath))])).rows[0]?.present === true;
+  for (const old of before.relations) {
+    if (replacedUniqueIndexes.has(old.oid) || droppedIndexes.has(old.oid)) continue;
+    const prior = old.columnAcls as [string, string][] | null;
+    const expected = storageAcl && old.name === "public.catalog_sku_revisions"
+      ? { ...old, columnAcls: [...prior ?? [], ["net_content_storage", `{openlup_catalog_publication=r/${old.owner}}`]] }
+      : old;
+    if (JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(expected)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
+  }
   const clientReferences = new Set((await db.query(`SELECT DISTINCT conrelid::int AS oid FROM pg_constraint
     WHERE contype='f' AND confrelid=to_regclass('public.clients')`)).rows.map(row => Number(row.oid)));
   const censusSeen = new Set<string>();
@@ -675,8 +687,25 @@ const PREVIEW_CATALOG_DENY_LIST = {
 
 // A relid/subid-zero address owns its columns. Match dependencies of all subids
 // of a whole object, and match an individual subobject only by its own subid.
+// The preimage proof compares the preview table's pg_depend closure with its expected
+// snapshot, excluding only non-internal triggers on the table (pg_trigger NOT tgisinternal),
+// their constraint-trigger pg_constraint rows (contype = 't') and the pg_depend rows those bring.
+// Every column, every other constraint kind (c, f, p, u, x) including the acceptance CHECK,
+// and internal RI triggers stay compared. User triggers cannot change which rows the CHECK
+// accepts or what the byte-exact forward does; the static history scan allows exactly trigger
+// DDL, so both layers follow one rule.
 const PREVIEW_GRAPH_SQL = `
   WITH RECURSIVE root AS (SELECT to_regclass($1)::oid AS oid),
+  user_triggers AS (
+    SELECT t.oid, t.tgconstraint FROM pg_trigger t JOIN root r ON r.oid=t.tgrelid
+    WHERE NOT t.tgisinternal
+  ),
+  excluded(classid, objid) AS (
+    SELECT 'pg_trigger'::regclass::oid, oid FROM user_triggers
+    UNION ALL
+    SELECT 'pg_constraint'::regclass::oid, c.oid
+    FROM pg_constraint c JOIN user_triggers t ON t.tgconstraint=c.oid WHERE c.contype='t'
+  ),
   dependents(classid, objid, objsubid) AS (
     SELECT 'pg_class'::regclass::oid, root.oid, 0 FROM root WHERE oid IS NOT NULL
     UNION
@@ -684,6 +713,7 @@ const PREVIEW_GRAPH_SQL = `
     FROM dependents AS parent JOIN pg_depend d
       ON d.refclassid=parent.classid AND d.refobjid=parent.objid
       AND (parent.objsubid=0 OR d.refobjsubid=parent.objsubid)
+    WHERE NOT EXISTS (SELECT FROM excluded e WHERE e.classid=d.classid AND e.objid=d.objid AND d.objsubid=0)
   ),
   addresses(classid, objid, objsubid, owned) AS (
     SELECT classid, objid, objsubid, true FROM dependents
@@ -1386,10 +1416,11 @@ async function reminderCreationProbes(pool: Pool) {
   return outcomes;
 }
 
-async function provePreviewAcceptance(pool: Pool) {
+async function provePreviewAcceptance(pool: Pool, setup = "") {
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
+    if (setup) await db.query(setup);
     const client = (await db.query("INSERT INTO public.clients(email) VALUES ('preview-proof@example.invalid') RETURNING id")).rows[0].id;
     const subscription = (await db.query(`INSERT INTO public.subscriptions(client_id,cadence_days,next_cycle_at)
       VALUES ($1,28,now()) RETURNING id`, [client])).rows[0].id;
@@ -1407,6 +1438,8 @@ async function provePreviewAcceptance(pool: Pool) {
       if (withReceipt) {
         const role = (await db.query("SELECT current_user::text AS role")).rows[0].role as string;
         await assertPreviewAcceptancePreimage(db, role);
+        // Clear deferred events queued by the pre-forward inserts before ALTER TABLE.
+        await db.query("SET CONSTRAINTS ALL IMMEDIATE");
         const before = await pinned(db, () => snapshot(db));
         await db.query(previewNoopAcceptanceSql);
         const slot: CatalogSlot = { createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], previewNoopAcceptance: true,
@@ -1439,12 +1472,38 @@ async function provePreviewAcceptance(pool: Pool) {
   } finally { await db.query("ROLLBACK"); db.release(); }
 }
 
-async function replayChain(connectionString: string) {
+const previewTriggerFunction = `CREATE FUNCTION public.preview_preimage_fixture() RETURNS trigger
+  LANGUAGE plpgsql SECURITY INVOKER AS $$ BEGIN RETURN NULL; END; $$;`;
+const previewPreimageProbes = [
+  { label: "a deferred constraint trigger", setup: `${previewTriggerFunction}
+    CREATE CONSTRAINT TRIGGER preview_preimage_fixture_deferred AFTER INSERT OR UPDATE OR DELETE ON ${PREVIEW_TABLE}
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.preview_preimage_fixture();` },
+  { label: "an ordinary trigger", setup: `${previewTriggerFunction}
+    CREATE TRIGGER preview_preimage_fixture_ordinary AFTER INSERT ON ${PREVIEW_TABLE}
+    FOR EACH ROW EXECUTE FUNCTION public.preview_preimage_fixture();` },
+  { label: "an extra column", setup: `ALTER TABLE ${PREVIEW_TABLE} ADD COLUMN preimage_probe_column text;`,
+    drift: `unexpected pg_attribute ${PREVIEW_TABLE}.preimage_probe_column` },
+  { label: "an extra CHECK", setup: `ALTER TABLE ${PREVIEW_TABLE} ADD CONSTRAINT preimage_probe_check CHECK (id IS NOT NULL);`,
+    drift: `unexpected pg_constraint preimage_probe_check on ${PREVIEW_TABLE}` },
+  { label: "an extra foreign key", setup: `ALTER TABLE ${PREVIEW_TABLE} ADD CONSTRAINT preimage_probe_fk FOREIGN KEY (client_id) REFERENCES public.clients(id);`,
+    drift: `unexpected pg_constraint preimage_probe_fk on ${PREVIEW_TABLE}` },
+  { label: "disabled internal RI triggers", setup: `ALTER TABLE ${PREVIEW_TABLE} DISABLE TRIGGER ALL;`,
+    drift: `changed pg_trigger ${PREVIEW_TABLE}/subscription_quote_previews_client_id_fkey/"RI_FKey_check_ins"() (tgenabled)` },
+];
+
+async function replayChain(connectionString: string, probePreimage: boolean) {
   const outcomes = new Map<string, Error | null>();
   let creationOutcomes = new Map<string, Error | null>();
   let applied = 0;
   let previewAcceptanceError: Error | null | undefined;
   const chainDb = new Pool({ connectionString });
+  const preimageProbeErrors = new Map<string, Error | null>();
+  const provePreview = async () => {
+    previewAcceptanceError = await provePreviewAcceptance(chainDb).then(() => null, (error: Error) => error);
+    if (probePreimage) for (const { label, setup } of previewPreimageProbes) {
+      preimageProbeErrors.set(label, await provePreviewAcceptance(chainDb, setup).then(() => null, (error: Error) => error));
+    }
+  };
   const prefix: Parameters<typeof assertNativeStoreForward>[3] = [];
   const steps = [...chain.map(unit => ({ path: unit.path, unit })), ...bound.map(entry => ({ path: entry.pin.path, entry }))].sort((x, y) => x.path.localeCompare(y.path));
   try {
@@ -1452,7 +1511,7 @@ async function replayChain(connectionString: string) {
       const { path } = step, bytes = "unit" in step ? step.unit.bytes : readFileSync(path);
       if ("unit" in step) { await chainDb.query(bytes.toString("utf8")); applied += 1; }
       else {
-        if (step.entry.slot.previewNoopAcceptance) previewAcceptanceError = await provePreviewAcceptance(chainDb).then(() => null, (error: Error) => error);
+        if (step.entry.slot.previewNoopAcceptance) await provePreview();
         const error = await verifyForward(chainDb, registry, path, bytes, prefix, true).then(() => null, (error: Error) => error);
         outcomes.set(path, error);
         if (error) continue;
@@ -1461,9 +1520,9 @@ async function replayChain(connectionString: string) {
       }
       prefix.push({ path, bytes });
     }
-    if (previewAcceptanceError === undefined) previewAcceptanceError = await provePreviewAcceptance(chainDb).then(() => null, (error: Error) => error);
+    if (previewAcceptanceError === undefined) await provePreview();
   } finally { await chainDb.end(); }
-  return { outcomes, creationOutcomes, applied, previewAcceptanceError };
+  return { outcomes, creationOutcomes, applied, previewAcceptanceError, preimageProbeErrors };
 }
 
 export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole: boolean }) {
@@ -1479,7 +1538,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
       if (serviceRole) await admin.query("CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS");
       await admin.query("CREATE DATABASE native_chain");
       await admin.query("CREATE DATABASE synthetic");
-      replay = await replayChain(container.connectionStringFor("native_chain"));
+      replay = await replayChain(container.connectionStringFor("native_chain"), serviceRole);
       // The closed roles exist after the chain; the synthetic database needs them either way.
       for (const role of ["anon", "authenticated"]) await admin.query(`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN CREATE ROLE ${role} NOLOGIN; END IF; END; $$`);
     } finally { await admin.end(); }
@@ -1575,6 +1634,14 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     if (replay.previewAcceptanceError) throw replay.previewAcceptanceError;
     expect(replay.previewAcceptanceError).toBeNull();
   });
+  it.each(serviceRole ? previewPreimageProbes : [])("checks the preview preimage with $label", ({ label, drift }) => {
+    const error = replay.preimageProbeErrors.get(label);
+    if (drift) expect(error?.message).toContain(drift);
+    else {
+      if (error) throw error;
+      expect(error).toBeNull();
+    }
+  });
   it("allows only the pinned function setting and requires identical membership rows for an owner window", async () => {
     const signature = "public.cat_replaced(text,boolean)", role = "authenticated";
     const settings = [{ signature, searchPath: "pg_catalog, pg_temp" }];
@@ -1616,7 +1683,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
 
   const qualifiedSignature = "public.catalog_price_setup_region_code()";
   const qualifiedSearchPath = "pg_catalog, pg_temp";
-  const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+  const authorityPath = catalogueAuthorityPath;
   const authorityHash = sqlSha256(readFileSync(authorityPath));
   const authorityLedger = "CREATE TABLE public.platform_schema_migrations (catalog_path text PRIMARY KEY, sha256 text NOT NULL, position integer NOT NULL UNIQUE);";
   const authorityRow = `INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ('${authorityPath}', '${authorityHash}', 0);`;
@@ -1632,6 +1699,24 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     ...storageSlot,
     replacedFunctions: [{ signature: qualifiedSignature, beforeSha256: sqlSha256(securityPreimage), searchPath: qualifiedSearchPath, qualifiedSecurityDefiner: true }],
   };
+  const storageSelectSlot: CatalogSlot = { replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], qualifiedCatalogueStorageSelect: true };
+  const storageSelectTable = "CREATE TABLE public.catalog_sku_revisions (digest text);";
+  const storageSelectForward = `ALTER TABLE public.catalog_sku_revisions ADD COLUMN net_content_storage text;
+${qualifiedCatalogueStorageSelectSql}`;
+  it.each(["qualified", "unpinned", "role absent", "wrong hash"])("admits only the qualified storage ACL (%s)", async mode => {
+    await checkForward(pool, storageSelectSlot, storageSelectForward, false, `${authorityLedger}
+      ${storageSelectTable}
+      ${mode === "role absent" ? "" : "CREATE ROLE openlup_catalog_publication;"}
+      ${mode === "qualified" || mode === "role absent" ? authorityRow : mode === "wrong hash" ? authorityRow.replace(authorityHash, "0".repeat(64)) : ""}`);
+  });
+  it.each(["GRANT SELECT ON public.catalog_sku_revisions TO openlup_catalog_publication;",
+    "GRANT UPDATE(net_content_storage) ON public.catalog_sku_revisions TO openlup_catalog_publication;",
+    "GRANT SELECT(net_content_storage) ON public.catalog_sku_revisions TO openlup_catalog_publication WITH GRANT OPTION;",
+    "GRANT SELECT(digest) ON public.catalog_sku_revisions TO openlup_catalog_publication;"])("rejects extra storage ACL %s", async extra => {
+    await expect(checkForward(pool, storageSelectSlot, `${storageSelectForward}
+${extra}`, false,
+      `${authorityLedger}${authorityRow}${storageSelectTable}CREATE ROLE openlup_catalog_publication;`)).rejects.toThrow(/column ACLs/u);
+  });
   it("preserves installed SECURITY INVOKER without the qualified authority row", async () => {
     await checkForward(pool, securitySlot, securityForward, false, nativeSecuritySetup);
   });
