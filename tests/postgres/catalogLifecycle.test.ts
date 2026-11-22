@@ -3,11 +3,14 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { catalogAcceptanceV2Schema, nativeCatalogPublication } from "@openlup/platform/catalog";
 import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
-import { createNativeRenewalCodec, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
+import { createPostgresSandboxPaymentSimulator } from "@openlup/platform/payments";
+import { activateNativePurchaseWithRenewal, createNativeRenewalCodec, createPostgresPurchaseRenewalWriter,
+  createPostgresRenewalStore, type NativeRenewalPurchaseFacts, type SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { fixture, graph, insertGraph, installPublicationActors, json, transaction, type Graph } from "./catalogPublicationFixture.js";
+import { captureSandboxPurchase } from "../helpers/captureSandboxPurchase.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -130,8 +133,24 @@ it("refuses open wire shapes, repeated SKU identities or codes and out-of-range 
     { ...line, publicationHead: { ...line.publicationHead, extra: true } },
     { ...line, typeRef: { ...line.typeRef, extra: true } }]) {
     expect(catalogAcceptanceV2Schema.safeParse({ ...acceptance, lines: [value] }).success).toBe(false);
-    await expect(runtime.query("SELECT public.catalog_accepted_reference_assert_v2($1)", [json(value)]))
+    await expect(runtime.query("SELECT public.catalog_acceptance_assert_v2($1)", [json({ ...acceptance, lines: [value] })]))
       .rejects.toMatchObject({ message: "catalog_accepted_reference_invalid", hint: expect.stringContaining("supported fields") });
+  }
+});
+
+it.each(["service_role", "catalog_runtime"])("keeps acceptance mutation helpers private from %s", async role => {
+  const db = await runtime.connect();
+  try {
+    if (role === "service_role") await db.query("SET ROLE service_role");
+    await expect(db.query("SELECT public.catalog_clear_template_acceptance($1)", [randomUUID()]))
+      .rejects.toMatchObject({ code: "42501" });
+    await expect(db.query("SELECT public.catalog_attach_edit_acceptance($1,$2)", [randomUUID(), json(acceptance)]))
+      .rejects.toMatchObject({ code: "42501" });
+    await expect(db.query("SELECT public.catalog_accepted_reference_assert_v2($1)", [json(acceptance.lines[0])]))
+      .rejects.toMatchObject({ code: "42501" });
+  } finally {
+    await db.query("RESET ROLE");
+    db.release();
   }
 });
 
@@ -562,6 +581,63 @@ async function call(db: Pool | PoolClient, name: string, values: unknown[]) {
   return (await db.query(`SELECT public.${name}(${args}) AS result`, values)).rows[0]!.result;
 }
 
+it.each(["first attempt", "pending retry"])("completes an accepted native purchase on %s and claims its bound renewal", async attempt => {
+  const issued = await issueActiveAcceptance(), reference = issued.lines[0]!;
+  const at = new Date(Date.now() - 29 * 86_400_000).toISOString(), key = randomUUID();
+  const { client } = await transaction(pool, db => subscription(db));
+  const list = randomUUID();
+  await pool.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Purchase proof','ZZ','XXX',$2)", [list, at]);
+  await pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',100,$3)",
+    [list, reference.skuId, at]);
+  const quote = { context: { mode: "subscription", cadenceDays: 28 }, lines: [
+    { sku: reference.skuCode, quantity: 2, unitPriceGross: money(100), lineSubtotalGross: money(200) }], totalGross: money(200) };
+  const draft = { contractVersion: "commerce.v0", source: "commerce.order_draft.bff.v0", status: "draft", paymentStatus: "not_started",
+    currency: "XXX", context: quote.context, lines: quote.lines, totals: { totalGross: money(200) } };
+  const created = await call(runtime, "commerce_create_order_draft_with_outbox", [key, { quote }, draft, client]);
+  const orderId = String(created.orderDraft.orderId).replace(/^order_/, "");
+  await call(runtime, "catalog_attach_order_acceptance", [orderId, issued, key, { [reference.skuCode]: 2 }]);
+  const opened = await call(runtime, "commerce_open_settlement_intent", [`open:${key}`, orderId, "sandbox", 200, "XXX", {}, at]);
+  const simulator = createPostgresSandboxPaymentSimulator(runtime, { dunningTemplateSlug: "failed", recoveryUrlPath: "/recover",
+    recoveryTemplateSlug: "recovered" });
+  await captureSandboxPurchase(simulator, { settlementIntentId: opened.settlement.id, key, at });
+  await call(runtime, "subscription_declare_provisional_activation", [`declare:${key}`, orderId, 28, at]);
+  const settled = (await runtime.query("SELECT external_ref,id FROM public.commerce_settlement_intents WHERE id=$1", [opened.settlement.id])).rows[0]!;
+  const facts: NativeRenewalPurchaseFacts = { templateId: "fixture", shippingAmountMinor: 0, acquisitionRef: null, cadenceDays: 28,
+    currency: "XXX", stockSourceKey: "fixture", settlementChannelKey: "sandbox", unattendedChargeAuthorizedAt: at,
+    authorizationRef: "fixture", payerAccountRef: null, methodRef: "fixture", methodEvidenceRef: "fixture",
+    lines: [{ lineOrdinal: 1, sku: reference.skuCode, quantity: 2, unitAmountMinor: 100 }] };
+  const retry = attempt === "pending retry";
+  let linesBeforeCompletion: number | undefined;
+  const executor: SubscriptionQueryExecutor = { async query(sql, values) {
+    if (sql.startsWith("SELECT public.subscription_complete_renewal_attachment(")) {
+      const lines = await runtime.query(`SELECT l.id FROM public.subscription_activations a
+        JOIN public.subscription_lines l ON l.subscription_id=a.subscription_id WHERE a.order_id=$1`, [orderId]);
+      linesBeforeCompletion = lines.rows.length;
+      if (retry) throw new Error("synthetic unavailable completion");
+    }
+    return runtime.query(sql, values);
+  } };
+  const activated = await activateNativePurchaseWithRenewal(executor,
+    { orderId, idempotencyKey: `activate:${key}`, capturedReference: settled.external_ref ?? settled.id, facts });
+  expect(linesBeforeCompletion).toBe(0);
+  expect(activated.renewalAttachment).toBe(retry ? "pending" : "complete");
+  const id = String(activated.activation.subscriptionId), writer = createPostgresPurchaseRenewalWriter(runtime);
+  if (retry) {
+    expect(await writer.pending()).toEqual(expect.arrayContaining([expect.objectContaining({ orderId, subscriptionId: id })]));
+    expect(await retainedAcceptance(id)).toEqual([]);
+    expect(await writer.complete(orderId)).toEqual({ subscriptionId: id, replayed: false });
+  }
+  expect(await writer.complete(orderId)).toEqual({ subscriptionId: id, replayed: true });
+  expect(await retainedAcceptance(id)).toEqual([{ catalog_acceptance: issued, catalog_sku_revision_id: reference.skuRevisionId }]);
+  expect((await runtime.query("SELECT price_list_id,currency_code FROM public.subscriptions WHERE id=$1", [id])).rows)
+    .toEqual([{ price_list_id: list, currency_code: "XXX" }]);
+  const store = createPostgresRenewalStore(runtime, codec), now = new Date().toISOString();
+  const due = (await store.listDue(100, now)).find(candidate => candidate.subscriptionId === id);
+  expect(due).toBeDefined();
+  const snapshot = await store.buildCycleSnapshots(due!);
+  expect(await store.claimDue({ snapshot, workerId: "native-purchase", now })).toMatchObject({ acquired: true, catalogAcceptance: issued });
+});
+
 it("attaches acceptance to a persisted draft order through the service grant", async () => {
   const order = randomUUID();
   await transaction(runtime, async db => {
@@ -636,9 +712,34 @@ it("transitions an accepted order through the authenticated pause owner", async 
     .toEqual([{ status: "cancelled", catalog_acceptance: acceptance }]);
 });
 
+it("preserves authenticated writes to unaccepted orders outside the acting client", async () => {
+  const owner = await transaction(pool, async db => {
+    const owner = await subscription(db);
+    const order = await obligationOrder(db, owner.client, "pending_payment");
+    await receipt(db, order, first.facts.code);
+    return { ...owner, order };
+  });
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+    // Model a writer with the base tables' permissions, including reads by the line-sum trigger.
+    await db.query("GRANT SELECT, UPDATE ON public.commerce_orders,public.commerce_order_items,public.commerce_order_draft_receipts TO authenticated");
+    await db.query("GRANT SELECT ON public.commerce_order_adjustments,public.commerce_promotion_claims TO authenticated");
+    await db.query("SET LOCAL ROLE authenticated");
+    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [json({ sub: randomUUID(), role: "authenticated" })]);
+    expect((await db.query("UPDATE public.commerce_orders SET updated_at=now() WHERE id=$1", [owner.order])).rowCount).toBe(1);
+    expect((await db.query("UPDATE public.commerce_order_items SET quantity=quantity WHERE order_id=$1", [owner.order])).rowCount).toBe(1);
+    expect((await db.query("UPDATE public.commerce_order_draft_receipts SET response_payload=response_payload WHERE order_id=$1", [owner.order])).rowCount).toBe(1);
+    // Run every queued commit check with the actual write role, then discard fixture grants.
+    await expect(db.query("SET CONSTRAINTS ALL IMMEDIATE")).resolves.toMatchObject({ command: "SET CONSTRAINTS" });
+  } finally {
+    await db.query("ROLLBACK");
+    db.release();
+  }
+});
+
 async function previewedEdit(db: Pool | PoolClient, owner: Awaited<ReturnType<typeof acceptedPurchase>>,
-  kind: "package" | "exact" | "sized", now: string, supplied?: CatalogAcceptanceV2) {
-  const reference = (supplied ?? acceptance).lines[0]!;
+  kind: "package" | "exact" | "sized", now: string, supplied?: CatalogAcceptanceV2, reference = (supplied ?? acceptance).lines[0]!) {
   const key = randomUUID(), quoteHash = "d".repeat(64);
   const action = kind === "package" ? "update_package_template" : kind === "exact" ? "update_plan_length" : "resize_bundle";
   const item = { variantId: reference.skuId, qty: 2 };
@@ -673,15 +774,19 @@ async function retainedAcceptance(owner: string) {
 const editableSchedule = () => new Date(Date.now() + 7 * 86_400_000).toISOString();
 const beforeEdit = () => new Date(Date.now() - 1000).toISOString();
 
-it("clears retained acceptance on an unaccepted package rewrite before the next claim", async () => {
-  const owner = await acceptedPurchase({ scheduledAt: editableSchedule() });
-  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: acceptance, catalog_sku_revision_id: first.skuRevisionId }]);
-  expect(await previewedEdit(runtime, owner, "package", beforeEdit())).toMatchObject({ status: "applied", templateVersion: 2 });
+it.each(["classic", "exact", "package", "sized", "bundle"] as const)("clears retained acceptance on an unaccepted %s rewrite before the next claim", async kind => {
+  const owner = await activeEditPurchase();
+  const reference = owner.issued.lines[0]!;
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: owner.issued, catalog_sku_revision_id: reference.skuRevisionId }]);
+  const result = kind === "classic" ? await classicEdit(owner) : kind === "bundle" ? (await bundleEdit(owner, 2)).subscriptionAction
+    : await previewedEdit(runtime, owner, kind, beforeEdit(), undefined, reference);
+  expect(result).toMatchObject({ status: "applied", templateVersion: 2 });
   expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: null, catalog_sku_revision_id: null }]);
+  expect((await runtime.query("SELECT quantity FROM public.subscription_lines WHERE subscription_id=$1", [owner.id])).rows).toEqual([{ quantity: 2 }]);
   const store = createPostgresRenewalStore(runtime, codec);
   const snapshot = await store.buildCycleSnapshots(owner.schedule);
-  expect(snapshot.templateSnapshot.lines).toMatchObject([{ quantity: 2 }]);
-  const claim = await store.claimDue({ snapshot, workerId: "package", now: owner.schedule.scheduledAt });
+  expect(snapshot.templateSnapshot.version).toBe(2);
+  const claim = await store.claimDue({ snapshot, workerId: kind, now: owner.schedule.scheduledAt });
   expect(claim).toMatchObject({ acquired: true });
   expect(claim).not.toHaveProperty("catalogAcceptance");
 });
@@ -710,9 +815,9 @@ it.each(["package", "exact"] as const)("binds the accepted revision in the %s ow
   expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: acceptance, catalog_sku_revision_id: first.skuRevisionId }]);
 });
 
-async function activeEditPurchase() {
+async function issueActiveAcceptance() {
   const ids = fixture();
-  const issued = await transaction(pool, async db => {
+  return transaction(pool, async db => {
     const current = await graph(db, ids, null, true, { lifecycle: "active", subscriptionEligible: true });
     await insertGraph(db, current);
     const facts = current.facts as Graph["facts"] & { optionDigest: string };
@@ -721,8 +826,12 @@ async function activeEditPurchase() {
       skuRevisionId: current.skuRevisionId, publicationHead: current.head, typeRef: product.type,
       definitionDigest: product.definitionDigest, optionDigest: facts.optionDigest, netContent: facts.netContent }] } satisfies CatalogAcceptanceV2;
   });
+}
+
+async function activeEditPurchase() {
+  const issued = await issueActiveAcceptance();
   const owner = await acceptedPurchase({ scheduledAt: editableSchedule(), issued });
-  return { ...owner, issued, skuId: ids.skuId };
+  return { ...owner, issued, skuId: issued.lines[0]!.skuId };
 }
 
 it("binds the accepted revision in the sized owner", async () => {
@@ -735,14 +844,19 @@ it("binds the accepted revision in the sized owner", async () => {
     catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
 });
 
+async function classicEdit(owner: Awaited<ReturnType<typeof activeEditPurchase>>, acceptance?: CatalogAcceptanceV2) {
+  const now = beforeEdit();
+  const request = { expectedTemplateVersion: 1, cadenceDays: 30, coreLines: [{ variantId: owner.skuId, qty: 2 }],
+    compositionConstraint: {}, catalogAcceptance: acceptance };
+  const args = [owner.principal, owner.client, randomUUID(), owner.id, "update_bundle"];
+  const preview = await call(runtime, "subscription_command_preview", [...args, request, now]);
+  expect(preview, JSON.stringify(preview)).toMatchObject({ status: "previewed" });
+  return call(runtime, "subscription_command_apply", [...args, { ...request, acceptedQuoteHash: preview.quoteHash }, now, null]);
+}
+
 it("binds the accepted revision in the classic command owner", async () => {
   const owner = await activeEditPurchase();
-  const request = { expectedTemplateVersion: 1, cadenceDays: 30, coreLines: [{ variantId: owner.skuId, qty: 2 }],
-    compositionConstraint: {}, catalogAcceptance: owner.issued };
-  const args = [owner.principal, owner.client, randomUUID(), owner.id, "update_bundle"];
-  const preview = await call(runtime, "subscription_command_preview", [...args, request, beforeEdit()]);
-  expect(preview, JSON.stringify(preview)).toMatchObject({ status: "previewed" });
-  const result = await call(runtime, "subscription_command_apply", [...args, { ...request, acceptedQuoteHash: preview.quoteHash }, beforeEdit(), null]);
+  const result = await classicEdit(owner, owner.issued);
   expect(result).toMatchObject({ status: "applied" });
   expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [result.eventId])).rows)
     .toEqual([{ catalog_acceptance: owner.issued }]);
@@ -750,9 +864,8 @@ it("binds the accepted revision in the classic command owner", async () => {
     catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
 });
 
-it("attaches acceptance to a customer quote through the service owner and binds it in authenticated apply", async () => {
-  const owner = await activeEditPurchase();
-  const args = [owner.id, randomUUID(), [{ variantId: owner.skuId, qty: 1 }], [], {}, 30, 1];
+async function bundleEdit(owner: Awaited<ReturnType<typeof activeEditPurchase>>, qty: number, acceptance?: CatalogAcceptanceV2) {
+  const args = [owner.id, randomUUID(), [{ variantId: owner.skuId, qty }], [], {}, 30, 1];
   async function customer(kind: "preview" | "apply", values: unknown[]) {
     return transaction(runtime, async db => {
       await db.query("SET LOCAL ROLE authenticated");
@@ -762,12 +875,19 @@ it("attaches acceptance to a customer quote through the service owner and binds 
   }
   const preview = await customer("preview", args);
   expect(preview.preview).toMatchObject({ canApply: true, quoteHash: expect.any(String) });
-  const quote = (await pool.query("SELECT id FROM public.subscription_edit_quotes WHERE subscription_id=$1 AND quote_hash=$2",
-    [owner.id, preview.preview.quoteHash])).rows[0]!.id;
-  await call(runtime, "catalog_attach_edit_quote_acceptance", [quote, owner.issued]);
-  expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_edit_quotes WHERE id=$1", [quote])).rows)
-    .toEqual([{ catalog_acceptance: owner.issued }]);
-  const result = await customer("apply", [owner.id, args[1], preview.preview.quoteHash, ...args.slice(2)]);
+  if (acceptance) {
+    const quote = (await pool.query("SELECT id FROM public.subscription_edit_quotes WHERE subscription_id=$1 AND quote_hash=$2",
+      [owner.id, preview.preview.quoteHash])).rows[0]!.id;
+    await call(runtime, "catalog_attach_edit_quote_acceptance", [quote, acceptance]);
+    expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_edit_quotes WHERE id=$1", [quote])).rows)
+      .toEqual([{ catalog_acceptance: acceptance }]);
+  }
+  return customer("apply", [owner.id, args[1], preview.preview.quoteHash, ...args.slice(2)]);
+}
+
+it("attaches acceptance to a customer quote through the service owner and binds it in authenticated apply", async () => {
+  const owner = await activeEditPurchase();
+  const result = await bundleEdit(owner, 1, owner.issued);
   expect(result.subscriptionAction).toMatchObject({ status: "applied" });
   expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [result.subscriptionAction.eventId])).rows)
     .toEqual([{ catalog_acceptance: owner.issued }]);

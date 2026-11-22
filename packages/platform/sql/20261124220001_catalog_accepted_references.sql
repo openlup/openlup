@@ -742,7 +742,7 @@ BEGIN
   JOIN public.catalog_skus k ON k.id=l.variant_id WHERE l.subscription_id=p_subscription GROUP BY k.sku) lines;
  IF template_basket IS DISTINCT FROM p_basket OR NOT public.catalog_acceptance_roster_valid_v2(p_acceptance,p_basket) THEN
   RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023',
-   HINT='Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.';
+   HINT='Use the SKU codes and quantities from the stored purchase lines or generate a fresh edit quote for the current template.';
  END IF;
  UPDATE public.subscription_lines l SET catalog_sku_revision_id=(ref->>'skuRevisionId')::uuid
  FROM jsonb_array_elements(p_acceptance->'lines') ref
@@ -752,7 +752,7 @@ $$;
 REVOKE ALL ON FUNCTION public.catalog_bind_template_v2(uuid,jsonb,jsonb) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_clear_template_acceptance(p_subscription uuid) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 BEGIN
  UPDATE public.subscription_renewal_terms SET catalog_acceptance=NULL
  WHERE subscription_id=p_subscription AND catalog_acceptance IS NOT NULL;
@@ -763,7 +763,7 @@ $$;
 REVOKE ALL ON FUNCTION public.catalog_clear_template_acceptance(uuid) FROM PUBLIC;
 
 CREATE FUNCTION public.catalog_attach_edit_acceptance(p_event_id uuid,p_acceptance jsonb) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
 DECLARE event public.subscription_events; basket jsonb;
 BEGIN
  SELECT * INTO STRICT event FROM public.subscription_events WHERE id=p_event_id;
@@ -909,11 +909,19 @@ SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_acceptance jsonb;
+  v_client_id uuid;
 BEGIN
   IF pg_catalog.pg_trigger_depth()=0 THEN RETURN; END IF;
+  IF p_old_order_id IS NOT NULL THEN
+    IF p_old_order_id = p_order_id THEN RETURN; END IF;
+    p_order_id := p_old_order_id;
+  END IF;
+  SELECT catalog_acceptance, client_id INTO v_acceptance, v_client_id
+    FROM public.commerce_orders
+   WHERE id = p_order_id;
+  IF coalesce(p_old_header.catalog_acceptance, p_new_header.catalog_acceptance, v_acceptance) IS NULL THEN RETURN; END IF;
   IF (pg_catalog.current_setting('role')='authenticated' OR session_user='authenticated')
-    AND NOT EXISTS (SELECT 1 FROM public.commerce_orders o JOIN public.clients c ON c.id=o.client_id
-      WHERE o.id=coalesce(p_old_order_id,p_order_id) AND c.principal_id=auth.uid())
+    AND NOT EXISTS (SELECT 1 FROM public.clients c WHERE c.id=v_client_id AND c.principal_id=auth.uid())
   THEN
     RAISE EXCEPTION 'subscription_lifecycle_forbidden' USING ERRCODE='22023',
       HINT='Submit the change for an order owned by the current customer.';
@@ -932,14 +940,6 @@ BEGIN
     RETURN;
   END IF;
 
-  IF p_old_order_id IS NOT NULL THEN
-    IF p_old_order_id = p_order_id THEN RETURN; END IF;
-    p_order_id := p_old_order_id;
-  END IF;
-
-  SELECT catalog_acceptance INTO v_acceptance
-    FROM public.commerce_orders
-   WHERE id = p_order_id;
   IF v_acceptance IS NOT NULL THEN
     PERFORM public.catalog_order_acceptance_final(p_order_id);
   END IF;
@@ -949,10 +949,9 @@ REVOKE ALL ON FUNCTION public.catalog_order_line_sum_acceptance(uuid,uuid,public
 -- Deferred invoker triggers need EXECUTE under the caller's role.
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders) TO authenticated;'; END IF; END; $$;
 DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN EXECUTE 'GRANT EXECUTE ON FUNCTION public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders),
- public.catalog_accepted_reference_assert_v2(jsonb), public.catalog_acceptance_assert_v2(jsonb),
+ public.catalog_acceptance_assert_v2(jsonb),
  public.catalog_retained_basket_v2(jsonb,boolean), public.catalog_frozen_basket_codes_v2(jsonb),
- public.catalog_acceptance_roster_valid_v2(jsonb,jsonb), public.catalog_attach_edit_acceptance(uuid,jsonb),
- public.catalog_clear_template_acceptance(uuid), public.catalog_attach_order_acceptance(uuid,jsonb,text,jsonb),
+ public.catalog_acceptance_roster_valid_v2(jsonb,jsonb), public.catalog_attach_order_acceptance(uuid,jsonb,text,jsonb),
  public.catalog_attach_edit_quote_acceptance(uuid,jsonb) TO service_role;'; END IF; END; $$;
 
 CREATE OR REPLACE FUNCTION public.commerce_order_assert_line_sum()
@@ -1025,12 +1024,22 @@ BEGIN
   IF v_acceptance IS NOT NULL THEN
     IF v_activation.subscription_id IS DISTINCT FROM v_row.subscription_id THEN
       RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023',
-   HINT='Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.'; END IF;
+      HINT='Use the pending attachment for the original activated order.'; END IF;
     PERFORM public.catalog_order_acceptance_final(p_order_id);
     v_basket:=public.catalog_order_basket_v2(p_order_id,v_metadata,false);
     IF v_basket IS NULL OR v_basket IS DISTINCT FROM public.catalog_retained_basket_v2(v_facts->'lines',true) THEN
       RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023',
-   HINT='Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.'; END IF;
+      HINT='Register renewal purchase facts with the original accepted draft SKU codes and quantities before activation.'; END IF;
+    -- Native activation leaves the first template empty. Use the same frozen
+    -- lines as the renewal terms and bind them before making completion durable.
+    PERFORM 1 FROM public.subscriptions WHERE id=v_row.subscription_id FOR UPDATE;
+    IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=v_row.subscription_id) THEN
+      INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+      SELECT v_row.subscription_id,k.id,(l->>'quantity')::integer,(l->>'lineOrdinal')::integer-1,
+        coalesce((SELECT (p->>'isAddon')::boolean FROM jsonb_array_elements(v_facts#>'{renewalTerms,linePricing}') p
+          WHERE p->>'sku'=l->>'sku'),false),(l->>'unitAmountMinor')::bigint,v_facts->>'currency'
+      FROM jsonb_array_elements(v_facts->'lines') l JOIN public.catalog_skus k ON k.sku=l->>'sku';
+    END IF;
     PERFORM public.catalog_bind_template_v2(v_row.subscription_id,v_acceptance,v_basket);
   END IF;
   INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,
@@ -1285,6 +1294,7 @@ DECLARE
  s public.subscriptions%ROWTYPE; r public.subscription_command_receipts%ROWTYPE;
  q public.subscription_edit_quotes%ROWTYPE; command jsonb; fingerprint text; quote_fingerprint text; answer jsonb;
  reason text; event_id uuid; event_key text; line jsonb; target timestamptz; outcome text:='applied'; term_key text;
+ v_acceptance jsonb; v_basket jsonb;
 BEGIN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180
@@ -1382,17 +1392,29 @@ BEGIN
      ORDER BY sort_order,id),'[]') FROM public.subscription_lines WHERE subscription_id=s.id) THEN
     outcome:='noop';
    ELSE
+    v_acceptance:=p_payload->'catalogAcceptance';
+    IF v_acceptance IS NOT NULL THEN
+     PERFORM public.catalog_acceptance_assert_v2(v_acceptance);
+     SELECT jsonb_object_agg(k.sku,(v->>'quantity')::integer) INTO v_basket
+     FROM jsonb_array_elements(q.proposed_lines) v JOIN public.catalog_skus k ON k.id=(v->>'variantId')::uuid;
+     IF NOT public.catalog_acceptance_roster_valid_v2(v_acceptance,v_basket) THEN
+      RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023',
+       HINT='Preview the current template and apply its quote with the matching SKU revisions.';
+     END IF;
+    END IF;
     DELETE FROM public.subscription_lines WHERE subscription_id=s.id;
     FOR line IN SELECT value FROM jsonb_array_elements(q.proposed_lines) LOOP
-     INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+     INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code,catalog_sku_revision_id)
       VALUES(s.id,(line->>'variantId')::uuid,(line->>'quantity')::integer,(line->>'sortOrder')::integer,
-       (line->>'isAddon')::boolean,(line->>'unitPriceMinor')::bigint,q.currency_code);
+       (line->>'isAddon')::boolean,(line->>'unitPriceMinor')::bigint,q.currency_code,
+       (SELECT (ref->>'skuRevisionId')::uuid FROM jsonb_array_elements(v_acceptance->'lines') ref
+        WHERE (ref->>'skuId')::uuid=(line->>'variantId')::uuid));
     END LOOP;
     DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=s.id;
     INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
      SELECT s.id,(v->>'sortOrder')::integer+1,sku.sku,(v->>'quantity')::integer,(v->>'unitPriceMinor')::bigint
       FROM jsonb_array_elements(q.proposed_lines) v JOIN public.catalog_skus sku ON sku.id=(v->>'variantId')::uuid;
-    UPDATE public.subscription_renewal_terms SET updated_at=p_now WHERE subscription_id=s.id;
+    UPDATE public.subscription_renewal_terms SET updated_at=p_now,catalog_acceptance=v_acceptance WHERE subscription_id=s.id;
     UPDATE public.subscriptions SET cadence_days=q.proposed_cadence_days,template_version=template_version+1,updated_at=p_now
      WHERE id=s.id RETURNING * INTO s;
    END IF;
@@ -1467,14 +1489,13 @@ BEGIN
    RAISE EXCEPTION 'subscription_command_unsupported_action' USING ERRCODE='22023';
   END IF;
   IF answer IS NULL AND outcome='applied' THEN
-   INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at)
+   INSERT INTO public.subscription_events(subscription_id,event_type,idempotency_key,payload,occurred_at,catalog_acceptance,catalog_basket)
     VALUES(s.id,'subscription.customer_self_service.'||p_action,event_key,jsonb_build_object('action',p_action,'payload',p_payload,
-     'priceAgreementPolicy',jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only')),p_now)
+     'priceAgreementPolicy',jsonb_build_object('kind','lock_until_edit','proration','none','cycleEffect','future_unlocked_cycles_only')),p_now,v_acceptance,v_basket)
     RETURNING id INTO event_id;
   END IF;
   IF q.id IS NOT NULL AND outcome='applied' THEN
    UPDATE public.subscription_edit_quotes SET status='accepted',accepted_event_id=event_id,accepted_at=p_now WHERE id=q.id;
-   PERFORM public.catalog_attach_edit_acceptance(event_id,p_payload->'catalogAcceptance');
   END IF;
   answer:=jsonb_build_object('status',outcome,'subscriptionId',s.id,'action',p_action,'subscriptionStatus',s.status,
    'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',event_id);
@@ -2071,7 +2092,7 @@ BEGIN
       WHERE l.subscription_id=v_subscription_id AND l.catalog_sku_revision_id IS DISTINCT FROM (
        SELECT (ref->>'skuRevisionId')::uuid FROM jsonb_array_elements(v_acceptance->'lines') ref WHERE ref->'skuId'=to_jsonb(l.variant_id)))
    ) THEN RAISE EXCEPTION 'catalog_acceptance_line_mismatch' USING ERRCODE='22023',
-   HINT='Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.'; END IF;
+   HINT='Rebuild the cycle snapshot from the current due subscription before retrying.'; END IF;
 
   INSERT INTO public.subscription_renewal_operations (
     subscription_id, scheduled_at, cycle_number, identity_key, operation_fingerprint,

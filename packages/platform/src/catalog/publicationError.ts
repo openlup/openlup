@@ -385,7 +385,7 @@ const acceptedReferenceRefusals = {
   catalog_accepted_reference_mismatch: "Capture the reference from the SKU revision’s issuing publication and retry.",
   catalog_retained_revision_unavailable: "Recover the issuing publication and SKU revision from the retained catalogue before retrying.",
   catalog_acceptance_invalid: "Supply a schema-2 acceptance with 1 to 100 distinct SKU identities and codes.",
-  catalog_acceptance_line_mismatch: "Reconcile the accepted SKU revisions and quantities with the authoritative basket before retrying.",
+  catalog_acceptance_line_mismatch: "Use the persisted draft to register matching purchase lines, preview a fresh edit quote, or rebuild the cycle snapshot from the current due subscription.",
   catalog_acceptance_receipt_mismatch: "Supply the persisted draft receipt for this order and retry with its original key.",
   catalog_acceptance_snapshot_mismatch: "Use the stored renewal operation, its original acceptance and its frozen snapshot.",
   catalog_acceptance_snapshot_immutable: "Replay the renewal operation with its original acceptance and frozen snapshot.",

@@ -470,6 +470,12 @@ same-SKU foreign key protects the template binding. Unbound rows retain NULL.
 Deferred checks reconcile staged order and edit records with their companions
 at commit. Transfer carries both the accepted references and their companions.
 
+Register renewal purchase facts using the accepted draft's SKU codes and
+quantities. Native completion uses those stored lines to create an empty
+subscription's first template and bind its accepted revisions before completing
+the attachment. A worker recovering a pending attachment uses the same
+completion with the original order ID.
+
 The freeze owner saves acceptance beside the snapshot and binds it to the
 operation fingerprint. Renewals keep the existing v1 and v2 pricing formats.
 The renewal owner still uses subtotal less discount plus shipping, with no
@@ -490,7 +496,7 @@ its original acceptance on replay.
 | `catalog_accepted_reference_mismatch` | Capture the reference from the SKU revision's issuing publication. |
 | `catalog_retained_revision_unavailable` | Recover the issuing publication and SKU revision from the retained catalogue. |
 | `catalog_acceptance_invalid` | Supply a schema-2 acceptance with 1 to 100 distinct SKU identities and codes. |
-| `catalog_acceptance_line_mismatch` | Reconcile the accepted SKU revisions and quantities with the authoritative basket. |
+| `catalog_acceptance_line_mismatch` | Register matching purchase lines from the persisted draft, preview and apply a fresh edit quote, or rebuild the snapshot from the current due subscription. Follow the SQL hint for the operation that refused. |
 | `catalog_acceptance_receipt_mismatch` | Use this order's persisted draft receipt and its original key. |
 | `catalog_acceptance_snapshot_mismatch` | Use the stored renewal operation, its original acceptance and its frozen snapshot. |
 | `catalog_acceptance_snapshot_immutable` | Replay the renewal operation with its original acceptance and frozen snapshot. |

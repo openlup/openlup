@@ -30,7 +30,7 @@ export const catalogAcceptanceV2Schema: z.ZodType<CatalogAcceptanceV2> = z.objec
  */
 export async function assertCatalogAcceptedReferenceV2(db: PgQueryExecutor, value: unknown): Promise<CatalogAcceptedReferenceV2> {
   const reference = catalogAcceptedReferenceV2Schema.parse(value);
-  await db.query("SELECT public.catalog_accepted_reference_assert_v2($1::jsonb)", [JSON.stringify(reference)]);
+  await db.query("SELECT public.catalog_acceptance_assert_v2($1::jsonb)", [JSON.stringify({ schemaVersion: 2, lines: [reference] })]);
   return reference;
 }
 /** Validates the supplied roster in the caller’s transaction.

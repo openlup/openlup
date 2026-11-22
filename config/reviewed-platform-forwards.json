@@ -6579,7 +6579,7 @@
           },
           {
             "signature": "public.catalog_attach_edit_acceptance(uuid,jsonb)",
-            "searchPath": "pg_catalog, public, pg_temp"
+            "searchPath": "pg_catalog, public"
           },
           {
             "signature": "public.catalog_customer_edit_acceptance_assert(uuid)",
@@ -6603,7 +6603,7 @@
           },
           {
             "signature": "public.catalog_clear_template_acceptance(uuid)",
-            "searchPath": "pg_catalog, public, pg_temp"
+            "searchPath": "pg_catalog, public"
           },
           {
             "signature": "public.catalog_attach_edit_quote_acceptance(uuid,jsonb)",
@@ -9600,7 +9600,7 @@
     },
     {
       "path": "db/platform/migrations/20261124220001_catalog_accepted_references.sql",
-      "sha256": "382af1d959c32e697c5d663e68f95d42da649e5f5f24a1a2c910f2ec4269e275",
+      "sha256": "d444c954c2f503a81f50e8de639a3f1ba963a89824fbd07252a37bd6a00d1f02",
       "functions": [
         {
           "signature": "public.catalog_lifecycle_assert_archive(uuid)",
@@ -9615,7 +9615,7 @@
         {
           "signature": "public.subscription_complete_renewal_attachment(uuid)",
           "beforeSha256": "61550482c4a29de324fc80877eb7c0e2e8becc55a6e51ee12df6723db24b2b26",
-          "afterSha256": "4db4f78e46e16fafca2fcd19f4941731f290a5191f3478c328615bb113d8efce"
+          "afterSha256": "0d971116011a858c66740dd58fa76c4503682beb84b3931bd175ee6bc07af762"
         },
         {
           "signature": "public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)",
@@ -9625,7 +9625,7 @@
         {
           "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz,jsonb)",
           "beforeSha256": "d85a4ce400d692b9706b83c7ae66cb9348d0ce68e1a26435572f28f88ec1ab63",
-          "afterSha256": "93f5f379246bd1c19182c2e62cfd167e2680ddca964275c1581e542af72b236a"
+          "afterSha256": "b804c7a11b6e7971e2a27b63b4d0cb856336bad371a6fa61d8fe3d47cf1d430e"
         },
         {
           "signature": "public.subscription_package_edit_apply(uuid,uuid,text,uuid,jsonb,timestamptz)",
@@ -9645,7 +9645,7 @@
         {
           "signature": "public.subscription_claim_due_renewal(text,text,jsonb,text,integer,timestamptz)",
           "beforeSha256": "b73637d95950ca72d32c1649b98ef774c2a2c9c2e377c2ae58fd051b3979660e",
-          "afterSha256": "62c6fca5b668aabfed039d42fa1162d0486ae0d8981b4c6b8898c8e5926b21de"
+          "afterSha256": "2254be1e89681884dbd9823ab13f1f55961071fe75325e22e019343c9edf5248"
         },
         {
           "signature": "public.commerce_prepare_subscription_renewal(uuid,uuid,timestamptz)",
@@ -9745,12 +9745,12 @@
         {
           "signature": "public.catalog_bind_template_v2(uuid,jsonb,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "d9f618c2f40422d5820abc31b445cc02f79afce1d2e41b1653a9db7cfb651824"
+          "afterSha256": "fe69a6fe8e0d20cb33fb7c711de5eb2fdcbd4b0650841b117f384c814d110bda"
         },
         {
           "signature": "public.catalog_attach_edit_acceptance(uuid,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "dc0bcc7c5764925f8e0dd93f34c60215ea2a9ea3c59413b6ab93b05e9454be55"
+          "afterSha256": "0efcbe56bd2704b16ace96fc885d7d7e23d11aed75699dc9a5d5d52c63d6cdc5"
         },
         {
           "signature": "public.catalog_customer_edit_acceptance_assert(uuid)",
@@ -9775,12 +9775,12 @@
         {
           "signature": "public.catalog_order_line_sum_acceptance(uuid,uuid,public.commerce_orders,public.commerce_orders)",
           "beforeSha256": null,
-          "afterSha256": "5e94ccd9a7829862097535298f552d348c0585986a6e890fc3ad9c9818aa64bf"
+          "afterSha256": "f64872b514f2823d6528ae018196b872ec96e867795b0ce70107aff8db0e64a9"
         },
         {
           "signature": "public.catalog_clear_template_acceptance(uuid)",
           "beforeSha256": null,
-          "afterSha256": "95bfb7261ddbe9159e0aaca6c6ff50545a457a33967867085cb84896ba9df71c"
+          "afterSha256": "6865d23d61db3e2e62e82c96e1b30b440c73d46fab6170fb7c6d1dadfdd60e0c"
         },
         {
           "signature": "public.catalog_attach_edit_quote_acceptance(uuid,jsonb)",
