@@ -117,10 +117,10 @@ describe("local rate table", () => {
     expect(updated.evidence.fiscalDigest).toBe(result.evidence.fiscalDigest);
     expect(await reconfigured.readFiscalValidity({ original, evidence: result.evidence, evidenceDigest: result.evidenceDigest,
       chargeAt: localTime, current: original.input,
-    })).toMatchObject({ kind: "changed", proof: { fiscalDigest: result.evidence.fiscalDigest } });
+    })).toMatchObject({ kind: "changed" });
   });
 
-  it("refuses a fee key exceeding the money reference limit at the required target", async () => {
+  it("enforces the money reference limit on assessed fee keys", async () => {
     const input = feeInput();
     const requestWithKey = (key: string) => makeTaxQuoteRequest("fee-key", { ...input,
       required: input.required.map(cell => cell.target.kind === "fee" ? { ...cell, target: { ...cell.target, key } } : cell),
@@ -134,6 +134,12 @@ describe("local rate table", () => {
     expect(await port.quote(oversized)).toEqual({ kind: "refused", code: "tax_invalid_input",
       field: `/input/required/${index}/target/key`, remedy: expect.stringContaining("128 code units"),
     });
+    const exemptPort = localRateTable({ ...feeOptions,
+      rules: [rateRule, exemptRule, { ...exemptRule, taxClass: feeRule.taxClass, taxKind: feeRule.taxKind }],
+    });
+    const exempt = await exemptPort.quote(oversized);
+    expect(exempt).toMatchObject({ kind: "final", money: { fees: [] }, evidence: { positions: { fees: [] } } });
+    expect(verifyTaxQuoteResult(oversized, exempt)).toBeUndefined();
   });
 
   it("refuses an absent free-delivery rule, a foreign scope, and a tampered request before money", async () => {

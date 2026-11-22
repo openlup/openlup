@@ -11,7 +11,7 @@ import {
 
 type Fixture = Awaited<ReturnType<TaxConformanceSubjectV1["open"]>>;
 type Defect = "wrong_key" | "refusal_with_money" | "wrong_validity" | "unsupported_effect" | "duplicate_commit" | "commit_mapping"
-  | "commit_conflict" | "reversal_conflict" | "full_after_partial" | "invalid_proof_times" | "invalid_effective_from";
+  | "commit_conflict" | "reversal_conflict" | "full_after_partial" | "invalid_proof_times" | "invalid_effective_from" | "stale_fiscal_digest";
 const postingModes = ["amount", "full"] as const;
 const cleanEffects = () => ({ commits: 0, reversals: 0, providerCloses: 0 });
 
@@ -145,6 +145,12 @@ function subject(modes?: readonly TaxReverseRequestV1["mode"][], defect?: Defect
           });
           return result;
         } };
+      } else if (caseId === "rate_change" && defect === "stale_fiscal_digest") {
+        fixture.port = { ...base, async readFiscalValidity(request) {
+          const result = await base.readFiscalValidity(request);
+          if (result.kind !== "changed") throw new Error("Expected changed validity");
+          return { ...result, proof: { ...result.proof, fiscalDigest: request.evidence.fiscalDigest } };
+        } };
       } else if (caseId === "expiry" && (defect === "invalid_proof_times" || defect === "invalid_effective_from")) {
         fixture.port = { ...base, async readFiscalValidity(request) {
           const result = await base.readFiscalValidity(request);
@@ -189,6 +195,7 @@ describe("offline tax conformance", () => {
     ["commit_conflict", "reference_conflict", "tax_reference_conflict", true],
     ["reversal_conflict", "reference_conflict", "tax_reference_conflict", true],
     ["full_after_partial", "partial_then_full", "remaining 60", true],
+    ["stale_fiscal_digest", "rate_change", "current fiscal digest", false],
     ["invalid_proof_times", "expiry", "/proof/observedAt", false],
     ["invalid_effective_from", "expiry", "/proof/effective/from", false],
   ])("catches the %s defect", async (defect, caseId, assertion, posting) => {

@@ -6,7 +6,7 @@ import type {
 } from "./contracts/index.js";
 import { cellKey, compareCells } from "./contracts/identity.js";
 import { instant } from "./contracts/schemas.js";
-import { taxDigest, verifyTaxQuoteResult } from "./digest.js";
+import { makeTaxQuoteRequest, taxDigest, taxFiscalDigest, verifyTaxQuoteResult } from "./digest.js";
 
 const cases = [
   "missing_class", "missing_rule", "tax_coverage_undeclared_refuses", "exempt_in_scope", "out_of_scope", "mixed_coverage",
@@ -101,7 +101,18 @@ async function checkValidity(assert: Assert, caseId: TaxConformanceCaseV1, fixtu
   assert(data.evidenceDigest === evidenceDigest && data.calculationRef === evidence.calculationRef, "proof binds original evidence");
   assert(data.observedAt < data.dispatchBefore && data.effective.from <= chargeAt && chargeAt < data.dispatchBefore
     && (data.effective.until === undefined || data.dispatchBefore <= data.effective.until), "bounded charge-date dispatch deadline");
-  if (!changed) assert(data.fiscalDigest === evidence.fiscalDigest, "unchanged validity preserves the fiscal digest");
+  if (!changed) {
+    assert(data.fiscalDigest === evidence.fiscalDigest, "unchanged validity preserves the fiscal digest");
+    return;
+  }
+
+  const key = fixture.request.key === "rate-change-current" ? "rate-change-follow-up" : "rate-change-current";
+  const currentRequest = makeTaxQuoteRequest(key, current.current);
+  const currentQuote = await fixture.port.quote(currentRequest);
+  assert(currentQuote.kind === "final" && !verifyTaxQuoteResult(currentRequest, currentQuote), "verifiable current rate-change quote");
+  const currentDigest = taxFiscalDigest(currentQuote.evidence);
+  assert(currentDigest !== evidence.fiscalDigest, "rate-change fixture changes the fiscal digest");
+  assert(data.fiscalDigest === currentDigest, "changed proof carries the current fiscal digest");
 }
 
 async function checkPosting(assert: Assert, caseId: TaxConformanceCaseV1, fixture: Fixture, final: Final) {

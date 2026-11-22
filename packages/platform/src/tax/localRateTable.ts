@@ -146,19 +146,18 @@ export function localRateTable(options: LocalRateTableOptionsV1): TaxCalculation
       ...input.lines.map(row => [JSON.stringify(["line", row.lineKey]), row] as const),
       ...input.delivery.map(row => [JSON.stringify(["delivery", row.bucketKey]), row] as const),
     ]);
-    const selected = new Map<string, { rule: Rule; assignmentRef: string }>();
+    const selected = new Map<string, { rule: Rule; assignmentRef: string; requiredIndex: number }>();
     const observations: Observation[] = [];
     for (const [index, cell] of input.required.entries()) {
       const { target } = cell;
       const field = "/input/required/" + index;
-      if (target.kind === "fee") moneyRef(target.key, field + "/target/key");
       const { taxClass, assignmentRef } = target.kind === "fee" ? target : classes.get(targetKey(cell))!;
       const rule = rules.get(ruleKey({ ...cell, taxClass }))?.find(row => includesInstant(row.effective, taxDate));
       if (!rule || (target.kind === "fee" ? rule.kind === "rate" : rule.kind === "fee")) {
         return { ...refuse("tax_rule_missing", field, "Supply an effective rule or explicit exemption for this class and cell."),
           jurisdiction: cell.jurisdiction, taxKind: cell.taxKind };
       }
-      selected.set(cellKey(cell), { rule, assignmentRef });
+      selected.set(cellKey(cell), { rule, assignmentRef, requiredIndex: index });
       const registrationRow = registrations.get(declarationKey(cell))?.find(row => includesInstant(row.effective, taxDate));
       if (!registrationRow) {
         observations.push({ cell });
@@ -184,9 +183,10 @@ export function localRateTable(options: LocalRateTableOptionsV1): TaxCalculation
     const facts = vector.map(row => selected.get(cellKey(row.cell))!.rule);
     for (const { cell, decision, treatment } of vector) {
       if (decision !== "in_scope_taxed") continue;
-      const { rule, assignmentRef } = selected.get(cellKey(cell))!;
+      const { rule, assignmentRef, requiredIndex } = selected.get(cellKey(cell))!;
       const { target } = cell;
       if (target.kind === "fee" && rule.kind === "fee") {
+        moneyRef(target.key, "/input/required/" + requiredIndex + "/target/key");
         if (feeKeys.has(target.key)) {
           return refuse("tax_invalid_input", "/input/required", "Supply distinct keys for assessed fee cells.");
         }
