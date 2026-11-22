@@ -2871,8 +2871,9 @@ TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, an
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
 another slot or an unqualified/IF NOT EXISTS creation refuses. The admitted
 table grants are limited to the fixed baseline and notice-table allowances below,
-the listed census tables' client-column SELECT and the qualified price-list
-basis SELECT above. Census tables keep owner-only table ACLs
+the listed census tables' client-column SELECT, the qualified price-list basis
+SELECT and the [guarded `catalog_sku_revisions.net_content_storage` SELECT](#qualified-column-select)
+for `openlup_catalog_publication`. Census tables keep owner-only table ACLs
 and receive only their exact column grant and derived SELECT policy.
 The native paid-notice slot may name `insertSelectTables` with the complete
 value `["public.subscription_notice_refusals"]`, pinned by the reader. A separate

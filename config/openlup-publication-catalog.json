@@ -13270,6 +13270,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/oss-strict-json.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/oss-strict-json.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/owned-stack-cleanup.mjs",
       "class": "public-output"
     },

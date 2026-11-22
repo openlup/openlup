@@ -20,7 +20,7 @@ const scannerPaths = [
   "packages/core/scripts/neutrality-tree-counts.ts",
   "packages/ui/smoke/neutrality.ts",
 ];
-const sourcePaths = ["scripts/public-ci-neutrality.mjs", ...scannerPaths];
+const sourcePaths = ["scripts/public-ci-neutrality.mjs", "scripts/oss-strict-json.mts", ...scannerPaths];
 const scratch = join(sourceRoot, ".context/scratch/neutrality-cli-tests");
 const fixtures: string[] = [];
 const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
@@ -90,6 +90,15 @@ afterAll(() => { if (installedSeed) rmSync(installedSeed.root, { recursive: true
 function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
+
+it("refuses an escaped duplicate JSON key in a neutrality registration carrier", () => {
+  const file = "config/openlup-publication-catalog.json";
+  const source = String.raw`{"\u0070ublicPaths": false, "publicPaths": []}`;
+  expect(() => allowedPaymentAdapterWords(file, source)).toThrow(
+    `${file}: duplicate JSON key "publicPaths" at $["publicPaths"]`,
+  );
+});
+
 const registryPath = "config/reviewed-platform-forwards.json";
 const operationsSql = "packages/platform/sql/20260814010000_platform_control_plane.sql";
 const paymentAttemptSql = "db/platform/migrations/20261114100000_payment_provider_attempt_store.sql";
@@ -712,6 +721,14 @@ describe("store vocabulary ratchet", () => {
 });
 
 describe("neutrality CLI on synthetic Git objects", () => {
+  it("refuses an escaped duplicate JSON key in the neutrality baseline", () => {
+    const { root, base } = installed();
+    const source = readFileSync(join(root, baselinePath), "utf8");
+    put(root, baselinePath, source.replace('"schemaVersion": 2', String.raw`"\u0073chemaVersion": 1, "schemaVersion": 2`));
+    const result = cli(root, base);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain(`${baselinePath}: duplicate JSON key "schemaVersion" at $["schemaVersion"]`);
+  });
   it("preserves large Unicode scanner input and cleans temporary files on success and failure", () => {
     const contents = `${'雪🐾 "quoted" \\ line\n'.repeat(4096)}${debt} ${debt}\n`;
     expect(Buffer.byteLength(JSON.stringify([{ path: "unicode-data", contents }]), "utf8")).toBeGreaterThan(64 * 1024);
