@@ -39,14 +39,14 @@ const present = (order: { id: string; status: string; total_amount_minor: number
 const checkoutLane = 'starter-checkout';
 const admissionUnavailable = 'catalog_admission_quote_authority_required';
 const checkoutDigest = (document: unknown) => createHash('sha256').update(canonicalCatalogDraftJson(document), 'utf8').digest('hex');
-function originalSubmit(payload: Record<string, unknown>, context: ActionContext, clientId: string, key: string) {
+function originalSubmit(payload: Record<string, unknown>, context: ActionContext, clientId: string, key: string, email: string) {
   const { quoteAcceptance, ...selection } = payload;
   const scope = {
     schemaVersion: 1, ownerNamespace: source(context), clientId, lane: checkoutLane, requestKey: key,
     ...(context.actor.principalRef ? { actorRef: context.actor.principalRef } : {}),
     acceptanceTokenDigest: typeof quoteAcceptance === 'string' ? checkoutDigest(quoteAcceptance) : null,
   };
-  return { ...scope, submitDigest: checkoutDigest(['catalog.checkout-submit.v1', scope, selection]) };
+  return { ...scope, submitDigest: checkoutDigest(['catalog.checkout-submit.v1', scope, { ...selection, email }]) };
 }
 
 async function readOwnedDraft(db: PoolClient, key: string, clientId: string | null, email: string) {
@@ -148,6 +148,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     const offer = parseCart(context.config.id, payload.cart);
     if (!offer.ok) return refused(offer.issues[0]!.code);
     if (offer.cart.mode === 'subscription' && payload.acquisitionCapability !== ACQUISITION_TERMS_CAPABILITY) return refused('acquisition_terms_capability_required');
+    if (payload.termsAccepted !== true) return refused('starter_terms_required');
     if (!isConfiguredLocale(payload.locale, context.config.market)) return refused('starter_input_invalid');
     const email = context.actor.customerRef
       ? await checkoutHost.readClientEmail({ clientId: context.actor.customerRef, principalId: context.actor.principalRef! })
@@ -158,7 +159,10 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     await draftSession.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [key]);
     const boundQuotes = createNativeQuoteService(draftSession, predecessors, quoteOptions.keyring);
     const priorOrder = await readOwnedDraft(draftSession, key, context.actor.customerRef, email);
-    if (priorOrder && !priorOrder.owned) return refused('starter_command_conflict');
+    if (priorOrder && !priorOrder.owned) {
+      return refused(attemptBindings?.conflicts(context.commandKey, email, context.actor.requesterKey)
+        ? 'starter_attempt_limited' : 'starter_command_conflict');
+    }
     const prior = priorOrder?.snapshot;
     let observed;
     try {
@@ -167,7 +171,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         // native fingerprint. A stamped draft requires its exact submit digest.
         if (!prior) return refused('starter_command_conflict');
         if (priorOrder.submit === null) observed = await boundQuotes.quote(payload, context, prior);
-        const { submitDigest } = originalSubmit(payload, context, priorOrder.client_id, key);
+        const { submitDigest } = originalSubmit(payload, context, priorOrder.client_id, key, email);
         await draftSession.query('SELECT public.catalog_admission_replay_order_draft($1,$2,$3,$4)',
           [key, priorOrder.client_id, checkoutLane, priorOrder.submit === null ? priorOrder.fingerprint : submitDigest]);
       } else {
@@ -181,10 +185,9 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
         if (!['pending_payment','paid'].includes(priorOrder.status) || !await isInitialCheckoutOrder(draftSession,priorOrder.id)) return refused('starter_checkout_not_payable');
         return { ...success(present(priorOrder)),replayed: true };
       }
-      if (payload.termsAccepted !== true) return refused('starter_terms_required');
+      observed ??= await boundQuotes.quote(payload, context, prior);
       if (!prior && payload.termsRevision !== context.config.legal.revision) return refused('starter_terms_required');
       if (!prior && payload.country !== context.config.market.country) return refused('starter_input_invalid');
-      observed ??= await boundQuotes.quote(payload, context, prior);
       if (!prior) boundQuotes.verify(observed, payload);
       if (observed.terms) renewal.assertAvailable(observed.snapshot);
     } catch (error) {
@@ -218,7 +221,7 @@ export function composePurchaseCapabilities(db: Pool, contacts: PostgresContactC
     const quoteSnapshot = observed.snapshot;
     const quote = observed.projection;
     const shipping = address(payload, context.config.market.country);
-    const submit = originalSubmit(payload, context, contact.clientId, key);
+    const submit = originalSubmit(payload, context, contact.clientId, key, email);
     // Keep the original purchase writer and attach private submit evidence
     // before its COMMIT on the session holding the request key.
     const drafts = predecessors.checkout({ async connect() {
