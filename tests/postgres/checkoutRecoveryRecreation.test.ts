@@ -28,7 +28,7 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
  const read=async(id:string)=>(await createPostgresCheckoutRecoveryOrderPort(env.runtime).getRecoveryOrder({orderId:id}))!;
  const simulator=()=>createPostgresSandboxPaymentSimulator(env.runtime,{dunningTemplateSlug:"dunning",recoveryUrlPath:"/recover",recoveryTemplateSlug:"recover"});
  const lane={run:async<T>(work:(db:unknown)=>Promise<T>)=>{const db=await env.runtime.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}}};
- async function subject(mode:'subscription'|'one_time'='subscription',stock=10,shared?:{sku:string;skuId:string;client:string;stockSource:string},cadenceDays=28){
+ async function subject(mode:'subscription'|'one_time'='subscription',stock=10,shared?:{sku:string;skuId:ReturnType<typeof randomUUID>;client:string;stockSource:string},cadenceDays=28){
   const {sku,skuId,client,stockSource}=shared??{sku:`RECOVERY-${randomUUID()}`,skuId:randomUUID(),client:randomUUID(),stockSource:randomUUID()};
   if(!shared){
   await env.owner.query('INSERT INTO public.clients(id,email)VALUES($1,$2)',[client,`${client}@example.invalid`]);
@@ -77,7 +77,8 @@ describe.each(lifecycleProfiles)('expired checkout recreation on %s',profile=>{
   const f=await subject('one_time');
   await installPublicationActors(env.owner);
   await transaction(env.owner,async db=>{
-   await db.query("UPDATE public.catalog_products SET slug=$2,name='Article' WHERE id=$1",[f.skuId,`article-${f.skuId}`]);
+   await db.query("UPDATE public.catalog_products SET slug=$2,name='Article',type_key='example:article',type_version=1 WHERE id=$1",[f.skuId,`article-${f.skuId}`]);
+   await db.query("UPDATE public.catalog_skus SET net_weight_g=100 WHERE id=$1",[f.skuId]);
    const value=await graph(db,{productId:f.skuId,skuId:f.skuId,skuCode:f.sku,draftId:randomUUID(),documentId:randomUUID()},null,false,{lifecycle:'active'});
    await insertGraph(db,value);
   });

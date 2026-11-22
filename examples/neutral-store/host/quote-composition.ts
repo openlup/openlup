@@ -47,9 +47,12 @@ export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: 
       throw new AcquisitionTermsError('acquisition_terms_capability_required');
     }
     if (payload.promoCodes !== undefined && (!Array.isArray(payload.promoCodes) || payload.promoCodes.length)) throw new Error('starter_promotion_codes_unsupported');
-    const email = context.actor.customerRef
+    const contactEmail = context.actor.customerRef
       ? (await db.query('SELECT email FROM public.clients WHERE id=$1 AND principal_id=$2', [context.actor.customerRef,context.actor.principalRef])).rows[0]?.email
-      : typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : null;
+      : payload.email;
+    const email = typeof contactEmail === 'string'
+      ? context.actor.customerRef ? contactEmail : contactEmail.trim().toLowerCase()
+      : null;
     const request: Request = { mode: selected.cart.mode, cadenceDays: selected.cart.cadenceDays,
       lines: selected.cart.lines, promoCodes: [], pricingPolicy,
       ...(payload.acquisitionCapability === ACQUISITION_TERMS_CAPABILITY ? { acquisitionCapability: ACQUISITION_TERMS_CAPABILITY } : {}),

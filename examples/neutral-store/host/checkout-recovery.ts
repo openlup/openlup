@@ -178,8 +178,8 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
     const original = await reader.getRecoveryOrder({ orderId: bearer.orderId });
     const latest = await reader.getLatestRecoveryOrder!({ orderId: bearer.orderId });
     if (!original || !latest || !sameUuid(original.clientId, bearer.clientId) || !sameUuid(latest.clientId, bearer.clientId)) return refuse('unavailable');
-    const rootId = original.recoveryRootOrderId;
-    if (!sameUuid(latest.recoveryRootOrderId, rootId)
+    const rootId = original.recoveryRootOrderId ?? original.orderId;
+    if (!sameUuid(latest.recoveryRootOrderId ?? latest.orderId, rootId)
       || (payload.orderRef !== undefined && !sameUuid(payload.orderRef, latest.orderId))) return refuse('unavailable');
     if (!await authenticateRecoveryDraft(pool, original, rootId)) return refuse('unavailable');
     const latestDraft = await authenticateRecoveryDraft(pool, latest, rootId);
