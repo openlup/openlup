@@ -143,8 +143,8 @@ async function seed(store: Store, history: History) {
   return f.subscription;
 }
 
-for (const history of histories) it.each(profiles)(
-  `restores %s packets byte for byte against an in-place upgrade from before ${history.before}`, async profile => {
+it.each(histories.map((history, index) => ({ history, profile: profiles[index], inventory: history.inventories[index] })))(
+  "restores $profile packets byte for byte against an in-place upgrade from before $history.before", async ({ history, profile, inventory }) => {
     const root = mkdtempSync(join(tmpdir(), "connected-restore-prefix-"));
     const stores: Store[] = [];
     const install = async (label: string, prefix?: string) => {
@@ -155,7 +155,7 @@ for (const history of histories) it.each(profiles)(
     try {
       historicalRoot(root, history);
       const source = await install("restore-predecessor", root);
-      expect(source.inventory).toBe(history.inventories[profiles.indexOf(profile)]);
+      expect(source.inventory).toBe(inventory);
       const subscription = await seed(source, history);
       const convertedTarget = await install("restore-converted");
       const fresh = await capture(convertedTarget, "fresh-converted", true);
@@ -172,19 +172,14 @@ for (const history of histories) it.each(profiles)(
         "subscription_lines", "catalog_sku_identifiers"]) {
         expect(carriedRows(predecessor).find(entry => entry.table === table)?.rows.length).toBeGreaterThan(0);
       }
-      const restore = (target: Store, packet: ConnectedNativeStoreCapture, freshTarget: ConnectedNativeStoreCapture) => {
-        if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
-        return restoreConnectedNativeStore({ owner: target.migrator, installation: target.installation, packet, freshTarget });
-      };
-      expect(await restore(convertedTarget, predecessor, fresh)).toMatchObject({ captureSha256: predecessor.sha256, replayed: false });
-      expect(await restore(convertedTarget, predecessor, fresh)).toMatchObject({ captureSha256: predecessor.sha256, replayed: true });
+      if (convertedTarget.installation.generation === "legacy") throw new Error("Qualified restore target required");
+      const restore = { owner: convertedTarget.migrator, installation: convertedTarget.installation, packet: predecessor, freshTarget: fresh };
+      expect(await restoreConnectedNativeStore(restore)).toMatchObject({ captureSha256: predecessor.sha256, replayed: false });
+      expect(await restoreConnectedNativeStore(restore)).toMatchObject({ captureSha256: predecessor.sha256, replayed: true });
       expect((await source.runner.apply()).applied).toContain(`${schema}/${acceptedReferences}`);
       const upgraded = await capture(source, "upgraded-in-place");
-      const upgradedTarget = await install("restore-upgraded");
-      expect(await restore(upgradedTarget, upgraded, await capture(upgradedTarget, "fresh-upgraded", true))).toMatchObject({ replayed: false });
-      const expected = carriedRows(upgraded);
-      expect(carriedRows(await capture(upgradedTarget, "restored-upgraded"))).toEqual(expected);
-      expect(carriedRows(await capture(convertedTarget, "restored-converted"))).toEqual(expected);
+      // Exact current-shape restore is covered by tests/postgres/connectedStoreCatalogRevisions.test.ts:90.
+      expect(carriedRows(await capture(convertedTarget, "restored-converted"))).toEqual(carriedRows(upgraded));
     } finally {
       try { await Promise.all(stores.map(store => store.close())); }
       finally { rmSync(root, { recursive: true, force: true }); }

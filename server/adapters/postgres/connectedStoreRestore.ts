@@ -45,6 +45,17 @@ const beforeAcceptedReferences = {
   "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
 type SourceShape = "current" | "beforePublicationCommands" | "beforeCheckoutAttemptLedger" | "beforeAcceptedReferences" | "unsupported";
+
+export function connectedStoreSourceShape(
+  profile: keyof typeof beforePublicationCommands, catalogueId: string | undefined, currentCatalogueId: string,
+): SourceShape {
+  if (catalogueId === currentCatalogueId) return "current";
+  if (catalogueId === beforePublicationCommands[profile]) return "beforePublicationCommands";
+  if (catalogueId === beforeCheckoutAttemptLedger[profile]) return "beforeCheckoutAttemptLedger";
+  if (catalogueId === beforeGovernedLifecycle[profile] || catalogueId === beforeAcceptedReferences[profile]) return "beforeAcceptedReferences";
+  return "unsupported";
+}
+
 const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
 const editQuotes = "subscription_edit_quotes";
 const acceptance = { name: "catalog_acceptance", type: "jsonb" };
@@ -345,12 +356,7 @@ export async function restoreConnectedNativeStore(input: {
   const profile = installation.generation === "qualified-admin" ? installation.roleMode
     : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
   const manifest = expectedManifest(installation);
-  const catalogueId = input.packet?.compatible?.catalogueId;
-  const shape: SourceShape = catalogueId === manifest.objectInventorySha256 ? "current"
-    : catalogueId === beforePublicationCommands[profile] ? "beforePublicationCommands"
-      : catalogueId === beforeCheckoutAttemptLedger[profile] ? "beforeCheckoutAttemptLedger"
-        : catalogueId === beforeGovernedLifecycle[profile] || catalogueId === beforeAcceptedReferences[profile]
-          ? "beforeAcceptedReferences" : "unsupported";
+  const shape = connectedStoreSourceShape(profile, input.packet?.compatible?.catalogueId, manifest.objectInventorySha256);
   const packet = copyCapture(input.packet, shape), fresh = copyCapture(input.freshTarget);
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");

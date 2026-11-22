@@ -14966,6 +14966,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/postgres/connectedStoreRestore.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/postgres/connectedStoreRestore.ts",
       "class": "public-output"
     },
