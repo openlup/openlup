@@ -28,7 +28,7 @@ function response() {
 
 const destinationPolicy: AddressPolicyV1 = {
   schemaVersion: 1, policyRef: "sample-address", policyRevision: "r1", countryCode: "XX", requiredFields: [],
-  allowedSubdivisionCodes: ["XX-M", "XX-T"], subdivisionAliases: { military: "XX-M", territory: "XX-T", "XX-T": "XX-M" },
+  allowedSubdivisionCodes: ["XX-M", "XX-T"], subdivisionAliases: { military: "XX-M", territory: "XX-T" },
   postalRule: { upperAscii: true, stripAsciiSpaces: true, alternatives: [["letter", "digit", { literal: "-" }, "digit"], ["digit", "digit"]] },
   classificationRules: [{ key: "zone.military", subdivisionCode: "XX-M" }, { key: "box", line1Prefix: "Po BoX " }],
 };
@@ -74,6 +74,19 @@ it("refuses a classification rule keyed by a subdivision alias", () => {
   };
   expect(validateV2({ ...destination, subdivisionCode: "region" }, policy))
     .toMatchObject({ outcome: "refused", code: "address_policy_invalid", field: "policyRef" });
+});
+
+it("keeps alias sources outside the canonical subdivision set", () => {
+  const policy: AddressPolicyV1 = {
+    ...destinationPolicy, allowedSubdivisionCodes: ["XX-A", "XX-B"],
+    classificationRules: [{ key: "restricted", subdivisionCode: "XX-A" }],
+  };
+  for (const source of ["XX-A", "xx-a"]) {
+    expect(validateV2({ ...destination, subdivisionCode: "XX-A" }, { ...policy, subdivisionAliases: { [source]: "XX-B" } }))
+      .toMatchObject({ outcome: "refused", code: "address_policy_invalid", field: "policyRef" });
+  }
+  expect(validateV2({ ...destination, subdivisionCode: "region" }, { ...policy, subdivisionAliases: { region: "XX-A" } }))
+    .toMatchObject({ outcome: "valid", address: { subdivisionCode: "XX-A" }, classificationKeys: ["restricted"] });
 });
 
 it.each([

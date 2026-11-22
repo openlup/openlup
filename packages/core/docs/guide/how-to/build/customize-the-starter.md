@@ -381,8 +381,13 @@ v1 address book. Versioned saved addresses are not available in this release.
    find the binding instructions.
    Set the revision on the policy data. Postal alternatives are full-length
    sequences of `"digit"`, `"letter"` or `{ literal: "-" }` tokens. At least one
-   alternative must match normalized input. A classification rule uses a `key`
-   with either an allowed `subdivisionCode` or a literal `line1Prefix`.
+   alternative must match normalized input. An alternative is unreachable if it
+   includes a lowercase literal with `upperAscii` enabled, a space literal with
+   `stripAsciiSpaces` enabled, or a space at either end.
+   Keep alias source keys out of `allowedSubdivisionCodes` after ASCII case
+   normalization and point each alias to an allowed code. A classification rule
+   uses a `key` with either a canonical `subdivisionCode` from
+   `allowedSubdivisionCodes` or a literal `line1Prefix`.
 3. Call `validateDestinationAddressV2` from `@openlup/platform/shipping` with the
    submitted address and selected policy. Use the normalized address, policy
    reference and revision, and sorted classification keys on success.

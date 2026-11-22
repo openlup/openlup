@@ -137,7 +137,8 @@ export function validateDestinationAddressV2(input: unknown, policy?: AddressPol
   const allowed = new Set(allowedSubdivisionCodes.map(asciiUpper));
   const aliases = new Map(Object.entries(subdivisionAliases).map(([from, to]) => [asciiUpper(from), asciiUpper(to)]));
   if (new Set(requiredFields).size !== requiredFields.length || allowed.size !== allowedSubdivisionCodes.length
-    || aliases.size !== Object.keys(subdivisionAliases).length || [...aliases.values()].some(to => !allowed.has(to))
+    || aliases.size !== Object.keys(subdivisionAliases).length
+    || [...aliases].some(([source, target]) => allowed.has(source) || !allowed.has(target))
     || new Set(classificationRules.map(rule => rule.key)).size !== classificationRules.length
     || classificationRules.some(rule => "subdivisionCode" in rule && !allowed.has(asciiUpper(rule.subdivisionCode)))
     || !hasReachablePostalMask(postalRule)) return invalidPolicy();
