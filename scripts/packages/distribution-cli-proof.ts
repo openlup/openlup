@@ -653,7 +653,8 @@ export function proveSettingsDiscovery(app: string, execute = (command: string, 
 }
 
 /** One offline MCP session against the installed binary. */
-export function proveSettingsMcp(app: string, environment = isolatedConsumerEnv()) {
+export function proveSettingsMcp(app: string, environment = isolatedConsumerEnv(), options?: { timeoutMs: number }) {
+  const deadline = options && performance.now() + options.timeoutMs;
   const directory = mkdtempSync(join(app, ".settings-mcp-"));
   try {
     const appPath = join(directory, "logging-app.mjs");
@@ -683,35 +684,45 @@ export function createSettingsBindings(input) {
       request(15, "ping"), malformedUtf8, request(16, "ping"),
     ];
     const executable = join(app, "node_modules/.bin/openlup");
+    const timeoutError = (step: string) => new Error(
+      `Settings MCP step "${step}" exceeded the shared ${options?.timeoutMs} ms subprocess deadline. Check the packed CLI's settings mcp handler for a stall.`,
+    );
+    const run = (step: string, args: readonly string[], input: string | Buffer) => {
+      const remaining = deadline === undefined ? undefined : Math.ceil(deadline - performance.now());
+      if (remaining !== undefined && remaining <= 0) throw timeoutError(step);
+      const result = spawnSync(executable, args, {
+        cwd: app, env: environment, encoding: "utf8", input,
+        ...(remaining === undefined ? {} : { timeout: remaining, killSignal: "SIGKILL" }),
+      });
+      const error = result.error as NodeJS.ErrnoException | undefined;
+      if (remaining !== undefined && error?.code === "ETIMEDOUT") throw timeoutError(step);
+      assert.ifError(error);
+      return result;
+    };
     const args = ["settings", "mcp", "--app", appPath];
     const input = Buffer.concat(frames.flatMap(frame => [typeof frame === "string" ? Buffer.from(frame) : frame, Buffer.from("\n")]));
-    const session = spawnSync(executable, args, { cwd: app, env: environment, encoding: "utf8", input });
-    assert.ifError(session.error);
+    const session = run("five-tool exchange and frame recovery", args, input);
     assert.equal(session.status, 0);
     assert.match(session.stderr, /app console log\napp stdout log/u);
     const replies = session.stdout.trimEnd().split("\n").map(line => JSON.parse(line));
     assert.deepEqual(replies.map(row => row.id), [1, 2, 3, 4, 5, 6, 7, 8, null, 9, 10, 11, 12, null, 13, 14, 15, null, 16]);
     const byId = new Map(replies.filter(row => row.id !== null).map(row => [row.id, row]));
     const discovery = init + "\n" + request(3, "tools/list") + "\n";
-    for (const prefixed of [
-      ["settings", "--app", appPath, "mcp"],
-      ["settings", `--app=${appPath}`, "mcp"],
-      ["settings", "--configuration=supplements", "--database-url", "postgresql://probe@db.invalid/shop", "--app", appPath, "mcp"],
-    ]) {
-      const alternate = spawnSync(executable, prefixed, { cwd: app, env: environment, encoding: "utf8", input: discovery });
-      assert.ifError(alternate.error);
+    for (const [step, prefixed] of [
+      ["discovery with prefixed --app", ["settings", "--app", appPath, "mcp"]],
+      ["discovery with prefixed --app=", ["settings", `--app=${appPath}`, "mcp"]],
+      ["discovery with prefixed configuration and database URL",
+        ["settings", "--configuration=supplements", "--database-url", "postgresql://probe@db.invalid/shop", "--app", appPath, "mcp"]],
+    ] as const) {
+      const alternate = run(step, prefixed, discovery);
       assert.equal(alternate.status, 0);
       assert.deepEqual(alternate.stdout.trimEnd().split("\n").map(line => JSON.parse(line)), [byId.get(2), byId.get(3)]);
     }
-    const missing = spawnSync(executable, ["settings", "--app", join(directory, "missing.mjs"), "mcp"],
-      { cwd: app, env: environment, encoding: "utf8", input: discovery });
-    assert.ifError(missing.error);
+    const missing = run("missing app refusal", ["settings", "--app", join(directory, "missing.mjs"), "mcp"], discovery);
     assert.equal(missing.status, 74);
     assert.equal(missing.stdout, "");
     assert.equal(missing.stderr, "Settings app: Check the --app path and the createSettingsBindings export.\n");
-    const malformed = spawnSync(executable, ["settings", "--app", "--configuration", "mcp"],
-      { cwd: app, env: environment, encoding: "utf8", input: discovery });
-    assert.ifError(malformed.error);
+    const malformed = run("missing --app value refusal", ["settings", "--app", "--configuration", "mcp"], discovery);
     assert.equal(malformed.status, 64);
     assert.match(malformed.stdout, /Supply a value for --app/u);
     assert.equal(malformed.stderr, "");
@@ -735,14 +746,11 @@ export function createSettingsBindings(input) {
     ]);
     for (const id of [13, 15, 16]) assert.deepEqual(byId.get(id).result, {});
     const badUrl = "--database-url=postgresql://probe@db.invalid/";
-    const refused = spawnSync(executable, [...args, badUrl], { cwd: app, env: environment, encoding: "utf8", input: init });
-    assert.ifError(refused.error);
+    const refused = run("invalid database URL refusal", [...args, badUrl], init);
     assert.equal(refused.status, 64);
     assert.equal(refused.stdout, "");
     assert.match(refused.stderr, /database path segment/u);
-    const prefixedRefusal = spawnSync(executable, ["settings", "--app", appPath, badUrl, "mcp"],
-      { cwd: app, env: environment, encoding: "utf8", input: init });
-    assert.ifError(prefixedRefusal.error);
+    const prefixedRefusal = run("prefixed invalid database URL refusal", ["settings", "--app", appPath, badUrl, "mcp"], init);
     assert.deepEqual([prefixedRefusal.status, prefixedRefusal.stdout, prefixedRefusal.stderr],
       [refused.status, refused.stdout, refused.stderr]);
     return { listing, results };
