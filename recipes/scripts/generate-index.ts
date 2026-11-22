@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -48,6 +48,7 @@ interface JsonSchemaNode {
   readonly const?: unknown;
   readonly enum?: readonly unknown[];
   readonly pattern?: string;
+  readonly format?: string;
   readonly minLength?: number;
   readonly maxLength?: number;
   readonly minItems?: number;
@@ -63,7 +64,28 @@ interface JsonSchemaNode {
 }
 
 const IGNORED_TOP_LEVEL_DIRS = new Set(["schema", "scripts", "node_modules"]);
-const SEMVER_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/;
+const SEMVER_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/u;
+const RFC3339_DATE_TIME_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
+const SUPPORTED_SCHEMA_TYPES = new Set([
+  "object",
+  "array",
+  "string",
+  "integer",
+  "number",
+  "boolean",
+  "null",
+]);
+const regexCache = new Map<string, RegExp>();
+
+function getCompiledRegex(pattern: string): RegExp {
+  let compiled = regexCache.get(pattern);
+  if (!compiled) {
+    compiled = new RegExp(pattern, "u");
+    regexCache.set(pattern, compiled);
+  }
+  return compiled;
+}
 
 function asciiCompare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -71,6 +93,12 @@ function asciiCompare(a: string, b: string): number {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasUnsafePathSegments(relPath: string): boolean {
+  if (relPath.startsWith("/") || relPath.includes("\\")) return true;
+  const segments = relPath.split("/");
+  return segments.some((seg) => seg === "" || seg === "." || seg === ".." || seg.startsWith("."));
 }
 
 function validateSchemaNode(
@@ -89,35 +117,65 @@ function validateSchemaNode(
     return;
   }
 
-  if (schema.type === "object") {
-    if (!isPlainObject(value)) {
+  if (schema.type !== undefined) {
+    if (!SUPPORTED_SCHEMA_TYPES.has(schema.type)) {
+      errors.push(`${pointer}: unsupported schema type ${JSON.stringify(schema.type)}`);
+      return;
+    }
+    if (schema.type === "object" && !isPlainObject(value)) {
       errors.push(`${pointer}: expected object`);
       return;
     }
+    if (schema.type === "array" && !Array.isArray(value)) {
+      errors.push(`${pointer}: expected array`);
+      return;
+    }
+    if (schema.type === "string" && typeof value !== "string") {
+      errors.push(`${pointer}: expected string`);
+      return;
+    }
+    if (schema.type === "integer" && (typeof value !== "number" || !Number.isInteger(value))) {
+      errors.push(`${pointer}: expected integer`);
+      return;
+    }
+    if (schema.type === "number" && (typeof value !== "number" || !Number.isFinite(value))) {
+      errors.push(`${pointer}: expected number`);
+      return;
+    }
+    if (schema.type === "boolean" && typeof value !== "boolean") {
+      errors.push(`${pointer}: expected boolean`);
+      return;
+    }
+    if (schema.type === "null" && value !== null) {
+      errors.push(`${pointer}: expected null`);
+      return;
+    }
+  }
+
+  if (isPlainObject(value)) {
     for (const key of schema.required ?? []) {
-      if (!(key in value)) {
+      if (!Object.hasOwn(value, key)) {
         errors.push(`${pointer}.${key}: missing required property`);
       }
     }
-    if (schema.additionalProperties === false && schema.properties) {
+    if (schema.additionalProperties === false) {
+      const allowedProps = schema.properties;
       for (const key of Object.keys(value)) {
-        if (!(key in schema.properties)) {
+        if (!allowedProps || !Object.hasOwn(allowedProps, key)) {
           errors.push(`${pointer}.${key}: unexpected property`);
         }
       }
     }
     if (schema.properties) {
       for (const [key, propSchema] of Object.entries(schema.properties)) {
-        if (key in value) {
+        if (Object.hasOwn(value, key)) {
           validateSchemaNode(value[key], propSchema, `${pointer}.${key}`, errors);
         }
       }
     }
-  } else if (schema.type === "array") {
-    if (!Array.isArray(value)) {
-      errors.push(`${pointer}: expected array`);
-      return;
-    }
+  }
+
+  if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
       errors.push(`${pointer}: expected at least ${schema.minItems} items`);
     }
@@ -136,19 +194,22 @@ function validateSchemaNode(
         validateSchemaNode(value[idx], schema.items, `${pointer}[${idx}]`, errors);
       }
     }
-  } else if (schema.type === "string") {
-    if (typeof value !== "string") {
-      errors.push(`${pointer}: expected string`);
-      return;
-    }
+  }
+
+  if (typeof value === "string") {
     if (schema.minLength !== undefined && value.length < schema.minLength) {
       errors.push(`${pointer}: length ${value.length} < minLength ${schema.minLength}`);
     }
     if (schema.maxLength !== undefined && value.length > schema.maxLength) {
       errors.push(`${pointer}: length ${value.length} > maxLength ${schema.maxLength}`);
     }
-    if (schema.pattern && !new RegExp(schema.pattern).test(value)) {
+    if (schema.pattern && !getCompiledRegex(schema.pattern).test(value)) {
       errors.push(`${pointer}: value ${JSON.stringify(value)} does not match /${schema.pattern}/`);
+    }
+    if (schema.format === "date-time") {
+      if (!RFC3339_DATE_TIME_PATTERN.test(value) || Number.isNaN(Date.parse(value))) {
+        errors.push(`${pointer}: value ${JSON.stringify(value)} is not a valid RFC 3339 date-time`);
+      }
     }
   }
 
@@ -164,8 +225,11 @@ function validateSchemaNode(
   }
 }
 
-export function collectRecipeDiskFiles(recipeDir: string): string[] {
-  const results: string[] = [];
+export function collectRecipeDiskFiles(
+  recipeDir: string,
+): { readonly files: string[]; readonly symlinks: string[] } {
+  const files: string[] = [];
+  const symlinks: string[] = [];
   const walk = (dir: string): void => {
     const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
       asciiCompare(a.name, b.name),
@@ -173,15 +237,20 @@ export function collectRecipeDiskFiles(recipeDir: string): string[] {
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
+      const rel = path.relative(recipeDir, full).split(path.sep).join("/");
+      if (entry.isSymbolicLink()) {
+        symlinks.push(rel);
+      } else if (entry.isDirectory()) {
         walk(full);
       } else if (entry.isFile()) {
-        results.push(path.relative(recipeDir, full).split(path.sep).join("/"));
+        files.push(rel);
       }
     }
   };
   walk(recipeDir);
-  return results.sort(asciiCompare);
+  files.sort(asciiCompare);
+  symlinks.sort(asciiCompare);
+  return { files, symlinks };
 }
 
 export function discoverRecipeDirectories(recipesRoot: string): string[] {
@@ -190,14 +259,16 @@ export function discoverRecipeDirectories(recipesRoot: string): string[] {
     asciiCompare(a.name, b.name),
   );
   for (const domainEntry of topEntries) {
-    if (!domainEntry.isDirectory()) continue;
+    if (!domainEntry.isDirectory() || domainEntry.isSymbolicLink()) continue;
     if (domainEntry.name.startsWith(".") || IGNORED_TOP_LEVEL_DIRS.has(domainEntry.name)) continue;
     const domainDir = path.join(recipesRoot, domainEntry.name);
     const providerEntries = readdirSync(domainDir, { withFileTypes: true }).sort((a, b) =>
       asciiCompare(a.name, b.name),
     );
     for (const providerEntry of providerEntries) {
-      if (!providerEntry.isDirectory() || providerEntry.name.startsWith(".")) continue;
+      if (!providerEntry.isDirectory() || providerEntry.isSymbolicLink() || providerEntry.name.startsWith(".")) {
+        continue;
+      }
       const recipeDir = path.join(domainDir, providerEntry.name);
       if (existsSync(path.join(recipeDir, "recipe.json"))) {
         discovered.push(recipeDir);
@@ -216,6 +287,15 @@ export function validateRecipeDirectory(
   const manifestPath = `${relDir}/recipe.json`;
   const fullManifestPath = path.join(recipeDir, "recipe.json");
   const issues: RecipeValidationIssue[] = [];
+
+  if (lstatSync(fullManifestPath).isSymbolicLink()) {
+    issues.push({
+      manifestPath,
+      field: "$",
+      message: "recipe.json must be a regular file, not a symbolic link",
+    });
+    return { issues };
+  }
 
   let parsed: unknown;
   try {
@@ -254,14 +334,22 @@ export function validateRecipeDirectory(
     });
   }
 
+  const { files: diskFiles, symlinks } = collectRecipeDiskFiles(recipeDir);
+  for (const link of symlinks) {
+    issues.push({
+      manifestPath,
+      field: "files.allFiles",
+      message: `symbolic link ${JSON.stringify(link)} is forbidden inside a recipe directory`,
+    });
+  }
+
   if (isPlainObject(parsed.files)) {
     const files = parsed.files;
     const allFiles = Array.isArray(files.allFiles)
       ? files.allFiles.filter((f): f is string => typeof f === "string")
       : [];
     const allFilesSet = new Set(allFiles);
-    const diskFiles = collectRecipeDiskFiles(recipeDir);
-    const sortedManifestFiles = [...allFiles].sort(asciiCompare);
+    const diskFilesSet = new Set(diskFiles);
 
     for (const file of diskFiles) {
       if (!allFilesSet.has(file)) {
@@ -272,13 +360,18 @@ export function validateRecipeDirectory(
         });
       }
     }
-    for (const file of sortedManifestFiles) {
-      const fullPath = path.join(recipeDir, file);
-      if (!existsSync(fullPath) || !statSync(fullPath).isFile()) {
+    for (const file of allFiles) {
+      if (hasUnsafePathSegments(file)) {
         issues.push({
           manifestPath,
           field: "files.allFiles",
-          message: `declared file ${JSON.stringify(file)} does not exist on disk`,
+          message: `declared file ${JSON.stringify(file)} contains unsafe or non-canonical path segments`,
+        });
+      } else if (!diskFilesSet.has(file)) {
+        issues.push({
+          manifestPath,
+          field: "files.allFiles",
+          message: `declared file ${JSON.stringify(file)} does not exist as a regular file inside the recipe directory`,
         });
       }
     }
@@ -337,7 +430,24 @@ export function validateRecipeDirectory(
   return { entry, issues };
 }
 
-function resolvePlatformVersion(recipesRoot: string, explicitVersion?: string): string {
+function compareSemver(a: string, b: string): number {
+  const [aCore, aPre] = a.split("-", 2);
+  const [bCore, bPre] = b.split("-", 2);
+  const aParts = aCore!.split(".").map(Number);
+  const bParts = bCore!.split(".").map(Number);
+  for (let i = 0; i < 3; i += 1) {
+    if (aParts[i]! !== bParts[i]!) return aParts[i]! - bParts[i]!;
+  }
+  if (aPre === bPre) return 0;
+  if (aPre === undefined) return 1;
+  if (bPre === undefined) return -1;
+  return asciiCompare(aPre, bPre);
+}
+
+function resolvePlatformVersion(
+  entries: readonly RecipeIndexEntry[],
+  explicitVersion?: string,
+): string {
   if (explicitVersion !== undefined) {
     if (!SEMVER_PATTERN.test(explicitVersion)) {
       throw new Error(`Invalid --platform-version ${JSON.stringify(explicitVersion)}: expected semver.`);
@@ -345,20 +455,14 @@ function resolvePlatformVersion(recipesRoot: string, explicitVersion?: string): 
     return explicitVersion;
   }
 
-  const indexPath = path.join(recipesRoot, "index.json");
-  if (existsSync(indexPath)) {
-    try {
-      const existing = JSON.parse(readFileSync(indexPath, "utf8")) as unknown;
-      if (
-        isPlainObject(existing) &&
-        typeof existing.platformVersion === "string" &&
-        SEMVER_PATTERN.test(existing.platformVersion)
-      ) {
-        return existing.platformVersion;
+  if (entries.length > 0) {
+    let highest = entries[0]!.testedAgainstPlatformVersion;
+    for (const entry of entries) {
+      if (compareSemver(entry.testedAgainstPlatformVersion, highest) > 0) {
+        highest = entry.testedAgainstPlatformVersion;
       }
-    } catch {
-      // Fall through to default when existing index.json is unreadable or corrupt.
     }
+    return highest;
   }
 
   return "1.3.0";
@@ -368,6 +472,12 @@ export function buildRecipeIndex(
   recipesRoot: string,
   options?: { readonly platformVersion?: string },
 ): { document?: RecipeIndexDocument; issues: RecipeValidationIssue[] } {
+  if (options?.platformVersion !== undefined && !SEMVER_PATTERN.test(options.platformVersion)) {
+    throw new Error(
+      `Invalid --platform-version ${JSON.stringify(options.platformVersion)}: expected semver.`,
+    );
+  }
+
   const schemaPath = path.join(recipesRoot, "schema", "recipe.schema.json");
   const recipeSchema = JSON.parse(readFileSync(schemaPath, "utf8")) as JsonSchemaNode;
   const recipeDirs = discoverRecipeDirectories(recipesRoot);
@@ -397,7 +507,7 @@ export function buildRecipeIndex(
   }
 
   entries.sort((a, b) => asciiCompare(a.id, b.id));
-  const platformVersion = resolvePlatformVersion(recipesRoot, options?.platformVersion);
+  const platformVersion = resolvePlatformVersion(entries, options?.platformVersion);
 
   return {
     document: {
@@ -447,7 +557,7 @@ export function syncRecipeIndex(options: SyncRecipeIndexOptions = {}): SyncRecip
             manifestPath: "index.json",
             field: "$",
             message:
-              "recipes/index.json is out of date with recipes/*/*/recipe.json manifests. Run `node --experimental-strip-types recipes/scripts/generate-index.ts` and recheck with `--check`.",
+              "index.json is out of date with recipe.json manifests. Regenerate with generate-index.ts and recheck with --check.",
           },
         ],
         document: built.document,
@@ -479,7 +589,7 @@ export function syncRecipeIndex(options: SyncRecipeIndexOptions = {}): SyncRecip
   };
 }
 
-function parseCliArgs(argv: readonly string[]): {
+export function parseCliArgs(argv: readonly string[]): {
   check: boolean;
   json: boolean;
   platformVersion?: string;
@@ -496,14 +606,26 @@ function parseCliArgs(argv: readonly string[]): {
       check = true;
     } else if (arg === "--json") {
       json = true;
-    } else if (arg === "--platform-version" && i + 1 < argv.length) {
-      platformVersion = argv[i + 1];
+    } else if (arg === "--platform-version") {
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith("--") || !SEMVER_PATTERN.test(next)) {
+        throw new Error(
+          `Invalid or missing value for --platform-version: ${JSON.stringify(next ?? "")}. Expected semver (e.g. 1.3.0).`,
+        );
+      }
+      platformVersion = next;
       i += 1;
-    } else if (arg === "--recipes-root" && i + 1 < argv.length) {
-      recipesRoot = argv[i + 1];
+    } else if (arg === "--recipes-root") {
+      const next = argv[i + 1];
+      if (next === undefined || next.length === 0 || next.startsWith("--")) {
+        throw new Error(
+          `Invalid or missing value for --recipes-root: ${JSON.stringify(next ?? "")}.`,
+        );
+      }
+      recipesRoot = next;
       i += 1;
     } else {
-      throw new Error(`Unknown or incomplete argument: ${arg}`);
+      throw new Error(`Unknown argument: ${arg}`);
     }
   }
 
@@ -516,27 +638,75 @@ function parseCliArgs(argv: readonly string[]): {
 }
 
 function runCli(): void {
+  const rawArgs = process.argv.slice(2);
+  const wantJsonOnError = rawArgs.includes("--json");
   let parsedArgs: ReturnType<typeof parseCliArgs>;
   try {
-    parsedArgs = parseCliArgs(process.argv.slice(2));
+    parsedArgs = parseCliArgs(rawArgs);
   } catch (error) {
-    process.stderr.write(
-      `Observed: ${error instanceof Error ? error.message : String(error)}\n` +
-        `Cause: invalid CLI arguments.\n` +
-        `Fix: pass optional --check, --json, --platform-version <semver>, or --recipes-root <dir>.\n` +
-        `Recheck: node --experimental-strip-types recipes/scripts/generate-index.ts --check\n`,
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (wantJsonOnError) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            formatVersion: 1,
+            ok: false,
+            recipeCount: 0,
+            changed: false,
+            issues: [{ manifestPath: "$cli", field: "args", message }],
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      process.stderr.write(
+        `Observed: ${message}\n` +
+          `Cause: invalid CLI arguments.\n` +
+          `Fix: pass optional --check, --json, --platform-version <semver>, or --recipes-root <dir>.\n` +
+          `Recheck: rerun generate-index.ts with valid flags.\n`,
+      );
+    }
     process.exitCode = 64;
     return;
   }
 
-  const result = syncRecipeIndex({
-    check: parsedArgs.check,
-    ...(parsedArgs.platformVersion !== undefined
-      ? { platformVersion: parsedArgs.platformVersion }
-      : {}),
-    ...(parsedArgs.recipesRoot !== undefined ? { recipesRoot: parsedArgs.recipesRoot } : {}),
-  });
+  let result: SyncRecipeIndexResult;
+  try {
+    result = syncRecipeIndex({
+      check: parsedArgs.check,
+      ...(parsedArgs.platformVersion !== undefined
+        ? { platformVersion: parsedArgs.platformVersion }
+        : {}),
+      ...(parsedArgs.recipesRoot !== undefined ? { recipesRoot: parsedArgs.recipesRoot } : {}),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (parsedArgs.json) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            formatVersion: 1,
+            ok: false,
+            recipeCount: 0,
+            changed: false,
+            issues: [{ manifestPath: "$fs", field: "io", message }],
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      process.stderr.write(
+        `Observed: ${message}\n` +
+          `Cause: failed to read recipe catalog or schema under the target recipes root.\n` +
+          `Fix: verify --recipes-root points to a directory containing schema/recipe.schema.json and readable index.json.\n` +
+          `Recheck: rerun generate-index.ts --check.\n`,
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
 
   if (parsedArgs.json) {
     process.stdout.write(
@@ -558,18 +728,16 @@ function runCli(): void {
       : result.changed
         ? "updated"
         : "already up to date";
-    process.stdout.write(
-      `recipes/index.json ${verb} (${result.recipeCount} recipes).\n`,
-    );
+    process.stdout.write(`index.json ${verb} (${result.recipeCount} recipes).\n`);
   } else {
     process.stderr.write(`Observed: ${result.issues.length} recipe catalog issue(s).\n`);
     for (const issue of result.issues) {
       process.stderr.write(`  - ${issue.manifestPath} [${issue.field}]: ${issue.message}\n`);
     }
     process.stderr.write(
-      `Cause: one or more recipe manifests failed validation or recipes/index.json drifted.\n` +
-        `Fix: fix any manifest errors above and run \`node --experimental-strip-types recipes/scripts/generate-index.ts\`.\n` +
-        `Recheck: node --experimental-strip-types recipes/scripts/generate-index.ts --check\n`,
+      `Cause: one or more recipe manifests failed validation or index.json drifted.\n` +
+        `Fix: fix any manifest errors above and regenerate index.json.\n` +
+        `Recheck: rerun generate-index.ts --check.\n`,
     );
   }
 
