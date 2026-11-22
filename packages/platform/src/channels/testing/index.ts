@@ -239,6 +239,12 @@ function assertNoLeak(payload: unknown, sensitive: readonly string[] | undefined
     }
     if (typeof v !== "object" || seen.has(v)) return;
     seen.add(v);
+    if (v instanceof Error) {
+      walk(v.name);
+      walk(v.message);
+      walk(v.stack);
+      walk((v as { cause?: unknown }).cause);
+    }
     if (v instanceof ArrayBuffer || (typeof SharedArrayBuffer === "function" && v instanceof SharedArrayBuffer)) {
       walk(new TextDecoder().decode(new Uint8Array(v)));
       return;
@@ -457,9 +463,9 @@ export async function runChannelAdapterConformance(
       }
       if (
         pulled.watermarkAt !== null &&
-        (typeof pulled.watermarkAt !== "string" || Number.isNaN(Date.parse(pulled.watermarkAt)))
+        (typeof pulled.watermarkAt !== "string" || !z.string().datetime({ offset: true }).safeParse(pulled.watermarkAt).success)
       ) {
-        fail("invalid_pull_watermark", "pullOrders().watermarkAt must be null or an ISO-8601 timestamp string.", loc("happyPullOrders"));
+        fail("invalid_pull_watermark", "pullOrders().watermarkAt must be null or an ISO-8601 timestamp string with offset.", loc("happyPullOrders"));
       }
       const ioAfter = readValidIo(pullH.readIoCount, loc("happyPullOrders"));
       const ioDelta = ioAfter - ioBefore;
@@ -527,15 +533,16 @@ export async function runChannelAdapterConformance(
           const fHandle = fh.readFaultLog();
           const fBefore = readFaultLog(fHandle).length;
           let threw = false;
+          let swallowedOut: unknown;
           try {
-            const out = await fh.adapter.pullOrders({ ...fh.input, signal });
-            rejectDeepProxy(out, loc(spec.name));
-            assertNoLeak(out, subject.sensitiveValues, loc(spec.name));
+            swallowedOut = await fh.adapter.pullOrders({ ...fh.input, signal });
           } catch (err) {
             threw = true;
             assertNoLeak(err, subject.sensitiveValues, loc(spec.name));
           }
           if (!threw) {
+            rejectDeepProxy(swallowedOut, loc(spec.name));
+            assertNoLeak(swallowedOut, subject.sensitiveValues, loc(spec.name));
             fail("pull_fault_swallowed", `pullOrders() must reject on ${spec.name} instead of swallowing the transport fault.`, loc(spec.name));
           }
           const fIoAfter = readValidIo(fh.readIoCount, loc(spec.name));

@@ -342,5 +342,47 @@ describe("@openlup/platform/channels/testing", () => {
         }),
       ]),
     ).rejects.toThrow(/CHANNEL_CONFORMANCE:invalid_pulled_unmapped/);
+
+    // 8. Pull fault swallowed with leaked secret cannot masquerade as a thrown error
+    await expect(
+      runChannelAdapterConformance(
+        [
+          buildValidSubject({
+            id: "swallow-and-leak-pull-fault",
+            pullCertification: {
+              ...buildValidSubject().pullCertification!,
+              http5xx: () => {
+                const fake = createScriptedChannelFake<{ pull: readonly NormalizedChannelOrder[] }>();
+                fake.enqueue("pull", { kind: "http-failure", status: 503 });
+                const base = makeAdapter(fake);
+                return {
+                  adapter: {
+                    ...base,
+                    pullOrders: async () => {
+                      try {
+                        await fake.invoke("pull");
+                      } catch {
+                        return {
+                          orders: [],
+                          unmapped: [{ vocabulary: "leak", externalOrderRef: null, detail: WEBHOOK_SECRET, payload: {} }],
+                          nextCursor: null,
+                          watermarkAt: null,
+                        };
+                      }
+                      return { orders: [], unmapped: [], nextCursor: null, watermarkAt: null };
+                    },
+                  },
+                  capabilities: CAPS,
+                  input: { connectionRef: "conn-1", channelExternalRef: null, since: null, cursor: null, limit: 10 },
+                  readIoCount: () => fake.calls.length,
+                  readFaultLog: () => fake.calls,
+                };
+              },
+            },
+          }),
+        ],
+        { mode: "full" },
+      ),
+    ).rejects.toThrow(/CHANNEL_CONFORMANCE:secret_leak/);
   });
 });

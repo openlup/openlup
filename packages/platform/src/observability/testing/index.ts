@@ -157,6 +157,25 @@ function rejectProxy(v: unknown, location: string): void {
   }
 }
 
+function rejectDeepProxy(root: unknown, location: string): void {
+  const seen = new WeakSet<object>();
+  const walk = (v: unknown): void => {
+    rejectProxy(v, location);
+    if (typeof v !== "object" || v === null || seen.has(v)) return;
+    seen.add(v);
+    if (Array.isArray(v)) {
+      for (const item of v) walk(item);
+      return;
+    }
+    for (const k of Reflect.ownKeys(v)) {
+      let prop: unknown;
+      try { prop = Reflect.get(v, k); } catch { continue; }
+      walk(prop);
+    }
+  };
+  walk(root);
+}
+
 function assertNoLeak(payload: unknown, sensitive: readonly string[] | undefined, location: string): void {
   if (!sensitive || sensitive.length === 0) return;
   const seen = new WeakSet<object>();
@@ -251,9 +270,9 @@ async function flushChecked(
   } catch {
     fail("flush_threw", "flush() must be fail-open and never throw.", location);
   }
-  rejectProxy(raw, location);
+  rejectDeepProxy(raw, location);
   const sentPayloads = harness.readSentPayloads();
-  rejectProxy(sentPayloads, location);
+  rejectDeepProxy(sentPayloads, location);
   if (!Array.isArray(sentPayloads)) {
     fail("invalid_sent_payloads", "readSentPayloads() must return an array.", location);
   }
