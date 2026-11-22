@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { captureCompatiblePostgresRows, PostgresTransferError, type CompatiblePostgresSnapshot } from "@openlup/platform/portability";
@@ -189,8 +189,6 @@ it.each(histories.map((history, index) => ({ history, profile: profiles[index], 
   }, postgresSetupTimeoutMs,
 );
 
-// Both code revisions run this same witness. The first run writes the actual
-// source capture, and the second run consumes its unchanged bytes.
 const parityProfiles = [
   { history: histories[0], profile: "bootstrap", shape: "beforePublicationCommands" },
   { history: histories[1], profile: "separate", shape: "beforeCheckoutAttemptLedger" },
@@ -219,26 +217,18 @@ it.each(parityProfiles)("compares real PostgreSQL 16 restore bytes for $shape", 
     stores.push(store);
     return store;
   };
-  const writer = process.env.OPENLUP_RESTORE_PARITY_WRITE;
-  const reader = process.env.OPENLUP_RESTORE_PARITY_READ;
   const lockMs: number[] = [];
   let peakHeap = process.memoryUsage().heapUsed;
   try {
     const target = await install("restore-parity-target");
     const fresh = await capture(target, "parity-target", true);
-    let bytes: string;
-    if (reader) {
-      bytes = readFileSync(join(reader, shape + ".json"), "utf8");
-    } else {
-      historicalRoot(root, history);
-      const source = await install("restore-parity-source", root);
-      const version = (await source.owner.query("SHOW server_version_num")).rows[0]!.server_version_num;
-      expect(Number(version)).toBeGreaterThanOrEqual(160000);
-      expect(Number(version)).toBeLessThan(170000);
-      await seed(source, history);
-      bytes = JSON.stringify(await capturePredecessor(source, fresh, history));
-      if (writer) writeFileSync(join(writer, shape + ".json"), bytes, { mode: 0o600, flag: "wx" });
-    }
+    historicalRoot(root, history);
+    const source = await install("restore-parity-source", root);
+    const version = (await source.owner.query("SHOW server_version_num")).rows[0]!.server_version_num;
+    expect(Number(version)).toBeGreaterThanOrEqual(160000);
+    expect(Number(version)).toBeLessThan(170000);
+    await seed(source, history);
+    const bytes = JSON.stringify(await capturePredecessor(source, fresh, history));
     const packet = JSON.parse(bytes) as ConnectedNativeStoreCapture;
     const before = await retainedTargetState(target);
     if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
@@ -282,15 +272,14 @@ it.each(parityProfiles)("compares real PostgreSQL 16 restore bytes for $shape", 
       })),
       elapsedMs: Math.round(performance.now() - started), peakHeapBytes: peakHeap, publicLockMs: lockMs.map(Math.round),
     });
-    const output = process.env.OPENLUP_RESTORE_PARITY_EVIDENCE;
-    if (output) appendFileSync(output, evidence + "\n", { mode: 0o600 });
-    else console.info("RESTORE_PARITY " + evidence);
+    console.info("RESTORE_PARITY " + evidence);
   } finally {
     try { await Promise.all(stores.map(store => store.close())); }
     finally { rmSync(root, { recursive: true, force: true }); }
   }
 }, postgresSetupTimeoutMs);
 
+// The appended-list import and replay are recorded as PR evidence.
 it.each(["bootstrap", "separate"] as const)("exercises a qualified-v2-only inventory append for %s", async profile => {
   const stores: Store[] = [];
   try {
@@ -325,21 +314,12 @@ it.each(["bootstrap", "separate"] as const)("exercises a qualified-v2-only inven
     expect(carriedRows(packet).map(row => [row.table, row.columns]))
       .toEqual(carriedRows(freshTarget).map(row => [row.table, row.columns]));
     const input = { owner: target.migrator, installation: target.installation, freshTarget, packet };
-    const replay = process.env.OPENLUP_RESTORE_APPEND_MODE === "appended";
-    expect(connectedStoreSourceShape(profile, pin, target.inventory)).toBe(replay ? "current" : "unsupported");
+    expect(connectedStoreSourceShape(profile, pin, target.inventory)).toBe("unsupported");
     const other = profile === "bootstrap" ? "separate" : "bootstrap";
     expect(connectedStoreSourceShape(other, pin, target.inventory)).toBe("unsupported");
-    if (replay) {
-      expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
-      expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
-      expect(carriedRows(await capture(target, "same-shape-restored"))).toEqual(carriedRows(packet));
-    } else {
-      await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({
-        code: "schema_conflict", remedy: "upgrade the source, then capture",
-      });
-      expect(carriedRows(await capture(target, "same-shape-pristine"))).toEqual(carriedRows(freshTarget));
-    }
-    const output = process.env.OPENLUP_RESTORE_APPEND_EVIDENCE;
-    if (output) appendFileSync(output, JSON.stringify({ profile, pin, replay }) + "\n", { mode: 0o600 });
+    await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({
+      code: "schema_conflict", remedy: "upgrade the source, then capture",
+    });
+    expect(carriedRows(await capture(target, "same-shape-pristine"))).toEqual(carriedRows(freshTarget));
   } finally { await Promise.all(stores.map(store => store.close())); }
 }, postgresSetupTimeoutMs);
