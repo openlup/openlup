@@ -197,12 +197,7 @@ export interface PgShimResult<T = unknown> {
     error: PgShimError | null;
     count?: number | null;
 }
-/** Minimal query surface we need from a pg client (Pool acquires a PoolClient per request). */
-export interface PgQueryExecutor {
-    query(text: string, values?: unknown[]): Promise<{
-        rows: Record<string, unknown>[];
-    }>;
-}
+export type { PgQueryExecutor } from "../kernel/index.js";
 export type Filter = {
     kind: "eq" | "gte" | "lte" | "gt";
     column: string;
@@ -454,4 +449,57 @@ export declare function createManagedJobRunCalls(options: ManagedJobRunOptions):
 /** Managed adapter for the semantic job-run port. */
 export declare function createSupabasePlatformJobRunLedger(client: PlatformJobSupabaseClient, options: SupabasePlatformJobRunLedgerOptions): PlatformJobRunLedgerPort;
 export {};
+```
+## dist/kernel/index.d.ts
+
+```ts
+export { BLOB_CAPABILITIES, DEFAULT_PLATFORM_BUNDLE, ENV_MISSING_CODE, PLATFORM_BUNDLE_DESCRIPTORS, PLATFORM_BUNDLE_IDS, getBundleDescriptor, isPlatformBundleId, platformEnvSchema, resolveBlobCapability, resolveBundleId, type BlobCapability, type PlatformBundleDescriptor, type PlatformBundleId, type PlatformBundleReadiness, type PlatformEnv, } from "./platformKernel.js";
+/** Minimal query surface for a host-owned PostgreSQL connection. */
+export interface PgQueryExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+```
+## dist/kernel/platformKernel.d.ts
+
+```ts
+import { z } from "zod";
+import { type PlatformBundleDescriptor as CorePlatformBundleDescriptor, type PlatformBundleReadiness, type PlatformEnvInput } from "@openlup/core/platform-runtime";
+/** The bundles a deployment can select with `PLATFORM_BUNDLE`. */
+export declare const PLATFORM_BUNDLE_IDS: readonly ["vercel-supabase", "node-supabase", "node-postgres"];
+export type PlatformBundleId = (typeof PLATFORM_BUNDLE_IDS)[number];
+/**
+ * Fallback used when `PLATFORM_BUNDLE` is absent or unknown during bundle resolution.
+ * Readiness still refuses an unknown nonempty `PLATFORM_BUNDLE` value.
+ * @deprecated The `"vercel-supabase"` default is scheduled to change in 2.0.0; configure `PLATFORM_BUNDLE` explicitly (for example `"node-postgres"`).
+ */
+export declare const DEFAULT_PLATFORM_BUNDLE: PlatformBundleId;
+export declare const isPlatformBundleId: import("@openlup/core/platform-runtime").PlatformBundleIdGuard<"vercel-supabase" | "node-supabase" | "node-postgres">;
+export type PlatformBundleDescriptor = CorePlatformBundleDescriptor & {
+    id: PlatformBundleId;
+};
+export type { PlatformBundleReadiness };
+/** The readiness code a bundle reports when a selected capability lacks its configuration. */
+export declare const ENV_MISSING_CODE = "OPENLUP_E_ENV_MISSING";
+/** The blob capabilities a deployment can select with `PLATFORM_BLOB`. */
+export declare const BLOB_CAPABILITIES: readonly ["filesystem", "s3", "supabase", "vercel-blob"];
+export type BlobCapability = (typeof BLOB_CAPABILITIES)[number];
+/**
+ * The blob capability in effect: a valid `PLATFORM_BLOB` selection, else the bundle's own. An
+ * invalid selection keeps the bundle's own here and is refused by readiness.
+ */
+export declare function resolveBlobCapability(descriptor: Pick<PlatformBundleDescriptor, "capabilities">, env: PlatformEnvInput): string;
+export declare const PLATFORM_BUNDLE_DESCRIPTORS: readonly PlatformBundleDescriptor[];
+export declare function getBundleDescriptor(id: PlatformBundleId): PlatformBundleDescriptor;
+export declare function resolveBundleId(env: PlatformEnvInput): PlatformBundleId;
+export declare const platformEnvSchema: z.ZodObject<{
+    APP_BASE_URL: z.ZodOptional<z.ZodString>;
+    PLATFORM_BUNDLE: z.ZodOptional<z.ZodEnum<{
+        "vercel-supabase": "vercel-supabase";
+        "node-supabase": "node-supabase";
+        "node-postgres": "node-postgres";
+    }>>;
+}, z.core.$strip>;
+export type PlatformEnv = z.infer<typeof platformEnvSchema>;
 ```

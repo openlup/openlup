@@ -56,7 +56,7 @@ it("validates the same corpus and digest in TS and PostgreSQL", async () => {
       const coverage = parsed.data;
       const result = await applyTaxCoverageRevision(source.owner, { expectedHead: null,
         document: { installationRef: `corpus-${index}`, accountRef: coverage.accountRef, actorRef, coverage } });
-      expect(result).toHaveProperty("coverage_digest",
+      expect(result).toHaveProperty("coverageDigest",
         digest(`["platform.tax.coverage-revision.v1",${canonicalCatalogDraftJson(coverage)}]`));
       expect(result).toHaveProperty("coverage", coverage);
     }
@@ -64,10 +64,11 @@ it("validates the same corpus and digest in TS and PostgreSQL", async () => {
 });
 
 it("refuses invalid caller references before serialization", async () => {
-  const query = vi.fn().mockRejectedValue(Object.assign(new Error("Invalid JSONB Unicode"), { code: "22P05" }));
+  const query = vi.fn().mockRejectedValue(Object.assign(new Error("Invalid JSONB Unicode"), { code: "22P02" }));
   const valid = proposal("valid", null);
   const cases = [
     [proposal("invalid\u0000revision", null), "/coverage/revision"],
+    [proposal("invalid\uD800revision", null), "/coverage/revision"],
     [{ ...valid, expectedHead: "\uD800" }, "/expectedRevision"],
     [{ ...valid, document: { ...valid.document, actorRef: "\uDFFF" } }, "/actorRef"],
     [proposal("invalid-declaration", null, [{ jurisdiction: "district\u0000", taxKind: "sale", status: "registered",
@@ -75,6 +76,8 @@ it("refuses invalid caller references before serialization", async () => {
   ] as const;
   for (const [input, field] of cases) expect(await applyTaxCoverageRevision({ query }, input)).toEqual(invalid(field));
   expect(query).not.toHaveBeenCalled();
+  expect(await applyTaxCoverageRevision({ query }, valid)).toEqual(invalid(""));
+  expect(query).toHaveBeenCalledOnce();
 });
 
 async function race(left: ReturnType<typeof proposal>, right: ReturnType<typeof proposal>) {
@@ -114,7 +117,9 @@ it("coverage_revision_append_and_restore", async () => {
   expect(virgin.filter(result => "code" in result)).toEqual([conflict]);
   const first = proposal("first", null, [registered]);
   const [a, b] = await race(first, first);
-  expect(a).toMatchObject({ revision: "first", sequence_no: 1, actor_ref: actorRef, previous_revision: null });
+  expect(a).toEqual({ ...scope, revision: "first", sequenceNo: 1, previousRevision: null, actorRef,
+    coverage: first.document.coverage, coverageDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    recordedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/u) });
   expect(b).toEqual(a);
   expect(await show()).toMatchObject({ observation: { state: "override", revision: "first", value: first.document.coverage } });
   expect(await applyTaxCoverageRevision(source.owner, proposal("different-first", null))).toEqual(conflict);
@@ -135,9 +140,9 @@ it("coverage_revision_append_and_restore", async () => {
   const prior = proposal("restore-prior", head, first.document.coverage.declarations);
   const empty = proposal("restore-undeclared", "restore-prior");
   const [rollback, sameRollback] = await race(prior, prior);
-  expect(rollback).toMatchObject({ coverage: prior.document.coverage, sequence_no: 3 });
+  expect(rollback).toMatchObject({ coverage: prior.document.coverage, sequenceNo: 3 });
   expect(sameRollback).toEqual(rollback);
-  expect(await applyTaxCoverageRevision(source.owner, empty)).toMatchObject({ coverage: empty.document.coverage, sequence_no: 4 });
+  expect(await applyTaxCoverageRevision(source.owner, empty)).toMatchObject({ coverage: empty.document.coverage, sequenceNo: 4 });
   const restoredAbsence = await read();
   expect(restoredAbsence).toEqual({ present: true, revision: "restore-undeclared", value: empty.document.coverage });
   const reconcile = (coverage: TaxCoverageV1) => reconcileTaxCoverage({

@@ -15,3 +15,8 @@ export {
   type PlatformBundleReadiness,
   type PlatformEnv,
 } from "./platformKernel.js";
+
+/** Minimal query surface for a host-owned PostgreSQL connection. */
+export interface PgQueryExecutor {
+  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
+}

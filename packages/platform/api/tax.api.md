@@ -146,27 +146,23 @@ export type { TaxCoverageRevision } from "./installedCoverage.js";
 ## dist/tax/installedCoverage.d.ts
 
 ```ts
+import type { PgQueryExecutor } from "../kernel/index.js";
 import type { TaxCoverageV1 } from "./contracts/index.js";
-interface Executor {
-    query(text: string, values?: unknown[]): Promise<{
-        rows: Record<string, unknown>[];
-    }>;
-}
 type Scope = Readonly<{
     installationRef: string;
     accountRef: string;
 }>;
 /** @experimental Stored coverage revision. The timestamp is UTC with microsecond precision. */
 export interface TaxCoverageRevision {
-    readonly installation_ref: string;
-    readonly account_ref: string;
+    readonly installationRef: string;
+    readonly accountRef: string;
     readonly revision: string;
-    readonly sequence_no: number;
-    readonly previous_revision: string | null;
+    readonly sequenceNo: number;
+    readonly previousRevision: string | null;
     readonly coverage: TaxCoverageV1;
-    readonly coverage_digest: string;
-    readonly actor_ref: string;
-    readonly recorded_at: string;
+    readonly coverageDigest: string;
+    readonly actorRef: string;
+    readonly recordedAt: string;
 }
 type ApplyInput = Readonly<{
     expectedHead: string | null;
@@ -182,12 +178,12 @@ type ApplyRefusal = Readonly<{
     remedy: string;
 }>;
 /** @experimental Append or replay one revision using a migration-owner executor in READ COMMITTED. */
-export declare function applyTaxCoverageRevision(ownerExecutor: Executor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal>;
+export declare function applyTaxCoverageRevision(ownerExecutor: PgQueryExecutor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal>;
 /** @experimental Bind the connected settings reader to a host-selected native installation and account. */
-export declare function bindTaxCoverageReader(db: Executor, scope: Scope): () => Promise<{
+export declare function bindTaxCoverageReader(db: PgQueryExecutor, scope: Scope): () => Promise<{
     readonly present: false;
-    readonly value?: undefined;
-    readonly revision?: undefined;
+    value?: undefined;
+    revision?: undefined;
 } | {
     readonly present: true;
     readonly value: {

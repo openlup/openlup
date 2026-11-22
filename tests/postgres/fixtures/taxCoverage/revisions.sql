@@ -1,6 +1,8 @@
 BEGIN;
-SELECT plan(19);
+SELECT plan(20);
 
+SELECT is((SELECT proconfig[1] FROM pg_catalog.pg_proc WHERE oid='public.tax_coverage_validate(jsonb)'::pg_catalog.regprocedure),
+  'search_path=pg_catalog, pg_temp', 'validator resolves catalogue types before temporary types');
 SELECT is((SELECT count(*) FROM public.tax_coverage_read_v1('store-a','account-a')), 0::bigint, 'starts with no revision');
 CREATE TEMP TABLE appended AS
 SELECT * FROM public.tax_coverage_append_v1('{

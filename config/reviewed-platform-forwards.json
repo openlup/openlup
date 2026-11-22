@@ -6730,7 +6730,7 @@
         "createdFunctions": [
           {
             "signature": "public.tax_coverage_validate(jsonb)",
-            "searchPath": "pg_catalog"
+            "searchPath": "pg_catalog, pg_temp"
           },
           {
             "signature": "public.tax_coverage_append_v1(jsonb)",
@@ -9888,12 +9888,12 @@
     },
     {
       "path": "db/platform/migrations/20261124235000_tax_coverage_revisions.sql",
-      "sha256": "744c3c1a7e4ec5a227a017ab867a44adace6f6ac9f06161342756e38f063434b",
+      "sha256": "b4b13b248eecb9cf113dcd60410e7bd101afcfa9c0e1dd763b8538f75768fcf3",
       "functions": [
         {
           "signature": "public.tax_coverage_validate(jsonb)",
           "beforeSha256": null,
-          "afterSha256": "f6bfa745f3f3a81133b5a871adb239ed41dc95b56b5ad6124e43470c4a9b2456"
+          "afterSha256": "94be386c89976b5335225d9bce5323d7bd5faa275ba6b65f8c065f9dd4dd8894"
         },
         {
           "signature": "public.tax_coverage_append_v1(jsonb)",

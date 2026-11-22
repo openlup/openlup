@@ -1,25 +1,22 @@
+import type { PgQueryExecutor } from "../kernel/index.js";
 import { taxCoverageV1Schema } from "./contracts/index.js";
 import type { TaxCoverageV1 } from "./contracts/index.js";
 import { object, schema } from "./contracts/decode.js";
 import { ref } from "./contracts/schemas.js";
 
-interface Executor {
-  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
-}
-
 type Scope = Readonly<{ installationRef: string; accountRef: string }>;
 
 /** @experimental Stored coverage revision. The timestamp is UTC with microsecond precision. */
 export interface TaxCoverageRevision {
-  readonly installation_ref: string;
-  readonly account_ref: string;
+  readonly installationRef: string;
+  readonly accountRef: string;
   readonly revision: string;
-  readonly sequence_no: number;
-  readonly previous_revision: string | null;
+  readonly sequenceNo: number;
+  readonly previousRevision: string | null;
   readonly coverage: TaxCoverageV1;
-  readonly coverage_digest: string;
-  readonly actor_ref: string;
-  readonly recorded_at: string;
+  readonly coverageDigest: string;
+  readonly actorRef: string;
+  readonly recordedAt: string;
 }
 
 type ApplyInput = Readonly<{
@@ -45,7 +42,7 @@ const invalidAppend = (field: string): ApplyRefusal =>
   ({ kind: "refused", code: "tax_invalid_input", field, remedy: invalidRemedy });
 
 /** @experimental Append or replay one revision using a migration-owner executor in READ COMMITTED. */
-export async function applyTaxCoverageRevision(ownerExecutor: Executor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal> {
+export async function applyTaxCoverageRevision(ownerExecutor: PgQueryExecutor, input: ApplyInput): Promise<TaxCoverageRevision | ApplyRefusal> {
   const { coverage, ...references } = input.document;
   const parsedReferences = appendReferences.safeParse({ ...references, expectedRevision: input.expectedHead });
   if (!parsedReferences.success) return invalidAppend(parsedReferences.error.field);
@@ -53,14 +50,15 @@ export async function applyTaxCoverageRevision(ownerExecutor: Executor, input: A
   if (!parsedCoverage.success) return invalidAppend("/coverage" + parsedCoverage.error.field);
   const request = { ...parsedReferences.data, coverage: parsedCoverage.data };
   try {
-    const { rows } = await ownerExecutor.query(`SELECT installation_ref, account_ref, revision, sequence_no,
-      previous_revision, coverage, coverage_digest, actor_ref,
-      to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at
+    const { rows } = await ownerExecutor.query(`SELECT installation_ref AS "installationRef", account_ref AS "accountRef",
+      revision, sequence_no AS "sequenceNo", previous_revision AS "previousRevision", coverage,
+      coverage_digest AS "coverageDigest", actor_ref AS "actorRef",
+      to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "recordedAt"
       FROM public.tax_coverage_append_v1($1::jsonb)`, [JSON.stringify(request)]);
     if (!rows[0]) throw new Error("Coverage append returned no revision.");
     return rows[0] as unknown as TaxCoverageRevision;
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "22P05")
+    if (error instanceof Error && "code" in error && (error.code === "22P05" || error.code === "22P02"))
       return invalidAppend("");
     if (!(error instanceof Error && "code" in error && error.code === "22023"
       && "detail" in error && typeof error.detail === "string")) throw error;
@@ -72,14 +70,13 @@ export async function applyTaxCoverageRevision(ownerExecutor: Executor, input: A
 }
 
 /** @experimental Bind the connected settings reader to a host-selected native installation and account. */
-export function bindTaxCoverageReader(db: Executor, scope: Scope) {
+export function bindTaxCoverageReader(db: PgQueryExecutor, scope: Scope) {
   const installationRef = ref(scope.installationRef, "/installationRef");
   const accountRef = ref(scope.accountRef, "/accountRef");
   return async () => {
     const { rows } = await db.query(`SELECT * FROM public.tax_coverage_read_v1($1::text,$2::text)
       ORDER BY sequence_no DESC LIMIT 1`, [installationRef, accountRef]).catch((error: unknown) => {
-      // A statement-level undefined function means this database lacks the reader.
-      if (error instanceof Error && "code" in error && error.code === "42883" && !("where" in error && error.where)) {
+      if (error instanceof Error && "code" in error && (error.code === "42883" || error.code === "42P01")) {
         throw Object.assign(new Error("Install the native tax coverage reader.", { cause: error }), { code: "tax_coverage_reader_unbound" });
       }
       throw error;

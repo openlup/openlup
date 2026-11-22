@@ -179,13 +179,21 @@ it("gives a bound native coverage reader connection guidance", async () => {
   expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
   expect(await showSetting({ key }, { [key]: async () => ({ refusal: code }) })).toEqual(connectionRefusal);
   expect(query).toHaveBeenCalledOnce();
-  query.mockRejectedValueOnce(Object.assign(new Error("Missing function inside the installed reader"), {
-    code: "42883", where: "PL/pgSQL function tax_coverage_read_v1(text,text)",
-  }));
-  expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
-  expect(await showSetting({ key }, { [key]: async () => ({ refusal: "tax_coverage_reader_unbound" }) })).toMatchObject({
+  for (const sqlstate of ["28P01", "42501"]) {
+    query.mockRejectedValueOnce(Object.assign(new Error("Reader access failure"), { code: sqlstate }));
+    expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
+  }
+  const missingCapability = {
     refusal: { code, remediation: { action: expect.stringContaining("Use a qualified native PostgreSQL installation") } },
-  });
+  };
+  for (const sqlstate of ["42883", "42P01"]) {
+    query.mockRejectedValueOnce(Object.assign(new Error("Missing database object in the installed reader"), {
+      code: sqlstate, where: "PL/pgSQL function tax_coverage_read_v1(text,text)",
+    }));
+    expect(await showSetting({ key }, { [key]: reader })).toMatchObject(missingCapability);
+  }
+  expect(await showSetting({ key }, { [key]: async () => ({ refusal: "tax_coverage_reader_unbound" }) }))
+    .toMatchObject(missingCapability);
 });
 
 describe("settings goal search", () => {

@@ -3333,10 +3333,11 @@ migration-owner executor in READ COMMITTED and pass the selected installation
 and account plus the authenticated operator's opaque reference.
 
 ```ts
+import type { PgQueryExecutor } from "@openlup/platform/kernel";
 import { applyTaxCoverageRevision } from "@openlup/platform/tax";
 import type { TaxCoverageV1 } from "@openlup/platform/tax/contracts";
 
-declare const ownerExecutor: Parameters<typeof applyTaxCoverageRevision>[0];
+declare const ownerExecutor: PgQueryExecutor;
 declare const installationRef: string, accountRef: string, actorRef: string;
 declare const declarations: TaxCoverageV1["declarations"];
 
@@ -3350,6 +3351,8 @@ const result = await applyTaxCoverageRevision(ownerExecutor, {
 ```
 
 Use `null` for the first append and the last observed revision for a successor.
+A successful result carries `revision`, `previousRevision`, `sequenceNo`,
+`coverageDigest` and `recordedAt`. Use its `revision` as the next `expectedHead`.
 If the response is lost, replay the original document with its original expected
 head. On a conflict, read the current head and submit a new revision. To roll
 back, keep the current head as the expectation and choose a fresh revision.

@@ -14,7 +14,7 @@ CREATE TABLE public.tax_coverage_revisions (
 );
 
 CREATE FUNCTION public.tax_coverage_validate(p_coverage jsonb)
-RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   v_entry jsonb;
   v_effective jsonb;

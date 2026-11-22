@@ -186,7 +186,7 @@ export const PLATFORM_MODULE_GRAPH = {
   "channels/server": { values: ["channels", "bff", "inventory"], types: ["http"] },
   "company-identity": { contracts: true, values: [], types: [] },
   "company-identity/server": { values: ["company-identity"], types: ["company-identity/contracts", "http", "bff"] },
-  tax: { contracts: true, values: ["catalog/contracts"], types: [] },
+  tax: { contracts: true, values: ["catalog/contracts"], types: ["kernel"] },
   "market-packs": { values: [], types: [] },
   lifecycle: { values: [], types: [] },
   portability: { values: [], types: [] },

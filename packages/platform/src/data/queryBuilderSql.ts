@@ -20,10 +20,7 @@ export interface PgShimResult<T = unknown> {
   count?: number | null;
 }
 
-/** Minimal query surface we need from a pg client (Pool acquires a PoolClient per request). */
-export interface PgQueryExecutor {
-  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
-}
+export type { PgQueryExecutor } from "../kernel/index.js";
 
 export type Filter =
   | { kind: "eq" | "gte" | "lte" | "gt"; column: string; value: unknown }

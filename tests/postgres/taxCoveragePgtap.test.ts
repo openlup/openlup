@@ -26,7 +26,7 @@ it("checks the append transcript and effective service role grants on the native
     const lines = results.flatMap(result => result.rows.flatMap((row: Record<string, unknown>) =>
       Object.values(row).filter((value): value is string => typeof value === "string")));
     expect(lines.filter(line => /^(?:not ok|# Looks like)/u.test(line))).toEqual([]);
-    expect(lines.filter(line => /^ok \d+/u.test(line))).toHaveLength(19);
+    expect(lines.filter(line => /^ok \d+/u.test(line))).toHaveLength(20);
   } finally { await db.query("ROLLBACK"); }
 });
 
