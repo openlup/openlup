@@ -42,7 +42,7 @@ function refuse(code: TaxRefusal["code"], field: string, remedy: string): TaxRef
   return { kind: "refused", code, field, remedy };
 }
 
-function matchesDigest(tag: DigestTag, document: unknown, digest: string): boolean {
+export function matchesDigest(tag: DigestTag, document: unknown, digest: string): boolean {
   try { return taxDigest(tag, document) === digest; }
   catch { return false; }
 }
@@ -138,10 +138,17 @@ function verifyEvidenceBindings(
   if (mismatch) return mismatch;
 
   const lines = new Map(input.lines.map(item => [item.lineKey, item.assignmentRef]));
+  const providerLines = evidence.providerLines && new Map(evidence.providerLines.map(row => [row.lineKey, row.providerLineRef]));
+  if (providerLines && (providerLines.size !== lines.size || [...lines.keys()].some(key => !providerLines.has(key)))) {
+    return refuse("tax_reference_conflict", "/evidence/providerLines", "Reconcile the provider lines with the original quote.");
+  }
   const buckets = new Map(input.delivery.map(item => [item.bucketKey, item.assignmentRef]));
   for (const [index, row] of evidence.positions.tax.entries()) {
     const { cell: { target }, resolution, ruleRef } = row;
     const path = "/evidence/positions/tax/" + index;
+    if (providerLines && target.kind === "line" && row.providerLineRef !== undefined && row.providerLineRef !== providerLines.get(target.key)) {
+      return refuse("tax_reference_conflict", path + "/providerLineRef", "Reconcile the provider line with the original calculation.");
+    }
     const assignment = (target.kind === "line" ? lines : buckets).get(target.key);
     if (assignment !== resolution.assignmentRef) {
       return refuse("tax_reference_conflict", path + "/resolution/assignmentRef", "Use the original component's tax assignment.");
@@ -167,18 +174,25 @@ function verifyQuoteBindings(request: TaxQuoteRequestV1): TaxRefusal | undefined
   if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
 }
 
+function verifyTaxFiscalValidityRequest(request: TaxFiscalValidityRequestV1): TaxRefusal | undefined {
+  const document = fiscalValidityDocumentSchema.safeParse(request);
+  if (!document.success) return refuse(document.error.code, document.error.field, document.error.message);
+  const { original, evidence, evidenceDigest, current } = document.data;
+  const mismatch = verifyInputDigest(original, "/original") ?? verifyEvidenceDigests(original, evidence, evidenceDigest);
+  if (mismatch) return mismatch;
+  for (const key of ["adapter", "adapterVersion", "accountRef", "mode"] as const) {
+    if (current.scope[key] !== original.input.scope[key]) {
+      return refuse("tax_scope_mismatch", "/current/scope/" + key, "Use the original quote's scope for the charge-time input.");
+    }
+  }
+  const parsed = taxFiscalValidityRequestV1Schema.safeParse(document.data);
+  if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
+  return verifyEvidenceBindings(original, evidence);
+}
+
 /** Verify the quote or fiscal-validity digests before returning binding repair advice. */
 export function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined {
-  if ("original" in request) {
-    const document = fiscalValidityDocumentSchema.safeParse(request);
-    if (!document.success) return refuse(document.error.code, document.error.field, document.error.message);
-    const { original, evidence, evidenceDigest } = document.data;
-    const mismatch = verifyInputDigest(original, "/original") ?? verifyEvidenceDigests(original, evidence, evidenceDigest);
-    if (mismatch) return mismatch;
-    const parsed = taxFiscalValidityRequestV1Schema.safeParse(document.data);
-    if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
-    return verifyEvidenceBindings(original, evidence);
-  }
+  if (request && typeof request === "object" && "original" in request) return verifyTaxFiscalValidityRequest(request);
   const checked = checkedQuoteRequest(request);
   return "kind" in checked ? checked : verifyQuoteBindings(checked);
 }

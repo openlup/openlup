@@ -1763,7 +1763,7 @@
       "key": "tax.adapter",
       "domain": "tax",
       "kind": "code",
-      "goal": "Choose the tax calculation adapter bound to TaxCalculationPort in application composition.",
+      "goal": "Choose localRateTable or the opt-in stripeTax adapter bound to TaxCalculationPort in application composition.",
       "schemaVersion": 1,
       "examples": [],
       "fallback": null,
@@ -1786,6 +1786,41 @@
       "runtime": {
         "level": "read-only",
         "reason": "Change the binding in application composition and qualify it with the offline conformance kit."
+      },
+      "change": {
+        "reference": "@openlup/platform README, Tax calculation"
+      },
+      "schema": null,
+      "previewSchema": null,
+      "rules": []
+    },
+    {
+      "key": "tax.classMap",
+      "domain": "tax",
+      "kind": "code",
+      "goal": "Map application tax classes to provider tax codes in the versioned market pack.",
+      "schemaVersion": 1,
+      "examples": [],
+      "fallback": null,
+      "absentMeans": {
+        "description": "An unmapped class refuses the quote before provider I/O.",
+        "source": "Application market pack",
+        "value": null
+      },
+      "defaultBasis": {
+        "kind": "neutral"
+      },
+      "whyThisDefault": "Each market pack owns the mapping for its catalogue and provider.",
+      "effect": {
+        "appliesTo": "New evaluations use the provider code for each frozen tax class.",
+        "frozenOn": [
+          "Existing receipts retain their class-map revision and calculation evidence."
+        ],
+        "impact": "money"
+      },
+      "runtime": {
+        "level": "read-only",
+        "reason": "Version the taxCodes mapping and classMapRevision passed in the adapter's market pack."
       },
       "change": {
         "reference": "@openlup/platform README, Tax calculation"
@@ -1841,6 +1876,7 @@
     "checkout.offerAdmission": "offer policy, offer version, checkout admission, quote acceptance",
     "checkout.resumeWindowMinutes": "checkout resume window, open order continuation, unpaid order resume, duplicate checkout guard",
     "tax.adapter": "exclusive tax, tax calculation port, tax adapter binding, tax scope",
+    "tax.classMap": "tax class map, provider tax code, market pack, class-map revision",
     "tax.localRateTable": "local tax rules, jurisdiction, tax class, effective interval, rate, exemption, fixed fee, legal basis, rounding, digest",
     "market.fiscalProfile": "fiscal jurisdiction, tax category, VAT rate, basis points, statutory citation, inclusive VAT",
     "market.settlementProfile": "settlement currency, settlement region, commerce settings mirror, market profile",

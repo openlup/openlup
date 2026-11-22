@@ -21,7 +21,7 @@ export interface TaxConformanceSubjectV1 {
    * Open an isolated offline fixture. Clock cases supply the next charge instant and current input through advance.
    * The fee fixture uses a free delivery bucket and a 25-minor-unit fee with refund rule ref "refund-a", revision "1".
    * Posting fixtures use one taxable position on 100 minor units with zero tax and no fee, fully eligible for reversal.
-   * Positive reversal scenarios use declared modes. The partial-then-full scenario requires both amount and full.
+   * Positive reversal scenarios use declared modes. The partial-then-full scenario uses lines or amount together with full.
    * Report cumulative side effect counts, including unsuccessful calls that dispatched an effect.
    */
   open(caseId: TaxConformanceCaseV1): Promise<{
@@ -51,6 +51,7 @@ function checkEffects(assert: Assert, fixture: Fixture, commits = 0, reversals =
 
 function checkRefusal(assert: Assert, result: Result, code: TaxRefusal["code"]) {
   assert(result.kind === "refused" && result.code === code, "refusal " + code);
+  if (code === "tax_reference_conflict") assert(!Object.hasOwn(result, "expected"), "integrity refusal supplies no repair value");
 }
 
 function checkRejectedCoverage(assert: Assert, request: TaxQuoteRequestV1, result: TaxQuoteResultV1) {
@@ -93,6 +94,10 @@ async function checkValidity(assert: Assert, caseId: TaxConformanceCaseV1, fixtu
     if (proof.kind === "unavailable") assert(proof.effect === "none", "unavailable validity is read-only");
     return;
   }
+  if (fixture.port.capabilities().validity !== "read_only") {
+    assert(proof.kind === "unavailable" && proof.effect === "none", "unsupported read-only validity has no effect");
+    return;
+  }
   const changed = caseId === "rate_change";
   assert(changed ? chargeAt < evidence.expiresAt : chargeAt >= evidence.expiresAt,
     changed ? "fixture changes rates before expiry" : "fixture advances past calculation expiry");
@@ -118,17 +123,18 @@ async function checkValidity(assert: Assert, caseId: TaxConformanceCaseV1, fixtu
 async function checkPosting(assert: Assert, caseId: TaxConformanceCaseV1, fixture: Fixture, final: Final) {
   const { port, request } = fixture;
   const { posting, reversals, recovery } = port.capabilities();
-  if (posting === "provider" && caseId === "partial_then_full"
-    && !(reversals.includes("amount") && reversals.includes("full"))) return;
+  const partialMode = reversals.includes("lines") ? "lines" : reversals.includes("amount") ? "amount" : undefined;
+  if (posting === "provider" && caseId === "partial_then_full" && !(partialMode && reversals.includes("full"))) return;
   const commit: TaxCommitRequestV1 = { calculationRef: calculationRef(final), transactionRef: "sale-a",
     capturedAt: final.evidence.calculatedAt, postedAt: final.evidence.calculatedAt, captureEvidenceRef: "capture-a", intent: "apply" };
   const [position] = final.evidence.positions.tax;
   assert(final.evidence.positions.tax.length === 1 && final.money.payableMinor === 100
     && final.money.netTotal === 100, "posting fixture has a single fully refundable 100-minor-unit position");
+  const originalPositionRef = position.providerLineRef ?? position.positionRef;
   function reversal(originalRef: string, fromMinor: number, toMinor: number, mode: TaxReverseRequestV1["mode"]): TaxReverseRequestV1 {
     const requestFields = { originalRef, scope: request.input.scope, currency: request.input.currency, fromMinor, toMinor,
       reversalRef: "reversal-" + fromMinor, refundEvidenceRef: "refund-" + toMinor, intent: "apply" as const,
-      positions: [{ originalPositionRef: position.positionRef, netDeltaMinor: fromMinor - toMinor, taxDeltaMinor: 0, feeDeltaMinor: 0 }] };
+      positions: [{ originalPositionRef, netDeltaMinor: fromMinor - toMinor, taxDeltaMinor: 0, feeDeltaMinor: 0 }] };
     return mode === "amount" ? { ...requestFields, mode, amountMinor: toMinor - fromMinor } : { ...requestFields, mode };
   }
   const conflictingCommit = { ...commit, captureEvidenceRef: "capture-b" };
@@ -150,7 +156,7 @@ async function checkPosting(assert: Assert, caseId: TaxConformanceCaseV1, fixtur
   }
 
   assert(posted.kind === "committed" && posted.providerTransactionRef.length > 0 && posted.positions.length === 1
-    && posted.positions[0].originalPositionRef === position.positionRef && posted.positions[0].postedPositionRef.length > 0,
+    && posted.positions[0].originalPositionRef === originalPositionRef && posted.positions[0].postedPositionRef.length > 0,
   "posting returns the original-to-posted position mapping");
   checkEffects(assert, fixture, 1);
   if (caseId !== "partial_then_full") {
@@ -174,7 +180,7 @@ async function checkPosting(assert: Assert, caseId: TaxConformanceCaseV1, fixtur
     return;
   }
 
-  const partial = reversal(posted.providerTransactionRef, 0, 40, "amount");
+  const partial = reversal(posted.providerTransactionRef, 0, 40, partialMode!);
   const first = await port.reverse(partial);
   assert(first.kind === "reversed" && first.providerReversalRef.length > 0
     && isDeepStrictEqual(first.positions, partial.positions), "partial reversal returns exactly the reserved 40");

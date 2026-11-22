@@ -54,7 +54,7 @@ export type TaxQuoteRequestV1 = Readonly<{ key: string; inputDigest: string; inp
  *   policyRevision, classMapRevision, coverage, tax, fees }`. Use the coverage
  *   vector for `coverage`, the tax rows with `resolutionDigest` and
  *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
- *   This payload excludes the request key, calculation ref, times and expiry.
+ *   This payload excludes the request key, calculation ref, provider line IDs, times and expiry.
  * - `platform.tax.evidence.v1` binds this whole evidence object.
  *
  * Supply one metadata row per emitted assessment, including zero amounts.
@@ -66,6 +66,8 @@ export type TaxCalculationEvidenceV1 = Readonly<{
   scope: TaxScopeV1; calculationRef: string; status: "final" | "estimate"; calculatedAt: string;
   expiresAt: string; taxDate: string; destinationDigest: string; shipFromRef: string; inputDigest: string;
   policyRevision: string; classMapRevision: string; coverage: CoverageEvidence; fiscalDigest: string;
+  /** Complete verified merchandise line IDs for reporting, including lines without assessments. */
+  providerLines?: List<Readonly<{ lineKey: string; providerLineRef: string }>>;
   positions: Readonly<{ tax: List<Assessed>; fees: List<Fee> }>;
 }>;
 type QuoteSuccess<K extends TaxCalculationEvidenceV1["status"]> = Readonly<{
@@ -100,7 +102,9 @@ export type TaxCapabilitiesV1 = Readonly<{ scope: TaxScopeV1; markets: List<stri
   /** Inclusive bases are not supported by this contract version. */
   bases: readonly ["exclusive"]; sourcing: List<Sourcing>;
   evidence: Readonly<{ lines: boolean; delivery: boolean; fees: boolean }>;
-  registrations: "effective_intervals" | "unsupported"; validity: "read_only" | "unsupported";
+  registrations: "effective_intervals" | "unsupported";
+  /** Recalculation uses a fresh quote and leaves the validity read effect-free. */
+  validity: "read_only" | "unsupported" | "probe_by_recalculation";
   calculationLifetimeMs: number; posting: "provider" | "unsupported"; reversals: List<"full" | "lines" | "amount">;
   recovery: List<"commit" | "reverse"> }>;
 

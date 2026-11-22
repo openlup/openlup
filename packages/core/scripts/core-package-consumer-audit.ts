@@ -32,9 +32,11 @@ type AuditInput = {
   packFiles: string[];
 };
 
-// Use the owner-approved adapter names from scripts/public-ci-neutrality.mjs.
-const documentedAdapters = [
-  ["payments", ["str" + "ipe", "tp" + "ay"]],
+// Keep this package-local list in parity with the repository neutrality policy.
+const firstPaymentAdapter = "str" + "ipe";
+export const documentedAdapters = [
+  ["payments", [firstPaymentAdapter, "tp" + "ay"]],
+  ["tax", [firstPaymentAdapter]],
   ["fulfillment", ["omni" + "pack"]],
   ["communications", ["res" + "end", "kla" + "viyo"]],
 ] as const;
@@ -68,6 +70,7 @@ const extensionlessTextPackFiles = new Set(["LICENSE"]);
 const packagedAdapterReference = new RegExp([
   // Released subpaths are inline code; generated dist references end their line.
   "(?<=`)(?:@openlup/platform/)?(?:" + adapterSubpaths + ")(?=`)",
+  "^(?:Added|Removed) package subpath `\\./(?:" + adapterSubpaths + ")`\\.$",
   // Mask only the directory so the file name itself remains subject to the audit.
   String.raw`(?<= )dist/(?:${adapterSubpaths})(?=/[A-Za-z0-9-]+(?:\.[A-Za-z0-9]+)*(?:\n|(?![\s\S])))`,
   `^### \`packages/platform/api/(?:${adapterReports})\\.api\\.md\`$`,
