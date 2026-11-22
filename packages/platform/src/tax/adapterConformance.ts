@@ -81,7 +81,7 @@ async function checkValidity(assert: Assert, caseId: TaxConformanceCaseV1, fixtu
   checkInstant(assert, chargeAt, "/chargeAt");
   const { evidence, evidenceDigest } = final;
   const proof = await fixture.port.readFiscalValidity({ ...current, original: fixture.request, evidence, evidenceDigest });
-  if (proof.kind === "changed" || proof.kind === "unchanged") {
+  if (proof.kind !== "unavailable") {
     const { observedAt, effective, dispatchBefore } = proof.proof;
     checkInstant(assert, observedAt, "/proof/observedAt");
     checkInstant(assert, effective?.from, "/proof/effective/from");
@@ -92,7 +92,6 @@ async function checkValidity(assert: Assert, caseId: TaxConformanceCaseV1, fixtu
     assert(!isDeepStrictEqual(current.current.scope, fixture.request.input.scope), "fixture uses another scope");
     assert(proof.kind !== "unchanged", "another scope cannot establish unchanged validity");
     if (proof.kind === "unavailable") assert(proof.effect === "none", "unavailable validity is read-only");
-    if (proof.kind === "refused") assert(!Object.hasOwn(proof, "expected"), "scope refusal supplies no repair value");
     return;
   }
   if (fixture.port.capabilities().validity !== "read_only") {

@@ -360,7 +360,7 @@ type FiscalProof = Readonly<{
 export type TaxFiscalValidityResultV1 = Readonly<{
     kind: "unchanged" | "changed";
     proof: FiscalProof;
-}> | TaxRefusal | TaxUnavailable;
+}> | TaxUnavailable;
 export type TaxCalculationRefV1 = Readonly<{
     scope: TaxScopeV1;
     ref: string;

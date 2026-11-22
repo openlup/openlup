@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareTaxRecalculationProbe, makeTaxQuoteRequest, verifyTaxQuoteResult } from "../../../src/tax/index.js";
+import { compareTaxRecalculationProbe, makeTaxQuoteRequest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "../../../src/tax/index.js";
 import { taxDigest } from "../../../src/tax/digest.js";
 import type { TaxReverseRequestV1 } from "../../../src/tax/contracts/index.js";
 import { date, later } from "../fixtures.js";
@@ -176,7 +176,7 @@ describe("reporting lifecycle", () => {
 });
 
 describe("retry validity probe", () => {
-  it("refuses corrupted original evidence before scope and refuses a verified foreign scope without provider calls", async () => {
+  it("diagnoses invalid fiscal bindings before repair advice and leaves adapter validity unavailable without provider calls", async () => {
     const f = lifecycleFixture({ single: true });
     const port = f.open();
     const original = f.request();
@@ -186,13 +186,22 @@ describe("retry validity probe", () => {
     const scope = { ...original.input.scope, accountRef: "other-account" };
     const current = { ...original.input, taxDate: chargeAt, scope, coverage: { ...original.input.coverage, accountRef: scope.accountRef } };
     const request = { original, evidence: result.evidence, evidenceDigest: result.evidenceDigest, chargeAt, current };
-    const forged = await port.readFiscalValidity({ ...request, evidenceDigest: "0".repeat(64) });
-    expectIntegrityRefusal(forged);
-    expect(forged).toMatchObject({ field: "/evidenceDigest" });
-    expectIntegrityRefusal(await port.readFiscalValidity({ ...request, evidence: { ...result.evidence, requestKey: "" } }), "tax_invalid_input");
-    const foreign = await port.readFiscalValidity({ ...request, chargeAt: later });
-    expectIntegrityRefusal(foreign, "tax_scope_mismatch");
-    expect(foreign).toMatchObject({ field: "/current/scope/accountRef" });
+    const forged = { ...request, evidenceDigest: "0".repeat(64) };
+    const malformed = { ...request, evidence: { ...result.evidence, requestKey: "" } };
+    const foreign = { ...request, chargeAt: later };
+    const cases = [
+      [forged, "tax_reference_conflict", "/evidenceDigest"],
+      [malformed, "tax_invalid_input", "/evidence/requestKey"],
+      [foreign, "tax_scope_mismatch", "/current/scope/accountRef"],
+    ] as const;
+    for (const [input, code, field] of cases) {
+      const diagnostic = verifyTaxQuoteRequest(input);
+      expectIntegrityRefusal(diagnostic, code);
+      expect(diagnostic).toMatchObject({ field });
+      expect(await port.readFiscalValidity(input)).toEqual({
+        kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none",
+      });
+    }
     expect(f.client.calculations.create).toHaveBeenCalledTimes(1);
     expect(f.client.registrations.list).toHaveBeenCalledTimes(1);
     expect(f.client.calculations.retrieve).not.toHaveBeenCalled();

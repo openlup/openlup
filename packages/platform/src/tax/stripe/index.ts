@@ -1,11 +1,15 @@
 import { taxCloseInputV1Schema, TAX_CALCULATION_CONTRACT_VERSION } from "../contracts/index.js";
-import type { TaxCalculationPortV1 } from "../contracts/index.js";
+import type { TaxCalculationPortV1, TaxUnavailable } from "../contracts/index.js";
 import { invalid } from "../contracts/decode.js";
 import { ref, scope } from "../contracts/schemas.js";
-import { verifyTaxFiscalValidityRequest } from "../digest.js";
+import { verifyTaxQuoteRequest } from "../digest.js";
 import type { Client, Effects, StripeQuoteMarketPack } from "./effects.js";
 import { quoteStripeTax } from "./quote.js";
 import { assertClientScope, assertScope, commit, refuseError, reverse } from "./transactions.js";
+
+const fiscalValidityUnavailable = (): TaxUnavailable => ({
+  kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none",
+});
 
 /** Host-owned dependencies for one qualified account, mode, market and currency.
  * @beta
@@ -52,8 +56,8 @@ export function createStripeTaxAdapter(options: StripeTaxAdapterOptions): TaxCal
     }),
     quote: request => quoteStripeTax(pinned, request),
     async readFiscalValidity(request) {
-      return verifyTaxFiscalValidityRequest(request, pack.scope)
-        ?? { kind: "unavailable", code: "tax_fiscal_validity_unavailable", effect: "none" };
+      if (verifyTaxQuoteRequest(request)) return fiscalValidityUnavailable();
+      return fiscalValidityUnavailable();
     },
     async closeCalculation(ref, reason, key) {
       try {
