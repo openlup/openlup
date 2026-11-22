@@ -131,6 +131,9 @@ it.each([
     installation,
     packet,
     freshTarget,
-  })).rejects.toMatchObject({ code: "schema_conflict", remedy: "upgrade the source, then capture" });
+  })).rejects.toMatchObject({
+    code: "schema_conflict",
+    remedy: "upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile",
+  });
   expect(connect).not.toHaveBeenCalled();
 });

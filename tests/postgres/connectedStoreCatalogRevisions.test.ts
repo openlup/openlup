@@ -547,10 +547,13 @@ it("refuses a retyped retained column and an unknown inventory with a recapture 
   table.columns.find(column => column.name === "normalized_value")!.type = "character varying";
   rehash(capture);
   await expect(restore(target.owner, capture)).rejects.toMatchObject({
-    code: "schema_conflict", table: "catalog_sku_identifiers", remedy: "upgrade the source, then capture",
+    code: "schema_conflict",
+    table: "catalog_sku_identifiers",
+    remedy: "upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile",
   });
   await expect(restore(target.owner, repin(packet, "a".repeat(64)))).rejects.toMatchObject({
-    code: "schema_conflict", remedy: "upgrade the source, then capture",
+    code: "schema_conflict",
+    remedy: "upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile",
   });
 }, 105_000);
 

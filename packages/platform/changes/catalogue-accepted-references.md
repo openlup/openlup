@@ -7,8 +7,6 @@ and incomplete evidence while archive remains unavailable.
 
 Migration: connected-store restore admits only the target's current inventory.
 An earlier capture or a source whose column was dropped or retyped is refused
-with `schema_conflict`. Upgrade the source, within its installed profile, to
-the migration level of the OpenLup version doing the restore, and restore into
-a pristine target that this version installed with the same qualified profile.
-Then capture the source again. If no such target can be provisioned,
-connected-store restore is unavailable for that pair.
+with `schema_conflict`. The remedy is
+`upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.

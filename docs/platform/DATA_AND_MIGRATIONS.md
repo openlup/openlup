@@ -524,12 +524,10 @@ policy.
 
 Connected-store restore admits only a packet captured on the target's exact
 current qualified inventory. Any other inventory, including earlier releases
-and unreleased states, refuses with `schema_conflict`. Upgrade the source,
-within its installed profile, to the migration level of the OpenLup version
-doing the restore, and restore into a pristine target that this version
-installed with the same qualified profile. Then capture the source again. If
-no such target can be provisioned, connected-store restore is unavailable for
-that pair. Each release cut decides whether the previous release
+and unreleased states, refuses with `schema_conflict`. The remedy is
+`upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
+Each release cut decides whether the previous release
 is admitted, with one general additive conversion keyed on that release's tables
 and columns, or documents its refusal. A migration adds no
 restore pin of its own. A migration that adds a captured table or a nullable
@@ -2545,13 +2543,9 @@ installed non-system definer. Preserve the intended trusted schemas when
 moving `pg_temp` to the end. For a missing or empty path, review and set the
 trusted schema list before appending `pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
-If a retained-store packet has an unknown or mismatched inventory, use a
-verified capture from the target's exact migration level and qualified
-installation profile. Upgrade the source, within its installed profile, to the
-migration level of the OpenLup version doing the restore, and restore into a
-pristine target that this version installed with the same qualified profile.
-Then capture the source again. If no such target can be provisioned,
-connected-store restore is unavailable for that pair.
+If a retained-store packet has an unknown or mismatched inventory, the remedy is
+`upgrade the source within its installed profile to this OpenLup version's migration level, capture it again, and restore into a pristine target this version installed with the same profile`.
+If no such target can be provisioned, connected-store restore is unavailable for that pair.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new
