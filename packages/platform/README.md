@@ -729,20 +729,23 @@ are resolved before creation; a unique matching receipt replays its own ID, and
 ambiguous matches receive the uniform refusal without changing historical rows. Partial approval
 requires an amount. Approved/rejected decisions each emit one intent event;
 requests emit none. These commands do not receive goods, restock or execute refunds.
-Native destinations use `./commerce/server/destinations` and the complete SQL
-catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
-The confirmation outbox is durable; native mail dispatch is unbound.
-Addresses and identifying reference strings persist. Use opaque references;
-destination-row export/erasure is unavailable in this port. This destination port provides no mutable address book; select the separate [saved-address port](#saved-customer-address-book) when needed.
 
-Native destinations use `./commerce/server/destinations` and the complete SQL
-catalogue. Hosts authorize parent reads and bind checkout/dispatch explicitly.
-The confirmation outbox is durable; native mail dispatch is unbound.
-Full postal addresses, contact phone numbers, command reasons and identifying reference strings persist. Use opaque references;
-there is no destination-row export or erasure path through this port. This destination port provides no mutable address book; select the separate [saved-address port](#saved-customer-address-book) when needed.
-The port's PostgreSQL routines are included in the native migration chain.
-Address-change events retain the optional command reason in their top-level and nested payloads.
-The shipment reader and dispatch enqueue must share one transaction; otherwise the host owns the intervening window.
+For native v1 destinations, use `./commerce/server/destinations` with the complete
+native SQL installation. Authorize parent reads, use opaque references and bind
+checkout and dispatch explicitly. Share a transaction between the shipment reader
+and dispatch enqueue.
+Addresses, phone numbers and identifying references persist. Address-change
+events retain optional reasons in their top-level and nested payloads. The port
+provides no destination-row export or erasure. Use the separate
+[saved-address port](#saved-customer-address-book) for the mutable book. The
+confirmation outbox is durable and native mail dispatch needs a host binding.
+
+For experimental v2 ingress, discover native readiness with
+`destinationV2Capabilities`, then parse and apply the host address policy. Managed
+hosts support v1 checkout and saved addresses. Fresh v2 destination issuance
+requires an installed native writer. Use the v1 address book for saved addresses.
+Follow the
+[destination validation guide](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/customize-the-starter.md#validate-a-checkout-destination).
 
 `./composition` exports the inert `createCommerceContribution` for the installed
 commerce entries and selected callables. Duplicate descriptor identities refuse;

@@ -202,7 +202,7 @@ export const PLATFORM_MODULE_GRAPH = {
   fulfillment: { contracts: true, values: [], types: [] },
   subscriptions: { contracts: true, values: [], types: [] },
   payments: { contracts: true, values: [], types: ["http", "bff"] },
-  shipping: { contracts: true, values: [], types: ["bff", "http"] },
+  shipping: { contracts: true, values: [], types: ["bff", "http", "commerce/contracts"] },
   promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
   pricing: { contracts: true, values: [], types: ["bff", "http", "shipping"] },
   // Bundle factories bind host schemas/admin kit; native reads use the data executor type, writes its transaction lane.

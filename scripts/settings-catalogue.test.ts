@@ -32,12 +32,17 @@ it("represents every domain data key and executable descriptor in the catalogue"
     "inventory.offerLowStockThreshold",
     "market.fiscalProfile",
     "market.settlementProfile",
+    "shipping.addressPolicy",
     "tax.adapter",
     "tax.classMap",
     "tax.localRateTable",
   ]);
   expect(entries.find(({ key }) => key === "savedAddressValidation")).toMatchObject({
     kind: "callback", change: { reference: "docs/guide/concepts/starter-ownership.md#saved-addresses-billing-and-preferences" },
+  });
+  expect(entries.find(({ key }) => key === "shipping.addressPolicy")).toMatchObject({
+    domain: "shipping", kind: "code", fallback: null, absentMeans: { value: null }, runtime: { level: "read-only" },
+    change: { reference: "docs/guide/how-to/build/customize-the-starter.md#validate-a-checkout-destination" },
   });
   expect(entries.filter(({ kind }) => kind === "invariant").length).toBeGreaterThanOrEqual(7);
 });

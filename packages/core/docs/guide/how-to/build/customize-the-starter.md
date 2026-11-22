@@ -358,6 +358,53 @@ before any carrier or data-port call in its resolver. The public quote engine
 reads catalogue and prices before invoking this hook; that resolver witness
 does not establish zero database reads for the whole checkout request.
 
+## Validate a checkout destination
+
+Use `destinationV2Capabilities` from `@openlup/platform/commerce/server/destinations`
+with the host rail and actual installation and issuance state. The experimental
+schema and policy validator run offline. Fresh v2 destination issuance requires
+an installed native writer. A native host reports `destination_v2_unavailable`
+for `destinationAddressV2` until the writer is installed and issuance is enabled.
+Managed hosts continue to support v1 checkout and saved addresses. They report
+`destination_v2_unsupported_rail` for `destinationAddressV2`. Keep installed
+readers and exact replay available when disabling fresh issuance.
+
+`savedAddressV2` reports `destination_v2_unsupported_rail` on every rail. Use the
+v1 address book. Versioned saved addresses are not available in this release.
+
+1. Parse `commerce.checkout_command.v2` with `createCheckoutCommandV2Schema` and
+   the host's SKU schema. The command uses `line1`, optional `line2`, `city`,
+   optional `subdivisionCode`, `postalCode` and `countryCode` under `shippingAddress`.
+   `line1`, `city` and `postalCode` are always required.
+2. Select one immutable `AddressPolicyV1` by market and destination country in
+   server composition. Run `npm run settings -- show shipping.addressPolicy` to
+   find the binding instructions.
+   Set the revision on the policy data. Postal alternatives are full-length
+   sequences of `"digit"`, `"letter"` or literal tokens such as `{ literal: "-" }`,
+   where a literal is any single printable ASCII character, subject to normalization.
+   A lowercase literal with `upperAscii` enabled, a space literal with
+   `stripAsciiSpaces` enabled, or a space at either end makes an alternative unreachable.
+   Keep alias source keys out of `allowedSubdivisionCodes` after ASCII case
+   normalization and point each alias to an allowed code. A classification rule
+   uses a `key` with either a canonical `subdivisionCode` from
+   `allowedSubdivisionCodes` or a literal `line1Prefix`.
+   Each operand except an alias source must be reachable within its normalized
+   field bounds, with at least one reachable postal alternative and prefixes
+   that start without a space and leave room for a byte after any trailing space.
+   Every required field must be satisfiable, so requiring `subdivisionCode` needs
+   a nonempty allowed set.
+3. Call `validateDestinationAddressV2` from `@openlup/platform/shipping` with the
+   submitted address and selected policy. Use the normalized address, policy
+   reference and revision, and sorted classification keys on success.
+
+For `destination_dialect_invalid`, submit the advertised checkout version. For
+`address_invalid_input`, correct the reported field and resubmit. For
+`address_policy_unavailable`, bind a policy for the requested market and country.
+For `address_policy_invalid`, correct the selected policy definition and reload
+the binding. For `address_subdivision_required` or
+`address_subdivision_unrecognized`, enter a policy-admitted subdivision. For
+`address_postal_invalid`, correct the full postal code for the destination.
+
 ## Compose post-renewal policy
 
 Since 1.0.0, `owned/renewal-policy.ts` is the second and last
