@@ -73,10 +73,10 @@ export function connectedStoreSourceShape(
 
 // Purchase admission changes functions and grants. Earlier packets share this row shape.
 const beforePurchaseAdmission = {
-  bootstrap: "cffdddea783d1cdbc1460c6a9d6caf5bad4a94096eacd38938bdb6b6b28bc256",
-  separate: "d7a7452c78bc5d1b3fc3920d483a2465f8a64caf2198238d9e8e494f52e168c5",
-  "installer-managed": "beaa7e249a4a9966f48a6fe9a99c48900a7b228cc22e2178bdd42df5a56fc474",
-  "operator-provisioned": "5c43ca0f133bffc0d3e2eebf826c1932272a0309b45add51d21cfa97d430d673",
+  bootstrap: "bede32b6eedb9dba23844ad0cb465a45370b4c4f6140d3262a1e74f9e41fb852",
+  separate: "c1dca69226df4c8895d74e095de065a3db8448b4bc0a9bc428854366a950f9d2",
+  "installer-managed": "6cfc8b76e07bd297f20cbb6c706799130dcd3795adf404e84811bcd4620e3c03",
+  "operator-provisioned": "f82dd30b6358a73575f018d3e7cc777ee24cff83c7f68e49eee09d56fcd68b1d",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
 
 const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
