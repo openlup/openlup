@@ -26,6 +26,11 @@ const LATEST_TERMINAL_METADATA_SQL = `
   WHERE job_name = $1
     AND status IN ('success', 'failed')
     AND finished_at IS NOT NULL
+    AND NOT (
+      status = 'failed'
+      AND metadata->>'reason' IS NOT DISTINCT FROM 'reconciliation_checkpoint_read_failed'
+      AND metadata->'reconciliationPagination' IS NULL
+    )
   ORDER BY started_at DESC
   LIMIT 1`;
 
