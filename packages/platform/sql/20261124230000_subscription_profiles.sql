@@ -131,17 +131,20 @@ BEGIN
     LOOP
       v_declaration_text := p_manifest->'profileDeclarationBytes'->>v_position;
       IF v_declaration_text::jsonb IS DISTINCT FROM v_profile - 'profileDigest' THEN
-        RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
+        RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023',
+          DETAIL = json_build_object('key', v_profile->'key', 'version', v_profile->'version')::text;
       END IF;
       v_declaration_bytes := convert_to(v_declaration_text, 'UTF8');
       SELECT * INTO v_installed_profile FROM public.catalog_subscription_profile_receipts
         WHERE profile_key = v_profile->>'key' AND profile_version = (v_profile->>'version')::integer;
       IF FOUND THEN
         IF v_installed_profile.declaration_bytes IS DISTINCT FROM v_declaration_bytes THEN
-          RAISE EXCEPTION 'catalog_profile_install_refuses_redefinition' USING ERRCODE = '23505';
+          RAISE EXCEPTION 'catalog_profile_install_refuses_redefinition' USING ERRCODE = '23505',
+            DETAIL = json_build_object('key', v_profile->'key', 'version', v_profile->'version')::text;
         END IF;
         IF v_installed_profile.profile_digest IS DISTINCT FROM v_profile->>'profileDigest' THEN
-          RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
+          RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023',
+            DETAIL = json_build_object('key', v_profile->'key', 'version', v_profile->'version')::text;
         END IF;
       ELSE
         INSERT INTO public.catalog_subscription_profile_receipts(
@@ -180,7 +183,8 @@ BEGIN
       WHERE type_key = v_definition->>'key' AND version = (v_definition->>'version')::integer;
     IF v_existing.definition IS DISTINCT FROM v_definition OR v_existing.definition_digest IS DISTINCT FROM v_definition_digest
       OR v_existing.validator_ref IS DISTINCT FROM v_definition->>'validatorRef' THEN
-      RAISE EXCEPTION 'catalog_type_install_refuses_redefinition' USING ERRCODE = '23505';
+      RAISE EXCEPTION 'catalog_type_install_refuses_redefinition' USING ERRCODE = '23505',
+        DETAIL = json_build_object('key', v_definition->'key', 'version', v_definition->'version')::text;
     END IF;
   END LOOP;
   IF (SELECT COALESCE(jsonb_agg(value->>'key' ORDER BY value->>'key'), '[]'::jsonb)

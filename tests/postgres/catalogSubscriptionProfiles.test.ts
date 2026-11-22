@@ -200,7 +200,7 @@ it.each(["both", "new-only"])("AM-1 installs and replays P@2 with %s declaration
   expect(changed).toMatchObject({ code: "23505", message: "catalog_profile_install_refuses_redefinition" });
   expect((changed as { issue: unknown }).issue).toStrictEqual({
     code: "catalog_profile_install_refuses_redefinition",
-    path: "",
+    path: "/subscriptionProfileDefinitions/1",
     fix: "Replay the original declaration bytes, digest and identity together. Issue a new version for an intentional change.",
   });
   expect(changed).not.toHaveProperty("value");

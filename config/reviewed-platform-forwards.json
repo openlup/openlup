@@ -9399,12 +9399,12 @@
     },
     {
       "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
-      "sha256": "6b0fc5f3f7dea92641261b93ab648d9429b20fa7344a71cfb3cf79727e6b9fc0",
+      "sha256": "08f29bc59dcaf4ba6cd4cbe8d4abd0262d769c691b27a4a9d540806e0116dcce",
       "functions": [
         {
           "signature": "public.catalog_definition_install(text,integer,jsonb)",
           "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
-          "afterSha256": "edc8c989df4383b019c9b4f44caa4ed040497275a20715d857745520bdd62679"
+          "afterSha256": "5c2dea56c6e1d2cb7f449435c4a211959ac142d2b448b2b817f6eeef0ec0be33"
         },
         {
           "signature": "public.catalog_subscription_profile_identity(text,integer)",
