@@ -2861,14 +2861,33 @@ This excludes index creation and attaching a constraint using an index. The
 feature lands the column forward first and introduces the dedicated grant-only
 forward after the column is issued.
 
+At most one native-store slot per registry may declare
+`qualifiedPriceSetupExecute: true`. Its function and data lists are empty,
+and it declares no other capabilities. The whole file, including its final LF,
+must match the frozen role- and authority-ledger-guarded `DO` block. That block
+grants `EXECUTE` on `public.catalog_price_setup_apply_v2(text,text,uuid)` and
+`public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)`, in
+that order, to `openlup_catalog_publication` without grant option.
+
+Admission resolves each function's initial `createdFunctions` entry from an
+earlier native slot. The registry pins the definition file's path, its whole-file
+SHA-256 and the exact `CREATE FUNCTION` statement's after-hash. The grant's
+approval base must already contain the same definition bytes and bindings.
+The predecessor files and intervening native files must tokenize completely.
+Admission refuses a later static change to either definition. PB-1's PostgreSQL
+witness covers changes reached through dynamic SQL in earlier admitted routines
+and verifies the effective owner, function attributes and privileges under the
+installed profiles.
+
 Only qualified tables created earlier by unconditional `CREATE TABLE public.<name>`
 statements in that same slot's file may use table narrowing: bare `REVOKE ALL ON
 TABLE <table> FROM PUBLIC`, conditional per-role `REVOKE ALL ON TABLE` lists, and
 `ALTER TABLE <table> ENABLE ROW LEVEL SECURITY`. A table from the prefix or
 another slot or an unqualified/IF NOT EXISTS creation refuses. The admitted
 table grants are limited to the fixed baseline and notice-table allowances below,
-the listed census tables' client-column SELECT and the qualified price-list
-basis SELECT above. Census tables keep owner-only table ACLs
+the listed census tables' client-column SELECT, the qualified price-list basis
+SELECT and the [guarded `catalog_sku_revisions.net_content_storage` SELECT](#qualified-column-select)
+for `openlup_catalog_publication`. Census tables keep owner-only table ACLs
 and receive only their exact column grant and derived SELECT policy.
 The native paid-notice slot may name `insertSelectTables` with the complete
 value `["public.subscription_notice_refusals"]`, pinned by the reader. A separate

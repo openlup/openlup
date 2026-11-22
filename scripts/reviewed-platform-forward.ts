@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
+import { DuplicateJsonKeyError, parseStrictJson } from "./oss-strict-json.mts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
 export const MANAGED_BASELINE = "supabase/migrations/00000000000000_platform_schema_baseline.sql";
@@ -127,7 +128,7 @@ const deferredTriggerMessages = {
   field: (name: unknown, field: string, rule: string) => `createdTriggers entry ${typeof name === "string" ? name : "<unnamed>"}: ${field} ${rule}`,
 };
 type NativeCreatedTrigger = { name: string; table: string; sha256: string; deferred?: never } | NativeDeferredTrigger;
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; qualifiedCatalogueStorageSelect?: true; qualifiedPriceListBasisSelect?: true; ownerWindowRole?: string; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] }; previewNoopAcceptance?: true };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; qualifiedCatalogueStorageSelect?: true; qualifiedPriceListBasisSelect?: true; qualifiedPriceSetupExecute?: true; ownerWindowRole?: string; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] }; previewNoopAcceptance?: true };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 type ManagedExactForward = { path: string; sha256: string; prefixSha256: string };
 export type ReviewedForwardRegistry = { managedExactForwards?: ManagedExactForward[]; nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
@@ -235,7 +236,7 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
 // Only approval-history comparison may read the exact prior inventories.
 // Candidate admission always uses the strict public reader above.
 function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwardRegistry {
-  const raw = JSON.parse(bytes.toString("utf8")) as ReviewedForwardRegistry;
+  const raw = parseStrictJson(bytes.toString("utf8"), REVIEWED_FORWARD_PATH) as ReviewedForwardRegistry;
   if (raw.schemaVersion !== 1 || !hash(raw.baselineSha256) || !Array.isArray(raw.replacementForwards) || raw.replacementForwards.length !== 2 || !Array.isArray(raw.creationForwards) || raw.creationForwards.length !== 1) throw new Error("reviewed replacement registry requires one baseline, two replacement forwards and one creation forward");
   const paths = new Set<string>(), signatures = new Set<string>(), replaced = new Set<string>();
   if (raw.qualifiedInstallations !== undefined) {
@@ -1545,7 +1546,10 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
         && keepsApprovalOrder(prior[binding.list]!, current[binding.list] ?? [], issued, path)
         && (!native || keepsApprovalOrder(slots(prior), slots(current), issued, path))) return;
     }
-  } catch { /* Invalid historical approvals cannot authorize a release. */ }
+  } catch (error) {
+    if (error instanceof DuplicateJsonKeyError) throw error;
+    // Other invalid historical approvals cannot authorize a release.
+  }
   throw new Error("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
 }
 
@@ -1586,18 +1590,13 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
         throw new Error(`exact managed forward approval must precede its SQL: ${pin.path}`);
       }
     }
-    const previousData = JSON.parse(before.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
-    const currentData = JSON.parse(after.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
-    if (previousData?.channelIngestForwards !== undefined && currentData?.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
-    if (previousData?.qualifiedInstallations !== undefined || currentData?.qualifiedInstallations !== undefined || previousData?.channelIngestForwards !== undefined) {
-      const previous = readForwardRegistry(before, true), current = readReviewedForwardRegistry(after);
-      for (const [index, entry] of (previous.channelIngestForwards ?? []).entries()) {
-        if (canonical(current.channelIngestForwards?.[index]) !== canonical(entry)) throw new Error("issued M17 channel approvals are immutable");
-      }
-      for (const [index, entry] of (previous.qualifiedInstallations ?? []).entries()) {
-        if (canonical(current.qualifiedInstallations?.[index]) !== canonical(entry)) {
-          throw new Error("issued qualified installation approvals are immutable");
-        }
+    if (prior.channelIngestForwards !== undefined && candidate.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
+    for (const [index, entry] of (prior.channelIngestForwards ?? []).entries()) {
+      if (canonical(candidate.channelIngestForwards?.[index]) !== canonical(entry)) throw new Error("issued M17 channel approvals are immutable");
+    }
+    for (const [index, entry] of (prior.qualifiedInstallations ?? []).entries()) {
+      if (canonical(candidate.qualifiedInstallations?.[index]) !== canonical(entry)) {
+        throw new Error("issued qualified installation approvals are immutable");
       }
     }
   }
@@ -1722,7 +1721,10 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     approval = git(root, ["rev-parse", `${commits[0]}^`]).toString("utf8").trim();
     git(root, ["merge-base", "--is-ancestor", approval, head]);
     try { assertUnchangedForwardApproval(root, approval, commits[0]!, path); }
-    catch { assertForwardApproval(root, approval, commits[0]!); }
+    catch (error) {
+      if (error instanceof DuplicateJsonKeyError) throw error;
+      assertForwardApproval(root, approval, commits[0]!);
+    }
     assertUnchangedForwardApproval(root, commits[0]!, head, path);
   } else {
     assertForwardApproval(root, base, head);
@@ -1746,7 +1748,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (registry.supportAuthorityForwards?.includes(forward as SupportAuthorityForwardBinding) || registry.channelIngestForwards?.includes(forward as BatchedForwardBinding) || registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
     const prefix = readPrecedingBlobs(root, head, portable ? "db/platform/migrations/" : "supabase/migrations/", path, true);
     if (registry.nativeStoreForwards?.includes(forward as ForwardBinding)) {
-      const { slot, priceListBasisPredecessor } = assertNativeStoreForward(registry, path, bytes, prefix);
+      const { slot, priceListBasisPredecessor, priceSetupPredecessors } = assertNativeStoreForward(registry, path, bytes, prefix);
       if (slot.settingsOnlyFunctions) assertNativeStoreSettingsTargets(slot.settingsOnlyFunctions, readPrecedingBlobs(root, approval, "db/platform/migrations/", path, true));
       if (isQualifiedCatalogueReadGrant(slot)) {
         for (const [sourcePath] of qualifiedCatalogueReadTargets) {
@@ -1760,6 +1762,17 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
         const pin = approved && readForwardRegistry(approved, true).nativeStoreForwards?.find(entry => entry.path === sourcePath);
         if (!issued || sqlSha256(issued) !== sha256 || pin?.sha256 !== sha256) {
           throw new Error(`reviewed native store qualified price list basis SELECT predecessor must already be issued: ${sourcePath}`);
+        }
+      }
+      if (priceSetupPredecessors) {
+        const approved = blob(root, approval, REVIEWED_FORWARD_PATH);
+        const pins = approved && readForwardRegistry(approved, true).nativeStoreForwards;
+        for (const predecessor of priceSetupPredecessors) {
+          const issued = blob(root, approval, predecessor.path);
+          const pin = pins?.find(entry => entry.path === predecessor.path);
+          if (!issued?.equals(prefix.find(source => source.path === predecessor.path)!.bytes) || canonical(pin) !== canonical(predecessor)) {
+            throw new Error(`reviewed native store qualified price setup EXECUTE predecessor must already be issued: ${predecessor.path}`);
+          }
         }
       }
       if (slot.previewNoopAcceptance) {
@@ -2678,6 +2691,12 @@ const qualifiedPriceListBasisSelectSql = qualifiedCatalogueReadSql.replace(
   "GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication;",
 );
 
+// The shape admits exactly one grant-only file, byte-identical to the frozen guarded EXECUTE block for public.catalog_price_setup_apply_v2(text,text,uuid) and public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid), once per registry, only after earlier issued native slots created both functions, resolved from the registry with their file path and SHA-256 pins and their effective definition after-hashes. No other function, role, privilege or grant option. Changes reached only through dynamic SQL in earlier admitted routines are covered by PB-1's PostgreSQL witness, not the static scan.
+const qualifiedPriceSetupExecuteTargets = [
+  "public.catalog_price_setup_apply_v2(text,text,uuid)",
+  "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)",
+] as const;
+
 const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
 
 const previewAcceptanceSource = "db/platform/migrations/20261109120000_subscription_package_editor.sql";
@@ -2907,6 +2926,14 @@ const nativeStoreFunctions = (slot: NativeStoreSlot): NativeStoreFunction[] => [
 
 const nativePrefixStatementsCache = new WeakMap<Buffer, readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[]>();
 const nativePrefixStatementsByHash = new Map<string, readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[]>();
+function scanNativeStoreSql<T>(path: string, scan: () => T): T {
+  try {
+    return scan();
+  } catch (error) {
+    throw new Error(`reviewed native store cannot scan ${path}: ${(error as Error).message}`, { cause: error });
+  }
+}
+
 function cachedNativePrefixStatements(bytes: Buffer): readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[] {
   let parsed = nativePrefixStatementsCache.get(bytes);
   if (!parsed) {
@@ -3186,7 +3213,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     const fields = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...nativeStoreOwnerWindowFields(slot, settingsOnly)];
     if (settingsOnly) fields.push("settingsOnlyFunctions");
     else {
-      fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables", "qualifiedCatalogueStorageSelect", "qualifiedPriceListBasisSelect", "previewNoopAcceptance"].filter(key => Object.hasOwn(slot, key)));
+      fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables", "qualifiedCatalogueStorageSelect", "qualifiedPriceListBasisSelect", "qualifiedPriceSetupExecute", "previewNoopAcceptance"].filter(key => Object.hasOwn(slot, key)));
       if (slot.existingTableStatements !== undefined) fields.push("existingTableStatements");
       if (slot.insertSelectTables !== undefined) fields.push("insertSelectTables");
     }
@@ -3206,15 +3233,17 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
       && (slot.qualifiedCatalogueStorageSelect !== true || control.slots.some(other => other !== slot && other.qualifiedCatalogueStorageSelect))) {
       throw new Error("reviewed native store allows one qualifiedCatalogueStorageSelect slot");
     }
-    if (Object.hasOwn(slot, "qualifiedPriceListBasisSelect")) {
+    const grantOnlyFlag = (["qualifiedPriceListBasisSelect", "qualifiedPriceSetupExecute"] as const).find(key => Object.hasOwn(slot, key));
+    if (grantOnlyFlag) {
       const expected = {
         path: slot.path, row: slot.row, createdFunctions: [], replacedFunctions: [], grantOnlyFunctions: [], dataStatements: [],
-        qualifiedPriceListBasisSelect: true,
+        [grantOnlyFlag]: true,
       };
-      if (control.slots.some(other => other !== slot && other.qualifiedPriceListBasisSelect)) {
-        throw new Error("reviewed native store allows one qualifiedPriceListBasisSelect slot");
+      if (control.slots.some(other => other !== slot && other[grantOnlyFlag])) {
+        throw new Error(`reviewed native store allows one ${grantOnlyFlag} slot`);
       }
-      if (canonical(slot) !== canonical(expected)) throw new Error("reviewed native store qualified price list basis SELECT slot must be grant-only");
+      const grant = grantOnlyFlag === "qualifiedPriceListBasisSelect" ? "qualified price list basis SELECT" : "qualified price setup EXECUTE";
+      if (canonical(slot) !== canonical(expected)) throw new Error(`reviewed native store ${grant} slot must be grant-only`);
       continue;
     }
     if (isQualifiedCatalogueReadGrant(slot)) {
@@ -3621,8 +3650,8 @@ function assertPriceListBasisFile(path: string, bytes: Buffer, predecessorStatem
   let statements: string[];
   try {
     statements = sqlStatements(sql, false, false, true);
-  } catch {
-    throw drift(incomplete);
+  } catch (error) {
+    throw drift((error as Error).message);
   }
   for (const statement of statements) {
     const { tokens, complete } = platformSqlTokens(statement, false, true);
@@ -3654,22 +3683,23 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
       assertPriceListBasisFile(source.path, source.bytes);
       continue;
     }
-    for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
+    for (const { statement, tokens, complete } of scanNativeStoreSql(source.path, () => cachedNativePrefixStatements(source.bytes))) {
       if (!nativeWord(tokens, 1, "TABLE")) continue;
       const publicPriceLists = (index: number) => nativeQualified(tokens, index)?.name === "public.price_lists"
         || (nativeIdentifier(tokens[index]) === "price_lists" && !nativeSymbol(tokens, index + 1, ".") && !nativeSymbol(tokens, index - 1, "."));
-      const drift = () => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${source.path}`);
+      const drift = (reason = "") => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${source.path}${reason}`);
       if (nativeWord(tokens, 0, "DROP") && tokens.some((_token, index) => index >= 2 && publicPriceLists(index))) throw drift();
       if (!nativeWord(tokens, 0, "ALTER")) continue;
       const targetStart = nativeWord(tokens, 2, "IF") && nativeWord(tokens, 3, "EXISTS") ? 4 : 2;
       const target = targetStart + Number(nativeWord(tokens, targetStart, "ONLY"));
       if (!publicPriceLists(target)) continue;
       const actionStart = nativeQualified(tokens, target)?.next ?? target + 1;
-      if (!complete || (nativeWord(tokens, actionStart, "SET") && nativeWord(tokens, actionStart + 1, "SCHEMA"))
+      if (!complete) throw drift(". Cannot completely tokenize the preceding file.");
+      if ((nativeWord(tokens, actionStart, "SET") && nativeWord(tokens, actionStart + 1, "SCHEMA"))
         || (nativeWord(tokens, actionStart, "RENAME") && nativeWord(tokens, actionStart + 1, "TO"))) throw drift();
       // The native-store inventory only accepts plain qualified ALTER TABLE statements.
       const listed = slots.get(source.path)?.existingTableStatements?.includes(statement);
-      const alter = nativeStoreAlter(statement);
+      const alter = scanNativeStoreSql(source.path, () => nativeStoreAlter(statement));
       const actions = alter?.actions ?? [statement.slice(tokens[actionStart]?.start, tokens.at(-1)?.start)];
       let allActionsApproved = true;
       for (const action of actions) {
@@ -3679,7 +3709,8 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
           allActionsApproved = false;
           continue;
         }
-        if (!listed || !parsed.complete) throw drift();
+        if (!parsed.complete) throw drift(". Cannot completely tokenize the preceding ALTER action.");
+        if (!listed) throw drift();
         const shape = parsed.tokens.map(token => {
           if (token.kind === "string") return JSON.stringify(token.value);
           if (token.kind === "word") return token.value.toLowerCase();
@@ -3708,6 +3739,63 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
   return pin;
 }
 
+function assertPriceSetupPredecessors(registry: ReviewedForwardRegistry, earlierSlots: NativeStoreSlot[], preceding: { path: string; bytes: Buffer }[]): ForwardBinding[] {
+  const allowed = new Set<string>(qualifiedPriceSetupExecuteTargets);
+  const targets = qualifiedPriceSetupExecuteTargets.map(signature => {
+    const slot = earlierSlots.find(entry => entry.createdFunctions.some(fn => fn.signature === signature));
+    const file = registry.nativeStoreForwards!.find(pin => pin.path === slot?.path);
+    const definition = file?.functions.find(fn => fn.signature === signature);
+    if (!file || !definition) throw new Error(`reviewed native store qualified price setup EXECUTE requires an earlier native slot creating ${signature}`);
+    return { signature, name: signature.slice(0, signature.indexOf("(")), file, definition };
+  });
+  const names = new Set(targets.map(target => target.name));
+  const bareNames = [...names].map(name => name.slice("public.".length));
+  const files = [...new Set(targets.map(target => target.file))];
+  const firstPath = files.map(file => file.path).sort()[0]!;
+  const seen = new Set<string>();
+  for (const source of preceding) {
+    const sql = source.bytes.toString("utf8"), lower = sql.toLowerCase();
+    const afterIntroduction = source.path >= firstPath;
+    if (!afterIntroduction && !lower.includes('u&"') && !bareNames.some(name => lower.includes(name))) continue;
+    const drift = (reason: string) => new Error(`reviewed native store qualified price setup EXECUTE predecessor definition drifted: ${source.path}. ${reason}`);
+    if (!Buffer.from(sql, "utf8").equals(source.bytes) || source.bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) {
+      throw drift("Cannot completely tokenize the preceding file.");
+    }
+    for (const { statement, tokens, complete } of scanNativeStoreSql(source.path, () => cachedNativePrefixStatements(source.bytes))) {
+      if (!complete) throw drift("Cannot completely tokenize the preceding file.");
+      const word = (index: number, value: string) => nativeWord(tokens, index, value);
+      const create = word(0, "CREATE"), alter = word(0, "ALTER"), drop = word(0, "DROP");
+      if (!create && !alter && !drop) continue;
+      const hasWord = (value: string) => tokens.some((_, index) => word(index, value));
+      const escapedIdentifier = tokens.some((token, index) => token.kind === "quoted" && word(index - 2, "U")
+        && nativeSymbol(tokens, index - 1, "&") && tokens[index - 2]!.end === tokens[index - 1]!.start && tokens[index - 1]!.end === token.start);
+      // Refuse indirect static removals and changes to the target schema as well as routine DDL.
+      if (afterIntroduction && ((drop && (word(1, "OWNED") || word(1, "EXTENSION"))) || (alter && word(1, "EXTENSION"))
+        || ((drop || (alter && hasWord("DROP"))) && hasWord("CASCADE"))
+        || ((alter || drop) && word(1, "SCHEMA") && (escapedIdentifier || tokens.some(token => nativeIdentifier(token) === "public"))))) {
+        throw drift("Remove DDL that can change or remove the issued functions indirectly.");
+      }
+      const kind = create && word(1, "OR") && word(2, "REPLACE") ? 3 : 1;
+      if (!["FUNCTION", "ROUTINE", "PROCEDURE", "AGGREGATE"].some(value => word(kind, value))) continue;
+      if (escapedIdentifier) throw drift("An escaped identifier prevents checking routine DDL.");
+      if (!tokens.some(token => bareNames.some(name => nativeIdentifier(token) === name))) continue;
+      const definition = create && kind === 1
+        && scanNativeStoreSql(source.path, () => nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowed, names, true, source.path));
+      const target = definition && targets.find(target => target.signature === definition[0]);
+      if (!definition || !target || seen.has(target.signature) || target.file.path !== source.path || target.definition.afterSha256 !== definition[1]) {
+        throw drift("Only the pinned CREATE of each target is allowed before the grant.");
+      }
+      seen.add(target.signature);
+    }
+  }
+  if (seen.size !== targets.length) throw new Error("reviewed native store qualified price setup EXECUTE is missing a pinned predecessor CREATE");
+  for (const file of files) {
+    const source = preceding.find(source => source.path === file.path)!;
+    assertNativeStoreForward(registry, file.path, source.bytes, preceding.filter(source => source.path < file.path));
+  }
+  return files;
+}
+
 /** Exact inventory with lexical shape checks; feature SQL still owns behavior proof. */
 export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]) {
   validateNativeStoreClass(registry, new Set());
@@ -3719,6 +3807,12 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   if (preceding[0]?.path !== PLATFORM_BASELINE_FILE || preceding.some((source, index) => !/^db\/platform\/migrations\/\d{14}_[a-zA-Z0-9_-]+\.sql$/u.test(source.path) || source.path >= path || (index > 0 && source.path <= preceding[index - 1]!.path))) throw new Error("reviewed native store requires an ordered same-rail prefix and baseline");
   if (slot.qualifiedPriceListBasisSelect && !bytes.equals(Buffer.from(qualifiedPriceListBasisSelectSql))) {
     throw new Error("reviewed native store qualified price list basis SELECT forward must contain only the exact guarded grant with final LF");
+  }
+  if (slot.qualifiedPriceSetupExecute) {
+    const [apply, lock] = qualifiedPriceSetupExecuteTargets;
+    const sql = qualifiedCatalogueReadSql.replace(/GRANT EXECUTE ON FUNCTION [^;]+;/u,
+      `GRANT EXECUTE ON FUNCTION ${apply},\n      ${lock} TO ${cataloguePublicationRole};`);
+    if (!bytes.equals(Buffer.from(sql))) throw new Error("reviewed native store qualified price setup EXECUTE forward must contain only the exact guarded grant with final LF");
   }
   const earlierSlots = control!.slots.slice(0, control!.slots.indexOf(slot));
   const landedSettings = new Map<string, Set<string>>();
@@ -3737,7 +3831,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const grandfatheredSecurityDefiner = isGrandfatheredSecurityDefinerForward(path, bytes);
   const pins = (slot.createdTriggers ?? []).filter((entry): entry is NativeDeferredTrigger => entry.deferred === true);
   const created = new Set(slot.createdFunctions.map(fn => fn.signature));
-  const statements = sqlStatements(bytes.toString("utf8"), false, false, true);
+  const statements = scanNativeStoreSql(path, () => sqlStatements(bytes.toString("utf8"), false, false, true));
   const pinnedMessage = (pin: NativeDeferredTrigger, name = pin.name) => {
     const digest = created.has(pin.function) && forward.functions.find(binding => binding.signature === pin.function)?.afterSha256;
     const creation = digest ? statements.find(sql => sqlSha256(sql) === digest) : undefined;
@@ -3746,6 +3840,9 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
   if (slot.qualifiedPriceListBasisSelect) {
     return { slot, ordinaryProof, priceListBasisPredecessor: assertPriceListBasisPredecessor(registry, earlierSlots, preceding) };
+  }
+  if (slot.qualifiedPriceSetupExecute) {
+    return { slot, ordinaryProof, priceSetupPredecessors: assertPriceSetupPredecessors(registry, earlierSlots, preceding) };
   }
   if (slot.previewNoopAcceptance) {
     assertPreviewNoopAcceptance(bytes, preceding);
@@ -3773,7 +3870,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const indexCreates = new Set<string>();
   let checkSource: string | undefined;
   const allowedSignatures = new Set(signatures);
-  for (const source of preceding) for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
+  for (const source of preceding) for (const { statement, tokens, complete } of scanNativeStoreSql(source.path, () => cachedNativePrefixStatements(source.bytes))) {
     if (landedSettings.get(source.path)?.has(statement)) continue;
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
     if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {

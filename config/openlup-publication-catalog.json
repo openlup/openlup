@@ -3482,6 +3482,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/catalog/subscriptionProfile.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/company-identity/contracts.ts",
       "class": "public-output"
     },
@@ -3723,6 +3727,10 @@
     },
     {
       "path": "packages/core/src/standard-schema/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/subscription/cadenceChoice.ts",
       "class": "public-output"
     },
     {
@@ -9670,6 +9678,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/catalogProfileBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/classicPackageQuote.ts",
       "class": "public-output"
     },
@@ -9951,6 +9963,26 @@
     },
     {
       "path": "packages/platform/src/tax/settings-data.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/stripe/breakdown.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/stripe/client.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/stripe/plan.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/stripe/quote.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/tax/stripe/registrations.ts",
       "class": "public-output"
     },
     {
@@ -12282,6 +12314,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/catalogProfiles.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/classicPackageQuote.test.ts",
       "class": "public-output"
     },
@@ -12391,6 +12427,18 @@
     },
     {
       "path": "packages/platform/test/tax/localRateTable.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/stripe/coverage.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/stripe/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/tax/stripe/quote.test.ts",
       "class": "public-output"
     },
     {
@@ -13243,6 +13291,14 @@
     },
     {
       "path": "scripts/oss-source-release-contract.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/oss-strict-json.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/oss-strict-json.test.ts",
       "class": "public-output"
     },
     {

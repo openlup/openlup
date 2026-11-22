@@ -1,4 +1,5 @@
 export { renewalIdentity } from "./renewalIdentity.js";
+export { selectCatalogProfileCadence, type CatalogProfileCadenceInput, type CatalogProfileCadenceResult } from "./catalogProfileBinding.js";
 export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";

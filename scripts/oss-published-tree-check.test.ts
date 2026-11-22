@@ -17,8 +17,10 @@ import { isExpandOnlyPlatformForward } from "./oss-source-release-contract.ts";
 import { REQUIRED_CONTEXTS, contextPassed } from "./packages/release-gate.ts";
 import {
   PUBLIC_EXECUTION_ENTRYPOINTS,
+  PUBLICATION_CATALOG_PATH,
   createPublicPublicationCatalog,
   createSourceReleaseContract,
+  parsePublicPublicationCatalog,
   publicPublicationCatalogDigests,
   validateSourceReleaseContract,
 } from "./oss-publication-contract.ts";
@@ -1225,6 +1227,13 @@ describe("the materialized output inventory", () => {
 });
 
 describe("the materialized public catalogue", () => {
+  it("refuses a duplicate JSON key in a publication catalogue entry", () => {
+    const source = readFileSync(PUBLICATION_CATALOG_PATH, "utf8");
+    const duplicate = source.replace('"path": ".dockerignore"', '"path": false, "path": ".dockerignore"');
+    expect(() => parsePublicPublicationCatalog(duplicate)).toThrow(
+      `${PUBLICATION_CATALOG_PATH}: duplicate JSON key "path" at $["publicPaths"][0]["path"]`,
+    );
+  });
   it("binds every public command name and value to the materialized manifest", () => {
     const root = mkdtempSync(join(tmpdir(), "materialized-commands-"));
     const paths = [...new Set([".github/PUBLICATION_COMPLETENESS.md", ".github/workflows/published-tree-ci.yml", "CONTRIBUTING.md", "README.md", "packages/core/README.md", "packages/core/src/index.ts", "config/openlup-policy-registry.json", ...packageManifestPaths, ...PUBLIC_EXECUTION_ENTRYPOINTS])].sort();

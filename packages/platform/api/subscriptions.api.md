@@ -113,6 +113,43 @@ export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation:
     settlementIntentId: string;
 }, externalAttemptRef: string | null, reason: string, failureClass: string, occurredAt: string): Promise<AutomaticRenewalRunResult>;
 ```
+## dist/subscriptions/catalogProfileBinding.d.ts
+
+```ts
+import { type CatalogSubscriptionProfileRef, type CatalogSubscriptionProfileIssue, type CatalogSubscriptionProfileV1, type InstalledCatalogSubscriptionProfile } from "@openlup/core/catalog";
+import { type CadenceChoiceV1 } from "@openlup/core/subscription";
+/** The caller supplies the offers admitted by each owning boundary.
+ * @experimental
+ */
+export interface CatalogProfileCadenceInput {
+    readonly choice: CadenceChoiceV1;
+    readonly cadenceDays?: number;
+    readonly mode: "recurring" | "prepaid";
+    readonly storeChoices: readonly CadenceChoiceV1[];
+    readonly skuChoices: readonly CadenceChoiceV1[];
+    readonly offerChoices: readonly CadenceChoiceV1[];
+    readonly commandChoices: readonly CadenceChoiceV1[];
+    readonly profileRef?: CatalogSubscriptionProfileRef;
+    /** Supply the declaration and identity pins from the caller’s binding. */
+    readonly profile?: {
+        readonly declaration: CatalogSubscriptionProfileV1;
+        readonly installed: InstalledCatalogSubscriptionProfile;
+    };
+}
+/** @experimental */
+export type CatalogProfileCadenceResult = {
+    readonly cadenceDays: number;
+} | {
+    readonly code: "cadence_kind_unsupported" | "cadence_not_offered" | "cadence_day_projection_mismatch" | "profile_missing" | "prepaid_unsupported" | "multi_cycle_prepaid_unsupported";
+} | {
+    readonly code: "policy_binding_missing";
+    readonly issue?: CatalogSubscriptionProfileIssue;
+};
+/** Verify a day choice before passing its projection to the owning day-based operation.
+ * @experimental
+ */
+export declare function selectCatalogProfileCadence(input: CatalogProfileCadenceInput): CatalogProfileCadenceResult;
+```
 ## dist/subscriptions/classicPackageQuote.d.ts
 
 ```ts
@@ -593,6 +630,7 @@ export declare function createExactSubscriptionRepricer(deps: PackageEditQuotePo
 
 ```ts
 export { renewalIdentity } from "./renewalIdentity.js";
+export { selectCatalogProfileCadence, type CatalogProfileCadenceInput, type CatalogProfileCadenceResult } from "./catalogProfileBinding.js";
 export { NATIVE_SUBSCRIPTION_CAPABILITIES } from "./services.js";
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, createDefaultRenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
