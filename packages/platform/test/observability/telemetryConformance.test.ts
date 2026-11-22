@@ -28,8 +28,8 @@ const CAPS: TelemetryCapabilities = {
 };
 
 const SAMPLE_EVENTS: readonly TelemetryEvent[] = [
-  { kind: "span", name: "checkout.quote", startedAt: "2026-01-01T00:00:00.000Z", durationMs: 12, status: "ok" },
-  { kind: "metric", metricKind: "counter", name: "orders.created", value: 1, timestamp: "2026-01-01T00:00:00.000Z" },
+  { kind: "span", name: "checkout.quote", startedAt: "2000-01-01T00:00:00.000Z", durationMs: 12, status: "ok" },
+  { kind: "metric", metricKind: "counter", name: "orders.created", value: 1, timestamp: "2000-01-01T00:00:00.000Z" },
 ];
 
 function makeHarness(

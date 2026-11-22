@@ -37,7 +37,7 @@ function sampleOrder(rawBody: string): NormalizedChannelOrder {
     externalOrderRef: "ext-ord-1",
     externalOrderRevision: "v1",
     providerEventId: "evt-1",
-    placedAt: "2026-01-15T10:00:00.000Z",
+    placedAt: "2000-01-15T10:00:00.000Z",
     currency: "USD",
     buyer: {
       externalCustomerRef: "cust-1",
@@ -81,7 +81,7 @@ function sampleOrder(rawBody: string): NormalizedChannelOrder {
     payment: {
       state: CHANNEL_ORDER_PAID_EXTERNALLY_STATE,
       externalPaymentRef: "pay-1",
-      paidAt: "2026-01-15T10:00:00.000Z",
+      paidAt: "2000-01-15T10:00:00.000Z",
       methodLabel: "card",
     },
     payloadDigest: createHash("sha256").update(rawBody).digest("hex"),
@@ -93,7 +93,7 @@ function makeAdapter(fake: ReturnType<typeof createScriptedChannelFake<{ pull: r
     async listChannelBindings() { return []; },
     async pullOrders() {
       const orders = await fake.invoke("pull");
-      return { orders, unmapped: [], nextCursor: null, watermarkAt: "2026-01-15T10:00:00.000Z" };
+      return { orders, unmapped: [], nextCursor: null, watermarkAt: "2000-01-15T10:00:00.000Z" };
     },
     async normalizeWebhook({ headers, rawBody }) {
       if (headers["x-sig"] !== "valid") return { kind: "rejected", reason: "signature" };

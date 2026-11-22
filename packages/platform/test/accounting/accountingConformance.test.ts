@@ -32,7 +32,7 @@ const SAMPLE_RECORD: AccountingExportRecord = {
   contractVersion: ACCOUNTING_EXPORT_CONTRACT_VERSION,
   exportKey: "order:ord-1001:sale",
   entryKind: "sale",
-  entryDate: "2026-01-15",
+  entryDate: "2000-01-15",
   currency: "USD",
   sourceRef: "ord-1001",
   lines: [
