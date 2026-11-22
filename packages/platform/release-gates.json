@@ -344,7 +344,9 @@
       "compatibilityPolicy": "experimental",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/tax/coverage.test.ts"
+        "test/tax/coverage.test.ts",
+        "test/tax/localRateTable.test.ts",
+        "test/tax/adapterConformance.test.ts"
       ],
       "entrypoint": "dist/tax/index.d.ts",
       "snapshot": "api/tax.api.md"

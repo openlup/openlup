@@ -760,3 +760,29 @@ Search terms include recurring orders, renewals.
 - The native winback receipt deduplicates by subscription.
 
 Show offline: `show subscriptions.winbackEpisodeDeduplication --json`.
+
+## tax.adapter
+
+Choose the tax calculation adapter bound to TaxCalculationPort in application composition.
+Search terms include exclusive tax, tax calculation port, tax adapter binding, tax scope.
+
+- Owner **tax** · kind **code** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The application owns the market and account for its tax calculations.
+- When absent, exclusive tax calculation requires an explicit binding for the selected scope, market and currency.
+
+Show offline: `show tax.adapter --json`.
+
+## tax.localRateTable
+
+Supply effective rules for each jurisdiction, tax class and kind when binding the local rate table.
+Search terms include local tax rules, jurisdiction, tax class, effective interval, rate, exemption, fixed fee, legal basis, rounding, digest.
+
+- Owner **tax** · kind **code** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- Each application supplies its own effective rules and legal basis.
+- When absent, a missing effective rule refuses the quote, including on zero-priced components.
+
+Show offline: `show tax.localRateTable --json`.

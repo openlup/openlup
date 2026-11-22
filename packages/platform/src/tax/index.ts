@@ -1,3 +1,7 @@
 export type { TaxCalculationPort, TaxCalculationPortV1 } from "./contracts/port.js";
 export { reconcileTaxCoverage } from "./coverage.js";
 export { makeTaxQuoteRequest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "./digest.js";
+export { localRateTable } from "./localRateTable.js";
+export type { LocalRateTableOptionsV1 } from "./localRateTable.js";
+export { runTaxAdapterConformance } from "./adapterConformance.js";
+export type { TaxConformanceCaseV1, TaxConformanceSubjectV1 } from "./adapterConformance.js";
