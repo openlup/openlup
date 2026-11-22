@@ -6,7 +6,7 @@ import { catalogueWithAppSettings, listCatalogueSettings, loadSettingsCatalogue,
 import { admitDatabaseUrl, type AppValidation, type FileValue, type Validation } from "./settingsCommandSupport.js";
 import { settingDescriptorSchema, toolInputSchema } from "./toolSchema.js";
 import {
-  explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseSettingsPreview, showSetting,
+  explainSetting, invalidSettingsCommand, listSettings, previewSetting, refuseCoverageRead, refuseSettingsPreview, showSetting,
   type SettingPreviewer, type SettingReader,
 } from "./settingsRead.js";
 
@@ -68,7 +68,7 @@ Examples:
 function text(result: Result, host?: SettingsHost): string {
   if ("refusal" in result || "explanation" in result) {
     const { code, rule, hint, remediation } = "refusal" in result ? result.refusal : result.explanation;
-    return [code, rule, hint, remediation.action, remediation.command].join("\n");
+    return [code, rule, hint, remediation.action, remediation.command].filter(line => line !== undefined).join("\n");
   }
   if ("entries" in result) {
     const lines: string[] = [];
@@ -361,26 +361,6 @@ function checkText({ appValidation, configuration, rows, state }: Awaited<Return
   ].join("\n");
 }
 
-function coverageRetryCommand(databaseUrl: string, hasPassword: boolean, values: { app?: string; configuration?: string; json?: boolean }) {
-  const quote = (arg: string) => "'" + arg.replaceAll("'", "'\\''") + "'";
-  // Ask for password-bearing URLs through stdin so diagnostics never copy the password.
-  const url = hasPassword
-    ? [
-      `printf 'Original database URL: ' >&2`,
-      `mode=$(stty -g 2>/dev/null)`,
-      `if [ -n "$mode" ]; then stty -echo; trap 'stty "$mode"; printf "\\n" >&2' 0; fi`,
-      `IFS= read -r url && printf '%s' "$url"`,
-    ].join("; ")
-    : undefined;
-  return [
-    "openlup settings show tax.coverage",
-    ...(values.app !== undefined ? ["--app=" + quote(values.app)] : []),
-    ...(values.configuration !== undefined ? ["--configuration=" + quote(values.configuration)] : []),
-    "--database-url=" + (url === undefined ? quote(databaseUrl) : '"$(' + url + ')"'),
-    ...(values.json ? ["--json"] : []),
-  ].join(" ");
-}
-
 /** @experimental Run the settings CLI without owning process I/O or application bindings. */
 export async function runSettingsCommand(argv: readonly string[], io: SettingsIo, host?: SettingsHost): Promise<number> {
   let json = argv.includes("--json");
@@ -666,14 +646,7 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
         })];
       }
       const result = await showSetting({ key }, readers);
-      if (!("refusal" in result) || result.refusal.code !== "commerce_setting_read_unavailable") return [result];
-      const { refusal } = result;
-      // Replace the generic retry template and preserve the separate missing-capability remedy.
-      if (key === "tax.coverage" && databaseUrl && refusal.remediation.command === unavailable().refusal.remediation.command) {
-        const command = coverageRetryCommand(databaseUrl, typeof database?.password === "string", values);
-        return [{ refusal: { ...refusal, remediation: { ...refusal.remediation, command } } }, 74];
-      }
-      return [result, 74];
+      return [result, "refusal" in result && result.refusal.code === "commerce_setting_read_unavailable" ? 74 : undefined];
     } finally { await bindings?.close?.(); }
   }
   let outcome: [Result, number?];
@@ -682,7 +655,8 @@ export async function runSettingsCommand(argv: readonly string[], io: SettingsIo
     const hint = error instanceof Error && error.message === "NODE_PG_FORCE_NATIVE"
       ? "Unset NODE_PG_FORCE_NATIVE for this command to use the JavaScript PostgreSQL client, then retry."
       : "Check the read-capable database connection and that --app exports createSettingsBindings.";
-    outcome = [preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint }) : unavailable(hint), 74];
+    outcome = [preview ? refuseSettingsPreview("commerce_setting_preview_unexpected", { path: [], hint })
+      : key === "tax.coverage" ? refuseCoverageRead(error, hint) : unavailable(hint), 74];
   }
   return emit(...outcome);
 }

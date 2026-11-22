@@ -3365,17 +3365,17 @@ declares no jurisdiction covered.
 In your application's connected settings binding, return
 `readers: { "tax.coverage": bindTaxCoverageReader(db, { installationRef, accountRef }) }`
 from `createSettingsBindings`. Supply the scope from trusted app configuration.
-Use the runtime connection with that binding.
+Use the runtime database URL and the selected app configuration.
 
 ```sh
-openlup settings show tax.coverage --app ./settings.mjs --database-url <read-capable-url> --json
+./node_modules/.bin/openlup settings show tax.coverage --app ./settings.mjs \
+  --configuration sample --database-url "$database_url" --json
 ```
 
-A successful bound read without revisions reports absence. Retry a failed read
-using the command in the refusal. Supply the original database URL at the prompt
-when the URL contains a password. Offline `settings check` validates reported
-coverage declarations and identifies invalid fields at the same pointers as the
-installer.
+A successful bound read without revisions reports absence. After following the
+remedy for a failed read, rerun the same invocation with the same app and
+configuration. Offline `settings check` reports invalid coverage declarations
+at the same pointers as the installer.
 
 Use a qualified native PostgreSQL installation for connected inspection. Managed
 installations do not supply tax coverage history. The setting is read-only in the

@@ -24,7 +24,9 @@ export type SettingReader = () => Promise<
   | { refusal: string }
 >;
 
-function refuse(code: string): { refusal: SettingRefusal } {
+type CatalogueRefusal = SettingRefusal & { remediation: { command: string } };
+
+function refuse(code: string): { refusal: CatalogueRefusal } {
   const refusal = loadSettingsCatalogue().byCode.get(code);
   if (!refusal) throw new Error(`Unknown internal settings refusal ${code}`);
   return { refusal };
@@ -36,6 +38,16 @@ function refuseUnboundCoverageRead() {
   return { refusal: { ...refusal, hint: "Bind the native reader to the intended installation and account.",
     remediation: { ...refusal.remediation, action,
       command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json" } } };
+}
+
+export function refuseCoverageRead(cause: unknown, hint?: string): { refusal: SettingRefusal } {
+  const code = cause !== null && typeof cause === "object" && "code" in cause ? cause.code : cause;
+  if (code === "tax_coverage_reader_unbound") return refuseUnboundCoverageRead();
+  const { refusal } = refuse("commerce_setting_read_unavailable");
+  const action = code === "42501"
+    ? "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again"
+    : "Restore the database connection, then run the same command again with the same --app and --configuration";
+  return { refusal: { ...refusal, hint: hint ?? refusal.hint, remediation: { retry: true, action } } };
 }
 
 /** @experimental List matching entries from the installed package, offline. */
@@ -56,8 +68,9 @@ function absentObservation(setting: ValueEntry, effective?: JsonValue): Observat
 async function observe(setting: ReturnType<typeof loadSettingsCatalogue>["entries"][number], read?: SettingReader): Promise<Observation | { refusal: SettingRefusal }> {
   if (!read || setting.kind !== "installed") return { state: "offline" };
   const observed = await read();
-  if ("refusal" in observed) return setting.key === "tax.coverage" && observed.refusal === "tax_coverage_reader_unbound"
-    ? refuseUnboundCoverageRead() : refuse(observed.refusal);
+  if ("refusal" in observed) return setting.key === "tax.coverage"
+    && (observed.refusal === "tax_coverage_reader_unbound" || observed.refusal === "commerce_setting_read_unavailable")
+    ? refuseCoverageRead(observed.refusal) : refuse(observed.refusal);
   if (!observed.present) return absentObservation(setting, observed.effective);
   return { state: "override", value: observed.value, revision: observed.revision };
 }
@@ -74,16 +87,7 @@ export async function showSetting(input: unknown, readers: Readonly<Record<strin
     if ("refusal" in observation) return observation;
     return showResult.parse({ schemaVersion: settingsVersion, setting, observation });
   } catch (error) {
-    if (setting.key === "tax.coverage" && error instanceof Error && "code" in error) {
-      if (error.code === "tax_coverage_reader_unbound") return refuseUnboundCoverageRead();
-      if (error.code === "42501") {
-        const { refusal } = refuse("commerce_setting_read_unavailable");
-        return { refusal: { ...refusal, remediation: { ...refusal.remediation,
-          action: "Grant the connection role EXECUTE on public.tax_coverage_read_v1(text,text), then repeat the connected read.",
-        } } };
-      }
-    }
-    return refuse("commerce_setting_read_unavailable");
+    return setting.key === "tax.coverage" ? refuseCoverageRead(error) : refuse("commerce_setting_read_unavailable");
   }
 }
 
@@ -106,7 +110,7 @@ export function invalidSettingsCommand(): { refusal: SettingRefusal } {
   return refuse("commerce_setting_read_input_invalid");
 }
 
-type PreviewRefusal = { schemaVersion: 1; refusal: SettingRefusal };
+type PreviewRefusal = { schemaVersion: 1; refusal: CatalogueRefusal };
 
 /** @experimental Use the same preview refusal document for host and domain failures. */
 export function refuseSettingsPreview(code: string, detail?: Pick<SettingRefusal, "path" | "hint">): PreviewRefusal {

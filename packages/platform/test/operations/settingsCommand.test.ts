@@ -327,6 +327,28 @@ it.each([
   expect(bind).toHaveBeenCalledTimes(setting === "savedAddressValidation" || setting === "unknown" ? 0 : 1);
 });
 
+it("gives the coverage factory failure in words in text, JSON and MCP", async () => {
+  const action = "Restore the database connection, then run the same command again with the same --app and --configuration";
+  const host = { bind: vi.fn(async () => { throw new Error("Could not connect while loading the app"); }) };
+  const argv = ["show", "tax.coverage", "--database-url", url, "--app", "./settings.mjs", "--configuration", "sample"];
+  const json = await run([...argv, "--json"], { host });
+  const result = JSON.parse(json.output);
+  expect(json.exit).toBe(74);
+  expect(result.refusal.code).toBe("commerce_setting_read_unavailable");
+  expect(result.refusal.remediation).toEqual({ retry: true, action });
+
+  const text = await run(argv, { host });
+  expect(text.exit).toBe(74);
+  expect(text.output.endsWith(action + "\n")).toBe(true);
+
+  const tool = settingsMcpTools(renewalStockProtectionPreviewResult).find(row => row.command === "show")!;
+  const response = await callSettingsTool(tool, { key: "tax.coverage" }, {
+    "database-url": url, app: "./settings.mjs", configuration: "sample",
+  }, host);
+  expect(response).toMatchObject({ isError: true, structuredContent: result });
+  expect(host.bind).toHaveBeenCalledTimes(3);
+});
+
 it("shows a recorded policy override and closes the connected reader", async () => {
   const value = { revision: "installed", renewalProtectionDays: 14 };
   const read = vi.fn(async () => ({ present: true as const, value, revision: value.revision }));

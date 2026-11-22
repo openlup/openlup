@@ -175,18 +175,26 @@ it("gives a bound native coverage reader connection guidance", async () => {
   const code = "commerce_setting_read_unavailable";
   const query = vi.fn().mockRejectedValue(Object.assign(new Error("Connection reset"), { code: "ECONNRESET" }));
   const reader = bindTaxCoverageReader({ query }, { installationRef: "store-a", accountRef: "account-a" });
-  const connectionRefusal = { refusal: loadSettingsCatalogue().byCode.get(code) };
+  const refusal = loadSettingsCatalogue().byCode.get(code)!;
+  const connectionRefusal = { refusal: { ...refusal, remediation: {
+    retry: true,
+    action: "Restore the database connection, then run the same command again with the same --app and --configuration",
+  } } };
   expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
   expect(await showSetting({ key }, { [key]: async () => ({ refusal: code }) })).toEqual(connectionRefusal);
   expect(query).toHaveBeenCalledOnce();
   query.mockRejectedValueOnce(Object.assign(new Error("Reader authentication failure"), { code: "28P01" }));
   expect(await showSetting({ key }, { [key]: reader })).toEqual(connectionRefusal);
   query.mockRejectedValueOnce(Object.assign(new Error("Reader access failure"), { code: "42501" }));
-  expect(await showSetting({ key }, { [key]: reader })).toMatchObject({ refusal: { code, remediation: {
-    action: "Grant the connection role EXECUTE on public.tax_coverage_read_v1(text,text), then repeat the connected read.",
+  expect(await showSetting({ key }, { [key]: reader })).toEqual({ refusal: { ...refusal, remediation: {
+    retry: true,
+    action: "Grant EXECUTE on public.tax_coverage_read_v1(text,text) to the runtime role, then run the same command again",
   } } });
   const missingCapability = {
-    refusal: { code, remediation: { action: expect.stringContaining("Use a qualified native PostgreSQL installation") } },
+    refusal: { code, remediation: {
+      action: "Use a qualified native PostgreSQL installation; managed installations do not supply tax coverage history (documented limitation).",
+      command: "openlup settings show tax.coverage --app <module> --database-url <read-capable-url> --json",
+    } },
   };
   for (const sqlstate of ["42883", "42P01"]) {
     query.mockRejectedValueOnce(Object.assign(new Error("Missing database object in the installed reader"), {
