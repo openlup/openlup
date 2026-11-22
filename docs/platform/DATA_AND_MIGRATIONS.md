@@ -479,6 +479,24 @@ Catalogue checks use the stored owner evidence and compare SKU identity and
 quantities. Governed SKU facts carry physical quantities and base prices stay
 with the pricing owner.
 
+An edit or full starter graduation that rewrites template or retained lines
+without a new acceptance clears the template revision bindings and retained
+acceptance in the owner's transaction. An operation already frozen retains
+its original acceptance on replay.
+
+| Refusal | Remedy |
+| --- | --- |
+| `catalog_accepted_reference_invalid` | Supply a schema-2 accepted reference with exactly the supported fields. |
+| `catalog_accepted_reference_mismatch` | Capture the reference from the SKU revision's issuing publication. |
+| `catalog_retained_revision_unavailable` | Recover the issuing publication and SKU revision from the retained catalogue. |
+| `catalog_acceptance_invalid` | Supply a schema-2 acceptance with 1 to 100 distinct SKU identities and codes. |
+| `catalog_acceptance_line_mismatch` | Reconcile the accepted SKU revisions and quantities with the authoritative basket. |
+| `catalog_acceptance_receipt_mismatch` | Use this order's persisted draft receipt and its original key. |
+| `catalog_acceptance_snapshot_mismatch` | Use the stored renewal operation, its original acceptance and its frozen snapshot. |
+| `catalog_acceptance_snapshot_immutable` | Replay the renewal operation with its original acceptance and frozen snapshot. |
+| `catalog_acceptance_immutable` | Replay the owner command with its original acceptance and evidence. |
+| `catalog_acceptance_order_missing` | Persist the order and its draft receipt before attaching the acceptance. |
+
 The archive census reads active and paused templates and retained terms,
 pending activation and attachment, frozen and recoverable renewals, outstanding
 orders, undelivered leaf replacements, stock waits and unconsumed graduation.

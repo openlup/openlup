@@ -171,6 +171,11 @@ export async function graduateNativeRenewal(db: SubscriptionQueryExecutor, row: 
         VALUES($1::uuid,$2::uuid,$3,$4,true,$5,$6)`, [id, ids.get(line.sku), line.quantity, sortOrder(line.sku), line.unitAmountMinor, row.currency_code]);
     }
     await db.query("DELETE FROM public.subscription_renewal_term_lines WHERE subscription_id=$1::uuid", [id]);
+    // Earlier supported catalogues have no acceptance binding to clear.
+    const acceptanceOwner = await db.query("SELECT to_regprocedure('public.catalog_clear_template_acceptance(uuid)') IS NOT NULL AS installed");
+    if (acceptanceOwner.rows[0]?.installed === true) {
+      await db.query("SELECT public.catalog_clear_template_acceptance($1::uuid)", [id]);
+    }
     for (const line of finalLines) await db.query(`INSERT INTO public.subscription_renewal_term_lines(subscription_id,line_ordinal,sku,quantity,unit_amount_minor)
       VALUES($1::uuid,$2,$3,$4,$5)`, [id, line.lineOrdinal, line.sku, line.quantity, line.unitAmountMinor]);
   }

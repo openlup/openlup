@@ -977,7 +977,9 @@ export interface RenewalReadback extends RenewalSchedule {
     claimGeneration: number;
     leaseExpiresAt: string;
     cycleSnapshot: RenewalFrozenSnapshot;
-    /** Catalogue evidence stored beside the frozen pricing wire, when supplied. */
+    /** Catalogue evidence stored beside the frozen pricing wire, when supplied.
+     * @experimental
+     */
     catalogAcceptance?: CatalogAcceptanceV2;
     externalAttemptRef: string | null;
     externalAttemptAcknowledgedAt: string | null;

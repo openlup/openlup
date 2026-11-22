@@ -62,6 +62,7 @@ export function subscriptionRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("subscription_renewal_response_invalid");
   return value as Record<string, unknown>;
 }
+/** @experimental */
 export function readPostgresRenewal(codec: NativeRenewalCodec, value: unknown): RenewalReadback {
   const row = subscriptionRecord(value);
   const result = codec.readback(row);
