@@ -370,10 +370,11 @@ catalogue, then seals both edges before final catalogue comparison. Pristine-row
 equality is a precondition inside the target transaction, not independent
 freshness evidence.
 Restore requires the target's exact current qualified inventory. An inventory
-mismatch refuses with `schema_conflict`. Upgrade the source within its installed
-profile to the target's migration level, or provision a pristine target on the
-source's qualified profile and migration level. Then capture again. If no
-matching target can be provisioned, connected-store restore is unavailable for
+mismatch refuses with `schema_conflict`. Upgrade the source, within its
+installed profile, to the migration level of the OpenLup version doing the
+restore, and restore into a pristine target that this version installed with
+the same qualified profile. Then capture the source again. If no such target
+can be provisioned, connected-store restore is unavailable for
 that pair. The target rechecks the selected canonical catalogue and ledger. Its
 paths, checksums and positions follow the selected manifest.
 Restore locks tables, uses the existing retained client/cycle routines and

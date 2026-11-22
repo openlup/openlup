@@ -524,11 +524,12 @@ policy.
 
 Connected-store restore admits only a packet captured on the target's exact
 current qualified inventory. Any other inventory, including earlier releases
-and unreleased states, refuses with `schema_conflict`. Upgrade the source within
-its installed profile to the target's migration level, or provision a pristine
-target on the source's qualified profile and migration level. Then capture
-again. If no matching target can be provisioned, connected-store restore is
-unavailable for that pair. Each release cut decides whether the previous release
+and unreleased states, refuses with `schema_conflict`. Upgrade the source,
+within its installed profile, to the migration level of the OpenLup version
+doing the restore, and restore into a pristine target that this version
+installed with the same qualified profile. Then capture the source again. If
+no such target can be provisioned, connected-store restore is unavailable for
+that pair. Each release cut decides whether the previous release
 is admitted, with one general additive conversion keyed on that release's tables
 and columns, or documents its refusal. A migration adds no
 restore pin of its own. A migration that adds a captured table or a nullable
@@ -2546,11 +2547,11 @@ trusted schema list before appending `pg_temp`. Eleven acquisition and partner
 acquisition definer functions now pin `pg_temp` last on their search path.
 If a retained-store packet has an unknown or mismatched inventory, use a
 verified capture from the target's exact migration level and qualified
-installation profile. To recapture, upgrade the source within its installed
-profile to the target's migration level, or provision a pristine target on the
-source's qualified profile and migration level. Then capture again. If no
-matching target can be provisioned, connected-store restore is unavailable for
-that pair.
+installation profile. Upgrade the source, within its installed profile, to the
+migration level of the OpenLup version doing the restore, and restore into a
+pristine target that this version installed with the same qualified profile.
+Then capture the source again. If no such target can be provisioned,
+connected-store restore is unavailable for that pair.
 
 `absorptionCensusTables` may list qualified `public.<table>` names with unquoted
 lowercase ASCII identifiers for new
