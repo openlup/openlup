@@ -119,11 +119,13 @@ const delivery = object({
 const address = object({ line1: addressText, city: addressText, postalCode: addressText, countryCode: addressText },
   { line2: addressText, subdivisionCode: addressText });
 const destination = object({ snapshotRef: ref, digest, policyRevision: ref, address });
-const quoteFields = object({
-  scope, market: ref, currency: ref, money, purpose: oneOf("final", "estimate"), taxDate: instant, destination,
+const quoteShape = {
+  scope, market: ref, currency: ref, money: moneyFields, purpose: oneOf("final", "estimate"), taxDate: instant, destination,
   shipFromRef: ref, policyRevision: ref, classMapRevision: ref, lines: array(line, 256), delivery: array(delivery, 256),
-  required: requiredCells, coverage,
-});
+  required: array(cell), coverage: coverageFields,
+};
+const quoteFields = object({ ...quoteShape, money, required: requiredCells, coverage });
+const quoteDocument = object(quoteShape);
 
 function bindComponents<T>(
   facts: readonly T[], keys: readonly string[], keyOf: (item: T) => string, field: string,
@@ -160,7 +162,10 @@ function quote(value: unknown, field: string): TaxQuoteInputV1 {
   return parsed;
 }
 
-const quoteRequest = object({ key: ref, inputDigest: digest, input: quote });
+const quoteEnvelope = { key: ref, inputDigest: digest };
+const quoteRequest = object({ ...quoteEnvelope, input: quote });
+const quoteRequestDocument = object({ ...quoteEnvelope, input: quoteDocument });
+export const quoteRequestDocumentSchema: Schema<TaxQuoteRequestV1> = schema(quoteRequestDocument);
 export const taxQuoteRequestV1Schema: Schema<TaxQuoteRequestV1> = schema(quoteRequest);
 export const quoteInputSchema: Schema<TaxQuoteInputV1> = schema(quote);
 export const parseQuoteKey = (key: unknown): string => ref(key, "/key");
@@ -225,11 +230,16 @@ function evidence(value: unknown, field: string, bindCells = true): TaxCalculati
   });
   return parsed;
 }
+export const evidenceDocumentSchema: Schema<TaxCalculationEvidenceV1> = schema(evidenceFields);
 export const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1> = schema(evidence);
 // The Node quote verifier joins these rows with money before checking their cell bindings.
 export const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1> = schema((value, field) => evidence(value, field, false));
 
-const validityFields = object({ original: quoteRequest, evidence, evidenceDigest: digest, chargeAt: instant, current: quote });
+const validityEnvelope = { evidenceDigest: digest, chargeAt: instant };
+const validityFields = object({ original: quoteRequest, evidence, ...validityEnvelope, current: quote });
+export const fiscalValidityDocumentSchema: Schema<TaxFiscalValidityRequestV1> = schema(object({
+  original: quoteRequestDocument, evidence: evidenceFields, ...validityEnvelope, current: quoteDocument,
+}));
 export const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1> = schema((value, field) => {
   const parsed = validityFields(value, field);
   if (parsed.current.taxDate !== parsed.chargeAt) invalid("/current/taxDate", "Use the charge instant as the current fiscal date.");

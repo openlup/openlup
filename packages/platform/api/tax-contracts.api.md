@@ -82,11 +82,14 @@ import type { Schema } from "./decode.js";
 import type { TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1, TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1 } from "./types.js";
 export declare const taxCoverageV1Schema: Schema<TaxCoverageV1>;
 export declare const coverageInputSchema: Schema<TaxCoverageInputV1>;
+export declare const quoteRequestDocumentSchema: Schema<TaxQuoteRequestV1>;
 export declare const taxQuoteRequestV1Schema: Schema<TaxQuoteRequestV1>;
 export declare const quoteInputSchema: Schema<TaxQuoteInputV1>;
 export declare const parseQuoteKey: (key: unknown) => string;
+export declare const evidenceDocumentSchema: Schema<TaxCalculationEvidenceV1>;
 export declare const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1>;
 export declare const quoteEvidenceSchema: Schema<TaxCalculationEvidenceV1>;
+export declare const fiscalValidityDocumentSchema: Schema<TaxFiscalValidityRequestV1>;
 export declare const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1>;
 export declare const taxCloseInputV1Schema: Schema<{
     ref: TaxCalculationRefV1;

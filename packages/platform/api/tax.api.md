@@ -44,9 +44,9 @@ import type { TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, Ta
 type DigestTag = "input" | "coverage" | "fiscal" | "resolution" | "evidence" | "rate-table" | "close" | "commit" | "reverse";
 export declare function taxDigest(tag: DigestTag, payload: unknown): string;
 export declare function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuoteRequestV1;
-/** Verify the quote digest or, for fiscal validity, its original quote and bound evidence. Returns a refusal on failure. */
+/** Verify the quote or fiscal-validity digests before returning binding repair advice. */
 export declare function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined;
-/** Recompute a successful quote's money and verify every evidence binding. Returns a refusal on failure. */
+/** Verify a successful quote's digests before checking its money and evidence bindings. */
 export declare function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): TaxRefusal | undefined;
 export {};
 ```

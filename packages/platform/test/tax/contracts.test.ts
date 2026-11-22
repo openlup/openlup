@@ -14,6 +14,11 @@ function refuses(run: () => unknown, field: string): void {
   expect(run).toThrow(expect.objectContaining({ field }));
 }
 
+function replayRefusal(field: string, document: string) {
+  return { kind: "refused", code: "tax_reference_conflict", field,
+    remedy: "Replay the original " + document + " and its digest; a digest is never recomputed over a changed document." };
+}
+
 function taggedDigest(tag: "input" | "coverage" | "evidence" | "fiscal" | "resolution", value: unknown): string {
   return createHash("sha256").update(canonicalCatalogDraftJson(["platform.tax." + tag + ".v1", value])).digest("hex");
 }
@@ -79,7 +84,7 @@ describe("tax document decoders", () => {
   });
 
   it("refuses an unsafe planned basis in preparation and decoding", () => {
-    const input = quote();
+    const input = makeTaxQuoteRequest("key", quote()).input;
     const money = {
       ...input.money, adjustments: [],
       sources: input.money.sources.map((row, i) => ({ ...row, unitBasisMinor: i ? 0 : Number.MAX_SAFE_INTEGER })),
@@ -89,7 +94,7 @@ describe("tax document decoders", () => {
     expect(() => makeTaxQuoteRequest("key", unsafe)).toThrow(expect.objectContaining({
       code: "tax_amount_out_of_range", field: "/money",
     }));
-    const envelope = { key: "key", input: unsafe, inputDigest: digest };
+    const envelope = { key: "key", input: unsafe, inputDigest: taggedDigest("input", unsafe) };
     expect(taxQuoteRequestV1Schema.safeParse(envelope)).toMatchObject({
       success: false, error: { code: "tax_amount_out_of_range", field: "/input/money" },
     });
@@ -103,9 +108,7 @@ describe("tax document decoders", () => {
     const request = makeTaxQuoteRequest("key", input);
     expect(verifyTaxQuoteRequest(request)).toBeUndefined();
     const altered = taxQuoteRequestV1Schema.parse({ ...request, input: { ...input, currency: "XTS" } });
-    expect(verifyTaxQuoteRequest(altered)).toMatchObject({
-      kind: "refused", code: "tax_reference_conflict", field: "/inputDigest", remedy: expect.stringContaining("new key"),
-    });
+    expect(verifyTaxQuoteRequest(altered)).toEqual(replayRefusal("/inputDigest", "request input"));
     expect(request.inputDigest).toBe("b661bc4d7148712db7c1006eb630ec07ac54721bd3e17678c360558f64620f1a");
     expect(makeTaxQuoteRequest("other-key", {
       ...input, required: [...input.required].reverse(),
@@ -199,12 +202,13 @@ describe("tax document decoders", () => {
       code: "tax_reference_conflict", field: "/evidence/coverage/vector/0/declaration",
     });
     const incomplete = vector.filter(row => row.cell.target.key !== "item-a");
-    expect(verify({ ...receipt, coverage: { vector: incomplete, digest: taggedDigest("coverage", incomplete) } })).toMatchObject({
+    expect(verify(bindFiscal({ ...receipt, coverage: { vector: incomplete, digest: taggedDigest("coverage", incomplete) } }))).toMatchObject({
       code: "tax_reference_conflict", field: "/evidence/coverage/vector",
     });
     const tax = receipt.positions.tax[0];
-    const wrongAssignment = { ...tax, resolution: { ...tax.resolution, assignmentRef: "unknown" } };
-    expect(verify({ ...receipt, positions: { ...receipt.positions, tax: [wrongAssignment] } })).toMatchObject({
+    const wrongResolution = { ...tax.resolution, assignmentRef: "unknown" };
+    const wrongAssignment = { ...tax, resolution: wrongResolution, resolutionDigest: taggedDigest("resolution", wrongResolution) };
+    expect(verify(bindFiscal({ ...receipt, positions: { ...receipt.positions, tax: [wrongAssignment] } }))).toMatchObject({
       code: "tax_reference_conflict", field: "/evidence/positions/tax/0/resolution/assignmentRef",
     });
   });
@@ -217,7 +221,9 @@ describe("tax document decoders", () => {
     expect(verifyTaxQuoteResult(estimateRequest, {
       kind: "estimate", money, evidence: estimate, evidenceDigest: taggedDigest("evidence", estimate),
     })).toBeUndefined();
-    expect(verifyTaxQuoteResult(request, { ...result, evidence: estimate } as unknown as TaxQuoteResultV1)).toMatchObject({
+    const wrongStatus = { ...estimate, inputDigest: request.inputDigest };
+    const wrongResult = { ...result, evidence: wrongStatus, evidenceDigest: taggedDigest("evidence", wrongStatus) };
+    expect(verifyTaxQuoteResult(request, wrongResult as unknown as TaxQuoteResultV1)).toMatchObject({
       code: "tax_calculation_unusable", field: "/evidence/status",
     });
     expect(verifyTaxQuoteResult(request, { ...result, evidenceDigest: digest })).toMatchObject({
@@ -233,7 +239,7 @@ describe("tax document decoders", () => {
       [{ ...receipt, coverage: { vector: forgedDeclarations, digest: taggedDigest("coverage", forgedDeclarations) } },
         "/evidence/coverage/vector/0/declaration"],
     ] as const) {
-      expect(verifyTaxQuoteResult(request, successful(rebound))).toMatchObject({ code: "tax_reference_conflict", field });
+      expect(verifyTaxQuoteResult(request, successful(bindFiscal(rebound)))).toMatchObject({ code: "tax_reference_conflict", field });
     }
   });
 
@@ -385,6 +391,68 @@ describe("tax document decoders", () => {
     expect(verifyTaxQuoteResult(request, successful(lifecycle))).toBeUndefined();
   });
 
+  const expectReplay = (original: TaxQuoteRequestV1, result: ReturnType<typeof successful>, field: string, document: string) => {
+    const refusal = replayRefusal(field, document);
+    expect(verifyTaxQuoteResult(original, result)).toEqual(refusal);
+    expect(verifyTaxQuoteRequest({ ...structuredClone(fiscal), original,
+      evidence: result.evidence, evidenceDigest: result.evidenceDigest })).toEqual(refusal);
+  };
+
+  it("input_changed_document_with_recomputed_digest_refuses", () => {
+    const { original, result } = structuredClone({ original: request, result: successful() });
+    const input = { ...original.input, currency: "XTS" };
+    const changed = { ...original, input, inputDigest: taggedDigest("input", input) };
+    expect(changed.inputDigest).not.toBe(result.evidence.inputDigest);
+    expectReplay(changed, result, "/evidence/inputDigest", "request input");
+  });
+
+  it("resolution_changed_document_with_recomputed_digest_refuses", () => {
+    const { original, result } = structuredClone({ original: request, result: successful() });
+    const [position] = result.evidence.positions.tax;
+    const originalResolution = { ...position.resolution, effective: { ...position.resolution.effective, until: later } };
+    const sealed = bindFiscal({ ...result.evidence, positions: { ...result.evidence.positions, tax: [{
+      ...position, resolution: originalResolution, resolutionDigest: taggedDigest("resolution", originalResolution),
+    }] } });
+    const sealedResult = { ...result, evidence: { ...sealed, status: "final" as const }, evidenceDigest: taggedDigest("evidence", sealed) };
+    expect(verifyTaxQuoteResult(original, sealedResult)).toBeUndefined();
+
+    const resolution = { ...originalResolution, policyRevision: "different-policy",
+      effective: { ...originalResolution.effective, until: "2030-03-01T00:00:00.000Z" } };
+    const changedPosition = { ...sealed.positions.tax[0], resolution };
+    const changed = { ...sealedResult.evidence, positions: { ...sealed.positions, tax: [changedPosition] } };
+    expectReplay(original, { ...sealedResult, evidence: changed, evidenceDigest: taggedDigest("evidence", changed) },
+      "/evidence/positions/tax/0/resolutionDigest", "rule resolution");
+
+    const rehashed = { ...changed, positions: { ...changed.positions,
+      tax: [{ ...changedPosition, resolutionDigest: taggedDigest("resolution", resolution) }] } };
+    expectReplay(original, { ...sealedResult, evidence: rehashed }, "/evidence/fiscalDigest", "fiscal payload");
+  });
+
+  it("coverage_changed_document_with_recomputed_digest_refuses", () => {
+    const { original, result } = structuredClone({ original: request, result: successful() });
+    const [row, ...remaining] = result.evidence.coverage.vector;
+    const vector = [{ ...row, treatment: { ...taxable, reason: "different-reason" } }, ...remaining];
+    const evidence = { ...result.evidence, coverage: { vector, digest: taggedDigest("coverage", vector) } };
+    expectReplay(original, { ...result, evidence }, "/evidence/fiscalDigest", "fiscal payload");
+  });
+
+  it("fiscal_changed_document_with_recomputed_digest_refuses", () => {
+    const { original, result } = structuredClone({ original: request, result: successful() });
+    const changed = { ...result.evidence, classMapRevision: "different-classes" };
+    const evidence = { ...changed, fiscalDigest: fiscalHash(changed) };
+    expectReplay(original, { ...result, evidence }, "/evidenceDigest", "calculation evidence");
+  });
+
+  it("evidence_changed_document_with_recomputed_digest_refuses", () => {
+    const { result, validity } = structuredClone({ result: successful(), validity: fiscal });
+    const evidence = { ...result.evidence, expiresAt: "2030-03-01T00:00:00.000Z" };
+    const changed = { ...result, evidence, evidenceDigest: taggedDigest("evidence", evidence) };
+    expect(changed.evidenceDigest).not.toBe(validity.evidenceDigest);
+    const refusal = replayRefusal("/evidenceDigest", "calculation evidence");
+    expect(verifyTaxQuoteRequest({ ...validity, evidence: changed.evidence })).toEqual(refusal);
+    expect(verifyTaxQuoteResult(validity.original, { ...changed, evidenceDigest: validity.evidenceDigest })).toEqual(refusal);
+  });
+
   const coverageFor = (original: TaxQuoteRequestV1) => reconcileTaxCoverage({
     scope, taxDate: date, coverage: original.input.coverage, required: original.input.required,
     observations: original.input.required.map(cell => ({ cell, registration: active, treatment: taxable, assessedMinor: 0 })),
@@ -397,7 +465,7 @@ describe("tax document decoders", () => {
     return { kind: bound.status, money: assessment, evidence: bound, evidenceDigest: taggedDigest("evidence", bound) } as TaxQuoteResultV1;
   };
 
-  it("applies each assessment and coverage refusal remedy and verifies the repaired quote", () => {
+  it("diagnoses each refusal and accepts the original bound quote", () => {
     type Success = Extract<TaxQuoteResultV1, { kind: "final" | "estimate" }>;
     type Example = { original: TaxQuoteRequestV1; result: Success };
     type Edit = readonly [path: string, value: unknown];
@@ -499,14 +567,18 @@ describe("tax document decoders", () => {
     const supplyRow = "Supply one matching metadata row in the evidence.";
     const originalEvidence = "Supply evidence from the original quote request.";
     const probes: Probe[] = [
-      stale("/inputDigest", "Replay the original request or rebuild it with a new key.", "/original/inputDigest"),
-      stale("/evidenceDigest", "Supply the original evidence and its digest."),
-      stale("/evidence/coverage/digest", "Supply the coverage vector with its original digest."),
-      stale(tax + "/resolutionDigest", "Recompute the digest from this rule resolution."),
-      stale("/evidence/fiscalDigest", "Recompute the digest from the documented fiscal payload."),
+      stale("/inputDigest", replayRefusal("/inputDigest", "request input").remedy, "/original/inputDigest"),
+      ...[
+        replayRefusal("/evidenceDigest", "calculation evidence"),
+        replayRefusal("/evidence/coverage/digest", "coverage vector"),
+        replayRefusal(tax + "/resolutionDigest", "rule resolution"),
+        replayRefusal("/evidence/fiscalDigest", "fiscal payload"),
+      ].map(({ field, remedy }) => stale(field, remedy)),
+      binding("/evidence/inputDigest", replayRefusal("/evidence/inputDigest", "request input").remedy, digest),
+      binding("/evidence/destinationDigest", replayRefusal("/evidence/destinationDigest", "calculation evidence").remedy, "b".repeat(64)),
       ...Object.entries({
         scope: { ...scope, adapterVersion: "2" }, taxDate: "2030-01-02T00:00:00.000Z",
-        inputDigest: digest, destinationDigest: "b".repeat(64), shipFromRef: "different-origin",
+        shipFromRef: "different-origin",
         policyRevision: "different-policy", classMapRevision: "different-classes",
       }).map(([field, value]) => binding("/evidence/" + field, originalEvidence, value)),
       binding("/evidence/status", "Use the original quote's purpose for the evidence status and any result kind.", "estimate", {
@@ -587,6 +659,7 @@ describe("tax document decoders", () => {
       const corrections = repair.map(path => [path, read(base, path)] as const);
       for (const correction of corrections) edit(changed, correction);
       recompute(changed, corrections);
+      expect(changed.result.evidenceDigest, "original evidence digest " + label).toBe(base.result.evidenceDigest);
       expect(verify(), "repaired " + label).toBeUndefined();
       if (shared) expect(verifyFiscal(), "repaired fiscal " + label).toBeUndefined();
     }

@@ -6,7 +6,8 @@ import { canonicalCatalogDraftJson } from "../catalog/contracts/index.js";
 import { array, bounded, checked, exclusiveTaxRemedy, invalid, object, oneOf, variant } from "./contracts/decode.js";
 import { cellKey, compareCells, compareDeclarations, decisionIsPossible, declarationKey, includesInstant, permitsAssessment, sameCell } from "./contracts/identity.js";
 import {
-  parseQuoteKey, quoteEvidenceSchema, quoteInputSchema, taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema,
+  evidenceDocumentSchema, fiscalValidityDocumentSchema, parseQuoteKey, quoteEvidenceSchema, quoteInputSchema,
+  quoteRequestDocumentSchema, taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema,
 } from "./contracts/schemas.js";
 import type {
   TaxCalculationEvidenceV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxQuoteResultV1, TaxRefusal,
@@ -46,24 +47,51 @@ function matchesDigest(tag: DigestTag, document: unknown, digest: string): boole
   catch { return false; }
 }
 
+function replayDigest(field: string, document: string): TaxRefusal {
+  return refuse("tax_reference_conflict", field,
+    "Replay the original " + document + " and its digest; a digest is never recomputed over a changed document.");
+}
+
 function verifyInputDigest(request: TaxQuoteRequestV1, path = ""): TaxRefusal | undefined {
   if (!matchesDigest("input", normalize(request.input), request.inputDigest)) {
-    return refuse("tax_reference_conflict", path + "/inputDigest", "Replay the original request or rebuild it with a new key.");
+    return replayDigest(path + "/inputDigest", "request input");
   }
 }
 
-function verifyEvidence(
-  request: TaxQuoteRequestV1, evidence: TaxCalculationEvidenceV1, digest: string, assessments?: readonly Located[],
-): TaxRefusal | undefined {
-  if (!matchesDigest("evidence", evidence, digest)) {
-    return refuse("tax_reference_conflict", "/evidenceDigest", "Supply the original evidence and its digest.");
+function verifyEvidenceDigests(request: TaxQuoteRequestV1, evidence: TaxCalculationEvidenceV1, digest: string): TaxRefusal | undefined {
+  const { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision, coverage, positions } = evidence;
+  for (const [index, row] of positions.tax.entries()) {
+    if (!matchesDigest("resolution", row.resolution, row.resolutionDigest)) {
+      return replayDigest("/evidence/positions/tax/" + index + "/resolutionDigest", "rule resolution");
+    }
   }
+  if (!matchesDigest("coverage", coverage.vector, coverage.digest)) {
+    return replayDigest("/evidence/coverage/digest", "coverage vector");
+  }
+  const tax = positions.tax.map(({ resolutionDigest: _digest, providerLineRef: _providerRef, ...row }) => row);
+  const fiscal = { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision,
+    coverage: coverage.vector, tax, fees: positions.fees };
+  if (!matchesDigest("fiscal", fiscal, evidence.fiscalDigest)) {
+    return replayDigest("/evidence/fiscalDigest", "fiscal payload");
+  }
+  if (!matchesDigest("evidence", evidence, digest)) {
+    return replayDigest("/evidenceDigest", "calculation evidence");
+  }
+  if (evidence.inputDigest !== request.inputDigest) {
+    return replayDigest("/evidence/inputDigest", "request input");
+  }
+  if (destinationDigest !== request.input.destination.digest) {
+    return replayDigest("/evidence/destinationDigest", "calculation evidence");
+  }
+}
 
+function verifyEvidenceBindings(
+  request: TaxQuoteRequestV1, evidence: TaxCalculationEvidenceV1, assessments?: readonly Located[],
+): TaxRefusal | undefined {
   const input = request.input;
   const pairs = {
     scope: [canonicalCatalogDraftJson(evidence.scope), canonicalCatalogDraftJson(input.scope)],
     status: [evidence.status, input.purpose], taxDate: [evidence.taxDate, input.taxDate],
-    inputDigest: [evidence.inputDigest, request.inputDigest], destinationDigest: [evidence.destinationDigest, input.destination.digest],
     shipFromRef: [evidence.shipFromRef, input.shipFromRef], policyRevision: [evidence.policyRevision, input.policyRevision],
     classMapRevision: [evidence.classMapRevision, input.classMapRevision],
   };
@@ -76,9 +104,6 @@ function verifyEvidence(
   }
 
   const { vector } = evidence.coverage;
-  if (!matchesDigest("coverage", vector, evidence.coverage.digest)) {
-    return refuse("tax_reference_conflict", "/evidence/coverage/digest", "Supply the coverage vector with its original digest.");
-  }
   const required = [...input.required].sort(compareCells);
   if (vector.length !== required.length || vector.some((row, index) => !sameCell(row.cell, required[index]))) {
     return refuse("tax_reference_conflict", "/evidence/coverage/vector", "Reconcile the original quote's required cells.");
@@ -104,7 +129,7 @@ function verifyEvidence(
   const lines = new Map(input.lines.map(item => [item.lineKey, item.assignmentRef]));
   const buckets = new Map(input.delivery.map(item => [item.bucketKey, item.assignmentRef]));
   for (const [index, row] of evidence.positions.tax.entries()) {
-    const { cell: { target }, resolution, resolutionDigest, ruleRef } = row;
+    const { cell: { target }, resolution, ruleRef } = row;
     const path = "/evidence/positions/tax/" + index;
     const assignment = (target.kind === "line" ? lines : buckets).get(target.key);
     if (assignment !== resolution.assignmentRef) {
@@ -117,36 +142,34 @@ function verifyEvidence(
     if (treatment && ruleRef !== treatment.ruleRef) {
       return refuse("tax_reference_conflict", path + "/ruleRef", "Use the matched coverage treatment's rule reference.");
     }
-    if (!matchesDigest("resolution", resolution, resolutionDigest)) {
-      return refuse("tax_reference_conflict", path + "/resolutionDigest", "Recompute the digest from this rule resolution.");
-    }
-  }
-
-  const { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision, positions } = evidence;
-  const tax = positions.tax.map(({ resolutionDigest: _digest, providerLineRef: _providerRef, ...row }) => row);
-  const fiscal = { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision,
-    coverage: vector, tax, fees: positions.fees };
-  if (!matchesDigest("fiscal", fiscal, evidence.fiscalDigest)) {
-    return refuse("tax_reference_conflict", "/evidence/fiscalDigest", "Recompute the digest from the documented fiscal payload.");
   }
 }
 
 function checkedQuoteRequest(request: TaxQuoteRequestV1): TaxQuoteRequestV1 | TaxRefusal {
-  const parsed = taxQuoteRequestV1Schema.safeParse(request);
+  const parsed = quoteRequestDocumentSchema.safeParse(request);
   if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
   return verifyInputDigest(parsed.data) ?? parsed.data;
 }
 
-/** Verify the quote digest or, for fiscal validity, its original quote and bound evidence. Returns a refusal on failure. */
+function verifyQuoteBindings(request: TaxQuoteRequestV1): TaxRefusal | undefined {
+  const parsed = taxQuoteRequestV1Schema.safeParse(request);
+  if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
+}
+
+/** Verify the quote or fiscal-validity digests before returning binding repair advice. */
 export function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined {
   if ("original" in request) {
-    const parsed = taxFiscalValidityRequestV1Schema.safeParse(request);
+    const document = fiscalValidityDocumentSchema.safeParse(request);
+    if (!document.success) return refuse(document.error.code, document.error.field, document.error.message);
+    const { original, evidence, evidenceDigest } = document.data;
+    const mismatch = verifyInputDigest(original, "/original") ?? verifyEvidenceDigests(original, evidence, evidenceDigest);
+    if (mismatch) return mismatch;
+    const parsed = taxFiscalValidityRequestV1Schema.safeParse(document.data);
     if (!parsed.success) return refuse(parsed.error.code, parsed.error.field, parsed.error.message);
-    const { original, evidence, evidenceDigest } = parsed.data;
-    return verifyInputDigest(original, "/original") ?? verifyEvidence(original, evidence, evidenceDigest);
+    return verifyEvidenceBindings(original, evidence);
   }
   const checked = checkedQuoteRequest(request);
-  return "kind" in checked ? checked : undefined;
+  return "kind" in checked ? checked : verifyQuoteBindings(checked);
 }
 
 function firstDifference(expected: unknown, actual: unknown, path: string): string | undefined {
@@ -339,7 +362,7 @@ const readResult = variant<ReturnType<typeof success> | undefined>("kind", {
   final: success, estimate: success, refused: () => undefined, unavailable: () => undefined,
 });
 
-/** Recompute a successful quote's money and verify every evidence binding. Returns a refusal on failure. */
+/** Verify a successful quote's digests before checking its money and evidence bindings. */
 export function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): TaxRefusal | undefined {
   const checked = checkedQuoteRequest(request);
   if ("kind" in checked) return checked;
@@ -350,18 +373,25 @@ export function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuot
       ? refuse("tax_invalid_input", error.field, error.message)
       : refuse("tax_invalid_input", "", "Supply an ordinary quote result document.");
   }
-  if (!parsed) return;
+  if (!parsed) return verifyQuoteBindings(checked);
 
+  const document = evidenceDocumentSchema.safeParse(parsed.evidence);
+  if (!document.success) return refuse(document.error.code, "/evidence" + document.error.field, document.error.message);
+  const mismatch = verifyEvidenceDigests(checked, document.data, parsed.evidenceDigest);
+  if (mismatch) return mismatch;
+
+  const binding = verifyQuoteBindings(checked);
+  if (binding) return binding;
   const wrongMoney = verifyMoney(checked.input.money, parsed.money);
   if (wrongMoney) return wrongMoney;
   const assessments = collectAssessments(checked.input, parsed.money);
   if ("kind" in assessments) return assessments;
-  const decoded = quoteEvidenceSchema.safeParse(parsed.evidence);
+  const decoded = quoteEvidenceSchema.safeParse(document.data);
   if (!decoded.success) return refuse(decoded.error.code, "/evidence" + decoded.error.field, decoded.error.message);
   if (parsed.kind !== decoded.data.status) {
     return decoded.data.status === checked.input.purpose
       ? refuse("tax_calculation_unusable", "/kind", "Use the original quote's purpose as the result kind.")
       : refuse("tax_calculation_unusable", "/evidence/status", "Return evidence with the correct result status.");
   }
-  return verifyEvidence(checked, decoded.data, parsed.evidenceDigest, assessments);
+  return verifyEvidenceBindings(checked, decoded.data, assessments);
 }
