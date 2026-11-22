@@ -1,6 +1,8 @@
 # SQL catalogue
 
-Find the SQL files each package ships, listed by file name. This is an inventory, not an installation sequence: which files your installation applies, and in which order, depends on the catalogue it selects. Apply SQL through your application's migration chain as described in [Upgrade the database](../upgrade/database-migrations.md).
+Each package lists its SQL files by name. Your selected catalogue determines
+which files apply and in what order. Follow your application's migration chain
+in [Upgrade the database](../upgrade/database-migrations.md).
 
 ## `@openlup/outbox`
 
