@@ -561,8 +561,9 @@ export async function restoreConnectedNativeStore(input: {
     const privateRelations = restricted ? relations.filter(relation => relation.schema !== "public") : [];
     await lockRestoreRelations(client, publicRelations);
     if (await readRestoreLedger(client, expectedLedger) !== ledgerBefore) fail("schema_conflict");
-    const lockedInventory = inventoryAtRest ?? await catalogPayload(client, installation);
-    if (!restricted && digest(lockedInventory) !== catalogueId) fail("schema_conflict");
+    const lockedInventory = await catalogPayload(client, installation);
+    // The at-rest observation, when required, already matched this digest.
+    if (digest(lockedInventory) !== catalogueId) fail("schema_conflict");
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
