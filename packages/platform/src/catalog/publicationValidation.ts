@@ -478,10 +478,6 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
   const issuesByPhase = { structural, activation: activationIssues };
   const position = { phase: "structural" as PublicationPhase, path: "product", subject: input.definition.key };
   const missing = (code: PlatformCode, path: string) => unavailable(publicationIssue(code, position.phase, path, position.subject));
-  const missingLifecycle = (path: string) => unavailable({
-    ...publicationIssue("catalog_lifecycle_evidence_unavailable", position.phase, path, position.subject),
-    detail: "Load the current publication evidence, including the product and SKU lifecycle states, and prepare the draft again.",
-  });
   const completed = { structural: false, activation: false };
   let knownHead: CatalogHeadRef | null | undefined;
   let activating = false;
@@ -666,11 +662,13 @@ export async function evaluateCatalogPublication(input: Omit<CatalogPublicationC
     const states = governedState && lifecycleEvidenceSchema.safeParse(governedState).data;
     const governed = governedIntent || governedState !== undefined;
     const lifecycleAvailable = !requestedHead || Boolean(states && retainedState.skus.every(sku => states.skus[sku.code]));
-    if (governed && !lifecycleAvailable) {
-      const legacyHead = governedState === undefined && head?.success && head.data
-        && recordedProduct?.success && recordedProduct.data && recordedProduct.data.schemaVersion === undefined;
-      structural.push(legacyHead ? missing("catalog_lifecycle_evidence_unavailable", "publication") : missingLifecycle("publication"));
-    }
+    const legacyHead = governedState === undefined && head?.success && head.data
+      && recordedProduct?.success && recordedProduct.data && recordedProduct.data.schemaVersion === undefined;
+    const missingLifecycle = (path: string) => unavailable({
+      ...publicationIssue("catalog_lifecycle_evidence_unavailable", position.phase, path, position.subject),
+      ...(legacyHead ? {} : { detail: "Load the current publication evidence, including the product and SKU lifecycle states, and prepare the draft again." }),
+    });
+    if (governed && !lifecycleAvailable) structural.push(missingLifecycle("publication"));
     if (!governedIntent && states && lifecycleAvailable) publicationRefuse("catalog_lifecycle_raw_status_fenced");
     const priceOperations = payload.skus.flatMap(sku => sku.priceOperations ?? []);
     async function checkPrices(draft: CatalogDraftPayloadV2 | undefined) {
