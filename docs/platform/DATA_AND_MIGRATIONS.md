@@ -2678,10 +2678,11 @@ Static admission checks the exact forward bytes and pins the issued
 package-editor migration by path and hash. In the native prefix it refuses
 files that literally name the preview table beyond the pinned package-editor
 and sized-editor migrations. Earlier SQL can also reach the table through
-computed identifiers. The PostgreSQL proof compares the installed table with
-one expected snapshot immediately before the forward. It checks every column,
-constraint, index and trigger, along with the row security state, policies and
-table ACL. The [installation matrix](../../tests/postgres/subscriptionExactInstallation.test.ts)
+computed identifiers. Immediately before the forward, the PostgreSQL proof
+compares the complete catalogue definition with one expected snapshot. It
+resolves catalogue references to stable names and omits only the named
+deny-list of instance-specific fields in the [proof](../../tests/postgres/nativeStoreForwardCatalog.shared.ts).
+The [installation matrix](../../tests/postgres/subscriptionExactInstallation.test.ts)
 runs the same check on all five shipped profiles.
 
 Existing previewed rows and acceptances backed by native events keep a NULL

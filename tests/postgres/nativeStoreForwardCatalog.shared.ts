@@ -19,7 +19,6 @@ const OID_FLOOR = `${FIRST_USER_OID}::pg_catalog.oid`;
 const PURPOSE_CONSTRAINT = "public.communication_native_sync_state.communication_native_sync_state_purpose_check";
 const PREVIEW_TABLE = "public.subscription_quote_previews";
 const PREVIEW_CHECK = "subscription_quote_previews_acceptance_check";
-const PREVIEW_OLD_DEFINITION = "CHECK ((((status = 'previewed'::text) AND (accepted_at IS NULL) AND (accepted_idempotency_key IS NULL) AND (accepted_event_id IS NULL)) OR ((status = 'accepted'::text) AND (accepted_at IS NOT NULL) AND (accepted_idempotency_key IS NOT NULL) AND (accepted_event_id IS NOT NULL))))";
 const PREVIEW_NEW_DEFINITION = "CHECK ((((status = 'previewed'::text) AND (accepted_at IS NULL) AND (accepted_idempotency_key IS NULL) AND (accepted_event_id IS NULL) AND (accepted_noop_receipt_id IS NULL)) OR ((status = 'accepted'::text) AND (accepted_at IS NOT NULL) AND (accepted_idempotency_key IS NOT NULL) AND (accepted_event_id IS NOT NULL) AND (accepted_noop_receipt_id IS NULL)) OR ((status = 'accepted'::text) AND (accepted_at IS NOT NULL) AND (accepted_idempotency_key IS NOT NULL) AND (accepted_event_id IS NULL) AND (accepted_noop_receipt_id IS NOT NULL))))";
 const GRANT_OPTION = " WITH GRANT OPTION";
 // Node trees (default arguments, rules, policies, trigger conditions) store where the parser read them in the file, which
@@ -667,96 +666,324 @@ async function pinned<T>(db: PoolClient, run: () => Promise<T>): Promise<T> {
   try { return await run(); } finally { await db.query("RESET search_path").catch(() => undefined); }
 }
 
-// Compare the installed preimage with one expected shape. Only the expected
-// migration owner's name and PostgreSQL's generated FK trigger identifiers vary.
+// These are the only bytes omitted from the catalogue rows. Row OIDs and storage
+// file IDs are allocated per install. Page estimates and vacuum horizons reflect
+// maintenance and data, and expression locations are offsets into the source SQL.
+const PREVIEW_CATALOG_DENY_LIST = {
+  pg_class: ["oid", "relfilenode", "relpages", "reltuples", "relallvisible", "relfrozenxid", "relminmxid"],
+  pg_attrdef: ["oid"],
+  pg_constraint: ["oid"],
+  pg_trigger: ["oid"],
+  pg_policy: ["oid"],
+} as const;
+const previewCatalogRow = (catalog: keyof typeof PREVIEW_CATALOG_DENY_LIST, alias: string) =>
+  `(to_jsonb(${alias}) - ARRAY[${PREVIEW_CATALOG_DENY_LIST[catalog].map(key => `'${key}'`).join(", ")}])`;
+
+const oidName = (value: string, cast: string) => `NULLIF(${value}, 0)::${cast}::text`;
+const oidNames = (value: string, name: string) => `CASE WHEN ${value} IS NOT NULL THEN
+  ARRAY(SELECT ${name} FROM unnest(${value}) WITH ORDINALITY AS item(id, position) ORDER BY position) END`;
+const lookupName = (catalog: string, field: string, id: string) =>
+  `COALESCE((SELECT ${field}::text FROM ${catalog} WHERE oid=${id}), NULLIF(${id}, 0)::text)`;
+const previewRole = (id: string) =>
+  `CASE WHEN ${id}=0 THEN 'PUBLIC' WHEN ${id}=$2::regrole THEN '<migration owner>' ELSE ${id}::regrole::text END`;
+const previewAcl = (value: string) => `CASE WHEN ${value} IS NOT NULL THEN ARRAY(
+  SELECT jsonb_build_array(${previewRole("g.grantee")}, ${previewRole("g.grantor")}, g.privilege_type, g.is_grantable) AS entry
+  FROM aclexplode(${value}) g ORDER BY entry) END`;
+const previewConstraintName = (id: string) => `COALESCE(
+  (SELECT COALESCE(NULLIF(k.conrelid,0)::regclass::text, k.contypid::regtype::text) || '/' || k.conname
+   FROM pg_constraint k WHERE k.oid=${id}), NULLIF(${id}, 0)::text)`;
+const previewTriggerName = (trigger: string, constraint: string) => `CASE WHEN ${trigger}.tgisinternal
+  AND ${trigger}.tgname = 'RI_ConstraintTrigger_c_' || ${trigger}.oid AND ${constraint}.oid IS NOT NULL
+  THEN ${constraint}.conname || '/' || ${trigger}.tgfoid::regprocedure::text ELSE ${trigger}.tgname::text END`;
+const previewTriggerParent = `COALESCE((SELECT t.tgrelid::regclass::text || '/' || ${previewTriggerName("t", "k")}
+  FROM pg_trigger t LEFT JOIN pg_constraint k ON k.oid=t.tgconstraint WHERE t.oid=g.tgparentid), NULLIF(g.tgparentid,0)::text)`;
+
+// Overlay stable identities on the full rows. Any other field, including a
+// field added by PostgreSQL, remains in the exact comparison.
+const PREVIEW_CATALOG_SQL = `
+  WITH preview AS (SELECT to_regclass($1) AS oid),
+  relations AS (
+    SELECT 'table' AS kind, p.oid FROM preview p
+    UNION ALL
+    SELECT 'index relation', x.indexrelid FROM preview p JOIN pg_index x ON x.indrelid=p.oid
+  )
+  SELECT r.kind, c.oid::regclass::text AS name, ${previewCatalogRow("pg_class", "c")} || jsonb_build_object(
+    'relnamespace', ${oidName("c.relnamespace", "regnamespace")}, 'reltype', ${oidName("c.reltype", "regtype")},
+    'reloftype', ${oidName("c.reloftype", "regtype")}, 'relowner', ${previewRole("c.relowner")},
+    'relam', ${lookupName("pg_am", "amname", "c.relam")}, 'reltablespace', ${lookupName("pg_tablespace", "spcname", "c.reltablespace")},
+    'reltoastrelid', CASE WHEN c.reltoastrelid::regclass::text = 'pg_toast.pg_toast_' || c.oid
+      THEN c.oid::regclass::text || ' (TOAST)' ELSE ${oidName("c.reltoastrelid", "regclass")} END,
+    'relrewrite', ${oidName("c.relrewrite", "regclass")}, 'relacl', ${previewAcl("c.relacl")}) AS facts
+    FROM relations r JOIN pg_class c ON c.oid=r.oid
+  UNION ALL
+  SELECT 'column', a.attname, to_jsonb(a) || jsonb_build_object(
+    'attrelid', ${oidName("a.attrelid", "regclass")}, 'atttypid', ${oidName("a.atttypid", "regtype")},
+    'attcollation', ${oidName("a.attcollation", "regcollation")}, 'attacl', ${previewAcl("a.attacl")})
+    FROM preview p JOIN pg_attribute a ON a.attrelid=p.oid
+  UNION ALL
+  SELECT 'default', COALESCE(a.attname::text, 'attribute ' || d.adnum),
+    ${previewCatalogRow("pg_attrdef", "d")} || jsonb_build_object('adrelid', ${oidName("d.adrelid", "regclass")})
+    FROM preview p JOIN pg_attrdef d ON d.adrelid=p.oid
+    LEFT JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
+  UNION ALL
+  SELECT 'constraint', k.conname, ${previewCatalogRow("pg_constraint", "k")} || jsonb_build_object(
+    'connamespace', ${oidName("k.connamespace", "regnamespace")}, 'conrelid', ${oidName("k.conrelid", "regclass")},
+    'contypid', ${oidName("k.contypid", "regtype")}, 'conindid', ${oidName("k.conindid", "regclass")},
+    'conparentid', ${previewConstraintName("k.conparentid")}, 'confrelid', ${oidName("k.confrelid", "regclass")},
+    ${["conpfeqop", "conppeqop", "conffeqop", "conexclop"].map(key => `'${key}', ${oidNames(`k.${key}`, oidName("item.id", "regoperator"))}`).join(", ")})
+    FROM preview p JOIN pg_constraint k ON k.conrelid=p.oid
+  UNION ALL
+  SELECT 'index', x.indexrelid::regclass::text, to_jsonb(x) || jsonb_build_object(
+    'indexrelid', ${oidName("x.indexrelid", "regclass")}, 'indrelid', ${oidName("x.indrelid", "regclass")},
+    'indcollation', ${oidNames("x.indcollation", oidName("item.id", "regcollation"))},
+    'indclass', ${oidNames("x.indclass", lookupName("pg_opclass", "opcnamespace::regnamespace::text || '.' || opcname", "item.id"))})
+    FROM preview p JOIN pg_index x ON x.indrelid=p.oid
+  UNION ALL
+  SELECT 'trigger', ${previewTriggerName("g", "k")}, ${previewCatalogRow("pg_trigger", "g")} || jsonb_build_object(
+    'tgname', ${previewTriggerName("g", "k")}, 'tgrelid', ${oidName("g.tgrelid", "regclass")},
+    'tgparentid', ${previewTriggerParent}, 'tgfoid', ${oidName("g.tgfoid", "regprocedure")},
+    'tgconstrrelid', ${oidName("g.tgconstrrelid", "regclass")}, 'tgconstrindid', ${oidName("g.tgconstrindid", "regclass")},
+    'tgconstraint', ${previewConstraintName("g.tgconstraint")})
+    FROM preview p JOIN pg_trigger g ON g.tgrelid=p.oid LEFT JOIN pg_constraint k ON k.oid=g.tgconstraint
+  UNION ALL
+  SELECT 'RLS policy', y.polname, ${previewCatalogRow("pg_policy", "y")} || jsonb_build_object(
+    'polrelid', ${oidName("y.polrelid", "regclass")}, 'polroles', ${oidNames("y.polroles", previewRole("item.id"))})
+    FROM preview p JOIN pg_policy y ON y.polrelid=p.oid
+  ORDER BY kind, name`;
+
+// Keep the raw node trees so deparsing cannot erase implicit casts or
+// collations. Normalize typed references, parser positions and signed bytes.
+const PREVIEW_CATALOG_EXPRESSIONS = ["relpartbound", "adbin", "conbin", "indexprs", "indpred", "tgqual", "polqual", "polwithcheck"];
+const PREVIEW_EXPRESSION_DENY_LIST = / :location -?\d+/gu;
+const exprReferenceTypes = {
+  type: ["array_typeid", "casetype", "consttype", "element_typeid", "funcresulttype", "opresulttype", "paramtype", "resulttype", "vartype"],
+  collation: ["array_collid", "casecollid", "collOid", "constcollid", "funccollid", "inputcollid", "opcollid", "paramcollid", "resultcollid", "varcollid"],
+  operator: ["opno"],
+  function: ["funcid", "hashfuncid", "negfuncid", "opfuncid"],
+} as const;
+const exprReferences = new Map<string, string>(
+  Object.entries(exprReferenceTypes).flatMap(([kind, fields]) => fields.map(field => [field, kind] as const)));
+const exprOid = new RegExp(`:(${[...exprReferences.keys()].join("|")}) (\\d+)(?=[ }])`, "gu");
+type PreviewCatalogRow = { kind: string; name: string; facts: Record<string, unknown> };
+
+async function readPreviewCatalog(db: PoolClient, owner: string): Promise<PreviewCatalogRow[]> {
+  const { rows } = await db.query<PreviewCatalogRow>(PREVIEW_CATALOG_SQL, [PREVIEW_TABLE, owner]);
+  const expressions = rows.flatMap(({ facts }) => PREVIEW_CATALOG_EXPRESSIONS.flatMap(field =>
+    typeof facts[field] === "string" ? [{ facts, field, tree: facts[field] }] : []));
+  const refs = new Map<string, { kind: string; id: string }>();
+  for (const { tree } of expressions) for (const [, field, id] of tree.matchAll(exprOid)) {
+    if (id === "0") continue;
+    const kind = exprReferences.get(field!)!;
+    refs.set(`${kind}:${id}`, { kind, id: id! });
+  }
+  const ids = [...refs.values()];
+  const resolved = await db.query<{ kind: string; id: string; name: string }>(`SELECT kind, id::text,
+    CASE kind WHEN 'type' THEN id::regtype::text WHEN 'collation' THEN id::regcollation::text
+      WHEN 'operator' THEN id::regoperator::text WHEN 'function' THEN id::regprocedure::text END AS name
+    FROM unnest($1::text[], $2::oid[]) AS r(kind, id)`, [ids.map(ref => ref.kind), ids.map(ref => ref.id)]);
+  const names = new Map(resolved.rows.map(row => [`${row.kind}:${row.id}`, row.name]));
+  for (const { facts, field, tree } of expressions) {
+    facts[field] = tree.replace(PREVIEW_EXPRESSION_DENY_LIST, "")
+      .replace(/(:constvalue \d+ \[)([^\]]*)(\])/gu, (_whole, start: string, bytes: string, end: string) =>
+        start + bytes.replace(/-\d+/gu, byte => String(Number(byte) + 256)) + end)
+      .replace(exprOid, (whole, tag: string, id: string) => id === "0" ? whole : `:${tag} ${JSON.stringify(names.get(`${exprReferences.get(tag)}:${id}`))}`);
+  }
+  return rows;
+}
+
+const previewExpectedRows = (kind: string, common: Record<string, unknown>, rows: Record<string, Record<string, unknown>>): PreviewCatalogRow[] =>
+  Object.entries(rows).map(([name, facts]) => ({ kind, name, facts: { ...common, ...facts } }));
+
+// Frozen PostgreSQL catalogue snapshot of the issued preview table. Group
+// identical fields for readability without supplying defaults to observed rows.
+const PREVIEW_EXPECTED_ROWS: readonly PreviewCatalogRow[] = [
+  { kind: "table", name: "public.subscription_quote_previews", facts: {
+    "relacl": [["<migration owner>", "<migration owner>", "DELETE", false], ["<migration owner>", "<migration owner>", "INSERT", false], ["<migration owner>", "<migration owner>", "REFERENCES", false], ["<migration owner>", "<migration owner>", "SELECT", false], ["<migration owner>", "<migration owner>", "TRIGGER", false], ["<migration owner>", "<migration owner>", "TRUNCATE", false], ["<migration owner>", "<migration owner>", "UPDATE", false]],
+    "relam": "heap",
+    "relchecks": 3,
+    "relforcerowsecurity": false,
+    "relhasindex": true,
+    "relhasrules": false,
+    "relhassubclass": false,
+    "relhastriggers": true,
+    "relispartition": false,
+    "relispopulated": true,
+    "relisshared": false,
+    "relkind": "r",
+    "relname": "subscription_quote_previews",
+    "relnamespace": "public",
+    "relnatts": 17,
+    "reloftype": null,
+    "reloptions": null,
+    "relowner": "<migration owner>",
+    "relpartbound": null,
+    "relpersistence": "p",
+    "relreplident": "d",
+    "relrewrite": null,
+    "relrowsecurity": true,
+    "reltablespace": null,
+    "reltoastrelid": "public.subscription_quote_previews (TOAST)",
+    "reltype": "public.subscription_quote_previews",
+  } },
+  ...previewExpectedRows("column", {
+    "attacl": null,
+    "attcacheoff": -1,
+    "attcompression": "",
+    "attfdwoptions": null,
+    "attgenerated": "",
+    "atthasmissing": false,
+    "attidentity": "",
+    "attinhcount": 0,
+    "attisdropped": false,
+    "attislocal": true,
+    "attmissingval": null,
+    "attndims": 0,
+    "attoptions": null,
+    "attrelid": "public.subscription_quote_previews",
+    "atttypmod": -1,
+  }, {
+    "accepted_at": {"attalign": "d", "attbyval": true, "attcollation": null, "atthasdef": false, "attlen": 8, "attname": "accepted_at", "attnotnull": false, "attnum": 13, "attstattarget": -1, "attstorage": "p", "atttypid": "timestamp with time zone"},
+    "accepted_event_id": {"attalign": "c", "attbyval": false, "attcollation": null, "atthasdef": false, "attlen": 16, "attname": "accepted_event_id", "attnotnull": false, "attnum": 15, "attstattarget": -1, "attstorage": "p", "atttypid": "uuid"},
+    "accepted_idempotency_key": {"attalign": "i", "attbyval": false, "attcollation": "\"default\"", "atthasdef": false, "attlen": -1, "attname": "accepted_idempotency_key", "attnotnull": false, "attnum": 14, "attstattarget": -1, "attstorage": "x", "atttypid": "text"},
+    "action": {"attalign": "i", "attbyval": false, "attcollation": "\"default\"", "atthasdef": false, "attlen": -1, "attname": "action", "attnotnull": true, "attnum": 5, "attstattarget": -1, "attstorage": "x", "atttypid": "text"},
+    "actor_id": {"attalign": "c", "attbyval": false, "attcollation": null, "atthasdef": false, "attlen": 16, "attname": "actor_id", "attnotnull": true, "attnum": 4, "attstattarget": -1, "attstorage": "p", "atttypid": "uuid"},
+    "client_id": {"attalign": "c", "attbyval": false, "attcollation": null, "atthasdef": false, "attlen": 16, "attname": "client_id", "attnotnull": true, "attnum": 3, "attstattarget": -1, "attstorage": "p", "atttypid": "uuid"},
+    "cmax": {"attalign": "i", "attbyval": true, "attcollation": null, "atthasdef": false, "attlen": 4, "attname": "cmax", "attnotnull": true, "attnum": -5, "attstattarget": 0, "attstorage": "p", "atttypid": "cid"},
+    "cmin": {"attalign": "i", "attbyval": true, "attcollation": null, "atthasdef": false, "attlen": 4, "attname": "cmin", "attnotnull": true, "attnum": -3, "attstattarget": 0, "attstorage": "p", "atttypid": "cid"},
+    "created_at": {"attalign": "d", "attbyval": true, "attcollation": null, "atthasdef": true, "attlen": 8, "attname": "created_at", "attnotnull": true, "attnum": 16, "attstattarget": -1, "attstorage": "p", "atttypid": "timestamp with time zone"},
+    "ctid": {"attalign": "s", "attbyval": false, "attcollation": null, "atthasdef": false, "attlen": 6, "attname": "ctid", "attnotnull": true, "attnum": -1, "attstattarget": 0, "attstorage": "p", "atttypid": "tid"},
+    "expires_at": {"attalign": "d", "attbyval": true, "attcollation": null, "atthasdef": false, "attlen": 8, "attname": "expires_at", "attnotnull": true, "attnum": 8, "attstattarget": -1, "attstorage": "p", "atttypid": "timestamp with time zone"},
+    "id": {"attalign": "c", "attbyval": false, "attcollation": null, "atthasdef": true, "attlen": 16, "attname": "id", "attnotnull": true, "attnum": 1, "attstattarget": -1, "attstorage": "p", "atttypid": "uuid"},
+    "quote_hash": {"attalign": "i", "attbyval": false, "attcollation": "\"default\"", "atthasdef": false, "attlen": -1, "attname": "quote_hash", "attnotnull": true, "attnum": 6, "attstattarget": -1, "attstorage": "x", "atttypid": "text"},
+    "quote_snapshot": {"attalign": "i", "attbyval": false, "attcollation": null, "atthasdef": false, "attlen": -1, "attname": "quote_snapshot", "attnotnull": true, "attnum": 11, "attstattarget": -1, "attstorage": "x", "atttypid": "jsonb"},
+    "request_payload": {"attalign": "i", "attbyval": false, "attcollation": null, "atthasdef": false, "attlen": -1, "attname": "request_payload", "attnotnull": true, "attnum": 10, "attstattarget": -1, "attstorage": "x", "atttypid": "jsonb"},
+    "status": {"attalign": "i", "attbyval": false, "attcollation": "\"default\"", "atthasdef": true, "attlen": -1, "attname": "status", "attnotnull": true, "attnum": 9, "attstattarget": -1, "attstorage": "x", "atttypid": "text"},
+    "subscription_id": {"attalign": "c", "attbyval": false, "attcollation": null, "atthasdef": false, "attlen": 16, "attname": "subscription_id", "attnotnull": true, "attnum": 2, "attstattarget": -1, "attstorage": "p", "atttypid": "uuid"},
+    "tableoid": {"attalign": "i", "attbyval": true, "attcollation": null, "atthasdef": false, "attlen": 4, "attname": "tableoid", "attnotnull": true, "attnum": -6, "attstattarget": 0, "attstorage": "p", "atttypid": "oid"},
+    "template_version": {"attalign": "i", "attbyval": true, "attcollation": null, "atthasdef": false, "attlen": 4, "attname": "template_version", "attnotnull": true, "attnum": 7, "attstattarget": -1, "attstorage": "p", "atttypid": "integer"},
+    "totals": {"attalign": "i", "attbyval": false, "attcollation": null, "atthasdef": false, "attlen": -1, "attname": "totals", "attnotnull": true, "attnum": 12, "attstattarget": -1, "attstorage": "x", "atttypid": "jsonb"},
+    "updated_at": {"attalign": "d", "attbyval": true, "attcollation": null, "atthasdef": true, "attlen": 8, "attname": "updated_at", "attnotnull": true, "attnum": 17, "attstattarget": -1, "attstorage": "p", "atttypid": "timestamp with time zone"},
+    "xmax": {"attalign": "i", "attbyval": true, "attcollation": null, "atthasdef": false, "attlen": 4, "attname": "xmax", "attnotnull": true, "attnum": -4, "attstattarget": 0, "attstorage": "p", "atttypid": "xid"},
+    "xmin": {"attalign": "i", "attbyval": true, "attcollation": null, "atthasdef": false, "attlen": 4, "attname": "xmin", "attnotnull": true, "attnum": -2, "attstattarget": 0, "attstorage": "p", "atttypid": "xid"},
+  }),
+  ...previewExpectedRows("default", {
+    "adrelid": "public.subscription_quote_previews",
+  }, {
+    "created_at": {"adbin": "{FUNCEXPR :funcid \"now()\" :funcresulttype \"timestamp with time zone\" :funcretset false :funcvariadic false :funcformat 0 :funccollid 0 :inputcollid 0 :args <>}", "adnum": 16},
+    "id": {"adbin": "{FUNCEXPR :funcid \"gen_random_uuid()\" :funcresulttype \"uuid\" :funcretset false :funcvariadic false :funcformat 0 :funccollid 0 :inputcollid 0 :args <>}", "adnum": 1},
+    "status": {"adbin": "{CONST :consttype \"text\" :consttypmod -1 :constcollid \"\\\"default\\\"\" :constlen -1 :constbyval false :constisnull false :constvalue 13 [ 52 0 0 0 112 114 101 118 105 101 119 101 100 ]}", "adnum": 9},
+    "updated_at": {"adbin": "{FUNCEXPR :funcid \"now()\" :funcresulttype \"timestamp with time zone\" :funcretset false :funcvariadic false :funcformat 0 :funccollid 0 :inputcollid 0 :args <>}", "adnum": 17},
+  }),
+  ...previewExpectedRows("constraint", {
+    "condeferrable": false,
+    "condeferred": false,
+    "conexclop": null,
+    "confdelsetcols": null,
+    "coninhcount": 0,
+    "conislocal": true,
+    "connamespace": "public",
+    "conparentid": null,
+    "conrelid": "public.subscription_quote_previews",
+    "contypid": null,
+    "convalidated": true,
+  }, {
+    "subscription_quote_previews_acceptance_check": {"conbin": "{BOOLEXPR :boolop or :args ({BOOLEXPR :boolop and :args ({OPEXPR :opno \"=(text,text)\" :opfuncid \"texteq(text,text)\" :opresulttype \"boolean\" :opretset false :opcollid 0 :inputcollid \"\\\"default\\\"\" :args ({VAR :varno 1 :varattno 9 :vartype \"text\" :vartypmod -1 :varcollid \"\\\"default\\\"\" :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 9} {CONST :consttype \"text\" :consttypmod -1 :constcollid \"\\\"default\\\"\" :constlen -1 :constbyval false :constisnull false :constvalue 13 [ 52 0 0 0 112 114 101 118 105 101 119 101 100 ]})} {NULLTEST :arg {VAR :varno 1 :varattno 13 :vartype \"timestamp with time zone\" :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 13} :nulltesttype 0 :argisrow false} {NULLTEST :arg {VAR :varno 1 :varattno 14 :vartype \"text\" :vartypmod -1 :varcollid \"\\\"default\\\"\" :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 14} :nulltesttype 0 :argisrow false} {NULLTEST :arg {VAR :varno 1 :varattno 15 :vartype \"uuid\" :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 15} :nulltesttype 0 :argisrow false})} {BOOLEXPR :boolop and :args ({OPEXPR :opno \"=(text,text)\" :opfuncid \"texteq(text,text)\" :opresulttype \"boolean\" :opretset false :opcollid 0 :inputcollid \"\\\"default\\\"\" :args ({VAR :varno 1 :varattno 9 :vartype \"text\" :vartypmod -1 :varcollid \"\\\"default\\\"\" :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 9} {CONST :consttype \"text\" :consttypmod -1 :constcollid \"\\\"default\\\"\" :constlen -1 :constbyval false :constisnull false :constvalue 12 [ 48 0 0 0 97 99 99 101 112 116 101 100 ]})} {NULLTEST :arg {VAR :varno 1 :varattno 13 :vartype \"timestamp with time zone\" :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 13} :nulltesttype 1 :argisrow false} {NULLTEST :arg {VAR :varno 1 :varattno 14 :vartype \"text\" :vartypmod -1 :varcollid \"\\\"default\\\"\" :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 14} :nulltesttype 1 :argisrow false} {NULLTEST :arg {VAR :varno 1 :varattno 15 :vartype \"uuid\" :vartypmod -1 :varcollid 0 :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 15} :nulltesttype 1 :argisrow false})})}", "confdeltype": " ", "conffeqop": null, "confkey": null, "confmatchtype": " ", "confrelid": null, "confupdtype": " ", "conindid": null, "conkey": [9, 13, 14, 15], "conname": "subscription_quote_previews_acceptance_check", "connoinherit": false, "conpfeqop": null, "conppeqop": null, "contype": "c"},
+    "subscription_quote_previews_accepted_event_id_fkey": {"conbin": null, "confdeltype": "a", "conffeqop": ["=(uuid,uuid)"], "confkey": [1], "confmatchtype": "s", "confrelid": "public.subscription_events", "confupdtype": "a", "conindid": "public.subscription_events_pkey", "conkey": [15], "conname": "subscription_quote_previews_accepted_event_id_fkey", "connoinherit": true, "conpfeqop": ["=(uuid,uuid)"], "conppeqop": ["=(uuid,uuid)"], "contype": "f"},
+    "subscription_quote_previews_client_id_fkey": {"conbin": null, "confdeltype": "a", "conffeqop": ["=(uuid,uuid)"], "confkey": [1], "confmatchtype": "s", "confrelid": "public.clients", "confupdtype": "a", "conindid": "public.clients_pkey", "conkey": [3], "conname": "subscription_quote_previews_client_id_fkey", "connoinherit": true, "conpfeqop": ["=(uuid,uuid)"], "conppeqop": ["=(uuid,uuid)"], "contype": "f"},
+    "subscription_quote_previews_pkey": {"conbin": null, "confdeltype": " ", "conffeqop": null, "confkey": null, "confmatchtype": " ", "confrelid": null, "confupdtype": " ", "conindid": "public.subscription_quote_previews_pkey", "conkey": [1], "conname": "subscription_quote_previews_pkey", "connoinherit": true, "conpfeqop": null, "conppeqop": null, "contype": "p"},
+    "subscription_quote_previews_quote_hash_check": {"conbin": "{OPEXPR :opno \"=(integer,integer)\" :opfuncid \"int4eq(integer,integer)\" :opresulttype \"boolean\" :opretset false :opcollid 0 :inputcollid 0 :args ({FUNCEXPR :funcid \"char_length(text)\" :funcresulttype \"integer\" :funcretset false :funcvariadic false :funcformat 0 :funccollid 0 :inputcollid \"\\\"default\\\"\" :args ({VAR :varno 1 :varattno 6 :vartype \"text\" :vartypmod -1 :varcollid \"\\\"default\\\"\" :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 6})} {CONST :consttype \"integer\" :consttypmod -1 :constcollid 0 :constlen 4 :constbyval true :constisnull false :constvalue 4 [ 64 0 0 0 0 0 0 0 ]})}", "confdeltype": " ", "conffeqop": null, "confkey": null, "confmatchtype": " ", "confrelid": null, "confupdtype": " ", "conindid": null, "conkey": [6], "conname": "subscription_quote_previews_quote_hash_check", "connoinherit": false, "conpfeqop": null, "conppeqop": null, "contype": "c"},
+    "subscription_quote_previews_status_check": {"conbin": "{SCALARARRAYOPEXPR :opno \"=(text,text)\" :opfuncid \"texteq(text,text)\" :hashfuncid 0 :negfuncid 0 :useOr true :inputcollid \"\\\"default\\\"\" :args ({VAR :varno 1 :varattno 9 :vartype \"text\" :vartypmod -1 :varcollid \"\\\"default\\\"\" :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 9} {ARRAYEXPR :array_typeid \"text[]\" :array_collid \"\\\"default\\\"\" :element_typeid \"text\" :elements ({CONST :consttype \"text\" :consttypmod -1 :constcollid \"\\\"default\\\"\" :constlen -1 :constbyval false :constisnull false :constvalue 13 [ 52 0 0 0 112 114 101 118 105 101 119 101 100 ]} {CONST :consttype \"text\" :consttypmod -1 :constcollid \"\\\"default\\\"\" :constlen -1 :constbyval false :constisnull false :constvalue 12 [ 48 0 0 0 97 99 99 101 112 116 101 100 ]}) :multidims false})}", "confdeltype": " ", "conffeqop": null, "confkey": null, "confmatchtype": " ", "confrelid": null, "confupdtype": " ", "conindid": null, "conkey": [9], "conname": "subscription_quote_previews_status_check", "connoinherit": false, "conpfeqop": null, "conppeqop": null, "contype": "c"},
+    "subscription_quote_previews_subscription_id_fkey": {"conbin": null, "confdeltype": "a", "conffeqop": ["=(uuid,uuid)"], "confkey": [1], "confmatchtype": "s", "confrelid": "public.subscriptions", "confupdtype": "a", "conindid": "public.subscriptions_pkey", "conkey": [2], "conname": "subscription_quote_previews_subscription_id_fkey", "connoinherit": true, "conpfeqop": ["=(uuid,uuid)"], "conppeqop": ["=(uuid,uuid)"], "contype": "f"},
+  }),
+  ...previewExpectedRows("index relation", {
+    "relacl": null,
+    "relam": "btree",
+    "relchecks": 0,
+    "relforcerowsecurity": false,
+    "relhasindex": false,
+    "relhasrules": false,
+    "relhassubclass": false,
+    "relhastriggers": false,
+    "relispartition": false,
+    "relispopulated": true,
+    "relisshared": false,
+    "relkind": "i",
+    "relnamespace": "public",
+    "reloftype": null,
+    "reloptions": null,
+    "relowner": "<migration owner>",
+    "relpartbound": null,
+    "relpersistence": "p",
+    "relreplident": "n",
+    "relrewrite": null,
+    "relrowsecurity": false,
+    "reltablespace": null,
+    "reltoastrelid": null,
+    "reltype": null,
+  }, {
+    "public.subscription_quote_previews_expiry": {"relname": "subscription_quote_previews_expiry", "relnatts": 2},
+    "public.subscription_quote_previews_lookup": {"relname": "subscription_quote_previews_lookup", "relnatts": 5},
+    "public.subscription_quote_previews_open": {"relname": "subscription_quote_previews_open", "relnatts": 5},
+    "public.subscription_quote_previews_pkey": {"relname": "subscription_quote_previews_pkey", "relnatts": 1},
+  }),
+  ...previewExpectedRows("index", {
+    "indcheckxmin": false,
+    "indexprs": null,
+    "indimmediate": true,
+    "indisclustered": false,
+    "indisexclusion": false,
+    "indislive": true,
+    "indisready": true,
+    "indisreplident": false,
+    "indisvalid": true,
+    "indnullsnotdistinct": false,
+    "indrelid": "public.subscription_quote_previews",
+  }, {
+    "public.subscription_quote_previews_expiry": {"indclass": ["pg_catalog.text_ops", "pg_catalog.timestamptz_ops"], "indcollation": ["\"default\"", null], "indexrelid": "public.subscription_quote_previews_expiry", "indisprimary": false, "indisunique": false, "indkey": [9, 8], "indnatts": 2, "indnkeyatts": 2, "indoption": [0, 0], "indpred": null},
+    "public.subscription_quote_previews_lookup": {"indclass": ["pg_catalog.uuid_ops", "pg_catalog.text_ops", "pg_catalog.text_ops", "pg_catalog.int4_ops", "pg_catalog.timestamptz_ops"], "indcollation": [null, "\"default\"", "\"default\"", null, null], "indexrelid": "public.subscription_quote_previews_lookup", "indisprimary": false, "indisunique": false, "indkey": [2, 5, 6, 7, 16], "indnatts": 5, "indnkeyatts": 5, "indoption": [0, 0, 0, 0, 3], "indpred": null},
+    "public.subscription_quote_previews_open": {"indclass": ["pg_catalog.uuid_ops", "pg_catalog.uuid_ops", "pg_catalog.text_ops", "pg_catalog.text_ops", "pg_catalog.int4_ops"], "indcollation": [null, null, "\"default\"", "\"default\"", null], "indexrelid": "public.subscription_quote_previews_open", "indisprimary": false, "indisunique": true, "indkey": [2, 3, 5, 6, 7], "indnatts": 5, "indnkeyatts": 5, "indoption": [0, 0, 0, 0, 0], "indpred": "{OPEXPR :opno \"=(text,text)\" :opfuncid \"texteq(text,text)\" :opresulttype \"boolean\" :opretset false :opcollid 0 :inputcollid \"\\\"default\\\"\" :args ({VAR :varno 1 :varattno 9 :vartype \"text\" :vartypmod -1 :varcollid \"\\\"default\\\"\" :varnullingrels (b) :varlevelsup 0 :varnosyn 1 :varattnosyn 9} {CONST :consttype \"text\" :consttypmod -1 :constcollid \"\\\"default\\\"\" :constlen -1 :constbyval false :constisnull false :constvalue 13 [ 52 0 0 0 112 114 101 118 105 101 119 101 100 ]})}"},
+    "public.subscription_quote_previews_pkey": {"indclass": ["pg_catalog.uuid_ops"], "indcollation": [null], "indexrelid": "public.subscription_quote_previews_pkey", "indisprimary": true, "indisunique": true, "indkey": [1], "indnatts": 1, "indnkeyatts": 1, "indoption": [0], "indpred": null},
+  }),
+  ...previewExpectedRows("trigger", {
+    "tgargs": "\\x",
+    "tgattr": [],
+    "tgdeferrable": false,
+    "tgenabled": "O",
+    "tginitdeferred": false,
+    "tgisinternal": true,
+    "tgnargs": 0,
+    "tgnewtable": null,
+    "tgoldtable": null,
+    "tgparentid": null,
+    "tgqual": null,
+    "tgrelid": "public.subscription_quote_previews",
+  }, {
+    "subscription_quote_previews_accepted_event_id_fkey/\"RI_FKey_check_ins\"()": {"tgconstraint": "public.subscription_quote_previews/subscription_quote_previews_accepted_event_id_fkey", "tgconstrindid": "public.subscription_events_pkey", "tgconstrrelid": "public.subscription_events", "tgfoid": "\"RI_FKey_check_ins\"()", "tgname": "subscription_quote_previews_accepted_event_id_fkey/\"RI_FKey_check_ins\"()", "tgtype": 5},
+    "subscription_quote_previews_accepted_event_id_fkey/\"RI_FKey_check_upd\"()": {"tgconstraint": "public.subscription_quote_previews/subscription_quote_previews_accepted_event_id_fkey", "tgconstrindid": "public.subscription_events_pkey", "tgconstrrelid": "public.subscription_events", "tgfoid": "\"RI_FKey_check_upd\"()", "tgname": "subscription_quote_previews_accepted_event_id_fkey/\"RI_FKey_check_upd\"()", "tgtype": 17},
+    "subscription_quote_previews_client_id_fkey/\"RI_FKey_check_ins\"()": {"tgconstraint": "public.subscription_quote_previews/subscription_quote_previews_client_id_fkey", "tgconstrindid": "public.clients_pkey", "tgconstrrelid": "public.clients", "tgfoid": "\"RI_FKey_check_ins\"()", "tgname": "subscription_quote_previews_client_id_fkey/\"RI_FKey_check_ins\"()", "tgtype": 5},
+    "subscription_quote_previews_client_id_fkey/\"RI_FKey_check_upd\"()": {"tgconstraint": "public.subscription_quote_previews/subscription_quote_previews_client_id_fkey", "tgconstrindid": "public.clients_pkey", "tgconstrrelid": "public.clients", "tgfoid": "\"RI_FKey_check_upd\"()", "tgname": "subscription_quote_previews_client_id_fkey/\"RI_FKey_check_upd\"()", "tgtype": 17},
+    "subscription_quote_previews_subscription_id_fkey/\"RI_FKey_check_ins\"()": {"tgconstraint": "public.subscription_quote_previews/subscription_quote_previews_subscription_id_fkey", "tgconstrindid": "public.subscriptions_pkey", "tgconstrrelid": "public.subscriptions", "tgfoid": "\"RI_FKey_check_ins\"()", "tgname": "subscription_quote_previews_subscription_id_fkey/\"RI_FKey_check_ins\"()", "tgtype": 5},
+    "subscription_quote_previews_subscription_id_fkey/\"RI_FKey_check_upd\"()": {"tgconstraint": "public.subscription_quote_previews/subscription_quote_previews_subscription_id_fkey", "tgconstrindid": "public.subscriptions_pkey", "tgconstrrelid": "public.subscriptions", "tgfoid": "\"RI_FKey_check_upd\"()", "tgname": "subscription_quote_previews_subscription_id_fkey/\"RI_FKey_check_upd\"()", "tgtype": 17},
+  }),
+];
+
 export async function assertPreviewAcceptancePreimage(db: PoolClient, owner: string): Promise<void> {
-  const table = "subscription_quote_previews";
-  const timestamp = "timestamp with time zone";
-  const indexes = (name: string, definition: string, unique = false) =>
-    [`CREATE ${unique ? "UNIQUE " : ""}INDEX ${table}_${name} ON ${PREVIEW_TABLE} USING btree ${definition}`, true, true, true, false, false];
-  const foreignKeys = { accepted_event_id: "subscription_events", client_id: "clients", subscription_id: "subscriptions" };
-  const expected: Record<string, Record<string, unknown>> = {
-    table: { [PREVIEW_TABLE]: { kind: "r", persistence: "p", owner, rlsEnabled: true, rlsForced: false } },
-    column: Object.fromEntries([
-      ["id", "uuid", true, "gen_random_uuid()"],
-      ["subscription_id", "uuid", true], ["client_id", "uuid", true], ["actor_id", "uuid", true],
-      ["action", "text", true], ["quote_hash", "text", true], ["template_version", "integer", true],
-      ["expires_at", timestamp, true], ["status", "text", true, "'previewed'::text"],
-      ["request_payload", "jsonb", true], ["quote_snapshot", "jsonb", true], ["totals", "jsonb", true],
-      ["accepted_at", timestamp, false], ["accepted_idempotency_key", "text", false], ["accepted_event_id", "uuid", false],
-      ["created_at", timestamp, true, "now()"], ["updated_at", timestamp, true, "now()"],
-    ].map(([name, type, required, defaultValue], position) => [String(name), [position + 1, type, required, defaultValue ?? null, "", "", false, null]])),
-    constraint: {
-      [PREVIEW_CHECK]: ["c", PREVIEW_OLD_DEFINITION, true],
-      [`${table}_pkey`]: ["p", "PRIMARY KEY (id)", true],
-      [`${table}_quote_hash_check`]: ["c", "CHECK ((char_length(quote_hash) = 64))", true],
-      [`${table}_status_check`]: ["c", "CHECK ((status = ANY (ARRAY['previewed'::text, 'accepted'::text])))", true],
-      ...Object.fromEntries(Object.entries(foreignKeys).map(([key, target]) =>
-        [`${table}_${key}_fkey`, ["f", `FOREIGN KEY (${key}) REFERENCES public.${target}(id)`, true]])),
-    },
-    index: {
-      [`${table}_pkey`]: indexes("pkey", "(id)", true),
-      [`${table}_expiry`]: indexes("expiry", "(status, expires_at)"),
-      [`${table}_lookup`]: indexes("lookup", "(subscription_id, action, quote_hash, template_version, created_at DESC)"),
-      [`${table}_open`]: indexes("open", "(subscription_id, client_id, action, quote_hash, template_version) WHERE (status = 'previewed'::text)", true),
-    },
-    trigger: Object.fromEntries(Object.entries(foreignKeys).flatMap(([key, target]) => {
-      const constraint = `${table}_${key}_fkey`;
-      return [["RI_FKey_check_ins", 5], ["RI_FKey_check_upd", 17]].map(([fn, type]) =>
-        [`${constraint}/${fn}`, [true, "O", type, "pg_catalog", fn, `public.${target}`, constraint, false, false, "", "", null, null, true]]);
-    })),
-    "RLS policy": {},
-    "ACL grant": Object.fromEntries(["DELETE", "INSERT", "REFERENCES", "SELECT", "TRIGGER", "TRUNCATE", "UPDATE"]
-      .map(privilege => [`${owner}/${privilege}/${owner}`, false])),
-  };
   const { searchPath } = (await db.query<{ searchPath: string }>(
     `SELECT pg_catalog.current_setting('search_path') AS "searchPath"`)).rows[0]!;
-  const { rows } = await pinned(db, () => db.query<{ kind: string; name: string; facts: unknown }>(`
-    WITH preview AS (SELECT c.* FROM pg_class c WHERE c.oid = to_regclass($1))
-    SELECT 'table' AS kind, $1::text AS name,
-      jsonb_build_object('kind', c.relkind, 'persistence', c.relpersistence, 'owner', c.relowner::regrole::text,
-        'rlsEnabled', c.relrowsecurity, 'rlsForced', c.relforcerowsecurity) AS facts FROM preview c
-    UNION ALL
-    SELECT 'column', a.attname, jsonb_build_array(a.attnum, format_type(a.atttypid, a.atttypmod), a.attnotnull,
-      pg_get_expr(d.adbin,d.adrelid), a.attidentity, a.attgenerated, a.attisdropped, a.attacl::text)
-      FROM preview c JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0
-      LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
-    UNION ALL
-    SELECT 'constraint', k.conname, jsonb_build_array(k.contype, pg_get_constraintdef(k.oid), k.convalidated)
-      FROM preview c JOIN pg_constraint k ON k.conrelid=c.oid
-    UNION ALL
-    SELECT 'index', i.relname, jsonb_build_array(pg_get_indexdef(i.oid), x.indisvalid, x.indisready, x.indislive, x.indisclustered, x.indisreplident)
-      FROM preview c JOIN pg_index x ON x.indrelid=c.oid JOIN pg_class i ON i.oid=x.indexrelid
-    UNION ALL
-    SELECT 'trigger',
-      CASE WHEN t.tgisinternal AND t.tgname = 'RI_ConstraintTrigger_c_' || t.oid
-        THEN k.conname || '/' || f.proname ELSE t.tgname::text END,
-      jsonb_build_array(t.tgisinternal, t.tgenabled, t.tgtype, n.nspname, f.proname, t.tgconstrrelid::regclass::text,
-        k.conname, t.tgdeferrable, t.tginitdeferred, t.tgattr::text, encode(t.tgargs,'hex'),
-        t.tgoldtable, t.tgnewtable, t.tgqual IS NULL)
-      FROM preview c JOIN pg_trigger t ON t.tgrelid=c.oid
-      JOIN pg_proc f ON f.oid=t.tgfoid JOIN pg_namespace n ON n.oid=f.pronamespace
-      LEFT JOIN pg_constraint k ON k.oid=t.tgconstraint
-    UNION ALL
-    SELECT 'RLS policy', p.polname, to_jsonb(p) FROM preview c JOIN pg_policy p ON p.polrelid=c.oid
-    UNION ALL
-    SELECT 'ACL grant', (CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END)
-      || '/' || a.privilege_type || '/' || a.grantor::regrole::text, to_jsonb(a.is_grantable)
-      FROM preview c, aclexplode(COALESCE(c.relacl, acldefault('r',c.relowner))) a
-    ORDER BY kind, name`, [PREVIEW_TABLE]));
+  const rows = await pinned(db, () => readPreviewCatalog(db, owner));
   await db.query("SELECT pg_catalog.set_config('search_path', $1, false)", [searchPath]);
-  const observed = new Set<string>();
+  const keyFor = ({ kind, name }: PreviewCatalogRow) => `${kind} ${name}`;
+  const expected = new Map(PREVIEW_EXPECTED_ROWS.map(row => [keyFor(row), row.facts]));
   const drift = (detail: string): never => fail(`${PREVIEW_TABLE} preimage ${detail} before the acceptance forward. Restore the issued table shape.`);
-  for (const { kind, name, facts } of rows) {
-    const key = `${kind} ${name}`;
-    if (!Object.hasOwn(expected[kind]!, name) || observed.has(key)) drift(`has unexpected ${key}`);
-    const wanted = expected[kind]![name];
-    if (!isDeepStrictEqual(facts, wanted)) drift(`changed ${key} (expected ${JSON.stringify(wanted)}, found ${JSON.stringify(facts)})`);
-    observed.add(key);
+  for (const row of rows) {
+    const key = keyFor(row);
+    const wanted = expected.get(key) ?? drift(`has unexpected ${key}`);
+    const fields = new Set([...Object.keys(wanted), ...Object.keys(row.facts)]);
+    const changed = [...fields].filter(field => !isDeepStrictEqual(row.facts[field], wanted[field]));
+    if (changed.length) drift(`changed ${key} (${changed.join(", ")})`);
+    expected.delete(key);
   }
-  for (const [kind, items] of Object.entries(expected)) for (const name of Object.keys(items)) {
-    if (!observed.has(`${kind} ${name}`)) drift(`is missing ${kind} ${name}`);
-  }
+  for (const key of expected.keys()) drift(`is missing ${key}`);
 }
 
 // Raw ordinary-trigger fixtures can supply intentionally mismatched SQL.
@@ -1073,7 +1300,7 @@ async function provePreviewAcceptance(pool: Pool) {
       expires_at,request_payload,quote_snapshot,totals,status,accepted_at,accepted_idempotency_key,accepted_event_id`;
     const values = `VALUES ($1,$2,$3,'fixture.edit',encode(sha256(gen_random_uuid()::text::bytea),'hex'),1,
       now(),'{}','{}','{}',$4,CASE WHEN $5::boolean THEN now() END,$6,$7`;
-    const statuses = ["previewed", "accepted", "other", null];
+    const statuses = ["previewed", "accepted", "Accepted", "other", null];
     for (const withReceipt of [false, true]) {
       if (withReceipt) {
         const role = (await db.query("SELECT current_user::text AS role")).rows[0].role as string;
@@ -1097,7 +1324,7 @@ async function provePreviewAcceptance(pool: Pool) {
         } else {
           await db.query("SAVEPOINT invalid_preview");
           const error = status === null ? { code: "23502", column: "status" }
-            : status === "other" ? { code: "23514" } : { code: "23514", constraint: PREVIEW_CHECK };
+            : status === "previewed" || status === "accepted" ? { code: "23514", constraint: PREVIEW_CHECK } : { code: "23514" };
           await expect(insert(), label).rejects.toMatchObject(error);
           await db.query("ROLLBACK TO SAVEPOINT invalid_preview");
           await db.query("RELEASE SAVEPOINT invalid_preview");
