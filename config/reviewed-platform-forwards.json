@@ -9600,7 +9600,7 @@
     },
     {
       "path": "db/platform/migrations/20261124220001_catalog_accepted_references.sql",
-      "sha256": "d444c954c2f503a81f50e8de639a3f1ba963a89824fbd07252a37bd6a00d1f02",
+      "sha256": "6266fd33de45793edc7f476af308ff82f2f16c5c6965606c17092070842a41ba",
       "functions": [
         {
           "signature": "public.catalog_lifecycle_assert_archive(uuid)",
@@ -9760,7 +9760,7 @@
         {
           "signature": "public.catalog_edit_acceptance_trigger()",
           "beforeSha256": null,
-          "afterSha256": "cad1902989797334828b0c4b5f4b5e649720134b914744ebb7e11cb7d1ab486d"
+          "afterSha256": "d66ca759086bc31e38829ddbc16da5cad7b452bad8b556832525881cd7fd525e"
         },
         {
           "signature": "public.catalog_acceptance_record_admit_v2()",

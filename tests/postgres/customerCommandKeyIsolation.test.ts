@@ -7,9 +7,6 @@ import { qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, 
 import { createNativeRenewalCodec, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const migration = readFileSync("db/platform/migrations/20261106050000_customer_command_key_isolation.sql", "utf8");
-// The runner installs the additive quote column once; upgrade fixtures replace only routines.
-const forward = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION"));
 const oldPause = readFileSync("db/platform/migrations/20260812100000_customer_subscription_pause_actor.sql", "utf8").match(/CREATE FUNCTION[\s\S]*?\n\$\$;/u)![0].replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
 const oldControl = readFileSync("db/platform/migrations/20260813200000_customer_subscription_control.sql", "utf8");
 const oldBundle = ["preview", "apply"].map(action => oldControl.match(new RegExp(`CREATE FUNCTION public.customer_subscription_${action}_bundle_as_actor\\([\\s\\S]*?\\n\\$\\$;`, "u"))![0].replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")).join("\n");
@@ -18,6 +15,7 @@ const commandKey = (actor: string, key: string) => `command:${createHash("sha256
 
 describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer key isolation on %s", profile => {
   let container: PostgresContainer, owner: Pool, runtime: Pool;
+  let forward: string;
   const pools: Pool[] = [];
   const pool = (url: string, options?: string) => { const db = new Pool({ connectionString: url, options }); pools.push(db); return db; };
   beforeAll(async () => {
@@ -39,6 +37,15 @@ describe.each(["legacy", "qualified-v2", "qualified-admin"] as const)("customer 
     const runner = createPostgresMigrationRunner({ connectionString: "injected" }, { installation, poolFactory: () => owner });
     await runner.apply();
     expect(await runner.apply()).toEqual({ applied: [] });
+    // Restore the installed owners after simulating legacy requests. Replaying
+    // the old key-isolation migration would overwrite later acceptance bindings.
+    const { rows } = await owner.query<{ definition: string }>(`SELECT pg_catalog.pg_get_functiondef(oid) AS definition
+      FROM pg_catalog.pg_proc WHERE oid IN (
+        'public.customer_subscription_pause_as_actor(uuid,text,text,text)'::regprocedure,
+        'public.customer_subscription_preview_bundle_as_actor(uuid,text,jsonb,jsonb,jsonb,integer,integer)'::regprocedure,
+        'public.customer_subscription_apply_bundle_as_actor(uuid,text,text,jsonb,jsonb,jsonb,integer,integer)'::regprocedure
+      ) ORDER BY oid`);
+    forward = rows.map(({ definition }) => definition).join(";\n");
     if (profile === "legacy") await bootstrap.query(`CREATE ROLE key_r LOGIN NOINHERIT NOSUPERUSER NOCREATEROLE NOCREATEDB NOREPLICATION NOBYPASSRLS PASSWORD 'synthetic-conformance'; GRANT authenticated TO key_r`);
     runtime = pool(login("key_r"));
   }, postgresSetupTimeoutMs);
