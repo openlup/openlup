@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { createBffResponder } from "@openlup/platform/bff";
+import { canonicalCatalogDraftJson } from "@openlup/platform/catalog/contracts";
+import type { DestinationAddressV2 } from "@openlup/platform/commerce/contracts";
 import {
   createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandler, createAddressCanonStreetsHandler,
   createCustomerAddressesHandler, canonicalAddressKey, readAddresses, readOrdererProfiles,
@@ -7,6 +10,7 @@ import {
   type AddressCanonLookupPort, type AddressCanonLookupDeps, type AddressLookupSchemas,
   type CustomerAddressBookPort, type CustomerAddressMutationPort, type CustomerAddressesDeps,
   type CustomerAddressSchemas, type CustomerAddressReadStore,
+  validateDestinationAddressV2, type AddressPolicyV1,
 } from "@openlup/platform/shipping";
 import type {
   CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet,
@@ -21,6 +25,95 @@ function response() {
   res.status.mockReturnValue(res); res.json.mockReturnValue(res);
   return res;
 }
+
+const destinationPolicy: AddressPolicyV1 = {
+  schemaVersion: 1, policyRef: "sample-address", policyRevision: "r1", countryCode: "XX", requiredFields: [],
+  allowedSubdivisionCodes: ["XX-M", "XX-T"], subdivisionAliases: { military: "XX-M", territory: "XX-T", "XX-T": "XX-M" },
+  postalRule: { upperAscii: true, stripAsciiSpaces: true, alternatives: [["letter", "digit", { literal: "-" }, "digit"], ["digit", "digit"]] },
+  classificationRules: [{ key: "zone.military", subdivisionCode: "XX-M" }, { key: "box", line1Prefix: "Po BoX " }],
+};
+const destination = { line1: "  pO bOx 10  ", city: "Cafe\u0301", countryCode: " xx ", postalCode: " x 9- 1 " };
+const validateV2 = validateDestinationAddressV2;
+
+it("military_code_admitted_by_policy_only", () => {
+  expect(validateV2({ ...destination, subdivisionCode: "AA" }, destinationPolicy))
+    .toMatchObject({ outcome: "refused", code: "address_subdivision_unrecognized", field: "subdivisionCode" });
+  const policy: AddressPolicyV1 = { ...destinationPolicy, requiredFields: ["subdivisionCode"], allowedSubdivisionCodes: ["AA", "XX-M", "XX-T"] };
+  expect(validateV2(destination, policy)).toMatchObject({ outcome: "refused", code: "address_subdivision_required", field: "subdivisionCode" });
+  expect(validateV2({ ...destination, subdivisionCode: "aa" }, policy)).toMatchObject({ outcome: "valid", address: { subdivisionCode: "AA" } });
+  expect(validateV2({ ...destination, subdivisionCode: " territory " }, policy)).toMatchObject({ outcome: "valid", address: { subdivisionCode: "XX-T" } });
+  expect(validateV2({ ...destination, subdivisionCode: " military " }, policy)).toEqual({
+    outcome: "valid", policyRef: "sample-address", policyRevision: "r1", classificationKeys: ["box", "zone.military"],
+    address: { line1: "pO bOx 10", city: "Café", countryCode: "XX", postalCode: "X9-1", subdivisionCode: "XX-M" },
+  });
+
+  const invalid: Partial<AddressPolicyV1>[] = [
+    { subdivisionAliases: { x: "UNKNOWN" } }, { subdivisionAliases: { x: "XX-T", X: "XX-M" } },
+    { allowedSubdivisionCodes: ["XX-T", "xx-t"] }, { countryCode: "X1" },
+    { classificationRules: [{ key: "bad key", subdivisionCode: "XX-M" }] },
+    { classificationRules: [{ key: "box", line1Prefix: " " }] },
+    { classificationRules: [{ key: "both", subdivisionCode: "XX-M", line1Prefix: "p" }] },
+    { classificationRules: [{ key: "invalid", subdivisionCode: "XX M" }] },
+    { classificationRules: [destinationPolicy.classificationRules[0]!, destinationPolicy.classificationRules[0]!] },
+    { classificationRules: Array.from({ length: 33 }, (_, index) => ({ key: `rule-${index}`, line1Prefix: "a" })) },
+    { postalRule: { ...destinationPolicy.postalRule, alternatives: Array(17).fill(["digit"]) } },
+    { postalRule: { ...destinationPolicy.postalRule, alternatives: [Array(33).fill("digit")] } },
+    { postalRule: { ...destinationPolicy.postalRule, alternatives: [[{ literal: "é" }]] } },
+  ];
+  for (const override of invalid) {
+    expect(validateV2(destination, { ...destinationPolicy, ...override })).toEqual({
+      outcome: "refused", code: "address_policy_invalid", field: "policyRef", remedy: expect.stringContaining("reload the host binding"),
+    });
+  }
+});
+
+it("refuses invalid destinations and diagnoses their cause without committing a policy result", () => {
+  expect(validateV2(destination)).toMatchObject({ code: "address_policy_unavailable", field: "countryCode" });
+  expect(validateV2(destination, { ...destinationPolicy, countryCode: "YY" })).toMatchObject({ code: "address_policy_unavailable", field: "countryCode" });
+  for (const [field, value] of [["line1", "\u0000"], ["line1", "\u0085"], ["line2", "\uD800"], ["city", "😀".repeat(31)],
+    ["line2", "😀".repeat(51)], ["line1", " "], ["countryCode", "éX"], ["subdivisionCode", " "]]) {
+    expect(validateV2({ ...destination, [field!]: value }, destinationPolicy)).toMatchObject({ code: "address_invalid_input", field });
+  }
+  for (const postalCode of ["x9-12", "1x9-1", "x９-１", "x9-1\u00a0"]) {
+    expect(validateV2({ ...destination, postalCode }, destinationPolicy)).toMatchObject({ code: "address_postal_invalid", field: "postalCode" });
+  }
+  expect(validateV2({ ...destination, postalCode: "01" }, destinationPolicy)).toMatchObject({ outcome: "valid", address: { postalCode: "01" } });
+  expect(validateV2({ ...destination, line1: "pö box 10" }, destinationPolicy)).toMatchObject({ outcome: "valid", classificationKeys: [] });
+  const literalPrefix: AddressPolicyV1 = { ...destinationPolicy, classificationRules: [{ key: "level", line1Prefix: "E\u0301tage " }] };
+  expect(validateV2({ ...destination, line1: "ÉTAGE 1" }, literalPrefix)).toMatchObject({ outcome: "valid", classificationKeys: ["level"] });
+  expect(validateV2({ ...destination, line1: "étage 1" }, literalPrefix)).toMatchObject({ outcome: "valid", classificationKeys: [] });
+  expect(validateV2(destination, { ...destinationPolicy, requiredFields: ["line2"] })).toMatchObject({ code: "address_invalid_input", field: "line2" });
+});
+
+it("destination_v2_digest_vectors", () => {
+  const policy: AddressPolicyV1 = {
+    ...destinationPolicy, countryCode: "PL", allowedSubdivisionCodes: ["PL-LD", "PL-TEST"], subdivisionAliases: {},
+    postalRule: { upperAscii: false, stripAsciiSpaces: false,
+      alternatives: [["digit", "digit", { literal: "-" }, "digit", "digit", "digit"]] }, classificationRules: [],
+  };
+  const address: DestinationAddressV2 = { city: "Ło\u0301dz\u0301", line1: " A 😀 ", line2: "2", postalCode: "00-001", countryCode: "pl", subdivisionCode: "pl-ld" };
+  function canonical(input: DestinationAddressV2, tag = "commerce.destination.v2") {
+    const result = validateV2(input, policy);
+    if (result.outcome !== "valid") throw new Error(result.remedy);
+    const { countryCode, subdivisionCode, ...rest } = result.address;
+    return canonicalCatalogDraftJson([tag, { ...rest, country: countryCode, ...(subdivisionCode ? { subdivision: subdivisionCode } : {}) }]);
+  }
+  const digest = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
+  const golden = '["commerce.destination.v2",{"city":"Łódź","country":"PL","line1":"A 😀","line2":"2","postalCode":"00-001","subdivision":"PL-LD"}]';
+  expect(canonical(address)).toBe(golden);
+  expect(digest(canonical(address))).toBe("0b5c54f82f478aef103c0565c70c085ad6f3df22b61093d039b9ee68f306f191");
+  const { line2: _line2, subdivisionCode: _subdivision, ...minimal } = address;
+  expect(canonical(minimal)).toBe('["commerce.destination.v2",{"city":"Łódź","country":"PL","line1":"A 😀","postalCode":"00-001"}]');
+  expect(canonical({ ...minimal, line2: "  " })).toBe(canonical(minimal));
+  expect(validateV2({ ...address, line2: null }, policy)).toMatchObject({ outcome: "refused", field: "line2" });
+  expect(validateV2(null, policy)).toMatchObject({ outcome: "refused", field: "address" });
+  expect(canonical({ ...address, line1: 'A "\\' })).toContain(String.raw`"line1":"A \"\\"`);
+  for (const change of [{ line1: "B" }, { line2: "3" }, { city: "Łódź A" }, { postalCode: "00-002" }, { subdivisionCode: "PL-TEST" }]) {
+    expect(digest(canonical({ ...address, ...change }))).not.toBe(digest(golden));
+  }
+  expect(digest(canonical(address, "commerce.destination.document.v2"))).not.toBe(digest(golden));
+  expect(digest(canonicalCatalogDraftJson(["commerce.destination.v2", { ...JSON.parse(golden)[1], country: "XX" }]))).not.toBe(digest(golden));
+});
 const accepted = <T>(data: T) => ({ safeParse: (_input: unknown) => ({ success: true as const, data }) });
 const rejected = { safeParse: (_input: unknown) => ({ success: false as const, error: { flatten: () => ({ host: ["refused"] }) } }) };
 const responder = createBffResponder();

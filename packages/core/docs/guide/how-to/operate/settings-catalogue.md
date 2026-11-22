@@ -491,6 +491,19 @@ Search terms include postal format, phone normalization, delivery address checks
 
 Show offline: `show savedAddressValidation --json`.
 
+## shipping.addressPolicy
+
+Define checkout destination address rules for each market and country, including required subdivision, postal format and delivery classifications.
+Search terms include delivery destination, address details.
+
+- Owner **shipping** · kind **code** · runtime **read-only**
+- Default uses the documented behavior below.
+- Basis `neutral`.
+- The application owns the destination rules for its markets and delivery services.
+- When absent, versioned destination validation refuses without a matching host policy. Managed checkout and versioned saved addresses are unsupported.
+
+Show offline: `show shipping.addressPolicy --json`.
+
 ## shipping.addressRegions
 
 Support optional postal codes and address regions.

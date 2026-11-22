@@ -358,6 +358,38 @@ before any carrier or data-port call in its resolver. The public quote engine
 reads catalogue and prices before invoking this hook; that resolver witness
 does not establish zero database reads for the whole checkout request.
 
+## Validate a checkout destination
+
+Use `destinationV2Capabilities` from `@openlup/platform/commerce/server/destinations`
+with the host rail and actual installation and issuance state. The experimental
+schema and policy validator run offline. Native issuance needs a separate
+installed writer. A native host without an enabled writer reports
+`destination_v2_unavailable`. Managed hosts report `destination_v2_unsupported_rail`.
+Use a native host with the writer installed and fresh issuance enabled before
+offering v2 checkout. Keep installed readers and exact replay available when
+disabling fresh issuance. Continue using the v1 address book for saved addresses.
+
+1. Parse `commerce.checkout_command.v2` with `createCheckoutCommandV2Schema` and
+   the host's SKU schema. The command uses `line1`, optional `line2`, `city`,
+   optional `subdivisionCode`, `postalCode` and `countryCode` under `shippingAddress`.
+2. Select one immutable `AddressPolicyV1` by market and destination country in
+   server composition. Run `npm run settings -- show shipping.addressPolicy` to
+   find the binding instructions.
+   Set the revision on the policy data. Postal alternatives are full-length
+   sequences of `"digit"`, `"letter"` or `{ literal: "-" }` tokens. Classification
+   rules use a `key` with either `subdivisionCode` or a literal `line1Prefix`.
+3. Call `validateDestinationAddressV2` from `@openlup/platform/shipping` with the
+   submitted address and selected policy. Use the normalized address, policy
+   reference and revision, and sorted classification keys on success.
+
+For `destination_dialect_invalid`, submit the advertised checkout version. For
+`address_invalid_input`, correct the reported field and resubmit. For
+`address_policy_unavailable`, bind a policy for the requested market and country.
+For `address_policy_invalid`, correct the selected policy definition and reload
+the binding. For `address_subdivision_required` or
+`address_subdivision_unrecognized`, enter a policy-admitted subdivision. For
+`address_postal_invalid`, correct the full postal code for the destination.
+
 ## Compose post-renewal policy
 
 Since 1.0.0, `owned/renewal-policy.ts` is the second and last
