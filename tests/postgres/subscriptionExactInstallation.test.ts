@@ -1,11 +1,13 @@
 import installationInventory from "./current-installation-inventory.json" with { type: "json" };
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresCatalogPayload, qualifiedAdminPostgresCatalogPayload, qualifiedPostgresStartupOptions, qualifiedAdminPostgresStartupOptions, type QualifiedPostgresInstallation, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
+import { previewNoopAcceptanceSql } from "../../scripts/reviewed-platform-forward.js";
+import { assertPreviewAcceptancePreimage, previewAcceptanceForwardPath } from "./nativeStoreForwardCatalog.shared.js";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] as const)("installs the exact editor on %s with service-only execution and immutable prefixes", async profile => {
@@ -43,8 +45,24 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
       : { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: separate ? m : "postgres", runtimeLogin: r, restoreLogin: s };
     const migrationUrl = login(installation.generation === "legacy" ? "postgres" : installation.migrationLogin);
     const migrator = pool(migrationUrl, installation.generation === "qualified-v2" ? qualifiedPostgresStartupOptions(installation) : installation.generation === "qualified-admin" ? qualifiedAdminPostgresStartupOptions(installation) : undefined);
+    const previewOwner = installation.generation === "legacy" ? "postgres" : installation.migrationLogin;
+    let observedPreviewPreimage = false;
+    const checkPreview = async (db: PoolClient) => {
+      await assertPreviewAcceptancePreimage(db, previewOwner);
+      observedPreviewPreimage = true;
+    };
+    // When the slot is bound, observe its prefix inside the runner's migration transaction.
+    if (previewAcceptanceForwardPath) migrator.on("connect", (db: PoolClient) => {
+      const query = db.query.bind(db);
+      db.query = (async (text: string, values?: unknown[]) => {
+        if (text === previewNoopAcceptanceSql) await checkPreview(db);
+        return query(text, values);
+      }) as typeof db.query;
+    });
     const runner = createPostgresMigrationRunner({ connectionString: migrationUrl }, { installation, poolFactory: () => migrator,
       catalogProjectionPayload: async client => {
+        // Before LC9 ships, observe the end of the complete selected prefix.
+        if (!previewAcceptanceForwardPath && !observedPreviewPreimage) await checkPreview(client);
         const payload = installation.generation === "qualified-v2" ? await qualifiedPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
           : installation.generation === "qualified-admin" ? await qualifiedAdminPostgresCatalogPayload(client, installation, "openlup:public-platform-migrations:v1")
           : selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client));
@@ -54,6 +72,7 @@ it.each(["legacy", "bootstrap", "separate", "admin-managed", "admin-operator"] a
         return payload;
       } });
     await runner.apply();
+    expect(observedPreviewPreimage, `preview acceptance preimage checked on ${profile}`).toBe(true);
     expect((await runner.apply()).applied).toEqual([]);
     const expected = installationInventory.current.profiles[profile].count;
     expect((await owner.query("SELECT count(*)::int AS n FROM public.platform_schema_migrations")).rows[0].n).toBe(expected);

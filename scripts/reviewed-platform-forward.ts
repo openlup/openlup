@@ -127,7 +127,7 @@ const deferredTriggerMessages = {
   field: (name: unknown, field: string, rule: string) => `createdTriggers entry ${typeof name === "string" ? name : "<unnamed>"}: ${field} ${rule}`,
 };
 type NativeCreatedTrigger = { name: string; table: string; sha256: string; deferred?: never } | NativeDeferredTrigger;
-export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; qualifiedCatalogueStorageSelect?: true; ownerWindowRole?: string; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] } };
+export type NativeStoreSlot = { row: string; path: string; replacedFunctions: NativeStoreFunction[]; createdFunctions: { signature: string; searchPath: string | null }[]; grantOnlyFunctions: NativeStoreGrantOnly[]; dataStatements: string[]; settingsOnlyFunctions?: NativeStoreFunctionSetting[]; qualifiedCatalogueStorageSelect?: true; ownerWindowRole?: string; insertSelectTables?: string[]; absorptionCensusTables?: string[]; existingTableStatements?: string[]; checkSupersets?: NativeStoreCheck[]; uniqueSupersets?: NativeStoreUnique[]; droppedIndexes?: { table: string; name: string; beforeSha256: string }[]; createdViews?: { name: string; sha256: string }[]; createdTriggers?: NativeCreatedTrigger[]; purposeCheck?: { beforeSha256: string; values: string[] }; previewNoopAcceptance?: true };
 export type NativeStoreForwardClass = { sealed: boolean; slots: NativeStoreSlot[] };
 type ManagedExactForward = { path: string; sha256: string; prefixSha256: string };
 export type ReviewedForwardRegistry = { managedExactForwards?: ManagedExactForward[]; nativeStoreForwardClass?: NativeStoreForwardClass; nativeStoreForwards?: ForwardBinding[]; qualifiedInstallations?: (PortableCreationBinding | ForwardBinding)[]; channelIngestForwards?: BatchedForwardBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
@@ -1539,6 +1539,7 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
 // touches any of them, or anything under tests/setup/, is refused; code these files run is a review duty, not a control.
 export const NATIVE_CATALOG_CONTROLS = [
   "tests/postgres/nativeStoreForwardCatalog.serviceRole.test.ts", "tests/postgres/nativeStoreForwardCatalog.noServiceRole.test.ts", "tests/postgres/nativeStoreForwardCatalog.shared.ts",
+  "tests/postgres/subscriptionExactInstallation.test.ts",
   "tests/helpers/postgresContainer.ts", "vitest.config.ts", "scripts/run-vitest.mjs", "scripts/ci-test-scope.mjs",
   "scripts/ci-image-pull.mjs", "scripts/ci-image-mirror.mjs", "scripts/disposable-docker.mjs", "scripts/ci-vitest-duration-keys.ts", "scripts/coverage-summary-protocol.ts",
   "src/test/setup.ts", "src/checkout/machine/commerceRequestCache.ts", "config/ci-images.json", ".npmrc",
@@ -1737,6 +1738,10 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
           const issued = blob(root, approval, sourcePath);
           if (!issued?.equals(prefix.find(source => source.path === sourcePath)!.bytes)) throw new Error(`reviewed native store qualified catalogue read predecessor must already be issued: ${sourcePath}`);
         }
+      }
+      if (slot.previewNoopAcceptance) {
+        const issued = blob(root, approval, previewAcceptanceSource);
+        if (!issued || sqlSha256(issued) !== previewAcceptanceSourceSha256) throw new Error("reviewed native store preview acceptance CHECK predecessor must already be issued");
       }
     } else if (registry.channelIngestForwards?.includes(forward as BatchedForwardBinding)) assertChannelIngestForward(registry, path, bytes, prefix);
     else assertSupportAuthorityForward(registry, path, bytes, prefix);
@@ -2643,6 +2648,38 @@ export const qualifiedCatalogueStorageSelectSql = qualifiedCatalogueReadSql.repl
 
 const isQualifiedCatalogueReadGrant = (slot: NativeStoreSlot) => slot.grantOnlyFunctions.some(fn => Array.isArray(fn?.grantTo) && fn.grantTo.includes(cataloguePublicationRole));
 
+const previewAcceptanceSource = "db/platform/migrations/20261109120000_subscription_package_editor.sql";
+const previewAcceptanceSourceSha256 = "00291b733c89d9fe7e7d8785f90c6a8fe3c2e1d2b7dca4fc66abbc33de748fce";
+// This issued successor references previews in routines and leaves the table and CHECK intact.
+const previewAcceptanceReadSource = "db/platform/migrations/20261109140000_subscription_sized_editor.sql";
+const previewAcceptanceReadSha256 = "13129ea49660b1b8ffb95fdaf99be2676e2f43f36086d99895c4a797bb842b1d";
+// The new nullable column is NULL for every existing row. The first two branches
+// then reduce to the entire old CHECK, and the third branch adds accepted rows
+// with a receipt and no event. The existing NOT NULL status and vocabulary stay fixed.
+export const previewNoopAcceptanceSql = `ALTER TABLE public.subscription_quote_previews ADD COLUMN accepted_noop_receipt_id uuid REFERENCES public.subscription_command_receipts(id);
+ALTER TABLE public.subscription_quote_previews DROP CONSTRAINT subscription_quote_previews_acceptance_check;
+ALTER TABLE public.subscription_quote_previews ADD CONSTRAINT subscription_quote_previews_acceptance_check CHECK (
+  (status = 'previewed' AND accepted_at IS NULL AND accepted_idempotency_key IS NULL AND accepted_event_id IS NULL AND accepted_noop_receipt_id IS NULL)
+  OR (status = 'accepted' AND accepted_at IS NOT NULL AND accepted_idempotency_key IS NOT NULL AND accepted_event_id IS NOT NULL AND accepted_noop_receipt_id IS NULL)
+  OR (status = 'accepted' AND accepted_at IS NOT NULL AND accepted_idempotency_key IS NOT NULL AND accepted_event_id IS NULL AND accepted_noop_receipt_id IS NOT NULL)
+);
+`;
+const previewAcceptanceColumn = previewNoopAcceptanceSql.split("\n", 1)[0]!;
+
+function assertPreviewNoopAcceptance(bytes: Buffer, preceding: { path: string; bytes: Buffer }[]): void {
+  if (!bytes.equals(Buffer.from(previewNoopAcceptanceSql))) throw new Error("reviewed native store preview acceptance forward requires exactly the receipt column and adjacent validated CHECK replacement");
+  const source = preceding.find(unit => unit.path === previewAcceptanceSource);
+  if (!source || sqlSha256(source.bytes) !== previewAcceptanceSourceSha256) throw new Error("reviewed native store preview acceptance CHECK preimage file or hash drifted");
+  // This scan checks literal mentions. The PostgreSQL proof checks the installed
+  // shape, including effects of earlier SQL that constructs the table name.
+  for (const unit of preceding) {
+    if (unit.path === previewAcceptanceSource || !/subscription_quote_previews/iu.test(unit.bytes.toString("utf8"))) continue;
+    if (unit.path !== previewAcceptanceReadSource || sqlSha256(unit.bytes) !== previewAcceptanceReadSha256) {
+      throw new Error(`reviewed native store preview acceptance CHECK refuses other preview history: ${unit.path}`);
+    }
+  }
+}
+
 export function renderQualifiedSecurityDefiner(signature: string): string {
   return `DO $qualified_security_definer$
 BEGIN
@@ -3009,6 +3046,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
   }
   if (!keysAre(control, "sealed,slots") || typeof control.sealed !== "boolean" || !Array.isArray(control.slots)) throw new Error("reviewed native store requires a closed slots list");
   let previous = "";
+  let previewNoopAcceptance = false;
   const rows = new Set<string>();
   for (const slot of control.slots) {
     const time = nativeStoreTime(slot.path);
@@ -3016,7 +3054,7 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
     const fields = ["createdFunctions", "dataStatements", "grantOnlyFunctions", "path", "replacedFunctions", "row", ...nativeStoreOwnerWindowFields(slot, settingsOnly)];
     if (settingsOnly) fields.push("settingsOnlyFunctions");
     else {
-      fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables", "qualifiedCatalogueStorageSelect"].filter(key => Object.hasOwn(slot, key)));
+      fields.push(...["purposeCheck", "checkSupersets", "uniqueSupersets", "droppedIndexes", "createdViews", "createdTriggers", "absorptionCensusTables", "qualifiedCatalogueStorageSelect", "previewNoopAcceptance"].filter(key => Object.hasOwn(slot, key)));
       if (slot.existingTableStatements !== undefined) fields.push("existingTableStatements");
       if (slot.insertSelectTables !== undefined) fields.push("insertSelectTables");
     }
@@ -3088,6 +3126,14 @@ function validateNativeStoreClass(registry: ReviewedForwardRegistry, paths: Set<
         nativeStoreExistingStatement(statement, slot.existingTableStatements.slice(0, index));
       }
       nativeStoreAddedForeignKeys(slot.existingTableStatements);
+    }
+    if (Object.hasOwn(slot, "previewNoopAcceptance")) {
+      const expected = {
+        path: slot.path, row: slot.row, replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [],
+        previewNoopAcceptance: true, existingTableStatements: [previewAcceptanceColumn],
+      };
+      if (previewNoopAcceptance || canonical(slot) !== canonical(expected)) throw new Error("reviewed native store preview acceptance requires one slot listing only the receipt column");
+      previewNoopAcceptance = true;
     }
     if (slot.checkSupersets !== undefined && (!Array.isArray(slot.checkSupersets) || slot.checkSupersets.some(check => {
       if (!nativeStoreTable(check.table) || !nativeStoreName(check.constraint) || !nativeStoreName(check.column)) return true;
@@ -3432,6 +3478,10 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
     return new Error(deferredTriggerMessages.pinned(pin, name, creation));
   };
   const ordinaryProof = new Map<string, { definition: NonNullable<ReturnType<typeof nativeStoreTriggerDefinition>>; localTable: boolean }>();
+  if (slot.previewNoopAcceptance) {
+    assertPreviewNoopAcceptance(bytes, preceding);
+    return { slot, ordinaryProof };
+  }
   if (slot.settingsOnlyFunctions) {
     const expected = slot.settingsOnlyFunctions.map(renderNativeStoreSetting);
     const settingsStatements = slot.ownerWindowRole === undefined ? statements : statements.slice(1, -1);

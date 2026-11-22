@@ -9,7 +9,7 @@ import { needsForwardApproval } from "./agent-review-queue.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts";
 import { PLATFORM_BASELINE_FILE, PLATFORM_MIGRATION_MANIFEST, sha256 } from "./platform-migration-manifest.ts";
-import { assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, readReviewedForwardRegistry, renderQualifiedSecurityDefiner, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { assertNativeStoreForward, isExpandOnlyPlatformForward, assertCoLocatedForwardApproval, hasExactManagedForward, managedForwardPrefixSha256, readReviewedForwardRegistry, renderQualifiedSecurityDefiner, REVIEWED_FORWARD_PATH, sqlSha256, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 import { admissionRuleFiles } from "./sql-admit.ts";
 
 const CLI = resolve("scripts/sql-admit.ts");
@@ -81,8 +81,8 @@ function directVerdicts(f: Fixture, base: string, head: string) {
 const nativePath = "db/platform/migrations/20271106100000_future.sql", nativeText = "CREATE TABLE public.future (id uuid);\n";
 function stageNativeForward(f: Fixture, text = nativeText, entry = slot(nativePath), functions: NonNullable<ReviewedForwardRegistry["nativeStoreForwards"]>[number]["functions"] = []) {
   const value = registry();
-  value.nativeStoreForwardClass!.slots.push(entry); value.nativeStoreForwards!.push({ path: nativePath, sha256: sqlSha256(text), functions });
-  f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: nativePath, sha256: sha256(text) }], f.baselineSql)); f.put(nativePath, text);
+  value.nativeStoreForwardClass!.slots.push(entry); value.nativeStoreForwards!.push({ path: entry.path, sha256: sqlSha256(text), functions });
+  f.put(REVIEWED_FORWARD_PATH, encode(value)); f.put(PLATFORM_MIGRATION_MANIFEST, manifest([{ file: entry.path, sha256: sha256(text) }], f.baselineSql)); f.put(entry.path, text);
 }
 
 describe("qualified catalogue read grant in sql:admit and hosted checks", () => {
@@ -145,6 +145,120 @@ END; $$;
     const reported = verdictLines(result.stdout);
     expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
     expect(reported).toEqual(expected);
+  }, 20_000);
+});
+
+const previewNoopSql = `ALTER TABLE public.subscription_quote_previews ADD COLUMN accepted_noop_receipt_id uuid REFERENCES public.subscription_command_receipts(id);
+ALTER TABLE public.subscription_quote_previews DROP CONSTRAINT subscription_quote_previews_acceptance_check;
+ALTER TABLE public.subscription_quote_previews ADD CONSTRAINT subscription_quote_previews_acceptance_check CHECK (
+  (status = 'previewed' AND accepted_at IS NULL AND accepted_idempotency_key IS NULL AND accepted_event_id IS NULL AND accepted_noop_receipt_id IS NULL)
+  OR (status = 'accepted' AND accepted_at IS NOT NULL AND accepted_idempotency_key IS NOT NULL AND accepted_event_id IS NOT NULL AND accepted_noop_receipt_id IS NULL)
+  OR (status = 'accepted' AND accepted_at IS NOT NULL AND accepted_idempotency_key IS NOT NULL AND accepted_event_id IS NULL AND accepted_noop_receipt_id IS NOT NULL)
+);
+`;
+
+describe("receipt-backed preview acceptance", () => {
+  const sql = previewNoopSql;
+  const [column, drop, add, previewed, event, noop] = sql.split("\n") as [string, string, string, string, string, string];
+  const path = "db/platform/migrations/20990101000000_preview_noop_acceptance.sql";
+  const preimage = "db/platform/migrations/20261109120000_subscription_package_editor.sql";
+  const history = "db/platform/migrations/20261109140000_subscription_sized_editor.sql";
+  const slotError = "preview acceptance requires one slot listing only the receipt column";
+  const sqlError = "preview acceptance forward requires exactly the receipt column and adjacent validated CHECK replacement";
+  const preimageError = "preview acceptance CHECK preimage file or hash drifted";
+  const prefix = () => [PLATFORM_BASELINE_FILE, preimage, history].map(path => ({
+    path, bytes: path === PLATFORM_BASELINE_FILE ? Buffer.from(baseline) : readFileSync(path),
+  }));
+  const entry = (): NativeStoreSlot => ({
+    path, row: "preview-noop-acceptance", replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], dataStatements: [],
+    previewNoopAcceptance: true, existingTableStatements: [column],
+  });
+  function admit(text = sql, preceding = prefix(), slots = [entry()]) {
+    const value = registry();
+    value.nativeStoreForwardClass!.slots = slots;
+    value.nativeStoreForwards = [{ path, sha256: sqlSha256(text), functions: [] }];
+    return assertNativeStoreForward(value, path, Buffer.from(text), preceding);
+  }
+  it("admits the exact receipt column and adjacent validated CHECK replacement", () => {
+    expect(isExpandOnlyPlatformForward(column)).toBe(true);
+    expect(admit().slot).toEqual(entry());
+    const directory = "db/platform/migrations";
+    const cutoff = production.nativeStoreForwardClass!.slots.find(slot => slot.previewNoopAcceptance)?.path ?? path;
+    const preceding = readdirSync(directory).filter(file => /^\d{14}_.*\.sql$/u.test(file))
+      .map(file => `${directory}/${file}`).filter(file => file < cutoff).sort()
+      .map(path => ({ path, bytes: readFileSync(path) }));
+    expect(admit(sql, preceding).slot).toEqual(entry());
+  });
+  it.each([
+    ["missing preimage", (sources: ReturnType<typeof prefix>) => { sources.splice(1, 1); }],
+    ["wrong path for identical preimage bytes", (sources: ReturnType<typeof prefix>) => { sources[1]!.path = "db/platform/migrations/20261109120000_wrong.sql"; }],
+    ["drifted preimage hash", (sources: ReturnType<typeof prefix>) => { sources[1]!.bytes = Buffer.concat([sources[1]!.bytes, Buffer.from("\n")]); }],
+  ] as const)("refuses %s", (_label, change) => {
+    const sources = prefix();
+    change(sources);
+    expect(() => admit(sql, sources)).toThrow(preimageError);
+  });
+  it("refuses a later rewrite of the pinned CHECK", () => {
+    const path = "db/platform/migrations/20980101000000_rewritten_check.sql";
+    const bytes = Buffer.from(`${drop}\n${add}status IS NOT NULL);`);
+    expect(() => admit(sql, [...prefix(), { path, bytes }])).toThrow(`preview acceptance CHECK refuses other preview history: ${path}`);
+  });
+  it.each([
+    ["a missing branch", sql.replace(`${event}\n`, "")],
+    ["an extra branch", sql.replace(noop, `${noop}\n  OR (status = 'accepted' AND accepted_at IS NULL)`)],
+    ["an altered previewed branch", sql.replace(previewed, previewed.replace("accepted_at IS NULL", "accepted_at IS NOT NULL"))],
+    ["an accepted branch with neither event nor receipt", sql.replace(noop, noop.replace("accepted_noop_receipt_id IS NOT NULL", "accepted_noop_receipt_id IS NULL"))],
+    ["NOT VALID", sql.replace("\n);", "\n) NOT VALID;")],
+    ["a different constraint", sql.replaceAll("subscription_quote_previews_acceptance_check", "other_check")],
+    ["a different table", sql.replaceAll("public.subscription_quote_previews", "public.other_previews")],
+    ["DROP without ADD", `${column}\n${drop}\n`],
+    ["a non-adjacent DROP and ADD", sql.replace(drop, `${drop}\nSELECT 1;`)],
+    ["an extra statement", `${sql}SELECT 1;\n`],
+    ["an extra column", `${sql}ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid;\n`],
+    ["an ACL change", `${sql}GRANT SELECT ON TABLE public.subscription_quote_previews TO authenticated;\n`],
+    ["a trigger change", `${sql}ALTER TABLE public.subscription_quote_previews DISABLE TRIGGER USER;\n`],
+    ["another constraint", `${sql}ALTER TABLE public.subscription_quote_previews ADD CONSTRAINT other_check CHECK (true);\n`],
+    ["a changed receipt FK", sql.replace("subscription_command_receipts", "subscription_events")],
+  ])("refuses %s", (_label, altered) => {
+    expect(() => admit(altered)).toThrow(sqlError);
+  });
+  it("refuses a slot declaring another allowed table change", () => {
+    const slot = entry();
+    slot.existingTableStatements!.push("ALTER TABLE public.subscription_quote_previews ADD COLUMN other uuid;");
+    expect(() => admit(sql, prefix(), [slot])).toThrow(slotError);
+  });
+  it("refuses a second slot for the same replacement", () => {
+    const second = { ...entry(), row: "second-preview-acceptance", path: "db/platform/migrations/20990102000000_repeat.sql" };
+    expect(() => admit(sql, prefix(), [entry(), second])).toThrow(slotError);
+  });
+
+  const ok = ["PASS"], refused = (message: string) => ["REFUSED", message];
+  const unissued = refused("reviewed native store preview acceptance CHECK predecessor must already be issued");
+  const coLocated = refused("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
+  const unapproved = refused(`non-expand-only forward differs from reviewed replacement path or bytes: ${preimage}`);
+
+  it.each([
+    ["issued predecessor", 0, [ok, ok, ok, ok]],
+    ["a co-located rule change", 1, [ok, ok, coLocated, coLocated]],
+    ["a co-located installation matrix change", 1, [ok, ok, coLocated, coLocated]],
+    ["a co-introduced predecessor", 1, [unapproved, unissued, unapproved, unissued, unissued]],
+  ] as const)("checks %s for receipt-backed preview acceptance", (scenario, exit, verdicts) => {
+    const f = fixture(), source = readFileSync(preimage);
+    const row = { file: preimage, sha256: sha256(source) };
+    f.put(preimage, source);
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([row]));
+    const base = scenario === "a co-introduced predecessor" ? f.base : f.commit();
+    stageNativeForward(f, sql, entry());
+    f.put(PLATFORM_MIGRATION_MANIFEST, manifest([row, { file: path, sha256: sha256(sql) }]));
+    if (scenario === "a co-located rule change") f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
+    if (scenario === "a co-located installation matrix change") f.put("tests/postgres/subscriptionExactInstallation.test.ts", "// Changed installation proof.\n");
+    const head = f.commit();
+    const result = cli(f.root, ["--base", base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(exit);
+    const reported = verdictLines(result.stdout);
+    expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
+    expect(reported).toEqual(verdicts);
   }, 20_000);
 });
 

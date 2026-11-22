@@ -16,7 +16,7 @@ import { authoredPublicationDocument, createCharacterizationQuote, hash, transac
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
-let pool: Pool, container: PostgresContainer;
+let pool: Pool, quotePool: Pool, container: PostgresContainer;
 const actor = randomUUID(), otherActor = randomUUID();
 function latch() {
   let resolve!: () => void;
@@ -68,8 +68,11 @@ beforeAll(async () => {
   await pool.query(`INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text`);
   await pool.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
+  // Clone the installation before the command tests introduce other catalogue data.
+  await pool.query("CREATE DATABASE catalog_publication_quote TEMPLATE postgres");
+  quotePool = new Pool({ connectionString: container.connectionStringFor("catalog_publication_quote") });
 }, postgresSetupTimeoutMs);
-afterAll(() => closePostgres(container, pool), postgresTeardownTimeoutMs);
+afterAll(() => closePostgres(container, [pool, quotePool]), postgresTeardownTimeoutMs);
 
 function native(query?: (db: PgQueryExecutor, sql: string, args?: unknown[]) => ReturnType<PgQueryExecutor["query"]>, connection = pool) {
   let allowed = true;
@@ -117,16 +120,16 @@ function authored(sequence: number) {
   };
   return { productId, draftId, skuId, slug, code, barcode, payload };
 }
-async function save(data: ReturnType<typeof authored>, revision: number, payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 = data.payload) {
+async function save(data: ReturnType<typeof authored>, revision: number, payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 = data.payload, db = pool) {
   const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: payload.schemaVersion, action: revision === 1 ? "create" : "revise",
     draftId: data.draftId, commandKey: randomUUID(), expectedRevision: revision - 1, payload });
-  const saved = await createPostgresCatalogDraftStoreV4(pool).apply({ canonicalCommand, fingerprint: hash(canonicalCommand), actorId: actor });
+  const saved = await createPostgresCatalogDraftStoreV4(db).apply({ canonicalCommand, fingerprint: hash(canonicalCommand), actorId: actor });
   if (!("record" in saved)) throw new Error(`Draft save failed: ${JSON.stringify(saved)}`);
   return saved.record;
 }
-async function prepare(data: ReturnType<typeof authored>, draftRevision: number, expectedHead: CatalogHeadRef | null) {
+async function prepare(data: ReturnType<typeof authored>, draftRevision: number, expectedHead: CatalogHeadRef | null, db = pool) {
   const { productId, draftId } = data;
-  const api = native();
+  const api = native(undefined, db);
   const candidate = await api.prepareCandidate({ draftId, draftRevision, expectedHead }, (await api.authorize(actor))!);
   if (!("candidateRef" in candidate)) throw new Error(JSON.stringify(candidate));
   const postStateDigest = candidate.preparation?.postStateDigest;
@@ -169,7 +172,7 @@ it("commits the sealed plan, refuses revocation after issuance and replays witho
 });
 
 it.each([1, 2147483647])("characterizes Prepare, Approve and Publish of factorless %i grams", async grams => {
-  const data = authored(80 + Number(grams === 1));
+  const data = authored(180 + Number(grams === 1));
   data.payload.skus[0]!.netContent!.unscaled = String(grams);
   await save(data, 1);
   const command = await prepare(data, 1, null);
@@ -563,20 +566,26 @@ it.each([
 
 describe("publication activation prices", () => {
   const listId = randomUUID();
+  const quoteListId = randomUUID();
   beforeAll(async () => {
-    await pool.query("UPDATE public.price_lists SET status='draft' WHERE status='active'");
-    await pool.query(`INSERT INTO public.price_lists(id,name,region_code,currency,valid_from)
+    await installActivationPrices(pool, listId);
+    await installActivationPrices(quotePool, quoteListId);
+  });
+
+  async function installActivationPrices(db: Pool, listId: string) {
+    await db.query("UPDATE public.price_lists SET status='draft' WHERE status='active'");
+    await db.query(`INSERT INTO public.price_lists(id,name,region_code,currency,valid_from)
       VALUES($1,'Effective list','ZZ','XXX',statement_timestamp()-interval '1 hour')`, [listId]);
-    await pool.query(`INSERT INTO public.subscription_price_policy_revisions
+    await db.query(`INSERT INTO public.subscription_price_policy_revisions
       (id,revision_no,price_list_id,region_code,currency,channel,effective_from,discount_bps,rounding_quantum_minor,rounding_rule,digest)
       SELECT id,1,$1,'ZZ','XXX','D2C',at,1000,10,'FLOOR_TO_QUANTUM',
         public.catalog_price_setup_policy_digest(id,1,$1,'ZZ','XXX','D2C',at,NULL,1000,10,'FLOOR_TO_QUANTUM')
       FROM (SELECT gen_random_uuid() AS id,date_trunc('milliseconds',statement_timestamp()-interval '1 hour') AS at) timing`, [listId]);
     const base = randomUUID();
-    await pool.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,'priced-core','Core item','active')", [base]);
-    await pool.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_standalone)
+    await db.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,'priced-core','Core item','active')", [base]);
+    await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_standalone)
       VALUES($1,$1,'PRICED-CORE','Core item','active',true)`, [base]);
-    await seedBasePrice(base);
+    await seedBasePrice(base, db, listId);
     const promotion = {
       status: "active", trigger_type: "automatic", code: null, discount_type: "percentage", applies_to_kind: "order_total",
       valid_from: "2020-01-01T00:00:00Z", valid_to: null, redemption_limit_global: null,
@@ -594,27 +603,28 @@ describe("publication activation prices", () => {
         benefit_value_bps: 500, eligibility: { min_cart_minor: 12000 }, applies_to_payload: { cart_mode: "one_time" } },
     ]) {
       const text = JSON.stringify(definition);
-      await pool.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition_fingerprint,definition,active)
+      await db.query(`INSERT INTO public.commerce_promotion_definitions(promotion_id,definition_fingerprint,definition,active)
         VALUES($1,$2,$3,true)`, [definition.id, hash(text), text]);
     }
-    await pool.query(`INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata)
+    await db.query(`INSERT INTO public.platform_job_controls(job_name,active_driver,enabled,last_status,last_success_at,metadata)
       VALUES('platform-watchdog','worker',true,'success',statement_timestamp(),'{"promotionReady":true}'),
       ('promotion-claim-sweep','worker',true,'success',statement_timestamp(),'{}')
       ON CONFLICT(job_name) DO UPDATE SET enabled=excluded.enabled,last_status=excluded.last_status,
         last_success_at=excluded.last_success_at,metadata=excluded.metadata`);
-    expect((await pool.query("SELECT public.commerce_offer_policy_v2_readiness() AS result")).rows[0]?.result)
+    expect((await db.query("SELECT public.commerce_offer_policy_v2_readiness() AS result")).rows[0]?.result)
       .toMatchObject({ ready: true, reasons: [] });
-  });
+  }
 
-  async function seedBasePrice(skuId: string) {
+  async function seedBasePrice(skuId: string, db = pool, priceListId = listId) {
     const id = randomUUID();
-    await pool.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from)
-      VALUES($1,$2,$3,'one_time',1000,statement_timestamp()-interval '1 minute')`, [id, listId, skuId]);
+    await db.query(`INSERT INTO public.price_entries(id,price_list_id,variant_id,mode,unit_price_minor,valid_from)
+      VALUES($1,$2,$3,'one_time',1000,statement_timestamp()-interval '1 minute')`, [id, priceListId, skuId]);
     return id;
   }
 
-  async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode", grams = 100) {
-    const data = authored(sequence), api = native(), who = (await api.authorize(actor))!;
+  async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode",
+    { grams = 100, db = pool } = {}) {
+    const data = authored(sequence), api = native(undefined, db), who = (await api.authorize(actor))!;
     const sku = data.payload.skus[0]!;
     sku.netContent = { ...sku.netContent!, unscaled: String(grams) };
     sku.grossMass = { ...sku.netContent, unscaled: String(grams + 10) };
@@ -623,8 +633,8 @@ describe("publication activation prices", () => {
     const create = data.payload.publication.operations.find(operation => operation.op === "create_sku")!;
     create.isAddon = isAddon;
     if (sku.logisticsRef) data.payload.publication.operations.push({ op: "set_sku_metadata", skuCode: data.code, logisticsRef: sku.logisticsRef });
-    await save(data, 1);
-    const first = await prepare(data, 1, null);
+    await save(data, 1, data.payload, db);
+    const first = await prepare(data, 1, null, db);
     expect(await api.execute(first.approve, who)).toMatchObject({ outcome: "committed" });
     const issue = await api.execute(first.publish, who);
     if (!("receipt" in issue) || !("head" in issue.receipt)) throw new Error(JSON.stringify(issue));
@@ -646,8 +656,8 @@ describe("publication activation prices", () => {
       content.offerMemberships = [];
       payload.publication.operations = payload.publication.operations.slice(0, 1);
     }
-    await save(data, 2, payload);
-    const next = await prepare(data, 2, issue.receipt.head);
+    await save(data, 2, payload, db);
+    const next = await prepare(data, 2, issue.receipt.head, db);
     expect(await api.execute(next.approve, who)).toMatchObject({ outcome: "committed" });
     return { ...data, api, who, command: next.publish, head: issue.receipt.head };
   }
@@ -786,13 +796,13 @@ describe("publication activation prices", () => {
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
   });
 
-  it.each([[82, 1], [83, 100], [84, 2_147_483_647]])("quotes published requested SKU %i with factorless %i grams and independent gross", async (sequence, grams) => {
-    const { api, who, command, code, skuId, slug } = await approvedActivation(sequence, false, undefined, grams);
-    await seedBasePrice(skuId);
+  it.each([[182, 1], [183, 100], [184, 2_147_483_647]])("quotes published requested SKU %i with factorless %i grams and independent gross", async (sequence, grams) => {
+    const { api, who, command, code, skuId, slug } = await approvedActivation(sequence, false, undefined, { grams, db: quotePool });
+    await seedBasePrice(skuId, quotePool, quoteListId);
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
-    expect((await pool.query("SELECT net_weight_g, gross_mass_unscaled::text AS gross FROM public.catalog_skus WHERE id=$1", [skuId])).rows)
+    expect((await quotePool.query("SELECT net_weight_g, gross_mass_unscaled::text AS gross FROM public.catalog_skus WHERE id=$1", [skuId])).rows)
       .toEqual([{ net_weight_g: grams, gross: String(grams + 10) }]);
-    const db = await pool.connect();
+    const db = await quotePool.connect();
     try {
       await db.query("BEGIN");
       // Hide unrelated fixtures for this read, leaving the issued SKU and the released scan untouched.
