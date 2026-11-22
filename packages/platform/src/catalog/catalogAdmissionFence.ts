@@ -1,10 +1,23 @@
 import { randomInt } from "node:crypto";
-import type { Pool, PoolClient } from "pg";
+
+interface FenceConnection {
+  query<Row extends Record<string, unknown>>(sql: string, values?: unknown[]): Promise<{ rows: Row[] }>;
+  query<Row extends Record<string, unknown>>(request: {
+    text: string;
+    values: unknown[];
+    query_timeout: number;
+  }): Promise<{ rows: Row[] }>;
+  release(discard?: boolean): void;
+}
+
+interface FencePool<Connection extends FenceConnection> {
+  connect(): Promise<Connection>;
+}
 
 const unavailable = () => new Error("catalog_admission_fence_unavailable");
 
-async function reservePair(pool: Pick<Pool, "connect">, timeoutMs: number): Promise<[PoolClient, PoolClient]> {
-  const reserved: PoolClient[] = [];
+async function reservePair<Connection extends FenceConnection>(pool: FencePool<Connection>, timeoutMs: number): Promise<[Connection, Connection]> {
+  const reserved: Connection[] = [];
   let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   async function acquire() {
@@ -42,10 +55,10 @@ const snapshotSql = `WITH snap AS MATERIALIZED (SELECT pg_current_snapshot() AS 
 type Visibility = { xmax: string; xip: string[]; primary: boolean };
 
 /** Component lane for bound owner reads. Its checkout-owner login stays ungranted. */
-export async function withCatalogAdmissionFence<T>(
-  pool: Pick<Pool, "connect">,
+export async function withCatalogAdmissionFence<T, Connection extends FenceConnection>(
+  pool: FencePool<Connection>,
   input: { key: string; clientId: string; skuIds: string[]; revisionIds: string[]; priceListId: string; timeoutMs: number },
-  read: (db: PoolClient, effectInstant: string) => Promise<T>,
+  read: (db: Connection, effectInstant: string) => Promise<T>,
 ): Promise<T> {
   const [writer, probe] = await reservePair(pool, input.timeoutMs);
   let writerFailed = false;
@@ -66,7 +79,7 @@ export async function withCatalogAdmissionFence<T>(
     const frozen = (await writer.query<Visibility>(snapshotSql, scope)).rows[0]!;
     const current = (await probe.query<Visibility>({
       text: snapshotSql, values: scope, query_timeout: input.timeoutMs,
-    } as import("pg").QueryConfig & { query_timeout: number }).catch(() => {
+    }).catch(() => {
       probeFailed = true;
       throw unavailable();
     })).rows[0]!;
