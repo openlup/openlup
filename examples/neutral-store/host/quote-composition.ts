@@ -1,7 +1,7 @@
 import { resolveThresholdShipping } from '@openlup/platform/shipping';
 import type { RenewalRetainedTerms } from '@openlup/platform/subscriptions/contracts';
 import { evaluatePromotionAdjustmentsV2 } from '@openlup/core/promo';
-import type { Pool } from 'pg';
+import type { NativeCheckoutQuery } from '@openlup/platform/commerce/server/native-checkout';
 import { createHash } from 'node:crypto';
 import { createPostgresCommerceQuoteCatalogReadPort, canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/commerce/server/postgres';
@@ -38,7 +38,7 @@ export function quoteFailure(error: unknown): string {
   return 'starter_quote_unavailable';
 }
 
-export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {
+export function createNativeQuoteService(db: NativeCheckoutQuery, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {
   async function quote(payload: Record<string, unknown>, context: ActionContext, replay?: CreateQuoteResponse, atTime = new Date().toISOString()) {
     const config = context.config;
     const selected = parseCart(config.id, payload.cart);

@@ -56,7 +56,7 @@ import type { PromotionAcceptanceKeyring } from '@openlup/platform/promotions';
 import type { Pool } from 'pg';
 import type { SandboxPaymentAttempt } from '@openlup/platform/payments/contracts';
 import type { PgGatewayClient, PostgresRoleFreeTransactionLane } from '@openlup/platform/data';
-import { readAuthorizedPaymentRecovery, createPostgresPaymentRecoveryGuidancePort, createCheckoutRecoveryInspection, createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort,
+import { catalogAdmissionRefusal, readAuthorizedPaymentRecovery, createPostgresPaymentRecoveryGuidancePort, createCheckoutRecoveryInspection, createExpiredCheckoutRecoveryService, createPostgresCheckoutRecoveryOrderPort,
   createPostgresExpiredCheckoutRecoveryPort, createPostgresExpiredCheckoutDraftPort, createPostgresExpiredCheckoutRuntime,
   createPostgresExpiredCheckoutCompensation, checkoutRecoveryExecutionFingerprint, ExpiredCheckoutRecoveryError,
   classifyCheckoutRecoveryTokenState, type NativeCheckoutRecoveryOrder, type CheckoutRecoveryInspectionResult } from '@openlup/platform/commerce/server';
@@ -70,6 +70,45 @@ import { createAcquisitionFinancialPolicy, checkoutLinkPolicy } from '../owned/a
 import { isRecord } from '../shared/offer.ts';
 import { sameUuid, isInitialCheckoutOrder } from './recurring-fence.ts';
 import type { ApplicationBindings } from './bindings.ts';
+
+const admissionUnavailable = 'catalog_admission_quote_authority_required';
+
+async function authenticateRecoveryDraft(pool: Pool, order: NativeCheckoutRecoveryOrder, rootId: string) {
+  const key = order.recreatedFromOrderId ? `checkout-recovery-recreate:${order.recreatedFromOrderId}` : null;
+  const row = (await pool.query<{ governed: boolean }>(`SELECT (
+    o.catalog_acceptance IS NOT NULL OR o.metadata#>'{quoteSnapshot,quote,context,starterRenewalTerms}' IS NOT NULL
+    OR o.metadata#>>'{catalogAdmissionSubmit,acceptanceTokenDigest}' IS NOT NULL
+    OR public.catalog_admission_requires_quote_authority(ARRAY(SELECT s.sku FROM public.commerce_order_items i
+      JOIN public.catalog_skus s ON s.id=i.sku_id WHERE i.order_id=o.id),o.metadata#>>'{quoteSnapshot,quote,context,offerVersion,version}')
+  ) AS governed
+  FROM public.commerce_orders o JOIN public.commerce_order_draft_receipts r ON r.order_id=o.id
+  WHERE o.id=$1 AND o.client_id=$2 AND coalesce(o.recovery_root_order_id,o.id)=$3
+    AND o.recreated_from_order_id IS NOT DISTINCT FROM $4::uuid
+    AND ($5::text IS NULL OR r.idempotency_key=$5)
+    AND (o.catalog_receipt_key IS NULL OR o.catalog_receipt_key=r.idempotency_key)
+    AND (o.metadata#>>'{catalogAdmissionSubmit,requestKey}' IS NULL OR o.metadata#>>'{catalogAdmissionSubmit,requestKey}'=r.idempotency_key)
+    AND r.response_payload#>>'{orderDraft,idempotencyKey}'=r.idempotency_key
+    AND r.response_payload#>>'{orderDraft,orderId}'='order_'||o.id::text
+    AND r.response_payload#>'{orderDraft,quoteSnapshot}'=o.metadata->'quoteSnapshot'
+    AND r.request_fingerprint=md5((o.metadata->'quoteSnapshot')::text||'|'||(o.metadata->'orderDraftSnapshot')::text||'|'||o.client_id::text)
+    AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM public.commerce_orders source
+      WHERE source.id=$4 AND source.client_id=o.client_id AND coalesce(source.recovery_root_order_id,source.id)=$3))`,
+  [order.orderId, order.clientId, rootId, order.recreatedFromOrderId, key])).rows[0];
+  return row ?? null;
+}
+
+async function authenticateRecoveryPayment(pool: Pool, order: NativeCheckoutRecoveryOrder, attempt: SandboxPaymentAttempt | null) {
+  if (!matchesRecreatedPaymentReceipt(order, attempt)) return false;
+  const key = `checkout-recovery-recreate:${order.recreatedFromOrderId}`;
+  const fingerprint = checkoutRecoveryExecutionFingerprint({ idempotencyKey: `${key}:payment-execution`,
+    settlementIntentId: attempt.settlementIntentId, orderId: order.orderId, clientId: order.clientId });
+  const { rows } = await pool.query(`SELECT 1 FROM public.payment_simulator_attempts a
+    JOIN public.commerce_settlement_intents i ON i.id=a.settlement_intent_id
+    WHERE a.id=$1 AND a.request_key=$2 AND a.request_fingerprint=$3
+      AND i.id=$4 AND i.order_id=$5 AND i.channel_key='sandbox' AND i.open_idempotency_key=$6`,
+  [attempt.id, attempt.requestKey, fingerprint, attempt.settlementIntentId, order.orderId, `${key}:payment-intent`]);
+  return rows.length === 1;
+}
 
 /** Content-specific refusal stays in the application, before quote/provider/draft work. */
 export function supportsRecovery(order: NativeCheckoutRecoveryOrder): boolean {
@@ -139,17 +178,27 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
     const original = await reader.getRecoveryOrder({ orderId: bearer.orderId });
     const latest = await reader.getLatestRecoveryOrder!({ orderId: bearer.orderId });
     if (!original || !latest || !sameUuid(original.clientId, bearer.clientId) || !sameUuid(latest.clientId, bearer.clientId)) return refuse('unavailable');
+    const rootId = original.recoveryRootOrderId;
+    if (!sameUuid(latest.recoveryRootOrderId, rootId)
+      || (payload.orderRef !== undefined && !sameUuid(payload.orderRef, latest.orderId))) return refuse('unavailable');
+    if (!await authenticateRecoveryDraft(pool, original, rootId)) return refuse('unavailable');
+    const latestDraft = await authenticateRecoveryDraft(pool, latest, rootId);
+    if (!latestDraft) return refuse('unavailable');
     const lineage = { originalOrderRef: original.orderId, latestOrderRef: latest.orderId };
+    const simulator = createPostgresSandboxPaymentSimulator(pool, context.config.purchase.sandbox);
+    const executionAttempt = latest.recreatedFromOrderId && latest.paymentIntentId
+      ? await simulator.readAttempt({ settlementIntentId: latest.paymentIntentId }) : null;
+    if (latest.recreatedFromOrderId && !await authenticateRecoveryPayment(pool, latest, executionAttempt)) return refuse('unavailable');
     // Native initial activation attaches a paid first cycle. Its authoritative paid presentation is distinct from renewal mutation admission.
     if (payload.action === 'inspect' && latest.paymentIntentStatus === 'succeeded'
       && ['paid','fulfillment_pending','fulfilled'].includes(latest.status)
       && await isInitialCheckoutOrder(pool, original.orderId) && await isInitialCheckoutOrder(pool, latest.orderId))
       return { ok: true, value: { ...lineage, recoverable: false, terminalStatus: 'paid' } };
     if (original.subscriptionCycleId !== null || latest.subscriptionCycleId !== null) return refuse('unavailable');
-    const simulator = createPostgresSandboxPaymentSimulator(pool, context.config.purchase.sandbox);
-    // Read the attempt before inspection: a later paid inspection must win over an earlier dispatched receipt.
-    const executionAttempt = latest.recreatedFromOrderId && latest.paymentIntentId
-      ? await simulator.readAttempt({ settlementIntentId: latest.paymentIntentId }) : null;
+    if (latestDraft.governed && latest.technicallyExpired
+      && (latest.status === 'expired' || latest.status === 'cancelled') && payload.action !== 'simulate') {
+      return { ok: false as const, code: admissionUnavailable };
+    }
     if (payload.action === 'inspect') {
       const result = await inspection.inspect({ token: payload.token, capabilities: ['recreate_expired_order'] });
       const recreatedExecution = recreatedExecutionForInspection(latest, executionAttempt, result);
@@ -193,6 +242,8 @@ export function composeExpiredRecovery(pool: Pool, lane: Pick<PostgresRoleFreeTr
       return { ok: true, value: { ...lineage, state: outcome } };
     } catch (error) {
       if (payload.action === 'simulate') return refuse('unavailable');
+      const admission = catalogAdmissionRefusal(error);
+      if (admission) return { ok: false as const, code: admission };
       if (error instanceof ExpiredCheckoutRecoveryError) return refuse(error.reason);
       throw error;
     }
