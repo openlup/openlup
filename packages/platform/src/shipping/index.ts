@@ -18,6 +18,7 @@ export type { AddressLookupSchemas, CustomerAddressSchemas } from "./addressSche
 export { createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandler, createAddressCanonStreetsHandler } from "./addressCanonLookupHandler.js";
 export { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
 export { canonicalAddressKey } from "./addressCanonical.js";
+export { validateDestinationAddressV2, type AddressPolicyV1 } from "./addressSchemas.js";
 export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, addressRow, findCanonicalAddressId, clearDefaultAddress } from "./customerSelfServiceAddressModels.js";
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
 export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";

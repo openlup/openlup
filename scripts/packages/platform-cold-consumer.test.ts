@@ -97,7 +97,9 @@ function packageFixture(consumer: string, name: string, exports: Record<string, 
 function fixture() {
   const consumer = scratch();
   writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
-  packageFixture(consumer, "@openlup/core", { ".": "./index.js", "./readiness": { types: "./readiness.d.ts", default: "./readiness.js" } });
+  packageFixture(consumer, "@openlup/core", { ".": "./index.js", "./payment": "./payment.js", "./readiness": { types: "./readiness.d.ts", default: "./readiness.js" } });
+  writeFileSync(join(consumer, "node_modules/@openlup/core/payment.js"), "export {};\n");
+  writeFileSync(join(consumer, "node_modules/@openlup/core/payment.d.ts"), "export type PaymentIntentStatus = 'paid';\n");
   writeFileSync(join(consumer, "node_modules/@openlup/core/readiness.js"), 'export async function checkReadiness() { throw new Error("synthetic readiness is import-only"); }\n');
   writeFileSync(join(consumer, "node_modules/@openlup/core/readiness.d.ts"), [
     'export type ReadinessInput = unknown;',
@@ -112,13 +114,15 @@ function fixture() {
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
   platformMetadata.exports["./portability"] = { types: "./portability/index.d.ts", default: "./portability/index.js" };
   platformMetadata.exports["./lifecycle"] = { types: "./lifecycle/index.d.ts", default: "./lifecycle/index.js" };
-  platformMetadata.exports["./commerce/server/destinations"].types = "./destinations/index.d.ts";
+  platformMetadata.exports["./commerce/server/destinations"].types = "./commerce/server/destinations/index.d.ts";
   platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
   platformMetadata.exports["./marketing/server"].types = "./marketing-server.d.ts";
   writeFileSync(platformManifest, JSON.stringify(platformMetadata));
   cpSync(join(root, "packages/platform/dist/portability"), join(consumer, "node_modules/@openlup/platform/portability"), { recursive: true });
   cpSync(join(root, "packages/platform/dist/lifecycle"), join(consumer, "node_modules/@openlup/platform/lifecycle"), { recursive: true });
-  cpSync(join(root, "packages/platform/dist/commerce/server/destinations"), join(consumer, "node_modules/@openlup/platform/destinations"), { recursive: true });
+  for (const entry of ["commerce/contracts", "commerce/server/destinations"]) {
+    cpSync(join(root, "packages/platform/dist", entry), join(consumer, "node_modules/@openlup/platform", entry), { recursive: true });
+  }
   writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
   // The server port extends the browser contract with historical commands.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/marketing-server.d.ts"), [
@@ -190,6 +194,7 @@ function fixture() {
   mkdirSync(join(platformRoot, "contracts"), { recursive: true });
   copyFileSync(join(root, "packages/platform/dist/marketing/contracts/contactLegal.d.ts"), join(platformRoot, "contracts/contactLegal.d.ts"));
   packageFixture(consumer, "zod", { ".": "./index.js" });
+  writeFileSync(join(consumer, "node_modules/zod/index.d.ts"), "export namespace z { export interface ZodType<Output, Input = unknown> { parse(input: Input): Output } }\n");
   return consumer;
 }
 

@@ -883,9 +883,9 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   // "Default: none (see behavior below)" for null fallbacks (K6),
   // Stage 4 Wave 4B packaged callback and single-row installed entries,
   // Stage 4 Wave 4C packaged code (D1-D3, A16, E12) and multi-row installed entries (B3, B5),
-  // and the market fiscal profile, tax adapter choices and tax class map.
+  // the market fiscal profile, tax adapter choices and tax class map, and the checkout address policy.
   expect(createHash("sha256").update(JSON.stringify(bytes)).digest("hex"))
-    .toBe("423fdc6111dcc42b71ba35b7dddfb618ded735ec11338589d49564de6d165c7a");
+    .toBe("3ac9935d1eda74c1bcff0ae5219b6a3cd22d18e2c0db5a170f4a3525e3718a02");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
   type Expected = {
@@ -912,7 +912,22 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
     for (const mode of parityModes) {
       const argv = [...args, ...(mode === "no app" ? [] : appArgs), ...outputArgs];
       const { exit, output, warnings } = await run(argv, { host: boundParityHost(mode) });
-      expect([exit, output], `${mode}: ${argv.join(" ")}`).toEqual(fixture ? expected.outputs[expected.rows[fixture]![format][mode]] : offline);
+      let baselineOutput = output;
+      if (fixture === "check" && mode !== "no app") {
+        const addressPolicy = "shipping.addressPolicy";
+        if (format === "json") {
+          const result = JSON.parse(output);
+          const rows = result.rows as { key: string }[];
+          expect(rows.filter(row => row.key === addressPolicy)).toEqual([expect.objectContaining({
+            key: addressPolicy, kind: "code", file: { state: "not-reported" }, validation: { state: "not-validated" },
+          })]);
+          baselineOutput = document({ ...result, rows: rows.filter(row => row.key !== addressPolicy) });
+        } else {
+          baselineOutput = output.replace(/^shipping\.addressPolicy: file not-reported, schema not-validated\n {2}Effect: [^\n]+\n/mu, "");
+          expect(baselineOutput).not.toBe(output);
+        }
+      }
+      expect([exit, baselineOutput], `${mode}: ${argv.join(" ")}`).toEqual(fixture ? expected.outputs[expected.rows[fixture]![format][mode]] : offline);
       expect(warnings).toEqual([]);
     }
   }
