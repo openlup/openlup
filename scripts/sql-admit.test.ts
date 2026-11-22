@@ -203,6 +203,60 @@ END; $$;
   }, 20_000);
 });
 
+describe("qualified price setup EXECUTE in sql:admit and hosted checks", () => {
+  const signatures = ["public.catalog_price_setup_apply_v2(text,text,uuid)", "public.catalog_publication_lock_effective_base_price_v2(uuid,uuid,uuid)"];
+  const apply = "db/platform/migrations/20990101000000_price_setup_apply.sql";
+  const lock = "db/platform/migrations/20990102000000_price_setup_lock.sql";
+  const grant = "db/platform/migrations/20990103000000_price_setup_execute.sql";
+  const guarded = `DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='openlup_catalog_publication')
+${ledgerGuard}  THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION ${signatures[0]},
+      ${signatures[1]} TO openlup_catalog_publication;';
+  END IF;
+END; $$;
+`;
+  const pass = ["PASS"];
+  const ruleChange = ["REFUSED", "reviewed replacement admission machinery must be approved separately before co-located SQL/pins"];
+  const unissued = (path: string) => ["REFUSED", `reviewed native store qualified price setup EXECUTE predecessor must already be issued: ${path}`];
+
+  it.each([
+    ["both predecessors issued", 2, false, 0, [pass, pass, pass, pass]],
+    ["neither predecessor issued", 0, false, 1, [pass, pass, unissued(apply), unissued(apply), unissued(apply), unissued(apply)]],
+    ["the lock predecessor unissued", 1, false, 1, [pass, unissued(lock), unissued(lock), unissued(lock), unissued(lock)]],
+    ["a co-located rule change", 2, true, 1, [pass, pass, ruleChange, ruleChange]],
+  ] as const)("checks %s through trusted admission", (_scenario, issued, changeRule, exit, expected) => {
+    const f = fixture(), value = registry();
+    const slots = value.nativeStoreForwardClass!.slots, pins = value.nativeStoreForwards!;
+    const writeRegistry = () => {
+      f.put(REVIEWED_FORWARD_PATH, encode(value));
+      f.put(PLATFORM_MIGRATION_MANIFEST, manifest(pins.map(pin => ({ file: pin.path, sha256: pin.sha256 }))));
+    };
+    let base = f.base;
+    for (const [i, path] of [apply, lock].entries()) {
+      const signature = signatures[i]!;
+      const definition = `CREATE FUNCTION ${signature} RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$ SELECT 'pinned'; $$;`;
+      const sql = `${definition}\nREVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;\n`;
+      slots.push({ ...slot(path, `price-setup-${i}`), createdFunctions: [{ signature, searchPath: "pg_catalog, pg_temp" }] });
+      pins.push({ path, sha256: sha256(sql), functions: [{ signature, beforeSha256: null, afterSha256: sha256(definition) }] });
+      f.put(path, sql);
+      if (i + 1 === issued) { writeRegistry(); base = f.commit(); }
+    }
+    slots.push({ ...slot(grant, "price-setup-execute"), qualifiedPriceSetupExecute: true });
+    pins.push({ path: grant, sha256: sha256(guarded), functions: [] });
+    f.put(grant, guarded);
+    writeRegistry();
+    if (changeRule) f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
+    const head = f.commit();
+    const result = cli(f.root, ["--base", base, "--head", head, STALE]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(exit);
+    const reported = verdictLines(result.stdout);
+    expect(reported).toEqual(directVerdicts(f, base, head).verdicts);
+    expect(reported).toEqual(expected);
+  }, 20_000);
+});
+
 const previewNoopSql = `ALTER TABLE public.subscription_quote_previews ADD COLUMN accepted_noop_receipt_id uuid REFERENCES public.subscription_command_receipts(id);
 ALTER TABLE public.subscription_quote_previews DROP CONSTRAINT subscription_quote_previews_acceptance_check;
 ALTER TABLE public.subscription_quote_previews ADD CONSTRAINT subscription_quote_previews_acceptance_check CHECK (
