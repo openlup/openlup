@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, QUALIFIED_RUNTIME_COMPLETION_FILE, QUALIFIED_OWNER_PATH_FILE, QUALIFIED_LOCK_AND_CONFLICT_COMPLETION_FILE, ADMIN_BASELINE_FILE, ADMIN_ACTOR_FILE, ADMIN_ACQUISITION_FILE, ADMIN_RUNTIME_FILE, ADMIN_IMPORT_FILE, REVISED_ADMIN_ACTOR_FILE, REVISED_ADMIN_ACQUISITION_FILE, REVISED_ADMIN_RUNTIME_FILE, REVISED_ADMIN_IMPORT_FILE, isChannelIngestMigrationPath, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
+import { parseStrictJson } from "./oss-strict-json.mts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
 export const MANAGED_BASELINE = "supabase/migrations/00000000000000_platform_schema_baseline.sql";
@@ -235,7 +236,7 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
 // Only approval-history comparison may read the exact prior inventories.
 // Candidate admission always uses the strict public reader above.
 function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwardRegistry {
-  const raw = JSON.parse(bytes.toString("utf8")) as ReviewedForwardRegistry;
+  const raw = parseStrictJson(bytes.toString("utf8"), REVIEWED_FORWARD_PATH) as ReviewedForwardRegistry;
   if (raw.schemaVersion !== 1 || !hash(raw.baselineSha256) || !Array.isArray(raw.replacementForwards) || raw.replacementForwards.length !== 2 || !Array.isArray(raw.creationForwards) || raw.creationForwards.length !== 1) throw new Error("reviewed replacement registry requires one baseline, two replacement forwards and one creation forward");
   const paths = new Set<string>(), signatures = new Set<string>(), replaced = new Set<string>();
   if (raw.qualifiedInstallations !== undefined) {
@@ -1586,18 +1587,13 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
         throw new Error(`exact managed forward approval must precede its SQL: ${pin.path}`);
       }
     }
-    const previousData = JSON.parse(before.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
-    const currentData = JSON.parse(after.toString("utf8")) as { qualifiedInstallations?: unknown; channelIngestForwards?: unknown } | null;
-    if (previousData?.channelIngestForwards !== undefined && currentData?.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
-    if (previousData?.qualifiedInstallations !== undefined || currentData?.qualifiedInstallations !== undefined || previousData?.channelIngestForwards !== undefined) {
-      const previous = readForwardRegistry(before, true), current = readReviewedForwardRegistry(after);
-      for (const [index, entry] of (previous.channelIngestForwards ?? []).entries()) {
-        if (canonical(current.channelIngestForwards?.[index]) !== canonical(entry)) throw new Error("issued M17 channel approvals are immutable");
-      }
-      for (const [index, entry] of (previous.qualifiedInstallations ?? []).entries()) {
-        if (canonical(current.qualifiedInstallations?.[index]) !== canonical(entry)) {
-          throw new Error("issued qualified installation approvals are immutable");
-        }
+    if (prior.channelIngestForwards !== undefined && candidate.channelIngestForwards === undefined) throw new Error("issued M17 channel class approval cannot be removed");
+    for (const [index, entry] of (prior.channelIngestForwards ?? []).entries()) {
+      if (canonical(candidate.channelIngestForwards?.[index]) !== canonical(entry)) throw new Error("issued M17 channel approvals are immutable");
+    }
+    for (const [index, entry] of (prior.qualifiedInstallations ?? []).entries()) {
+      if (canonical(candidate.qualifiedInstallations?.[index]) !== canonical(entry)) {
+        throw new Error("issued qualified installation approvals are immutable");
       }
     }
   }

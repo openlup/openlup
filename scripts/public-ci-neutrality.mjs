@@ -4,6 +4,7 @@ import { closeSync, lstatSync, mkdtempSync, openSync, readFileSync, rmSync, rmdi
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { DuplicateJsonKeyError, parseStrictJson } from "./oss-strict-json.mts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baselinePath = "config/openlup-neutrality-baseline.json";
@@ -187,12 +188,14 @@ const platformAdapterEntries = [
   };
 });
 
-function parseAdapterRegistration(contents) {
+function parseAdapterRegistration(path, contents) {
   try {
+    parseStrictJson(contents, path);
     // Keep an escape marker so decoding cannot create an allowance for a
     // literal occurrence elsewhere. Canonical registration paths use no escapes.
     return JSON.parse(contents.replace(/\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})/g, "\\\\"));
-  } catch {
+  } catch (error) {
+    if (error instanceof DuplicateJsonKeyError) throw error;
     return undefined;
   }
 }
@@ -271,7 +274,7 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
     return contents.split("\n").includes(adapterImport) ? 1 : 0;
   }
   const registration = adapterRegistrationCarriers.has(path);
-  const carrier = registration ? parseAdapterRegistration(contents) : undefined;
+  const carrier = registration ? parseAdapterRegistration(path, contents) : undefined;
   return adapters.reduce((count, adapter) => {
     const text = registration ? adapterRegistrationText(path, carrier, adapter) : contents;
     const tokens = adapterCarrierTokens(path, text, platformAdapterCarriers, adapter.subpathToken, adapter.reportToken);
@@ -376,10 +379,13 @@ function pinnedIntroductionMatches(path, bytes, digest) {
   // text, not its JSON escaping or unrelated registry entries. The scanner's
   // exact total still refuses any additional counted vocabulary in this file.
   try {
-    const pin = JSON.parse(bytes.toString("utf8")).batchedForwards.find(entry =>
+    const pin = parseStrictJson(bytes.toString("utf8"), path).batchedForwards.find(entry =>
       entry.path === "supabase/migrations/20261024185100_m07_refund_parity.sql");
     return pin.statements.filter(statement => typeof statement.sql === "string" && hash(statement.sql) === digest).length === 1;
-  } catch { return false; }
+  } catch (error) {
+    if (error instanceof DuplicateJsonKeyError) throw error;
+    return false;
+  }
 }
 export function unreviewedPinnedIntroductionIncreases(increases, snapshots) {
   return increases.filter(row => !reviewedPinnedIntroductions.some(([path, digest, counts]) =>
@@ -584,8 +590,11 @@ function baseCommit(args) {
 }
 function parseBaseline(bytes) {
   let value;
-  try { value = JSON.parse(bytes.toString("utf8")); }
-  catch { throw new Error("invalid neutrality baseline JSON"); }
+  try { value = parseStrictJson(bytes.toString("utf8"), baselinePath); }
+  catch (error) {
+    if (error instanceof DuplicateJsonKeyError) throw error;
+    throw new Error("invalid neutrality baseline JSON");
+  }
   validateBaseline(value);
   return value;
 }
