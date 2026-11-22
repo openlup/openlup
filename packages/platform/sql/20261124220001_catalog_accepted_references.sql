@@ -754,7 +754,7 @@ REVOKE ALL ON FUNCTION public.catalog_customer_edit_acceptance_assert(uuid) FROM
 
 CREATE FUNCTION public.catalog_edit_acceptance_trigger() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
-DECLARE previous uuid; current_event uuid; target uuid;
+DECLARE previous uuid; current_event uuid; target uuid; supplied jsonb;
 BEGIN
  IF TG_TABLE_NAME='subscription_events' THEN
   IF TG_OP='UPDATE' AND OLD.catalog_acceptance IS NOT NULL
@@ -765,7 +765,11 @@ BEGIN
   IF NEW.catalog_acceptance IS NULL THEN RETURN NULL; END IF;
   -- The authenticated login can only write through an owner that checks the
   -- supplied tuple before staging. It has no catalogue evidence grants.
-  IF current_user<>'authenticated' THEN PERFORM public.catalog_acceptance_assert_v2(NEW.catalog_acceptance); END IF;
+  IF current_user='service_role' THEN
+   supplied:=NEW.catalog_acceptance;
+  ELSIF current_user<>'authenticated' THEN
+   PERFORM public.catalog_acceptance_assert_v2(NEW.catalog_acceptance);
+  END IF;
   current_event:=NEW.id;
  ELSE
   IF TG_OP<>'INSERT' THEN previous:=OLD.accepted_event_id; END IF;
@@ -775,6 +779,8 @@ BEGIN
   IF target IS NULL THEN CONTINUE; END IF;
   IF current_user='authenticated' THEN
    PERFORM public.customer_subscription_apply_bundle_as_actor(target,NULL,NULL,NULL);
+  ELSIF current_user='service_role' THEN
+   PERFORM public.subscription_package_edit_apply(NULL,NULL,NULL,target,supplied,NULL);
   ELSIF EXISTS(SELECT 1 FROM public.subscription_events WHERE id=target AND catalog_acceptance IS NOT NULL) THEN
    PERFORM public.catalog_edit_acceptance_final(target);
   END IF;
@@ -1364,7 +1370,9 @@ BEGIN
   END IF;
   IF q.id IS NOT NULL AND outcome='applied' THEN
    UPDATE public.subscription_edit_quotes SET status='accepted',accepted_event_id=event_id,accepted_at=p_now WHERE id=q.id;
-   PERFORM public.catalog_attach_edit_acceptance(event_id,p_payload->'catalogAcceptance');
+   IF p_payload->'catalogAcceptance' IS NOT NULL THEN
+    PERFORM public.catalog_attach_edit_acceptance(event_id,p_payload->'catalogAcceptance');
+   END IF;
   END IF;
   answer:=jsonb_build_object('status',outcome,'subscriptionId',s.id,'action',p_action,'subscriptionStatus',s.status,
    'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',event_id);
@@ -1393,6 +1401,13 @@ DECLARE
  plan integer; version integer; minimum_text text; minimum_units integer; line jsonb; ordinal integer:=0;
  core_matches boolean; addon_matches boolean; outcome text:='applied';
 BEGIN
+ -- Deferred checks run after the owner returns to the restricted service login.
+ -- This trigger-only invocation retains the existing edit authority and ACL.
+ IF pg_trigger_depth()>0 AND p_actor_id IS NULL AND p_client_id IS NULL AND p_key IS NULL AND p_now IS NULL THEN
+  IF p_payload IS NOT NULL THEN PERFORM public.catalog_acceptance_assert_v2(p_payload); END IF;
+  PERFORM public.catalog_edit_acceptance_final(p_subscription_id);
+  RETURN NULL;
+ END IF;
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180
   OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object'

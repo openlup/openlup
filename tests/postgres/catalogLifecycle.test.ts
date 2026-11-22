@@ -385,7 +385,7 @@ it("replays the stored acceptance after reopening without changing frozen v1 byt
   }
 });
 
-it.each([true, false])("checks only the authenticated customer's bound event at COMMIT (owns event %s)", async ownsEvent => {
+it.each(["customer", "other customer", "service"] as const)("checks deferred edit evidence under the %s login", async login => {
   const id = randomUUID(), quoteHash = "a".repeat(64), key = `classic:${id}`;
   const identity = await transaction(pool, async db => {
     const a = await subscription(db);
@@ -401,18 +401,35 @@ it.each([true, false])("checks only the authenticated customer's bound event at 
     [a.id, key, "b".repeat(64), quoteHash, json([{ variantId: data.skuId, quantity: 1, isAddon: false }]), id, when]);
     return a;
   });
+  async function assumeEditor(db: PoolClient, ownsEvent: boolean) {
+    if (login === "service") {
+      await db.query("SET LOCAL ROLE service_role");
+    } else {
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [json({ sub: ownsEvent ? identity.principal : randomUUID(), role: "authenticated" })]);
+    }
+  }
   await committed(async db => {
-    // Queue owner-side revalidation of intact evidence, then finish under the customer login.
+    // Queue owner-side revalidation of intact evidence before the restricted caller commits.
     await db.query("UPDATE public.subscription_edit_quotes SET accepted_at=accepted_at WHERE accepted_event_id=$1", [id]);
-    await db.query("SET LOCAL ROLE authenticated");
-    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [json({ sub: ownsEvent ? identity.principal : randomUUID(), role: "authenticated" })]);
+    if (login === "service") {
+      await db.query("UPDATE public.subscription_events SET catalog_acceptance=catalog_acceptance WHERE id=$1", [id]);
+    }
+    await assumeEditor(db, login === "customer");
     const grants = await db.query(`SELECT has_table_privilege(current_user,'public.subscription_events','SELECT') AS reads_events,
       has_function_privilege(current_user,'public.catalog_customer_edit_acceptance_assert(uuid)','EXECUTE') AS runs_assertion`);
-    expect(grants.rows).toEqual([{ reads_events: false, runs_assertion: false }]);
+    expect(grants.rows[0]!.runs_assertion).toBe(false);
+    if (login !== "service") expect(grants.rows[0]!.reads_events).toBe(false);
+  });
+  if (login === "service") await committed(async db => {
+    await assumeEditor(db, true);
+    await db.query("SAVEPOINT direct_invocation");
+    await expect(db.query("SELECT public.subscription_package_edit_apply(NULL,NULL,NULL,$1,NULL,NULL)", [id]))
+      .rejects.toMatchObject(refusal("subscription_command_invalid_input"));
+    await db.query("ROLLBACK TO SAVEPOINT direct_invocation");
   });
   await committed(async db => {
     await db.query("UPDATE public.subscription_edit_quotes SET proposed_lines=jsonb_set(proposed_lines,'{0,quantity}','2') WHERE accepted_event_id=$1", [id]);
-    await db.query("SET LOCAL ROLE authenticated");
-    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [json({ sub: identity.principal, role: "authenticated" })]);
+    await assumeEditor(db, true);
   }, "catalog_acceptance_line_mismatch");
 });
