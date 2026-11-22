@@ -9678,6 +9678,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/stockWaitReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/exactEditQuote.ts",
       "class": "public-output"
     },
@@ -9790,6 +9794,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresStockWaitReads.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/postgresStockWaitStore.ts",
       "class": "public-output"
     },
@@ -9851,6 +9859,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/sizedParcelProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/stockWaitReadQueries.ts",
       "class": "public-output"
     },
     {
@@ -31375,6 +31387,10 @@
     },
     {
       "path": "tests/postgres/subscriptionStockWaitCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionStockWaitReads.test.ts",
       "class": "public-output"
     },
     {
