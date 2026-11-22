@@ -102,9 +102,9 @@ describe("paymentAdapterRegistry", () => {
       expect((await getPaymentExecutionAdapter(cardKind, { [cardKind]: card.adapter }, false).execute(executionInput)).providerAttemptId).toBe("pi_bound");
       expect(sdkConstruction).toHaveBeenCalledTimes(1);
       const simulator = buildTpayAdapterIfEnabled({ PAYMENTS_TPAY_ENABLED: "true", PAYMENTS_TPAY_SIMULATOR_ENABLED: "true", APP_BASE_URL: "https://example.test" })!;
-      const simulated = await simulator.adapter.execute({ ...executionInput, returnContext: "account", petId: "pet-id", customerRef: "fixture@example.test",
+      const simulated = await simulator.adapter.execute({ ...executionInput, returnContext: "account", subjectId: "subject-id", customerRef: "fixture@example.test",
         transientProviderInput: { provider: codeKind, flow: "pbl_one_time", channelId: "sim-pbl-1" } });
-      expect(new URL(simulated.redirectUrl!).searchParams.get("return")).toBe("/konto/zamowienie/status");
+      expect(new URL(simulated.redirectUrl!).searchParams.get("return")).toBe("/account/order/status");
       expect(fetch).not.toHaveBeenCalled();
       expect(certificateConstruction).not.toHaveBeenCalled();
     } finally { fetch.mockRestore(); }

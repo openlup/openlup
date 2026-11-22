@@ -14,8 +14,8 @@ describe("customer journey snapshot read model", () => {
       client: {
         id: clientId,
         email: "operator@example.invalid",
-        first_name: "Bartek",
-        last_name: "Roszkowski",
+        first_name: "Alex",
+        last_name: "Example",
         lifecycle_stage: "customer",
         auth_user_id: "auth-1",
         created_at: "2026-07-13T10:00:00.000Z",

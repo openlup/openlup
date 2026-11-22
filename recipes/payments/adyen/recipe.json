@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "id": "payments/adyen",
+  "domain": "payments",
+  "providerKind": "adyen",
+  "displayName": "Adyen Checkout (v71)",
+  "summary": "Zero-SDK Adyen Checkout v71 recipe supporting interactive Drop-in sessions, bank redirects, unattended ContAuth subscription renewals, async cancels, and canonical HMAC-SHA256 webhook verification.",
+  "regions": [
+    "global",
+    "US",
+    "EU",
+    "APAC"
+  ],
+  "status": "exemplar",
+  "openlupPlatformRange": "^1.3.0",
+  "testedAgainstPlatformVersion": "1.3.0",
+  "contractImports": [
+    "@openlup/core/payment",
+    "@openlup/platform/http",
+    "@openlup/platform/payments",
+    "@openlup/platform/payments/contracts",
+    "@openlup/platform/payments/testing"
+  ],
+  "conformanceRunner": {
+    "importPath": "@openlup/platform/payments/testing",
+    "exportName": "runPaymentAdapterConformance",
+    "mode": "safety"
+  },
+  "sdkPolicy": "zero-dep-fetch",
+  "egressOrigins": [
+    "https://checkout-test.adyen.com",
+    "https://{liveUrlPrefix}-checkout-live.adyenpayments.com"
+  ],
+  "webhookAuth": "hmac-sha256-canonical",
+  "browserSurface": {
+    "kind": "adapter-component",
+    "entry": "browser/index.ts",
+    "cspManifest": "browser/csp.json"
+  },
+  "supportedCurrenciesPolicy": "host-configured",
+  "staticCapabilities": {
+    "providerKind": "adyen",
+    "captureFlows": [
+      {
+        "kind": "dropin_session",
+        "handoff": "client-confirmed",
+        "methodFamilies": [
+          "card",
+          "wallet"
+        ]
+      },
+      {
+        "kind": "redirect_payment",
+        "handoff": "redirect",
+        "methodFamilies": [
+          "bank-redirect"
+        ]
+      }
+    ],
+    "requiresStoredMandateEvidence": false,
+    "unattendedChargeFlow": "off_session_payment",
+    "payerContext": {
+      "requiresPayerBlock": false,
+      "customerRefFallsBackToContactEmail": false
+    },
+    "methodHealth": {
+      "requiresCustomerRef": true,
+      "requiredMethodKind": null,
+      "requiresPayerContact": false
+    },
+    "terminalOutcomeReporting": {
+      "kind": "status_field",
+      "silenceBecomesSuspectAfterMinutes": 360
+    },
+    "mandateUpsertIsSubscriptionScoped": false,
+    "supportedCurrencies": [],
+    "unattended": "supported",
+    "readback": "unsupported",
+    "close": "supported",
+    "exactAbsence": "unsupported",
+    "refundObservation": "supported",
+    "refundCreate": "unsupported",
+    "authorizationCaptureSplit": "unsupported"
+  },
+  "liveQualification": {
+    "status": "offline-protocol-only",
+    "checklist": "LIVE_QUALIFICATION.md"
+  },
+  "files": {
+    "serverEntry": "server/index.ts",
+    "clientContract": "server/client-contract.ts",
+    "conformanceTest": "tests/conformance.test.ts",
+    "mountProofTest": "tests/mount-proof.test.ts",
+    "liveQualificationDoc": "LIVE_QUALIFICATION.md",
+    "allFiles": [
+      "recipe.json",
+      "LIVE_QUALIFICATION.md",
+      "server/index.ts",
+      "server/client-contract.ts",
+      "server/webhook.ts",
+      "server/adapter.ts",
+      "browser/index.ts",
+      "browser/csp.json",
+      "tests/fixtures.ts",
+      "tests/conformance.test.ts",
+      "tests/mount-proof.test.ts"
+    ]
+  },
+  "proofCommands": {
+    "conformance": "npx vitest run recipes/payments/adyen/tests/conformance.test.ts",
+    "mountProof": "npx vitest run recipes/payments/adyen/tests/mount-proof.test.ts"
+  }
+}

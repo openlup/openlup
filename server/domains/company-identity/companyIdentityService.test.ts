@@ -80,22 +80,22 @@ describe("company identity lookup service", () => {
   it("continues past a complete MF personal-name JDG record and prefers a fuller CEIDG name", async () => {
     const mf = provider("mf_vat_whitelist", {
       status: "found",
-      legalName: "BARTŁOMIEJ ROSZKOWSKI",
-      regon: "147460466",
-      address: { line1: "Powstania Styczniowego 3", postalCode: "05-074", city: "Halinów", country: "PL" },
+      legalName: "JAN KOWALSKI",
+      regon: "000000000",
+      address: { line1: "Example Street 1", postalCode: "00-001", city: "ExampleCity", country: "PL" },
     });
     const ceidg = provider("gus_ceidg", {
       status: "found",
-      legalName: "Zero to One Bartłomiej Roszkowski",
-      regon: "147460466",
-      address: { line1: "Powstania Styczniowego 3", postalCode: "05-074", city: "Halinów", country: "PL" },
+      legalName: "Example Studio Jan Kowalski",
+      regon: "000000000",
+      address: { line1: "Example Street 1", postalCode: "00-001", city: "ExampleCity", country: "PL" },
     });
     const port = createCompanyIdentityLookupPort({ PL: [mf, ceidg] });
 
-    await expect(port.lookupCompanyIdentity({ ...request, identifierValue: "1181590588" })).resolves.toMatchObject({
+    await expect(port.lookupCompanyIdentity({ ...request, identifierValue: "5260001246" })).resolves.toMatchObject({
       status: "found",
       verificationLevel: "registry_verified",
-      company: { legalName: "Zero to One Bartłomiej Roszkowski" },
+      company: { legalName: "Example Studio Jan Kowalski" },
       sources: [
         { providerKind: "mf_vat_whitelist", status: "found" },
         { providerKind: "gus_ceidg", status: "found" },

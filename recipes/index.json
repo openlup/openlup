@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "platformVersion": "1.3.0",
+  "recipes": [
+    {
+      "id": "payments/adyen",
+      "domain": "payments",
+      "providerKind": "adyen",
+      "displayName": "Adyen Checkout (v71)",
+      "status": "exemplar",
+      "regions": [
+        "global",
+        "US",
+        "EU",
+        "APAC"
+      ],
+      "openlupPlatformRange": "^1.3.0",
+      "testedAgainstPlatformVersion": "1.3.0",
+      "manifestPath": "payments/adyen/recipe.json"
+    }
+  ]
+}

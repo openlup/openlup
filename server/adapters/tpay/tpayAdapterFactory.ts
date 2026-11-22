@@ -22,6 +22,47 @@ export const unattendedChargeCapability: PaymentProviderCapabilityDescriptor = t
   },
 );
 
+export interface TpayAdapterPresentationOptions {
+  simulatorSuccessPath?: string;
+  accountReturnPath?: string;
+  accountSubjectQueryParam?: string;
+  fallbackPayerName?: string;
+}
+
+interface ResolvedTpayPresentationOptions {
+  simulatorSuccessPath: string;
+  accountReturnPath: string;
+  accountSubjectQueryParam: string;
+  fallbackPayerName: string;
+}
+
+const DEFAULT_TPAY_PRESENTATION: ResolvedTpayPresentationOptions = {
+  simulatorSuccessPath: "/checkout/payment",
+  accountReturnPath: "/account/order/status",
+  accountSubjectQueryParam: "subject",
+  fallbackPayerName: "Customer",
+};
+
+function resolvePresentationOptions(
+  env: Record<string, string | undefined>,
+  options?: TpayAdapterPresentationOptions,
+): ResolvedTpayPresentationOptions {
+  return {
+    simulatorSuccessPath: options?.simulatorSuccessPath?.trim()
+      || env.TPAY_SIMULATOR_SUCCESS_PATH?.trim()
+      || DEFAULT_TPAY_PRESENTATION.simulatorSuccessPath,
+    accountReturnPath: options?.accountReturnPath?.trim()
+      || env.TPAY_ACCOUNT_RETURN_PATH?.trim()
+      || DEFAULT_TPAY_PRESENTATION.accountReturnPath,
+    accountSubjectQueryParam: options?.accountSubjectQueryParam?.trim()
+      || env.TPAY_ACCOUNT_SUBJECT_QUERY_PARAM?.trim()
+      || DEFAULT_TPAY_PRESENTATION.accountSubjectQueryParam,
+    fallbackPayerName: options?.fallbackPayerName?.trim()
+      || env.TPAY_FALLBACK_PAYER_NAME?.trim()
+      || DEFAULT_TPAY_PRESENTATION.fallbackPayerName,
+  };
+}
+
 export interface TpayAdapterFactoryResult {
   adapter: PaymentExecutionPort;
   mode: "sandbox" | "simulator" | "verified_test" | "production";
@@ -29,8 +70,10 @@ export interface TpayAdapterFactoryResult {
 
 export function buildTpayAdapterIfEnabled(
   env: Record<string, string | undefined>,
+  presentation?: TpayAdapterPresentationOptions,
 ): TpayAdapterFactoryResult | null {
   if (env.PAYMENTS_TPAY_ENABLED !== "true") return null;
+  const resolvedPresentation = resolvePresentationOptions(env, presentation);
   const sandboxEnabled = env.PAYMENTS_TPAY_SANDBOX_ENABLED === "true";
   const simulatorEnabled = env.PAYMENTS_TPAY_SIMULATOR_ENABLED === "true";
   const verifiedTestEnabled = env.PAYMENTS_TPAY_VERIFIED_TEST_MODE_ENABLED === "true";
@@ -42,7 +85,7 @@ export function buildTpayAdapterIfEnabled(
     .filter(Boolean).length;
   if (enabledModeCount !== 1) return null;
   if (simulatorEnabled) {
-    const urls = readSimulatorUrls(env);
+    const urls = readSimulatorUrls(env, resolvedPresentation.simulatorSuccessPath);
     if (!urls) return null;
     return {
       mode: "simulator",
@@ -54,7 +97,7 @@ export function buildTpayAdapterIfEnabled(
         oneClickEnabled,
         aliasRegistrationOnCodeEnabled,
         modelOActivationEnabled,
-      }),
+      }, resolvedPresentation),
     };
   }
 
@@ -96,17 +139,20 @@ export function buildTpayAdapterIfEnabled(
       oneClickEnabled,
       aliasRegistrationOnCodeEnabled,
       modelOActivationEnabled,
-    }),
+    }, resolvedPresentation),
   };
 }
 
-function readSimulatorUrls(env: Record<string, string | undefined>): {
+function readSimulatorUrls(
+  env: Record<string, string | undefined>,
+  simulatorSuccessPath: string,
+): {
   notificationUrl: string;
   successUrl: string;
   errorUrl: string;
 } | null {
   const origin = previewOrigin(env);
-  const successUrl = env.TPAY_SUCCESS_URL ?? (origin ? `${origin}/skomponuj-pakiet/platnosc` : null);
+  const successUrl = env.TPAY_SUCCESS_URL ?? (origin ? `${origin}${simulatorSuccessPath}` : null);
   const errorUrl = env.TPAY_ERROR_URL ?? successUrl;
   const notificationUrl = env.TPAY_NOTIFICATION_URL ?? (origin ? `${origin}/api/bff/payment/webhooks/tpay-simulator` : null);
   return successUrl && errorUrl && notificationUrl ? { successUrl, errorUrl, notificationUrl } : null;
@@ -124,10 +170,13 @@ function previewOrigin(env: Record<string, string | undefined>): string | null {
   return null;
 }
 
-/** Keep localized reference presentation outside the contributed protocol implementation. */
-function createReferenceTpayAdapter(options: Parameters<typeof createTpayPaymentExecutionAdapter>[0]): PaymentExecutionPort {
+/** Keep host presentation outside the contributed protocol implementation. */
+function createReferenceTpayAdapter(
+  options: Parameters<typeof createTpayPaymentExecutionAdapter>[0],
+  presentation: ResolvedTpayPresentationOptions,
+): PaymentExecutionPort {
   const resolvePayer: Parameters<typeof createTpayPaymentExecutionAdapter>[0]["resolvePayer"] = (input) =>
-    input.payer ?? (input.customerRef ? { email: input.customerRef, name: "openlup customer" } : null);
+    input.payer ?? (input.customerRef ? { email: input.customerRef, name: presentation.fallbackPayerName } : null);
   const baseAdapter = createTpayPaymentExecutionAdapter({ ...options, resolvePayer });
   const bindAccount = (input: Parameters<PaymentExecutionPort["execute"]>[0]) => createTpayPaymentExecutionAdapter({
     ...options,
@@ -136,34 +185,38 @@ function createReferenceTpayAdapter(options: Parameters<typeof createTpayPayment
       ...options.client,
       createTransaction: transaction => options.client.createTransaction({
         ...transaction,
-        successUrl: referenceReturnUrl(transaction.successUrl, options.successUrl, input),
-        errorUrl: referenceReturnUrl(transaction.errorUrl, options.errorUrl, input),
+        successUrl: referenceReturnUrl(transaction.successUrl, options.successUrl, input, presentation),
+        errorUrl: referenceReturnUrl(transaction.errorUrl, options.errorUrl, input, presentation),
         simulatorContext: transaction.simulatorContext
-          ? { ...transaction.simulatorContext, returnPath: input.returnPath ?? "/konto/zamowienie/status" } : transaction.simulatorContext,
+          ? { ...transaction.simulatorContext, returnPath: input.returnPath ?? presentation.accountReturnPath } : transaction.simulatorContext,
       }),
     },
   });
   return {
-    validateInput: input => baseAdapter.validateInput?.({ ...input, subjectId: input.subjectId ?? input.petId }),
+    validateInput: input => baseAdapter.validateInput?.({ ...input, subjectId: input.subjectId }),
     async execute(input) {
       const adapter = input.returnContext === "account" ? bindAccount(input) : baseAdapter;
-      return await adapter.execute({ ...input, subjectId: input.subjectId ?? input.petId }) as Awaited<ReturnType<PaymentExecutionPort["execute"]>>;
+      return await adapter.execute({ ...input, subjectId: input.subjectId }) as Awaited<ReturnType<PaymentExecutionPort["execute"]>>;
     },
   };
 }
 
-function referenceReturnUrl(value: string, baseUrl: string, input: Parameters<PaymentExecutionPort["execute"]>[0]): string {
+function referenceReturnUrl(
+  value: string,
+  baseUrl: string,
+  input: Parameters<PaymentExecutionPort["execute"]>[0],
+  presentation: ResolvedTpayPresentationOptions,
+): string {
   if (input.returnContext !== "account") return value;
   const url = new URL(value);
-  url.pathname = input.returnPath ?? "/konto/zamowienie/status";
+  url.pathname = input.returnPath ?? presentation.accountReturnPath;
   // Preserve the host's original query and insertion order, including any
   // pre-existing subject/order keys; only the host owns localized subject scope.
   url.search = new URL(baseUrl).search;
   if (input.orderId) url.searchParams.set("orderId", input.orderId);
   url.searchParams.set("paymentIntentId", input.paymentIntentId);
   if (input.clientId) url.searchParams.set("clientId", input.clientId);
-  const subjectRef = input.subjectId ?? input.petId;
-  if (subjectRef) url.searchParams.set("pet", subjectRef);
+  if (input.subjectId) url.searchParams.set(presentation.accountSubjectQueryParam, input.subjectId);
   url.searchParams.set("order", input.orderRef);
   return url.toString();
 }

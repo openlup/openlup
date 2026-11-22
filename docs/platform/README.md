@@ -20,6 +20,7 @@ This index is for maintainers changing OpenLup. For installing, composing, exten
 - [Data and migrations](DATA_AND_MIGRATIONS.md) — compatibility-first schema evolution and adopter-owned data.
 - [Runtime and self-hosting](RUNTIME_AND_SELF_HOSTING.md) — runtime boundaries and the supported installation and self-hosting limits.
 - [Canonical contracts](CANONICAL_CONTRACTS.md) — status, idempotency, and provider-boundary rules.
+- [Provider recipes master plan](PROVIDER_RECIPES_MASTER_PLAN.md) — agent-first recipe ecosystem architecture, harmonization plan, anti-slop gates, and global provider roadmap ([ADR-001](adr/ADR-001-provider-recipes-architecture.md)).
 
 Partner acquisition is available as schemas/types and a PostgreSQL port through
 the existing [marketing package entries](../../packages/platform/README.md#marketing-contracts).
