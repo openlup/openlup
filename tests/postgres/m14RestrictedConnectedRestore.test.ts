@@ -360,6 +360,36 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
           await target.owner.query("UPDATE public.subscription_delivery_alignment_control SET mode='off' WHERE singleton");
         }
         await expectPrivateLockRefusal(target, input);
+
+        const lineage = structuredClone(packet);
+        const duties = lineage.compatible.tables.find(table => table.table === "invoicing_duties")!;
+        Object.assign(duties.columns.find(column => column.key)!, { key: "yes" });
+        const duty = (id: string, parent: string | null) => JSON.stringify(Object.fromEntries(duties.columns.map(({ name }) =>
+          [name, name === "id" ? id : name === "parent_duty_id" ? parent : null])));
+        duties.rows = [
+          duty("10000000-0000-4000-8000-000000000004", "10000000-0000-4000-8000-000000000005"),
+          duty("10000000-0000-4000-8000-000000000006", null),
+        ];
+        for (const reverseTables of [false, true]) {
+          for (const reverseRows of [false, true]) {
+            const edited = structuredClone(lineage);
+            if (reverseTables) edited.compatible.tables.reverse();
+            if (reverseRows) edited.compatible.tables.find(table => table.table === "invoicing_duties")!.rows.reverse();
+            await refuse("invalid_input", { packet: sealConnectedCapture(edited) });
+          }
+        }
+
+        const mixedEvents = structuredClone(packet);
+        const mixedOutbox = mixedEvents.compatible.tables.find(table => table.table === "outbox_events")!;
+        const event = JSON.parse(mixedOutbox.rows[0]!);
+        mixedOutbox.rows = [
+          JSON.stringify({ ...event, event_type: "channel.purchase-line.v1" }),
+          JSON.stringify({ ...event, id: "10000000-0000-4000-8000-000000000007",
+            idempotency_key: "restricted-unconvertible-outbox", event_type: { toString: null } }),
+        ];
+        await refuse("invalid_input", { packet: sealConnectedCapture(mixedEvents) });
+        mixedOutbox.rows.reverse();
+        await refuse("invalid_input", { packet: sealConnectedCapture(mixedEvents) });
       }
       const baselineCases = [false, true].map(reverse => {
         const copy = structuredClone(freshTarget);

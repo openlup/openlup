@@ -470,29 +470,38 @@ const unsupportedChannelEvents = new Set(["channel.pull-page.v1", "channel.purch
 
 function prepareRestoreImport(packet: ConnectedNativeStoreCapture, catalogueId: string, source: Map<TableName, Rows>, baseline: Map<TableName, Rows>) {
   let refusal: PostgresTransferError | undefined;
+  const recordRefusal = (table: TableName, error: unknown) => {
+    refusal = preferredRefusal(refusal, error instanceof PostgresTransferError ? error : new PostgresTransferError("invalid_input", table));
+  };
   const generic = new Map<TableName, CompatiblePostgresPacket>();
   const rows = new Map<TableName, string[]>();
   const compatible = new Map(packet.compatible.tables.map(table => [table.table, table]));
   for (const table of order) {
     const stored = source.get(table);
     if (!stored) continue; // The conversion plan introduces empty relations.
-    try {
-      const ordered = parentOrder(table, stored.rows);
-      rows.set(table, ordered);
-      const carried = compatible.get(table as CompatiblePostgresPacket["tables"][number]["table"]);
-      if (carried && !ownerImportTables.has(table)) {
+    try { rows.set(table, parentOrder(table, stored.rows)); }
+    catch (error) { recordRefusal(table, error); }
+    const ordered = rows.get(table);
+    const carried = compatible.get(table as CompatiblePostgresPacket["tables"][number]["table"]);
+    if (carried && !ownerImportTables.has(table)) {
+      // Even if lineage fails, the original rows can still be checked as a generic subset.
+      try {
         const { sha256: _ignored, ...payload } = { ...packet.compatible, catalogueId,
-          tables: [{ ...carried, rows: ordered }] };
+          tables: [{ ...carried, rows: ordered ?? carried.rows }] };
         const bounded = { ...payload, sha256: digest(JSON.stringify(payload)) };
         assertCompatiblePostgresPacket(bounded);
         const descriptors = carried.columns.map(({ name, type, key }) => ({ name, type, key }));
         if (JSON.stringify(carried.columns) !== JSON.stringify(descriptors)) fail("schema_conflict", table);
         generic.set(table, bounded);
+      } catch (error) { recordRefusal(table, error); }
+    }
+    if (table === "outbox_events") {
+      for (const row of ordered ?? stored.rows) {
+        try {
+          if (unsupportedChannelEvents.has(String(JSON.parse(row).event_type))) fail("unsupported_table", table);
+        } catch (error) { recordRefusal(table, error); }
       }
-      if (table === "outbox_events" && ordered.some(row => unsupportedChannelEvents.has(String(JSON.parse(row).event_type)))) {
-        fail("unsupported_table", table);
-      }
-    } catch (error) { refusal = preferredRefusal(refusal, error); }
+    }
   }
   for (const table of connectedNativeStoreTables) {
     if (!settings.includes(table as SettingsTable) && baseline.get(table)!.rows.length) {
@@ -500,7 +509,7 @@ function prepareRestoreImport(packet: ConnectedNativeStoreCapture, catalogueId: 
     }
   }
   try { connectedStoreRowSource("catalog_product_document_revisions", baseline.get("catalog_product_document_revisions")!.columns); }
-  catch (error) { refusal = preferredRefusal(refusal, error); }
+  catch (error) { recordRefusal("catalog_product_document_revisions", error); }
   const settingsRows = settings.map(table => ({ table, baseline: baseline.get(table)!, source: source.get(table)! }));
   return { refusal, generic, rows, settingsRows };
 }
