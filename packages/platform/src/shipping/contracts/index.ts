@@ -18,3 +18,15 @@ export type {
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
 export type { CustomerPreferenceDefaultsSnapshot, CustomerPreferenceScope, CustomerPaymentPreferenceInput, CustomerPaymentPreference, CustomerPreferencePickupPoint, CustomerDeliveryPreferenceInput, CustomerDeliveryPreference } from './preferences.js';
+export type {
+  CarrierRateQuoteContractVersion,
+  CarrierRateAddress,
+  CarrierRateParcel,
+  CarrierRateQuoteRequest,
+  CarrierRateTransitEstimate,
+  CarrierRateOption,
+  CarrierRateRefusalReason,
+  CarrierRateQuoteResult,
+  CarrierRateCapabilities,
+  CarrierRateQuotePort,
+} from "./carrierRate.js";

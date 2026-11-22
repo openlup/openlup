@@ -3743,3 +3743,13 @@ digest, ledger and port-less declarations. This validates data and recorded
 invocations; it does not attest remote execution or establish host locks, durable
 deduplication, cancellation races, replacement transactions or alignment.
 See [certify a fulfilment adapter offline](https://github.com/openlup/openlup/blob/main/packages/core/docs/guide/how-to/build/fulfillment.md#certify-a-fulfilment-adapter-offline).
+
+### Shipping rate-quote conformance (`@openlup/platform/shipping/testing`)
+
+`@openlup/platform/shipping/testing` exports `runShippingRateAdapterConformance`,
+`createScriptedShippingRateFake`, and `ScriptedShippingRateTransportError` for
+offline certification of `CarrierRateQuotePort` adapters (declared on
+`@openlup/platform/shipping` and type-only `@openlup/platform/shipping/contracts`).
+Full mode requires authenticated `fake.calls` handles, validates integer
+minor-unit currency fidelity and zero-I/O refusals, scans optional sensitive
+canaries, and emits a deterministic `ShippingRateQualification` receipt.

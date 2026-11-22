@@ -1,3 +1,4 @@
+import type { CatalogQuantityCode } from "@openlup/core/catalog";
 import type { PublicationLifecycleState } from "./publicationIntent.js";
 import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./contracts/draftV3.js";
 import type { RulesIdentifier, RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
@@ -53,6 +54,7 @@ export interface CatalogPublicationFailure {
   message?: string;
   path?: string;
   subject?: string;
+  quantityCause?: CatalogQuantityCode;
 }
 
 /** @experimental */

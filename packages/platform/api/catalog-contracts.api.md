@@ -536,6 +536,7 @@ export type BundlePricePreview = {
 ## dist/catalog/contracts/candidate.d.ts
 
 ```ts
+import type { CatalogQuantityCode } from "@openlup/core/catalog";
 import type { CatalogHeadRef } from "./lifecycle.js";
 import type { CatalogDraftIssue } from "./productTypes.js";
 /** @experimental */
@@ -553,6 +554,7 @@ export interface CatalogCandidateIssue extends CatalogDraftIssue {
     message?: string;
     hook?: string;
     cause?: "throw" | "undefined_result" | "realm_limit" | "invalid_result";
+    quantityCause?: CatalogQuantityCode;
 }
 /** @experimental */
 export interface CatalogCandidatePreview {
@@ -590,6 +592,7 @@ export interface CatalogCandidateComparison {
 ## dist/catalog/contracts/catalogConformance.d.ts
 
 ```ts
+import type { CatalogQuantityCode } from "@openlup/core/catalog";
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
  */
@@ -606,6 +609,7 @@ export interface CatalogDefinitionIssue {
     code: CatalogConformanceCode;
     path: string;
     fix?: string;
+    quantityCause?: CatalogQuantityCode;
 }
 ```
 ## dist/catalog/contracts/catalogPack.d.ts

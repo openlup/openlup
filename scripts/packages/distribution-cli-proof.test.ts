@@ -11,7 +11,8 @@ import { assertCompleteStarter, assertUpgradeConflict, previousPublishedSet, mig
   includeSettingsHost, starterSettingsHost, reconcileLifecycleCustomization, reconcileReminderInstallationTest, proveStarterCatalogueWrappers,
   reminderInstallationTest, starterLifecycle, starterOptionalOwnedFiles, starterUpgradeSnapshot,
   starterDisplayFiles, reconcileDisplayCustomization, reconcileStarterAgentGuide,
-  starterSubscriptionOffer, reconcileSubscriptionOfferCustomization } from "./distribution-cli-proof.ts";
+  starterSubscriptionOffer, reconcileSubscriptionOfferCustomization, starterEditorPorts, starterDocumentFiles,
+  reconcileDocumentCustomization } from "./distribution-cli-proof.ts";
 
 const directories: string[] = [];
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -285,6 +286,40 @@ it.each([false, true])("replaces the managed subscription offer and preserves re
   expect(apply(0).applied).toEqual([]);
   expect(readFileSync(join(app, path), "utf8")).toBe(target);
   if (local) expect(readFileSync(join(app, local.path), "utf8")).toContain("// Adopter offer policy notes.");
+});
+
+it("upgrades the starter document readers together and preserves reconciled customizations", () => {
+  const { directory: app, write } = fixture();
+  const readers = [starterEditorPorts, ...starterDocumentFiles];
+  const previous = Object.fromEntries(readers.map(path => [path, execFileSync("git",
+    ["show", `openlup-core-v1.3.0:examples/neutral-store/${path}`], { encoding: "utf8" })]));
+  const target = Object.fromEntries(readers.map(path => [path, readFileSync(resolve("examples/neutral-store", path), "utf8")]));
+  for (const path of readers) write(path, previous[path]);
+  const from = { version: "1.3.0", schema: { min: 0, max: 0 }, files: previous };
+  const to = { ...from, version: "999999.0.0", files: target };
+  write("from.json", from); write("to.json", to);
+  const apply = (status: number) => {
+    const result = spawnSync(process.execPath, [resolve("packages/platform/src/lifecycle/openlup.mjs"), "upgrade", "apply",
+      "--root", app, "--from", join(app, "from.json"), "--to", join(app, "to.json"), "--schema-version", "0", "--json"],
+    { encoding: "utf8", timeout: 10_000 });
+    expect(result.status, result.stderr || result.stdout).toBe(status);
+    return JSON.parse(result.stdout);
+  };
+  for (const path of starterDocumentFiles) {
+    const local = reconcileDocumentCustomization(app, previous[path]!, () => {
+      const report = apply(1);
+      for (const sibling of readers.filter(file => file !== path))
+        expect(readFileSync(join(app, sibling), "utf8")).toBe(previous[sibling]);
+      return report;
+    }, path);
+    expect(local.bytes.toString()).toContain("Adopter document verification policy");
+  }
+  expect(() => assertCompleteStarter(app, to)).toThrow("incomplete_application_upgrade");
+  expect(apply(0).applied).toEqual([...readers].sort());
+  expect(apply(0).applied).toEqual([]);
+  expect(() => assertCompleteStarter(app, to)).not.toThrow();
+  for (const path of starterDocumentFiles)
+    expect(readFileSync(join(app, "owned/upgrade-notes", path.split("/").at(-1)!), "utf8")).toContain("Adopter document verification policy");
 });
 
 it.each([false, true])("upgrades real 1.1.0 owned contracts to the next set, customized=%s", customized => {
