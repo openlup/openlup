@@ -113,6 +113,14 @@ function describeFinding(input: ReadinessInput, issue: ReadinessIssue, observati
     bound = typeof input?.schemaProbe?.observe === "function" ? "A schema observation function was supplied." : "No callable schema observer was supplied.";
     checked = ["version_mismatch", "object_absent"].includes(issue.observation ?? "") ? "A bounded observation returned a concrete mismatch." : "Unknown; this finding is not proof of a stale database.";
     unknown.push("Catalog presence does not prove SQL bodies, privileges or migration safety.");
+  } else if (issue.code === "catalog_profile_binding_invalid") {
+    declared = `The catalogue profile binding must supply the installed declaration for ${issue.subject}.`;
+    observed = issue.observation === "profile_binding_missing"
+      ? `Subscription profile ${issue.subject} is missing from the catalogue profile binding or the installation.`
+      : `The composed declaration for subscription profile ${issue.subject} differs from the installed profile.`;
+    cause = "The catalogue profile binding lacks a matching installed declaration.";
+    bound = "Application-supplied read-only catalogue profile observation.";
+    checked = "Compared the declared profile binding with the exact installed profile identity.";
   } else if (issue.code === "registry_missing_referenced_version") {
     declared = "Every live product type reference requires equal installed and composed definition digests.";
     observed = issue.observation ?? "Catalogue registry evidence is unavailable.";

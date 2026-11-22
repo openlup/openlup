@@ -208,5 +208,12 @@ export function catalogPackIssues(input: unknown): CatalogDefinitionIssue[] {
       issues.push({ code: "definition_unknown_profile_ref", path });
     }
   });
+  if (pack.subscriptionProfileDefinitions?.length) {
+    pack.subscriptionProfiles?.forEach(({ key, version }, index) => {
+      if (!profiles.has(`${key}@${version}`)) {
+        issues.push({ code: "definition_unknown_profile_ref", path: `/subscriptionProfiles/${index}` });
+      }
+    });
+  }
   return issues;
 }

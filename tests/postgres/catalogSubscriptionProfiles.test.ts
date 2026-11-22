@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { CatalogSubscriptionProfileV1 } from "@openlup/core/catalog";
-import { canonicalCatalogDraftJson, catalogPackManifest, createCatalogDefinitionWriteGuard, createCatalogProductTypeRegistry,
-  installCatalogDefinitions, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, catalogDefinitionDigest, catalogPackManifest, createCatalogDefinitionWriteGuard, createCatalogProductTypeRegistry,
+  installCatalogDefinitions, observeCatalogDefinitionReadiness, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules } from "@openlup/platform/catalog";
 import type { CatalogPackInput } from "@openlup/platform/catalog/contracts";
+import { verifyApp } from "@openlup/platform/lifecycle";
 import { selectCatalogProfileCadence } from "@openlup/platform/subscriptions";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
@@ -99,14 +100,35 @@ it("requires the matching installed declaration in an opted-in metadata readines
   await owner.query(`INSERT INTO public.catalog_products(slug,name,type_key,type_version)
     VALUES('profile-guard','Synthetic profile guard','example:guard-item',1)`);
   const registry = createCatalogProductTypeRegistry(seed.types);
-  const guard = createCatalogDefinitionWriteGuard(owner, registry, [profile]);
   const write = vi.fn(async () => "called");
-  await expect(guard(write)).rejects.toMatchObject({ code: "registry_missing_referenced_version" });
+  const digest = catalogDefinitionDigest(seed.types[0]!);
+  const expectProfileRefusal = async (profiles: readonly CatalogSubscriptionProfileV1[], reason: string) => {
+    const catalogRegistry = await observeCatalogDefinitionReadiness(owner, registry, "catalog-db", profiles);
+    expect(catalogRegistry.referencedVersions).toEqual([{
+      key: type.key, version: type.version, definitionDigest: digest, registryDigest: digest,
+      profileBindingIssue: { key: profile.key, version: profile.version, reason },
+    }]);
+    const report = await verifyApp({
+      candidate: { artifact: "test", configuration: "test", environment: "test", database: "catalog-db", schema: "test" },
+      inventoryComplete: true, loadedPackages: [{ name: "@openlup/core", version: "1.3.0", kind: "kernel" }],
+      contributions: [], vocabulary: [], exemptions: [], bindings: { ports: {}, routes: {}, triggers: {}, env: {} },
+      schemaProbe: { observe: async () => { throw new Error("not required"); } }, catalogRegistry,
+    });
+    const code = "catalog_profile_binding_invalid";
+    expect(report.findings).toEqual([expect.objectContaining({
+      code, subject: `${profile.key}@${profile.version}`, fix: expect.stringContaining("catalogue profile binding"),
+    })]);
+    const guard = createCatalogDefinitionWriteGuard(owner, registry, profiles);
+    await expect(guard(write)).rejects.toMatchObject({
+      code, reason, profileKey: profile.key, profileVersion: profile.version, fix: expect.stringContaining("catalogue profile binding"),
+    });
+  };
+  await expectProfileRefusal([profile], "profile_binding_missing");
   expect(write).not.toHaveBeenCalled();
   await installCatalogDefinitions(owner, pack("guard-profile", profile));
-  await expect(guard(write)).resolves.toBe("called");
-  const wrong = createCatalogDefinitionWriteGuard(owner, registry, [{ ...profile, policyDigest: "b".repeat(64) }]);
-  await expect(wrong(write)).rejects.toMatchObject({ code: "registry_missing_referenced_version" });
+  await expect(createCatalogDefinitionWriteGuard(owner, registry, [profile])(write)).resolves.toBe("called");
+  await expectProfileRefusal([], "profile_binding_missing");
+  await expectProfileRefusal([{ ...profile, policyDigest: "b".repeat(64) }], "profile_binding_mismatch");
   expect(write).toHaveBeenCalledTimes(1);
 });
 

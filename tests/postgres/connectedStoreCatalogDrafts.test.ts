@@ -57,9 +57,12 @@ async function withChangedInstallReceipts(change: (row: string) => string): Prom
   const { rows } = await source.owner.query<{ value: string }>(
     "SELECT payload::jsonb::text AS value FROM unnest($1::text[]) AS input(payload)", [installs.rows.map(change)]);
   installs.rows = rows.map(row => row.value);
-  const { sha256: _old, ...body } = corrupted;
-  corrupted.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
-  return corrupted;
+  return rehashCapture(corrupted);
+}
+
+function rehashCapture(capture: typeof packet): typeof packet {
+  const { sha256: _old, ...body } = capture;
+  return { ...body, sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex") };
 }
 
 beforeAll(async () => {
@@ -292,6 +295,68 @@ it("C-2 rejects a noncanonical profile manifest even when its digest matches", a
   expectNoWrites(statements);
   expect(await journeyCensus(destination.owner)).toEqual(original);
 }, postgresSetupTimeoutMs);
+
+it("AC-1 uses the same bidirectional profile reference check on install and restore", async () => {
+  const destination = await resources.installation("catalog-profile-reference-target");
+  const freshTarget = await captureStoreJourney(destination.owner, "pristine:catalog-profile-reference");
+  const original = await journeyCensus(destination.owner);
+  const pack = packs[1]!;
+  const receipt = await installCatalogDefinitions(source.owner, pack);
+  const manifest = JSON.parse(receipt.canonicalManifest!);
+  const types = before.catalog_type_versions!.map(row => JSON.parse(row))
+    .filter(row => row.version === pack.version).map(row => ({ canonicalDefinition: canonicalCatalogDraftJson(row.definition) }));
+  const taxClasses = pack.taxClasses.map(({ key }) => ({ key, label: key }));
+  for (const subscriptionProfiles of [[], [...manifest.subscriptionProfiles, { key: "example:undeclared", version: 1 }]]) {
+    const canonicalManifest = canonicalCatalogDraftJson({ ...manifest, subscriptionProfiles });
+    const manifestDigest = `profiles-v1:${createHash("sha256").update(canonicalManifest).digest("hex")}`;
+    const corrupted = await withChangedInstallReceipts(row => {
+      const value = JSON.parse(row);
+      if (!value.receipt.subscriptionProfileDefinitions) return row;
+      value.receipt = { ...value.receipt, canonicalManifest, manifestDigest };
+      value.manifest_digest = manifestDigest;
+      return JSON.stringify(value);
+    });
+    const refusal = "catalog_profile_install_manifest_mismatch";
+    await expect(destination.owner.query("SELECT public.catalog_definition_install($1,$2,$3)", [
+      pack.id, pack.version, { manifest: canonicalManifest, types, taxClasses },
+    ])).rejects.toMatchObject({ code: "22023", message: refusal });
+    const statements = await traceRestore(destination.owner, async () => {
+      await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet: corrupted, freshTarget }))
+        .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: refusal });
+    });
+    expectNoWrites(statements);
+    expect(await journeyCensus(destination.owner)).toEqual(original);
+  }
+  await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet, freshTarget }))
+    .resolves.toMatchObject({ replayed: false });
+  expect(await installCatalogDefinitions(destination.owner, pack)).toEqual(receipt);
+}, postgresSetupTimeoutMs);
+
+it("AC-2 checks admitted source receipt columns before casts or retained-row decoding", async () => {
+  for (const fault of ["type", "name"]) {
+    const corrupted = structuredClone(packet);
+    const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
+    if (fault === "type") {
+      installs.columns = installs.columns.map(column => column.name === "pack_version" ? { ...column, type: "text" } : column);
+      installs.rows = installs.rows.map(row => JSON.stringify({ ...JSON.parse(row), pack_version: "nonnumeric" }));
+    } else {
+      installs.columns = installs.columns.map(column => column.name === "manifest_digest" ? { ...column, name: "renamed_digest" } : column);
+      installs.rows = installs.rows.map(row => {
+        const { manifest_digest, ...value } = JSON.parse(row);
+        return JSON.stringify({ ...value, renamed_digest: manifest_digest });
+      });
+      // An unrelated undecodable retained row must not mask the shape refusal.
+      corrupted.owned.find(entry => entry.table === "catalog_tax_classes")!.rows = ["invalid JSON"];
+    }
+    const statements = await traceRestore(target.owner, async () => {
+      await expect(restoreConnectedNativeStore({
+        owner: target.owner, installation: journeySelection, packet: rehashCapture(corrupted), freshTarget: pristine,
+      })).rejects.toMatchObject({ code: "schema_conflict", table: "catalog_definition_installs", remedy: "upgrade the source, then capture" });
+    });
+    expect(statements).not.toContainEqual(expect.stringContaining("WHERE NOT public.catalog_definition_install_profile_manifest_matches"));
+    expectNoWrites(statements);
+  }
+});
 
 const validator = "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)";
 

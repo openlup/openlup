@@ -23,7 +23,11 @@ export declare const READINESS_CODES: readonly [
     /** Reports the experimental catalogRegistry observation.
      * @experimental
      */
-    "registry_missing_referenced_version"
+    "registry_missing_referenced_version",
+    /** Reports the missing or mismatched subscription profile binding.
+     * @experimental
+     */
+    "catalog_profile_binding_invalid"
 ];
 /** @beta */
 export type ReadinessCode = typeof READINESS_CODES[number];
@@ -171,6 +175,11 @@ export interface CatalogRegistryObservation {
         version: number;
         definitionDigest: string | null;
         registryDigest: string | null;
+        profileBindingIssue?: {
+            key: string;
+            version: number;
+            reason: "profile_binding_missing" | "profile_binding_mismatch";
+        };
     }[];
 }
 ```

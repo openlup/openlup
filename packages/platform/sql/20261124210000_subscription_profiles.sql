@@ -16,6 +16,16 @@ CREATE FUNCTION public.catalog_definition_install_profile_manifest_matches(
 DECLARE
   canonical text := p_receipt->>'canonicalManifest';
   manifest jsonb;
+  profiles jsonb := p_receipt->'subscriptionProfileDefinitions';
+  refs jsonb;
+  declared_refs jsonb;
+  profile jsonb;
+  ref jsonb;
+  choice jsonb;
+  days integer;
+  prior_days integer;
+  profile_key_pattern CONSTANT text := '^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$';
+  digest_pattern CONSTANT text := '^[0-9a-f]{64}$';
 BEGIN
   -- The digest spelling distinguishes issued legacy receipts even if both
   -- profile fields have been removed from a retained receipt.
@@ -31,50 +41,24 @@ BEGIN
     RETURN false;
   END IF;
   manifest := canonical::jsonb;
-  RETURN coalesce(public.catalog_publication_canonical(manifest, 0) = canonical
-    AND manifest->'id' = to_jsonb(p_pack_id)
-    AND manifest->'version' = to_jsonb(p_pack_version)
-    AND p_receipt->'packId' = manifest->'id' AND p_receipt->'packVersion' = manifest->'version'
-    AND p_receipt->'types' = manifest->'types'
-    AND p_receipt->'subscriptionProfileDefinitions' = manifest->'subscriptionProfileDefinitions', false);
-EXCEPTION WHEN invalid_parameter_value OR check_violation THEN
-  RETURN false;
-END;
-$$;
+  refs := manifest->'subscriptionProfiles';
+  BEGIN
+    IF public.catalog_publication_canonical(manifest, 0) IS DISTINCT FROM canonical THEN RETURN false; END IF;
+  EXCEPTION WHEN invalid_parameter_value OR check_violation THEN
+    RETURN false;
+  END;
+  IF manifest->'id' IS DISTINCT FROM to_jsonb(p_pack_id)
+    OR manifest->'version' IS DISTINCT FROM to_jsonb(p_pack_version)
+    OR p_receipt->'packId' IS DISTINCT FROM manifest->'id'
+    OR p_receipt->'packVersion' IS DISTINCT FROM manifest->'version'
+    OR jsonb_typeof(manifest->'types') IS DISTINCT FROM 'array'
+    OR jsonb_typeof(manifest->'taxClasses') IS DISTINCT FROM 'array'
+    OR jsonb_typeof(refs) IS DISTINCT FROM 'array'
+    OR p_receipt->'types' IS DISTINCT FROM manifest->'types'
+    OR profiles IS DISTINCT FROM manifest->'subscriptionProfileDefinitions' THEN
+    RETURN false;
+  END IF;
 
-CREATE FUNCTION public.catalog_definition_install_profile_immutable()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE
-  profiles jsonb := NEW.receipt->'subscriptionProfileDefinitions';
-  profile jsonb;
-  ref jsonb;
-  choice jsonb;
-  days integer;
-  prior_days integer;
-  installed jsonb;
-  profile_key_pattern CONSTANT text := '^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$';
-  digest_pattern CONSTANT text := '^[0-9a-f]{64}$';
-BEGIN
-  IF TG_OP <> 'INSERT' THEN
-    IF OLD.manifest_digest LIKE 'profiles-v1:%' OR NEW.manifest_digest LIKE 'profiles-v1:%'
-      OR OLD.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
-      OR NEW.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest'] THEN
-      RAISE EXCEPTION 'catalog_definition_install_profile_immutable' USING ERRCODE = '55000';
-    END IF;
-    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
-    RETURN NEW;
-  END IF;
-  IF NOT public.catalog_definition_install_profile_manifest_matches(NEW.pack_id, NEW.pack_version, NEW.manifest_digest, NEW.receipt) THEN
-    RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
-  END IF;
-  IF profiles IS NULL THEN RETURN NEW; END IF;
-
-  -- Every profile receipt writer, including connected restore, shares the
-  -- install lock and observes its predecessor in a fresh statement snapshot.
-  IF current_setting('transaction_isolation') <> 'read committed' THEN
-    RAISE EXCEPTION 'catalog_profile_install_requires_read_committed' USING ERRCODE = '25000';
-  END IF;
-  PERFORM pg_advisory_xact_lock(hashtextextended('openlup:catalog-definitions', 0));
   IF jsonb_array_length(profiles) NOT BETWEEN 1 AND 100
     OR EXISTS (SELECT 1 FROM jsonb_array_elements(profiles) p GROUP BY p->'key', p->'version' HAVING count(*) > 1) THEN
     RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023';
@@ -122,7 +106,41 @@ BEGIN
       encode(sha256(convert_to(public.catalog_publication_canonical(profile - 'profileDigest', 0), 'UTF8')), 'hex') THEN
       RAISE EXCEPTION 'definition_profile_invalid' USING ERRCODE = '22023';
     END IF;
+  END LOOP;
+  SELECT jsonb_agg(jsonb_build_object('key', p->'key', 'version', p->'version')) INTO declared_refs
+  FROM jsonb_array_elements(profiles) p;
+  RETURN refs @> declared_refs AND declared_refs @> refs;
+END;
+$$;
 
+CREATE FUNCTION public.catalog_definition_install_profile_immutable()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+  profiles jsonb := NEW.receipt->'subscriptionProfileDefinitions';
+  profile jsonb;
+  installed jsonb;
+BEGIN
+  IF TG_OP <> 'INSERT' THEN
+    IF OLD.manifest_digest LIKE 'profiles-v1:%' OR NEW.manifest_digest LIKE 'profiles-v1:%'
+      OR OLD.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
+      OR NEW.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest'] THEN
+      RAISE EXCEPTION 'catalog_definition_install_profile_immutable' USING ERRCODE = '55000';
+    END IF;
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+  END IF;
+  IF NOT public.catalog_definition_install_profile_manifest_matches(NEW.pack_id, NEW.pack_version, NEW.manifest_digest, NEW.receipt) THEN
+    RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
+  END IF;
+  IF profiles IS NULL THEN RETURN NEW; END IF;
+
+  -- Every profile receipt writer, including connected restore, shares the
+  -- install lock and observes its predecessor in a fresh statement snapshot.
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'catalog_profile_install_requires_read_committed' USING ERRCODE = '25000';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('openlup:catalog-definitions', 0));
+  FOR profile IN SELECT value FROM jsonb_array_elements(profiles) LOOP
     installed := public.catalog_subscription_profile_identity(profile->>'key', (profile->>'version')::integer);
     IF installed IS NOT NULL AND installed->'profileDigest' IS DISTINCT FROM profile->'profileDigest' THEN
       RAISE EXCEPTION 'catalog_profile_install_refuses_redefinition' USING ERRCODE = '23505';
@@ -171,15 +189,6 @@ BEGIN
     RETURN v_install.receipt;
   END IF;
   IF v_profiles IS NOT NULL THEN
-    IF jsonb_typeof(v_profiles) IS DISTINCT FROM 'array'
-      OR jsonb_typeof(v_manifest->'subscriptionProfiles') IS DISTINCT FROM 'array'
-      OR public.catalog_publication_canonical(v_manifest, 0) IS DISTINCT FROM p_manifest->>'manifest' THEN
-      RAISE EXCEPTION 'invalid_catalog_pack' USING ERRCODE = '22023';
-    END IF;
-    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_profiles) p
-      WHERE NOT (v_manifest->'subscriptionProfiles' @> jsonb_build_array(jsonb_build_object('key', p->'key', 'version', p->'version')))) THEN
-      RAISE EXCEPTION 'invalid_catalog_pack' USING ERRCODE = '22023';
-    END IF;
     -- The receipt guard validates the declarations before any type or tax-class writes.
     v_receipt := jsonb_build_object('packId', p_pack_id, 'packVersion', p_pack_version,
       'manifestDigest', v_digest, 'installedAt', clock_timestamp(), 'types', v_manifest->'types',

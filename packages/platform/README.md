@@ -1598,7 +1598,10 @@ and make the write guard refuse with `registry_missing_referenced_version`.
 Put the result in `ReadinessInput.catalogRegistry`
 in the application's `createVerificationInput()` for `openlup verify --app`.
 Missing versions or unequal digests report `registry_missing_referenced_version`.
-Keep every referenced version in the composed registry.
+Keep every referenced version in the composed registry. Supply profile declarations
+to opt into profile checks. The report and write guard name the profile key and
+version in a `catalog_profile_binding_invalid` refusal. Bind the matching
+installed declaration in the catalogue profile binding.
 `createCatalogDefinitionWriteGuard(readExecutor, registry)` returns a guard that
 re-probes before invoking each supplied catalogue-write callback. A mismatch or
 probe failure prevents the callback. Applications must explicitly wrap their

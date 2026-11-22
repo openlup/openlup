@@ -208,9 +208,10 @@ same `subscriptionProfileRef` on the product type. Add the matching
 Run `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`
 to check declaration shape and references. The native install command records
 the canonical profile digest in its receipt. Install a higher version for any
-change to the declaration. Use the installed identity and observed database
-bound when checking an explicit cadence against the store, SKU, offer and
-command choices. Issued facts, accepted subscriptions and demand calculation
+change to the declaration. Supply the installed identity and declared profile
+to the selector, which checks the declared choices against those of the store,
+SKU, offer and command. The installed native guard enforces its cadence limit
+at write time. Issued facts, accepted subscriptions and demand calculation
 have separate owners and require their own composition.
 
 ## Upgrade a definition

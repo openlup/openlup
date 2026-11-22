@@ -81,6 +81,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
 }): Promise<ManagedIdentityMappingResult> {
   const source = structuredClone(input.source);
   const packet = copyCapture(input.freshTarget);
+  validateCapturedRows(tables(packet));
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const validRow = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
   const onlyKeys = (row: Record<string, unknown>, keys: readonly string[]) =>
@@ -342,6 +343,15 @@ export async function restoreConnectedNativeStore(input: {
   if (!source.has(checkoutAttemptLedger)) {
     source.set(checkoutAttemptLedger, { ...baseline.get(checkoutAttemptLedger)!, rows: [] });
   }
+  const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
+  if (fresh.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
+  // Refuse changed captured shapes before reading any retained row, even
+  // when a malformed row would otherwise prevent opening the target session.
+  for (const table of connectedNativeStoreTables) {
+    assertSourceColumns(table, source.get(table)!.columns, baseline.get(table)!.columns, older);
+  }
+  validateCapturedRows(source);
+  validateCapturedRows(baseline);
   try {
     requireDecodedPublication(decodePublicationPacket({
       publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,
@@ -366,32 +376,20 @@ export async function restoreConnectedNativeStore(input: {
     if (facts.mode !== "origin" || facts.cluster !== fresh.observation.cluster || facts.database !== fresh.observation.database
       || facts.login !== fresh.observation.login || facts.login !== installation.migrationLogin) fail("invalid_input");
     const expectedLedger = [manifest.baseline, ...manifest.forward];
-    const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
-    if (fresh.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");
     if (ledger.rows.length !== expectedLedger.length
       || JSON.stringify(ledger.rows) !== JSON.stringify(expectedLedger.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })))) fail("schema_conflict");
     const ledgerBefore = (await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
-    const verifyInventoryAndProfileReceipts = async () => {
+    const verifyInventory = async () => {
       const live = await catalogPayload(client, installation);
       if (digest(live) !== manifest.objectInventorySha256) fail("schema_conflict");
-      const { rows: unboundProfiles } = await client.query(`SELECT 1
-        FROM pg_catalog.unnest($1::text[]) AS incoming(receipt_row)
-        CROSS JOIN LATERAL pg_catalog.jsonb_populate_record(NULL::public.catalog_definition_installs, incoming.receipt_row::jsonb) AS installed
-        WHERE NOT public.catalog_definition_install_profile_manifest_matches(
-          installed.pack_id, installed.pack_version, installed.manifest_digest, installed.receipt)
-        LIMIT 1`, [source.get("catalog_definition_installs")!.rows]);
-      if (unboundProfiles.length) {
-        throw Object.assign(new PostgresTransferError("target_conflict", "catalog_definition_installs"),
-          { cause: "catalog_profile_install_manifest_mismatch" });
-      }
       return live;
     };
     // The restricted migrator has ADMIN but no inherited owner access at rest.
     // Observe its sealed graph first, then open only the already-admitted
     // acquisition owner privilege inside this transaction for census/locks.
-    const inventory = installation.generation === "qualified-admin" ? await verifyInventoryAndProfileReceipts() : undefined;
+    const inventory = installation.generation === "qualified-admin" ? await verifyInventory() : undefined;
     if (installation.generation === "qualified-admin") await openRestrictedOwnerWindow(client, installation);
     // Use the install lock before taking receipt-table locks used by replay.
     await client.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('openlup:catalog-definitions', 0))");
@@ -404,23 +402,22 @@ export async function restoreConnectedNativeStore(input: {
       AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
     for (const relation of relations) await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
     // Inspect definitions after table locks, before any retained-data mutation.
-    const lockedInventory = inventory ?? await verifyInventoryAndProfileReceipts();
+    const lockedInventory = inventory ?? await verifyInventory();
+    let identifierColumns: Rows["columns"] | undefined;
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
         WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped
         AND a.attgenerated='' AND a.attidentity='' ORDER BY a.attnum`, [`public.${table}`])).rows;
-      const stored = source.get(table)!;
-      const convert = older && table === "catalog_sku_identifiers";
-      const expected = convert ? actual.slice(0, -1) : actual;
-      if (JSON.stringify(expected) !== JSON.stringify(stored.columns.map(({ name, type }) => ({ name, type }))))
-        failSourceSchema(table);
-      if (convert) {
-        if (actual.at(-1)?.name !== "scheme" || actual.at(-1)?.type !== "text") fail("schema_conflict", table);
-        const { rows } = await client.query<{ row: string }>(`SELECT (value::jsonb || '{"scheme":null}'::jsonb)::text AS row
-          FROM unnest($1::text[]) AS retained(value)`, [stored.rows]);
-        source.set(table, { table, columns: actual, rows: rows.map(row => row.row) });
-      }
+      assertSourceColumns(table, source.get(table)!.columns, actual, older);
+      if (older && table === "catalog_sku_identifiers") identifierColumns = actual;
+    }
+    await validateInstallReceipts(client, source.get("catalog_definition_installs")!.rows);
+    if (identifierColumns) {
+      const table = "catalog_sku_identifiers";
+      const { rows } = await client.query<{ row: string }>(`SELECT (value::jsonb || '{"scheme":null}'::jsonb)::text AS row
+        FROM unnest($1::text[]) AS retained(value)`, [source.get(table)!.rows]);
+      source.set(table, { table, columns: identifierColumns, rows: rows.map(row => row.row) });
     }
     await assertInsertTriggers(client);
     await assertOutsideEmpty(client, relations);
@@ -618,8 +615,22 @@ function copyCapture(input: ConnectedNativeStoreCapture,
       if (historical) failSourceSchema();
       fail("invalid_input");
     }
+    return copy;
+  } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
+}
+
+function assertSourceColumns(table: TableName, source: Rows["columns"], target: Rows["columns"], older: boolean): void {
+  const convert = older && table === "catalog_sku_identifiers";
+  if (convert && (target.at(-1)?.name !== "scheme" || target.at(-1)?.type !== "text")) fail("schema_conflict", table);
+  const expected = convert ? target.slice(0, -1) : target;
+  if (expected.length !== source.length
+    || expected.some(({ name, type }, index) => source[index]?.name !== name || source[index]?.type !== type)) failSourceSchema(table);
+}
+
+function validateCapturedRows(tables: ReadonlyMap<TableName, Rows>): void {
+  try {
     let count = 0, bytes = 0;
-    for (const table of all.values()) {
+    for (const table of tables.values()) {
       for (const column of table.columns) quoted(column.name);
       if (!table.columns.length || new Set(table.columns.map(column => column.name)).size !== table.columns.length) fail("invalid_input");
       for (const row of table.rows) {
@@ -629,8 +640,26 @@ function copyCapture(input: ConnectedNativeStoreCapture,
       }
     }
     if (count > 10000 || bytes > 64 * 1024 * 1024) fail("limit_exceeded");
-    return copy;
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
+}
+
+async function validateInstallReceipts(client: PoolClient, receipts: readonly string[]): Promise<void> {
+  let refusal: string | undefined;
+  try {
+    const { rows } = await client.query(`SELECT 1
+      FROM pg_catalog.unnest($1::text[]) AS incoming(receipt_row)
+      CROSS JOIN LATERAL pg_catalog.jsonb_populate_record(NULL::public.catalog_definition_installs, incoming.receipt_row::jsonb) AS installed
+      WHERE NOT public.catalog_definition_install_profile_manifest_matches(
+        installed.pack_id, installed.pack_version, installed.manifest_digest, installed.receipt)
+      LIMIT 1`, [receipts]);
+    if (rows.length) refusal = "catalog_profile_install_manifest_mismatch";
+  } catch (error) {
+    const sqlError = error as { code?: string; message?: string };
+    if (sqlError.code !== "22023" || (sqlError.message !== "definition_profile_invalid"
+      && sqlError.message !== "cadence_kind_unsupported")) throw error;
+    refusal = sqlError.message;
+  }
+  if (refusal) throw Object.assign(new PostgresTransferError("target_conflict", "catalog_definition_installs"), { cause: refusal });
 }
 
 function tables(packet: ConnectedNativeStoreCapture): Map<TableName, Rows> {

@@ -25,14 +25,19 @@ export async function observeCatalogDefinitionReadiness(
   const result = rows[0] as { restricted: boolean; bindings: { key: string; version: number; definitionDigest: string | null }[] };
   const referencedVersions = await Promise.all(result.bindings.map(async row => {
     const definition = registry.resolve(row);
-    let registryDigest = definition ? catalogDefinitionDigest(definition) : null;
+    const registryDigest = definition ? catalogDefinitionDigest(definition) : null;
     const ref = definition?.subscriptionProfileRef;
-    if (profiles && ref && result.restricted === false) {
-      const declared = validateCatalogSubscriptionProfile(profiles.find(profile => profile.key === ref.key && profile.version === ref.version));
-      const installed = await readInstalledCatalogSubscriptionProfile(readExecutor, ref);
-      if ("issue" in declared || installed?.profileDigest !== catalogSubscriptionProfileIdentity(declared.profile).profileDigest) registryDigest = null;
+    const binding = { ...row, registryDigest };
+    if (!profiles || !ref || result.restricted !== false) return binding;
+
+    const local = profiles.find(profile => profile.key === ref.key && profile.version === ref.version);
+    const installed = local ? await readInstalledCatalogSubscriptionProfile(readExecutor, ref) : null;
+    if (!local || !installed) return { ...binding, profileBindingIssue: { ...ref, reason: "profile_binding_missing" as const } };
+    const declared = validateCatalogSubscriptionProfile(local);
+    if ("issue" in declared || installed.profileDigest !== catalogSubscriptionProfileIdentity(declared.profile).profileDigest) {
+      return { ...binding, profileBindingIssue: { ...ref, reason: "profile_binding_mismatch" as const } };
     }
-    return { ...row, registryDigest };
+    return binding;
   }));
   return { database, complete: result.restricted === false, referencedVersions };
 }
@@ -47,6 +52,13 @@ export function createCatalogDefinitionWriteGuard(
     const observation = await observeCatalogDefinitionReadiness(readExecutor, registry, "catalogue-write", profiles);
     if (observation.complete === false || observation.referencedVersions.some(ref => ref.definitionDigest === null || ref.registryDigest !== ref.definitionDigest)) {
       throw Object.assign(new Error("registry_missing_referenced_version"), { code: "registry_missing_referenced_version" });
+    }
+    const profile = observation.referencedVersions.find(ref => ref.profileBindingIssue)?.profileBindingIssue;
+    if (profile) {
+      const fix = "Bind the matching installed subscription profile declaration in the catalogue profile binding.";
+      throw Object.assign(new Error(`${profile.reason}: ${profile.key}@${profile.version}. ${fix}`), {
+        code: "catalog_profile_binding_invalid", reason: profile.reason, profileKey: profile.key, profileVersion: profile.version, fix,
+      });
     }
     return write();
   };

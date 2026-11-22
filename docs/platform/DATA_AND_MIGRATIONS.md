@@ -1026,11 +1026,12 @@ of profile-bearing receipts. Reference-only receipts retain their original
 digest format and contents.
 
 The exact-key lookup uses the existing migration owner. Its result contains
-the profile and policy identities. Connected restore verifies the live target
-inventory before calling the receipt validator. The validator checks all
-retained manifest bindings and canonical pack bytes before restore writes.
-Insert guards run in an
-explicit `READ COMMITTED` transaction.
+the profile and policy identities. Connected restore compares the captured source and target columns before
+decoding retained rows. It verifies the live inventory and columns before SQL
+casts, then runs the same receipt validator as installation. The validator
+checks canonical bytes, digests and matching profile references and
+declarations in both directions. Insert guards
+run in an explicit `READ COMMITTED` transaction.
 There is no data backfill. See [Install subscription profiles](../../packages/platform/README.md#install-subscription-profiles).
 
 ### Sealed native catalog publication history
