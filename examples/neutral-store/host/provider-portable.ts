@@ -36,8 +36,21 @@ export function composeStripePortableRail(input: {
         async readPayment(request) {
           const observed = await paymentRail.adapter.readbackPort.readPayment(request);
           if (!('observedMoney' in observed)) return observed;
-          const { capturedAmountBasis, ...readback } = observed;
-          return capturedAmountBasis === undefined ? readback : { ...readback, capturedAmountBasis };
+          const readback: Omit<typeof observed, 'capturedAmountBasis'> & {
+            capturedAmountBasis?: NonNullable<typeof observed.capturedAmountBasis>;
+          } = {
+            kind: observed.kind,
+            identity: observed.identity,
+            expectedMoney: observed.expectedMoney,
+            purpose: observed.purpose,
+            observedMoney: observed.observedMoney,
+            providerOccurredAt: observed.providerOccurredAt,
+          };
+          if ('refusal' in observed) readback.refusal = observed.refusal;
+          if ('handoff' in observed) readback.handoff = observed.handoff;
+          const capturedAmountBasis = observed.capturedAmountBasis;
+          if (capturedAmountBasis !== undefined) readback.capturedAmountBasis = capturedAmountBasis;
+          return readback;
         },
       } },
     },
