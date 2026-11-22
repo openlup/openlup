@@ -4,7 +4,7 @@ import type { Decode, Schema } from "./decode.js";
 import { cellKey, compareCells, compareDeclarations, decisionIsPossible, declarationKey, includesInstant, permitsAssessment, sameCell } from "./identity.js";
 import type {
   TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1,
-  TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1,
+  TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1, TaxScopeV1,
 } from "./types.js";
 
 function text(max: number): Decode<string> {
@@ -37,7 +37,7 @@ export const interval: Decode<ReturnType<typeof intervalFields>> = (value, field
   return parsed;
 };
 
-export const scope = object({ adapter: ref, adapterVersion: ref, accountRef: ref, mode: oneOf("test", "live") });
+export const scope: Decode<TaxScopeV1> = object({ adapter: ref, adapterVersion: ref, accountRef: ref, mode: oneOf("test", "live") });
 const assignment = { taxClass: ref, assignmentRef: ref };
 type Cell = TaxCoverageInputV1["required"][number];
 const target = variant<Cell["target"]>("kind", {

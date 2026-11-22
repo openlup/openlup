@@ -17,7 +17,7 @@
   "include": [
     "tests",
     "packages/platform/test/catalog/catalogPackTypes.test.ts",
-    "packages/platform/test/tax/stripe/clientTypes.test.ts",
+    "packages/platform/test/tax/*/clientTypes.test.ts",
     "packages/platform/test/operations/fixtures/settings-guide/owned/settings-host.ts",
     "scripts/packages/fixtures/settings-upgrade-host.ts",
     "src/overlays/*/tests/starterDisclosureNavigation.test.tsx",

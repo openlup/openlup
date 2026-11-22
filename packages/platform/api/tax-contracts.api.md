@@ -79,7 +79,7 @@ export type TaxCalculationPort = TaxCalculationPortV1;
 
 ```ts
 import type { Decode, Schema } from "./decode.js";
-import type { TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1, TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1 } from "./types.js";
+import type { TaxCalculationEvidenceV1, TaxCalculationRefV1, TaxCloseReasonV1, TaxCommitRequestV1, TaxCoverageInputV1, TaxCoverageV1, TaxFiscalValidityRequestV1, TaxQuoteInputV1, TaxQuoteRequestV1, TaxReverseRequestV1, TaxScopeV1 } from "./types.js";
 export declare const ref: Decode<string>;
 export declare const moneyRef: Decode<string>;
 export declare const instant: Decode<string>;
@@ -91,12 +91,7 @@ declare const intervalFields: Decode<{
     until: string;
 }>>;
 export declare const interval: Decode<ReturnType<typeof intervalFields>>;
-export declare const scope: Decode<{
-    adapter: string;
-    adapterVersion: string;
-    accountRef: string;
-    mode: "live" | "test";
-} & Partial<{}>>;
+export declare const scope: Decode<TaxScopeV1>;
 export declare const taxCoverageV1Schema: Schema<TaxCoverageV1>;
 export declare const coverageInputSchema: Schema<TaxCoverageInputV1>;
 export declare const quoteRequestDocumentSchema: Schema<TaxQuoteRequestV1>;
