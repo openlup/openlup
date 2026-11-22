@@ -6304,6 +6304,19 @@
           }
         ],
         "dataStatements": []
+      },
+      {
+        "row": "checkout-attempt-ledger",
+        "path": "db/platform/migrations/20261124200000_checkout_attempt_ledger.sql",
+        "replacedFunctions": [],
+        "createdFunctions": [
+          {
+            "signature": "public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)",
+            "searchPath": "pg_catalog, pg_temp"
+          }
+        ],
+        "grantOnlyFunctions": [],
+        "dataStatements": []
       }
     ]
   },
@@ -9096,6 +9109,17 @@
       "path": "db/platform/migrations/20261124180000_catalogue_read_grant.sql",
       "sha256": "bf21227266ec2f3be97b1ee74597e2683fbdd86755f6157ebb888ec56d5c524a",
       "functions": []
+    },
+    {
+      "path": "db/platform/migrations/20261124200000_checkout_attempt_ledger.sql",
+      "sha256": "ca55e8affd94dfe5957da52b7b0594ad5a9d384df4c1061561906731e23d6c4f",
+      "functions": [
+        {
+          "signature": "public.commerce_record_checkout_attempt(text,text,text,bigint,bigint,bigint,bigint,bigint)",
+          "beforeSha256": null,
+          "afterSha256": "51c5d6c06b73ca09447ef2d7bf4ef31123578273f5afaffd3385b7684064762a"
+        }
+      ]
     }
   ],
   "managedExactForwards": [

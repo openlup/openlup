@@ -102,7 +102,7 @@ export declare function normalizeObjectTransferError(error: unknown): ObjectTran
 
 ```ts
 /** A finite compatible-row utility, not a complete-store migration profile. */
-declare const TABLES: readonly ["clients", "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines", "subscription_renewal_operations", "subscription_cycles", "commerce_orders", "commerce_order_items", "commerce_settlement_intents", "commerce_settlement_transitions", "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "invoicing_duties", "invoicing_fact_revisions", "invoicing_effect_receipts", "invoicing_capture_faults"];
+declare const TABLES: readonly ["clients", "subscriptions", "subscription_events", "subscription_pause_windows", "subscription_renewal_terms", "subscription_renewal_term_lines", "subscription_renewal_operations", "subscription_cycles", "commerce_orders", "commerce_order_items", "commerce_checkout_attempt_ledger", "commerce_settlement_intents", "commerce_settlement_transitions", "payment_truth_events", "payment_truth_reconciliation_evidence", "subscription_renewal_outcomes", "outbox_events", "invoicing_duties", "invoicing_fact_revisions", "invoicing_effect_receipts", "invoicing_capture_faults"];
 export type CompatiblePostgresTable = typeof TABLES[number];
 export interface TransferPostgresQuery {
     query<Row extends Record<string, unknown> = Record<string, unknown>>(sql: string, values?: readonly unknown[]): Promise<{
