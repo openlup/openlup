@@ -30,6 +30,7 @@ export interface AdyenWebhookVerifierConfig {
 type VerificationResult = Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
 
 const HEX_KEY_PATTERN = /^[0-9a-fA-F]+$/u;
+const MIN_HMAC_KEY_HEX_CHARS = 32; // >= 16 bytes (Adyen issues 64-hex / 32-byte keys)
 const CURRENCY_PATTERN = /^[A-Z]{3}$/u;
 
 const refusal = (
@@ -61,7 +62,12 @@ export function computeAdyenNotificationHmac(
   fields: AdyenCanonicalHmacFields,
   hmacKeyHex: string,
 ): string {
-  if (!hmacKeyHex || hmacKeyHex.length % 2 !== 0 || !HEX_KEY_PATTERN.test(hmacKeyHex)) {
+  if (
+    !hmacKeyHex
+    || hmacKeyHex.length < MIN_HMAC_KEY_HEX_CHARS
+    || hmacKeyHex.length % 2 !== 0
+    || !HEX_KEY_PATTERN.test(hmacKeyHex)
+  ) {
     throw new Error("Invalid Adyen HMAC hex key");
   }
   const signingPayload = [
@@ -105,6 +111,7 @@ function readMetadata(additionalData: Record<string, unknown>, key: string): str
 function extractReusableMethod(
   additionalData: Record<string, unknown>,
   paymentMethod: string | null,
+  status: VerifiedReusableMethod["status"],
 ): VerifiedReusableMethod | undefined {
   const detailRef =
     readString(additionalData, "recurring.recurringDetailReference")
@@ -118,7 +125,7 @@ function extractReusableMethod(
     providerMethodRef: detailRef,
     providerMandateRef: detailRef,
     methodKind: paymentMethod ?? "card",
-    status: "active",
+    status,
   };
 }
 
@@ -182,7 +189,12 @@ export function createAdyenWebhookVerifier(
     throw new Error("Adyen webhook verifier requires at least one hex HMAC key");
   }
   for (const key of config.hmacKeysHex) {
-    if (typeof key !== "string" || key.length === 0 || key.length % 2 !== 0 || !HEX_KEY_PATTERN.test(key)) {
+    if (
+      typeof key !== "string"
+      || key.length < MIN_HMAC_KEY_HEX_CHARS
+      || key.length % 2 !== 0
+      || !HEX_KEY_PATTERN.test(key)
+    ) {
       throw new Error("Invalid Adyen HMAC hex key");
     }
   }
@@ -292,15 +304,23 @@ export function createAdyenWebhookVerifier(
       }
 
       const providerOccurredAt = normalizeIsoTimestamp(item.eventDate);
-      const intentRef = readMetadata(additionalData, "intentRef") ?? (merchantReference || null);
+      // HMAC-authenticated merchantReference is authoritative for intentRef;
+      // unsigned additionalData["metadata.intentRef"] may never override it.
+      const metadataIntentRef = readMetadata(additionalData, "intentRef");
+      if (metadataIntentRef !== null && merchantReference && metadataIntentRef !== merchantReference) {
+        return refusal("malformed");
+      }
+      const intentRef = merchantReference || null;
       const attemptRef = readMetadata(additionalData, "attemptRef");
       const paymentMethod = readString(item, "paymentMethod");
-      const reusableMethod = extractReusableMethod(additionalData, paymentMethod);
       const paymentRef = originalReference || pspReference;
 
       // Method lifecycle event: RECURRING_CONTRACT (never money settlement).
       if (eventCode === "RECURRING_CONTRACT") {
-        if (!reusableMethod) {
+        const methodStatus: VerifiedReusableMethod["status"] =
+          success === "true" ? "active" : "inactive";
+        const methodInfo = extractReusableMethod(additionalData, paymentMethod, methodStatus);
+        if (!methodInfo) {
           return refusal("malformed");
         }
         const outcome: VerifiedMethodEvidence["outcome"] =
@@ -311,7 +331,7 @@ export function createAdyenWebhookVerifier(
           provider: "adyen",
           kind: "method",
           providerEventId,
-          methodRef: reusableMethod.providerMethodRef,
+          methodRef: methodInfo.providerMethodRef,
           outcome,
         });
         return {
@@ -321,8 +341,8 @@ export function createAdyenWebhookVerifier(
           providerOccurredAt,
           fingerprint,
           outcome,
-          reusableMethod,
-          methodRef: reusableMethod.providerMethodRef,
+          ...(success === "true" ? { reusableMethod: methodInfo } : {}),
+          methodRef: methodInfo.providerMethodRef,
           setupRef: readMetadata(additionalData, "setupRef"),
           intentRef,
         };
@@ -336,6 +356,7 @@ export function createAdyenWebhookVerifier(
       let outcome: VerifiedPaymentEvidence["outcome"];
       let capturedAmountBasis: VerifiedPaymentEvidence["capturedAmountBasis"];
       let refusalEnvelope: PaymentRefusalEnvelope | undefined;
+      let reusableMethod: VerifiedReusableMethod | undefined;
 
       switch (eventCode) {
         case "AUTHORISATION": {
@@ -344,6 +365,7 @@ export function createAdyenWebhookVerifier(
             if (outcome === "succeeded") {
               capturedAmountBasis = "provider_capture_v1";
             }
+            reusableMethod = extractReusableMethod(additionalData, paymentMethod, "active");
           } else {
             outcome = "failed";
             refusalEnvelope = mapAdyenRefusal(
@@ -357,6 +379,7 @@ export function createAdyenWebhookVerifier(
           if (success === "true") {
             outcome = "succeeded";
             capturedAmountBasis = "provider_capture_v1";
+            reusableMethod = extractReusableMethod(additionalData, paymentMethod, "active");
           } else {
             outcome = "failed";
             refusalEnvelope = mapAdyenRefusal(readString(item, "reason"), null);
@@ -389,6 +412,9 @@ export function createAdyenWebhookVerifier(
         case "CHARGEBACK":
         case "NOTIFICATION_OF_CHARGEBACK":
         case "SECOND_CHARGEBACK": {
+          if (success !== "true") {
+            return refusal("unsupported-event");
+          }
           outcome = "disputed";
           break;
         }

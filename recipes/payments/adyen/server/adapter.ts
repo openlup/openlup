@@ -488,10 +488,22 @@ function translateAdyenPaymentResponse(
     };
   }
 
-  const redirectUrl =
-    response.resultCode === "RedirectShopper" && typeof response.action?.url === "string"
-      ? response.action.url
-      : null;
+  let redirectUrl: string | null = null;
+  if (response.resultCode === "RedirectShopper" && typeof response.action?.url === "string") {
+    try {
+      redirectUrl = assertHttpsUrl(response.action.url, "redirect action url");
+    } catch {
+      return {
+        outcome: { kind: "attempt", status: "processing" },
+        dispatch,
+        diagnostics: {
+          flow: context.flow,
+          diagnosticCode: "ADYEN_INVALID_REDIRECT_URL",
+          webhookExpected: true,
+        },
+      };
+    }
+  }
 
   const status =
     redirectUrl || response.resultCode === "ChallengeShopper" || response.resultCode === "IdentifyShopper"
@@ -541,41 +553,15 @@ function translateTransportFailure(error: unknown): PaymentExecutionEnvelope {
     };
   }
 
-  // Handle scripted transport errors (or generic network failures) conservatively
-  // without inferring absence or leaking arbitrary error text.
-  const kind =
-    error && typeof error === "object" && "kind" in error && typeof (error as { kind: unknown }).kind === "string"
-      ? (error as { kind: string }).kind
-      : "unknown";
-
-  if (
-    kind === "timeout-before-dispatch"
-    || kind === "provider-5xx"
-    || kind === "provider-5xx-before-dispatch"
-  ) {
-    const hints: readonly PaymentFailureHint[] = ["transient"];
-    const refusal: PaymentRefusalEnvelope = {
-      code: classifyPaymentFailure({ neutralReasonHints: hints }).failureClass,
-      hints,
-    };
-    return {
-      outcome: { kind: "decline", refusal },
-      dispatch: {
-        kind: "notDispatched",
-        evidence: { exact: true, phase: "before-dispatch", reason: refusal },
-      },
-      diagnostics: {
-        diagnosticCode: toSafeDiagnosticCode(kind, "TRANSPORT_BEFORE_DISPATCH"),
-        preDispatchRefusal: true,
-      },
-    };
-  }
-
+  // Adyen Checkout v71 has no pre-dispatch OAuth step; any unverified transport
+  // exception (timeouts, 5xx, 409, network resets) must preserve dispatch
+  // uncertainty (`dispatch: { kind: "unknown" }`) rather than fabricating
+  // exact no-charge (`notDispatched`) evidence.
   return {
     outcome: { kind: "attempt", status: "processing" },
     dispatch: { kind: "unknown" },
     diagnostics: {
-      diagnosticCode: toSafeDiagnosticCode(kind, "ADYEN_TRANSPORT_UNKNOWN"),
+      diagnosticCode: "ADYEN_TRANSPORT_UNKNOWN",
       uncertainDispatch: true,
     },
   };

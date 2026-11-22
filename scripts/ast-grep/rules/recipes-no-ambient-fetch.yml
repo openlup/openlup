@@ -9,7 +9,9 @@ note: |
   conformance and zero-I/O refusals remain guaranteed.
 files:
   - recipes/**/server/**/*.ts
+  - recipes/**/core/**/*.ts
   - recipes/**/browser/**/*.ts
+  - recipes/**/browser/**/*.tsx
 ignores:
   - "**/*.test.ts"
 rule:

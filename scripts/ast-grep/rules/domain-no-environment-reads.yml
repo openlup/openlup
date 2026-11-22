@@ -19,6 +19,7 @@ files:
   - src/domains/**/*.ts
   - packages/core/src/**/*.ts
   - recipes/**/server/**/*.ts
+  - recipes/**/core/**/*.ts
   - recipes/**/browser/**/*.ts
 ignores:
   - "**/*.test.ts"
@@ -102,6 +103,7 @@ files:
   - server/domains/**/*.tsx
   - src/domains/**/*.tsx
   - packages/core/src/**/*.tsx
+  - recipes/**/browser/**/*.tsx
 ignores:
   - "**/*.test.tsx"
 utils:

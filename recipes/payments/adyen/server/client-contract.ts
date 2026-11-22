@@ -269,53 +269,57 @@ export function createAdyenHttpClient(config: AdyenHttpClientConfig): Required<A
       : timeoutController.signal;
 
     let response: Response;
-    try {
-      response = await config.fetchImpl(`${baseUrl}${path}`, {
-        method: "POST",
-        redirect: "error",
-        signal,
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "idempotency-key": options.idempotencyKey,
-        },
-        body: JSON.stringify(body),
-      });
-    } catch (error) {
-      if (error instanceof AdyenTransportError) throw error;
-      const aborted = error instanceof Error && error.name === "AbortError";
-      throw new AdyenTransportError({
-        diagnosticCode: aborted ? "ADYEN_REQUEST_TIMEOUT" : "ADYEN_NETWORK_ERROR",
-        httpStatus: null,
-        phase: "unknown",
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (!response.ok) {
-      // Never propagate raw provider body text into Error.message.
-      const phase: "before-dispatch" | "unknown" =
-        response.status === 401 || response.status === 403 || response.status === 422
-          ? "before-dispatch"
-          : "unknown";
-      throw new AdyenTransportError({
-        diagnosticCode: `ADYEN_HTTP_${response.status}`,
-        httpStatus: response.status,
-        phase,
-      });
-    }
-
     let rawText: string;
     try {
-      rawText = await readBoundedText(response, maxResponseBytes);
-    } catch (error) {
-      if (error instanceof AdyenTransportError) throw error;
-      throw new AdyenTransportError({
-        diagnosticCode: "ADYEN_INVALID_UTF8_RESPONSE",
-        httpStatus: response.status,
-        phase: "unknown",
-      });
+      try {
+        response = await config.fetchImpl(`${baseUrl}${path}`, {
+          method: "POST",
+          redirect: "error",
+          signal,
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": apiKey,
+            "idempotency-key": options.idempotencyKey,
+          },
+          body: JSON.stringify(body),
+        });
+      } catch (error) {
+        if (error instanceof AdyenTransportError) throw error;
+        const aborted = error instanceof Error && error.name === "AbortError";
+        throw new AdyenTransportError({
+          diagnosticCode: aborted ? "ADYEN_REQUEST_TIMEOUT" : "ADYEN_NETWORK_ERROR",
+          httpStatus: null,
+          phase: "unknown",
+        });
+      }
+
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+        // Never propagate raw provider body text into Error.message.
+        const phase: "before-dispatch" | "unknown" =
+          response.status === 401 || response.status === 403 || response.status === 422
+            ? "before-dispatch"
+            : "unknown";
+        throw new AdyenTransportError({
+          diagnosticCode: `ADYEN_HTTP_${response.status}`,
+          httpStatus: response.status,
+          phase,
+        });
+      }
+
+      try {
+        rawText = await readBoundedText(response, maxResponseBytes);
+      } catch (error) {
+        if (error instanceof AdyenTransportError) throw error;
+        const aborted = error instanceof Error && error.name === "AbortError";
+        throw new AdyenTransportError({
+          diagnosticCode: aborted ? "ADYEN_REQUEST_TIMEOUT" : "ADYEN_INVALID_UTF8_RESPONSE",
+          httpStatus: response.status,
+          phase: "unknown",
+        });
+      }
+    } finally {
+      clearTimeout(timer);
     }
 
     try {

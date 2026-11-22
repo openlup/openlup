@@ -18,10 +18,10 @@
 
 ## 2. Webhook Configuration & Host Route Contract
 - [ ] **Standard Webhook Endpoint:** Register your host HTTPS endpoint (`POST /api/bff/payment/webhooks/adyen`) in Adyen Customer Area → **Developers → Webhooks → Standard webhook**.
-- [ ] **HMAC Key:** Generate a 64-character hex HMAC key in Adyen and supply it via `config.hmacKeysHex: [primaryHexKey]` (pass `[newKey, oldKey]` during zero-downtime key rotation).
+- [ ] **HMAC Key & Transport Authentication:** Generate a 64-character hex HMAC key in Adyen and supply it via `config.hmacKeysHex: [primaryHexKey]` (pass `[newKey, oldKey]` during zero-downtime key rotation). **Security note:** Adyen's canonical HMAC authenticates only the 8 core fields (including `merchantReference`, which this recipe treats as authoritative for `intentRef`); it does **not** sign `additionalData` (`metadata.attemptRef`, `recurring.*`) or `eventDate`. Configure **Basic Auth** or **mTLS** on your host webhook route in Adyen Customer Area to authenticate the full transport envelope before invoking `verifyPort`.
 - [ ] **Critical Host HTTP Acknowledgement (`[accepted]`):** Adyen requires HTTP `200` with body `{"notificationResponse":"[accepted]"}` (or plain `"[accepted]"`) within 10 seconds, or it retries for up to 7 days. Because OpenLup's `createVerifiedPaymentIngress` is transport-neutral (`{ status: 200, data }`), your host HTTP route MUST map `result.status === 200` to HTTP `200` with body `{ notificationResponse: "[accepted]" }`.
 - [ ] **Raw Body Size Cap:** Preserve untouched raw request bytes up to `MAX_WEBHOOK_BODY_BYTES` (1 MiB) before invoking `verifyPort.verifyAndNormalize(...)`.
-- [ ] **Metadata Echo:** Enable **Include Metadata** in Adyen webhook settings so `metadata.intentRef` and `metadata.attemptRef` return verbatim on notifications.
+- [ ] **Metadata Echo:** Enable **Include Metadata** in Adyen webhook settings so `metadata.attemptRef` returns on notifications (note: `merchantReference` remains the HMAC-authenticated source of truth for `intentRef`; mismatched `metadata.intentRef` is refused as `malformed`).
 
 ---
 

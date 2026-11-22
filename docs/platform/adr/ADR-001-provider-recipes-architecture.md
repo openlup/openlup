@@ -59,10 +59,10 @@ No recipe may be listed as `verified` in `recipes/index.json` unless its test su
 - Merchants adopt recipes via source ownership (copying the recipe into their repository's `owned/` adapter tree and verifying it against their **installed** `@openlup/platform` version).
 - The central catalog (`recipes/index.json`) tracks the exact `@openlup/platform` version each recipe passed conformance against; recipes failing against a newer platform release flip to `unverified-for-<version>` rather than silently claiming compatibility.
 
-### 7. Specification-First Waves, Tiered Execution & Autonomous Delivery
+### 7. Specification-First Waves, Tiered Execution & Delivery Authority
 - Every wave or recipe batch MUST begin from a complete, reviewed Wave/Stage Specification (contracts, protocol/security quirks, refusal taxonomy, fixtures, mount-proof seam, acceptance criteria) before implementation starts.
 - Straightforward, well-specified tasks cloning a certified exemplar may be delegated to lighter/faster worker models with lower reasoning effort, provided **zero mechanical verification gates are relaxed** (`tsc --noEmit`, domain conformance, Stage 3 mount proof, canaries, `ast-grep`, `eslint`) and ambiguous/failing cases escalate back to the high-reasoning tier with a mandatory spec update.
-- Routine within-plan decisions are resolved autonomously by the Lead Agent; changes that pass the complete verification and delivery procedure proceed directly to merge automatically, escalating to the owner only for critical out-of-plan decisions (breaking SemVer, new repositories/npm packages, release/pack-cap changes, live releases, or strategic scope shifts).
+- Consistent with `AGENTS.md` and `CONTRIBUTING.md`, this ADR grants no submission, merge, or release authority on its own. When the accountable human grants task and auto-merge authority for a wave, routine within-plan decisions are resolved by the Lead Agent and verified, natively reviewed candidates may be armed for auto-merge within that granted authority; critical out-of-plan decisions (breaking SemVer, new repositories/npm packages, release/pack-cap changes, live releases, or strategic scope shifts) always require explicit human authorization.
 
 ---
 
