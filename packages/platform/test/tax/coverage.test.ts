@@ -36,15 +36,17 @@ describe("tax coverage", () => {
       .toEqual(result);
   });
 
-  it("distinguishes undeclared, missing and stale evidence at the interval boundary", () => {
+  it("tax_coverage_undeclared_refuses", () => {
     const declaration = { ...registered(), effective: { from: date, until: later } };
-    const registration = { ...active, effective: declaration.effective };
-    const observations = [{ ...input.observations[0], registration }];
-    expect(reconcileTaxCoverage({ ...input, coverage: coverage(declaration), observations })).toMatchObject({ kind: "resolved" });
-    expect(reconcileTaxCoverage({ ...input, taxDate: later, coverage: coverage(declaration), observations })).toMatchObject({
+    expect(reconcileTaxCoverage({ ...input, taxDate: later, coverage: coverage(declaration), observations: [] })).toMatchObject({
       kind: "refused", code: "tax_coverage_undeclared", field: "/coverage/declarations", jurisdiction: "district-a", taxKind: "sale",
       vector: [{ decision: "undeclared" }],
     });
+  });
+
+  it("distinguishes missing and stale evidence at the interval boundary", () => {
+    const registration = { ...active, effective: { from: date, until: later } };
+    expect(reconcileTaxCoverage({ ...input, observations: [{ ...input.observations[0], registration }] })).toMatchObject({ kind: "resolved" });
     for (const observation of [{ cell: cell(), registration }, { cell: cell() }, { ...input.observations[0], registration }]) {
       expect(reconcileTaxCoverage({ ...input, taxDate: later, observations: [observation] })).toMatchObject({
         kind: "unavailable", effect: "none", code: "tax_coverage_evidence_unavailable",
@@ -59,13 +61,32 @@ describe("tax coverage", () => {
     [[{ cell: cell(), registration: inactive }]],
     [[{ cell: cell(), registration: active, treatment: { ...taxable, kind: "not_applicable" }, assessedMinor: 0 }]],
     [[{ cell: cell(), registration: active, treatment: exempt, assessedMinor: 1 }]],
-    [[{ cell: { ...cell(), sourcing: "ship_from" } }]],
-    [input.observations.concat(input.observations)],
   ] as const)("refuses contradictory evidence %j", observations => {
     expect(reconcileTaxCoverage({ ...input, observations })).toMatchObject({
       kind: "refused", code: "tax_coverage_inconsistent", field: "/observations", jurisdiction: "district-a",
       taxKind: "sale", vector: [{ decision: "inconsistent" }],
     });
+  });
+
+  it("inconsistent_coverage_refuses_charge", () => {
+    expect(reconcileTaxCoverage({
+      ...input, coverage: coverage(acknowledged()), observations: [{ cell: cell(), treatment: taxable, assessedMinor: 1 }],
+    })).toMatchObject({
+      kind: "refused", code: "tax_coverage_inconsistent", vector: [{ decision: "inconsistent" }],
+    });
+  });
+
+  it("names the offending duplicate and mismatched observation", () => {
+    const observation = input.observations[0];
+    for (const [observations, field, remedy] of [
+      [[observation, observation], "/observations/1", "Remove the duplicate"],
+      [[{ ...observation, cell: { ...cell(), sourcing: "ship_from" } }], "/observations/0", "Use the required cell"],
+    ] as const) {
+      expect(reconcileTaxCoverage({ ...input, observations })).toMatchObject({
+        kind: "refused", code: "tax_coverage_inconsistent", field, remedy: expect.stringContaining(remedy),
+        vector: [{ decision: "inconsistent" }],
+      });
+    }
   });
 
   it("refuses extra cells before undeclared or unavailable cells and keeps the required vector", () => {
@@ -75,6 +96,7 @@ describe("tax coverage", () => {
     };
     expect(reconcileTaxCoverage(inputWithMissing)).toMatchObject({
       kind: "refused", code: "tax_coverage_inconsistent", jurisdiction: "district-c",
+      field: "/observations/0", remedy: expect.stringContaining("Remove the extra observation"),
       vector: [{ cell: missing, decision: "undeclared" }, { cell: cell(), decision: "unavailable_evidence" }],
     });
   });

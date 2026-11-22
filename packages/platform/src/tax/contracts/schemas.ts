@@ -94,11 +94,16 @@ const moneyFields = object({
 
 function money(value: unknown, field: string): TaxQuoteInputV1["money"] {
   const parsed = moneyFields(value, field);
-  try { planCatalogueMoneyV2(parsed); }
-  catch (error) {
+  try {
+    const { components } = planCatalogueMoneyV2(parsed);
+    const basis = components.reduce((sum, item) => sum + BigInt(item.effectiveMinor), 0n);
+    if (basis > BigInt(Number.MAX_SAFE_INTEGER)) {
+      invalid(field, "Reduce the post-adjustment merchandise and delivery basis to a safe integer.", "tax_amount_out_of_range");
+    }
+  } catch (error) {
     if (!(error instanceof CatalogueMoneyV2Error)) throw error;
     const pointer = error.field.replace(/\.preDiscountMinor$/, "").replace(/\[(\d+)\]/g, ".$1").replaceAll(".", "/");
-    invalid(field + "/" + pointer, error.remedy);
+    invalid(field + "/" + pointer, error.remedy, error.code === "money_amount_out_of_range" ? "tax_amount_out_of_range" : "tax_invalid_input");
   }
   return parsed;
 }
@@ -231,32 +236,7 @@ export const taxCalculationEvidenceV1Schema: Schema<TaxCalculationEvidenceV1> = 
 const validityFields = object({ original: quoteRequest, evidence, evidenceDigest: digest, chargeAt: instant, current: quote });
 export const taxFiscalValidityRequestV1Schema: Schema<TaxFiscalValidityRequestV1> = schema((value, field) => {
   const parsed = validityFields(value, field);
-  const { original, evidence: receipt, current, chargeAt } = parsed;
-  if (current.taxDate !== chargeAt) invalid("/current/taxDate", "Use the charge instant as the current fiscal date.");
-  const input = original.input;
-  const pairs = {
-    scope: [JSON.stringify(receipt.scope), JSON.stringify(input.scope)],
-    status: [receipt.status, input.purpose], taxDate: [receipt.taxDate, input.taxDate],
-    inputDigest: [receipt.inputDigest, original.inputDigest], destinationDigest: [receipt.destinationDigest, input.destination.digest],
-    shipFromRef: [receipt.shipFromRef, input.shipFromRef], policyRevision: [receipt.policyRevision, input.policyRevision],
-    classMapRevision: [receipt.classMapRevision, input.classMapRevision],
-  };
-  for (const [field, [actual, expected]] of Object.entries(pairs)) {
-    if (actual !== expected) invalid("/evidence/" + field, "Supply evidence bound to the original quote request.");
-  }
-  const { vector } = receipt.coverage;
-  const required = [...input.required].sort(compareCells);
-  if (vector.length !== required.length || vector.some((row, index) => !sameCell(row.cell, required[index]))) {
-    invalid("/evidence/coverage/vector", "Supply evidence for the original quote's required cells.");
-  }
-  const lines = new Map(input.lines.map(item => [item.lineKey, item.assignmentRef]));
-  const buckets = new Map(input.delivery.map(item => [item.bucketKey, item.assignmentRef]));
-  receipt.positions.tax.forEach(({ cell: { target }, resolution }, index) => {
-    const assignment = (target.kind === "line" ? lines : buckets).get(target.key);
-    if (assignment !== resolution.assignmentRef) {
-      invalid("/evidence/positions/tax/" + index + "/resolution/assignmentRef", "Use the original component's tax assignment.");
-    }
-  });
+  if (parsed.current.taxDate !== parsed.chargeAt) invalid("/current/taxDate", "Use the charge instant as the current fiscal date.");
   return parsed;
 });
 
@@ -289,7 +269,19 @@ export const taxReverseRequestV1Schema: Schema<TaxReverseRequestV1> = schema((va
   if (result.mode === "amount" && result.amountMinor !== result.toMinor - result.fromMinor) {
     invalid("/amountMinor", "Use the reserved increase in cumulative refund amount.");
   }
+  if (!result.positions.length) invalid("/positions", "Supply the positions that substantiate the reserved reversal.");
   unique(result.positions, item => item.originalPositionRef, "/positions");
+  let total = 0n;
+  result.positions.forEach((position, index) => {
+    for (const key of ["netDeltaMinor", "taxDeltaMinor", "feeDeltaMinor"] as const) {
+      const amount = position[key];
+      if (amount > 0) invalid("/positions/" + index + "/" + key, "Use a nonpositive reversal delta.");
+      total += BigInt(amount);
+    }
+  });
+  if (total !== -BigInt(result.toMinor - result.fromMinor)) {
+    invalid("/positions", "Reconcile the position deltas to the reserved cumulative increase.");
+  }
   if (result.feeEvidenceRef === undefined && result.positions.some(item => item.feeDeltaMinor !== 0)) {
     invalid("/feeEvidenceRef", "Supply the evidence authorizing the fee reversal.");
   }

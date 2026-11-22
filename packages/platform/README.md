@@ -3192,9 +3192,15 @@ application retains its existing national rules and callers unchanged.
 
 Choose a tax adapter in application composition and supply one merchant coverage
 document. Use `./tax/contracts` for the browser-safe port and document decoders.
-Server integrations use `./tax` to prepare quote requests and reconcile coverage
-for every required cell. Calculation expiry and charge-date fiscal validity are
-separate checks.
+Use `./tax` to prepare and verify requests and reconcile coverage. Call
+`verifyTaxQuoteRequest` for quotes and decoded fiscal-validity requests and
+`verifyTaxQuoteResult` before using successful results. For the evidence digest,
+SHA-256 hash `canonicalCatalogDraftJson(["platform.tax.evidence.v1", evidence])`
+in UTF-8, using the canonicalizer from `./catalog/contracts`.
+Calculation expiry and charge-date fiscal validity are separate checks.
+The caller records `closeCalculation` as a local, idempotent transition for
+affirmatively unused or verified-unpaid evidence. Never void, delete or mutate a
+provider calculation. Indeterminate payments stay open for reconciliation.
 
 ## Market packs
 

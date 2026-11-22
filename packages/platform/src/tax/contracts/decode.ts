@@ -1,12 +1,16 @@
+import type { TaxRefusalCode } from "./types.js";
+
 export type Decode<T> = (value: unknown, field: string) => T;
 type Fields = Record<string, Decode<unknown>>;
 type Decoded<F extends Fields> = { [K in keyof F]: ReturnType<F[K]> };
 class ParseError extends Error {
-  constructor(message: string, readonly field: string) { super(message); }
+  constructor(message: string, readonly field: string, readonly code: TaxRefusalCode) { super(message); }
 }
 
-export function invalid(field: string, remedy = "Supply the documented value at this field."): never {
-  throw new ParseError(remedy, field);
+export function invalid(
+  field: string, remedy = "Supply the documented value at this field.", code: TaxRefusalCode = "tax_invalid_input",
+): never {
+  throw new ParseError(remedy, field, code);
 }
 
 function property(value: object, key: string, field: string): unknown {

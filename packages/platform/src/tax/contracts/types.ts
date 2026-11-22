@@ -47,8 +47,10 @@ export type TaxCalculationEvidenceV1 = Readonly<{
   policyRevision: string; classMapRevision: string; coverage: CoverageEvidence; fiscalDigest: string;
   positions: Readonly<{ tax: List<Assessed>; fees: List<Fee> }>;
 }>;
-export type TaxQuoteResultV1 =
-  | Readonly<{ kind: "final" | "estimate"; money: CatalogueMoneyV2Result; evidence: TaxCalculationEvidenceV1; evidenceDigest: string }>
+type QuoteSuccess<K extends TaxCalculationEvidenceV1["status"]> = Readonly<{
+  kind: K; money: CatalogueMoneyV2Result; evidence: TaxCalculationEvidenceV1 & { readonly status: K }; evidenceDigest: string;
+}>;
+export type TaxQuoteResultV1 = QuoteSuccess<"final"> | QuoteSuccess<"estimate">
   | ((TaxRefusal | TaxUnavailable) & Readonly<{ coverage?: CoverageEvidence }>);
 
 export type TaxFiscalValidityRequestV1 = Readonly<{ original: TaxQuoteRequestV1; evidence: TaxCalculationEvidenceV1;
@@ -66,6 +68,7 @@ type PositionMapping = Readonly<{ originalPositionRef: string; postedPositionRef
 export type TaxCommitResultV1 = Readonly<{ kind: "committed"; providerTransactionRef: string;
   positions: List<PositionMapping> }> | TaxRefusal | TaxUnavailable;
 type Delta = Readonly<{ originalPositionRef: string; netDeltaMinor: number; taxDeltaMinor: number; feeDeltaMinor: number }>;
+/** The refund-reservation ledger owner verifies per-original-position caps and cumulative balances under its lock. */
 export type TaxReverseRequestV1 = Readonly<{ scope: TaxScopeV1; originalRef: string; reversalRef: string;
   refundEvidenceRef: string; currency: string; fromMinor: number; toMinor: number; intent: "apply" | "recover";
   positions: List<Delta>; feeEvidenceRef?: string }>

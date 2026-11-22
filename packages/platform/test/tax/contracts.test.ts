@@ -1,14 +1,21 @@
+import { createHash } from "node:crypto";
+import { calculateCatalogueMoneyV2, planCatalogueMoneyV2 } from "@openlup/core/pricing";
 import { describe, expect, it } from "vitest";
-import { makeTaxQuoteRequest, reconcileTaxCoverage } from "../../src/tax/index.js";
+import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/index.js";
+import { makeTaxQuoteRequest, reconcileTaxCoverage, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "../../src/tax/index.js";
 import {
   taxCalculationEvidenceV1Schema, taxCloseInputV1Schema, taxCommitRequestV1Schema, taxCoverageV1Schema,
   taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema, taxReverseRequestV1Schema,
 } from "../../src/tax/contracts/index.js";
-import type { TaxCalculationEvidenceV1 } from "../../src/tax/contracts/index.js";
+import type { TaxCalculationEvidenceV1, TaxQuoteResultV1 } from "../../src/tax/contracts/index.js";
 import { active, cell, coverage, date, digest, later, quote, registered, scope, taxable } from "./fixtures.js";
 
 function refuses(run: () => unknown, field: string): void {
   expect(run).toThrow(expect.objectContaining({ field }));
+}
+
+function taggedDigest(tag: "coverage" | "evidence", value: unknown): string {
+  return createHash("sha256").update(canonicalCatalogDraftJson(["platform.tax." + tag + ".v1", value])).digest("hex");
 }
 
 describe("tax document decoders", () => {
@@ -58,9 +65,34 @@ describe("tax document decoders", () => {
     refuses(() => makeTaxQuoteRequest("", input), "/key");
   });
 
+  it("refuses an unsafe planned basis in preparation and decoding", () => {
+    const input = quote();
+    const money = {
+      ...input.money, adjustments: [],
+      sources: input.money.sources.map((row, i) => ({ ...row, unitBasisMinor: i ? 0 : Number.MAX_SAFE_INTEGER })),
+      delivery: [{ ...input.money.delivery[0], amountMinor: 1 }],
+    };
+    const unsafe = { ...input, money };
+    expect(() => makeTaxQuoteRequest("key", unsafe)).toThrow(expect.objectContaining({
+      code: "tax_amount_out_of_range", field: "/money",
+    }));
+    const envelope = { key: "key", input: unsafe, inputDigest: digest };
+    expect(taxQuoteRequestV1Schema.safeParse(envelope)).toMatchObject({
+      success: false, error: { code: "tax_amount_out_of_range", field: "/input/money" },
+    });
+    expect(verifyTaxQuoteRequest(envelope)).toMatchObject({ code: "tax_amount_out_of_range", field: "/input/money" });
+    const safe = { ...money, adjustments: [{ adjustmentRef: "discount", sequence: 1, amountMinor: 1, target: { lineKeys: ["item-z"] } }] };
+    expect(() => makeTaxQuoteRequest("key", { ...input, money: safe })).not.toThrow();
+  });
+
   it("pins a tagged request digest and normalizes only the required cells and declarations", () => {
     const input = quote();
     const request = makeTaxQuoteRequest("key", input);
+    expect(verifyTaxQuoteRequest(request)).toBeUndefined();
+    const altered = taxQuoteRequestV1Schema.parse({ ...request, input: { ...input, currency: "XTS" } });
+    expect(verifyTaxQuoteRequest(altered)).toMatchObject({
+      kind: "refused", code: "tax_reference_conflict", field: "/inputDigest", remedy: expect.stringContaining("new key"),
+    });
     expect(request.inputDigest).toBe("b661bc4d7148712db7c1006eb630ec07ac54721bd3e17678c360558f64620f1a");
     expect(makeTaxQuoteRequest("other-key", {
       ...input, required: [...input.required].reverse(),
@@ -88,11 +120,29 @@ describe("tax document decoders", () => {
     taxDate: date, destinationDigest: digest, shipFromRef: request.input.shipFromRef, inputDigest: request.inputDigest,
     policyRevision: request.input.policyRevision, classMapRevision: request.input.classMapRevision,
     coverage: { vector, digest: coverageDigest }, fiscalDigest: digest,
-    positions: { fees: [], tax: [{
+    positions: { fees: [{
+      feeKey: "fee-a", jurisdiction: "district-a", feeKind: "fee-a", scope: { kind: "delivery", key: "shipping-a" },
+      refundRule: { ref: "fee-rule", revision: "revision-a" },
+    }], tax: [{
       positionRef: "position-a", cell: cell(), ratePercent: "8.125000", taxabilityReason: "standard", ruleRef: "rule-a",
       resolution: { assignmentRef: "assignment-a", policyRevision: "policy-a", sourceRef: "table-a", effective: { from: date } },
       resolutionDigest: digest,
     }] },
+  };
+
+  const money = calculateCatalogueMoneyV2({ ...request.input.money, fees: [{ feeKey: "fee-a", amountMinor: 5 }] }, {
+    kind: "local",
+    components: planCatalogueMoneyV2(request.input.money).components.map(({ ref }) => ({
+      ref, rates: ref.kind === "merchandise" && ref.lineKey === "item-z"
+        ? [{ positionRef: "position-a", jurisdictionRef: "district-a", rateDecimal: "8.125" }] : [],
+    })),
+  });
+  const successful = (evidence = receipt) => ({
+    kind: "final" as const, money, evidence: { ...evidence, status: "final" as const }, evidenceDigest: taggedDigest("evidence", evidence),
+  });
+  const fiscal = {
+    original: request, current: { ...request.input, taxDate: later }, evidence: receipt,
+    evidenceDigest: taggedDigest("evidence", receipt), chargeAt: later,
   };
 
   it("validates evidence bindings, clock bounds and the shared rate grammar", () => {
@@ -107,16 +157,88 @@ describe("tax document decoders", () => {
       refuses(() => taxCalculationEvidenceV1Schema.parse({ ...receipt, positions: { fees: [], tax: [{ ...tax, ratePercent }] } }),
         "/positions/tax/0/ratePercent");
     }
-    const fiscal = { original: request, current: { ...request.input, taxDate: later }, evidence: receipt, evidenceDigest: digest, chargeAt: later };
     expect(taxFiscalValidityRequestV1Schema.parse(fiscal)).toEqual(fiscal);
     refuses(() => taxFiscalValidityRequestV1Schema.parse({ ...fiscal, chargeAt: date }), "/current/taxDate");
-    refuses(() => taxFiscalValidityRequestV1Schema.parse({ ...fiscal, evidence: { ...receipt, inputDigest: digest } }), "/evidence/inputDigest");
-    const incomplete = { ...receipt, coverage: { ...receipt.coverage, vector: [vector.at(-1)!] } };
-    refuses(() => taxFiscalValidityRequestV1Schema.parse({ ...fiscal, evidence: incomplete }), "/evidence/coverage/vector");
+  });
+
+  it("verifies the original digest and evidence for fiscal validity through the shared verifier", () => {
+    const verify = (evidence: TaxCalculationEvidenceV1, original = request) =>
+      verifyTaxQuoteRequest(taxFiscalValidityRequestV1Schema.parse({
+        ...fiscal, original, evidence, evidenceDigest: taggedDigest("evidence", evidence),
+      }));
+    expect(verifyTaxQuoteRequest(fiscal)).toBeUndefined();
+    expect(verifyTaxQuoteRequest({ ...fiscal, evidenceDigest: digest })).toMatchObject({
+      code: "tax_reference_conflict", field: "/evidenceDigest",
+    });
+    expect(verify(receipt, { ...request, input: { ...request.input, currency: "XTS" } })).toMatchObject({
+      code: "tax_reference_conflict", field: "/original/inputDigest",
+    });
+    expect(verify({ ...receipt, inputDigest: digest })).toMatchObject({
+      code: "tax_reference_conflict", field: "/evidence/inputDigest",
+    });
+    expect(verify({ ...receipt, coverage: { ...receipt.coverage, digest } })).toMatchObject({
+      code: "tax_reference_conflict", field: "/evidence/coverage/digest",
+    });
+    const undeclared = makeTaxQuoteRequest("other-key", { ...request.input, coverage: coverage() });
+    expect(verify({ ...receipt, inputDigest: undeclared.inputDigest }, undeclared)).toMatchObject({
+      code: "tax_reference_conflict", field: "/evidence/coverage/vector/0/declaration",
+    });
+    const incomplete = vector.filter(row => row.cell.target.key !== "item-a");
+    expect(verify({ ...receipt, coverage: { vector: incomplete, digest: taggedDigest("coverage", incomplete) } })).toMatchObject({
+      code: "tax_reference_conflict", field: "/evidence/coverage/vector",
+    });
+    const tax = receipt.positions.tax[0];
     const wrongAssignment = { ...tax, resolution: { ...tax.resolution, assignmentRef: "unknown" } };
-    refuses(() => taxFiscalValidityRequestV1Schema.parse({
-      ...fiscal, evidence: { ...receipt, positions: { tax: [wrongAssignment], fees: [] } },
-    }), "/evidence/positions/tax/0/resolution/assignmentRef");
+    expect(verify({ ...receipt, positions: { ...receipt.positions, tax: [wrongAssignment] } })).toMatchObject({
+      code: "tax_reference_conflict", field: "/evidence/positions/tax/0/resolution/assignmentRef",
+    });
+  });
+
+  it("verifies successful quote digests, status and request bindings", () => {
+    const result = successful();
+    expect(verifyTaxQuoteResult(request, result)).toBeUndefined();
+    const estimateRequest = makeTaxQuoteRequest("estimate", { ...request.input, purpose: "estimate" });
+    const estimate = { ...receipt, status: "estimate" as const, inputDigest: estimateRequest.inputDigest };
+    expect(verifyTaxQuoteResult(estimateRequest, {
+      kind: "estimate", money, evidence: estimate, evidenceDigest: taggedDigest("evidence", estimate),
+    })).toBeUndefined();
+    expect(verifyTaxQuoteResult(request, { ...result, evidence: estimate } as unknown as TaxQuoteResultV1)).toMatchObject({
+      code: "tax_calculation_unusable", field: "/evidence/status",
+    });
+    expect(verifyTaxQuoteResult(request, { ...result, evidenceDigest: digest })).toMatchObject({
+      code: "tax_reference_conflict", field: "/evidenceDigest",
+    });
+    const forgedDeclarations = vector.map(row => row.declaration
+      ? { ...row, declaration: { ...row.declaration, actorRef: "different-actor" } } : row);
+    for (const [rebound, field] of [
+      [{ ...receipt, scope: { ...scope, accountRef: "other" } }, "/evidence/scope"],
+      [{ ...receipt, destinationDigest: "b".repeat(64) }, "/evidence/destinationDigest"],
+      [{ ...receipt, inputDigest: "b".repeat(64) }, "/evidence/inputDigest"],
+      [{ ...receipt, coverage: { ...receipt.coverage, digest } }, "/evidence/coverage/digest"],
+      [{ ...receipt, coverage: { vector: forgedDeclarations, digest: taggedDigest("coverage", forgedDeclarations) } },
+        "/evidence/coverage/vector/0/declaration"],
+    ] as const) {
+      expect(verifyTaxQuoteResult(request, successful(rebound))).toMatchObject({ code: "tax_reference_conflict", field });
+    }
+  });
+
+  it("requires one metadata row per assessed tax position and fee and rejects orphans", () => {
+    const result = successful();
+    const { tax, fees } = receipt.positions;
+    for (const [positions, field] of [
+      [{ tax: [], fees }, "/evidence/positions/tax"],
+      [{ tax: [...tax, tax[0]], fees }, "/evidence/positions/tax/1"],
+      [{ tax: [...tax, { ...tax[0], positionRef: "orphan" }], fees }, "/evidence/positions/tax"],
+      [{ tax, fees: [] }, "/evidence/positions/fees"],
+      [{ tax, fees: [...fees, fees[0]] }, "/evidence/positions/fees/1"],
+    ] as const) {
+      expect(verifyTaxQuoteResult(request, successful({ ...receipt, positions }))).toMatchObject({
+        code: "tax_breakdown_incomplete", field,
+      });
+    }
+    expect(verifyTaxQuoteResult(request, { ...result, money: { ...money, fees: [] } })).toMatchObject({
+      code: "tax_breakdown_incomplete", field: "/evidence/positions/fees",
+    });
   });
 
   it("validates close, commit and reversal envelopes", () => {
@@ -138,6 +260,19 @@ describe("tax document decoders", () => {
     refuses(() => taxReverseRequestV1Schema.parse({ ...reverse, amountMinor: 100 }), "/amountMinor");
     refuses(() => taxReverseRequestV1Schema.parse({ ...reverse, toMinor: 40 }), "/toMinor");
     refuses(() => taxReverseRequestV1Schema.parse({ ...reverse, mode: "full" }), "");
+    const { amountMinor: _amount, ...common } = reverse;
+    for (const reversal of [reverse, { ...common, mode: "full" }, { ...common, mode: "lines" }]) {
+      expect(taxReverseRequestV1Schema.parse(reversal)).toEqual(reversal);
+      refuses(() => taxReverseRequestV1Schema.parse({ ...reversal, positions: [] }), "/positions");
+      refuses(() => taxReverseRequestV1Schema.parse({
+        ...reversal, positions: [{ ...reverse.positions[0], netDeltaMinor: -1, taxDeltaMinor: 0, feeDeltaMinor: 0 }],
+      }), "/positions");
+      for (const key of ["netDeltaMinor", "taxDeltaMinor", "feeDeltaMinor"]) {
+        refuses(() => taxReverseRequestV1Schema.parse({
+          ...reversal, positions: [{ ...reverse.positions[0], [key]: 60 }],
+        }), "/positions/0/" + key);
+      }
+    }
     const { feeEvidenceRef: _feeEvidence, ...noFeeEvidence } = reverse;
     refuses(() => taxReverseRequestV1Schema.parse(noFeeEvidence), "/feeEvidenceRef");
   });

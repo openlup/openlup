@@ -1,6 +1,6 @@
 import { build } from "esbuild";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, posix, relative } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
@@ -318,13 +318,16 @@ describe("package source boundary", () => {
   });
 
   it("bundles tax contracts for a browser without the tax server entry or provider code", async () => {
+    const root = fileURLToPath(new URL("../../../", import.meta.url));
+    const tax = join(SOURCE_ROOT, "tax/contracts");
+    const pricing = join(root, "packages/core/dist/pricing");
     const result = await build({
-      entryPoints: [join(SOURCE_ROOT, "tax/contracts/index.ts")],
+      absWorkingDir: root, entryPoints: [join(tax, "index.ts")],
       bundle: true, platform: "browser", format: "esm", write: false, metafile: true, logLevel: "silent",
     });
-    const inputs = Object.keys(result.metafile!.inputs).map(path => path.replaceAll("\\", "/"));
-    expect(inputs.some(path => path.endsWith("tax/contracts/schemas.ts"))).toBe(true);
-    expect(inputs.filter(path => !path.includes("platform/src/tax/contracts/") && !path.includes("core/dist/pricing/"))).toEqual([]);
+    const inputs = Object.keys(result.metafile!.inputs).map(path => resolve(root, path));
+    expect(inputs).toContain(join(tax, "schemas.ts"));
+    expect(inputs.filter(path => !path.startsWith(tax + sep) && !path.startsWith(pricing + sep))).toEqual([]);
   });
 
   it("bundles the commerce browser entry without Node built-ins or the server entry", async () => {

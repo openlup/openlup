@@ -19,7 +19,8 @@ function refuse(code: TaxRefusal["code"], field: string, remedy: string, cell?: 
 function decide(
   declaration: Row["declaration"], registration: Row["registration"], treatment: Row["treatment"], amount?: number,
 ): Row["decision"] {
-  if ((amount ?? 0) > 0 && (registration?.state === "inactive" || (treatment && treatment.kind !== "taxable"))) {
+  if ((amount ?? 0) > 0 && (declaration?.status === "not_registered_acknowledged"
+    || registration?.state === "inactive" || (treatment && treatment.kind !== "taxable"))) {
     return "inconsistent";
   }
   if (!declaration) return "undeclared";
@@ -46,13 +47,17 @@ export function reconcileTaxCoverage(input: TaxCoverageInputV1): TaxCoverageResu
     .map(entry => [declarationKey(entry), entry]));
   const expected = new Map(required.map(cell => [cellKey(cell), cell]));
   const observed = new Map<string, Observation>();
-  const inconsistent: Cell[] = [];
+  const inconsistent: { cell: Cell; field: string; remedy: string }[] = [];
   const rejected = new Set<string>();
-  for (const observation of observations) {
+  for (const [index, observation] of observations.entries()) {
     const key = cellKey(observation.cell);
     const cell = expected.get(key);
-    if (!cell || !sameCell(cell, observation.cell) || observed.has(key)) {
-      inconsistent.push(cell ?? observation.cell);
+    const remedy = !cell ? "Remove the extra observation. Supply observations for required cells."
+      : observed.has(key) || rejected.has(key) ? "Remove the duplicate observation for this required cell."
+      : !sameCell(cell, observation.cell) ? "Use the required cell's exact target, level and sourcing metadata."
+      : undefined;
+    if (remedy) {
+      inconsistent.push({ cell: cell ?? observation.cell, field: "/observations/" + index, remedy });
       rejected.add(key);
     } else {
       observed.set(key, observation);
@@ -68,7 +73,9 @@ export function reconcileTaxCoverage(input: TaxCoverageInputV1): TaxCoverageResu
     const registration = active && includesInstant(active.effective, taxDate) ? active : undefined;
     const treatment = observation?.treatment;
     const decision = decide(declaration, registration, treatment, observation?.assessedMinor);
-    if (decision === "inconsistent") inconsistent.push(cell);
+    if (decision === "inconsistent") inconsistent.push({
+      cell, field: "/observations", remedy: "Reconcile registration, treatment and assessment for the named cell.",
+    });
     return { cell, decision, ...(declaration && { declaration }),
       ...(registration && { registration }), ...(treatment && { treatment }) };
   });
@@ -77,10 +84,10 @@ export function reconcileTaxCoverage(input: TaxCoverageInputV1): TaxCoverageResu
   catch {
     return { ...evidence([]), ...refuse("tax_invalid_input", "/required", "Reduce the coverage evaluation to fit the one MiB evidence limit.") };
   }
-  const contradiction = inconsistent.sort(compareCells)[0];
+  const contradiction = inconsistent.sort((a, b) => compareCells(a.cell, b.cell))[0];
   if (contradiction) {
-    return { ...snapshot, ...refuse("tax_coverage_inconsistent", "/observations",
-      "Reconcile registration, treatment and assessment for the named cell.", contradiction) };
+    const { field, remedy, cell } = contradiction;
+    return { ...snapshot, ...refuse("tax_coverage_inconsistent", field, remedy, cell) };
   }
   const undeclared = vector.find(row => row.decision === "undeclared");
   if (undeclared) {
