@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { posix } from "node:path";
 
 import { isChangelogFragmentArea, validateChangelogFragment } from "./packages/changelog-fragments.ts";
+import { DuplicateJsonKeyError, parseStrictJson } from "./oss-strict-json.mts";
 
 export const PUBLIC_POLICY_REGISTRY_PATH = "config/openlup-policy-registry.json";
 export const PUBLICATION_CATALOG_PATH = "config/openlup-publication-catalog.json";
@@ -18,7 +19,16 @@ export type PublicPublicationCatalog = { schemaVersion: 1 | 2 | 3; publicPaths: 
 type JsonObject = Record<string, unknown>;
 const digest = (contents: string): string => `sha256-${createHash("sha256").update(contents).digest("hex")}`;
 const isObject = (value: unknown): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value);
-function parseObject(source: string, label: string): JsonObject { let parsed: unknown; try { parsed = JSON.parse(source); } catch { throw new Error(`${label}: unreadable JSON cannot be projected`); } if (!isObject(parsed)) throw new Error(`${label}: root must be an object`); return parsed; }
+function parseObject(source: string, label: string, parse: (source: string) => unknown = JSON.parse): JsonObject {
+  let parsed: unknown;
+  try { parsed = parse(source); }
+  catch (error) {
+    if (error instanceof DuplicateJsonKeyError) throw error;
+    throw new Error(`${label}: unreadable JSON cannot be projected`);
+  }
+  if (!isObject(parsed)) throw new Error(`${label}: root must be an object`);
+  return parsed;
+}
 export function publicRegistryPaths(value: unknown, label: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item === "")) throw new Error(`${label}: expected a string array`);
   const paths = value as string[];
@@ -90,7 +100,7 @@ function parsePackageCommands(value: unknown): PublicPackageCommand[] {
   return commands;
 }
 export function parsePublicPublicationCatalog(source: string): PublicPublicationCatalog {
-  const raw = parseObject(source, PUBLICATION_CATALOG_PATH);
+  const raw = parseObject(source, PUBLICATION_CATALOG_PATH, (contents) => parseStrictJson(contents, PUBLICATION_CATALOG_PATH));
   if ((raw.schemaVersion !== 1 && raw.schemaVersion !== 2 && raw.schemaVersion !== 3) || !Array.isArray(raw.publicPaths) || !Array.isArray(raw.guardViability)) throw new Error(`${PUBLICATION_CATALOG_PATH}: unsupported schema or missing public inventory`);
   if ("dispositions" in raw || "privateReadiness" in raw || "downstreamReceipt" in raw) throw new Error(`${PUBLICATION_CATALOG_PATH}: private publication state must not leak into the public catalogue`);
   const publicPaths = raw.publicPaths.map((row, index) => { if (!isObject(row) || typeof row.path !== "string" || typeof row.class !== "string" || row.class === "") throw new Error(`${PUBLICATION_CATALOG_PATH}: publicPaths[${index}] needs path/class`); return { path: row.path, class: row.class }; });
