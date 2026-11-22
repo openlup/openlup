@@ -69,6 +69,26 @@ it("admits the actual restricted, fixed operator-provisioned graph under the hel
   });
 });
 
+it.each([
+  ["TEMP", "", "", /effective database TEMP/u],
+  ["flags", "ALTER ROLE openlup_checkout_owner INHERIT", "", /login flags/u],
+  ["defaults", "ALTER ROLE openlup_checkout_owner SET search_path TO public", "", /startup defaults/u],
+  ["ADMIN edge", "GRANT service_role TO openlup_checkout_owner WITH ADMIN TRUE, INHERIT FALSE, SET FALSE", "REVOKE service_role FROM openlup_checkout_owner", /membership/u],
+  ["PUBLIC parameter", "GRANT SET ON PARAMETER session_replication_role TO PUBLIC", "REVOKE SET ON PARAMETER session_replication_role FROM PUBLIC", /privileged parameter/u],
+  ["PUBLIC column", "CREATE TABLE public.checkout_privilege_fixture(id int); GRANT SELECT(id) ON public.checkout_privilege_fixture TO PUBLIC", "DROP TABLE public.checkout_privilege_fixture", /effective data/u],
+] as const)("refuses checkout-owner %s before approval", async (label, change, reset, reason) => {
+  await admin.query("CREATE ROLE openlup_checkout_owner LOGIN NOINHERIT");
+  try {
+    if (label !== "TEMP") await admin.query("REVOKE TEMP ON DATABASE postgres FROM PUBLIC");
+    if (change) await admin.query(change);
+    await admittedSession(client => expect(assertQualifiedPostgresSession(client, [], selection, lockName))
+      .rejects.toThrow(new RegExp(`n1_checkout_login_unready: openlup_checkout_owner.*${reason.source}`, "u")));
+  } finally {
+    if (reset) await admin.query(reset);
+    await admin.query("GRANT TEMP ON DATABASE postgres TO PUBLIC; DROP ROLE openlup_checkout_owner");
+  }
+});
+
 it("names publication-role ownership of a committed large object outside the selected catalogue", async () => {
   await admin.query("CREATE ROLE openlup_catalog_publication LOGIN NOINHERIT PASSWORD 'synthetic-only'");
   const url = new URL(container!.connectionString);

@@ -7,7 +7,8 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { definitionPath, definitionPin, definitionSlot, definitionSql, grantPath, grantSlot, grantSql } from "../tests/helpers/issuedPlatformCatalog.ts";
+import { renderCheckoutOwnerGrant, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -55,6 +56,74 @@ function check(text = sql(), mutate?: (value: ReviewedForwardRegistry) => void) 
   assertNativeStoreForward(value, control.slots[0]!.path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
 }
 const encode = (value: ReviewedForwardRegistry) => Buffer.from(JSON.stringify(value));
+
+describe("checkout owner execute admission", () => {
+  function candidate(text = grantSql, definitions = definitionSql) {
+    const value = registry();
+    value.nativeStoreForwardClass!.slots = structuredClone([definitionSlot, grantSlot]);
+    value.nativeStoreForwards = [definitionPin(definitions), { path: grantPath, sha256: sqlSha256(text), functions: [] }];
+    return value;
+  }
+  function checkGrant(value = candidate(), text = grantSql, definitions = definitionSql, drift = "") {
+    return assertNativeStoreForward(value, grantPath, Buffer.from(text), [
+      { path: PLATFORM_BASELINE_FILE, bytes: before }, { path: definitionPath, bytes: Buffer.from(definitions) },
+      ...(drift ? [{ path: "db/platform/migrations/20990101000001_fixture.sql", bytes: Buffer.from(drift) }] : []),
+    ]);
+  }
+
+  it("reserves the path without registration and renders the exact UTF-8 bytes", () => {
+    const golden = "395235d4e4f1dea350b0b029733eb652a0de26c54ce22a86b7bfc31515d50e61";
+    expect(isNativeStoreMigrationPath(grantPath, [])).toBe(true);
+    expect(sqlSha256(renderCheckoutOwnerGrant(definitionPath, "0".repeat(64)))).toBe(golden);
+    expect(checkGrant().checkoutPredecessor).toEqual({ slot: definitionSlot, pin: definitionPin() });
+  });
+
+  it.each([
+    ["table grant", grantSql.replace(/GRANT EXECUTE ON FUNCTION [^;]+/u, "GRANT SELECT ON TABLE public.clients TO openlup_checkout_owner")],
+    ["column grant", grantSql.replace(/GRANT EXECUTE ON FUNCTION [^;]+/u, "GRANT SELECT (id) ON TABLE public.clients TO openlup_checkout_owner")],
+    ["PUBLIC", grantSql.replace("TO openlup_checkout_owner;", "TO PUBLIC;")],
+    ["grant option", grantSql.replace("TO openlup_checkout_owner;", "TO openlup_checkout_owner WITH GRANT OPTION;")],
+    ["membership", grantSql.replace(/GRANT EXECUTE ON FUNCTION [^;]+/u, "GRANT service_role TO openlup_checkout_owner")],
+    ["revoke", grantSql.replace("GRANT EXECUTE", "REVOKE EXECUTE").replace("TO openlup_checkout_owner;", "FROM openlup_checkout_owner;")],
+    ["other role", grantSql.replace("TO openlup_checkout_owner;", "TO authenticated;")],
+    ["other function", grantSql.replace("catalog_admission_lock_shared()", "foreign_lock()")],
+    ["overload", grantSql.replace("catalog_admission_lock_shared()", "catalog_admission_lock_shared(uuid)")],
+    ["legacy guard", grantSql.replace("RETURN;", "NULL;")],
+    ["rail guard", grantSql.replace("position OPERATOR(pg_catalog.=) 0 AND", "position OPERATOR(pg_catalog.>) 0 AND")],
+    ["definition pin", grantSql.replace(sqlSha256(definitionSql), "1".repeat(64))],
+    ["role guard", grantSql.replace("rolinherit OR ", "")],
+    ["final LF", grantSql.trimEnd()],
+  ])("refuses repinned %s without exposing repair values", (_name, text) => {
+    expect(() => checkGrant(candidate(text), text)).toThrow(new RegExp(`^n1_checkout_forward_unverified: ${grantPath}\\. Replay the reviewed grant bytes after landing the rule and its definitions\\.$`, "u"));
+  });
+
+  it.each(["row", "path", "order", "grantee", "extra field", "pin"])("refuses malformed %s before generic admission", kind => {
+    const value = candidate(), slot = value.nativeStoreForwardClass!.slots[1]!;
+    if (kind === "row") slot.row = "different-row";
+    if (kind === "path") slot.path = grantPath.replace("checkout_owner_execute", "other_execute");
+    if (kind === "order") slot.grantOnlyFunctions.reverse();
+    if (kind === "grantee") slot.grantOnlyFunctions[0]!.grantTo.push("authenticated");
+    if (kind === "extra field") slot.qualifiedPriceSetupExecute = true;
+    if (kind === "pin") value.nativeStoreForwards![1]!.functions.push(definitionPin().functions[0]!);
+    expect(() => readReviewedForwardRegistry(encode(value))).toThrow(/^n1_checkout_slot_invalid:/u);
+  });
+
+  it.each([
+    "ALTER FUNCTION public.catalog_admission_lock_shared() SECURITY INVOKER;",
+    "DROP FUNCTION public.catalog_admission_lock_shared();",
+    "ALTER SCHEMA public RENAME TO private;",
+    "REASSIGN OWNED BY postgres TO service_role;",
+    "DROP TABLE public.clients CASCADE;",
+  ])("refuses predecessor drift via %s", drift => {
+    expect(() => checkGrant(candidate(), grantSql, definitionSql, drift)).toThrow(/^n1_checkout_predecessor_unverified:/u);
+  });
+
+  it("refuses an invoker definition even if the grant and after-hash match", () => {
+    const definitions = definitionSql.replace("SECURITY DEFINER", "SECURITY INVOKER");
+    const text = renderCheckoutOwnerGrant(definitionPath, sqlSha256(definitions));
+    expect(() => checkGrant(candidate(text, definitions), text, definitions)).toThrow(/^n1_checkout_predecessor_unverified:/u);
+  });
+});
 
 const catalogueReadTargets = ["public.catalog_offer_memberships_page(text,jsonb,integer,text)", "public.catalog_publication_activation_readiness(text[],text)"];
 const catalogueReadRole = "openlup_catalog_publication";

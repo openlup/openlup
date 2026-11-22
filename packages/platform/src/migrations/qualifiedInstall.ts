@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { checkoutOwnerDefinitionPath, checkoutOwnerGrantDigest, checkoutOwnerGrantPath, checkoutOwnerLogin, checkoutOwnerRoutines } from "./catalog.js";
 import { rdsAuthorityRoles, rdsControlRoles } from "./rdsControlRoles.js";
 import {
   readSelectedCatalogRowsForQualifiedInstall,
@@ -31,6 +32,12 @@ const GROUPS = [...ACTOR_GROUPS, ...ACQUISITION_GROUPS];
 const PREDEFINED = ["pg_database_owner", "pg_read_all_data", "pg_write_all_data", "pg_read_all_settings", "pg_read_all_stats", "pg_stat_scan_tables", "pg_monitor", "pg_signal_backend", "pg_read_server_files", "pg_write_server_files", "pg_execute_server_program", "pg_checkpoint", "pg_use_reserved_connections", "pg_create_subscription"];
 const SAFE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
 function fail(code: string): never { throw new Error(`qualified PostgreSQL installation refused: ${code}`); }
+function checkoutLoginUnready(reason: string): never {
+  return fail(`n1_checkout_login_unready: ${checkoutOwnerLogin}. ${reason}`);
+}
+function checkoutAclMismatch(subject: string): never {
+  return fail(`n1_checkout_acl_mismatch: ${subject}. Restore the issued owner and ACL, then verify catalog readback.`);
+}
 function attributes(row: CatalogRow): Attributes {
   const value: unknown = JSON.parse(row.attributes);
   if (!value || typeof value !== "object" || Array.isArray(value)) return fail("malformed_catalog_attributes");
@@ -49,6 +56,7 @@ export function assertQualifiedPostgresSelection(value: QualifiedPostgresInstall
   if (JSON.stringify(keys) !== JSON.stringify(expected) || value.generation !== "qualified-v2"
     || !["installer-managed", "operator-provisioned"].includes(value.roleMode)) fail("invalid_selection");
   const names = [value.migrationLogin, value.bootstrapLogin, value.runtimeLogin, ...(value.restoreLogin === undefined ? [] : [value.restoreLogin])];
+  if (names.includes(checkoutOwnerLogin)) checkoutLoginUnready("Use a distinct installation principal.");
   if (names.some(name => typeof name !== "string" || !SAFE_NAME.test(name) || name.toUpperCase() === "PUBLIC" || name === PUBLICATION_LOGIN || GROUPS.includes(name) || PREDEFINED.includes(name))) fail("invalid_principal_name");
   if (value.runtimeLogin === value.migrationLogin || value.runtimeLogin === value.bootstrapLogin
     || value.restoreLogin !== undefined && [value.runtimeLogin, value.migrationLogin, value.bootstrapLogin].includes(value.restoreLogin)) fail("principal_alias_not_permitted");
@@ -125,6 +133,106 @@ function assertFlags(row: CatalogRow | undefined, expected: { login: boolean; in
     || a.connectionLimit !== -1 || a.validUntil !== null) fail("role_flags_differ_from_qualified_profile");
 }
 
+const CHECKOUT_ACCESS_SQL = String.raw`
+WITH login AS (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = $1),
+  selected_db AS (SELECT oid FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database()),
+  protected_schemas AS (
+    SELECT oid,nspname FROM pg_catalog.pg_namespace
+    WHERE pg_catalog.left(nspname,3) <> 'pg_' AND nspname <> 'information_schema'
+  )
+SELECT
+  EXISTS (SELECT 1 FROM pg_catalog.pg_shdepend d WHERE d.refobjid = r.oid
+    AND d.refclassid = 'pg_catalog.pg_authid'::pg_catalog.regclass AND d.deptype = 'o') AS owns_objects,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s WHERE s.setrole = r.oid) AS has_defaults,
+  pg_catalog.has_database_privilege(r.oid,db.oid,'CONNECT')
+    AND pg_catalog.has_schema_privilege(r.oid,'public','USAGE') AS can_connect,
+  pg_catalog.has_database_privilege(r.oid,db.oid,'CREATE,TEMP')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
+    OR EXISTS (SELECT 1 FROM protected_schemas n WHERE n.nspname <> 'public'
+      AND pg_catalog.has_schema_privilege(r.oid,n.oid,'USAGE')) AS has_ddl,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_parameter_acl a
+    WHERE pg_catalog.has_parameter_privilege(r.oid,a.parname,'SET,ALTER SYSTEM')) AS has_parameter_access,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN protected_schemas n ON n.oid = c.relnamespace
+    WHERE CASE WHEN c.relkind = 'S' THEN pg_catalog.has_sequence_privilege(r.oid,c.oid,'USAGE,SELECT,UPDATE')
+      WHEN c.relkind IN ('r','p','v','m','f') THEN
+        pg_catalog.has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        OR pg_catalog.has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES') ELSE false END) AS has_data,
+  ARRAY(SELECT pg_catalog.format('%I.%I(%s)',n.nspname,p.proname,
+    pg_catalog.replace(pg_catalog.oidvectortypes(p.proargtypes),', ', ','))
+    FROM pg_catalog.pg_proc p JOIN protected_schemas n ON n.oid = p.pronamespace
+    WHERE (p.prosecdef OR p.proacl IS NOT NULL)
+      AND pg_catalog.has_function_privilege(r.oid,p.oid,'EXECUTE')
+      AND pg_catalog.has_schema_privilege(r.oid,n.oid,'USAGE')) AS routines,
+  ARRAY(SELECT pg_catalog.format('%I.%I(%s)',n.nspname,p.proname,
+    pg_catalog.replace(pg_catalog.oidvectortypes(p.proargtypes),', ', ','))
+    FROM pg_catalog.pg_proc p JOIN protected_schemas n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proconfig = ARRAY['search_path=pg_catalog, pg_temp']) AS canonical_paths
+FROM login r CROSS JOIN selected_db db`;
+
+const checkoutRoutineIdentity = (row: CatalogRow, args: readonly string[]) => `${row.schema}.${row.name}(${args.join(",")})`;
+const checkoutRoutines = new Set<string>(checkoutOwnerRoutines);
+type CheckoutAccess = { owns_objects: boolean; has_defaults: boolean; can_connect: boolean; has_ddl: boolean;
+  has_data: boolean; has_parameter_access: boolean; routines: string[]; canonical_paths: string[] };
+
+async function checkCheckoutOwner(client: PoolClient, rows: readonly CatalogRow[], applied: readonly Applied[], migrationLogin: string): Promise<boolean> {
+  const grant = applied.find(row => checkoutOwnerGrantPath.test(row.file));
+  if (grant) {
+    const definitions = applied.filter(row => checkoutOwnerDefinitionPath.test(row.file));
+    const [definition] = definitions;
+    if (definitions.length !== 1 || !definition || definition.position <= 0 || definition.position >= grant.position
+      || grant.sha256 !== checkoutOwnerGrantDigest(definition.file, definition.sha256)) {
+      checkoutAclMismatch(grant.file);
+    }
+  }
+  const login = rows.find(row => row.kind === "role" && row.name === checkoutOwnerLogin);
+  if (!login) {
+    if (grant) checkoutLoginUnready("Provision the dedicated host login and verify the handoff.");
+    return false;
+  }
+  try { assertFlags(login, { login: true, inherit: false, superuser: false, elevated: false }); }
+  catch { checkoutLoginUnready("Correct the login flags and verify the handoff."); }
+  const facts = (await client.query<CheckoutAccess>(CHECKOUT_ACCESS_SQL, [checkoutOwnerLogin])).rows[0];
+  if (!facts || facts.owns_objects !== false) checkoutLoginUnready("Transfer every object owned by the login across the cluster.");
+  if (facts.has_defaults !== false) checkoutLoginUnready("Reset role and per-database startup defaults for the login.");
+  if (facts.can_connect !== true) checkoutLoginUnready("Restore effective CONNECT and public schema USAGE.");
+  if (facts.has_ddl !== false) checkoutLoginUnready("Remove effective database TEMP or CREATE, schema CREATE, and other protected schema access.");
+  if (facts.has_data !== false || facts.has_parameter_access !== false) checkoutLoginUnready("Revoke effective data and privileged parameter access, including PUBLIC grants.");
+
+  const remaining = new Set(grant ? checkoutRoutines : []);
+  const definitions = new Set(remaining);
+  for (const signature of facts.routines) {
+    if (!grant || !checkoutRoutines.has(signature)) checkoutAclMismatch(signature);
+  }
+  for (const row of rows) {
+    if (row.kind === "role") continue;
+    const a = attributes(row);
+    if (row.kind === "role-membership" && [a.grantedRole, a.memberRole, a.grantorRole].includes(checkoutOwnerLogin)) {
+      checkoutLoginUnready(`Remove the membership of ${String(a.memberRole)} in ${String(a.grantedRole)} issued by ${String(a.grantorRole)}.`);
+    }
+    const direct = [a.owner, a.ownerRole, a.grantor, a.grantee].includes(checkoutOwnerLogin)
+      || row.kind === "policy" && Array.isArray(a.roles) && a.roles.includes(checkoutOwnerLogin);
+    if (row.kind === "function") {
+      const signature = checkoutRoutineIdentity(row, row.arguments);
+      if (grant && definitions.has(signature)) {
+        if (a.kind !== "f" || a.owner !== migrationLogin || a.securityDefiner !== true
+          || !facts.canonical_paths.includes(signature) || !facts.routines.includes(signature)) checkoutAclMismatch(signature);
+        definitions.delete(signature);
+      }
+    }
+    if (row.kind === "acl-grant" && a.targetClass === "routine") {
+      const signature = checkoutRoutineIdentity(row, row.arguments.slice(1, -5));
+      if (grant && checkoutRoutines.has(signature) && a.grantee !== migrationLogin) {
+        if (a.grantee !== checkoutOwnerLogin || a.grantor !== migrationLogin || a.privilege !== "execute"
+          || a.isGrantable !== false || !remaining.delete(signature)) checkoutAclMismatch(signature);
+        continue;
+      }
+    }
+    if (direct) checkoutLoginUnready(`Remove the additional catalog access on ${row.name}.`);
+  }
+  if (remaining.size || definitions.size) checkoutAclMismatch([...remaining, ...definitions][0]!);
+  return grant !== undefined;
+}
+
 async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresInstallation, applied: readonly Applied[], lockName: string): Promise<CheckedCatalog> {
   assertQualifiedPostgresSelection(selection);
   const facts = (await client.query<SessionFacts>(SESSION_FACTS_SQL, [selection.runtimeLogin, selection.restoreLogin ?? null, lockName])).rows[0];
@@ -141,7 +249,6 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
     || facts.bootstrap_login !== selection.bootstrapLogin || facts.database_owner !== selection.migrationLogin) fail("actual_login_or_database_owner_mismatch");
   if (typeof facts.server_version_num !== "number" || Math.trunc(facts.server_version_num / 10_000) !== 16) fail("requires_qualified_postgresql_16_profile");
   if (facts.session_lock_held !== true) fail("migration_session_lock_not_held");
-  if (facts.replication_role !== "origin" || facts.runtime_unsafe !== false || facts.restore_unsafe !== false || facts.unsafe_replication_default !== false) fail("runtime_ddl_or_replication_capability_unsafe");
   if (facts.default_privileges_exist !== false) fail("qualified_profile_requires_canonical_default_privileges");
   if (facts.runtime_setting !== selection.runtimeLogin || facts.mode_setting !== selection.roleMode
     || (facts.restore_setting ?? "") !== (selection.restoreLogin ?? "")) fail("startup_binding_transport_mismatch");
@@ -150,6 +257,8 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
   if (applied.length > 0 && applied[0]!.file !== BASELINE) fail("wrong_generation_prefix");
   if (applied.some(({ file }) => file === IMPORT) && selection.restoreLogin === undefined) fail("retained_import_requires_restore_login");
   const rows = await readSelectedCatalogRowsForQualifiedInstall(client);
+  const checkoutGranted = await checkCheckoutOwner(client, rows, applied, selection.migrationLogin);
+  if (facts.replication_role !== "origin" || facts.runtime_unsafe !== false || facts.restore_unsafe !== false || facts.unsafe_replication_default !== false) fail("runtime_ddl_or_replication_capability_unsafe");
   // Preserve the existing catalog parser's identity/ACL/role consistency checks.
   selectedCatalogRowsPayloadForQualifiedInstall(rows);
   const roles = new Map(rows.filter(row => row.kind === "role").map(row => [row.name, row]));
@@ -179,7 +288,9 @@ async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresIn
     const a = attributes(role);
     if (a.login !== false || a.superuser !== false || ["createRole", "createDb", "replication", "bypassRls"].some(key => a[key] !== false)) fail("predefined_role_elevated");
   }
-  const protectedNames = new Set([...GROUPS, ...PREDEFINED, ...(publicationInstalled ? [PUBLICATION_LOGIN] : []), selection.migrationLogin, selection.bootstrapLogin, selection.runtimeLogin, ...(selection.restoreLogin === undefined ? [] : [selection.restoreLogin])]);
+  const protectedNames = new Set([...GROUPS, ...PREDEFINED, ...(publicationInstalled ? [PUBLICATION_LOGIN] : []),
+    ...(checkoutGranted ? [checkoutOwnerLogin] : []), selection.migrationLogin, selection.bootstrapLogin, selection.runtimeLogin,
+    ...(selection.restoreLogin === undefined ? [] : [selection.restoreLogin])]);
   for (const [name, role] of roles) if (!protectedNames.has(name)) {
     const a = attributes(role);
     if (name.startsWith("pg_")) fail("unsupported_predefined_role");
@@ -308,11 +419,13 @@ export function assertQualifiedAdminPostgresSelection(input: QualifiedAdminPostg
   if (JSON.stringify(Object.keys(input).sort()) !== JSON.stringify(keys)) refuse("invalid_selection_keys");
   const names = [input.migrationLogin, input.bootstrapLogin, input.runtimeLogin, input.restoreLogin,
     ...(input.roleMode === "operator-provisioned" ? [input.operatorLogin] : [])];
+  if (names.includes(checkoutOwnerLogin)) checkoutLoginUnready("Use a distinct installation principal.");
   if (names.some(name => typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/u.test(name)
     || name.toUpperCase() === "PUBLIC" || name.startsWith("pg_") || groups.includes(name as typeof groups[number]))) refuse("invalid_principal_name");
   if (new Set(names).size !== names.length) refuse("principal_alias_not_permitted");
   if (input.trustedControlPlane !== undefined) {
     const plane = input.trustedControlPlane;
+    if (Array.isArray(plane?.roleNames) && plane.roleNames.includes(checkoutOwnerLogin)) checkoutLoginUnready("Use distinct trusted control-plane principals.");
     if (!plane || typeof plane !== "object" || Array.isArray(plane)
       || JSON.stringify(Object.keys(plane)) !== JSON.stringify(["roleNames"])
       || !Array.isArray(plane.roleNames) || plane.roleNames.length === 0 || plane.roleNames.length > 64
@@ -443,8 +556,6 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
     || selection.trustedControlPlane === undefined && facts.bootstrap_login !== selection.bootstrapLogin) refuse("actual_login_or_owner_mismatch");
   if (typeof facts.server_version_num !== "number" || Math.trunc(facts.server_version_num / 10_000) !== 16) refuse("postgresql_16_required");
   if (facts.session_lock_held !== true) refuse("migration_session_lock_not_held");
-  if (facts.replication_role !== "origin" || facts.runtime_unsafe !== false || facts.restore_unsafe !== false
-    || facts.unsafe_replication_default !== false) refuse("runtime_persistent_ddl_or_replication_unsafe");
   if (facts.default_privileges_exist !== false) refuse("canonical_default_privileges_required");
   if (facts.runtime_setting !== selection.runtimeLogin || facts.restore_setting !== selection.restoreLogin
     || facts.mode_setting !== selection.roleMode) refuse("startup_binding_mismatch");
@@ -462,6 +573,9 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
   if (facts.ledger_exists !== true && facts.ledger_exists !== false) refuse("malformed_ledger_observation");
   if (facts.ledger_exists === true && (applied.length === 0 || facts.ledger_owner !== selection.migrationLogin)) refuse("empty_or_differently_owned_ledger");
   const rows = await readSelectedCatalogRowsForQualifiedInstall(client);
+  const checkoutGranted = await checkCheckoutOwner(client, rows, applied, selection.migrationLogin);
+  if (facts.replication_role !== "origin" || facts.runtime_unsafe !== false || facts.restore_unsafe !== false
+    || facts.unsafe_replication_default !== false) refuse("runtime_persistent_ddl_or_replication_unsafe");
   selectedCatalogRowsPayloadForQualifiedInstall(rows);
   const roles = new Map(rows.filter(row => row.kind === "role").map(row => [row.name,row]));
   if (selection.trustedControlPlane === undefined) assertFlags(roles.get(selection.bootstrapLogin), {login:true,inherit:true,superuser:true,elevated:true});
@@ -479,7 +593,8 @@ async function checkedQualifiedAdminCatalog(client: PoolClient, selection: Quali
     const a = attributes(row);
     if (a.login !== false || a.superuser !== false || ["createRole","createDb","replication","bypassRls"].some(key => a[key] !== false)) refuse("predefined_role_elevated");
   }
-  const protectedNames = new Set([...GROUPS,...PREDEFINED,selection.migrationLogin,selection.bootstrapLogin,selection.runtimeLogin,selection.restoreLogin,...(operator ? [operator] : [])]);
+  const protectedNames = new Set([...GROUPS,...PREDEFINED,selection.migrationLogin,selection.bootstrapLogin,selection.runtimeLogin,selection.restoreLogin,
+    ...(operator ? [operator] : []), ...(checkoutGranted ? [checkoutOwnerLogin] : [])]);
   const controlPlaneNames = new Set(selection.trustedControlPlane?.roleNames ?? []);
   if (selection.trustedControlPlane && facts.bootstrap_login !== selection.bootstrapLogin
     && !controlPlaneNames.has(String(facts.bootstrap_login))) refuse("control_plane_root_undeclared");
