@@ -195,6 +195,14 @@ Check availability: `npx --no -- openlup catalogue project --trusted-packs ./own
 To check pack references, list the key and version in `subscriptionProfiles`
 and use the same `subscriptionProfileRef` on the product type.
 
+Include `subscriptionProfileDefinitions` to opt into native installation
+checks. List at least one exact reference and list each reference once.
+Declare each new profile version once, and include its exact key and version
+in `subscriptionProfiles`. Use `subscriptionProfileDefinitions: []` when
+every listed version is already installed. Omit the field to keep a legacy
+reference-only pack. Offline conformance checks declarations and pack
+membership. The installer checks which versions exist in the store.
+
 Validate a complete declaration with `validateCatalogSubscriptionProfile`
 from `@openlup/core/catalog`. Supply a profile key and version, distinct
 `allowedCadences`, a versioned `policyRef`, and a lowercase SHA-256
@@ -205,8 +213,22 @@ hex `policyDigest`. Each fixed-day choice uses
 
 On refusal, use the field path and remedy in `issue`. For a valid declaration,
 pass the returned profile to `canonicalCatalogSubscriptionProfileJson` and hash
-the UTF-8 bytes with SHA-256 to derive its declaration digest. The profile and
-policy digest pin different inputs.
+the UTF-8 bytes with SHA-256 to derive its declaration digest. The installer
+does this for each declaration. The profile and policy digests pin different
+inputs. If the canonical pack manifest exceeds 1,048,576 UTF-8 bytes, split
+the profile declarations across pack versions or packs.
+
+Capture a connected store before opting in; after a profile receipt exists, capture refuses until RS-1.
+After applying the complete native catalogue, roll forward from a legacy
+reference-only pack by issuing a new pack version. If the old pack listed
+`p@1` without declaring it, keep `p@1` on its original type, list the versions
+the new pack needs, and declare `p@1` and any new versions that are absent
+from the store. The first pack to install each declaration owns its receipt.
+An identical re-declaration reuses that receipt. Use a new profile version
+to change the declaration. The legacy pack can still replay its original
+receipt.
+
+Native cadence guards still decide whether a cadence can be written.
 
 ## Upgrade a definition
 

@@ -1,12 +1,14 @@
 import { canonicalizeCatalogQuantity, convertCatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
 import {
-  CATALOG_CONFORMANCE_RULES, catalogPackIssues, catalogProductTypeIssues, catalogProductTypeRefIssues,
+  CATALOG_CONFORMANCE_RULES, catalogProductTypeIssues, catalogProductTypeRefIssues,
   validateCatalogAttributes, prepareCatalogAttributeProjection, canonicalizeCatalogCombinationV2,
   validateCatalogCombinationChangesV2, CatalogCombinationError,
   catalogDraftPayloadSchema, catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema,
   createCatalogProductTypeRegistry,
-  type CatalogConformanceCode, type CatalogPackInput,
+  type CatalogConformanceCode, type CatalogDefinitionIssue, type CatalogPackInput,
 } from "../index.js";
+import { prepareCatalogPackManifest } from "../catalogPackManifest.js";
+import { inspectCatalogPack } from "../productTypeIssues.js";
 import { validateDraftFacts } from "../draftFacts.js";
 import { validateDraftAttributes } from "../attributeValues.js";
 import { combinationFindingPointer as pointer, skuIdPathErrors, validateDraftCombinations } from "../combinationOptions.js";
@@ -14,7 +16,7 @@ import { verifyCatalogRulesAtInstall } from "../publicationRules.js";
 import { renderPublicationIssue, type Issue } from "../publicationError.js";
 import type { CatalogConformanceFinding, CatalogConformanceReport, CatalogConformanceSubject } from "./contracts.js";
 
-const boundary = "Offline definitions, exact quantities, supplied v1–v3 drafts, attribute validation/projection preparation and V2 combination fixtures. Draft admission checks operation and price shape. Reference evidence, retained options and refusal records are fixture observations. Category graphs, tax intervals, cadence, promotion grammar, price execution and publication require other evidence. Installed versions, database references, listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied by the checker.";
+const boundary = "Offline definitions, subscription profile declarations, exact quantities, supplied v1–v3 drafts, attribute validation/projection preparation and V2 combination fixtures. Draft admission checks operation and price shape. Reference evidence, retained options and refusal records are fixture observations. Category graphs, tax intervals, cadence execution, promotion grammar, price execution and publication require other evidence. Installed versions, database references, listing capacity, publication races and legal rate correctness remain unobserved. PASS grants no installation, migration, publication or activation authority. No database, network, seed or publish path is supplied by the checker.";
 const command = "npx --no -- openlup catalogue check --packs ./owned/catalogue.json --json";
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const closed = (value: unknown, keys: readonly string[]): boolean => object(value) && Object.keys(value).every(key => keys.includes(key));
@@ -90,12 +92,13 @@ export async function runCatalogExtensionConformance(jsonText: string): Promise<
 async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, Validator>): Promise<CatalogConformanceReport> {
   const findings: CatalogConformanceFinding[] = [];
   let unavailable = false, violated = false, recheck = command;
-  function add(issue: string | Issue, path: string, fixture = "", requiredEvidence = false): void {
+  function add(issue: string | Issue | CatalogDefinitionIssue, path: string, fixture = "", requiredEvidence = false): void {
     const code = typeof issue === "string" ? issue : issue.code;
-    const adopterIssue = typeof issue !== "string" && issue.kind === "adopterRule" ? issue : undefined;
+    const adopterIssue = typeof issue !== "string" && "kind" in issue && issue.kind === "adopterRule" ? issue : undefined;
     const rule = !adopterIssue && Object.hasOwn(CATALOG_CONFORMANCE_RULES, code)
       ? CATALOG_CONFORMANCE_RULES[code as CatalogConformanceCode] : CATALOG_CONFORMANCE_RULES.draft_payload_invalid;
-    const fix = adopterIssue ? renderPublicationIssue({ ...adopterIssue, path }).message : rule.fix;
+    const fix = adopterIssue ? renderPublicationIssue({ ...adopterIssue, path }).message
+      : (typeof issue !== "string" && "fix" in issue ? issue.fix : undefined) ?? rule.fix;
     if (requiredEvidence) unavailable = true; else violated = true;
     findings.push({ code, severity: rule.severity, path, fixture, observed: `Owner check reported ${code}.`,
       cause: rule.rule, fix, recipe: rule.recipe, recheck,
@@ -173,10 +176,19 @@ async function checkSubject(jsonText: string, validators?: ReadonlyMap<string, V
       return { ...type, validateContent: validators ? callback : () => [] };
     }) } as CatalogPackInput : entry.pack as CatalogPackInput;
     if (executableField) continue;
-    const issues = await owner(`${at}/pack`, () => catalogPackIssues(pack));
-    if (!issues) continue;
-    issues.forEach(issue => add(issue.code, `${at}/pack${issue.path}`));
+    const inspected = await owner(`${at}/pack`, () => inspectCatalogPack(pack));
+    if (!inspected) continue;
+    const { issues, profiles } = inspected;
+    issues.forEach(issue => add(issue, `${at}/pack${issue.path}`));
     if (issues.length) continue;
+    if (profiles !== undefined) {
+      const prepared = await owner(`${at}/pack`, () => prepareCatalogPackManifest(pack, profiles));
+      if (!prepared) continue;
+      if ("issue" in prepared) {
+        add(prepared.issue, `${at}/pack${prepared.issue.path}`);
+        continue;
+      }
+    }
     if (validators) verifyCatalogRulesAtInstall(pack);
     pack.types.forEach((type, i) => { allTypes.push(type); typePaths.push(`${at}/pack/types/${i}`); });
     const registry = await owner(`${at}/pack/types`, () => createCatalogProductTypeRegistry(pack.types));

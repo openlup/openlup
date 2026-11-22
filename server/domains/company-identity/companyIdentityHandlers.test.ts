@@ -30,8 +30,8 @@ describe("company identity lookup handler", () => {
     const lookupCompanyIdentity = vi.fn().mockResolvedValue(response());
     const handler = createCompanyIdentityLookupHandler({ lookupPort: { lookupCompanyIdentity } });
 
-    await handler(request("5260001246"), createResponse());
-    await handler(request("5260001246"), createResponse());
+    await handler(request("9876543210"), createResponse());
+    await handler(request("9876543210"), createResponse());
 
     expect(lookupCompanyIdentity).toHaveBeenCalledTimes(1);
   });
@@ -64,7 +64,7 @@ describe("company identity lookup handler", () => {
   });
 });
 
-function request(identifierValue = "1181590588"): VercelRequest {
+function request(identifierValue = "1234563218"): VercelRequest {
   return {
     method: "POST",
     query: {},
@@ -86,7 +86,7 @@ function response() {
     company: {
       country: "PL",
       identifierKind: "pl_nip",
-      identifierValue: "1181590588",
+      identifierValue: "1234563218",
       legalName: "openlup Sp. z o.o.",
       registeredAddress: {
         line1: "Testowa 1",

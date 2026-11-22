@@ -524,6 +524,8 @@ policy. Connected-store restore accepts the current qualified inventory and the
 admitted predecessor inventories from before publication commands, the checkout
 attempt ledger, governed catalogue lifecycle and catalogue accepted references.
 Conversion reproduces the retained rows an in-place upgrade would produce.
+It also accepts profile-free packets from the pinned inventories immediately
+before subscription profile receipts. Those packets use the current shape.
 Earlier captures report the edit quote table as empty because capture refused
 when it contained rows. New captures carry those quotes. A source schema change
 that cannot be reproduced by additive conversion, such as a dropped or retyped
@@ -553,6 +555,19 @@ inserts immutable versions on a pristine target; normal UPDATE and DELETE remain
 refused by the definition trigger. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for explicit
 install executors, readiness observations and the unbound write guard.
+
+The native [subscription profile forward](../../db/platform/migrations/20261124230000_subscription_profiles.sql)
+adds owner-only receipts. Each key and version belongs to the first pack that
+installed its declaration. An identical declaration can be reused by a later
+pack. PostgreSQL binds the identity and SHA-256 digest to the stored bytes.
+The installer owns canonical form and the existing native cadence guards
+still govern subscription writes.
+
+Connected-store capture refuses a store that has subscription profile receipts
+with `subscription_profile_receipts_unsupported`. This check runs in the
+validated read-only snapshot before row collection or size checks. A store with
+reference-only catalogue receipts can still transfer. Wait for connected-store
+restore support for subscription profile receipts (RS-1).
 
 Managed-to-native retained transfer initializes only absent product `type_key`
 and `type_version` fields to NULL. Supplied values, including explicit NULLs,

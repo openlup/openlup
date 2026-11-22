@@ -21,7 +21,7 @@ describe("test accounting provider", () => {
       providerInvoiceId: "test_inv_ORDER-123",
       providerInvoiceNumber: "TEST/FV/2026/ORDER-123",
       raw: {
-        provider: "fakturownia_test",
+        provider: "accounting_test",
         mode: "test",
         documentKind: "b2b_vat",
       },
@@ -34,7 +34,7 @@ describe("test accounting provider", () => {
     await expect(createTestAccountingProvider().getInvoiceKsefStatus?.("test_inv_ORDER-1")).resolves.toEqual({
       ksefStatus: "not_submitted",
       ksefNumber: null,
-      raw: { provider: "fakturownia_test", mode: "test" },
+      raw: { provider: "accounting_test", mode: "test" },
     });
   });
 });

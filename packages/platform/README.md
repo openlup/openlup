@@ -105,9 +105,10 @@ The convenience factory also retains `poolFactory`, `root` and
 compatibility. Supplying a pool factory retains responsibility for startup
 options and pool lifetime. These are trusted host seams, not sandbox boundaries.
 
-The selection/validator in `src/migrations/catalog.ts` is an exact generated
-copy of the source tooling owner, checked by the same gate: source policy tools
-run before workspace build output exists. Do not edit the copy.
+The selection/validator in `src/migrations/catalog.ts` is a generated copy with
+one generated-from header line followed by the source tooling owner's exact
+bytes, checked by the same gate: source policy tools run before workspace build
+output exists. Do not edit the copy.
 `sql/manifest.json` is generated from the canonical source manifest and its
 issued SQL, following the outbox asset pattern. Do not edit it or its SQL copies.
 The required installed-consumer gate refuses drift. In a source checkout, run
@@ -1572,6 +1573,14 @@ receipt replays for the same pack version and manifest digest. Reusing a pack
 version with different bytes or redefining an installed type version refuses.
 Retired tax-class keys stay retired; custom units remain definition JSONB.
 Installation never publishes or binds a runtime capability.
+
+Include `subscriptionProfileDefinitions` to opt into exact profile-version
+checks. Supply an empty array to reuse installed profiles. The first successful
+declaration owns its receipt, and an identical declaration in a later pack
+reuses it. A fresh opted-in install requires READ COMMITTED. Use
+`readInstalledCatalogSubscriptionProfile(executor, { key, version })` with the
+native migration-owner executor to read the exact profile and policy pins or
+receive `null`. Follow the [subscription profile upgrade path](../core/docs/guide/how-to/extend/catalogue-extension.md#subscription-profile).
 
 Products have nullable `type_key` and `type_version`: NULL means legacy and not
 mapped. Existing products, SKU codes, prices, documents and subscription references
@@ -3270,10 +3279,12 @@ later tax instant and compare the verified results with
 `compareTaxRecalculationProbe`.
 
 Call `verifyTaxQuoteRequest` for quotes and fiscal-validity requests and
-`verifyTaxQuoteResult` before using successful results. They check the integrity
-of the snapshots first and give one remedy per refusal code. Replay matching
-originals with their key and digests. Obtain fresh charge-time input under the
-original scope for validity. The port maps a verifier refusal to effect-free
+`verifyTaxQuoteResult` before using successful results. The verifiers check the
+integrity of a plain JSON copy first. Capture requests and results as plain
+data, pass those copies to the verifier and use them once verified. Each
+refusal has one fixed remedy per code and issue kind. Replay matching originals
+with their key and digests. Obtain fresh charge-time input under the original
+scope for validity. The port maps a verifier refusal to effect-free
 `tax_fiscal_validity_unavailable`.
 
 Use the `./tax/contracts` schemas for the field named by the JSON Pointer. An
@@ -3285,7 +3296,9 @@ Reduce the combined merchandise and delivery basis if the aggregate overflows.
 
 The quote request and the calculation evidence each have a 1 MiB snapshot limit.
 The complete fiscal-validity request has a 1 MiB limit, including its original
-request, evidence and current input. Result money is bounded by the decoder's
+request, evidence and current input. For `tax_invalid_input`, the remedy tells
+you whether to supply the documented value or reduce the canonical JSON size
+of the document named by the pointer. Result money is bounded by the decoder's
 count caps. The result envelope without evidence uses a plain JSON snapshot
 with no separate byte cap.
 

@@ -9,8 +9,8 @@ import { installObservedRequestContext } from "../../_lib/observability/requestC
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import type { CompanyIdentityCompany, CompanyIdentityLookupRequest, CompanyIdentityLookupResponse, CompanyIdentitySource } from "@openlup/platform/company-identity/contracts";
 
-const requestBody: CompanyIdentityLookupRequest = { country: referenceCompanyCountry, identifierKind: "pl_nip", identifierValue: "1181590588", purpose: "checkout_invoice" };
-const company: CompanyIdentityCompany = { country: referenceCompanyCountry, identifierKind: "pl_nip", identifierValue: "1181590588",
+const requestBody: CompanyIdentityLookupRequest = { country: referenceCompanyCountry, identifierKind: "pl_nip", identifierValue: "1234563218", purpose: "checkout_invoice" };
+const company: CompanyIdentityCompany = { country: referenceCompanyCountry, identifierKind: "pl_nip", identifierValue: "1234563218",
   legalName: "Example Supply", registeredAddress: { line1: "Example Road 1", postalCode: "10-001", city: "Example City", country: referenceCompanyCountry },
   registryStatus: "active", regon: "123456789", vatStatus: "active" };
 const source: CompanyIdentitySource = { providerKind: "example", status: "found", observedAt: "2026-01-01T00:00:00Z", evidenceHash: "sha256:example" };
