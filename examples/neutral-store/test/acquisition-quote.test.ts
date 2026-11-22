@@ -3,7 +3,7 @@ import { dispatchAction, pendingBindings } from '../host/bindings.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Pool } from 'pg';
-import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError } from '@openlup/platform/pricing';
+import { ACQUISITION_TERMS_CAPABILITY, selectAcquisitionTerms, AcquisitionTermsError, CommerceQuoteError, CommerceQuoteCatalogReadError } from '@openlup/platform/pricing';
 import { createPromotionQuoteAcceptance } from '@openlup/platform/promotions';
 import type { PromotionRow } from '@openlup/core/promo';
 import type { NeutralSkuEnvelopeV1 } from '@openlup/platform/catalog';
@@ -271,7 +271,18 @@ test('full-result admission covers exact/frozen unchanged base and add-ons, iden
 function exactCatalogRefusal(refusal: { code: string; path?: string; fix?: string }) {
   return (error: unknown) => {
     assert.ok(error instanceof Error);
-    assert.deepEqual({ ...error }, { name: 'CommerceQuoteCatalogReadError', ...refusal });
+    const proto = Object.getPrototypeOf(error);
+    if ('path' in refusal) {
+      assert.deepStrictEqual(Reflect.ownKeys(proto), ['constructor']);
+      assert.equal(proto.constructor.name, 'MixedProductDocumentError');
+      assert.equal(Object.getPrototypeOf(proto), CommerceQuoteCatalogReadError.prototype);
+    } else {
+      assert.equal(proto, CommerceQuoteCatalogReadError.prototype);
+    }
+    const actual = Object.fromEntries(Reflect.ownKeys(error)
+      .filter(key => key !== 'stack')
+      .map(key => [key, Reflect.get(error, key)]));
+    assert.deepStrictEqual(actual, { message: refusal.code, name: 'CommerceQuoteCatalogReadError', ...refusal });
     return true;
   };
 }
