@@ -268,6 +268,14 @@ test('full-result admission covers exact/frozen unchanged base and add-ons, iden
   assert.equal(writes,0);
 });
 
+function exactCatalogRefusal(refusal: { code: string; path?: string; fix?: string }) {
+  return (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.deepEqual({ ...error }, { name: 'CommerceQuoteCatalogReadError', ...refusal });
+    return true;
+  };
+}
+
 function documentFixture() {
   const config = Object.values(configurations)[0]!;
   const { id: revisionId, document: gramDocument } = editorDocuments(config)[0]!;
@@ -306,8 +314,9 @@ test('quote and sized verify the same mixed document for its gram selection', as
   const { gram, document, envelope, mixed, quote, sized } = documentFixture();
   await quote(document, envelope, mixed);
   assert.deepEqual(sized(document, mixed), gram);
-  await assert.rejects(quote(document, envelope), { code: 'catalog_document_schema_invalid' });
-  assert.throws(() => sized(document), { code: 'catalog_document_schema_invalid' });
+  const refusal = exactCatalogRefusal({ code: 'catalog_document_schema_invalid' });
+  await assert.rejects(quote(document, envelope), refusal);
+  assert.throws(() => sized(document), refusal);
 });
 
 type Fixture = ReturnType<typeof documentFixture>;
@@ -339,8 +348,8 @@ for (const [name, mutate] of Object.entries(badEvidence)) test(`quote and sized 
   const fixture = documentFixture();
   mutate(fixture);
   const { document, envelope, mixed, quote, sized } = fixture;
-  const refusal = { code: 'catalog_document_schema_invalid', path: 'documentRevision',
-    fix: 'Recover the admitted document and its revision.' };
+  const refusal = exactCatalogRefusal({ code: 'catalog_document_schema_invalid', path: 'documentRevision',
+    fix: 'Recover the admitted document and its revision.' });
   await assert.rejects(quote(document, envelope, mixed), refusal);
   assert.throws(() => sized(document, mixed), refusal);
 });
@@ -348,14 +357,15 @@ for (const [name, mutate] of Object.entries(badEvidence)) test(`quote and sized 
 test('both readers preserve their legacy refusal order and verify the original mixed digest first', async () => {
   const { gram, gramDocument, sibling, document, documentRevision, envelope, mixed, quote, sized } = documentFixture();
   Object.assign(sibling.physical, { extra: true });
-  const digestRefusal = { code: 'catalog_document_digest_mismatch', path: 'documentRevision.digest',
-    fix: 'Replay the original document bytes and digest.' };
+  const digestRefusal = exactCatalogRefusal({ code: 'catalog_document_digest_mismatch', path: 'documentRevision.digest',
+    fix: 'Replay the original document bytes and digest.' });
   await assert.rejects(quote(document, envelope, mixed), digestRefusal);
   assert.throws(() => sized(document, mixed), digestRefusal);
   const malformed = { ...gramDocument, variants: [{ ...gram, demandPerUnit: 0 }] };
-  await assert.rejects(quote(malformed, envelope), { code: 'catalog_document_schema_invalid' });
-  assert.throws(() => sized(malformed), { code: 'catalog_document_schema_invalid' });
-  await assert.rejects(quote(gramDocument, envelope), { code: 'catalog_document_digest_mismatch' });
+  const legacySchemaRefusal = exactCatalogRefusal({ code: 'catalog_document_schema_invalid' });
+  await assert.rejects(quote(malformed, envelope), legacySchemaRefusal);
+  assert.throws(() => sized(malformed), legacySchemaRefusal);
+  await assert.rejects(quote(gramDocument, envelope), exactCatalogRefusal({ code: 'catalog_document_digest_mismatch' }));
   assert.throws(() => sized(gramDocument), /subscription_reprice_sized_catalog_facts_unreadable/u);
   documentRevision.digest = documentDigest(gramDocument);
   await quote(gramDocument, envelope);
