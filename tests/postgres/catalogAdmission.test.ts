@@ -15,8 +15,11 @@ let env: LifecycleInstallation;
 let issued: Graph;
 let clientId: string;
 let priceListId: string;
+let inactivePriceListId: string;
 let legacyId: string;
+let archivedId: string;
 const legacySku = "ARTICLE-LEGACY";
+const archivedSku = "ARTICLE-ARCHIVED";
 
 beforeAll(async () => {
   env = await lifecycleInstallation("qualified-v2");
@@ -30,7 +33,11 @@ beforeAll(async () => {
   legacyId = randomUUID();
   await env.owner.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,'legacy-article','Legacy article')", [legacyId]);
   await env.owner.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Legacy article')", [legacyId, legacySku]);
+  archivedId = (await env.owner.query(`INSERT INTO public.catalog_skus(product_id,sku,title,status,sellable_standalone)
+    VALUES($1,$2,'Archived article','archived',false) RETURNING id`, [legacyId, archivedSku])).rows[0]!.id;
   priceListId = (await env.owner.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES('Example','ZZ','XXX') RETURNING id")).rows[0]!.id;
+  inactivePriceListId = (await env.owner.query(`INSERT INTO public.price_lists(name,region_code,currency,status)
+    VALUES('Inactive candidate','ZZ','XXX','archived') RETURNING id`)).rows[0]!.id;
   await env.owner.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('settlement_region','ZZ'),('settlement_currency','XXX') ON CONFLICT(key) DO UPDATE SET value_text=EXCLUDED.value_text");
   await env.owner.query("SELECT public.commerce_capture_offer_policy_v2_legacy_baseline()");
   await env.owner.query(`INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,mode)
@@ -123,7 +130,7 @@ it("authenticates exact receipts, preserves historical replay and rejects change
 
 it("takes the actual products and price fences before bound evidence reads", async () => {
   const before = await counts();
-  const scope = { key: randomUUID(), clientId, skuIds: [issued.skuId], revisionIds: [issued.skuRevisionId], priceListId, timeoutMs: 1000 };
+  const scope = { key: randomUUID(), clientId, skuIds: [issued.skuId, archivedId], revisionIds: [issued.skuRevisionId], priceListId, timeoutMs: 1000 };
   await withCatalogAdmissionFence(env.owner, scope, async (db, atTime) => {
     const prices = pricing.createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db));
     const resolved = await prices.resolvePrice({ regionCode: "ZZ", currency: "XXX", channel: "D2C", mode: "one_time",
@@ -152,11 +159,12 @@ it("takes the actual products and price fences before bound evidence reads", asy
         { ...document.lineBindings[0]!, role: "addon" },
       ] } },
       { reason: "catalog_admission_price_context_required", priceContext: { ...context, channel: "B2B" } },
-      { reason: "catalog_admission_roster_archived", archive: true },
+      { reason: "catalog_admission_roster_archived", owner: { ...document, lineBindings: [
+        { sourceOrdinal: 1, skuId: archivedId, skuCode: archivedSku, mode: "one_time", quantity: 1, role: "core", source: "legacy" },
+      ] } },
     ];
-    for (const { reason, projection, owner = document, priceContext = context, archive } of controls) {
+    for (const { reason, projection, owner = document, priceContext = context } of controls) {
       await db.query("SAVEPOINT component_refusal");
-      if (archive) await db.query("UPDATE public.catalog_skus SET status='archived',sellable_standalone=false WHERE id=$1", [issued.skuId]);
       await expect(db.query("SELECT public.catalog_admission_accept($1,$2,$3,$4,$5)",
         [projection ?? document.reviewedProjection, owner, "one_time", priceContext, pricing.quoteDigest("catalog.owner-quote.v0", owner)]))
         .rejects.toMatchObject({ message: reason });
@@ -177,7 +185,7 @@ it("takes the actual products and price fences before bound evidence reads", asy
     });
     await Promise.all([
       writePrices("INSERT INTO public.price_lists(name,region_code,currency) VALUES('New match','ZZ','XXX')"),
-      writePrices("UPDATE public.price_lists SET status='active',valid_from=now() WHERE id=$1", [priceListId]),
+      writePrices("UPDATE public.price_lists SET status='active',valid_from=now() WHERE id=$1", [inactivePriceListId]),
       writePrices("INSERT INTO public.price_entries(price_list_id,variant_id,min_qty,unit_price_minor,mode) VALUES($1,$2,2,125,'one_time')",
         [priceListId, issued.skuId]),
     ].map(writer => expect(writer).rejects.toMatchObject({ code: "55P03" })));
