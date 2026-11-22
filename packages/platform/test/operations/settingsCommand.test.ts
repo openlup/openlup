@@ -20,11 +20,12 @@ const refusalPrefix = "commerce_setting_preview_";
 async function run(
   argv: string[],
   options: { stdin?: string; host?: Parameters<typeof runSettingsCommand>[2] } = {},
+  command = runSettingsCommand,
 ) {
   const write = vi.fn<(line: string) => void>();
   const readStdin = vi.fn(async () => options.stdin ?? "");
   const warn = vi.fn<(line: string) => void>();
-  const exit = await runSettingsCommand(argv, { write, warn, readStdin }, options.host);
+  const exit = await command(argv, { write, warn, readStdin }, options.host);
   expect(write).toHaveBeenCalledTimes(1);
   const output = write.mock.calls[0]![0];
   return { exit, output, readStdin, warnings: warn.mock.calls.flat() };
@@ -831,8 +832,33 @@ function boundParityHost(mode: typeof parityModes[number]): NonNullable<Paramete
   };
 }
 
-it("keeps N3a package invocations bytes and exits in both modes with no app, a healthy app or a throwing app", async () => {
-  const catalogue = listSettings({});
+type ParityCapture = {
+  outputs: [number, string][];
+  rows: Record<string, Record<"text" | "json", Record<typeof parityModes[number], number>>>;
+  packageData: Record<string, object>;
+};
+const parityCapture: ParityCapture = JSON.parse(readFileSync(new URL("./settingsBoundParity.main.json", import.meta.url), "utf8"));
+
+async function settingsParity() {
+  // Reopen the real settings implementation with the frozen package data at its file-read boundary.
+  vi.resetModules();
+  vi.doMock("node:fs", async (original) => {
+    const fs = await original<typeof import("node:fs")>();
+    return { ...fs, readFileSync: (path: Parameters<typeof readFileSync>[0], options: "utf8") => {
+      const name = path instanceof URL ? path.pathname.split("/").at(-1) : undefined;
+      return name !== undefined && Object.hasOwn(parityCapture.packageData, name)
+        ? JSON.stringify(parityCapture.packageData[name]) : fs.readFileSync(path, options);
+    } };
+  });
+  let read: typeof listSettings;
+  let command: typeof runSettingsCommand;
+  try {
+    ({ listSettings: read } = await import("../../src/operations/server/settingsRead.js"));
+    ({ runSettingsCommand: command } = await import("../../src/operations/server/settingsCommand.js"));
+  } finally {
+    vi.doUnmock("node:fs");
+  }
+  const catalogue = read({});
   if (!("entries" in catalogue)) throw new Error("Unable to read the package catalogue");
   const cases = [
     ["list"], ["list", "--goal", " "], ["list", "--goal", "qzxunique"], ["explain", "commerce_setting_unknown"],
@@ -843,11 +869,11 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
   const loadBroken = vi.fn(async () => { throw new Error("rejected\nedit"); });
   for (const json of [false, true]) for (const args of cases) {
     const argv = json ? [...args, "--json"] : args;
-    const { exit, output } = await run(argv);
+    const { exit, output } = await run(argv, {}, command);
     bytes.push([exit, output]);
     for (const load of [loadHealthy, loadBroken]) {
       load.mockClear();
-      const app = await run([...argv, ...appArgs], { host: checks(load) });
+      const app = await run([...argv, ...appArgs], { host: checks(load) }, command);
       const list = args[0] === "list" && exit === 0;
       expect(load).toHaveBeenCalledTimes(list ? 1 : 0);
       expect(app.exit, argv.join(" ")).toBe(exit);
@@ -888,11 +914,7 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
     .toBe("3ac9935d1eda74c1bcff0ae5219b6a3cd22d18e2c0db5a170f4a3525e3718a02");
 
   // The N3a fixture holds raw stdout and exit for each distinct connected or check outcome.
-  type Expected = {
-    outputs: [number, string][];
-    rows: Record<string, Record<"text" | "json", Record<typeof parityModes[number], number>>>;
-  };
-  const expected: Expected = JSON.parse(readFileSync(new URL("./settingsBoundParity.main.json", import.meta.url), "utf8"));
+  const expected = parityCapture;
   const bound = [
     ...catalogue.entries.map(entry => ({
       args: ["show", entry.key, ...parityArgs],
@@ -911,7 +933,7 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
       + cases.findIndex(row => row[0] === "show" && row[1] === args[1])]!;
     for (const mode of parityModes) {
       const argv = [...args, ...(mode === "no app" ? [] : appArgs), ...outputArgs];
-      const { exit, output, warnings } = await run(argv, { host: boundParityHost(mode) });
+      const { exit, output, warnings } = await run(argv, { host: boundParityHost(mode) }, command);
       let baselineOutput = output;
       if (fixture === "check" && mode !== "no app") {
         const addressPolicy = "shipping.addressPolicy";
@@ -931,7 +953,45 @@ it("keeps N3a package invocations bytes and exits in both modes with no app, a h
       expect(warnings).toEqual([]);
     }
   }
-});
+
+  const liveData = JSON.parse(readFileSync(new URL("../../settings-catalog.json", import.meta.url), "utf8")) as {
+    entries: { key: string; kind: string }[];
+  };
+  const discovery = listSettings({});
+  expect("entries" in discovery && discovery.entries.map(({ key }) => key)).toEqual(liveData.entries.map(({ key }) => key));
+  const checkKeys = liveData.entries.filter(({ kind }) => kind === "code" || kind === "installed").map(({ key }) => key);
+  const representatives = bound.filter(({ args, fixture }) => fixture !== undefined &&
+    (args[0] === "check" || args[1] === key || args[1] === "checkout_recovery_reminders" && args[0] === "show" ||
+      args[1] === "catalog.bundleAvailabilityPolicy" && args[0] === "preview"));
+  for (const format of ["text", "json"] as const) for (const mode of parityModes) {
+    const flags = [...(mode === "no app" ? [] : appArgs), ...(format === "json" ? ["--json"] : [])];
+    const host = boundParityHost(mode);
+    const offline = await run(["show", key, ...flags], { host });
+    expect([offline.exit, offline.output]).toEqual(bytes[(format === "json" ? cases.length : 0)
+      + cases.findIndex(args => args[0] === "show" && args[1] === key)]);
+    for (const { args, fixture } of representatives) {
+      const [expectedExit, expectedOutput] = expected.outputs[expected.rows[fixture!]![format][mode]]!;
+      const { exit, output, warnings } = await run([...args, ...flags], { host });
+      let representative = output;
+      if (fixture === "check" && mode !== "no app") {
+        const pinned = JSON.parse(expected.outputs[expected.rows.check!.json[mode]]![1]) as { rows: { key: string }[] };
+        const pinnedKeys = new Set(pinned.rows.map(({ key }) => key));
+        if (format === "json") {
+          const result = JSON.parse(output) as { rows: { key: string }[] };
+          expect(result.rows.map(({ key }) => key)).toEqual(checkKeys);
+          representative = document({ ...result, rows: result.rows.filter(({ key }) => pinnedKeys.has(key)) });
+        } else {
+          const blocks = output.split(/(?=^\S)/mu);
+          const keyOf = (block: string) => /^(\S+): file /u.exec(block)?.[1];
+          expect(blocks.map(keyOf).filter(Boolean)).toEqual(checkKeys);
+          representative = blocks.filter(block => !keyOf(block) || pinnedKeys.has(keyOf(block)!)).join("");
+        }
+      }
+      expect([exit, representative], `${mode}: ${args.join(" ")}`).toEqual([expectedExit, expectedOutput]);
+      expect(warnings).toEqual([]);
+    }
+  }
+}
 
 it.each([
   [["list"], [giftKey, feeKey], undefined, 0],
@@ -1339,3 +1399,6 @@ it("delegates MCP tool calls to host.runTool when supplied", async () => {
     { jsonrpc: "2.0", id: 2, result: { isError: true, structuredContent: JSON.parse(delegatedRefusal), content: [{ type: "text", text: delegatedRefusal.trimEnd() }] } },
   ]);
 });
+
+// This case resets the module cache to replay the fixed package-data capture.
+it("keeps N3a and current package invocation bytes and exits with no app, a healthy app or a throwing app", settingsParity);

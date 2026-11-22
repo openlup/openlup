@@ -1,5 +1,9 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { env as processEnvironment } from "node:process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:child_process", async (original) => {
@@ -12,6 +16,7 @@ import {
   parseNameStatus, main, neutralityVerdict, releasedPackageSource, separateTestFiles, shortExpiries,
   sqlTreeChanges, testDiscoveryVerdict, vitestFiles, type AddedLine, type Change,
 } from "./preflight.ts";
+import { carrierLocale, carrierPlan, readReportOwners } from "./agent-review-landing.mjs";
 
 afterEach(() => {
   vi.mocked(execFileSync).mockReset();
@@ -24,6 +29,117 @@ const changed = (...paths: string[]): Change[] => paths.map((path) => ({ path, d
 const line = (text: string): AddedLine[] => [{ path: "scripts/example.test.ts", line: 7, text }];
 // An injected clock; the window is measured from it, never from the real clock.
 const now = new Date("2040-01-01T00:00:00Z");
+
+it("refuses stale carriers in warm and cold checkouts and names unregistered public files", async () => {
+  const childProcess = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  const source = process.cwd();
+  const directory = mkdtempSync(join(tmpdir(), "openlup-fast-preflight-"));
+  const root = join(directory, "fixture");
+  const options = { cwd: root, env: { ...processEnvironment, ...carrierLocale }, encoding: "utf8" as const, timeout: 180000, maxBuffer: 16 * 1024 * 1024 };
+  const run = (bin: string, ...args: string[]) => childProcess.execFileSync(bin, args, options).trim();
+  const git = (...args: string[]) => run("git", ...args);
+  const path = (file: string) => join(root, file);
+  const put = (file: string, bytes: string) => writeFileSync(path(file), bytes);
+  const get = (file: string) => readFileSync(path(file), "utf8");
+  const commit = (message: string) => { git("add", "-A"); git("commit", "-qs", "-m", message); return git("rev-parse", "HEAD"); };
+  const seed = () => {
+    run("npm", "run", "build", "--workspace=@openlup/core");
+    run("npm", "run", "build", "--workspace=@openlup/platform");
+  };
+  const cold = () => {
+    for (const pkg of ["core", "outbox", "platform"]) for (const leaf of ["dist", ".tsbuildinfo-build"]) {
+      rmSync(path(`packages/${pkg}/${leaf}`), { recursive: true, force: true });
+    }
+  };
+  function snapshot() {
+    const index = readFileSync(path(".git/index"));
+    const hash = createHash("sha256");
+    for (const file of git("ls-files", "-z").split("\0").filter(Boolean)) {
+      hash.update(file + "\0").update(readFileSync(path(file))).update("\0");
+    }
+    return { index, tracked: hash.digest("hex") };
+  }
+  function fast(expected: string[], message?: string, remedy?: string) {
+    const state = snapshot();
+    const result = childProcess.spawnSync("npm", ["run", "preflight", "--", "--fast"], options);
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stdout + result.stderr).toBe(expected.length ? 1 : 0);
+    const verdict = JSON.parse(result.stdout.trimEnd().split("\n").at(-1)!);
+    expect(verdict, result.stdout + result.stderr).toEqual({ preflight: "fast", result: expected.length ? "fail" : "pass", head: git("rev-parse", "HEAD"), failed: expected });
+    if (message && remedy) expect(result.stdout).toContain(message).toContain(remedy);
+    expect(snapshot()).toEqual(state);
+    return verdict;
+  }
+  try {
+    childProcess.execFileSync("git", ["clone", "--shared", "--no-hardlinks", "-q", source, root], { timeout: 30000 });
+    for (const file of ["scripts/preflight.ts", "scripts/agent-review-landing.mjs", ...["core", "outbox", "platform"].map(pkg => `packages/${pkg}/scripts/api-contract.ts`)]) {
+      cpSync(join(source, file), path(file));
+    }
+    git("config", "user.name", "Fixture"); git("config", "user.email", "fixture@example.invalid");
+    git("config", "commit.gpgSign", "false"); git("config", "core.hooksPath", "/dev/null");
+    git("add", "-A"); git("commit", "--allow-empty", "-qs", "-m", "Prepare fast fixture");
+    const fork = git("rev-parse", "HEAD");
+    git("branch", "-f", "main", fork); git("remote", "set-url", "origin", ".");
+    git("update-ref", "refs/remotes/origin/main", fork);
+    run("npm", "ci", "--prefer-offline", "--no-audit", "--fund=false");
+    const reset = () => { git("checkout", "-q", "--detach", fork); cold(); };
+
+    reset();
+    fast([]);
+    for (const owner of ["core", "outbox", "platform"]) expect(existsSync(path(`packages/${owner}/dist`))).toBe(false);
+    seed();
+    const entry = "packages/platform/src/portability/index.ts";
+    const api = "packages/platform/api/portability.api.md";
+    put(entry, get(entry) + "\nexport const fixtureFreshness = 1;\n");
+    put("packages/platform/changes/fixture-freshness.md", "- Exercise the portability report owner.\n");
+    commit("Add the fixture export with its original report");
+    const apiCheck = () => fast(["api:check @openlup/platform"], `api:check @openlup/platform: FAIL ${api}`, "npm run api:update --workspace=@openlup/platform");
+    const warmApi = apiCheck();
+    expect(get("packages/platform/dist/portability/index.d.ts")).toContain("fixtureFreshness");
+    cold(); expect(apiCheck()).toEqual(warmApi);
+    expect(get("packages/platform/dist/portability/index.d.ts")).toContain("fixtureFreshness");
+    run("npm", "run", "api:update", "--workspace=@openlup/platform"); commit("Regenerate the API report"); fast([]);
+
+    reset();
+    seed();
+    const dataPath = "packages/platform/src/inventory/settings-data.json";
+    const entries: { kind: string }[] = JSON.parse(get(dataPath));
+    put(dataPath, JSON.stringify([...entries, { ...entries.find(entry => entry.kind === "invariant"), key: "inventory.fixtureFreshness", goal: "Describe the freshness fixture." }], null, 2) + "\n");
+    put("packages/platform/changes/fixture-freshness.md", "- Exercise the settings catalogue owner.\n");
+    commit("Add the fixture setting with its original catalogue");
+    const settingsCheck = () => fast(["settings-catalogue"], "settings-catalogue: FAIL packages/platform/settings-catalog.json is stale", "node scripts/settings-catalogue.ts --write");
+    const warmSettings = settingsCheck();
+    cold(); expect(settingsCheck()).toEqual(warmSettings);
+    run(process.execPath, "scripts/settings-catalogue.ts", "--write"); commit("Regenerate the settings carriers"); fast([]);
+
+    reset();
+    const extra = "packages/platform/api/fixture-freshness.md";
+    put(extra, "# Fixture freshness\n"); commit("Add a public path before classification");
+    fast(["publication"], `extra ${extra}`, "Add the reviewed classification in config/openlup-publication-catalog.json.");
+    const catalogue = "config/openlup-publication-catalog.json";
+    const registration: { publicPaths: { path: string; class: string }[] } = JSON.parse(get(catalogue));
+    registration.publicPaths.push({ path: extra, class: "public-output" });
+    registration.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+    put(catalogue, JSON.stringify(registration, null, 2) + "\n"); commit("Register the fixture path"); fast([]);
+    console.info("D3 fast refusal: warm and cold API/settings verdicts match, all three independent remedies pass, tracked bytes and index unchanged");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}, 600000);
+
+it.each([
+  { path: "README.md", builds: [], reports: [], settings: false },
+  { path: "packages/outbox/src/index.ts", builds: ["core", "outbox"], reports: ["outbox"], settings: false },
+  { path: "packages/platform/api/portability.api.md", builds: ["core", "platform"], reports: ["platform"], settings: true },
+  { path: "packages/platform/src/inventory/settings-data.json", builds: ["core", "platform"], reports: [], settings: true },
+  { path: "packages/core/package.json", builds: ["core", "outbox", "platform"], reports: ["core", "outbox", "platform"], settings: true },
+  { path: "package-lock.json", builds: ["core", "outbox", "platform"], reports: ["core", "outbox", "platform"], settings: true },
+])("selects the dependency closure and check owners for $path", ({ path, builds, reports, settings }) => {
+  const plan = carrierPlan(readReportOwners(process.cwd()), [path]);
+  expect(plan.builds.map(({ name }) => name)).toEqual(builds.map(name => `@openlup/${name}`));
+  expect(plan.reports.map(({ name }) => name)).toEqual(reports.map(name => `@openlup/${name}`));
+  expect(plan.settings).toBe(settings);
+});
 
 describe("fast preflight", () => {
   it.each([
@@ -63,6 +179,7 @@ describe("fast preflight", () => {
     vi.mocked(spawnSync).mockImplementation(((bin, args, options) => {
       const call = `${bin} ${(args ?? []).join(" ")}`;
       calls.push(call);
+      if (bin === "git") expect(processEnvironment.GIT_OPTIONAL_LOCKS).toBe("0");
       if (bin === "npx") {
         expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
       }
@@ -101,12 +218,15 @@ describe("fast preflight", () => {
       "test expiries": "test expiries: skip no new or changed test files",
       gitleaks: "gitleaks: skip gitleaks is not on PATH; the required gitleaks job still scans the pull request",
       "guide-check": "guide-check: skip no guide or rule files changed",
+      carriers: `carriers: skip ${dirty ? "clean committed checkout required" : "no report or settings inputs changed"}`,
+      ...(dirty ? { "migration projection": "migration projection: skip clean committed checkout required" } : {}),
       "package-manifest": "package-manifest: skip no package manifests or config/openlup-packages.json changed",
     };
     expect(lines.filter((line) => !line.startsWith("    ")).map((line) => line.replace(/ \(\d+ s\)$/u, "")))
       .toEqual([
         "clean", "merge-clean", "neutrality", "ui-neutrality", "ast-grep", "ast-grep-hygiene",
-        "publication", "fragments", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
+        "publication", "carriers", "migration projection",
+        "fragments", "test dates", "test expiries", "gitleaks", "guide-check", "package-manifest", "dco",
       ].map((name) => skipLines[name] ?? `${name}: ${failures.includes(name) ? `FAIL ${reasons[name]}` : "ok"}`));
     expect(lines.filter((line) => line.startsWith("    "))).toEqual(
       failures.includes("publication") ? [conflict, increase, mismatch, closing].map((line) => `    ${line}`) : [],
@@ -220,6 +340,9 @@ describe("fast preflight", () => {
       if (call === "npm run packages:check -- --manifest-only") {
         expect(options?.env).toMatchObject({ npm_config_offline: "true", npm_config_update_notifier: "false" });
       }
+      if (/^npm run (?:build|api:check) --workspace=/u.test(call)) {
+        expect([options?.env?.GIT_OPTIONAL_LOCKS, options?.env?.LC_ALL, options?.env?.LANG]).toEqual(["0", "en_US.UTF-8", "en_US.UTF-8"]);
+      }
       if (call === "git rev-parse --show-toplevel") return { status: 0, stdout: process.cwd(), stderr: "" };
       if (call === "git rev-parse HEAD") return { status: 0, stdout: head, stderr: "" };
       if (call === "git merge-base HEAD origin/main") return { status: 0, stdout: fork, stderr: "" };
@@ -237,6 +360,10 @@ describe("fast preflight", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     expect(main(now, ["--fast"])).toBe(0);
+    const owners = ["core", "outbox", "platform"];
+    expect(calls.filter(call => /^npm run (?:build|api:check) --workspace=/u.test(call))).toEqual(
+      ["build", "api:check"].flatMap(command => owners.map(owner => `npm run ${command} --workspace=@openlup/${owner}`)),
+    );
     expect(calls).toContain(`${process.execPath} --experimental-strip-types packages/core/scripts/documentation-contract.ts --check-guide packages/core`);
     expect(calls).toContain("npm run packages:check -- --manifest-only");
     expect(calls).toContain("gitleaks git . --config config/gitleaks.toml --gitleaks-ignore-path .gitleaksignore --redact --no-banner --no-color --log-opts bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..HEAD");

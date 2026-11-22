@@ -197,8 +197,8 @@ it("preserves and reconciles an existing value-only host after a manifest refusa
   const remaining = (row: { key: string }) => !starterKeys.includes(row.key);
   const stripAddedInstalledRows = (stdout: string, expectedKeys: Set<string>) => {
     const document = JSON.parse(stdout);
-    expect(document.rows.map((row: { key: string }) => row.key).toSorted())
-      .toEqual([...expectedKeys, ...newPackagedCheckKeys].toSorted());
+    expect(document.rows.map((row: { key: string }) => row.key))
+      .toEqual([...expectedKeys, ...addedPackagedCheckKeys(expectedKeys)].sort());
     document.rows = document.rows.filter((row: { key: string }) => expectedKeys.has(row.key));
     return JSON.stringify(document) + "\n";
   };
@@ -808,17 +808,15 @@ const newStarterCheckKeys = [
   "renewal.subscriptionCare.retention", "renewal.subscriptionCare.terms", "returns.reasons",
   "subscriptionEditing.sizedPreferences",
 ];
-const newPackagedInstalledKeys = [
-  "communications.nativeDeliveryControls", "pricing.subscriptionPricePolicy",
-  "shipping_flat_minor", "subscription_minimum_base_units", "subscription_sized_intro_phase",
-];
-const newPackagedCodeKeys = [
-  "catalog.bundleAvailabilityPolicy", "checkout.resumeWindowMinutes",
-  "communications.terminalPayloadRetentionDays", "inventory.offerLowStockThreshold",
-  "market.fiscalProfile", "market.settlementProfile", "shipping.addressPolicy", "tax.adapter", "tax.classMap", "tax.localRateTable",
-];
-const newPackagedCheckKeys = [...newPackagedInstalledKeys, ...newPackagedCodeKeys];
-const newCheckKeys = [...newStarterCheckKeys, ...newPackagedCheckKeys];
+const packagedCatalogue = JSON.parse(readFileSync(new URL("../../packages/platform/settings-catalog.json", import.meta.url), "utf8")) as {
+  entries: { key: string; kind: string }[];
+};
+const addedPackagedCheckKeys = (baselineKeys: Set<string>) => packagedCatalogue.entries
+  .filter(({ key, kind }) => !baselineKeys.has(key) && (kind === "installed" || kind === "code"))
+  .map(({ key }) => key);
+const checkKeys = (baselineKeys: Set<string>) => [
+  ...new Set([...baselineKeys, ...newStarterCheckKeys, ...addedPackagedCheckKeys(baselineKeys)]),
+].sort();
 
 it.each(baseline.checks)("reports exactly the baseline and new starter check rows for $args", captured => {
   const { stdout, ...actual } = runStarterSettings(starter, captured.args);
@@ -827,7 +825,7 @@ it.each(baseline.checks)("reports exactly the baseline and new starter check row
     const expected = JSON.parse(captured.stdout);
     const document = JSON.parse(stdout);
     const keys = new Set(expected.rows.map((row: { key: string }) => row.key));
-    expect(document.rows.map((row: { key: string }) => row.key).toSorted()).toEqual([...keys, ...newCheckKeys].toSorted());
+    expect(document.rows.map((row: { key: string }) => row.key)).toEqual(checkKeys(keys));
     expect(JSON.stringify(document) + "\n").toBe(stdout);
     document.rows = document.rows.filter((row: { key: string }) => keys.has(row.key));
     existing = JSON.stringify(document) + "\n";
@@ -837,7 +835,7 @@ it.each(baseline.checks)("reports exactly the baseline and new starter check row
     const rowKeys = (parts: string[]) => parts.map(key).filter(value => value !== undefined);
     const keys = new Set(rowKeys(blocks(captured.stdout)));
     const actualBlocks = blocks(stdout);
-    expect(rowKeys(actualBlocks).toSorted()).toEqual([...keys, ...newCheckKeys].toSorted());
+    expect(rowKeys(actualBlocks)).toEqual(checkKeys(keys));
     existing = actualBlocks.map(block => {
       const rowKey = key(block);
       // New code rows end at Effect, while new installed rows end at Store. Keep any text that follows them.

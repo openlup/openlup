@@ -8,7 +8,8 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const distRoot = resolve(packageRoot, "dist");
 const gates = readJson("release-gates.json");
 const update = process.argv.includes("--update");
-let snapshotsChanged = false;
+const landing = process.argv.find((arg) => arg.startsWith("--landing="));
+if (landing && !update) throw new Error("--landing requires --update");
 
 const manifest = readJson("package.json");
 const { "./package.json": manifestExport, ...codeExports } = manifest.exports;
@@ -48,28 +49,31 @@ const missingFiles = collectDeclarationGraph(null, [...entrypoints.values()])
   .filter((file) => !scopedFiles.has(file)).map((file) => toPosix(relative(packageRoot, file)));
 assert(missingFiles.length === 0, `API snapshots omit declarations: ${missingFiles.join(", ")}; make each missing declaration reachable from its owning subpath entrypoint`);
 
-for (const [subpath, contract] of Object.entries(gates.packageSurface)) {
+const reports = Object.entries(gates.packageSurface).map(([subpath, contract]) => {
   const snapshotPath = resolveInsidePackage(contract.snapshot);
   const snapshot = renderSnapshot(subpath, contract, declarationsBySubpath.get(subpath));
+  const previous = existsSync(snapshotPath) ? readFileSync(snapshotPath, "utf8") : undefined;
+  return { subpath, contract, snapshotPath, snapshot, previous };
+});
+
+const changed = reports.some(({ snapshot, previous }) => snapshot !== previous);
+if (landing) assertLandingChangelog(landing.slice("--landing=".length), changed);
+for (const { subpath, contract, snapshotPath, snapshot, previous } of reports) {
   if (update) {
-    const previous = existsSync(snapshotPath) ? readFileSync(snapshotPath, "utf8") : undefined;
-    snapshotsChanged ||= previous !== snapshot;
     mkdirSync(dirname(snapshotPath), { recursive: true });
     writeFileSync(snapshotPath, snapshot);
     console.log(`updated ${contract.snapshot}`);
     continue;
   }
 
-  assert(existsSync(snapshotPath), `missing API snapshot ${contract.snapshot}; run npm run api:update`);
-  const expected = readFileSync(snapshotPath, "utf8");
-  assert(
-    expected === snapshot,
-    `${contract.maturity} package surface drift for ${subpath}; review declarations and run npm run api:update intentionally`,
-  );
+  const label = `packages/outbox/${contract.snapshot}`;
+  const remedy = "run npm run api:update --workspace=@openlup/outbox";
+  assert(previous !== undefined, `missing API snapshot ${label}; ${remedy}`);
+  assert(previous === snapshot, `${label}: ${contract.maturity} package surface drift for ${subpath}; ${remedy}`);
   console.log(`${contract.maturity} package surface ok ${subpath}`);
 }
 
-if (update && snapshotsChanged) assertChangelogChanged();
+if (update && !landing && changed) assertChangelogChanged();
 
 function renderSnapshot(subpath, contract, declarations) {
   const sections = declarations.map((file) => {
@@ -207,6 +211,23 @@ function resolveInsidePackage(path) {
     `path escapes package root: ${path}`,
   );
   return absolute;
+}
+
+function assertLandingChangelog(context, changed) {
+  const git = (...args) => execFileSync("git", ["--no-replace-objects", ...args], { cwd: packageRoot, encoding: "utf8" });
+  const [head, main, ...extra] = context.split(",");
+  assert(extra.length === 0 && /^[a-f0-9]{40}$/.test(head) && /^[a-f0-9]{40}$/.test(main) &&
+    git("rev-parse", "HEAD", "MERGE_HEAD").trim() === `${head}\n${main}`, "landing API update requires the exact HEAD and MERGE_HEAD");
+  const conflicts = git("--literal-pathspecs", "ls-files", "--unmerged", "-z", "--", ...reports.map(({ contract }) => contract.snapshot));
+  if (!changed && !conflicts) return;
+  const base = git("merge-base", "--all", head, main).trim();
+  assert(/^[a-f0-9]{40}$/.test(base), "landing API update requires a single merge base");
+  const notes = [":(glob)changes/*.md", "CHANGELOG.md"];
+  const firstParentNotes = new Set(git("diff", "--relative", "--no-renames", "--diff-filter=AM", "--name-only", "-z", base, head, "--", ...notes)
+    .split("\0").filter(Boolean));
+  const mergedNotes = git("ls-files", "--stage", "-z", "--", ...notes).split("\0");
+  assert(mergedNotes.some(row => /^100(?:644|755) [a-f0-9]+ 0\t/.test(row) && firstParentNotes.has(row.slice(row.indexOf("\t") + 1))),
+    "landing: @openlup/outbox API snapshots changed; add or modify packages/outbox/changes/*.md or packages/outbox/CHANGELOG.md on the first parent and retain it in the merge");
 }
 
 function assertChangelogChanged() {

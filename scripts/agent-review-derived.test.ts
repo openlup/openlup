@@ -1,13 +1,15 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { env as processEnvironment } from 'node:process';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { INVENTORY_PATH, MIGRATION_REGISTRIES, inventoryEnvelope, migrationRegistryUnion } from './agent-review-derived.mjs';
 import { runLandingGenerators } from './agent-review-generators.mjs';
-import { isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
-import { prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
+import { carrierLocale, isInventoryInputPath, landingMerge } from './agent-review-landing.mjs';
+import { deltaFloor, prepareCandidate, recordReport, integrationReviewContext, verdict } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, captureReviewRules, captureCoverageEdge, validateEconomySession, proveReviewIntegration, git as sourceGit } from './agent-review-session.mjs';
 
 const source = process.cwd();
@@ -35,6 +37,44 @@ const CATALOGUE = 'config/openlup-publication-catalog.json';
 const SQL_REFERENCE = 'packages/core/docs/guide/reference/sql.md';
 const SQL_HEADING = '# SQL catalogue';
 const MAIN_SQL_HEADING = '# Package SQL catalogue';
+const PORTABILITY = 'packages/platform/src/portability/index.ts';
+const PORTABILITY_REPORT = 'packages/platform/api/portability.api.md';
+const SETTING_DATA = 'packages/platform/src/inventory/settings-data.json';
+const SETTING_CATALOGUE = 'packages/platform/settings-catalog.json';
+const SETTING_REFUSALS = 'packages/platform/settings-refusals.json';
+const SETTING_GUIDE = 'packages/core/docs/guide/how-to/operate/settings-catalogue.md';
+const PROBE_OUTPUTS = [PORTABILITY_REPORT, SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE];
+const PROBE_KEY = 'inventory.fixtureReservation';
+const fixtureCommand = (command: string, args: string[]) => execFileSync(command, args, {
+  cwd: root, env: { ...processEnvironment, ...carrierLocale }, encoding: 'utf8', timeout: 180000,
+  maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+});
+const coldBuild = (...owners: string[]) => {
+  for (const owner of owners) fixtureCommand('npm', ['run', 'build', `--workspace=@openlup/${owner}`]);
+};
+const landingCli = () => fixtureCommand('npm', ['run', 'landing:merge']);
+const checkout = (rev: string) => { git('reset', '--hard'); git('checkout', '-q', '--detach', rev); };
+const setMain = (rev: string) => { git('branch', '-f', 'main', rev); git('update-ref', 'refs/remotes/origin/main', rev); };
+function probeExport() {
+  write(PORTABILITY, read(PORTABILITY) + '\n/** @experimental A fixture declaration. */\nexport const fixturePortability = 1;\n');
+  write('packages/platform/changes/fixture-portability.md', '- Add an experimental portability fixture and describe reservation policy.\n');
+}
+function probeSetting() {
+  const data = JSON.parse(read(SETTING_DATA));
+  data.push({ ...data.find(entry => entry.kind === 'invariant'), key: PROBE_KEY, goal: 'Describe fixture reservation replay.' });
+  write(SETTING_DATA, json(data));
+}
+function registerOutput(path: string) {
+  const catalogue = JSON.parse(read(CATALOGUE));
+  catalogue.publicPaths.push({ path, class: 'public-output' });
+  catalogue.publicPaths.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  write(CATALOGUE, json(catalogue));
+}
+function restoreDerivedFixture() {
+  if (existsSync(join(root, '.git/MERGE_HEAD'))) git('merge', '--abort');
+  checkout(merged);
+  setMain(main);
+}
 // Main adds a package command after the reviewed head forked; main's own owner
 // writes its catalogue in a new process, as a contributor's generator run would.
 function addPackageCommand() {
@@ -48,7 +88,7 @@ function addPackageCommand() {
     writeFileSync(${JSON.stringify(CATALOGUE)}, createPublicPublicationCatalog(catalog.publicPaths, catalog.guardViability).contents);`], { cwd: root, timeout: 30000 });
 }
 beforeAll(async () => {
-  mkdirSync('.context/scratch', { recursive: true }); root = mkdtempSync(join(source, '.context/scratch/derived-live-'));
+  root = mkdtempSync(join(tmpdir(), 'openlup-derived-live-'));
   execFileSync('/usr/bin/git', ['clone', '--shared', '--no-hardlinks', '-q', source, root], { timeout: 30000 });
   // Include the candidate's working bytes during development as well as at final HEAD.
   const overlays = execFileSync('/usr/bin/git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: source, encoding: 'utf8' }).split('\0').filter(Boolean);
@@ -56,14 +96,14 @@ beforeAll(async () => {
     if (!existsSync(join(source, path))) { rmSync(join(root, path), { force: true }); continue; }
     mkdirSync(dirname(join(root, path)), { recursive: true }); cpSync(join(source, path), join(root, path));
   }
-  symlinkSync(join(source, 'node_modules'), join(root, 'node_modules'));
+  fixtureCommand('npm', ['ci', '--prefer-offline', '--no-audit', '--fund=false']);
   git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
   base = commit();
   append('20990101010000'); reviewed = commit();
   git('checkout', '-q', '--detach', base); append('20990101020000'); addPackageCommand();
   write(SQL_REFERENCE, read(SQL_REFERENCE).replace(SQL_HEADING, MAIN_SQL_HEADING));
   main = commit();
-  git('update-ref', 'refs/remotes/origin/main', main); git('checkout', '-q', '--detach', reviewed);
+  git('remote', 'set-url', 'origin', '.'); setMain(main); git('checkout', '-q', '--detach', reviewed);
   initialLandingCommands = [];
   initialLandingResult = await landingMerge(root, {
     runCommand: (command, args) => {
@@ -72,7 +112,7 @@ beforeAll(async () => {
     },
   });
   merged = initialLandingResult.head;
-}, 180000);
+}, 600000);
 afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
 async function proof(head = merged) {
   return proveReviewIntegration(root, await captureCommittedReviewCandidate(root, base, reviewed), await captureCommittedReviewCandidate(root, main, head));
@@ -89,6 +129,182 @@ it('lands two independently appended real forwards through the CLI as derived', 
   expect(git('show', '-s', '--format=%B', merged)).toContain('Signed-off-by: Fixture <fixture@example.invalid>');
   expect(git('show', '-s', '--format=%an <%ae>%n%cn <%ce>', merged)).toBe('Fixture <fixture@example.invalid>\nFixture <fixture@example.invalid>');
 }, 50000);
+
+it('lands owner-exact reports and settings from parents with zero carrier edits', async () => {
+  try {
+    checkout(base); probeExport(); probeSetting(); const left = commit();
+    checkout(base); const right = commit(); setMain(right); checkout(left);
+    expect(git('merge-base', left, right)).toBe(base);
+    for (const parent of [left, right]) {
+      expect(git('diff', '--raw', base, parent, '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api', ...PROBE_OUTPUTS)).toBe('');
+    }
+    landingCli();
+    const landed = git('rev-parse', 'HEAD');
+    expect(git('show', '-s', '--format=%P%n%B', landed)).toBe(`${left} ${right}\nMerge origin/main and refresh derived carriers\n\nSigned-off-by: Fixture <fixture@example.invalid>`);
+    expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
+    const integration = await proveReviewIntegration(root,
+      await captureCommittedReviewCandidate(root, base, left), await captureCommittedReviewCandidate(root, right, landed));
+    expect(git('diff', '--raw', left, landed, '--', 'packages/core/api', 'packages/outbox')).toBe('');
+    const changed = PROBE_OUTPUTS.filter(path => path !== SETTING_REFUSALS).sort();
+    expect(integration).toMatchObject({ kind: 'resolution', resolution: changed, modeChanged: false });
+    expect(deltaFloor(integration.resolution, integration.modeChanged)).toBe(1);
+    expect(deltaFloor(integration.resolution, true)).toBe(2);
+    expect(read(PORTABILITY_REPORT)).toContain('declare const fixturePortability = 1');
+    expect(read(SETTING_GUIDE)).toContain(`## ${PROBE_KEY}`);
+    expect(git('show', `${base}:${SETTING_REFUSALS}`)).toBe(read(SETTING_REFUSALS).trimEnd());
+    const discovery = JSON.parse(fixtureCommand(process.execPath, ['packages/platform/src/lifecycle/openlup.mjs', 'settings', 'show', PROBE_KEY, '--json']));
+    expect(discovery.setting).toMatchObject({ key: PROBE_KEY, kind: 'invariant' });
+    coldBuild('core', 'platform');
+    fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
+    fixtureCommand(process.execPath, ['scripts/settings-catalogue.ts', '--write']);
+    expect(git('status', '--porcelain', '--untracked-files=all')).toBe('');
+    const fast = spawnSync('npm', ['run', 'preflight', '--', '--fast'], {
+      cwd: root, env: { ...processEnvironment, ...carrierLocale }, encoding: 'utf8', timeout: 180000,
+    });
+    expect(fast.status, fast.stdout + fast.stderr).toBe(0);
+    expect(JSON.parse(fast.stdout.trimEnd().split('\n').at(-1)!)).toEqual({ preflight: 'fast', result: 'pass', head: landed, failed: [] });
+    console.info(`D3 landing: fork ${base}, parents ${left} ${right}, merge ${landed}; residual ${changed.join(', ')}; settings refusals already match`);
+  } finally { restoreDerivedFixture(); }
+}, 180000);
+
+it('preserves derived substitutions around an actual API resolution and uses its floor for D2', async () => {
+  try {
+    checkout(reviewed); probeExport(); const left = commit();
+    checkout(merged); probeExport();
+    coldBuild('core', 'platform');
+    fixtureCommand(process.execPath, ['packages/platform/scripts/api-contract.ts', '--update']);
+    git('add', '-A');
+    const head = git('commit-tree', git('write-tree'), '-p', left, '-p', main, '-m', 'Synthetic report resolution');
+    const firstParent = await captureCommittedReviewCandidate(root, base, left);
+    const integration = await proveReviewIntegration(root, firstParent, await captureCommittedReviewCandidate(root, main, head));
+    expect(integration).toMatchObject({ kind: 'resolution', derived: true, resolution: [PORTABILITY_REPORT], modeChanged: false });
+    expect(git('diff', '--name-only', integration.prediction, head)).toBe(PORTABILITY_REPORT);
+    const floor = deltaFloor(integration.resolution, integration.modeChanged);
+    expect(floor).toBe(0);
+    expect(firstParent.changedPaths.some(isInventoryInputPath)).toBe(true);
+    // D2 defers only inventory rows with a resolution at floor one or above.
+    const order = (resolutionFloor: number) => [
+      { name: 'catalogue', defer: firstParent.changedPaths.some(isInventoryInputPath) && resolutionFloor >= 1 },
+      { name: 'next', defer: false },
+    ].sort((a, b) => Number(a.defer) - Number(b.defer)).map(({ name }) => name);
+    expect(order(floor)).toEqual(['catalogue', 'next']);
+    expect(order(deltaFloor(integration.resolution, true))).toEqual(['next', 'catalogue']);
+  } finally { restoreDerivedFixture(); }
+}, 180000);
+
+it('lands cold owner bytes after an added Core export and version bump on a warm incremental cache', () => {
+  try {
+    checkout(base);
+    // Seed the previous package graph and exercise the cache-dependent emission originally used by landing.
+    for (const owner of ['core', 'outbox', 'platform']) for (const leaf of ['dist', '.tsbuildinfo-build']) {
+      rmSync(join(root, 'packages', owner, leaf), { force: true, recursive: true });
+    }
+    fixtureCommand(process.execPath, ['scripts/build-packages-incremental.mjs']);
+    const declaration = 'packages/platform/dist/fulfillment/providerDispatchWorker.d.ts';
+    const cleanDeclaration = read(declaration);
+    const entry = 'packages/core/src/subscription/index.ts';
+    write(entry, read(entry) + '\nexport const fixtureApi = 1;\n');
+    write('packages/core/changes/fixture-cache.md', '- Add a fixture declaration.\n');
+    fixtureCommand(process.execPath, ['scripts/build-packages-incremental.mjs']);
+    const manifestPath = 'packages/core/package.json';
+    const manifest = JSON.parse(read(manifestPath));
+    manifest.version += '-fixture';
+    write(manifestPath, json(manifest));
+    const left = commit();
+    checkout(base); const right = commit(); setMain(right); checkout(left);
+    fixtureCommand(process.execPath, ['scripts/build-packages-incremental.mjs']);
+    const warmDeclaration = read(declaration);
+    expect(warmDeclaration).not.toBe(cleanDeclaration);
+
+    landingCli();
+    expect(git('show', '-s', '--format=%P')).toBe(`${left} ${right}`);
+    expect(git('show', 'HEAD:packages/core/api/subscription.api.md')).toContain('declare const fixtureApi = 1');
+    const landedDeclaration = read(declaration);
+    expect(landedDeclaration).not.toBe(warmDeclaration);
+    coldBuild('core', 'outbox', 'platform');
+    expect(read(declaration)).toBe(landedDeclaration);
+    for (const owner of ['core', 'outbox', 'platform']) fixtureCommand('npm', ['run', 'api:check', `--workspace=@openlup/${owner}`]);
+    expect(git('status', '--porcelain')).toBe('');
+  } finally { restoreDerivedFixture(); }
+}, 240000);
+
+it.each([PORTABILITY_REPORT, SETTING_CATALOGUE, SETTING_REFUSALS, SETTING_GUIDE])('replaces the exact registered owner conflict at %s', path => {
+  try {
+    const original = git('show', `${base}:${path}`) + '\n';
+    checkout(base); write(path, 'First-parent edit\n' + original); const left = commit();
+    checkout(base); write(path, 'Main edit\n' + original); const right = commit(); setMain(right); checkout(left);
+    landingCli();
+    expect(read(path)).toBe(original);
+    expect(git('status', '--porcelain')).toBe('');
+  } finally { restoreDerivedFixture(); }
+}, 180000);
+
+it('stages a newly generated report absent from the merged index', () => {
+  try {
+    const newReport = 'packages/platform/api/portability-fixture.api.md';
+    checkout(base); probeExport(); registerOutput(newReport);
+    const gatesPath = 'packages/platform/release-gates.json';
+    const gates = JSON.parse(read(gatesPath));
+    gates.packageSurface['./portability'].snapshot = 'api/portability-fixture.api.md';
+    write(gatesPath, json(gates)); const left = commit();
+    checkout(base); const right = commit(); setMain(right); checkout(left);
+    expect(git('ls-files', '--', newReport)).toBe('');
+    landingCli();
+    expect(git('show', `HEAD:${newReport}`)).toContain('declare const fixturePortability = 1');
+    expect(git('status', '--porcelain')).toBe('');
+  } finally { restoreDerivedFixture(); }
+}, 180000);
+
+it.each(['unregistered', 'executable', 'symlink'])('keeps a %s report conflict unresolved', mode => {
+  try {
+    const path = mode === 'unregistered' ? 'packages/platform/api/unregistered-fixture.api.md' : PORTABILITY_REPORT;
+    checkout(base);
+    if (mode === 'symlink') {
+      rmSync(join(root, path)); symlinkSync('../release-gates.json', join(root, path));
+    } else write(path, 'First-parent edit\n');
+    const left = commit();
+    checkout(base);
+    if (mode === 'symlink') {
+      rmSync(join(root, path)); symlinkSync('../package.json', join(root, path));
+    } else {
+      write(path, 'Main edit\n');
+      if (mode === 'executable') chmodSync(join(root, path), 0o755);
+    }
+    const right = commit(); setMain(right); checkout(left);
+    expect(() => landingCli()).toThrow(`landing: authored conflicts remain: ${path}`);
+    expect(git('diff', '--name-only', '--diff-filter=U')).toBe(path);
+  } finally { restoreDerivedFixture(); }
+}, 60000);
+
+it.each(['core', 'outbox'].flatMap(owner => ['first parent', 'missing', 'removed', 'main only'].map(note => ({ owner, note }))))(
+  'checks the $owner change note from the $note before staging any API reports', ({ owner, note }) => {
+    try {
+      const directory = `packages/${owner}`;
+      const entry = `${directory}/src/${owner === 'core' ? 'subscription/index.ts' : 'index.ts'}`;
+      const notePath = `${directory}/changes/fixture-api.md`;
+      const report = `${directory}/api/${owner === 'core' ? 'subscription' : 'index'}.api.md`;
+      checkout(base);
+      if (note === 'removed') { write(notePath, '- Describe the fixture contract.\n'); commit(); }
+      const fork = git('rev-parse', 'HEAD');
+      write(entry, read(entry) + '\nexport const fixtureApi = 1;\n');
+      if (note === 'first parent') write(notePath, '- Add a fixture API export.\n');
+      if (note === 'removed') rmSync(join(root, notePath));
+      const left = commit();
+      checkout(fork);
+      if (note === 'main only') write(notePath, '- Document a main-side change.\n');
+      const right = commit(); setMain(right); checkout(left);
+      if (note === 'first parent') {
+        landingCli();
+        expect(git('show', `HEAD:${report}`)).toContain('declare const fixtureApi = 1');
+      } else {
+        expect(() => landingCli()).toThrow(`landing: @openlup/${owner} API snapshots changed`);
+        expect(git('rev-parse', 'HEAD')).toBe(left);
+        expect(git('diff', '--cached', '--name-only', '--', 'packages/core/api', 'packages/outbox/api', 'packages/platform/api')).toBe('');
+      }
+    } finally { restoreDerivedFixture(); }
+  }, 180000,
+);
+
 it('leaves the merge in place when both sides edit the SQL reference prose', async () => {
   git('reset', '--hard', reviewed); git('checkout', '-q', '--detach', reviewed);
   try {
@@ -273,7 +489,7 @@ it('classifies SQL and migration-inventory inputs conservatively', () => {
   ]) expect(isInventoryInputPath(path), path).toBe(false);
 });
 
-it.each(['clean', 'derived-carrier'])('skips build and Docker inventory refresh on non-SQL PR (%s) even when main changed SQL and inventory', async mode => {
+it.each(['clean', 'derived-carrier'])('skips Docker inventory refresh on non-SQL PR (%s) even when main changed SQL and inventory', async mode => {
   try {
     // Build a main commit that changed SQL, registries, publication catalogue, AND measured inventory.
     git('reset', '--hard', main); git('checkout', '-q', '--detach', main);
@@ -321,12 +537,14 @@ it.each(['clean', 'derived-carrier'])('skips build and Docker inventory refresh 
 
     const invoked: string[][] = [];
     const landed = await landingMerge(root, {
-      runCommand: (_command, args) => {
+      runCommand: (command, args, options) => {
         invoked.push(args);
-        throw new Error('non-SQL landing must not invoke build or inventory refresh');
+        expect(args).not.toContain(join(root, 'scripts/installation-inventory-refresh.ts'));
+        execFileSync(command, args, { cwd: root, stdio: 'ignore', ...options });
       },
     });
-    expect(invoked).toEqual([]);
+    if (mode === 'clean') expect(invoked).toEqual([]);
+    else expect(invoked.filter(([command]) => command === 'run')).toEqual(['core', 'outbox', 'platform'].map(owner => ['run', 'build', `--workspace=@openlup/${owner}`]));
     expect(landed.inventoryRefreshed).toBe(false);
     expect(git('show', `${landed.head}:${INVENTORY_PATH}`)).toBe(git('show', `${mainWithInventory}:${INVENTORY_PATH}`));
     expect(git('show', `${landed.head}:${INVENTORY_PATH}`)).not.toBe(git('show', `${nonSqlHead}:${INVENTORY_PATH}`));
@@ -336,12 +554,12 @@ it.each(['clean', 'derived-carrier'])('skips build and Docker inventory refresh 
       await captureCommittedReviewCandidate(root, base, nonSqlHead),
       await captureCommittedReviewCandidate(root, mainWithInventory, landed.head),
     );
-    expect(integration).toMatchObject(mode === 'clean' ? { kind: 'git' } : { kind: 'derived', derived: true });
+    expect(integration, JSON.stringify(integration)).toMatchObject(mode === 'clean' ? { kind: 'git' } : { kind: 'derived', derived: true });
   } finally {
     git('reset', '--hard', merged); git('checkout', '-q', '--detach', merged);
     git('update-ref', 'refs/remotes/origin/main', main);
   }
-}, 50000);
+}, 180000);
 
 it('deduplicates byte-for-byte identical stacked rows in migrationRegistryUnion and still refuses conflicts', () => {
   const baseManifest = git('show', `${base}:${MIGRATION_REGISTRIES[0]}`);
