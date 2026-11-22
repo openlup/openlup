@@ -400,11 +400,12 @@ commercial fingerprint, excluding transient quote IDs and timestamps. Drift
 returns `order_changed` before draft creation. Frozen offer evidence is
 retained.
 
-Fresh governed or seal-required replacement is unavailable. The native draft
-owner returns `catalog_admission_quote_authority_required` when that demand
-reaches it. Existing payment-safety, unavailability and commercial-drift
-refusals still apply before drafting. Eligible tokenless legacy recreation and
-exact authenticated replacement replay remain supported.
+Fresh governed replacement is unavailable. The native draft owner returns
+`catalog_admission_quote_authority_required` when that demand reaches it.
+Existing payment-safety, unavailability and commercial-drift refusals still
+apply before drafting. Eligible legacy recreation remains supported, including
+sources with recorded promotion acceptance. Exact authenticated replacement
+replay remains supported.
 
 Wrap draft persistence with `createPostgresExpiredCheckoutDraftPort`; use
 `createPostgresExpiredCheckoutRecoveryPort` for lineage. The stable key is

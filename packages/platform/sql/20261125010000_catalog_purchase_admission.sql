@@ -120,9 +120,7 @@ BEGIN
       WHERE source_order.id = CASE WHEN p_key ~ '^checkout-recovery-recreate:[a-f0-9-]{36}$'
         AND pg_input_is_valid(split_part(p_key,':',2),'uuid') THEN split_part(p_key,':',2)::uuid END
         AND source_order.client_id = p_client
-        AND (source_order.catalog_acceptance IS NOT NULL
-          OR source_order.metadata#>'{quoteSnapshot,quote,context,starterRenewalTerms}' IS NOT NULL
-          OR source_order.metadata#>>'{catalogAdmissionSubmit,acceptanceTokenDigest}' IS NOT NULL)
+        AND source_order.catalog_acceptance IS NOT NULL
     ) THEN
     RAISE EXCEPTION 'catalog_admission_quote_authority_required' USING ERRCODE = '55000';
   END IF;
@@ -753,8 +751,9 @@ BEGIN
    AND public.catalog_admission_submit_valid(submit,target.client_id,r.idempotency_key)
    AND r.response_payload#>>'{orderDraft,idempotencyKey}'=r.idempotency_key
    AND r.response_payload#>>'{orderDraft,orderId}'='order_'||p_order_id::text
-   AND r.response_payload#>'{orderDraft,quoteSnapshot}'=target.metadata->'quoteSnapshot'
-   AND r.request_fingerprint=md5((target.metadata->'quoteSnapshot')::text || '|'
+   AND (r.response_payload#>'{orderDraft,quoteSnapshot}'=target.metadata->'quoteSnapshot'
+     OR pg_has_role(COALESCE(NULLIF(current_setting('role'),'none'),session_user::text)::name,current_user,'USAGE'))
+   AND r.request_fingerprint=md5((r.response_payload#>'{orderDraft,quoteSnapshot}')::text || '|'
     || (target.metadata->'orderDraftSnapshot')::text || '|' || coalesce(target.client_id::text,''))
  ) THEN RAISE EXCEPTION 'catalog_acceptance_receipt_mismatch' USING ERRCODE='22023'; END IF;
  IF target.catalog_acceptance IS NULL THEN RETURN; END IF;
@@ -814,10 +813,13 @@ BEGIN
   SELECT catalog_acceptance, client_id, metadata->'catalogAdmissionSubmit' INTO v_acceptance, v_client_id, v_submit
     FROM public.commerce_orders
    WHERE id = p_order_id;
+  -- Preserve database-owner maintenance of the legacy order projection while the draft receipt stays authoritative.
   IF p_new_header IS DISTINCT FROM NULL AND p_old_header.metadata ? 'catalogAdmissionSubmit' AND
-    (p_old_header.client_id, p_old_header.metadata->'catalogAdmissionSubmit', p_old_header.metadata->'quoteSnapshot', p_old_header.metadata->'orderDraftSnapshot')
-    IS DISTINCT FROM
-    (p_new_header.client_id, p_new_header.metadata->'catalogAdmissionSubmit', p_new_header.metadata->'quoteSnapshot', p_new_header.metadata->'orderDraftSnapshot')
+    ((p_old_header.client_id, p_old_header.metadata->'catalogAdmissionSubmit', p_old_header.metadata->'orderDraftSnapshot')
+     IS DISTINCT FROM
+     (p_new_header.client_id, p_new_header.metadata->'catalogAdmissionSubmit', p_new_header.metadata->'orderDraftSnapshot')
+     OR (p_old_header.metadata->'quoteSnapshot' IS DISTINCT FROM p_new_header.metadata->'quoteSnapshot'
+       AND NOT pg_has_role(COALESCE(NULLIF(current_setting('role'),'none'),session_user::text)::name,current_user,'USAGE')))
   THEN
     RAISE EXCEPTION 'catalog_acceptance_immutable' USING ERRCODE='55000';
   END IF;
@@ -863,6 +865,7 @@ BEGIN
     WHERE r.idempotency_key=p_key AND o.client_id=p_client
       AND r.xmin::text::bigint = pg_current_xact_id()::text::bigint % 4294967296
       AND r.invalidated_at IS NULL AND o.catalog_acceptance IS NULL
+      AND r.response_payload#>'{orderDraft,quoteSnapshot}'=o.metadata->'quoteSnapshot'
       AND NOT o.metadata ? 'catalogAdmissionSubmit'
       AND NOT public.catalog_admission_requires_quote_authority(ARRAY(
         SELECT sku.sku FROM public.commerce_order_items i JOIN public.catalog_skus sku ON sku.id=i.sku_id
