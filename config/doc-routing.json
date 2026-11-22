@@ -642,6 +642,17 @@
       "anchor": "#company-identity"
     },
     {
+      "id": "platform-tax",
+      "when": "Tax calculation contracts, request preparation and merchant coverage reconciliation",
+      "paths": [
+        "packages/platform/src/tax/**",
+        "packages/platform/test/tax/**",
+        "packages/platform/api/tax*.api.md"
+      ],
+      "doc": "packages/platform/README.md",
+      "anchor": "#tax-calculation"
+    },
+    {
       "id": "platform-market-packs",
       "when": "Explicit settlement and fiscal fallbacks, currency metadata and own-currency formatting",
       "paths": [

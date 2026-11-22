@@ -222,6 +222,7 @@ bearer; its local fixture establishes no hosted revocation guarantee.
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
+| `./tax`, `./tax/contracts` | Experimental tax calculation port and coverage reconciliation |
 | `./shipping` | Delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only address, customer-address, delivery, pickup-point, shipping-rate and threshold contracts, plus selection summary and evidence DTOs |
 
@@ -3234,6 +3235,20 @@ Lookup does not write customer data. Identifier normalization/validity and legal
 `CompanyIdentityRules`. Neutral defaults keep identifiers unchanged, accept
 non-empty values and do not prefer or seek fuller names. The reference
 application retains its existing national rules and callers unchanged.
+
+## Tax calculation
+
+Choose a tax adapter in application composition and supply one merchant coverage
+document. This version calculates exclusive tax. Use `./tax/contracts` for the browser-safe port and document decoders.
+Use `./tax` to prepare and verify requests and reconcile coverage. Call
+`verifyTaxQuoteRequest` for quotes and decoded fiscal-validity requests and
+`verifyTaxQuoteResult` before using successful results. For the evidence digest,
+SHA-256 hash `canonicalCatalogDraftJson(["platform.tax.evidence.v1", evidence])`
+in UTF-8, using the canonicalizer from `./catalog/contracts`.
+Calculation expiry and charge-date fiscal validity are separate checks.
+The caller records `closeCalculation` as a local, idempotent transition for
+affirmatively unused or verified-unpaid evidence. Never void, delete or mutate a
+provider calculation. Indeterminate payments stay open for reconciliation.
 
 ## Market packs
 
