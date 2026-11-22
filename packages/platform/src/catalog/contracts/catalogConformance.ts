@@ -1,5 +1,3 @@
-import type { CatalogQuantityCode } from "@openlup/core/catalog";
-import type { CatalogCombinationCode } from "./variantAxes.js";
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
  */
@@ -21,9 +19,15 @@ export type CatalogConformanceCode =
   | "attribute_reference_unresolved" | "attribute_publication_revision_invalid"
   | "conformance_subject_invalid" | "conformance_owner_unavailable"
   | "conformance_refusal_fixture_missing" | "conformance_refusal_fixture_invalid" | "conformance_refusal_fixture_mismatch"
-  | "draft_input_invalid" | "draft_payload_invalid"
-  | CatalogQuantityCode | CatalogCombinationCode;
+  | "draft_input_invalid" | "draft_payload_invalid" | "draft_payload_too_large"
+  | "quantity_invalid" | "quantity_cross_dimension" | "quantity_fractional_count"
+  | "quantity_unknown_unit" | "quantity_overflow" | "quantity_not_exactly_representable"
+  | "axis_not_installed" | "duplicate_axis" | "option_not_selected"
+  | "option_missing" | "option_invalid" | "unit_factor_missing" | "sku_identity_change_requires_new_sku"
+  | "duplicate_combination" | "combination_digest_collision" | "duplicate_sku_id" | "combination_identity_integrity_failed"
+  | "sku_payload_limit" | "product_capacity_exceeded" | "product_capacity_invalid"
+  | "definition_profile_invalid" | "cadence_kind_unsupported";
 /** @experimental */
 export interface CatalogConformanceRule { severity: "error" | "warning"; rule: string; fix: string; recipe: string }
 /** @experimental */
-export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string }
+export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string; fix?: string }
