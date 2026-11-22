@@ -38,3 +38,4 @@ See [index.json](index.json) for the machine-readable catalog:
 
 - [`payments/adyen`](payments/adyen/recipe.json) — **Exemplar** zero-SDK Adyen Checkout v71 recipe (Drop-in sessions + `recipes/payments/adyen/browser/csp.json`, bank redirect, unattended `ContAuth` recurring, async cancels, canonical HMAC-SHA256 webhook verification).
 - [`fulfillment/amazon-mcf`](fulfillment/amazon-mcf/recipe.json) — **Exemplar** zero-SDK Amazon Multi-Channel Fulfillment recipe (SP-API Outbound v2020-07-01 & FBA Inventory v1, pure `node:crypto` AWS SigV4 signing, single-flight LWA OAuth2, bridged HMAC-SHA256 notifications, `nextToken` reconciliation paging, snapshot-only stock sync).
+- [`fulfillment/shipbob`](fulfillment/shipbob/recipe.json) — **Verified** zero-SDK ShipBob 3PL recipe (REST API v1.0 / v2025, Bearer PAT auth with optional `shipbob_channel_id`, Standard Webhooks / Svix `whsec_` HMAC-SHA256 verification, 1-based page reconciliation, snapshot-only stock sync).
