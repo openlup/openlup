@@ -47,6 +47,7 @@ export declare const variantIdSchema: z.ZodString;
 /** @beta */
 export * from "./identifiers.js";
 export * from "./quantities.js";
+export * from "./subscriptionProfile.js";
 ```
 ## dist/catalog/quantities.d.ts
 
@@ -104,4 +105,49 @@ export declare function canonicalizeCatalogQuantity(input: CatalogQuantity, unit
 export declare function compareCatalogQuantities(left: CatalogQuantity, right: CatalogQuantity, units?: readonly CatalogQuantityUnit[]): -1 | 0 | 1;
 /** @experimental */
 export declare function convertCatalogQuantity(input: CatalogQuantity, target: string, units?: readonly CatalogQuantityUnit[]): CatalogQuantity;
+```
+## dist/catalog/subscriptionProfile.d.ts
+
+```ts
+import { type CadenceChoiceV1 } from "../subscription/cadenceChoice.js";
+/** @experimental */
+export interface CatalogSubscriptionProfileRef {
+    readonly key: string;
+    readonly version: number;
+}
+/** @experimental */
+export interface CatalogSubscriptionProfileV1 extends CatalogSubscriptionProfileRef {
+    readonly allowedCadences: readonly CadenceChoiceV1[];
+    readonly maxFixedDays?: number;
+    readonly policyRef: CatalogSubscriptionProfileRef;
+    readonly policyDigest: string;
+}
+/** Profile and policy identity pins supplied to the cadence selector.
+ * @experimental
+ */
+export interface InstalledCatalogSubscriptionProfile {
+    readonly profileKey: string;
+    readonly profileVersion: number;
+    readonly profileDigest: string;
+    readonly policyRef: CatalogSubscriptionProfileRef;
+    readonly policyDigest: string;
+}
+/** @experimental */
+export type CatalogSubscriptionProfileIssue = {
+    readonly code: "definition_profile_invalid" | "cadence_kind_unsupported";
+    readonly path: string;
+    readonly fix: string;
+};
+/** Validate profile metadata and normalize the order of the cadence set.
+ * @experimental
+ */
+export declare function validateCatalogSubscriptionProfile(input: unknown): {
+    profile: CatalogSubscriptionProfileV1;
+} | {
+    issue: CatalogSubscriptionProfileIssue;
+};
+/** Canonical SHA-256 input for a declaration returned by the v1 validator.
+ * @experimental
+ */
+export declare function canonicalCatalogSubscriptionProfileJson(profile: CatalogSubscriptionProfileV1): string;
 ```

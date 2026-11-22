@@ -1,3 +1,4 @@
+export { parseCadenceChoiceV1, type CadenceChoiceV1 } from "./cadenceChoice.js";
 /** @beta */
 export * from "./cycleHardening.js";
 /** @beta */
