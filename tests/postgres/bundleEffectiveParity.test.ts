@@ -107,3 +107,45 @@ it("requires document, primary GTIN, status, weight and mode sellability for eve
   expect(await feed()).toHaveLength(1);
   expect(await store().listActiveBundleCompositions({ ...feedInput, mode: "subscription" })).toEqual([]);
 });
+
+it("reads the effective bundle using only incumbent column grants on every relation", async () => {
+  const detailInput = { code: "PARITY-SET", ...feedInput };
+  const detail = await store().getBundle(detailInput);
+  const composition = await feed();
+  expect(detail?.components).toHaveLength(2);
+  expect(composition).toMatchObject([{ targetPriceMinor: 1600, components: [
+    { sku: "PARITY-P", referenceUnitPriceMinor: 1200 }, { sku: "PARITY-Q", referenceUnitPriceMinor: 1200 },
+  ] }]);
+  await db.query(`CREATE ROLE bundle_column_reader NOLOGIN BYPASSRLS;
+    GRANT USAGE ON SCHEMA public TO bundle_column_reader;
+    GRANT SELECT (id, code, title, status, fulfillment_mode, updated_at, composition_constraint, metadata)
+      ON public.catalog_bundles TO bundle_column_reader;
+    GRANT SELECT (bundle_id, catalog_sku_id, quantity, is_addon, sort_order)
+      ON public.catalog_bundle_components TO bundle_column_reader;
+    GRANT SELECT (bundle_id, price_list_id, mode, target_price_minor, amount_kind, active, valid_from, valid_to)
+      ON public.catalog_bundle_prices TO bundle_column_reader;
+    GRANT SELECT (variant_id, price_list_id, active, min_qty, amount_kind, valid_from, valid_to, mode, unit_price_minor)
+      ON public.price_entries TO bundle_column_reader;
+    GRANT SELECT (id, currency, region_code, status, valid_from, valid_to)
+      ON public.price_lists TO bundle_column_reader;
+    GRANT SELECT (id, sku, title, product_id, status, sellable_standalone, sellable_in_subscription, net_weight_g)
+      ON public.catalog_skus TO bundle_column_reader;
+    GRANT SELECT (id, slug, status, primary_sku_id, current_document_revision_id)
+      ON public.catalog_products TO bundle_column_reader;
+    GRANT SELECT (id, product_id)
+      ON public.catalog_product_document_revisions TO bundle_column_reader;
+    GRANT SELECT (catalog_sku_id, issuer, normalized_value, identifier_kind, pack_kind, quantity, is_primary)
+      ON public.catalog_sku_identifiers TO bundle_column_reader;
+    SET LOCAL ROLE bundle_column_reader`);
+  expect(await store().getBundle(detailInput)).toEqual(detail);
+  expect(await feed()).toEqual(composition);
+  for (const relation of [
+    "catalog_bundles", "catalog_bundle_components", "catalog_bundle_prices", "price_entries", "price_lists",
+    "catalog_skus", "catalog_products", "catalog_product_document_revisions", "catalog_sku_identifiers",
+  ]) {
+    await db.query("SAVEPOINT whole_row");
+    await expect(db.query(`SELECT to_jsonb(entry) FROM public.${relation} AS entry`), relation).rejects.toMatchObject({ code: "42501" });
+    await db.query("ROLLBACK TO SAVEPOINT whole_row");
+    await db.query("RELEASE SAVEPOINT whole_row");
+  }
+});

@@ -10214,6 +10214,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/catalog/typedQuantityParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/catalog/variantCombination.test.ts",
       "class": "public-output"
     },

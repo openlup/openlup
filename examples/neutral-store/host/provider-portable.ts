@@ -29,7 +29,31 @@ export function composeStripePortableRail(input: {
     composeWebhook: (event, control) => renewal.composeWebhook(event, control) });
   const settlement = (db: Native['executor']) => createPostgresRenewalSettlementPort(db, codec, input.withTransaction);
   const renewal = createPostgresProviderRenewalBinding({ enabled: input.enabled, channelKey: adapter.capabilities.providerKind, executor: input.executor,
-    withTransaction: input.withTransaction, paymentRail, codec, settlement, truth, now: input.now,
+    withTransaction: input.withTransaction, codec, settlement, truth, now: input.now,
+    paymentRail: {
+      ...paymentRail,
+      adapter: { readbackPort: {
+        async readPayment(request) {
+          const observed = await paymentRail.adapter.readbackPort.readPayment(request);
+          if (!('observedMoney' in observed)) return observed;
+          const readback: Omit<typeof observed, 'capturedAmountBasis'> & {
+            capturedAmountBasis?: NonNullable<typeof observed.capturedAmountBasis>;
+          } = {
+            kind: observed.kind,
+            identity: observed.identity,
+            expectedMoney: observed.expectedMoney,
+            purpose: observed.purpose,
+            observedMoney: observed.observedMoney,
+            providerOccurredAt: observed.providerOccurredAt,
+          };
+          if ('refusal' in observed) readback.refusal = observed.refusal;
+          if ('handoff' in observed) readback.handoff = observed.handoff;
+          const capturedAmountBasis = observed.capturedAmountBasis;
+          if (capturedAmountBasis !== undefined) readback.capturedAmountBasis = capturedAmountBasis;
+          return readback;
+        },
+      } },
+    },
     search: async ({ localIntentId, limit }) => (await input.searchPaymentIntentsByMetadata({ key: 'paymentIntentId', value: localIntentId, limit })).ids });
   return {
     paymentRail,
