@@ -2924,6 +2924,14 @@ const nativeStoreFunctions = (slot: NativeStoreSlot): NativeStoreFunction[] => [
 
 const nativePrefixStatementsCache = new WeakMap<Buffer, readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[]>();
 const nativePrefixStatementsByHash = new Map<string, readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[]>();
+function scanNativeStoreSql<T>(path: string, scan: () => T): T {
+  try {
+    return scan();
+  } catch (error) {
+    throw new Error(`reviewed native store cannot scan ${path}: ${(error as Error).message}`, { cause: error });
+  }
+}
+
 function cachedNativePrefixStatements(bytes: Buffer): readonly { statement: string; tokens: PlatformSqlToken[]; complete: boolean }[] {
   let parsed = nativePrefixStatementsCache.get(bytes);
   if (!parsed) {
@@ -3640,8 +3648,8 @@ function assertPriceListBasisFile(path: string, bytes: Buffer, predecessorStatem
   let statements: string[];
   try {
     statements = sqlStatements(sql, false, false, true);
-  } catch {
-    throw drift(incomplete);
+  } catch (error) {
+    throw drift((error as Error).message);
   }
   for (const statement of statements) {
     const { tokens, complete } = platformSqlTokens(statement, false, true);
@@ -3673,22 +3681,23 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
       assertPriceListBasisFile(source.path, source.bytes);
       continue;
     }
-    for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
+    for (const { statement, tokens, complete } of scanNativeStoreSql(source.path, () => cachedNativePrefixStatements(source.bytes))) {
       if (!nativeWord(tokens, 1, "TABLE")) continue;
       const publicPriceLists = (index: number) => nativeQualified(tokens, index)?.name === "public.price_lists"
         || (nativeIdentifier(tokens[index]) === "price_lists" && !nativeSymbol(tokens, index + 1, ".") && !nativeSymbol(tokens, index - 1, "."));
-      const drift = () => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${source.path}`);
+      const drift = (reason = "") => new Error(`reviewed native store qualified price list basis SELECT predecessor definition drifted: ${source.path}${reason}`);
       if (nativeWord(tokens, 0, "DROP") && tokens.some((_token, index) => index >= 2 && publicPriceLists(index))) throw drift();
       if (!nativeWord(tokens, 0, "ALTER")) continue;
       const targetStart = nativeWord(tokens, 2, "IF") && nativeWord(tokens, 3, "EXISTS") ? 4 : 2;
       const target = targetStart + Number(nativeWord(tokens, targetStart, "ONLY"));
       if (!publicPriceLists(target)) continue;
       const actionStart = nativeQualified(tokens, target)?.next ?? target + 1;
-      if (!complete || (nativeWord(tokens, actionStart, "SET") && nativeWord(tokens, actionStart + 1, "SCHEMA"))
+      if (!complete) throw drift(". Cannot completely tokenize the preceding file.");
+      if ((nativeWord(tokens, actionStart, "SET") && nativeWord(tokens, actionStart + 1, "SCHEMA"))
         || (nativeWord(tokens, actionStart, "RENAME") && nativeWord(tokens, actionStart + 1, "TO"))) throw drift();
       // The native-store inventory only accepts plain qualified ALTER TABLE statements.
       const listed = slots.get(source.path)?.existingTableStatements?.includes(statement);
-      const alter = nativeStoreAlter(statement);
+      const alter = scanNativeStoreSql(source.path, () => nativeStoreAlter(statement));
       const actions = alter?.actions ?? [statement.slice(tokens[actionStart]?.start, tokens.at(-1)?.start)];
       let allActionsApproved = true;
       for (const action of actions) {
@@ -3698,7 +3707,8 @@ function assertPriceListBasisPredecessor(registry: ReviewedForwardRegistry, earl
           allActionsApproved = false;
           continue;
         }
-        if (!listed || !parsed.complete) throw drift();
+        if (!parsed.complete) throw drift(". Cannot completely tokenize the preceding ALTER action.");
+        if (!listed) throw drift();
         const shape = parsed.tokens.map(token => {
           if (token.kind === "string") return JSON.stringify(token.value);
           if (token.kind === "word") return token.value.toLowerCase();
@@ -3749,7 +3759,7 @@ function assertPriceSetupPredecessors(registry: ReviewedForwardRegistry, earlier
     if (!Buffer.from(sql, "utf8").equals(source.bytes) || source.bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) {
       throw drift("Cannot completely tokenize the preceding file.");
     }
-    for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
+    for (const { statement, tokens, complete } of scanNativeStoreSql(source.path, () => cachedNativePrefixStatements(source.bytes))) {
       if (!complete) throw drift("Cannot completely tokenize the preceding file.");
       const word = (index: number, value: string) => nativeWord(tokens, index, value);
       const create = word(0, "CREATE"), alter = word(0, "ALTER"), drop = word(0, "DROP");
@@ -3767,7 +3777,8 @@ function assertPriceSetupPredecessors(registry: ReviewedForwardRegistry, earlier
       if (!["FUNCTION", "ROUTINE", "PROCEDURE", "AGGREGATE"].some(value => word(kind, value))) continue;
       if (escapedIdentifier) throw drift("An escaped identifier prevents checking routine DDL.");
       if (!tokens.some(token => bareNames.some(name => nativeIdentifier(token) === name))) continue;
-      const definition = create && kind === 1 && nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowed, names, true, source.path);
+      const definition = create && kind === 1
+        && scanNativeStoreSql(source.path, () => nativeStoreFunctionDefinitionFromTokens(statement, tokens, complete, allowed, names, true, source.path));
       const target = definition && targets.find(target => target.signature === definition[0]);
       if (!definition || !target || seen.has(target.signature) || target.file.path !== source.path || target.definition.afterSha256 !== definition[1]) {
         throw drift("Only the pinned CREATE of each target is allowed before the grant.");
@@ -3818,7 +3829,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const grandfatheredSecurityDefiner = isGrandfatheredSecurityDefinerForward(path, bytes);
   const pins = (slot.createdTriggers ?? []).filter((entry): entry is NativeDeferredTrigger => entry.deferred === true);
   const created = new Set(slot.createdFunctions.map(fn => fn.signature));
-  const statements = sqlStatements(bytes.toString("utf8"), false, false, true);
+  const statements = scanNativeStoreSql(path, () => sqlStatements(bytes.toString("utf8"), false, false, true));
   const pinnedMessage = (pin: NativeDeferredTrigger, name = pin.name) => {
     const digest = created.has(pin.function) && forward.functions.find(binding => binding.signature === pin.function)?.afterSha256;
     const creation = digest ? statements.find(sql => sqlSha256(sql) === digest) : undefined;
@@ -3857,7 +3868,7 @@ export function assertNativeStoreForward(registry: ReviewedForwardRegistry, path
   const indexCreates = new Set<string>();
   let checkSource: string | undefined;
   const allowedSignatures = new Set(signatures);
-  for (const source of preceding) for (const { statement, tokens, complete } of cachedNativePrefixStatements(source.bytes)) {
+  for (const source of preceding) for (const { statement, tokens, complete } of scanNativeStoreSql(source.path, () => cachedNativePrefixStatements(source.bytes))) {
     if (landedSettings.get(source.path)?.has(statement)) continue;
     const functionIndex = nativeWord(tokens, 1, "OR") && nativeWord(tokens, 2, "REPLACE") ? 3 : 1;
     if (source.path !== PLATFORM_BASELINE_FILE && ["CREATE", "ALTER", "DROP"].some(word => nativeWord(tokens, 0, word)) && nativeWord(tokens, functionIndex, "FUNCTION")) {

@@ -149,6 +149,10 @@ END; $$;
   }, 20_000);
 });
 
+const unterminatedEarlierPath = "db/platform/migrations/20990102100000_unterminated_table.sql";
+const unterminatedEarlierSql = "CREATE TABLE public.fixture_metadata (id uuid)\n";
+const unterminatedReason = "reviewed replacement SQL requires terminated statements";
+
 describe("qualified price list basis SELECT in sql:admit and hosted checks", () => {
   const column = "db/platform/migrations/20990102000000_price_list_basis_column.sql";
   const outside = "db/platform/migrations/20990101000000_price_list_basis_outside_slot.sql";
@@ -167,12 +171,14 @@ END; $$;
   const ruleChange = ["REFUSED", "reviewed replacement admission machinery must be approved separately before co-located SQL/pins"];
   const unissued = ["REFUSED", `reviewed native store qualified price list basis SELECT predecessor must already be issued: ${column}`];
   const unregistered = ["REFUSED", `non-expand-only forward differs from reviewed replacement path or bytes: ${outside}`];
+  const earlierScanRefusal = ["REFUSED", `reviewed native store qualified price list basis SELECT predecessor definition drifted: ${unterminatedEarlierPath}. ${unterminatedReason}`];
 
   it.each([
     ["an issued predecessor", 0, [pass, pass, pass, pass]],
     ["a co-introduced predecessor", 1, [pass, unissued, unissued, unissued, unissued]],
     ["the grant outside a declared slot", 1, [unregistered, pass, unregistered, pass, pass]],
     ["a co-located rule change", 1, [pass, pass, ruleChange, ruleChange]],
+    ["an unterminated earlier forward", 1, [pass, earlierScanRefusal, earlierScanRefusal, earlierScanRefusal, earlierScanRefusal]],
   ] as const)("checks %s for the qualified price list basis SELECT", (scenario, exit, expected) => {
     const f = fixture(`${baseline}\nCREATE TABLE public.price_lists (id uuid);\n`);
     const value = registry(), slots = value.nativeStoreForwardClass!.slots, pins = value.nativeStoreForwards!;
@@ -188,6 +194,11 @@ END; $$;
     if (scenario === "the grant outside a declared slot") {
       f.put(outside, guarded);
       rows.unshift({ file: outside, sha256: sha256(guarded) });
+    }
+    if (scenario === "an unterminated earlier forward") {
+      const sql = `-- Migration after price_lists changes.\n${unterminatedEarlierSql}`;
+      f.put(unterminatedEarlierPath, sql);
+      rows.splice(-1, 0, { file: unterminatedEarlierPath, sha256: sha256(sql) });
     }
     f.put(path, guarded);
     f.put(REVIEWED_FORWARD_PATH, encode(value));
@@ -219,18 +230,22 @@ END; $$;
   const pass = ["PASS"];
   const ruleChange = ["REFUSED", "reviewed replacement admission machinery must be approved separately before co-located SQL/pins"];
   const unissued = (path: string) => ["REFUSED", `reviewed native store qualified price setup EXECUTE predecessor must already be issued: ${path}`];
+  const earlierScanRefusal = ["REFUSED", `reviewed native store cannot scan ${unterminatedEarlierPath}: ${unterminatedReason}`];
 
   it.each([
     ["both predecessors issued", 2, false, 0, [pass, pass, pass, pass]],
     ["neither predecessor issued", 0, false, 1, [pass, pass, unissued(apply), unissued(apply), unissued(apply), unissued(apply)]],
     ["the lock predecessor unissued", 1, false, 1, [pass, unissued(lock), unissued(lock), unissued(lock), unissued(lock)]],
     ["a co-located rule change", 2, true, 1, [pass, pass, ruleChange, ruleChange]],
-  ] as const)("checks %s through trusted admission", (_scenario, issued, changeRule, exit, expected) => {
+    ["an unterminated earlier forward", 2, false, 1, [pass, earlierScanRefusal, earlierScanRefusal, earlierScanRefusal, earlierScanRefusal]],
+  ] as const)("checks %s through trusted admission", (scenario, issued, changeRule, exit, expected) => {
     const f = fixture(), value = registry();
     const slots = value.nativeStoreForwardClass!.slots, pins = value.nativeStoreForwards!;
-    const writeRegistry = () => {
+    const writeRegistry = (includeIntervening = false) => {
+      const rows = pins.map(pin => ({ file: pin.path, sha256: pin.sha256 }));
+      if (includeIntervening) rows.splice(-1, 0, { file: unterminatedEarlierPath, sha256: sha256(unterminatedEarlierSql) });
       f.put(REVIEWED_FORWARD_PATH, encode(value));
-      f.put(PLATFORM_MIGRATION_MANIFEST, manifest(pins.map(pin => ({ file: pin.path, sha256: pin.sha256 }))));
+      f.put(PLATFORM_MIGRATION_MANIFEST, manifest(rows));
     };
     let base = f.base;
     for (const [i, path] of [apply, lock].entries()) {
@@ -245,7 +260,9 @@ END; $$;
     slots.push({ ...slot(grant, "price-setup-execute"), qualifiedPriceSetupExecute: true });
     pins.push({ path: grant, sha256: sha256(guarded), functions: [] });
     f.put(grant, guarded);
-    writeRegistry();
+    const unterminated = scenario === "an unterminated earlier forward";
+    if (unterminated) f.put(unterminatedEarlierPath, unterminatedEarlierSql);
+    writeRegistry(unterminated);
     if (changeRule) f.put("scripts/reviewed-platform-forward.ts", "// Changed admission rule.\n");
     const head = f.commit();
     const result = cli(f.root, ["--base", base, "--head", head, STALE]);
