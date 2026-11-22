@@ -3,6 +3,7 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import type { CommerceQuoteCatalogReadRefusalCode } from "@openlup/platform/pricing";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
+import { catalogQuantityCharacterization, createCharacterizationQuote } from "./catalogPublicationFixture.js";
 import { createQuoteCatalogFixture, digest, documentFor, seed } from "./commerceQuoteCatalogFixture.js";
 
 let fixture: Awaited<ReturnType<typeof createQuoteCatalogFixture>>;
@@ -264,4 +265,40 @@ it.each([
   ["catalog_sku_identifier_authority_invalid", "catalog_primary_trade_item_invalid"],
 ] as const)("maps the existing authority error %s to %s", async (source, target) => {
   await refusal(make({ query: async () => { throw new fixture.catalog.CatalogSkuAuthorityError(source); } }), target);
+});
+
+it("characterizes legacy mass and incidental quantity tuples through the qualified runtime", async () => {
+  const sku = seed.skus[0]!;
+  const reader = make();
+  const quotePort = createCharacterizationQuote(fixture.pricing, reader);
+  const request = { mode: "one_time" as const, promoCodes: [], lines: [{ sku: sku.sku, quantity: 2 }] };
+  // Pinned main 2e8a49af9 served stored grams and priced two sale units at 250.
+  const expected = { skuId: sku.id, skuCode: sku.sku, variantId: sku.id, productSlug: seed.products[0]!.slug,
+    isPrimarySku: true, isAddon: false, sellability: { oneTime: true, subscription: false },
+    documentRevision: { id: expect.any(String), digest: digest(documentFor(0)) } };
+  try {
+    for (const { grams, tuple, quote } of catalogQuantityCharacterization) {
+      await fixture.owner.query(`UPDATE public.catalog_skus SET net_weight_g=$2,net_content_dimension=$3,
+        net_content_unit=$4,net_content_unscaled=$5,net_content_scale=$6 WHERE id=$1`,
+      [sku.id, grams, tuple?.[0] ?? null, tuple?.[1] ?? null, tuple?.[2] ?? null, tuple ? 0 : null]);
+      if (quote) {
+        expect((await reader.listQuoteCatalogItems()).find(item => item.skuCode === sku.sku)).toEqual({ ...expected, netWeightG: grams });
+        await expect(quotePort.createServerAuthoritativeQuote(request)).resolves.toMatchObject({ quote: {
+          totalGross: { amountMinor: 250, currency: "XXX" }, context: { grams: [grams] },
+          lines: [{ sku: sku.sku, productSlug: seed.products[0]!.slug, quantity: 2, unitPriceGross: { amountMinor: 125, currency: "XXX" } }],
+        } });
+      } else await expect(quotePort.createServerAuthoritativeQuote(request)).rejects.toMatchObject({ code: "catalog_authority_unavailable" });
+    }
+  } finally {
+    await fixture.owner.query(`UPDATE public.catalog_skus
+      SET net_weight_g=1,net_content_dimension=NULL,net_content_unscaled=NULL,net_content_unit=NULL,net_content_scale=NULL WHERE id=$1`, [sku.id]);
+  }
+});
+
+it("quotes 101 requested gram SKUs through the released server path", async () => {
+  const lines = seed.skus.slice(0, 500).filter(sku => sku.sellable_standalone).slice(0, 101).map(sku => ({ sku: sku.sku, quantity: 1 }));
+  const quote = createCharacterizationQuote(fixture.pricing, make());
+  const response = await quote.createServerAuthoritativeQuote({ mode: "one_time", lines, promoCodes: [] });
+  expect(response.quote.lines.map(line => line.sku)).toEqual(lines.map(line => line.sku));
+  expect(response.quote.totalGross).toEqual({ amountMinor: 12_625, currency: "XXX" });
 });

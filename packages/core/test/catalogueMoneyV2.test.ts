@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import {
-  calculateCatalogueMoneyV2, CatalogueMoneyV2Error, planCatalogueMoneyV2,
+  calculateCatalogueMoneyV2, CatalogueMoneyV2Error, isCatalogueMoneyV2RateDecimal, planCatalogueMoneyV2,
   type CatalogueMoneyV2ErrorCode, type CatalogueMoneyV2Input, type CatalogueMoneyV2Tax,
 } from "@openlup/core/pricing";
 
@@ -282,4 +282,17 @@ describe("catalogue money v2 input and arithmetic limits", () => {
       { kind: "inclusive", components: [{ ref: item, rateBps: 0 }, { ref: line("second", 2), rateBps: 0 }] }),
     "money_amount_out_of_range", "netTotal");
   });
+});
+
+it.each([
+  ["0", true], ["8.125000", true], ["9007199254.740991", true], ["9007199254.740992", false],
+  ["1.1234567", false], ["01", false], ["0.", false], ["1e0", false], ["1\n", false], [1, false],
+])("uses the calculator rate grammar for %j", (value, valid) => {
+  expect(isCatalogueMoneyV2RateDecimal(value)).toBe(valid);
+  const calculation = () => calculateCatalogueMoneyV2(
+    input({ amountBasis: "exclusive", sources: [source("item", 1, 0)] }),
+    local(value as string),
+  );
+  if (valid) expect(calculation().taxTotal).toBe(0);
+  else refuses(calculation, "money_rate_invalid", "tax.components[0].rates[0].rateDecimal");
 });

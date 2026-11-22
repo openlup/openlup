@@ -7,7 +7,7 @@ import { assertAdmittedPlatformForward } from "./oss-source-release-contract.ts"
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
 import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
-import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, NATIVE_CATALOG_CONTROLS, isNativeStoreMigrationPath, assertCoLocatedForwardApproval, assertNativeStoreForward, assertReviewedPlatformForward, assertSecurityDefinerSearchPath, assertUnchangedForwardApproval, expectedReplacedFunctionAttrs, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, reviewedFunctionDefinitions, renderQualifiedSecurityDefiner, qualifiedCatalogueStorageSelectSql, sqlStatements, isExpandOnlyPlatformForward, changedForwardApprovals, readReviewedForwardRegistry, sqlSha256, type NativeStoreForwardClass, type NativeStoreSlot, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const fixture = (path: string) => readFileSync(`scripts/fixtures/reviewed-native-store/${path}`);
 const control = JSON.parse(fixture("registry.json").toString()) as NativeStoreForwardClass;
@@ -572,6 +572,38 @@ describe("grant-only existing functions", () => {
   });
 });
 
+describe("qualified catalogue storage SELECT", () => {
+  const sql = `DO $$ BEGIN
+${roleGuard}${ledgerGuard}  THEN
+    EXECUTE 'GRANT SELECT (net_content_storage) ON TABLE public.catalog_sku_revisions TO openlup_catalog_publication;';
+  END IF;
+END; $$;`;
+  function admit(text: string, declared = true) {
+    const value = registry();
+    const path = "db/platform/migrations/20990101000000_catalogue_storage.sql";
+    value.nativeStoreForwardClass!.slots = [{ row: "catalogue-storage", path, replacedFunctions: [],
+      createdFunctions: [], grantOnlyFunctions: [], dataStatements: [], ...(declared ? { qualifiedCatalogueStorageSelect: true } : {}) }];
+    bind(value, 0, text);
+    return assertNativeStoreForward(value, path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
+  }
+  it("admits exactly the guarded column SELECT", () => expect(() => admit(sql)).not.toThrow());
+  it.each([
+    ["without a slot", sql, false],
+    ["without the guard", sql.replace(ledgerGuard, "")],
+    ["with a wrong hash", sql.replace(authoritySha256, "0".repeat(64))],
+    ["with a role substitution", sql.replaceAll(catalogueReadRole, "service_role")],
+    ["with table-wide SELECT", sql.replace(" (net_content_storage)", "")],
+    ["with an extra column", sql.replace("net_content_storage", "net_content_storage, digest")],
+    ["with a write privilege", sql.replace("GRANT SELECT", "GRANT UPDATE")],
+    ["with grant option", sql.replace("TO openlup_catalog_publication;", "TO openlup_catalog_publication WITH GRANT OPTION;")],
+    ["with a duplicate", `${sql}
+${sql}`],
+    ["with no grant", ""],
+  ] as const)("refuses storage SELECT %s", (_label, text, declared) => {
+    expect(() => admit(text, declared)).toThrow(/reviewed native store/u);
+  });
+});
+
 describe("qualified price list basis SELECT", () => {
   const grant = "GRANT SELECT (amount_basis) ON TABLE public.price_lists TO openlup_catalog_publication;";
   const guarded = `DO $$ BEGIN
@@ -729,6 +761,15 @@ COMMENT ON COLUMN public.unrelated.";" IS 'metadata';`;
     const { preceding, admit, pin } = setup();
     preceding.push({ path: "db/platform/migrations/20990102000000_price_list_metadata_or_data.sql", bytes: Buffer.from(text) });
     expect(admit().priceListBasisPredecessor).toEqual(pin);
+  });
+  it("refuses each guarded column grant under the other flag", () => {
+    const storageAsBasis = setup(`${qualifiedCatalogueStorageSelectSql}\n`);
+    expect(storageAsBasis.admit).toThrow(exactGrant);
+
+    const basisAsStorage = setup();
+    delete basisAsStorage.slot.qualifiedPriceListBasisSelect;
+    basisAsStorage.slot.qualifiedCatalogueStorageSelect = true;
+    expect(basisAsStorage.admit).toThrow("refuses DO outside the single constant role privilege shape");
   });
 });
 

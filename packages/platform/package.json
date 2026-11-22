@@ -181,6 +181,16 @@
       "import": "./dist/catalog/contracts/index.js",
       "default": "./dist/catalog/contracts/index.js"
     },
+    "./tax": {
+      "types": "./dist/tax/index.d.ts",
+      "import": "./dist/tax/index.js",
+      "default": "./dist/tax/index.js"
+    },
+    "./tax/contracts": {
+      "types": "./dist/tax/contracts/index.d.ts",
+      "import": "./dist/tax/contracts/index.js",
+      "default": "./dist/tax/contracts/index.js"
+    },
     "./pricing": {
       "types": "./dist/pricing/index.d.ts",
       "import": "./dist/pricing/index.js",
