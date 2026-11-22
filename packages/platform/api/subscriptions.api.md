@@ -886,10 +886,10 @@ export declare function createNativeSubscriptionBinding(input: {
     realizationAdmitted(orderId: string): Promise<{
         kind: "refused";
         code: string;
-    } | {
+    } | import("./contracts/stockWait.js").StockWaitCase | {
         readonly kind: "refused";
         readonly code: "disabled";
-    } | import("./contracts/stockWait.js").StockWaitCase | null>;
+    } | null>;
 };
 ```
 ## dist/subscriptions/nativeSubscriptionSchema.d.ts

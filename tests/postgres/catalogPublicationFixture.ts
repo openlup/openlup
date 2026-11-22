@@ -2,11 +2,21 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Pool, PoolClient } from "pg";
 import type { CommerceQuoteCatalogReadPort, CommercePriceAuthorityPort } from "@openlup/platform/pricing";
-import type { CatalogPublishedSku, CatalogPublishedProduct, CatalogSkuRevisionRef, CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
+import type { CatalogPublishedSku, CatalogPublishedProduct, CatalogSkuRevisionRef, CatalogPublicationManifestV2, CatalogDraftPayloadV4 } from "@openlup/platform/catalog";
 
 export const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 export const catalogueReadGrant = "db/platform/migrations/20261124180000_catalogue_read_grant.sql";
 export const cataloguePublicationAuthority = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+export const catalogueGovernedForward = "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql";
+
+export async function installAfter(pool: Pool, predecessor: string) {
+  const index = platformForwards.findIndex(unit => unit.file === predecessor);
+  if (index < 0) throw new Error("Native fixture predecessor missing");
+  for (const { file } of platformForwards.slice(index + 1)) await pool.query(readFileSync(file, "utf8"));
+}
+const platformForwards = (JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as {
+  forward: { file: string }[];
+}).forward;
 export const membershipSignature = "public.catalog_offer_memberships_page(text,jsonb,integer,text)";
 export const catalogQuantityCharacterization = [
   { grams: 1, tuple: null, quote: true },
@@ -131,7 +141,8 @@ type Head = { publicationId: string; revision: number; documentDigest: string };
 
 export async function graph(db: PoolClient, data: Fixture, before: Head | null = null, stageProduct = true,
   options: { draftRevision?: number; registerExisting?: boolean; registrationText?: string | Record<string, never>; documentText?: string;
-    retainedSource?: CatalogPublishedProduct["source"]; authoredDocument?: Record<string, unknown> } = {}) {
+    retainedSource?: CatalogPublishedProduct["source"]; authoredDocument?: Record<string, unknown>;
+    lifecycle?: "draft" | "active" | "withdrawn" } = {}) {
   const { productId, skuId, draftId, documentId } = data;
   const revision = (before?.revision ?? 0) + 1;
   const draftRevision = options.draftRevision ?? revision;
@@ -158,6 +169,19 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
       { op: "create_sku", skuId, productSlug: slug, documentRevisionNo: 1, skuCode: code, title: "Article", minQuantity: 1, isAddon: false, facts: {} },
       { op: "set_primary_sku", productSlug: slug, skuCode: code },
     ] } };
+  if (options.lifecycle !== undefined) {
+    const authored = payload as unknown as CatalogDraftPayloadV4;
+    authored.schemaVersion = 4;
+    if (options.lifecycle === "active") authored.publication.operations.push(
+      { op: "set_product_lifecycle", productSlug: slug, expectedState: "draft", state: "active", children: [] },
+      { op: "set_sku_lifecycle", skuCode: code, expectedState: "draft", state: "active" },
+      { op: "set_eligibility", skuCode: code, sellableStandalone: true, sellableInSubscription: false },
+    );
+    if (options.lifecycle === "withdrawn") authored.publication.operations.push(
+      { op: "set_product_lifecycle", productSlug: slug, expectedState: "active", state: "withdrawn",
+        children: [{ skuCode: code, expectedState: "active" }] },
+    );
+  }
   const draftKey = `draft:${draftRevision}`;
   const source = { draftId, revision: draftRevision, commandKey: draftKey, fingerprint: hash(json(payload)) };
   if (!before && stageProduct) await stageProductRows(db, data, slug, code);
@@ -183,6 +207,11 @@ export async function graph(db: PoolClient, data: Fixture, before: Head | null =
   const facts: CatalogPublishedSku = { id: skuId, productId, code, title: before ? `Article ${revision}` : "Article", status: "draft", minQuantity: 1, isAddon: false, sellableStandalone: false,
     sellableInSubscription: false, netContent: { dimension: "mass", unit: "openlup:g", unscaled: "100", scale: 0 },
     grossMass: null, options: {}, attributes: {}, facts: {} as Record<string, string>, identifiers: [], assetRefs: [], logisticsRef: null, memberships: [], source };
+  if (options.lifecycle !== undefined) {
+    const state = options.lifecycle, status = state === "withdrawn" ? "active" : state;
+    Object.assign(product, { schemaVersion: 3, lifecycleState: state, status, definitionDigest });
+    Object.assign(facts, { schemaVersion: 3, lifecycleState: state, status, optionDigest: hash(json(facts.options)), sellableStandalone: state === "active" });
+  }
   const head = { publicationId: issueId, revision, documentDigest: document.digest };
   const base = { revision, ...data, approvalId, decision, decisionKey, candidateDigest, candidateRef, commandKey, fingerprint, head,
     product, facts, time, skuRevisionId, before, canonicalText, issueId, source, document };
@@ -236,7 +265,7 @@ export async function documentRow(db: PoolClient, value: Graph, storedValue = va
 }
 
 export function sealedState(product: CatalogPublishedProduct, references: { skuId: string; digest: string }[]) {
-  return json({ schemaVersion: 2, product, skus: references.map(({ skuId, digest }) => ({ skuId, digest }))
+  return json({ schemaVersion: product.schemaVersion ?? 2, product, skus: references.map(({ skuId, digest }) => ({ skuId, digest }))
     .sort((left, right) => left.skuId < right.skuId ? -1 : left.skuId > right.skuId ? 1 : 0) });
 }
 
@@ -285,7 +314,12 @@ export async function insertGraph(db: PoolClient, value: Graph, options: {
   const { productId, skuId, issueId, revision, before, head } = value;
   const extras = Array.from({ length: options.extraSkuCount ?? 0 }, () => {
     const skuId = randomUUID();
-    return { ...value, skuId, skuRevisionId: randomUUID(), revision: 1, facts: { ...value.facts, id: skuId, code: options.maxCodes ? skuId.padEnd(160, "x") : `sku-${skuId}` } };
+    const facts = { ...value.facts, id: skuId, code: options.maxCodes ? skuId.padEnd(160, "x") : `sku-${skuId}` };
+    if (facts.lifecycleState !== undefined) {
+      facts.options = { finish: { kind: "choice", value: skuId } };
+      facts.optionDigest = hash(json(facts.options));
+    }
+    return { ...value, skuId, skuRevisionId: randomUUID(), revision: 1, facts };
   });
   const issued = (options.inherit ? [] : options.onlyNew ? extras : [{ ...value, revision: options.skuRevision ?? revision }, ...extras]).sort((left, right) => left.skuId.localeCompare(right.skuId));
   const factBytes = issued.map(sku => {
@@ -299,12 +333,13 @@ export async function insertGraph(db: PoolClient, value: Graph, options: {
   const references = (options.inherit ? [options.inherit] : [
     ...(options.inherited ?? []).filter(ref => !changed.has(ref.skuId)), ...newReferences,
   ]).sort((left, right) => left.skuId < right.skuId ? -1 : left.skuId > right.skuId ? 1 : 0);
-  const encoded = json({ schemaVersion: 2, product: value.product, skus: options.roster === "omit" ? [] : references });
+  const schemaVersion = value.product.schemaVersion ?? 2;
+  const encoded = json({ schemaVersion, product: value.product, skus: options.roster === "omit" ? [] : references });
   const state = options.rawState?.(encoded) ?? encoded;
   const recorded = {
-    schemaVersion: 2, productId, commandKey: value.commandKey, fingerprint: value.fingerprint, actorId, previousHead: before, head,
+    schemaVersion, productId, commandKey: value.commandKey, fingerprint: value.fingerprint, actorId, previousHead: before, head,
     publicationDigest: hash(state), committedAt: options.receipt === "timestamp" ? "2000-01-01T00:00:00.000000Z" : value.time,
-    changes: issued.map(sku => ({ productId, variantId: sku.skuId, sku: sku.facts.code, state: sku.facts.status === "archived" ? "withdrawn" : sku.facts.status, variantRevision: sku.revision,
+    changes: issued.map(sku => ({ productId, variantId: sku.skuId, sku: sku.facts.code, state: sku.facts.lifecycleState ?? (sku.facts.status === "archived" ? "withdrawn" : sku.facts.status), variantRevision: sku.revision,
       publicationHead: head, draftRef: { draftId: value.draftId, revision: value.source.revision } })),
   };
   async function issue() {
@@ -340,11 +375,13 @@ export async function insertGraph(db: PoolClient, value: Graph, options: {
     productId, value.commandKey, value.fingerprint, actorId, issueId, options.receiptResult ?? json(recorded),
   ]);
   if (options.order === "child-first") await issue();
-  if (!options.omitProductProjection) await db.query("UPDATE public.catalog_products SET publication_facts=$2,variant_axes=$3,attribute_values=$4 WHERE id=$1",
-    [productId, json(value.product), value.product.axes, json(value.product.attributes)]);
+  if (!options.omitProductProjection) await db.query("UPDATE public.catalog_products SET publication_facts=$2,variant_axes=$3,attribute_values=$4, status=coalesce($5,status) WHERE id=$1",
+    [productId, json(value.product), value.product.axes, json(value.product.attributes), value.product.lifecycleState ? value.product.status : null]);
   if (issued.length) await db.query(`UPDATE public.catalog_skus s SET title=f->>'title', publication_facts=f,
       status=f->>'status',sellable_standalone=(f->>'sellableStandalone')::boolean,sellable_in_subscription=(f->>'sellableInSubscription')::boolean,
-      option_values=f->'options',attribute_values=f->'attributes', net_content_dimension='mass',net_content_unit='openlup:g',
+      option_values=f->'options',attribute_values=f->'attributes',
+      combination_digest=CASE WHEN f ? 'optionDigest' THEN decode(f->>'optionDigest','hex') ELSE s.combination_digest END,
+      net_content_dimension='mass',net_content_unit='openlup:g',
       net_content_unscaled=100,net_content_scale=0
     FROM jsonb_array_elements($1::jsonb) AS f WHERE s.id=(f->>'id')::uuid`, [json(issued.map(sku => sku.facts))]);
   for (const { skuId, facts } of issued) {

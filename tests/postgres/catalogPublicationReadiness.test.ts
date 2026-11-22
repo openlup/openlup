@@ -7,7 +7,7 @@ import { catalogDefinitionDigest, createCatalogProductTypeRegistry, createPostgr
 import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
-import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json,
+import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installAfter, installCatalogueReadGrants, installPublicationActors, json,
   publicFunctionGrants, readinessSignature as entry, stageProductRows, transaction } from "./catalogPublicationFixture.js";
 
 const forward = "db/platform/migrations/20261124140000_catalog_publication_readiness.sql";
@@ -577,4 +577,20 @@ it("waits behind the held real writer, refuses its moved head without installed 
   release.resolve();
   expect(await reading).toMatchObject({ protocol: "governed", headDigest: before, items: [{ skuCode: subject.facts.code, skuId: subject.skuId }] });
   expect(await publish(command)).toMatchObject({ outcome: "committed" });
+});
+
+it("uses post-fence authoritative withdrawal even when the legacy projection stays active", async () => {
+  await installAfter(pool, forward);
+  const data = fixture();
+  const withdrawn = await transaction(pool, async db => {
+    const first = await graph(db, data, null, true, { lifecycle: "active" });
+    await insertGraph(db, first);
+    const next = await graph(db, data, first.head, true, { lifecycle: "withdrawn" });
+    await insertGraph(db, next);
+    return next;
+  });
+  expect(await read(none, [withdrawn.facts.code], await headDigest())).toMatchObject({
+    protocol: "governed", items: [{ skuId: data.skuId, ready: false,
+      reasons: expect.arrayContaining(["catalog_lifecycle_fresh_sale_refused"]) }],
+  });
 });

@@ -1057,6 +1057,7 @@ export declare function createCatalogDefinitionWriteGuard(readExecutor: PgQueryE
 ```ts
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { CatalogLifecycleDraftStorePort } from "./draftPorts.js";
 import { type CatalogDraftStorePort } from "./draftPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 /** Existing v1 reader/adapter. A v2 command requires the explicit v2 adapter. */
@@ -1069,6 +1070,10 @@ export declare function createPostgresCatalogDraftStoreV2(client: PgQueryExecuto
  * @experimental
  */
 export declare function createPostgresCatalogDraftStoreV3(client: PgQueryExecutor): CatalogDraftStorePort<CatalogDraftPublicationStoredRecord>;
+/** Opt in to governed draft writes and exact stored revisions on list.
+ * @experimental
+ */
+export declare function createPostgresCatalogDraftStoreV4(client: PgQueryExecutor): CatalogLifecycleDraftStorePort;
 ```
 ## dist/catalog/catalogPackManifest.d.ts
 
@@ -1106,7 +1111,7 @@ import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { CatalogCandidatePreview, CatalogCandidateQuery } from "./contracts/candidate.js";
 import type { CatalogPublishCommand } from "./contracts/lifecycle.js";
 import type { CatalogPublicationPort, VerifiedCatalogPublisher } from "./publicationPorts.js";
-import type { CatalogPublicationFailure, CatalogPublicationReceiptV2 } from "./publicationContracts.js";
+import type { CatalogPublicationFailure, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3 } from "./publicationContracts.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 import { z } from "./validation.js";
@@ -1180,7 +1185,7 @@ export type CatalogPublicationDecisionReceipt = z.output<typeof decisionReceiptS
 /** @experimental */
 export type CatalogPublicationCommandResult = {
     outcome: "committed" | "replayed";
-    receipt: CatalogPublicationReceiptV2 | CatalogPublicationDecisionReceipt;
+    receipt: CatalogPublicationReceiptV2 | CatalogPublicationReceiptV3 | CatalogPublicationDecisionReceipt;
 } | (CatalogPublicationFailure & {
     path?: string;
 });
@@ -1219,7 +1224,7 @@ export {};
 import type { PgQueryExecutor } from "../data/index.js";
 import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
 import { CATALOG_PUBLICATION_LIMITS as limits } from "./publicationContracts.js";
-import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogPublicationFailure } from "./publicationContracts.js";
+import type { CatalogFullPublicationV2, CatalogFullPublicationV3, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3, CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 /** @experimental */
 export interface CatalogPublicationReadDependencies<Context> {
@@ -1257,7 +1262,7 @@ type PublicationReceiptRead = {
     receipt?: undefined;
 } | {
     outcome: "found";
-    receipt: CatalogPublicationReceiptV2;
+    receipt: CatalogPublicationReceiptV2 | CatalogPublicationReceiptV3;
 } | PublicationReadFailure;
 /** Reads admitted history in one snapshot on a host-selected publication connection.
  * The host authorizes current, exact and history and supplies a verified human for receipt recovery.
@@ -1274,6 +1279,7 @@ export declare function createPostgresCatalogPublicationReads<Context>(deps: Cat
         commandKey: string;
     }, capability: VerifiedCatalogPublisher) => Promise<PublicationReceiptRead>;
     readbackV2: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
+    readbackV3: (head: CatalogHeadRef, cursor?: string | null) => Promise<CatalogPublicationFailure | CatalogFullPublicationV3>;
 };
 export {};
 ```
@@ -3130,12 +3136,14 @@ export interface CatalogCombinationChangeV2 {
 import { type CatalogDraftApplyResult, type CatalogDraftRecord, type CatalogDraftPage, type CatalogDraftRefusal } from "./draftSchemas.js";
 import type { CatalogDraftStoredRecord } from "./contracts/draftV2.js";
 import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import { type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
+import type { PublicationDraftRecord } from "./publicationIntent.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import { type CatalogDraftOperator, type CatalogDraftStorePort } from "./draftPorts.js";
 import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./productTypeSchemas.js";
 import { type CatalogDraftReadiness } from "./draftValidation.js";
-export interface CatalogDraftHandlerDeps<Context, Record extends CatalogDraftPublicationStoredRecord = CatalogDraftRecord> {
-    store: CatalogDraftStorePort<Record>;
+export interface CatalogDraftHandlerDeps<Context, Record extends PublicationDraftRecord = CatalogDraftRecord, Page extends CatalogDraftPage = CatalogDraftPage> {
+    store: CatalogDraftStorePort<Record, Page>;
     registry: CatalogProductTypeRegistry;
     /** @experimental */
     attributeReferences?: CatalogAttributeReferencePort;
@@ -3203,17 +3211,71 @@ export declare function createCatalogDraftHandlerV3<Context>(deps: CatalogDraftH
         page: CatalogDraftPage;
     }>;
 };
+/** Opt in to governed drafts.
+ * @experimental
+ */
+export declare function createCatalogDraftHandlerV4<Context>(deps: CatalogDraftHandlerDeps<Context, PublicationDraftRecord, CatalogLifecycleDraftPage>): {
+    execute(input: unknown, context: Context): Promise<(CatalogDraftRefusal | {
+        outcome: "committed" | "replayed";
+        record: {
+            draftId: string;
+            productId: string;
+            revision: number;
+            status: "open" | "abandoned";
+            commandKey: string;
+            fingerprint: string;
+            actorId: string;
+            createdAt: string;
+            payload: import("./contracts/draftV3.js").CatalogDraftPublicationStoredPayload | import("./publicationIntent.js").CatalogDraftPayloadV4;
+        };
+    }) & {
+        issues?: readonly CatalogDraftIssue[];
+        readiness?: CatalogDraftReadiness;
+    }>;
+    get(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
+        outcome: "found";
+        record: {
+            draftId: string;
+            productId: string;
+            revision: number;
+            status: "open" | "abandoned";
+            commandKey: string;
+            fingerprint: string;
+            actorId: string;
+            createdAt: string;
+            payload: import("./contracts/draftV3.js").CatalogDraftPublicationStoredPayload | import("./publicationIntent.js").CatalogDraftPayloadV4;
+        } | null;
+    }>;
+    list(input: unknown, context: Context): Promise<CatalogDraftRefusal | {
+        outcome: "listed";
+        page: {
+            items: {
+                draftId: string;
+                productId: string;
+                revision: number;
+                status: "open" | "abandoned";
+                commandKey: string;
+                fingerprint: string;
+                actorId: string;
+                createdAt: string;
+                payload: import("./contracts/draftV3.js").CatalogDraftPublicationStoredPayload | import("./publicationIntent.js").CatalogDraftPayloadV4;
+            }[];
+            nextCursor: string | null;
+        };
+    }>;
+};
 ```
 ## dist/catalog/draftPorts.d.ts
 
 ```ts
 import type { CatalogDraftGetQuery, CatalogDraftListQuery, CatalogDraftPage, CatalogDraftRefusal, CatalogDraftRecord } from "./draftSchemas.js";
-import type { CatalogDraftPublicationStoredRecord } from "./contracts/draftV3.js";
+import type { PublicationDraftRecord } from "./publicationIntent.js";
+import type { CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
 /** Portable adapters accept this actor only after the injected operator authorizer succeeds. */
 export interface CatalogDraftOperator {
     actorId: string;
 }
-export interface CatalogDraftStorePort<Record extends CatalogDraftPublicationStoredRecord = CatalogDraftRecord> {
+export interface CatalogDraftStorePort<Record extends PublicationDraftRecord = CatalogDraftRecord, Page extends CatalogDraftPage = CatalogDraftPage> {
     apply(input: {
         canonicalCommand: string;
         fingerprint: string;
@@ -3223,12 +3285,14 @@ export interface CatalogDraftStorePort<Record extends CatalogDraftPublicationSto
         record: Record;
     } | CatalogDraftRefusal>;
     get(query: CatalogDraftGetQuery, actorId: string): Promise<Record | null>;
-    list(query: CatalogDraftListQuery, actorId: string): Promise<CatalogDraftPage>;
+    list(query: CatalogDraftListQuery, actorId: string): Promise<Page>;
 }
 export declare class CatalogDraftStoreError extends Error {
     readonly refusal: CatalogDraftRefusal;
     constructor(refusal: CatalogDraftRefusal);
 }
+/** @experimental */
+export type CatalogLifecycleDraftStorePort = CatalogDraftStorePort<PublicationDraftRecord, CatalogLifecycleDraftPage>;
 ```
 ## dist/catalog/draftSchemas.d.ts
 
@@ -4105,13 +4169,16 @@ export type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 export { createCatalogDraftHandlerV2 } from "./draftHandler.js";
 export { createPostgresCatalogDraftStoreV2 } from "./catalogDraftStore.js";
 export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, catalogDraftPublicationOperationV3Schema, catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema, catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema, catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
-export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
-export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
+export { catalogDraftPayloadV4Schema, catalogDraftCommandV4Schema, type CatalogDraftCommandV4, type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
+export type { CatalogDraftPayloadV4, PublicationDraftRecord } from "./publicationIntent.js";
+export type { CatalogLifecycleDraftStorePort } from "./draftPorts.js";
+export { createCatalogDraftHandlerV3, createCatalogDraftHandlerV4 } from "./draftHandler.js";
+export { createPostgresCatalogDraftStoreV3, createPostgresCatalogDraftStoreV4 } from "./catalogDraftStore.js";
 export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
 export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 export { nativeCatalogPublication } from "./publicationCodec.js";
-export type { CatalogFullPublicationV2, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
+export type { CatalogFullPublicationV2, CatalogFullPublicationV3, CatalogPublicationManifestV3, CatalogPublicationReceiptV3, CatalogPublishedProductV3, CatalogPublishedSkuV3, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
 export { createPostgresCatalogPublicationReads } from "./catalogPublicationReads.js";
 export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCommands.js";
 export type { CatalogPublicationCommand, CatalogPublicationCommandResult, CatalogPublicationDecisionReceipt, PostgresCatalogPublicationCommandsDeps } from "./catalogPublicationCommands.js";
@@ -4128,6 +4195,105 @@ import type { CatalogDefinitionInstallReceipt } from "./contracts/definitionInst
  * @experimental
  */
 export declare function installCatalogDefinitions(installExecutor: PgQueryExecutor, pack: CatalogPackInput): Promise<CatalogDefinitionInstallReceipt>;
+```
+## dist/catalog/lifecycleDraftSchemas.d.ts
+
+```ts
+import { z } from "./validation.js";
+import { type CatalogDraftPayloadV4 } from "./publicationIntent.js";
+/** @experimental */
+export declare const catalogDraftPayloadV4Schema: z.ZodCustom<CatalogDraftPayloadV4, CatalogDraftPayloadV4>;
+/** @experimental */
+export declare const catalogDraftCommandV4Schema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<4>;
+    action: z.ZodEnum<{
+        resume: "resume";
+        create: "create";
+        revise: "revise";
+        abandon: "abandon";
+    }>;
+    draftId: z.ZodGUID;
+    commandKey: z.ZodString;
+    expectedRevision: z.ZodNumber;
+    payload: z.ZodOptional<z.ZodCustom<CatalogDraftPayloadV4, CatalogDraftPayloadV4>>;
+}, z.core.$strict>;
+/** @experimental */
+export type CatalogDraftCommandV4 = z.infer<typeof catalogDraftCommandV4Schema>;
+export declare const lifecycleStoredCommandSchema: z.ZodUnion<readonly [z.ZodType<import("./index.js").CatalogDraftPublicationStoredCommand, unknown, z.core.$ZodTypeInternals<import("./index.js").CatalogDraftPublicationStoredCommand, unknown>>, z.ZodObject<{
+    schemaVersion: z.ZodLiteral<4>;
+    action: z.ZodEnum<{
+        resume: "resume";
+        create: "create";
+        revise: "revise";
+        abandon: "abandon";
+    }>;
+    draftId: z.ZodGUID;
+    commandKey: z.ZodString;
+    expectedRevision: z.ZodNumber;
+    payload: z.ZodOptional<z.ZodCustom<CatalogDraftPayloadV4, CatalogDraftPayloadV4>>;
+}, z.core.$strict>]>;
+export declare const lifecycleStoredRecordSchema: z.ZodObject<{
+    draftId: z.ZodGUID;
+    productId: z.ZodGUID;
+    revision: z.ZodNumber;
+    status: z.ZodEnum<{
+        open: "open";
+        abandoned: "abandoned";
+    }>;
+    commandKey: z.ZodString;
+    fingerprint: z.ZodString;
+    actorId: z.ZodString;
+    createdAt: z.ZodString;
+    payload: z.ZodUnion<readonly [z.ZodType<import("./index.js").CatalogDraftPublicationStoredPayload, unknown, z.core.$ZodTypeInternals<import("./index.js").CatalogDraftPublicationStoredPayload, unknown>>, z.ZodCustom<CatalogDraftPayloadV4, CatalogDraftPayloadV4>]>;
+}, z.core.$strict>;
+export declare const lifecycleStoredResultSchema: z.ZodUnion<readonly [z.ZodObject<{
+    outcome: z.ZodEnum<{
+        replayed: "replayed";
+        committed: "committed";
+    }>;
+    record: z.ZodObject<{
+        draftId: z.ZodGUID;
+        productId: z.ZodGUID;
+        revision: z.ZodNumber;
+        status: z.ZodEnum<{
+            open: "open";
+            abandoned: "abandoned";
+        }>;
+        commandKey: z.ZodString;
+        fingerprint: z.ZodString;
+        actorId: z.ZodString;
+        createdAt: z.ZodString;
+        payload: z.ZodUnion<readonly [z.ZodType<import("./index.js").CatalogDraftPublicationStoredPayload, unknown, z.core.$ZodTypeInternals<import("./index.js").CatalogDraftPublicationStoredPayload, unknown>>, z.ZodCustom<CatalogDraftPayloadV4, CatalogDraftPayloadV4>]>;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    outcome: z.ZodEnum<{
+        conflict: "conflict";
+        validation_issue: "validation_issue";
+        unauthorized: "unauthorized";
+        dependency_unavailable: "dependency_unavailable";
+    }>;
+    reason: z.ZodString;
+    currentRevision: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>]>;
+export declare const lifecycleStoredPageSchema: z.ZodObject<{
+    items: z.ZodArray<z.ZodObject<{
+        draftId: z.ZodGUID;
+        productId: z.ZodGUID;
+        revision: z.ZodNumber;
+        status: z.ZodEnum<{
+            open: "open";
+            abandoned: "abandoned";
+        }>;
+        commandKey: z.ZodString;
+        fingerprint: z.ZodString;
+        actorId: z.ZodString;
+        createdAt: z.ZodString;
+        payload: z.ZodUnion<readonly [z.ZodType<import("./index.js").CatalogDraftPublicationStoredPayload, unknown, z.core.$ZodTypeInternals<import("./index.js").CatalogDraftPublicationStoredPayload, unknown>>, z.ZodCustom<CatalogDraftPayloadV4, CatalogDraftPayloadV4>]>;
+    }, z.core.$strict>>;
+    nextCursor: z.ZodNullable<z.ZodGUID>;
+}, z.core.$strict>;
+/** @experimental */
+export type CatalogLifecycleDraftPage = z.infer<typeof lifecycleStoredPageSchema>;
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 
@@ -4215,7 +4381,7 @@ import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
 import type { CatalogHeadRef } from "./contracts/lifecycle.js";
 import type { CatalogProductTypeRegistry } from "./contracts/productTypes.js";
 import type { RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
-import type { CatalogSkuRevisionRef } from "./publicationContracts.js";
+import { type CatalogSkuRevisionRef } from "./publicationContracts.js";
 /** @experimental */
 export type CatalogMembershipCursor = {
     skuId: string;
@@ -4529,8 +4695,9 @@ export declare function createCatalogProductTypeRegistry(definitions: readonly C
 ## dist/catalog/publicationCodec.d.ts
 
 ```ts
+import type { CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import { z } from "./validation.js";
-import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2 } from "./publicationContracts.js";
+import type { CatalogPublishedContent, CatalogPublishedProduct, CatalogPublishedSku, CatalogPublicationManifestV2, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3, CatalogPublicationManifestV3 } from "./publicationContracts.js";
 import type { CatalogDraftSharedContentV3 } from "./contracts/draftV3.js";
 import { catalogPublicationAdmissionRefusal, CatalogPublicationError, publicationReadFailure, publicationRemedy, type Issue, type PlatformCode, type PlatformIssue } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
@@ -4566,7 +4733,7 @@ export declare function decodePublishedSku(input: unknown, path: string, subject
 export declare function assertNativeSkuNetWeight({ code, netContent }: CatalogPublishedSku): void;
 export declare function assertPublishedSkuDocumentExclusion(sku: CatalogPublishedSku, documentDigests: ReadonlySet<string>): void;
 /** Refuses exact copies of canonical values or raw text using the selected and caller-supplied revision digests. */
-export declare function catalogPublicationManifestSchema(documentDigests?: ReadonlySet<string>): z.ZodType<CatalogPublicationManifestV2>;
+export declare function catalogPublicationManifestSchema(documentDigests?: ReadonlySet<string>): z.ZodType<CatalogPublicationManifestV2 | CatalogPublicationManifestV3>;
 export declare function publicationContent(content: CatalogDraftSharedContentV3, subject?: string, documentDigest?: string): CatalogPublishedContent;
 type StoredFieldIssue = Issue & PlatformIssue & {
     stored: true;
@@ -4584,15 +4751,17 @@ type PacketRows = {
 };
 export declare function decodePublicationPacket(input: {
     manifest: unknown;
-}): Decoded<CatalogPublicationManifestV2>;
+}): Decoded<CatalogPublicationManifestV2 | CatalogPublicationManifestV3>;
 export declare function decodePublicationPacket(input: PacketRows): Decoded<void>;
 export declare function requireDecodedPublication<T>(decoded: Decoded<T>): T;
 export declare function decodeStoredPublicationSku(text: unknown): CatalogPublishedSku;
-export declare function decodeStoredPublicationReceipt(text: unknown): CatalogPublicationReceiptV2;
+export declare function decodeStoredPublicationReceipt(text: unknown): CatalogPublicationReceiptV2 | CatalogPublicationReceiptV3;
 export declare function assertPublicationRegistration(text: string, path: string): void;
+export declare function legacyPublicationReceipt(receipt: CatalogPublicationReceiptV2 | CatalogPublicationReceiptV3): CatalogPublicationReceipt;
 /** @internal Shared by native PostgreSQL adapters and catalogue preparation. */
 export declare const nativeCatalogPublication: {
     assertPublishedSkuIdentity: typeof assertPublishedSkuIdentity;
+    legacyPublicationReceipt: typeof legacyPublicationReceipt;
     decodePublicationPacket: typeof decodePublicationPacket;
     requireDecodedPublication: typeof requireDecodedPublication;
     decodeStoredPublicationReceipt: typeof decodeStoredPublicationReceipt;
@@ -4618,10 +4787,12 @@ export {};
 ## dist/catalog/publicationContracts.d.ts
 
 ```ts
+import type { PublicationLifecycleState } from "./publicationIntent.js";
 import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./contracts/draftV3.js";
 import type { RulesIdentifier, RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
+export declare const GOVERNED_PUBLICATION_VERSION = 3;
 /** @experimental */
 export declare const CATALOG_PUBLICATION_LIMITS: {
     readonly skuBytes: 2097152;
@@ -4640,10 +4811,16 @@ export interface CatalogPublishedProduct extends RulesProduct {
     document: CatalogDocumentRevisionRef | null;
     source: CatalogDraftClaimV3;
     content: CatalogPublishedContent;
+    schemaVersion?: typeof GOVERNED_PUBLICATION_VERSION;
+    lifecycleState?: PublicationLifecycleState;
+    definitionDigest?: string;
 }
 /** @internal */
 export interface CatalogPublishedSku extends RulesSku {
     source: CatalogDraftClaimV3;
+    schemaVersion?: typeof GOVERNED_PUBLICATION_VERSION;
+    lifecycleState?: PublicationLifecycleState;
+    optionDigest?: string;
 }
 /** @experimental */
 export interface CatalogSkuRevisionRef {
@@ -4696,6 +4873,40 @@ export interface CatalogPublicationFailure {
     path?: string;
     subject?: string;
 }
+/** @experimental */
+export interface CatalogPublishedProductV3 extends CatalogPublishedProduct {
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
+    lifecycleState: PublicationLifecycleState;
+    definitionDigest: string;
+}
+/** @experimental */
+export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
+    lifecycleState: PublicationLifecycleState;
+    optionDigest: string;
+}
+/** @experimental */
+export interface CatalogPublicationManifestV3 {
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
+    product: CatalogPublishedProductV3;
+    skus: CatalogSkuRevisionRef[];
+}
+/** @experimental */
+export interface CatalogFullPublicationV3 extends Omit<CatalogFullPublicationV2, "schemaVersion" | "product" | "items"> {
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
+    product: CatalogPublishedProductV3;
+    items: {
+        reference: CatalogSkuRevisionRef;
+        facts: CatalogPublishedSkuV3;
+    }[];
+}
+/** @experimental */
+export interface CatalogPublicationReceiptV3 extends Omit<CatalogPublicationReceiptV2, "schemaVersion" | "changes"> {
+    schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
+    changes: readonly (Omit<CatalogPublicationReceiptV2["changes"][number], "state"> & {
+        state: PublicationLifecycleState;
+    })[];
+}
 ```
 ## dist/catalog/publicationError.d.ts
 
@@ -4705,19 +4916,11 @@ import type { CatalogCandidateIssue } from "./contracts/candidate.js";
 import type { CatalogCandidateError } from "./candidate.js";
 import type { CatalogConformanceCode } from "./contracts/catalogConformance.js";
 import { z } from "./validation.js";
+declare const priceRefusalCodes: readonly ["command_fingerprint_invalid", "command_invalid", "command_key_reused", "operator_mismatch", "command_in_progress", "sku_not_found", "sku_archived", "price_list_not_found", "price_list_not_active", "base_price_ambiguous"];
 export declare const publicationPriceRefusalReason: z.ZodEnum<{
-    base_price_ambiguous: "base_price_ambiguous";
-    command_fingerprint_invalid: "command_fingerprint_invalid";
-    command_invalid: "command_invalid";
-    command_key_reused: "command_key_reused";
-    operator_mismatch: "operator_mismatch";
-    command_in_progress: "command_in_progress";
-    sku_not_found: "sku_not_found";
-    sku_archived: "sku_archived";
-    price_list_not_found: "price_list_not_found";
-    price_list_not_active: "price_list_not_active";
+    [Code in typeof priceRefusalCodes[number]]: Code;
 }>;
-declare const publicationCodes: readonly ["activation_not_assessed", "activation_unknown", "catalog_action_conflict", "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable", "catalog_lifecycle_fresh_sale_refused", "catalog_lifecycle_last_active_child", "catalog_lifecycle_raw_status_fenced", "catalog_lifecycle_state_conflict", "catalog_lifecycle_transition_refused", "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent", "catalog_publication_activation_effect_missing", "catalog_publication_approval_missing", "catalog_publication_approval_state_valid", "catalog_publication_approval_wrong", "catalog_publication_attributes_invalid", "catalog_publication_authored_amounts_invalid", "catalog_publication_axes_invalid", "catalog_publication_busy", "catalog_publication_candidate_already_issued", "catalog_publication_candidate_invalid", "catalog_publication_command_key_reused", "catalog_publication_committed_at_valid", "catalog_publication_content_invalid", "catalog_publication_cursor_invalid", "catalog_publication_decided_at_valid", "catalog_publication_derived_source_mismatch", "catalog_publication_document_bytes_unavailable", "catalog_publication_document_invalid", "catalog_publication_document_required", "catalog_publication_document_revision_sequence", "catalog_publication_document_source_mismatch", "catalog_publication_document_source_missing", "catalog_publication_document_text_copied", "catalog_publication_draft_advanced", "catalog_publication_eligibility_source_mismatch", "catalog_publication_envelope_too_large", "catalog_publication_facts_invalid", "catalog_publication_gross_below_net", "catalog_publication_gross_mass_invalid", "catalog_publication_gross_mass_required", "catalog_publication_gtin_conflict", "catalog_publication_gtin_invalid", "catalog_publication_head_invalid", "catalog_publication_history_item_too_large", "catalog_publication_identifier_blank", "catalog_publication_identifier_conflict", "catalog_publication_identifier_effect_missing", "catalog_publication_identifier_key_reused", "catalog_publication_identifier_primary_invalid", "catalog_publication_identifier_requires_created_sku", "catalog_publication_identifier_source_mismatch", "catalog_publication_identity_conflict", "catalog_publication_integral_grams_required", "catalog_publication_issue_sealed", "catalog_publication_lifecycle_assertion_changed", "catalog_publication_lineage_invalid", "catalog_publication_lineage_unknown", "catalog_publication_live_drift", "catalog_publication_activation_membership_required", "catalog_publication_logistics_source_mismatch", "catalog_publication_manifest_invalid", "catalog_publication_mass_required_until_mc5", "catalog_publication_media_evidence_mismatch", "catalog_publication_media_readiness_unproven", "catalog_publication_media_validation_unavailable", "catalog_publication_membership_change_not_allowed", "catalog_publication_membership_effect_missing", "catalog_publication_membership_source_mismatch", "catalog_publication_metadata_effect_missing", "catalog_publication_net_weight_unsupported", "catalog_publication_operation_invalid", "catalog_publication_operation_source_ambiguous", "catalog_publication_operation_source_mismatch", "catalog_publication_operation_source_missing", "catalog_publication_page_invalid", "catalog_publication_pointer_capability_unconsumed", "catalog_publication_post_state_changed", "catalog_publication_presentation_effect_missing", "catalog_publication_presentation_invalid", "catalog_publication_presentation_source_mismatch", "catalog_publication_presentation_unavailable", "catalog_publication_price_changed", "catalog_publication_price_key_reused", "catalog_publication_price_readiness", "catalog_publication_price_unavailable", "catalog_publication_primary_sku_required", "catalog_publication_product_identity_conflict", "catalog_publication_product_name_source_mismatch", "catalog_publication_query_invalid", "catalog_publication_read_invalid", "catalog_publication_readback_item_too_large", "catalog_publication_receipt_input_invalid", "catalog_publication_receipt_invalid", "catalog_publication_receipt_unsupported", "catalog_publication_record_immutable", "catalog_publication_reserved_carrier", "catalog_publication_roster_limit", "catalog_publication_route_conflict", "catalog_publication_rule_failed", "catalog_publication_rules_binding_mismatch", "catalog_publication_rules_digest_mismatch", "catalog_publication_rules_module_invalid", "catalog_publication_scope_expansion", "catalog_publication_sku_effect_missing", "catalog_publication_sku_identity_changed", "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid", "catalog_publication_sku_revision_invalid", "catalog_publication_sku_title_invalid", "catalog_publication_sku_too_large", "catalog_publication_source_invalid", "catalog_publication_source_mismatch", "catalog_publication_tax_class_unavailable", "catalog_publication_v3_activation_readiness_failed", "catalog_publication_v3_active_primary_required", "catalog_publication_v3_compile_archive_refused", "catalog_publication_v3_compile_change_noop", "catalog_publication_v3_compile_derived_facts_mismatch", "catalog_publication_v3_compile_document_absent", "catalog_publication_v3_compile_document_conflict", "catalog_publication_v3_compile_document_stale", "catalog_publication_v3_compile_identifier_conflict", "catalog_publication_v3_compile_primary_foreign", "catalog_publication_v3_compile_primary_immutable", "catalog_publication_v3_compile_product_absent", "catalog_publication_v3_compile_product_conflict", "catalog_publication_v3_compile_product_incomplete", "catalog_publication_v3_compile_sku_absent", "catalog_publication_v3_compile_sku_archived", "catalog_publication_v3_compile_sku_conflict", "catalog_publication_v3_document_digest_mismatch", "catalog_publication_v3_document_invalid", "catalog_publication_v3_document_not_canonical", "catalog_publication_v3_document_reference_stale", "catalog_publication_v3_presentation_required", "catalog_publication_v3_structural_readiness_failed", "catalog_publication_wire_invalid", "catalog_publications_canonical_state_check", "catalog_sku_revisions_full_facts_check", "channel_identity_not_assessed", "commerce_product_slug_unsupported", "commercial_activation_not_assessed", "content_missing", "dimension_not_declared", "dimension_not_installed", "current_primary_mismatch", "document_reference_missing", "duplicate_dimension", "duplicate_option_combination", "duplicate_sku_code", "duplicate_sku_id", "duplicate_trade_identifier", "foreign_product_reference", "gross_mass_invalid", "gross_mass_missing", "intent_sku_absent", "logistics_reference_missing", "media_readiness_mismatch", "media_readiness_unknown", "media_reference_missing", "net_content_invalid", "net_content_missing", "net_content_option_mismatch", "option_quantity_invalid", "option_type_invalid", "option_value_invalid", "price_reference_missing", "price_validation_unavailable", "primary_sku_missing", "primary_sku_not_in_product", "publication_evidence_unavailable", "publication_head_unavailable", "publication_preparation_unavailable", "publisher_not_authorized", "retained_read_not_authorized", "retained_revision_unavailable", "retained_source_mismatch", "sku_code_missing", "sku_missing", "slug_missing", "trade_identifier_invalid", "trade_identifier_quantity_invalid", "trade_identifier_scheme_unsupported", "type_not_installed", "unit_trade_identifier_missing"];
+declare const publicationCodes: readonly ["activation_not_assessed", "activation_unknown", "catalog_action_conflict", "catalog_archive_barrier_unavailable", "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable", "catalog_lifecycle_fresh_sale_refused", "catalog_lifecycle_last_active_child", "catalog_lifecycle_raw_status_fenced", "catalog_lifecycle_state_conflict", "catalog_lifecycle_transition_refused", "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent", "catalog_publication_use_readback_v2", "catalog_publication_use_readback_v3", "catalog_publication_activation_effect_missing", "catalog_publication_approval_missing", "catalog_publication_approval_state_valid", "catalog_publication_approval_wrong", "catalog_publication_attributes_invalid", "catalog_publication_authored_amounts_invalid", "catalog_publication_axes_invalid", "catalog_publication_busy", "catalog_publication_candidate_already_issued", "catalog_publication_candidate_invalid", "catalog_publication_command_key_reused", "catalog_publication_committed_at_valid", "catalog_publication_content_invalid", "catalog_publication_cursor_invalid", "catalog_publication_decided_at_valid", "catalog_publication_derived_source_mismatch", "catalog_publication_document_bytes_unavailable", "catalog_publication_document_invalid", "catalog_publication_document_required", "catalog_publication_document_revision_sequence", "catalog_publication_document_source_mismatch", "catalog_publication_document_source_missing", "catalog_publication_document_text_copied", "catalog_publication_draft_advanced", "catalog_publication_eligibility_source_mismatch", "catalog_publication_envelope_too_large", "catalog_publication_facts_invalid", "catalog_publication_gross_below_net", "catalog_publication_gross_mass_invalid", "catalog_publication_gross_mass_required", "catalog_publication_gtin_conflict", "catalog_publication_gtin_invalid", "catalog_publication_head_invalid", "catalog_publication_history_item_too_large", "catalog_publication_identifier_blank", "catalog_publication_identifier_conflict", "catalog_publication_identifier_effect_missing", "catalog_publication_identifier_key_reused", "catalog_publication_identifier_primary_invalid", "catalog_publication_identifier_requires_created_sku", "catalog_publication_identifier_source_mismatch", "catalog_publication_identity_conflict", "catalog_publication_integral_grams_required", "catalog_publication_issue_sealed", "catalog_publication_lifecycle_assertion_changed", "catalog_publication_lineage_invalid", "catalog_publication_lineage_unknown", "catalog_publication_live_drift", "catalog_publication_activation_membership_required", "catalog_publication_logistics_source_mismatch", "catalog_publication_manifest_invalid", "catalog_publication_mass_required_until_mc5", "catalog_publication_media_evidence_mismatch", "catalog_publication_media_readiness_unproven", "catalog_publication_media_validation_unavailable", "catalog_publication_membership_change_not_allowed", "catalog_publication_membership_effect_missing", "catalog_publication_membership_source_mismatch", "catalog_publication_metadata_effect_missing", "catalog_publication_net_weight_unsupported", "catalog_publication_operation_invalid", "catalog_publication_operation_source_ambiguous", "catalog_publication_operation_source_mismatch", "catalog_publication_operation_source_missing", "catalog_publication_page_invalid", "catalog_publication_pointer_capability_unconsumed", "catalog_publication_post_state_changed", "catalog_publication_presentation_effect_missing", "catalog_publication_presentation_invalid", "catalog_publication_presentation_source_mismatch", "catalog_publication_presentation_unavailable", "catalog_publication_price_changed", "catalog_publication_price_key_reused", "catalog_publication_price_readiness", "catalog_publication_price_unavailable", "catalog_publication_primary_sku_required", "catalog_publication_product_identity_conflict", "catalog_publication_product_name_source_mismatch", "catalog_publication_query_invalid", "catalog_publication_read_invalid", "catalog_publication_readback_item_too_large", "catalog_publication_receipt_input_invalid", "catalog_publication_receipt_invalid", "catalog_publication_receipt_unsupported", "catalog_publication_record_immutable", "catalog_publication_reserved_carrier", "catalog_publication_roster_limit", "catalog_publication_route_conflict", "catalog_publication_rule_failed", "catalog_publication_rules_binding_mismatch", "catalog_publication_rules_digest_mismatch", "catalog_publication_rules_module_invalid", "catalog_publication_scope_expansion", "catalog_publication_sku_effect_missing", "catalog_publication_sku_identity_changed", "catalog_publication_sku_price_not_ready", "catalog_publication_sku_price_shape_invalid", "catalog_publication_sku_revision_invalid", "catalog_publication_sku_title_invalid", "catalog_publication_sku_too_large", "catalog_publication_source_invalid", "catalog_publication_source_mismatch", "catalog_publication_tax_class_unavailable", "catalog_publication_v3_activation_readiness_failed", "catalog_publication_v3_active_primary_required", "catalog_publication_v3_compile_archive_refused", "catalog_publication_v3_compile_change_noop", "catalog_publication_v3_compile_derived_facts_mismatch", "catalog_publication_v3_compile_document_absent", "catalog_publication_v3_compile_document_conflict", "catalog_publication_v3_compile_document_stale", "catalog_publication_v3_compile_identifier_conflict", "catalog_publication_v3_compile_primary_foreign", "catalog_publication_v3_compile_primary_immutable", "catalog_publication_v3_compile_product_absent", "catalog_publication_v3_compile_product_conflict", "catalog_publication_v3_compile_product_incomplete", "catalog_publication_v3_compile_sku_absent", "catalog_publication_v3_compile_sku_archived", "catalog_publication_v3_compile_sku_conflict", "catalog_publication_v3_document_digest_mismatch", "catalog_publication_v3_document_invalid", "catalog_publication_v3_document_not_canonical", "catalog_publication_v3_document_reference_stale", "catalog_publication_v3_presentation_required", "catalog_publication_v3_structural_readiness_failed", "catalog_publication_wire_invalid", "catalog_publications_canonical_state_check", "catalog_sku_revisions_full_facts_check", "channel_identity_not_assessed", "commerce_product_slug_unsupported", "commercial_activation_not_assessed", "content_missing", "dimension_not_declared", "dimension_not_installed", "current_primary_mismatch", "document_reference_missing", "duplicate_dimension", "duplicate_option_combination", "duplicate_sku_code", "duplicate_sku_id", "duplicate_trade_identifier", "foreign_product_reference", "gross_mass_invalid", "gross_mass_missing", "intent_sku_absent", "logistics_reference_missing", "media_readiness_mismatch", "media_readiness_unknown", "media_reference_missing", "net_content_invalid", "net_content_missing", "net_content_option_mismatch", "option_quantity_invalid", "option_type_invalid", "option_value_invalid", "price_reference_missing", "price_validation_unavailable", "primary_sku_missing", "primary_sku_not_in_product", "publication_evidence_unavailable", "publication_head_unavailable", "publication_preparation_unavailable", "publisher_not_authorized", "retained_read_not_authorized", "retained_revision_unavailable", "retained_source_mismatch", "sku_code_missing", "sku_missing", "slug_missing", "trade_identifier_invalid", "trade_identifier_quantity_invalid", "trade_identifier_scheme_unsupported", "type_not_installed", "unit_trade_identifier_missing"];
 /** @internal The platform-owned refusal vocabulary. */
 type PlatformCode = typeof publicationCodes[number] | CatalogConformanceCode | CatalogCandidateError["code"] | z.infer<typeof publicationPriceRefusalReason>;
 export type { PlatformCode };
@@ -4824,7 +5027,6 @@ export interface CatalogPublicationEvidence {
         product: PublicationLifecycleState;
         skus: Readonly<Record<string, {
             state: PublicationLifecycleState;
-            demandPolicyRef?: string;
         }>>;
     } | null;
 }
@@ -4880,7 +5082,6 @@ export declare const lifecycleEvidenceSchema: z.ZodObject<{
             archived: "archived";
             withdrawn: "withdrawn";
         }>;
-        demandPolicyRef: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>;
 }, z.core.$strict>;
 declare const lifecycleOperation: z.ZodDiscriminatedUnion<[z.ZodObject<{
@@ -4933,28 +5134,29 @@ export type PublicationLifecycleState = z.infer<typeof state>;
 export type PublicationLifecycleOperation = z.infer<typeof lifecycleOperation>;
 type LegacyOperation = CatalogDraftPayloadV3["publication"]["operations"][number];
 export type PublicationOperation = LegacyOperation | PublicationLifecycleOperation;
-type IntentSku = CatalogDraftPayloadV3["skus"][number] & {
-    demandPolicyRef?: string | undefined;
-};
-export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication" | "skus"> & {
+export type PublicationIntent = Omit<CatalogDraftPayloadV3, "schemaVersion" | "publication"> & {
     schemaVersion: 3 | 4;
-    skus: IntentSku[];
     publication: Omit<CatalogDraftPayloadV3["publication"], "operations"> & {
         operations: PublicationOperation[];
     };
 };
+/** @experimental */
+export type CatalogDraftPayloadV4 = PublicationIntent & {
+    schemaVersion: 4;
+};
+/** @experimental */
 export type PublicationDraftRecord = Omit<CatalogDraftPublicationStoredRecord, "payload"> & {
-    payload: CatalogDraftPublicationStoredRecord["payload"] | (PublicationIntent & {
-        schemaVersion: 4;
-    });
+    payload: CatalogDraftPublicationStoredRecord["payload"] | CatalogDraftPayloadV4;
 };
 export declare function lifecycleWithdrawalOnly(payload: PublicationIntent): boolean;
 export declare function isLifecycleOperation(operation: PublicationOperation): operation is PublicationLifecycleOperation;
 /** Preserve the original wire for identity. Lower both inputs once into a single ordered intent. */
-export declare function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean, fix?: string) => never): PublicationIntent | null;
+export declare function publicationIntent(input: unknown, onInvalid?: (path: string, unsupportedKey: boolean, fix?: string) => never, stored?: boolean): PublicationIntent | null;
 /** Read only the revision identity. The interpreter owns payload admission. */
 export declare function readPublicationDraftEnvelope(input: unknown): PublicationDraftRecord | null;
 export declare function readPublicationDraftRecord(input: unknown): PublicationDraftRecord | null;
+/** Validate the storage dialect without returning the lowered interpreter view. */
+export declare function readStoredLifecycleDraftPayload(input: unknown): CatalogDraftPayloadV4 | null;
 export declare function lifecycleTransition(from: PublicationLifecycleState, to: PublicationLifecycleState, restore: boolean): boolean;
 export {};
 ```

@@ -6,20 +6,22 @@ import { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 import { z } from "./validation.js";
 
 // Refusal reasons returned by the LC3 claim and apply routines.
-export const publicationPriceRefusalReason = z.enum([
+const priceRefusalCodes = [
   "command_fingerprint_invalid", "command_invalid", "command_key_reused", "operator_mismatch",
   "command_in_progress", "sku_not_found", "sku_archived", "price_list_not_found",
   "price_list_not_active", "base_price_ambiguous",
-]);
+] as const;
+export const publicationPriceRefusalReason: z.ZodEnum<{ [Code in typeof priceRefusalCodes[number]]: Code }> =
+  z.enum(priceRefusalCodes);
 const reviewDraft = "Review the selected draft and prepare it again.";
 
 const rulesMismatch = "The product rules and installed definition differ. Rebuild the rules, attach the build to the product type, and install the updated definition before retrying.";
 const publicationCodes = [
   "activation_not_assessed", "activation_unknown", "catalog_action_conflict",
-  "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable",
+  "catalog_archive_barrier_unavailable", "catalog_lifecycle_child_effects_mismatch", "catalog_lifecycle_evidence_unavailable",
   "catalog_lifecycle_fresh_sale_refused", "catalog_lifecycle_last_active_child", "catalog_lifecycle_raw_status_fenced",
   "catalog_lifecycle_state_conflict", "catalog_lifecycle_transition_refused",
-  "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent",
+  "catalog_lifecycle_withdrawal_overlay_refused", "catalog_publication_absent", "catalog_publication_use_readback_v2", "catalog_publication_use_readback_v3",
   "catalog_publication_activation_effect_missing", "catalog_publication_approval_missing",
   "catalog_publication_approval_state_valid", "catalog_publication_approval_wrong",
   "catalog_publication_attributes_invalid", "catalog_publication_authored_amounts_invalid",
@@ -243,12 +245,15 @@ const publicationRefusals = {
   candidate_digest_mismatch: { fix: "Prepare the selected draft and use its returned digest." },
   candidate_invalid: { fix: "Correct the candidate input and prepare the draft again." },
   catalog_action_conflict: { fix: "Choose create for a new product or revise for an existing publication." },
+  catalog_archive_barrier_unavailable: ["catalog_archive_barrier_unavailable", "Keep the product or SKU withdrawn until catalogue archive is supported."],
   catalog_lifecycle_child_effects_mismatch: { fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs." },
-  catalog_lifecycle_evidence_unavailable: { fix: "Load the current publication and its retained revisions before retrying." },
-  catalog_lifecycle_fresh_sale_refused: { fix: "Restore the withdrawn product and SKU before making them sellable." },
+  catalog_lifecycle_evidence_unavailable: ["catalog_lifecycle_evidence_unavailable", "This product was published without governed lifecycle. Keep revising it with schema-3 drafts until adoption is supported."],
+  catalog_lifecycle_fresh_sale_refused: ["catalog_lifecycle_fresh_sale_refused", "Restore the withdrawn product and SKU before making them sellable."],
   catalog_lifecycle_last_active_child: { fix: "Keep an active child SKU or withdraw the whole product." },
-  catalog_lifecycle_raw_status_fenced: { fix: "Use a governed lifecycle operation to change status." },
+  catalog_lifecycle_raw_status_fenced: ["catalog_lifecycle_raw_status_fenced", "Use a governed lifecycle operation to change status."],
   catalog_lifecycle_state_conflict: { fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs." },
+  catalog_publication_use_readback_v2: { fix: "Read this legacy issue with readbackV2." },
+  catalog_publication_use_readback_v3: { fix: "Read this governed issue with readbackV3." },
   catalog_lifecycle_transition_refused: { fix: "Reload the current lifecycle state and prepare a transition permitted for the product and its SKUs." },
   catalog_lifecycle_withdrawal_overlay_refused: { fix: "Keep a withdrawal limited to status and purchase eligibility." },
   catalog_publication_activation_effect_missing: { fix: "Match purchase eligibility to the modes in the saved draft." },

@@ -1,12 +1,12 @@
 import { z } from "zod";
 import type { PgQueryExecutor } from "../data/index.js";
 import type { VerifiedCatalogPublisher } from "./publicationPorts.js";
-import { CATALOG_PUBLICATION_LIMITS as limits } from "./publicationContracts.js";
-import type { CatalogFullPublicationV2, CatalogPublicationReceiptV2, CatalogSkuRevisionRef,
+import { CATALOG_PUBLICATION_LIMITS as limits, GOVERNED_PUBLICATION_VERSION } from "./publicationContracts.js";
+import type { CatalogFullPublicationV2, CatalogFullPublicationV3, CatalogPublishedSkuV3, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3, CatalogSkuRevisionRef,
   CatalogPublicationFailure } from "./publicationContracts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import { decodePublicationPacket, requireDecodedPublication, decodeStoredPublicationReceipt,
-  decodeStoredPublicationSku, publicationJson, publicationDigest, SKU_PAGE_DEPTH } from "./publicationCodec.js";
+  decodeStoredPublicationSku, legacyPublicationReceipt, publicationJson, publicationDigest, SKU_PAGE_DEPTH } from "./publicationCodec.js";
 import { publicationReadFailure, publicationRefuse, type AdmissionDiagnostic } from "./publicationError.js";
 import { assertPublishedSkuIdentity } from "./publicationSkuIdentity.js";
 
@@ -29,10 +29,6 @@ function requireCondition(condition: unknown, reason: AdmissionDiagnostic = "cat
   if (!condition) refuse(reason, outcome);
 }
 
-function legacyReceipt(receipt: CatalogPublicationReceiptV2): CatalogPublicationReceipt {
-  return { commandKey: receipt.commandKey, fingerprint: receipt.fingerprint, actorId: receipt.actorId,
-    previousHead: receipt.previousHead, head: receipt.head, changes: receipt.changes };
-}
 const equal = (left: unknown, right: unknown) => publicationJson(left) === publicationJson(right);
 
 async function verifiedIssue(db: PgQueryExecutor, publicationId: string, productId?: string) {
@@ -59,7 +55,7 @@ async function verifiedIssue(db: PgQueryExecutor, publicationId: string, product
   requireCondition(manifest.product.id === row.product_id && manifest.product.document?.digest === head.documentDigest
     && publicationDigest(manifest) === row.digest, "catalog_publication_manifest_invalid");
   const receipt = decodeStoredPublicationReceipt(row.result);
-  requireCondition(receipt.productId === manifest.product.id && receipt.publicationDigest === row.digest && equal(receipt.head, head)
+  requireCondition(receipt.schemaVersion === manifest.schemaVersion && receipt.productId === manifest.product.id && receipt.publicationDigest === row.digest && equal(receipt.head, head)
     && receipt.commandKey === row.command_key && receipt.fingerprint === row.command_fingerprint && receipt.actorId === row.actor_id
     && receipt.committedAt === row.committed_at,
     "catalog_publication_receipt_invalid");
@@ -74,7 +70,7 @@ type CurrentPublicationRead = { outcome: "unpublished" }
 type PublicationHistoryRead = {
   outcome: "page"; receipts: CatalogPublicationReceipt[]; limit: typeof limits.pageItems; nextCursor: string | null;
 } | PublicationReadFailure;
-type PublicationReceiptRead = { outcome: "absent"; receipt?: undefined } | { outcome: "found"; receipt: CatalogPublicationReceiptV2 }
+type PublicationReceiptRead = { outcome: "absent"; receipt?: undefined } | { outcome: "found"; receipt: CatalogPublicationReceiptV2 | CatalogPublicationReceiptV3 }
   | PublicationReadFailure;
 
 async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonly CatalogSkuRevisionRef[]) {
@@ -90,7 +86,7 @@ async function issueFacts(db: PgQueryExecutor, issue: Issue, references: readonl
     requireCondition(row && row.sku_id === reference.skuId && row.digest === reference.digest && row.revision === reference.revision,
       "catalog_publication_sku_revision_invalid");
     const facts = decodeStoredPublicationSku(row.full_facts);
-    requireCondition(facts.id === reference.skuId && facts.productId === issue.manifest.product.id && facts.code === row.sku_code
+    requireCondition((facts.schemaVersion ?? 2) === issue.manifest.schemaVersion && facts.id === reference.skuId && facts.productId === issue.manifest.product.id && facts.code === row.sku_code
       && publicationDigest(facts, limits.skuBytes, SKU_PAGE_DEPTH) === reference.digest,
     "catalog_publication_sku_revision_invalid");
     return { reference, facts };
@@ -141,7 +137,7 @@ function decodeCursor(value: string | null, productId: string, kind: Cursor["kin
 async function observations(db: PgQueryExecutor, issue: Issue): Promise<CatalogPublicationReceipt["changes"]> {
   const { product, skus } = issue.manifest;
   const { rows } = await db.query(`SELECT r.id,r.sku_id,r.sku_code,r.digest,r.revision,
-    r.full_facts::jsonb->>'status' AS status,p.draft_id,p.draft_revision
+    coalesce(r.full_facts::jsonb->>'lifecycleState',r.full_facts::jsonb->>'status') AS status,p.draft_id,p.draft_revision
     FROM public.catalog_sku_revisions r
     JOIN public.catalog_publications p ON (p.product_id,p.id)=(r.product_id,r.publication_id)
     WHERE r.product_id=$1 AND r.id=ANY($2::uuid[])`,
@@ -154,7 +150,7 @@ async function observations(db: PgQueryExecutor, issue: Issue): Promise<CatalogP
       "catalog_publication_sku_revision_invalid");
     const { sku_code: sku, status, draft_id: draftId, draft_revision: draftRevision } = row;
     requireCondition(typeof sku === "string" && typeof draftId === "string" && typeof draftRevision === "number"
-      && (status === "draft" || status === "active" || status === "archived"), "catalog_publication_sku_revision_invalid");
+      && (status === "draft" || status === "active" || status === "archived" || status === "withdrawn"), "catalog_publication_sku_revision_invalid");
     return { productId: product.id, variantId: reference.skuId, sku,
       state: status === "archived" ? "withdrawn" : status, variantRevision: reference.revision,
       publicationHead: issue.head, draftRef: { draftId, revision: draftRevision } };
@@ -247,7 +243,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
             requireCondition(id.safeParse(row.id).success);
             const issue = await verifiedIssue(db, row.id as string, productId);
             requireCondition(issue && issue.head.revision === row.revision);
-            const item = legacyReceipt(issue.receipt);
+            const item = legacyPublicationReceipt(issue.receipt);
             const continuation = index + 1 < rows.length
               ? encodeCursor({ kind: "history", productId, highWater, before: issue.head.revision }) : null;
             const itemSize = Buffer.byteLength(publicationJson(item)) + (index === 0 ? 0 : 1);
@@ -267,10 +263,14 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
       } catch (error) { return publicationReadFailure(error); }
     },
   };
-  async function readbackV2(head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure> {
+  function readback(version: 2, head: CatalogHeadRef, cursor: string | null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure>;
+  function readback(version: typeof GOVERNED_PUBLICATION_VERSION, head: CatalogHeadRef, cursor: string | null): Promise<CatalogFullPublicationV3 | CatalogPublicationFailure>;
+  async function readback(version: 2 | typeof GOVERNED_PUBLICATION_VERSION, head: CatalogHeadRef, cursor: string | null): Promise<CatalogFullPublicationV2 | CatalogFullPublicationV3 | CatalogPublicationFailure> {
     try {
       return await read(async db => {
         const issue = await exact(db, head);
+        requireCondition(issue.manifest.schemaVersion === version,
+          version === GOVERNED_PUBLICATION_VERSION ? "catalog_publication_use_readback_v2" : "catalog_publication_use_readback_v3", "unsupported");
         const { product, skus } = issue.manifest;
         const pointer = decodeCursor(cursor, product.id, "facts");
         const offset = pointer?.before ?? 0;
@@ -281,7 +281,7 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
         const sizes = new Map(rows.map(row => [row.id, row.bytes]));
         requireCondition(rows.length === wanted.length && sizes.size === wanted.length, "catalog_publication_sku_revision_invalid");
         const selected: CatalogSkuRevisionRef[] = [];
-        const emptyPageBytes = Buffer.byteLength(publicationJson({ outcome: "page", schemaVersion: 2, head, product, items: [], nextCursor: null }));
+        const emptyPageBytes = Buffer.byteLength(publicationJson({ outcome: "page", schemaVersion: version, head, product, items: [], nextCursor: null }));
         let itemBytes = 0;
         let nextCursor: string | null = null;
         for (const [index, reference] of wanted.entries()) {
@@ -299,13 +299,21 @@ export function createPostgresCatalogPublicationReads<Context>(deps: CatalogPubl
           selected.push(reference);
           nextCursor = continuation;
         }
-        const result = { outcome: "page" as const, schemaVersion: 2 as const, head: issue.head, product,
-          items: await issueFacts(db, issue, selected), nextCursor };
+        const items = await issueFacts(db, issue, selected);
+        const result: CatalogFullPublicationV2 | CatalogFullPublicationV3 = issue.manifest.schemaVersion === GOVERNED_PUBLICATION_VERSION
+          ? { outcome: "page" as const, schemaVersion: GOVERNED_PUBLICATION_VERSION, head: issue.head, product: issue.manifest.product,
+            items: items as { reference: CatalogSkuRevisionRef; facts: CatalogPublishedSkuV3 }[], nextCursor }
+          : { outcome: "page" as const, schemaVersion: 2 as const, head: issue.head, product: issue.manifest.product, items, nextCursor };
         publicationJson(result, limits.pageBytes);
         return result;
       });
     } catch (error) { return publicationReadFailure(error); }
   }
 
-  return { reads, authorize, receipt, readbackV2 };
+  return { reads, authorize, receipt,
+    readbackV2: (head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogFullPublicationV2 | CatalogPublicationFailure> =>
+      readback(2, head, cursor),
+    readbackV3: (head: CatalogHeadRef, cursor: string | null = null): Promise<CatalogPublicationFailure | CatalogFullPublicationV3> =>
+      readback(GOVERNED_PUBLICATION_VERSION, head, cursor),
+  };
 }

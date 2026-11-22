@@ -1570,6 +1570,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261124220000_catalog_governed_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
       "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
       "class": "public-output"
     },
@@ -5098,6 +5102,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261124220000_catalog_governed_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/manifest.json",
       "class": "public-output"
     },
@@ -5671,6 +5679,10 @@
     },
     {
       "path": "packages/platform/src/catalog/installCatalogDefinitions.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/lifecycleDraftSchemas.ts",
       "class": "public-output"
     },
     {
@@ -30315,6 +30327,10 @@
     },
     {
       "path": "tests/postgres/catalogPublicationFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/catalogPublicationGovernedRoster.test.ts",
       "class": "public-output"
     },
     {

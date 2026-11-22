@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { canonicalCatalogDraftJson, type CatalogDraftRecord } from "../../src/catalog/draftSchemas.js";
-import { CatalogDraftStoreError, type CatalogDraftStorePort } from "../../src/catalog/draftPorts.js";
+import { CatalogDraftStoreError, type CatalogDraftStorePort, type CatalogLifecycleDraftStorePort } from "../../src/catalog/draftPorts.js";
 import { createCatalogProductTypeRegistry } from "../../src/catalog/productTypeSchemas.js";
-import { createCatalogDraftHandler } from "../../src/catalog/draftHandler.js";
+import { createCatalogDraftHandler, createCatalogDraftHandlerV4 } from "../../src/catalog/draftHandler.js";
 
 const draftId = "10000000-0000-4000-8000-000000000001";
 const productId = "20000000-0000-4000-8000-000000000001";
@@ -87,4 +87,34 @@ it("keeps version two behind explicit composition", async () => {
     .toEqual({ outcome: "validation_issue", reason: "draft_input_invalid" });
   expect(store.get).not.toHaveBeenCalled();
   expect(store.apply).not.toHaveBeenCalled();
+});
+
+it("uses the v4 wire for identity and reads stored v4 payloads without lowering operations", async () => {
+  const { registry, authorizeOperator } = setup();
+  const payload = { ...command.payload, schemaVersion: 4 as const,
+    product: { ...command.payload.product, sharedContent: { schemaVersion: 1 as const, catalogAction: "create" as const,
+      presentation: {}, offerMemberships: [], requestedModes: [], publicationSkus: [] } },
+    publication: { kind: "release" as const, evidence: {}, operations: [
+      { op: "restore_product" as const, productSlug: "example", expectedState: "withdrawn" as const },
+    ] } };
+  const v4 = { ...command, schemaVersion: 4, payload };
+  const canonicalCommand = canonicalCatalogDraftJson(v4);
+  const fingerprint = createHash("sha256").update(canonicalCommand).digest("hex");
+  const record = { ...original, payload, fingerprint };
+  const store = {
+    apply: vi.fn<CatalogLifecycleDraftStorePort["apply"]>().mockResolvedValue({ outcome: "committed", record }),
+    get: vi.fn<CatalogLifecycleDraftStorePort["get"]>().mockResolvedValueOnce(null).mockResolvedValue(record),
+    list: vi.fn<CatalogLifecycleDraftStorePort["list"]>().mockResolvedValue({ items: [record], nextCursor: null }),
+  };
+  const handler = createCatalogDraftHandlerV4({ registry, authorizeOperator, store });
+  expect(await handler.execute(v4, {})).toMatchObject({ outcome: "committed", record });
+  expect(store.apply).toHaveBeenCalledWith({ canonicalCommand, fingerprint, actorId: original.actorId });
+  expect(await handler.get({ draftId }, {})).toEqual({ outcome: "found", record });
+  expect(await handler.list({ limit: 1 }, {})).toEqual({ outcome: "listed", page: { items: [record], nextCursor: null } });
+  expect(await handler.execute(v4, {})).toEqual({ outcome: "replayed", record });
+  expect(await handler.execute({ ...v4, schemaVersion: 3 }, {})).toMatchObject({ outcome: "validation_issue" });
+  expect(await handler.execute({ ...v4, payload: { ...payload, publication: { ...payload.publication,
+    operations: [{ op: "set_product_status", productSlug: "example", status: "active" }],
+  } } }, {})).toMatchObject({ outcome: "validation_issue" });
+  expect(store.apply).toHaveBeenCalledTimes(1);
 });

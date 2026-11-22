@@ -3,16 +3,16 @@ import type { CatalogDraftIssue, CatalogProductTypeRegistry } from "./contracts/
 import type { CatalogCandidatePreview, CatalogCandidateQuery } from "./contracts/candidate.js";
 import type { CatalogPublishCommand } from "./contracts/lifecycle.js";
 import type { CatalogPublicationPort, VerifiedCatalogPublisher } from "./publicationPorts.js";
-import type { CatalogPublicationFailure, CatalogPublicationReceiptV2 } from "./publicationContracts.js";
+import type { CatalogPublicationFailure, CatalogPublicationReceiptV2, CatalogPublicationReceiptV3 } from "./publicationContracts.js";
 import type { CatalogAttributeReferencePort } from "./attributeReferencePort.js";
 import type { CatalogCandidatePublicationDeps } from "./publicationEvidence.js";
 import { matchesPublicationHead, publicationHeadSchema } from "./publicationEvidence.js";
 import { createCatalogCandidateServiceWithPublication, parseCatalogCandidateReference } from "./candidateService.js";
 import { CatalogCandidateError } from "./candidate.js";
-import { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
+import { createPostgresCatalogDraftStoreV4 } from "./catalogDraftStore.js";
 import { readPublicationDraftRecord } from "./publicationIntent.js";
 import { catalogPublicationClaim, evaluateCatalogPublication } from "./publicationValidation.js";
-import { decodeStoredPublicationReceipt, publicationApprovalState, publicationDigest, publicationJson } from "./publicationCodec.js";
+import { decodeStoredPublicationReceipt, legacyPublicationReceipt, publicationApprovalState, publicationDigest, publicationJson } from "./publicationCodec.js";
 import { CatalogPublicationError, catalogPublicationAdmissionRefusal, publicationReadFailure, refusePublicationCommand, publicationIssue,
   type AdmissionDiagnostic } from "./publicationError.js";
 import { assertCurrentPublicationRoster, readNativeDraftEvidence, readPreviousPublication, stagePublication, publicationRelationFence } from "./catalogPublicationProjection.js";
@@ -50,7 +50,7 @@ export type CatalogPublicationCommand = Exclude<z.input<typeof commandSchema>, {
 export type CatalogPublicationDecisionReceipt = z.output<typeof decisionReceiptSchema>;
 /** @experimental */
 export type CatalogPublicationCommandResult =
-  | { outcome: "committed" | "replayed"; receipt: CatalogPublicationReceiptV2 | CatalogPublicationDecisionReceipt }
+  | { outcome: "committed" | "replayed"; receipt: CatalogPublicationReceiptV2 | CatalogPublicationReceiptV3 | CatalogPublicationDecisionReceipt }
   | (CatalogPublicationFailure & { path?: string });
 
 /** Host-selected owner authority for an explicit server capability.
@@ -178,7 +178,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
         requireCommand(candidate?.head?.revision === reference.draftRevision && candidate.head.status === "open"
           && candidate.head.productId === productId, "catalog_publication_draft_advanced");
         const record = readPublicationDraftRecord(candidate.record);
-        requireCommand(record?.payload.schemaVersion === 3 && record.status === "open" && record.productId === productId
+        requireCommand(record && "publication" in record.payload && record.status === "open" && record.productId === productId
           && same(catalogPublicationClaim(record), candidate.receipt), "catalog_publication_candidate_invalid", "validation_issue");
         const active = (await db.query(`SELECT id,action,post_state_canonical_text,post_state_digest
           FROM public.catalog_publication_decisions
@@ -270,7 +270,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
       return await deps.catalogPublicationOwner.run(async db => {
         await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
         await claimHuman(db, actor);
-        const drafts = createPostgresCatalogDraftStoreV3(db);
+        const drafts = createPostgresCatalogDraftStoreV4(db);
         const priceIssues: CatalogDraftIssue[] = [];
         const service = createCatalogCandidateServiceWithPublication({
           registry: deps.registry,
@@ -344,8 +344,7 @@ export function createPostgresCatalogPublicationCommands<Context>(deps: Postgres
     async publish(command: CatalogPublishCommand, actor) {
       const result = await execute({ ...command, action: "publish" }, actor);
       if ("receipt" in result && "head" in result.receipt) {
-        const { commandKey, fingerprint, actorId, previousHead, head, changes } = result.receipt;
-        return { outcome: result.outcome, receipt: { commandKey, fingerprint, actorId, previousHead, head, changes } };
+        return { outcome: result.outcome, receipt: legacyPublicationReceipt(result.receipt) };
       }
       const reasons = { unauthorized: "publisher_not_authorized", conflict: "head_conflict",
         validation_issue: "candidate_invalid", unsupported: "publication_not_supported",

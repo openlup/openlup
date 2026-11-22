@@ -1,7 +1,10 @@
+import type { PublicationLifecycleState } from "./publicationIntent.js";
 import type { CatalogDraftSharedContentV3, CatalogDraftClaimV3 } from "./contracts/draftV3.js";
 import type { RulesIdentifier, RulesProduct, RulesSku } from "./contracts/publicationRuleFacts.js";
 import type { CatalogHeadRef, CatalogPublicationReceipt } from "./contracts/lifecycle.js";
 import type { CatalogDocumentRevisionRef } from "./contracts/foundation.js";
+
+export const GOVERNED_PUBLICATION_VERSION = 3;
 
 /** @experimental */
 export const CATALOG_PUBLICATION_LIMITS = { skuBytes: 2_097_152, manifestBytes: 16_777_216,
@@ -16,10 +19,16 @@ export interface CatalogPublishedProduct extends RulesProduct {
   document: CatalogDocumentRevisionRef | null;
   source: CatalogDraftClaimV3;
   content: CatalogPublishedContent;
+  schemaVersion?: typeof GOVERNED_PUBLICATION_VERSION;
+  lifecycleState?: PublicationLifecycleState;
+  definitionDigest?: string;
 }
 /** @internal */
 export interface CatalogPublishedSku extends RulesSku {
   source: CatalogDraftClaimV3;
+  schemaVersion?: typeof GOVERNED_PUBLICATION_VERSION;
+  lifecycleState?: PublicationLifecycleState;
+  optionDigest?: string;
 }
 /** @experimental */
 export interface CatalogSkuRevisionRef { skuId: string; revisionId: string; revision: number; digest: string }
@@ -44,4 +53,25 @@ export interface CatalogPublicationFailure {
   message?: string;
   path?: string;
   subject?: string;
+}
+
+/** @experimental */
+export interface CatalogPublishedProductV3 extends CatalogPublishedProduct {
+  schemaVersion: typeof GOVERNED_PUBLICATION_VERSION; lifecycleState: PublicationLifecycleState; definitionDigest: string;
+}
+/** @experimental */
+export interface CatalogPublishedSkuV3 extends CatalogPublishedSku {
+  schemaVersion: typeof GOVERNED_PUBLICATION_VERSION; lifecycleState: PublicationLifecycleState; optionDigest: string;
+}
+/** @experimental */
+export interface CatalogPublicationManifestV3 { schemaVersion: typeof GOVERNED_PUBLICATION_VERSION; product: CatalogPublishedProductV3; skus: CatalogSkuRevisionRef[] }
+/** @experimental */
+export interface CatalogFullPublicationV3 extends Omit<CatalogFullPublicationV2, "schemaVersion" | "product" | "items"> {
+  schemaVersion: typeof GOVERNED_PUBLICATION_VERSION; product: CatalogPublishedProductV3;
+  items: { reference: CatalogSkuRevisionRef; facts: CatalogPublishedSkuV3 }[];
+}
+/** @experimental */
+export interface CatalogPublicationReceiptV3 extends Omit<CatalogPublicationReceiptV2, "schemaVersion" | "changes"> {
+  schemaVersion: typeof GOVERNED_PUBLICATION_VERSION;
+  changes: readonly (Omit<CatalogPublicationReceiptV2["changes"][number], "state"> & { state: PublicationLifecycleState })[];
 }

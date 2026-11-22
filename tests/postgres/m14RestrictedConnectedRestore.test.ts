@@ -15,6 +15,10 @@ type Mode = "installer-managed" | "operator-provisioned";
 type Installed = { container: PostgresContainer; pools: Pool[]; owner: Pool; runner: ReturnType<typeof createPostgresMigrationRunner>;
   selection: QualifiedAdminPostgresInstallation; inventory: string };
 const password = "synthetic-restricted-restore";
+const beforeGovernedLifecycle: Record<Mode, string> = {
+  "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
+  "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
+};
 const groups = ["anon", "authenticated", "service_role", "platform_acquisition_owner",
   "platform_acquisition_runtime", "openlup_retained_import_owner"];
 
@@ -99,9 +103,9 @@ async function withAcquisitionOwnerWindow<T>(installed: Installed, work: (client
     client.release();
   }
 }
-async function capture(installed: Installed, sourceId: string) {
+async function capture(installed: Installed, sourceId: string, catalogueId = installed.inventory) {
   return withAcquisitionOwnerWindow(installed, client =>
-    captureConnectedNativeStore({ sourceId, catalogueId: installed.inventory, maximumRows: 10000,
+    captureConnectedNativeStore({ sourceId, catalogueId, maximumRows: 10000,
       maximumBytes: 64 * 1024 * 1024, source: { async withSnapshot(work) {
         await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
         try {
@@ -184,7 +188,10 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead')");
       await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
-      const packet = await capture(source, "restricted-source"), freshTarget = await capture(target, "restricted-target");
+      // Cover current and predecessor inventories for each restricted role mode.
+      const sourceCatalogueId = shape === "neon" ? beforeGovernedLifecycle[mode] : source.inventory;
+      const packet = await capture(source, "restricted-source", sourceCatalogueId);
+      const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
       expect((await target.runner.status()).pending).toEqual([]);
       expect(packet.observation.cluster).not.toBe(freshTarget.observation.cluster);

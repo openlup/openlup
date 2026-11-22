@@ -472,9 +472,11 @@ client foreign key or absorption mapping.
 
 Restore the ledger before enabling checkout under the same limit and identity
 policy. Restore treats the ledger as empty for pinned predecessor installations
-that predate it. Current packets must include the ledger. Restored attempts
-age on their original timestamps. Admission prunes
-rows at the retention cutoff on each call. Idle databases keep bounded rows
+that predate it. Restore also accepts packets from the pinned installation
+profiles immediately before governed catalogue lifecycle. Those packets and
+current packets must include the ledger. Restored attempts age on their
+original timestamps. Admission prunes rows at the retention cutoff on each
+call. Idle databases keep bounded rows
 until the next call or an owner cleanup. For managed same-schema transfer use
 the bounded `@openlup/platform/portability` utility. The managed-to-native
 legacy projection refuses populated limiter relations outside its finite profile.

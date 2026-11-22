@@ -78,15 +78,20 @@ export { catalogDraftSharedContentV3Schema, catalogDraftProvenanceV3Schema, cata
   catalogDraftPublicationInputsV3Schema, catalogDraftPayloadV3Schema, catalogDraftCommandV3Schema,
   catalogDraftPublicationStoredPayloadSchema, catalogDraftPublicationStoredCommandSchema, catalogDraftPublicationStoredRecordSchema,
   catalogDraftPublicationStoredApplyResultSchema, extractCatalogDraftPublicationInputs, resolveCatalogDraftProvenance } from "./draftV3Schemas.js";
-export { createCatalogDraftHandlerV3 } from "./draftHandler.js";
-export { createPostgresCatalogDraftStoreV3 } from "./catalogDraftStore.js";
+export { catalogDraftPayloadV4Schema, catalogDraftCommandV4Schema, type CatalogDraftCommandV4,
+  type CatalogLifecycleDraftPage } from "./lifecycleDraftSchemas.js";
+export type { CatalogDraftPayloadV4, PublicationDraftRecord } from "./publicationIntent.js";
+export type { CatalogLifecycleDraftStorePort } from "./draftPorts.js";
+export { createCatalogDraftHandlerV3, createCatalogDraftHandlerV4 } from "./draftHandler.js";
+export { createPostgresCatalogDraftStoreV3, createPostgresCatalogDraftStoreV4 } from "./catalogDraftStore.js";
 
 export { loadCatalogRules, withCatalogPublicationRules } from "./catalogPublicationRules.js";
 export type { CatalogPublicationRulesModule, CatalogPublicationRulesPack, CatalogRulesContext } from "./catalogPublicationRules.js";
 export type { RulesProduct, RulesSku, RulesIdentifier } from "./contracts/publicationRuleFacts.js";
 
 export { nativeCatalogPublication } from "./publicationCodec.js";
-export type { CatalogFullPublicationV2, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2,
+export type { CatalogFullPublicationV2, CatalogFullPublicationV3, CatalogPublicationManifestV3, CatalogPublicationReceiptV3,
+  CatalogPublishedProductV3, CatalogPublishedSkuV3, CatalogPublicationFailure, CatalogPublicationManifestV2, CatalogPublicationReceiptV2,
   CatalogPublishedProduct, CatalogPublishedSku, CatalogRetainedSourceBinding, CatalogSkuRevisionRef } from "./publicationContracts.js";
 export { createPostgresCatalogPublicationReads } from "./catalogPublicationReads.js";
 export { createPostgresCatalogPublicationCommands } from "./catalogPublicationCommands.js";

@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createPostgresCatalogDraftStoreV3,
+import { createPostgresCatalogDraftStoreV4,
   createPostgresCatalogPublicationCommands, createPostgresCommerceQuoteCatalogReadPort, createCatalogProductTypeRegistry, withCatalogPublicationRules,
-  catalogDefinitionDigest, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
-import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef } from "@openlup/platform/catalog/contracts";
+  catalogDefinitionDigest, type CatalogDraftPayloadV4, type CatalogPublicationCommand, type CatalogPublicationManifestV2 } from "@openlup/platform/catalog";
+import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3, type CatalogHeadRef, type CatalogPublishCommand } from "@openlup/platform/catalog/contracts";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { publicationWireVectors } from "@openlup/platform/catalog/testing";
 import type { CatalogPublishedSku } from "@openlup/platform/catalog";
@@ -117,10 +117,10 @@ function authored(sequence: number) {
   };
   return { productId, draftId, skuId, slug, code, barcode, payload };
 }
-async function save(data: ReturnType<typeof authored>, revision: number, payload = data.payload) {
-  const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: 3, action: revision === 1 ? "create" : "revise",
+async function save(data: ReturnType<typeof authored>, revision: number, payload: CatalogDraftPayloadV3 | CatalogDraftPayloadV4 = data.payload) {
+  const canonicalCommand = canonicalCatalogDraftJson({ schemaVersion: payload.schemaVersion, action: revision === 1 ? "create" : "revise",
     draftId: data.draftId, commandKey: randomUUID(), expectedRevision: revision - 1, payload });
-  const saved = await createPostgresCatalogDraftStoreV3(pool).apply({ canonicalCommand, fingerprint: hash(canonicalCommand), actorId: actor });
+  const saved = await createPostgresCatalogDraftStoreV4(pool).apply({ canonicalCommand, fingerprint: hash(canonicalCommand), actorId: actor });
   if (!("record" in saved)) throw new Error(`Draft save failed: ${JSON.stringify(saved)}`);
   return saved.record;
 }
@@ -652,6 +652,106 @@ describe("publication activation prices", () => {
     return { ...data, api, who, command: next.publish, head: issue.receipt.head };
   }
 
+  it.each(["restore first", "enable first"] as const)("commits governed withdrawal, parent-only restore and %s", async order => {
+    const data = authored(order === "restore first" ? 81 : 82), api = native(), who = (await api.authorize(actor))!;
+    const payload: CatalogDraftPayloadV4 = { ...structuredClone(data.payload), schemaVersion: 4 };
+    const sku = payload.skus[0]!;
+    sku.grossMass = { ...sku.netContent!, unscaled: "110" };
+    sku.logisticsRef = "example:logistics";
+    payload.publication.operations.push({ op: "set_sku_metadata", skuCode: data.code, logisticsRef: sku.logisticsRef });
+    const reads = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(pool, work) },
+      authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+    const reader = (await reads.authorize(null))!;
+    const issue = async (revision: number, previous: CatalogHeadRef | null, changes: CatalogPublishCommand["changes"] = []) => {
+      await save(data, revision, payload);
+      const commands = await prepare(data, revision, previous);
+      expect(await api.execute(commands.approve, who)).toMatchObject({ outcome: "committed" });
+      const publish = { ...commands.publish, changes };
+      const result = await api.execute(publish, who);
+      if (result.outcome !== "committed" || !("head" in result.receipt)) throw Error(JSON.stringify(result));
+      expect(result.receipt.schemaVersion).toBe(3);
+      return { publish, result, head: result.receipt.head };
+    };
+    const initial = await issue(1, null);
+    expect(await reads.readbackV2(initial.head)).toMatchObject({ outcome: "unsupported",
+      reason: "catalog_publication_use_readback_v3", message: "Read this governed issue with readbackV3." });
+    const entry = await seedBasePrice(data.skuId);
+    const membership = { skuCode: data.code, admitted: true, offerVersion: "example:governed" };
+    const enable = { op: "set_eligibility", skuCode: data.code, sellableStandalone: true, sellableInSubscription: true } as const;
+    const restore = { op: "restore_sku", skuCode: data.code, expectedState: "withdrawn" } as const;
+    const content = payload.product.sharedContent;
+    content.catalogAction = "revise";
+    content.offerMemberships = [membership];
+    content.requestedModes = [{ skuCode: data.code, modes: ["one_time", "subscription"] }];
+    payload.publication.operations = [
+      { op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "active", children: [] },
+      { op: "set_sku_lifecycle", skuCode: data.code, expectedState: "draft", state: "active" },
+      enable, { op: "set_offer_membership", ...membership },
+    ];
+    const active = await issue(2, initial.head, [{ variantId: data.skuId, expectedRevision: 1, state: "active" }]);
+    payload.publication.operations = [{ op: "set_product_lifecycle", productSlug: data.slug, expectedState: "active", state: "withdrawn",
+      children: [{ skuCode: data.code, expectedState: "active" }] }];
+    const withdrawn = await issue(3, active.head, [{ variantId: data.skuId, expectedRevision: 2, state: "withdrawn" }]);
+    const dark = await reads.readbackV3(withdrawn.head);
+    expect(dark).toMatchObject({ schemaVersion: 3, product: { lifecycleState: "withdrawn" }, items: [{
+      facts: { status: "active", lifecycleState: "withdrawn", memberships: [{ admitted: true, offerVersion: membership.offerVersion }],
+        sellableStandalone: false, sellableInSubscription: false, netContent: sku.netContent, grossMass: sku.grossMass,
+        source: { revision: 3 } },
+    }] });
+    await expect(pool.query("UPDATE public.catalog_products SET status='draft' WHERE id=$1", [data.productId]))
+      .rejects.toMatchObject({ constraint: "catalog_lifecycle_raw_status_fenced" });
+    await expect(pool.query("UPDATE public.catalog_skus SET sellable_in_subscription=true WHERE id=$1", [data.skuId]))
+      .rejects.toMatchObject({ constraint: "catalog_lifecycle_raw_status_fenced" });
+    const legacy = structuredClone(data.payload);
+    legacy.product.sharedContent.catalogAction = "revise";
+    legacy.publication.operations = [{ op: "set_product_status", productSlug: data.slug, status: "active" }];
+    const downgrade = canonicalCatalogDraftJson({ schemaVersion: 3, action: "revise", draftId: data.draftId,
+      expectedRevision: 3, commandKey: "legacy-status", payload: legacy });
+    expect(await createPostgresCatalogDraftStoreV4(pool).apply({ canonicalCommand: downgrade, fingerprint: hash(downgrade), actorId: actor }))
+      .toMatchObject({ outcome: "validation_issue" });
+
+    payload.publication.operations = [{ op: "restore_product", productSlug: data.slug, expectedState: "withdrawn" }];
+    const parent = await issue(4, withdrawn.head);
+    expect(parent.result.receipt).toMatchObject({ changes: [] });
+    const parentPage = await reads.readbackV3(parent.head);
+    expect(parentPage).toMatchObject({ product: { lifecycleState: "active" }, items: [{
+      reference: "items" in dark ? dark.items[0]!.reference : undefined,
+      facts: { lifecycleState: "withdrawn", sellableStandalone: false, sellableInSubscription: false },
+    }] });
+
+    payload.publication.operations = order === "restore first" ? [restore, enable] : [enable, restore];
+    sku.priceOperations = [{ schemaVersion: 1, commandKey: randomUUID(), variantId: data.skuId, priceListId: listId,
+      mode: "one_time", minQty: 1, amountKind: "gross", unitPriceMinor: 1500, expected: { entryId: entry, unitPriceMinor: 1000 } }];
+    const saved = await save(data, 5, payload);
+    expect(saved.payload).toEqual(payload);
+    const commands = await prepare(data, 5, parent.head);
+    const publish = { ...commands.publish, changes: [{ variantId: data.skuId, expectedRevision: 3, state: "active" as const }] };
+    expect(await api.execute(commands.approve, who)).toMatchObject({ outcome: "committed" });
+    expect(await api.execute(commands.revoke, who)).toMatchObject({ outcome: "committed" });
+    expect(await api.execute(publish, who)).toMatchObject({ outcome: "conflict", reason: "publication_approval_missing" });
+    expect(await api.execute({ ...commands.approve, commandKey: randomUUID() }, who)).toMatchObject({ outcome: "committed" });
+
+    const fail = native(async (db, sql, args) => {
+      const value = await db.query(sql, args);
+      if (sql.includes("catalog_publication_record_command")) await db.query("SELECT 1/0");
+      return value;
+    });
+    expect(await fail.execute(publish, (await fail.authorize(actor))!)).toMatchObject({ outcome: "dependency_unavailable" });
+    expect((await pool.query("SELECT id FROM public.price_entries WHERE variant_id=$1 AND active", [data.skuId])).rows)
+      .toEqual([{ id: entry }]);
+    expect(await reads.receipt({ productId: data.productId, commandKey: publish.commandKey }, reader)).toEqual({ outcome: "absent" });
+    expect((await pool.query("SELECT count(*)::int AS count FROM public.outbox_events WHERE aggregate_id=$1 AND aggregate_type='catalog.publication'",
+      [data.productId])).rows).toEqual([{ count: 4 }]);
+    const restored = await api.execute(publish, who);
+    expect(restored).toMatchObject({ outcome: "committed", receipt: { schemaVersion: 3, changes: [{ state: "active", variantRevision: 4 }] } });
+    const connection = new Pool({ connectionString: container.connectionString });
+    try {
+      const reopened = native(undefined, connection);
+      reopened.disableRules();
+      expect(await reopened.execute(withdrawn.publish, (await reopened.authorize(actor))!)).toEqual({ ...withdrawn.result, outcome: "replayed" });
+    } finally { await connection.end(); }
+  });
+
   it("asks for the logistics reference on the SKU being activated", async () => {
     const { api, who, command, code } = await approvedActivation(24, false, "logistics");
     expect(await api.execute(command, who)).toMatchObject({ outcome: "validation_issue",
@@ -1043,4 +1143,74 @@ publicationTest("commits approval and publication with a session temporary uuid 
         changes: [{ variantId: data.skuId, sku: data.code, variantRevision: 1 }] },
     });
   } finally { await publisher.end(); }
+});
+
+publicationTest("publishes and reads a governed genesis through the restricted login", async ({ publicationUrl }) => {
+  const publisher = new Pool({ connectionString: publicationUrl });
+  try {
+    const data = authored(85), draft: CatalogDraftPayloadV4 = { ...data.payload, schemaVersion: 4 };
+    await save(data, 1, draft);
+    const commands = await prepare(data, 1, null);
+    const api = native(undefined, publisher), who = (await api.authorize(actor))!;
+    expect(await api.execute(commands.approve, who)).toMatchObject({ outcome: "committed" });
+    const result = await api.execute(commands.publish, who);
+    if (result.outcome !== "committed" || !("head" in result.receipt)) throw Error(JSON.stringify(result));
+    const reads = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(publisher, work) },
+      authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+    expect(await reads.readbackV3(result.receipt.head)).toMatchObject({ outcome: "page", schemaVersion: 3 });
+  } finally { await publisher.end(); }
+});
+
+it("refuses governed archive and the five legacy lifecycle RPCs before changing live data", async () => {
+  const data = authored(83), api = native(), who = (await api.authorize(actor))!;
+  const payload: CatalogDraftPayloadV4 = { ...structuredClone(data.payload), schemaVersion: 4 };
+  await save(data, 1, payload);
+  const initial = await prepare(data, 1, null);
+  expect(await api.execute(initial.approve, who)).toMatchObject({ outcome: "committed" });
+  const issued = await api.execute(initial.publish, who);
+  if (issued.outcome !== "committed" || !("head" in issued.receipt)) throw Error(JSON.stringify(issued));
+  payload.product.sharedContent.catalogAction = "revise";
+  payload.publication.operations = [{ op: "set_sku_lifecycle", skuCode: data.code, expectedState: "draft", state: "archived" }];
+  await save(data, 2, payload);
+  const preview = await api.prepareCandidate({ draftId: data.draftId, draftRevision: 2, expectedHead: issued.receipt.head }, who);
+  expect(preview).toMatchObject({ issues: expect.arrayContaining([{ code: "catalog_publication_v3_compile_archive_refused", path: "publication.operations.0" }]) });
+  payload.publication.operations = [{ op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "archived", children: [] }];
+  await save(data, 3, payload);
+  const archive = await prepare(data, 3, issued.receipt.head);
+  expect(await api.execute(archive.approve, who)).toMatchObject({ outcome: "committed" });
+  expect(await api.execute(archive.publish, who)).toMatchObject({ outcome: "validation_issue",
+    reason: "catalog_archive_barrier_unavailable", message: expect.stringContaining("Keep the product or SKU withdrawn") });
+  for (const routine of ["admin_archive_catalog_sku", "admin_activate_catalog_product", "admin_archive_catalog_product",
+    "admin_restore_catalog_product", "admin_deactivate_catalog_product"])
+    await expect(pool.query(`SELECT public.${routine}($1,$2,'preview')`, [actor, "missing"]))
+      .rejects.toMatchObject({ code: "42501", message: "legacy_catalog_mutation_fenced" });
+  expect((await pool.query("SELECT revision FROM public.catalog_publication_heads WHERE product_id=$1", [data.productId])).rows)
+    .toEqual([{ revision: 1 }]);
+});
+
+it("requires explicit adoption before a legacy issued head can carry v4 effects", async () => {
+  const data = authored(84), api = native(), who = (await api.authorize(actor))!;
+  await save(data, 1);
+  const initial = await prepare(data, 1, null);
+  expect(await api.execute(initial.approve, who)).toMatchObject({ outcome: "committed" });
+  const issued = await api.execute(initial.publish, who);
+  if (issued.outcome !== "committed" || !("head" in issued.receipt)) throw Error(JSON.stringify(issued));
+  const reads = createPostgresCatalogPublicationReads({ transactions: { run: work => transaction(pool, work) },
+    authorizeHuman: async () => ({ ok: true, userId: actor, role: "admin", isMachineActor: false }) });
+  expect(await reads.readbackV3(issued.receipt.head)).toMatchObject({ outcome: "unsupported",
+    reason: "catalog_publication_use_readback_v2", message: "Read this legacy issue with readbackV2." });
+  const payload: CatalogDraftPayloadV4 = { ...structuredClone(data.payload), schemaVersion: 4 };
+  payload.product.sharedContent.catalogAction = "revise";
+  payload.publication.operations = [{ op: "set_product_lifecycle", productSlug: data.slug, expectedState: "draft", state: "active", children: [] }];
+  await save(data, 2, payload);
+  const preview = await api.prepareCandidate({ draftId: data.draftId, draftRevision: 2, expectedHead: issued.receipt.head }, who);
+  const legacyRemedy = {
+    code: "catalog_lifecycle_evidence_unavailable", message: expect.stringContaining("Keep revising it with schema-3 drafts"),
+  };
+  expect(preview).toMatchObject({ preparation: { structural: { issues: expect.arrayContaining([
+    expect.objectContaining({ ...legacyRemedy, path: "publication" }),
+    expect.objectContaining({ ...legacyRemedy, path: "publication.operations" }),
+  ]) } } });
+  expect(preview).not.toHaveProperty("preparation.postStateDigest");
+  expect(await api.execute(initial.publish, who)).toEqual({ ...issued, outcome: "replayed" });
 });

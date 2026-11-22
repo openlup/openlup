@@ -31,6 +31,13 @@ const beforeCheckoutAttemptLedger = {
   "installer-managed": "955596b9524fa304df1240b3e170d920c1ba27aefc366fb436c78bf7abb326b5",
   "operator-provisioned": "443cb07abc88ad43dd3c712310b31204f242b50793fc40d0a5e5ba8765995017",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
+// Sealed installation inventories immediately before governed catalogue lifecycle.
+const beforeGovernedLifecycle = {
+  bootstrap: "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20",
+  separate: "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385",
+  "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
+  "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
+} satisfies Record<keyof typeof beforePublicationCommands, string>;
 const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
@@ -354,6 +361,7 @@ export async function restoreConnectedNativeStore(input: {
     const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
     if (fresh.compatible.catalogueId !== manifest.objectInventorySha256
       || !older && packet.compatible.catalogueId !== beforeCheckoutAttemptLedger[profile]
+        && packet.compatible.catalogueId !== beforeGovernedLifecycle[profile]
         && packet.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");
@@ -695,8 +703,8 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
   const allowed: Readonly<Record<string, readonly string[]>> = {
     // Publication guards validate restored facts and the complete ledger. The
     // live-write binding triggers are scoped to the dedicated publication login.
-    catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write"],
-    catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write"],
+    catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write", "catalog_products_lifecycle_projection_final"],
+    catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write", "catalog_skus_lifecycle_write_fence"],
     catalog_sku_identifiers: ["catalog_publication_live_write"],
     catalog_product_document_revisions: ["catalog_publication_live_write"],
     catalog_publications: ["catalog_publications_issued", "catalog_publication_record_write_binding", "catalog_publications_open_draft"],
