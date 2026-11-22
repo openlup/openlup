@@ -18,17 +18,6 @@ export const catalogQuantityCharacterization = [
   { grams: 0, tuple: ["volume", "openlup:ml", 50], quote: false },
   { grams: -1, tuple: null, quote: false },
 ] as const;
-export const quantityReaderFixture2099 = "ALTER TABLE public.catalog_sku_revisions ADD COLUMN net_content_storage text";
-// Only the 2099 fixture publishes the marker here. PR 2 installs the actual guard.
-export async function attestQuantityReaderFixture2099(db: Pool | PoolClient): Promise<string> {
-  const { rows: [row] } = await db.query("SELECT pg_get_functiondef('public.catalog_publication_admit()'::regprocedure) AS definition");
-  const original = String(row?.definition);
-  const guarded = original.replace("AS $function$", "AS $function$\n-- openlup:native-catalog-quantity-v2:live-guard\n");
-  if (guarded === original) throw new Error("Expected the installed publication admission body");
-  await db.query(guarded);
-  return original;
-}
-
 export function createCharacterizationQuote(
   pricing: typeof import("@openlup/platform/pricing"),
   quoteCatalogReadPort: CommerceQuoteCatalogReadPort,

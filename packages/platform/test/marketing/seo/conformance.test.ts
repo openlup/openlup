@@ -106,6 +106,9 @@ it("builds a product with supplied optional facts and omits absent facts", () =>
     manufacturer: { "@id": organization }, image: base.images, url: base.url,
   };
   expect(productLd(origin, base)).toEqual(expected);
+  expect(productLd(origin, { ...base, netContent: { unscaled: 1, scale: 0, unit: "G" } })).toEqual({
+    ...expected, weight: { "@type": "QuantitativeValue", value: 1, unitCode: "GRM" },
+  });
   expect(productLd(origin, { ...base, category: "" })).toEqual({ ...expected, category: "" });
   expect(productLd(origin, { ...base, category: "Example Category", sku: "SKU-1", gtin13: "1234567890123", netContent: { unscaled: 25, scale: 1, unit: "G" } })).toEqual({
     ...expected, category: "Example Category", sku: "SKU-1", gtin13: "1234567890123",

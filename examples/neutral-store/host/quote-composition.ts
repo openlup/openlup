@@ -5,7 +5,7 @@ import type { Pool } from 'pg';
 import { createHash } from 'node:crypto';
 import { createPostgresCommerceQuoteCatalogReadPort, canonicalCatalogDraftJson } from '@openlup/platform/catalog';
 import { createPostgresCommercePriceAuthorityReadPort } from '@openlup/platform/commerce/server/postgres';
-import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, AcquisitionTermsError, CommerceQuoteError, CommerceQuoteCatalogReadError,
+import { createCommercePriceAuthorityPort, createDbBackedCommerceQuotePort, AcquisitionTermsError, CommerceQuoteError,
   ACQUISITION_TERMS_CAPABILITY, projectPublicQuoteSnapshot, acquisitionProjectionFreshness, projectAcquisitionTerms,
   type AcquisitionQuoteRequest, type ResolvedAcquisitionTerms, type CreateQuoteResponse } from '@openlup/platform/pricing';
 import { createPostgresCommercePromoDataPort, createQuotePromoDiscounts, createQuotePromotionV2,
@@ -36,13 +36,6 @@ export function quoteFailure(error: unknown): string {
     && isQuoteRefusalCode(error.details.reason)) return error.details.reason;
   if (error instanceof Error && (isQuoteRefusalCode(error.message) || quoteErrorCodes.has(error.message))) return error.message;
   return 'starter_quote_unavailable';
-}
-
-export function quoteActionRefusal(error: unknown) {
-  if (error instanceof CommerceQuoteCatalogReadError && error.code === 'quantity_requires_v2') {
-    return { ok: false as const, code: error.code, skuCode: error.skuCode };
-  }
-  return { ok: false as const, code: quoteFailure(error) };
 }
 
 export function createNativeQuoteService(db: Pool, predecessors: AcquisitionPredecessors, keyring?: PromotionAcceptanceKeyring) {

@@ -7,7 +7,6 @@ import {
   createDbBackedCommerceQuotePort as createQuoteEngine,
   type OneTimeOfferPricing,
   CommercePriceAuthorityError,
-  CommerceQuoteCatalogReadError,
   type CommercePriceAuthorityPort,
   type PricingResolverPort,
 } from "../../src/pricing/index.js";
@@ -49,19 +48,6 @@ const exampleTaxProfile = {
   vatRateBps: 2300,
   legalBasis: "Example VAT rule",
 } as const;
-
-it("passes every requested SKU to the catalog before pricing a typed cart", async () => {
-  const typed = new CommerceQuoteCatalogReadError("quantity_requires_v2", "typed");
-  const listQuoteCatalogItems = vi.fn(async (codes?: readonly string[]) => {
-    if (codes?.includes("typed")) throw typed;
-    return [];
-  });
-  const port = createDbBackedCommerceQuotePort({ quoteCatalogReadPort: { listQuoteCatalogItems } });
-  await expect(port.createQuote({ mode: "one_time", promoCodes: [], lines: [
-    { sku: "gram", quantity: 1 }, { sku: "typed", quantity: 1 },
-  ] })).rejects.toBe(typed);
-  expect(listQuoteCatalogItems).toHaveBeenCalledExactlyOnceWith(["gram", "typed"]);
-});
 
 describe("db backed commerce quote port", () => {
   it("quotes opaque DB SKUs through catalog variants and pricing resolver tiers", async () => {

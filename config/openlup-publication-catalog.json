@@ -5530,10 +5530,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/catalog/catalogTypedQuantitySql.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/catalog/combinationOptions.ts",
       "class": "public-output"
     },
@@ -8423,10 +8419,6 @@
     },
     {
       "path": "packages/platform/src/marketing/seo/metadata.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/marketing/seo/productLdV2.ts",
       "class": "public-output"
     },
     {

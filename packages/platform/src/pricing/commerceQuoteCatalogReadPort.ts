@@ -19,12 +19,10 @@ export interface CommerceQuoteCatalogItem {
 }
 
 export interface CommerceQuoteCatalogReadPort {
-  /** Refuse an explicitly requested SKU whose typed content requires V2. */
-  listQuoteCatalogItems(requestedSkuCodes?: readonly string[]): Promise<CommerceQuoteCatalogItem[]>;
+  listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
 }
 
 export type CommerceQuoteCatalogReadRefusalCode =
-  | "quantity_requires_v2"
   | "catalog_read_not_configured"
   | "catalog_authority_unavailable"
   | "catalog_authority_changed"
@@ -36,12 +34,9 @@ export type CommerceQuoteCatalogReadRefusalCode =
   | "catalog_cardinality_exceeded";
 
 export class CommerceQuoteCatalogReadError extends Error {
-  declare readonly skuCode?: string;
-
-  constructor(readonly code: CommerceQuoteCatalogReadRefusalCode, skuCode?: string) {
+  constructor(readonly code: CommerceQuoteCatalogReadRefusalCode) {
     super(code);
     this.name = "CommerceQuoteCatalogReadError";
-    if (skuCode !== undefined) this.skuCode = skuCode;
   }
 }
 

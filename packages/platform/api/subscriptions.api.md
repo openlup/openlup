@@ -883,13 +883,13 @@ export declare function createNativeSubscriptionBinding(input: {
     };
     schema: RequiredSchema;
     /** Called only after the host's actual paid-realization admission, never on stock arrival alone. */
-    realizationAdmitted(orderId: string): Promise<import("./contracts/stockWait.js").StockWaitCase | {
+    realizationAdmitted(orderId: string): Promise<{
         kind: "refused";
         code: string;
     } | {
         readonly kind: "refused";
         readonly code: "disabled";
-    } | null>;
+    } | import("./contracts/stockWait.js").StockWaitCase | null>;
 };
 ```
 ## dist/subscriptions/nativeSubscriptionSchema.d.ts
@@ -1387,7 +1387,7 @@ export interface ProviderRenewalPaymentPorts {
                     currency: string;
                 };
                 providerOccurredAt: string | null;
-                capturedAmountBasis?: "provider_capture_v1";
+                capturedAmountBasis?: "provider_capture_v1" | undefined;
             } | {
                 kind: "unknown" | "unsupported" | "absent";
             }>;

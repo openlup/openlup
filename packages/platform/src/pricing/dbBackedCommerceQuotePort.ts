@@ -22,7 +22,7 @@ export interface QuotePromotionResult {
 }
 
 export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext> {
-  quoteCatalogReadPort: { listQuoteCatalogItems(requestedSkuCodes?: readonly string[]): Promise<Item[]> };
+  quoteCatalogReadPort: { listQuoteCatalogItems(): Promise<Item[]> };
   isStrictD1Quote: boolean;
   commercePriceAuthorityPort?: CommercePriceAuthorityPort;
   pricingResolverPort?: PricingResolverPort;
@@ -74,7 +74,7 @@ export function createDbBackedCommerceQuotePort<
       }
       const atTime = now();
       const offer = resolveOneTimeOfferPricing(options?.oneTimeOfferPricing, request, currency, isStrictD1Quote);
-      const skuIndex = await buildSkuIndex(quoteCatalogReadPort, request.lines.map(line => line.sku));
+      const skuIndex = await buildSkuIndex(quoteCatalogReadPort);
       const pricedLines = await Promise.all(request.lines.map(async (requestLine) => {
         const entry = skuIndex.get(requestLine.sku);
         if (!entry || (requestLine.variantId && requestLine.variantId !== entry.item.variantId)) {

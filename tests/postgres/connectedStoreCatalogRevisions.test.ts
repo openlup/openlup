@@ -94,6 +94,12 @@ it("carries two revisions per revised product, resolves the latest pointer and r
   expect(before.catalog_product_document_revisions).toHaveLength(4);
   expect(await restore()).toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(await journeyCensus(target.owner)).toEqual(before);
+  expect((await target.owner.query(`SELECT net_weight_g,net_content_dimension,net_content_unit,
+    net_content_unscaled::text,net_content_scale FROM public.catalog_skus WHERE sku LIKE 'QUANTITY-LEGACY-%' ORDER BY sku`)).rows)
+    .toEqual(catalogQuantityCharacterization.map(({ grams, tuple }) => ({
+      net_weight_g: grams, net_content_dimension: tuple?.[0] ?? null, net_content_unit: tuple?.[1] ?? null,
+      net_content_unscaled: tuple ? String(tuple[2]) : null, net_content_scale: tuple ? 0 : null,
+    })));
   expect((await target.owner.query(`SELECT p.id,p.current_document_revision_id,r.product_id,r.revision_no,
     r.id=(SELECT r2.id FROM public.catalog_product_document_revisions r2
       WHERE r2.product_id=p.id ORDER BY r2.revision_no DESC LIMIT 1) AS latest

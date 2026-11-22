@@ -25,7 +25,6 @@ export interface PostgresCatalogSkuEnvelopeRow {
   sku_product_id: string | null;
   sku_code: string | null;
   net_content_unscaled: number | null;
-  quantity_requires_v2?: boolean;
   sku_status: "draft" | "active" | "archived" | null;
   sellable_one_time: boolean | null;
   sellable_subscription: boolean | null;
@@ -61,12 +60,6 @@ export type CompletePostgresCatalogSkuEnvelopeRow = PostgresCatalogSkuEnvelopeRo
   sellable_subscription: boolean;
   is_addon: boolean;
 };
-
-export function requireV1CatalogSkuQuantity(row: PostgresCatalogSkuEnvelopeRow): void {
-  if (row.quantity_requires_v2 === true && row.sku_code) {
-    throw new CatalogSkuAuthorityError("quantity_requires_v2", row.sku_code);
-  }
-}
 
 export function requirePostgresCatalogSkuEnvelopeRow(
   row: PostgresCatalogSkuEnvelopeRow,

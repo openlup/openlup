@@ -108,8 +108,4 @@ export declare function convertCatalogQuantity(input: CatalogQuantity, target: s
  * @experimental
  */
 export declare function decodeCatalogReadQuantity(input: unknown, units?: readonly CatalogQuantityUnit[]): CatalogQuantity;
-/** Return exact mass in grams for a numeric transport.
- * @experimental
- */
-export declare function exactCatalogMassGrams(input: unknown, units?: readonly CatalogQuantityUnit[]): number | null;
 ```

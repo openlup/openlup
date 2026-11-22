@@ -682,7 +682,6 @@ export * from "./seo/serializeJsonLd.js";
 export * from "./seo/urls.js";
 export * from "./seo/metadata.js";
 export * from "./seo/jsonLd.js";
-export { productLdV2 } from "./seo/productLdV2.js";
 export type * from "./contracts/contactLegal.js";
 export * from "./contactLegal.js";
 export * from "./partnerAcquisitionSchemas.js";
@@ -1140,43 +1139,6 @@ export declare function buildHeadDescriptor(facts: HeadFacts): {
     title: string;
     tags: HeadTag[];
     jsonLd: string | null;
-};
-```
-## dist/marketing/seo/productLdV2.d.ts
-
-```ts
-import { type CatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
-import { type ProductFacts } from "./jsonLd.js";
-/**
- * Project declared mass into Product JSON-LD using the caller's weight fact.
- * @experimental
- */
-export declare function productLdV2(origin: string, product: Omit<ProductFacts, "netContent"> & {
-    weight?: CatalogQuantity | null;
-}, units?: readonly CatalogQuantityUnit[]): {
-    url: string;
-    weight?: {
-        "@type": string;
-        value: number;
-        unitCode: string;
-    } | undefined;
-    gtin13?: string | undefined;
-    sku?: string | undefined;
-    image: string[];
-    category?: string | undefined;
-    "@context": string;
-    "@id": string;
-    "@type": string;
-    name: string;
-    inLanguage: string;
-    brand: {
-        "@id": string;
-        "@type": string;
-        name: string;
-    };
-    manufacturer: {
-        "@id": string;
-    };
 };
 ```
 ## dist/marketing/seo/serializeJsonLd.d.ts

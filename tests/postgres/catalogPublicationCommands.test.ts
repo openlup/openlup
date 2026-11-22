@@ -613,10 +613,11 @@ describe("publication activation prices", () => {
     return id;
   }
 
-  async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode") {
+  async function approvedActivation(sequence: number, isAddon: boolean, missing?: "logistics" | "purchase mode", grams = 100) {
     const data = authored(sequence), api = native(), who = (await api.authorize(actor))!;
     const sku = data.payload.skus[0]!;
-    sku.grossMass = { ...sku.netContent!, unscaled: "110" };
+    sku.netContent = { ...sku.netContent!, unscaled: String(grams) };
+    sku.grossMass = { ...sku.netContent, unscaled: String(grams + 10) };
     if (missing !== "logistics") sku.logisticsRef = "example:logistics";
     data.payload.product.sharedContent.publicationSkus[0]!.isAddon = isAddon;
     const create = data.payload.publication.operations.find(operation => operation.op === "create_sku")!;
@@ -685,12 +686,12 @@ describe("publication activation prices", () => {
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
   });
 
-  it("quotes a published requested gram SKU with independent gross at the pinned V1 amount", async () => {
-    const { api, who, command, code, skuId, slug } = await approvedActivation(82, false);
+  it.each([[82, 1], [83, 100]])("quotes published requested SKU %i with factorless %i grams and independent gross", async (sequence, grams) => {
+    const { api, who, command, code, skuId, slug } = await approvedActivation(sequence, false, undefined, grams);
     await seedBasePrice(skuId);
     expect(await api.execute(command, who)).toMatchObject({ outcome: "committed" });
     expect((await pool.query("SELECT net_weight_g, gross_mass_unscaled::text AS gross FROM public.catalog_skus WHERE id=$1", [skuId])).rows)
-      .toEqual([{ net_weight_g: 100, gross: "110" }]);
+      .toEqual([{ net_weight_g: grams, gross: String(grams + 10) }]);
     // Scope the fixture to its own product without changing the V1 query or its requested-code lookup.
     const db: PgQueryExecutor = { query(sql, values) {
       if (!sql.includes("sku.sku = ANY($3::text[])")) return pool.query(sql, values);
@@ -703,7 +704,7 @@ describe("publication activation prices", () => {
     const quote = createCharacterizationQuote(pricing, catalog, pricing.createCommercePriceAuthorityPort(createPostgresCommercePriceAuthorityReadPort(db)));
     const result = await quote.createServerAuthoritativeQuote({ mode: "one_time", promoCodes: [], lines: [{ sku: code, quantity: 2 }] });
     // Main's immutable grams, gross parcel mass and price are independent facts.
-    expect(result.quote).toMatchObject({ totalGross: { amountMinor: 2000, currency: "XXX" }, context: { grams: [100] },
+    expect(result.quote).toMatchObject({ totalGross: { amountMinor: 2000, currency: "XXX" }, context: { grams: [grams] },
       lines: [{ sku: code, productSlug: slug, quantity: 2, unitPriceGross: { amountMinor: 1000, currency: "XXX" } }] });
   });
 

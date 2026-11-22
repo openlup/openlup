@@ -12,7 +12,6 @@ export * from "./seo/serializeJsonLd.js";
 export * from "./seo/urls.js";
 export * from "./seo/metadata.js";
 export * from "./seo/jsonLd.js";
-export { productLdV2 } from "./seo/productLdV2.js";
 export type * from "./contracts/contactLegal.js";
 export * from "./contactLegal.js";
 export * from "./partnerAcquisitionSchemas.js";

@@ -1361,21 +1361,13 @@ export declare function loadCatalogRules(artifact: Uint8Array, evaluation?: Cata
 ## dist/catalog/catalogSkuEnvelope.d.ts
 
 ```ts
-import type { CatalogSkuEnvelopeListQuery, CatalogSkuEnvelopePage, PublicCatalogSkuEnvelopeReadPort } from "./readPorts.js";
+import type { PublicCatalogSkuEnvelopeReadPort } from "./readPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 /**
  * Portable W2a envelope reader. It reads only product/SKU/revision references
  * and neutral identifiers; application document content never crosses this seam.
  */
 export declare function createPostgresCatalogSkuEnvelopeReadPort(executor: PgQueryExecutor): PublicCatalogSkuEnvelopeReadPort;
-export declare function listPostgresQuoteSkuEnvelopes(executor: PgQueryExecutor, query: CatalogSkuEnvelopeListQuery, requestedSkuCodes: readonly string[]): Promise<CatalogSkuEnvelopePage>;
-```
-## dist/catalog/catalogTypedQuantitySql.d.ts
-
-```ts
-export declare function catalogTypedQuantitySql(publicationFacts: string): string;
-/** Native SQL predicate for a row aliased as `sku`. Use only in server-owned SQL. @experimental */
-export declare const CATALOG_SKU_REQUIRES_QUANTITY_V2_SQL: string;
 ```
 ## dist/catalog/commerceQuoteCatalogRead.d.ts
 
@@ -2699,11 +2691,10 @@ export interface CatalogPriceContext {
     atTime: string;
 }
 /** Refusal vocabulary shared by managed and portable catalog readers. */
-export type CatalogSkuAuthorityRefusal = "quantity_requires_v2" | "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
+export type CatalogSkuAuthorityRefusal = "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
 export declare class CatalogSkuAuthorityError extends Error {
     readonly code: CatalogSkuAuthorityRefusal;
-    readonly skuCode?: string;
-    constructor(code: CatalogSkuAuthorityRefusal, skuCode?: string);
+    constructor(code: CatalogSkuAuthorityRefusal);
 }
 /** Accepts only GS1 GTIN-8/12/13/14 values with a valid modulo-10 check digit. */
 export declare function isValidGtin(value: string): boolean;
@@ -4080,7 +4071,6 @@ export type { AuthorizeAdmin, AgentDomainQuerySpec, AgentDomainMutationSpec, Bun
 export { createPostgresBundleCatalogStore } from "./bundleCatalogStore.js";
 export { BUNDLE_MIGRATIONS, CATALOG_MIGRATIONS } from "./sql.js";
 export { SUMMARY_COLUMNS, LIST_FILTER, LIST_SQL, COUNT_SQL, DETAIL_SQL, REFERENCE_PRICE, COMPONENT_SQL, FEED_COMPONENT_SQL, PRICE_SQL, OWN_LIST_SQL, CURRENCY_LIST_SQL, FEED_SQL, HISTORY_SQL, HISTORY_COUNT_SQL } from "./bundleCatalogQueries.js";
-export { CATALOG_SKU_REQUIRES_QUANTITY_V2_SQL } from "./catalogTypedQuantitySql.js";
 export { createPostgresCatalogSkuEnvelopeReadPort } from "./catalogSkuEnvelope.js";
 export { createPostgresCatalogDraftStore } from "./catalogDraftStore.js";
 export { selectEffectiveBundleTargetPrice } from "./bundlePriceSelection.js";
@@ -5073,11 +5063,6 @@ export interface CatalogActiveSkuEnvelopeListQuery extends CatalogSkuEnvelopeLis
 }
 export interface CatalogSkuEnvelopePage {
     items: NeutralSkuEnvelopeV1[];
-    /** Selected SKU codes that require a typed quantity reader. */
-    quantityRefusals?: {
-        skuCode: string;
-        code: "quantity_requires_v2";
-    }[];
     nextCursor: string | null;
 }
 ```

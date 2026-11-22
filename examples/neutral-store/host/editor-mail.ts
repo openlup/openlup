@@ -1,4 +1,3 @@
-import { CATALOG_SKU_REQUIRES_QUANTITY_V2_SQL } from '@openlup/platform/catalog';
 import { createSizedParcelProjection, type SubscriptionQueryExecutor } from '@openlup/platform/subscriptions';
 import type { OrderPaidParcelNoteReader } from '@openlup/platform/commerce/server';
 import type { Locale, StoreConfig } from '../shared/config.ts';
@@ -31,10 +30,8 @@ export function composeSizedPaidEmailNote(db: SubscriptionQueryExecutor,config: 
         lines };
     },
     async readExactPhysicalSize(id) {
-      const row = (await db.query(`SELECT sku.id,sku.sku,sku.net_weight_g,
-        ${CATALOG_SKU_REQUIRES_QUANTITY_V2_SQL} AS quantity_requires_v2
-        FROM public.catalog_skus sku WHERE sku.id=$1::uuid`,[id])).rows[0];
-      return row && row.quantity_requires_v2 !== true ? { id: String(row.id),sku: String(row.sku),physicalSize: Number(row.net_weight_g) } : null;
+      const row = (await db.query('SELECT id,sku,net_weight_g FROM public.catalog_skus WHERE id=$1::uuid',[id])).rows[0];
+      return row ? { id: String(row.id),sku: String(row.sku),physicalSize: Number(row.net_weight_g) } : null;
     } });
   return async (orderId,locale,signal) => {
     const facts = await project(orderId,signal);

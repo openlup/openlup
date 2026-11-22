@@ -62,9 +62,9 @@ export function previousPublishedSet(target: string, tags: string, versions: str
   assert(stable.test(target) && versions.length > 0, "upgrade_pair_invalid");
   const compare = (a: string, b: string) => {
     const left = a.split(".").map(Number), right = b.split(".").map(Number);
-    return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+    return left[0]! - right[0]! || left[1]! - right[1]! || left[2]! - right[2]!;
   };
-  const candidates = [...tags.matchAll(/refs\/tags\/openlup-core-v([^\s^]+)/g)].map(match => match[1]);
+  const candidates = [...tags.matchAll(/refs\/tags\/openlup-core-v([^\s^]+)/g)].map(match => match[1]!);
   const previous = candidates.filter(version => stable.test(version) && compare(version, target) < 0 && versions.every(list => list.includes(version))).sort(compare).at(-1);
   assert(previous, "upgrade_pair_previous_unavailable");
   return previous;
@@ -235,7 +235,7 @@ function reconcileManagedCustomization(
   return { path, bytes };
 }
 
-export const starterDisplayFiles = ["host/paid-mail.ts", "host/editor-mail.ts", "host/quote-composition.ts", "host/purchase-composition.ts", "shared/api.ts", "client/pages/account.ts", "browser/acquisition.spec.ts"] as const;
+export const starterDisplayFiles = ["host/paid-mail.ts", "client/pages/account.ts", "browser/acquisition.spec.ts"] as const;
 
 export function reconcileDisplayCustomization(
   app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],
@@ -304,7 +304,7 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
     for (const [path, before, after] of [
       ["owned/store.config.ts", "#3d6657", "#663d57"],
       ["owned/fragments.ts", "offer-intro", "adopter-offer-intro"],
-    ]) {
+    ] as const) {
       assert(ownership.owned.includes(path) && !Object.hasOwn(from.files, path) && !Object.hasOwn(to.files, path));
       const original = readFileSync(join(app, path), "utf8"); assert(original.includes(before));
       writeFileSync(join(app, path), original.replaceAll(before, after)); owned[path] = readFileSync(join(app, path));
@@ -393,8 +393,9 @@ function proveStarterPair(consumer: string, pair: UpgradePair): () => void {
       assert.deepEqual(starterUpgradeSnapshot(app, pair.fromVersion), before, "conflict wrote managed files");
       return report;
     });
-    owned[local.path] = Buffer.from(local.bytes);
-    pair.evidence.customizations![local.path] = hash(owned[local.path]);
+    const bytes = Buffer.from(local.bytes);
+    owned[local.path] = bytes;
+    pair.evidence.customizations![local.path] = hash(bytes);
   });
   if (Object.hasOwn(from.files, starterAgentGuide)) phase("agent-guide-reconciliation", () => {
     const local = reconcileStarterAgentGuide(app, from, to, applyRefused);

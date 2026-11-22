@@ -354,7 +354,6 @@ const EXPECTED_SKU_SELECT_COLUMNS = [
   "product_id",
   "sku",
   "net_weight_g",
-  "publication_facts",
   "status",
   "sellable_standalone",
   "sellable_in_subscription",
@@ -365,7 +364,7 @@ const EXPECTED_SKU_SELECT_COLUMNS = [
 function expectExactSkuSelects(calls: ReadonlyArray<{ text: string }>): void {
   for (const { text } of calls) {
     if (!text.includes(" AS sku")) continue;
-    const select = text.slice(text.indexOf("SELECT"), text.indexOf("\n  FROM public.catalog_"));
+    const select = text.slice(text.indexOf("SELECT"), text.indexOf("FROM"));
     const columns = [...select.matchAll(/\bsku\.([a-z_]+)/gu)].map((match) => match[1]);
     expect(columns).toEqual(EXPECTED_SKU_SELECT_COLUMNS);
     expect(select).not.toMatch(/\bsku\s*\.\s*gtin\b/iu);

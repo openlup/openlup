@@ -44,7 +44,6 @@ const batchInput = z.object({ skuCodes: z.array(code).min(1).max(100).refine(cod
 const subject = z.object({ ...evidence, product: catalogPublishedProductSchema, sku: catalogPublishedSkuSchema }).strict();
 const missing = z.literal("price_readiness_missing"), shape = z.literal("price_shape_invalid");
 const batchItem = z.union([
-  z.object({ skuCode: code, refusal: z.literal("quantity_requires_v2") }).strict(),
   z.object({ skuCode: code, evidence: z.null(), primaryPresent: z.null(), priceReasons: z.tuple([]) }).strict(),
   z.object({ skuCode: code, evidence: subject, primaryPresent: z.boolean(),
     priceReasons: z.union([z.tuple([]), z.tuple([missing]), z.tuple([shape]), z.tuple([missing, shape])]) }).strict(),
@@ -55,7 +54,7 @@ const batchWire = z.union([
   z.object({ kind: z.literal("refusal"), reason: z.literal("inconsistent_evidence"), detail: z.enum(["catalog_publication_live_drift",
     "active_price_list_ambiguous", "catalog_price_setup_settlement_context_unverified"]).optional() }).strict(),
 ]);
-// SQL alone owns the two price reasons.
+// SQL alone owns the two price reasons; installed rules can add other reasons only.
 const installedReasons = z.array(z.string().regex(/^[a-z][a-z0-9_]{0,159}$/u).refine(reason => !["price_readiness_missing", "price_shape_invalid"].includes(reason)));
 
 /** @experimental */
@@ -175,16 +174,11 @@ export async function readPostgresCatalogActivationReadiness(transactions: Pick<
   }
   const { headDigest, items } = decoded.data.value;
   if (headDigest !== expectedHeadDigest || items.length !== skuCodes.length
-    || items.some((item, index) => item.skuCode !== skuCodes[index] || ("evidence" in item && item.evidence && !certified(item.evidence, item.skuCode)))) return unavailable;
+    || items.some((item, index) => item.skuCode !== skuCodes[index] || (item.evidence && !certified(item.evidence, item.skuCode)))) return unavailable;
   const assessed: CatalogActivationReadinessItem[] = [];
   // Host rules see detached copies; certified IDs and evidence are kept from the decoded result.
   try {
-    for (const item of items) {
-      if ("refusal" in item) {
-        assessed.push({ skuCode: item.skuCode, skuId: null, logisticsRef: null, evidence: null, ready: false, reasons: [item.refusal] });
-        continue;
-      }
-      const { skuCode, evidence: observed, primaryPresent, priceReasons } = item;
+    for (const { skuCode, evidence: observed, primaryPresent, priceReasons } of items) {
       if (!observed) {
         assessed.push({ skuCode, skuId: null, logisticsRef: null, evidence: null, ready: false, reasons: ["sku_not_materialized"] });
         continue;

@@ -1,5 +1,3 @@
-import { exactCatalogMassGrams, type CatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
-
 // Pure builder for the OmniPack product-registration request (catalog load). Mirrors the
 // outbound-order payload convention (pure module in server/_lib, wired through the client).
 // The exact OmniPack request key names live behind the constants below so finalizing them
@@ -28,12 +26,9 @@ export interface OmnipackProductInput {
 }
 
 export class OmnipackProductPayloadError extends Error {
-  declare readonly field?: string;
-
-  constructor(readonly code: string, field?: string) {
+  constructor(readonly code: string) {
     super(`omnipack_product_payload_invalid: ${code}`);
     this.name = "OmnipackProductPayloadError";
-    if (field !== undefined) this.field = field;
   }
 }
 
@@ -69,17 +64,4 @@ export function buildOmnipackProductPayload(input: OmnipackProductInput): Record
       height: requirePositive(input.pack.heightMm, "invalid_pack_height"),
     },
   };
-}
-
-/** Independent packaged gross mass for product registration. @experimental */
-export interface TypedProductPayloadInput extends Omit<OmnipackProductInput, "pack"> {
-  pack: (Omit<OmnipackProductPack, "weightGrams"> & { grossMass: CatalogQuantity | null }) | null;
-  units?: readonly CatalogQuantityUnit[];
-}
-
-export function buildTypedProductPayload(input: TypedProductPayloadInput): Record<string, unknown> {
-  if (!input.pack) throw new OmnipackProductPayloadError("missing_pack", "pack");
-  const weightGrams = exactCatalogMassGrams(input.pack.grossMass, input.units);
-  if (weightGrams === null) throw new OmnipackProductPayloadError("invalid_pack_weight", "pack.grossMass");
-  return buildOmnipackProductPayload({ ...input, pack: { ...input.pack, weightGrams } });
 }

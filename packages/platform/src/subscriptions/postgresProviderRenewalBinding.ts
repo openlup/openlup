@@ -48,7 +48,7 @@ export interface ProviderRenewalPaymentPorts {
     }>;
   adapter: { readbackPort: { readPayment(input: { identity: { provider: string; intentRef: string; attemptRef: string; providerPaymentRef: string };
     expectedMoney: { amountMinor: number; currency: string }; purpose: "recovery" }): Promise<
-      { kind: "succeeded" | "failed" | "pending"; observedMoney: { amountMinor: number; currency: string }; providerOccurredAt: string | null; capturedAmountBasis?: "provider_capture_v1" }
+      { kind: "succeeded" | "failed" | "pending"; observedMoney: { amountMinor: number; currency: string }; providerOccurredAt: string | null; capturedAmountBasis?: "provider_capture_v1" | undefined }
       | { kind: "unknown" | "unsupported" | "absent" }> } };
   reconciliation: {
     recordEvidence(input: { idempotencyKey: string; provider: string; providerPaymentId: string | null; paymentIntentId: string;

@@ -1,7 +1,6 @@
 import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { createPostgresBundleCatalogStore } from "@openlup/platform/catalog";
-import { attestQuantityReaderFixture2099, quantityReaderFixture2099 } from "./catalogPublicationFixture.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -109,17 +108,25 @@ it("requires document, primary GTIN, status, weight and mode sellability for eve
   expect(await store().listActiveBundleCompositions({ ...feedInput, mode: "subscription" })).toEqual([]);
 });
 
-it("admits certified typed components and refuses mismatched content without falling back to grams", async () => {
-  // 20990101000000_catalog_quantity_reader_fixture
-  await db.query(quantityReaderFixture2099);
-  await db.query(`UPDATE public.catalog_skus SET net_weight_g=250,net_content_dimension='volume',
-    net_content_unscaled=51,net_content_unit='openlup:ml',net_content_scale=0,
-    publication_facts='{"quantityVersion":2,"netContent":{"dimension":"volume","unscaled":"50","unit":"openlup:ml","scale":0}}' WHERE id=$1`, [part]);
-  expect(await feed()).toHaveLength(1);
-  await attestQuantityReaderFixture2099(db);
-  expect(await feed()).toEqual([]);
-  await db.query("UPDATE public.catalog_skus SET net_content_unscaled=50,net_weight_g=0 WHERE id=$1", [part]);
-  expect(await feed()).toHaveLength(1);
-  await db.query("UPDATE public.catalog_skus SET net_content_unscaled=51,net_weight_g=250 WHERE id=$1", [part]);
-  expect(await feed()).toEqual([]);
+it("reads the effective bundle using only the incumbent SKU column grants", async () => {
+  const detailInput = { code: "PARITY-SET", ...feedInput };
+  const detail = await store().getBundle(detailInput);
+  const composition = await feed();
+  expect(detail?.components).toHaveLength(2);
+  expect(composition).toMatchObject([{ targetPriceMinor: 1600, components: [
+    { sku: "PARITY-P", referenceUnitPriceMinor: 1200 }, { sku: "PARITY-Q", referenceUnitPriceMinor: 1200 },
+  ] }]);
+  await db.query(`CREATE ROLE bundle_column_reader NOLOGIN BYPASSRLS;
+    GRANT USAGE ON SCHEMA public TO bundle_column_reader;
+    GRANT SELECT ON public.catalog_bundles, public.catalog_bundle_components, public.catalog_bundle_prices,
+      public.price_entries, public.price_lists, public.catalog_products, public.catalog_product_document_revisions,
+      public.catalog_sku_identifiers TO bundle_column_reader;
+    GRANT SELECT (id, sku, title, product_id, status, sellable_standalone, sellable_in_subscription, net_weight_g)
+      ON public.catalog_skus TO bundle_column_reader;
+    SET LOCAL ROLE bundle_column_reader`);
+  expect(await store().getBundle(detailInput)).toEqual(detail);
+  expect(await feed()).toEqual(composition);
+  await db.query("SAVEPOINT whole_row");
+  await expect(db.query("SELECT to_jsonb(s) FROM public.catalog_skus s")).rejects.toMatchObject({ code: "42501" });
+  await db.query("ROLLBACK TO SAVEPOINT whole_row");
 });

@@ -1,6 +1,5 @@
 import { expect, it } from "vitest";
 import { CATALOG_QUANTITY_UNITS, canonicalizeCatalogQuantity, decodeCatalogReadQuantity, type CatalogQuantity, type CatalogQuantityUnit } from "@openlup/core/catalog";
-import { productLdV2 } from "../../src/marketing/index.js";
 
 type Dimension = CatalogQuantity["dimension"];
 const quantity = (dimension: Dimension, unit: string, unscaled = "1", scale = 0) => ({ dimension, unit, unscaled, scale });
@@ -49,11 +48,4 @@ it.each(cases)("keeps Core and strict read quantity parity for %j", (input, expe
 });
 it("refuses extra typed wire fields before conversion", () => {
   expect(() => decodeCatalogReadQuantity({ ...ml(), extra: 1 })).toThrow("quantity_invalid");
-});
-it("projects only exact mass as SEO weight", () => {
-  const item = { url: "https://shop.example/item", name: "Item", inLanguage: "en", brandName: "Example", images: [] };
-  expect(productLdV2(item.url, { ...item, weight: ml("250") })).not.toHaveProperty("weight");
-  expect(productLdV2(item.url, { ...item, weight: piece("5") })).not.toHaveProperty("weight");
-  expect(productLdV2(item.url, { ...item, weight: quantity("mass", "openlup:kg", "25", 2) })).toHaveProperty("weight.value", 250);
-  expect(() => productLdV2(item.url, { ...item, weight: quantity("mass", "openlup:g", "9007199254740993") })).toThrow(RangeError);
 });

@@ -1,4 +1,3 @@
-import { catalogQuantitySchema } from "./productTypeSchemas.js";
 import type { PgQueryExecutor } from "../data/index.js";
 import { assertPrimaryUnitGtinAuthority, type CatalogSkuIdentifier } from "./contracts/foundation.js";
 import { BundleCatalogReadError, type BundleCatalogReadPort, type BundleComponentRow, type BundleSummary, type GetBundleInput } from "./bundleCatalogReadPort.js";
@@ -33,8 +32,6 @@ interface ComponentRow {
   sku_status: string;
   product_status: string;
   net_weight_g: number;
-  quantity_requires_v2?: boolean | null;
-  certified_content?: unknown;
   sellable_standalone: boolean;
   sellable_in_subscription: boolean;
   document_ready: boolean;
@@ -204,14 +201,8 @@ function toConstraint(value: Record<string, unknown> | null) {
 function componentReady(row: ComponentRow, mode: string): boolean {
   try { assertPrimaryUnitGtinAuthority(row.identifiers); } catch { return false; }
   return row.sku_status === "active" && row.product_status === "active" && row.document_ready === true
-    && componentContentReady(row)
+    && Number.isSafeInteger(row.net_weight_g) && row.net_weight_g > 0
     && (mode === "subscription" ? row.sellable_in_subscription : row.sellable_standalone)
     && row.reference_unit_price_minor !== null && Number.isSafeInteger(Number(row.reference_unit_price_minor))
     && Number(row.reference_unit_price_minor) > 0;
-}
-
-function componentContentReady(row: ComponentRow): boolean {
-  if (row.quantity_requires_v2 !== true) return Number.isSafeInteger(row.net_weight_g) && row.net_weight_g > 0;
-  const content = catalogQuantitySchema.safeParse(row.certified_content);
-  return content.success && content.data.dimension !== "mass";
 }

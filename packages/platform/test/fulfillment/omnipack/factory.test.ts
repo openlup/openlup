@@ -6,6 +6,7 @@ import { dispatchResult, shadowDispatchEvidence } from "../../../src/fulfillment
 import type { DispatchRecord, FulfillmentDispatchResult } from "../../../src/fulfillment/contracts/index.js";
 import { runFulfillmentProductSyncWorker } from "../../../src/fulfillment/providerProductSyncWorker.js";
 import * as entry from "../../../src/fulfillment/omnipack/index.js";
+import { buildOmnipackProductPayload } from "../../../src/fulfillment/omnipack/omnipackProductPayload.js";
 import type { OmnipackFulfillmentAdapterConfig } from "../../../src/fulfillment/omnipack/index.js";
 import type { DispatchEvidence, FulfillmentDispatchRequest, FulfillmentStockSyncPort, StockSnapshot, SyncCursor } from "../../../src/fulfillment/contracts/index.js";
 import { runFulfillmentStockSyncWorker as run } from "../../../src/fulfillment/index.js";
@@ -419,6 +420,13 @@ it("keeps product reads pull-only and strips donor response bags from explicit w
   await writer.adapter.productSync.addProductPack("SKU-A", { ean: "0000000000012", quantity: 2 });
   expect(writer.fetchImpl.mock.calls.map(([, init]) => init?.method)).toEqual(["POST", "POST"]);
   await expect(writer.adapter.productSync.addProductPack("SKU-A", { ean: secret, quantity: 0 })).rejects.toMatchObject({ reason: "malformed", phase: "sync", retryable: false });
+});
+it("preserves the gross parcel weight field and validation code", () => {
+  const input = { sku: "SKU-A", ean: "0000000000012", title: "Example", productGroup: "Example",
+    pack: { weightGrams: 350, lengthMm: 1, widthMm: 2, heightMm: 3 } };
+  expect(buildOmnipackProductPayload(input)).toHaveProperty("dimensions.weight", 350);
+  expect(() => buildOmnipackProductPayload({ ...input, pack: { ...input.pack, weightGrams: 0 } }))
+    .toThrow(expect.objectContaining({ code: "invalid_pack_weight" }));
 });
 it("never leaks transport failures through sync or readback", async () => {
   const f = fixture(() => { throw Error(JSON.stringify(plants)); });
@@ -1213,24 +1221,4 @@ it("allowlists boolean dispatch facts at the durable sink and preserves absent e
   expect(dispatchResult(planted as unknown as FulfillmentDispatchResult)).toEqual(base);
   const facts = { ...base, error: { ...base.error, submissionAttempted: false, responseBodyRead: false } };
   expect(dispatchResult(dispatchResult(facts))).toEqual(facts);
-});
-
-it("registers exact independent gross mass and refuses count or inexact mass before provider I/O", async () => {
-  const valid = { dimension: "mass" as const, unit: "openlup:kg", unscaled: "35", scale: 2 };
-  for (const [grossMass, expected] of [[valid, 350],
-    [{ ...valid, dimension: "count", unit: "openlup:piece" }, null],
-    [{ ...valid, unit: "openlup:g", unscaled: "9007199254740993", scale: 0 }, null],
-    [null, null],
-  ] as const) {
-    const f = fixture(undefined, { typedProduct: { resolvePushMetadata: async sku => ({
-      sku, ean: "0000000000012", title: "Example", productGroup: "Example", pack: { lengthMm: 1, widthMm: 2, heightMm: 3, grossMass },
-    }) } });
-    if (expected === null) {
-      await expect(f.adapter.productSync.ensureProduct("SKU-A")).rejects.toMatchObject({ reason: "malformed", code: "invalid_pack_weight", field: "pack.grossMass" });
-      expect(f.fetchImpl).not.toHaveBeenCalled();
-    } else {
-      await expect(f.adapter.productSync.ensureProduct("SKU-A")).resolves.toEqual({ replayed: false });
-      expect(JSON.parse(String(f.fetchImpl.mock.calls[0]![1]?.body))).toMatchObject({ dimensions: { weight: expected } });
-    }
-  }
 });

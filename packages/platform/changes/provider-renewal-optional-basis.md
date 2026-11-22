@@ -1,0 +1,1 @@
+- Align the optional provider renewal capture-basis type with the payment readback port so TypeScript consumers can compose them with `exactOptionalPropertyTypes`.
