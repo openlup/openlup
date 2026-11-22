@@ -303,7 +303,8 @@ async function assertPreGrantRefusals(target: Installed, input: RestoreInput, cy
   // - Common insert trigger, connectedStoreRestore.ts:586,945–984.
   // - Nonempty excluded public relation, connectedStoreRestore.ts:587,889–893.
   // - Replay publication and constraint errors (2 rows), connectedStoreRestore.ts:590,728–731.
-  // - Cyclic and duplicate lineage and mixed lineage/metadata (6 rows), connectedStoreRestore.ts:482–496,592–598,914–934.
+  // - Cyclic, duplicate and missing-parent lineage and mixed lineage/metadata (7 rows),
+  //   connectedStoreRestore.ts:482–496,592–598,914–934.
   // - Generic key, descriptor, source ID and compatible table refusals (7 rows), connectedStoreRestore.ts:488–495,592–598,
   //   postgresRows.ts:138–139,155–162,165–181.
   // - Generic insert trigger, connectedStoreRestore.ts:594–596, postgresRows.ts:140–152.
@@ -377,6 +378,13 @@ async function assertPreGrantRefusals(target: Installed, input: RestoreInput, cy
       input: changePacket(copy => {
         const orders = copy.compatible.tables.find(table => table.table === "commerce_orders")!;
         orders.rows.push(orders.rows[0]!);
+      }) },
+    { label: "missing invoicing duty parent", code: "target_conflict", table: "invoicing_duties",
+      input: changePacket(copy => {
+        const capturedDuties = copy.compatible.tables.find(table => table.table === "invoicing_duties")!;
+        expect(capturedDuties.rows).toHaveLength(1);
+        capturedDuties.rows[0] = JSON.stringify({ ...JSON.parse(capturedDuties.rows[0]!),
+          parent_duty_id: "10000000-0000-4000-8000-000000000005" });
       }) },
     ...[false, true].flatMap(reverseTables => [false, true].map(reverseRows => {
       const edited = structuredClone(dutyLineage);
@@ -481,6 +489,42 @@ async function assertPreGrantRefusals(target: Installed, input: RestoreInput, cy
   }
 }
 
+async function assertReplayRaceRefusals(target: Installed, input: RestoreInput) {
+  const root = target.pools[0]!;
+  const { sha256 } = (await root.query<{ sha256: string }>(
+    "SELECT sha256 FROM public.platform_schema_migrations WHERE position=0")).rows[0]!;
+  const changedHash = `${sha256[0] === "f" ? "e" : "f"}${sha256.slice(1)}`;
+  const updateLedgerHash = (hash: string) => root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [hash]);
+  const races = [
+    { table: "platform_schema_migrations", inject: () => updateLedgerHash(changedHash), cleanup: () => updateLedgerHash(sha256) },
+    { table: "subscription_pause_windows",
+      inject: () => root.query("ALTER TABLE public.subscription_pause_windows ADD COLUMN restore_race_probe text"),
+      cleanup: () => root.query("ALTER TABLE public.subscription_pause_windows DROP COLUMN IF EXISTS restore_race_probe") },
+  ];
+  for (const race of races) {
+    const context = `${target.selection.roleMode}: replay lock on ${race.table}`;
+    let injected = false;
+    const trace = traceRestore(target.owner, async sql => {
+      if (injected || !sql.startsWith(`LOCK TABLE "public"."${race.table}"`)) return;
+      await race.inject();
+      injected = true;
+    });
+    try {
+      await expect(restoreConnectedNativeStore({ ...input, owner: trace.traced }), context)
+        .rejects.toMatchObject({ code: "schema_conflict" });
+      expect(injected, context).toBe(true);
+      expect(trace.statements.some(sql => /^\s*GRANT\b/iu.test(sql)), context).toBe(false);
+      expect(trace.retainedWrites(), context).toEqual([]);
+    } finally {
+      if (injected) await race.cleanup();
+    }
+  }
+  const replay = traceRestore(target.owner);
+  expect((await restoreConnectedNativeStore({ ...input, owner: replay.traced })).replayed).toBe(true);
+  replay.expectAdmittedBeforeGrant();
+  expect(replay.retainedWrites()).toEqual([]);
+}
+
 async function writeLineage(owner: Pool) {
   const root = "10000000-0000-4000-8000-000000000002", child = "10000000-0000-4000-8000-000000000003";
   const db = await owner.connect();
@@ -492,6 +536,7 @@ async function writeLineage(owner: Pool) {
       SELECT $1, id, 100, 'XXX', $2, $2 FROM public.clients`, [child, root]);
     await db.query(`INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
       SELECT id,1,1,100,100 FROM public.commerce_orders`);
+    await db.query("INSERT INTO public.invoicing_duties(order_id,original_key) VALUES($1,'restricted-restore-duty')", [root]);
     await db.query("COMMIT");
   } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
   return (pool: Pool, cycled: boolean) => pool.query("UPDATE public.commerce_orders SET recreated_from_order_id=$2 WHERE id=$1", [root, cycled ? child : null]);
@@ -602,6 +647,7 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
         trace.expectAdmittedBeforeGrant();
         await cycle(target.owner, false);
       }
+      if (sourceCatalogueId === undefined) await assertReplayRaceRefusals(target, input);
       expect((await target.owner.query("SELECT event_type FROM public.outbox_events")).rows).toEqual([{ event_type: "synthetic.retained" }]);
       expect(await keyIdentity(target)).toEqual(beforeKey);
       await expect(restoreConnectedNativeStore({ ...input, freshTarget: packet })).rejects.toMatchObject({ code: "invalid_input" });
