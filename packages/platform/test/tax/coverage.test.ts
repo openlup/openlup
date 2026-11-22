@@ -104,6 +104,7 @@ describe("tax coverage", () => {
   it("refuses a coverage document from another account and duplicate required cells", () => {
     expect(reconcileTaxCoverage({ ...input, scope: { ...input.scope, accountRef: "other" } })).toMatchObject({
       kind: "refused", code: "tax_scope_mismatch", field: "/coverage/accountRef",
+      remedy: "Supply coverage evidence for the selected account",
     });
     expect(reconcileTaxCoverage({ ...input, required: [cell(), cell()] })).toMatchObject({
       kind: "refused", code: "tax_invalid_input", field: "/required/1",

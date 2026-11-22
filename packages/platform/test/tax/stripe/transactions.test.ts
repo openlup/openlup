@@ -410,6 +410,14 @@ describe("retry validity probe", () => {
     expect(new Set(keys).size).toBe(2);
     expect(compareTaxRecalculationProbe(boundRequest, bound, request, result))
       .toEqual(kind === "equal" ? { kind } : { kind, field: "positions" });
+    if (kind === "equal") {
+      const lines = boundRequest.input.lines.map(line => ({ ...line, taxClass: "alternate" }));
+      Object.setPrototypeOf(lines, Object.create(Array.prototype, {
+        [Symbol.iterator]: { value: () => boundRequest.input.lines[Symbol.iterator]() },
+      }));
+      const wrappedBound = { ...boundRequest, input: { ...boundRequest.input, lines } };
+      expect(compareTaxRecalculationProbe(wrappedBound, bound, request, result)).toEqual({ kind: "equal" });
+    }
     expectIntegrityRefusal(compareTaxRecalculationProbe(boundRequest, bound, { ...request, key: "different-key" }, result));
     expect(compareTaxRecalculationProbe(boundRequest, bound, boundRequest, bound)).toMatchObject({ kind: "refused" });
   });

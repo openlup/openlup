@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { calculateCatalogueMoneyV2, planCatalogueMoneyV2 } from "@openlup/core/pricing";
 import { describe, expect, it } from "vitest";
-import { canonicalCatalogDraftJson } from "../../src/catalog/contracts/index.js";
+import { CATALOG_DRAFT_MAX_BYTES, canonicalCatalogDraftJson } from "../../src/catalog/contracts/index.js";
 import { makeTaxQuoteRequest, reconcileTaxCoverage, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "../../src/tax/index.js";
 import {
   taxCalculationEvidenceV1Schema, taxCloseInputV1Schema, taxCommitRequestV1Schema, taxCoverageV1Schema,
@@ -691,12 +691,30 @@ describe("tax document decoders", () => {
     expect(verifyTaxQuoteRequest(wrapped({ ...fiscal, original: wrapped(request), current: wrapped(fiscal.current) }))).toBeUndefined();
   });
 
-  it("shares the coverage-account refusal between preparation and verification", () => {
+  it("uses phase-specific remedies for a coverage account mismatch", () => {
+    const foreign = { ...request, input: foreignAccount, inputDigest: taggedDigest("input", foreignAccount) };
+    const code = "tax_scope_mismatch";
+    const message = "Supply coverage evidence for the selected account";
     expect(() => makeTaxQuoteRequest(request.key, foreignAccount)).toThrow(expect.objectContaining({
-      code: "tax_reference_conflict", field: "/coverage/accountRef", message: remedies.tax_reference_conflict,
+      code, field: "/coverage/accountRef", message,
     }));
-    expectRefusal(verifyTaxQuoteRequest({ ...request, input: foreignAccount, inputDigest: taggedDigest("input", foreignAccount) }),
-      "tax_reference_conflict", "/input/coverage/accountRef");
+    expect(() => taxQuoteRequestV1Schema.parse(foreign)).toThrow(expect.objectContaining({
+      code, field: "/input/coverage/accountRef", message,
+    }));
+    expectRefusal(verifyTaxQuoteRequest(foreign), "tax_reference_conflict", "/input/coverage/accountRef");
+  });
+
+  it("refuses a request, evidence or fiscal document one byte above its own cap", () => {
+    function overLimit<T extends object>(value: T): T {
+      const document = { ...value, padding: "" };
+      document.padding = "x".repeat(CATALOG_DRAFT_MAX_BYTES + 1 - Buffer.byteLength(JSON.stringify(document)));
+      expect(Buffer.byteLength(JSON.stringify(document))).toBe(CATALOG_DRAFT_MAX_BYTES + 1);
+      return document;
+    }
+    expectRefusal(verifyTaxQuoteRequest(overLimit(request)), "tax_reference_conflict", "");
+    expectRefusal(verifyTaxQuoteResult(request, { ...successful(), evidence: overLimit(receipt) } as TaxQuoteResultV1),
+      "tax_reference_conflict", "/evidence");
+    expectRefusal(verifyTaxQuoteRequest(overLimit(fiscal)), "tax_reference_conflict", "");
   });
 
   it("checks the evidence digest anchor when evidence is missing", () => {

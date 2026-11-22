@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import { CATALOG_DRAFT_MAX_BYTES } from "../../src/catalog/contracts/index.js";
 import { localRateTable, makeTaxQuoteRequest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "../../src/tax/index.js";
 import type { LocalRateTableOptionsV1 } from "../../src/tax/index.js";
 import type { TaxQuoteResultV1 } from "../../src/tax/contracts/index.js";
 import {
-  active, date, feeInput, feeRule, exemptRule, localCutover, localInput, localOptions, localRegistration, localTime, rateRule, withoutTaxClass,
+  active, cell, date, feeInput, feeRule, exemptRule, localCutover, localInput, localOptions, localRegistration, localTime, rateRule, withoutTaxClass,
 } from "./fixtures.js";
 
 const feeOptions = {
@@ -17,6 +18,51 @@ function success(result: TaxQuoteResultV1) {
 }
 
 describe("local rate table", () => {
+  it.each([
+    { lines: 100, steps: 12, keyWidth: 56, longRefs: false },
+    { lines: 150, steps: 10, keyWidth: 8, longRefs: false },
+    { lines: 256, steps: 256, keyWidth: 8, longRefs: true },
+  ])("verifies $lines lines with $steps order-wide adjustments", async ({ lines, steps, keyWidth, longRefs }) => {
+    const input = localInput();
+    const lineKeys = Array.from({ length: lines }, (_, index) => index.toString().padStart(keyWidth, "x"));
+    const request = makeTaxQuoteRequest("wide-order", {
+      ...input, lines: lineKeys.map(lineKey => ({ ...input.lines[0], lineKey, sku: lineKey })), required: lineKeys.map(key => cell(key)),
+      money: { ...input.money,
+        sources: lineKeys.map((lineKey, index) => ({ lineKey, sourceOrdinal: index + 1, quantity: 1, unitBasisMinor: 10_000 })),
+        adjustments: Array.from({ length: steps }, (_, index) => ({
+          adjustmentRef: String(index).padStart(longRefs ? 128 : 3, "a"),
+          sequence: index + 1, amountMinor: lines, target: { lineKeys },
+        })),
+      },
+    });
+    const result = success(await localRateTable(localOptions()).quote(request));
+    const { evidence, ...envelope } = result;
+    const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+    expect(bytes(request)).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
+    expect(bytes(evidence)).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
+    if (lines === 100) {
+      expect(bytes(result)).toBeLessThan(CATALOG_DRAFT_MAX_BYTES);
+      expect(bytes({ request, result })).toBeGreaterThan(CATALOG_DRAFT_MAX_BYTES);
+    } else {
+      expect(bytes(envelope)).toBeGreaterThan((longRefs ? 8 : 1) * CATALOG_DRAFT_MAX_BYTES);
+    }
+    expect(result.money.components).toHaveLength(lines);
+    expect(result.money.components.every(component => component.allocations.length === steps)).toBe(true);
+    expect(verifyTaxQuoteResult(request, result)).toBeUndefined();
+  }, 60_000);
+
+  it("uses the verified request snapshot when checking the local quote result", async () => {
+    const original = makeTaxQuoteRequest("snapshot-order", localInput());
+    const lines = [...original.input.lines];
+    const port = localRateTable({ ...localOptions(), now: () => {
+      lines[0] = { ...lines[0], taxClass: "changed-after-verification" };
+      return localTime;
+    } });
+    const result = await port.quote({ ...original, input: { ...original.input, lines } });
+    expect(result.kind).toBe("final");
+    expect(verifyTaxQuoteResult(original, result)).toBeUndefined();
+  });
+
   it.each([
     [{ rules: [rateRule, { ...rateRule, effective: { from: localCutover } }] }, "/rules/1/effective"],
     [{ registrations: [localRegistration, { ...localRegistration, effective: { from: localCutover } }] }, "/registrations/1/effective"],

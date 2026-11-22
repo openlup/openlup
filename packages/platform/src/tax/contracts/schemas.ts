@@ -1,5 +1,5 @@
 import { CatalogueMoneyV2Error, isCatalogueMoneyV2RateDecimal, planCatalogueMoneyV2 } from "@openlup/core/pricing";
-import { array, checked, exclusiveTaxRemedy, invalid, object, oneOf, schema, taxReferenceRemedy, unique, variant } from "./decode.js";
+import { array, checked, exclusiveTaxRemedy, invalid, object, oneOf, schema, unique, variant } from "./decode.js";
 import type { Decode, Schema } from "./decode.js";
 import { cellKey, compareCells, compareDeclarations, decisionIsPossible, declarationKey, includesInstant, permitsAssessment, sameCell } from "./identity.js";
 import type {
@@ -137,16 +137,16 @@ function bindComponents<T>(
   return expected;
 }
 
-export function checkCoverageAccount(input: Pick<TaxQuoteInputV1, "scope" | "coverage">, field: string): void {
+export const coverageAccountRemedy = "Supply coverage evidence for the selected account";
+
+export function coverageAccountMatches(input: Pick<TaxQuoteInputV1, "scope" | "coverage">): boolean {
   const account = input.coverage?.accountRef;
-  if (typeof account !== "string" || account !== input.scope?.accountRef) {
-    invalid(field + "/coverage/accountRef", taxReferenceRemedy, "tax_reference_conflict");
-  }
+  return typeof account === "string" && account === input.scope?.accountRef;
 }
 
 function quote(value: unknown, field: string): TaxQuoteInputV1 {
   const parsed = quoteFields(value, field);
-  checkCoverageAccount(parsed, field);
+  if (!coverageAccountMatches(parsed)) invalid(field + "/coverage/accountRef", coverageAccountRemedy, "tax_scope_mismatch");
   const lines = bindComponents(parsed.lines, parsed.money.sources.map(item => item.lineKey), item => item.lineKey, field + "/lines");
   const buckets = bindComponents(parsed.delivery, parsed.money.delivery.map(item => item.bucketKey), item => item.bucketKey, field + "/delivery");
   parsed.required.forEach(({ target }, index) => {

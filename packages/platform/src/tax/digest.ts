@@ -6,7 +6,7 @@ import { canonicalCatalogDraftJson } from "../catalog/contracts/index.js";
 import { array, bounded, checked, exclusiveTaxRemedy, invalid, object, oneOf, taxReferenceRemedy, variant } from "./contracts/decode.js";
 import { cellKey, compareCells, compareDeclarations, decisionIsPossible, declarationKey, effectiveDeclarations, permitsAssessment, sameCell } from "./contracts/identity.js";
 import {
-  checkCoverageAccount, isTaxDigest, parseQuoteKey, quoteEvidenceSchema, quoteInputSchema,
+  coverageAccountMatches, isTaxDigest, parseQuoteKey, quoteEvidenceSchema, quoteInputSchema,
   taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema,
 } from "./contracts/schemas.js";
 import type {
@@ -64,11 +64,13 @@ function referenceConflict(field: string): never {
   return invalid(field, remedies.tax_reference_conflict, "tax_reference_conflict");
 }
 
+function snapshotDocument<T>(document: T, field = ""): T {
+  try { return JSON.parse(canonicalCatalogDraftJson(document)) as T; }
+  catch { return referenceConflict(field); }
+}
+
 function withSnapshot<T, R>(document: T, verify: (snapshot: T) => R): R | TaxRefusal {
-  let snapshot: T;
-  try { snapshot = JSON.parse(canonicalCatalogDraftJson(document)) as T; }
-  catch { return refuseVerification("tax_reference_conflict", ""); }
-  try { return verify(snapshot); }
+  try { return verify(snapshotDocument(document)); }
   catch (error) { return decodeRefusal(error); }
 }
 
@@ -150,7 +152,7 @@ function verifyIntegrity(
   const root = fiscal ? "/original" : "";
   if ((!request || typeof request !== "object") && !fiscal) return;
   const input = request?.input;
-  if (input?.scope || input?.coverage) checkCoverageAccount(input, root + "/input");
+  if ((input?.scope || input?.coverage) && !coverageAccountMatches(input)) referenceConflict(root + "/input/coverage/accountRef");
   const normalized = checkDigest("input", () => normalize(input), request?.inputDigest, root + "/inputDigest");
   if (typeof request.key !== "string") referenceConflict(root + "/key");
   if (!isTaxDigest(input.destination?.digest)) referenceConflict(root + "/input/destination/digest");
@@ -174,7 +176,7 @@ function verifyIntegrity(
   }
   if (fiscal) {
     if (!isTaxDigest(fiscal.current?.destination?.digest)) referenceConflict("/current/destination/digest");
-    checkCoverageAccount(fiscal.current, "/current");
+    if (!coverageAccountMatches(fiscal.current)) referenceConflict("/current/coverage/accountRef");
     compareScope(fiscal.current.scope, input.scope, "/current/scope", "/original/input/scope");
   }
   compareCoverage(normalized, evidence);
@@ -432,11 +434,32 @@ type CheckedQuoteResult = {
   result?: Omit<Extract<TaxQuoteResultV1, { kind: "final" | "estimate" }>, "evidence"> & { evidence: TaxCalculationEvidenceV1 };
 };
 
+function snapshotQuoteResult(result: TaxQuoteResultV1): TaxQuoteResultV1 {
+  // The money decoder owns its count limits. Evidence has its own byte limit.
+  let snapshot: TaxQuoteResultV1;
+  let evidence: PropertyDescriptor | undefined;
+  try {
+    let envelope = result;
+    if (result && typeof result === "object" && !Array.isArray(result)) {
+      const { evidence: descriptor, ...fields } = Object.getOwnPropertyDescriptors(result);
+      evidence = descriptor;
+      envelope = Object.create(Object.getPrototypeOf(result), fields) as TaxQuoteResultV1;
+    }
+    snapshot = JSON.parse(JSON.stringify(envelope)) as TaxQuoteResultV1;
+  } catch { return referenceConflict(""); }
+
+  if (!evidence) return snapshot;
+  if (!("value" in evidence)) referenceConflict("/evidence");
+  return { ...snapshot, evidence: snapshotDocument(evidence.value, "/evidence") } as TaxQuoteResultV1;
+}
+
 export function checkedQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): CheckedQuoteResult | TaxRefusal {
-  return withSnapshot({ request, result }, snapshot => {
-    verifyIntegrity(snapshot.request, { result: snapshot.result });
-    const original = taxQuoteRequestV1Schema.parse(snapshot.request);
-    const parsed = readResult(snapshot.result, "");
+  try {
+    const originalSnapshot = snapshotDocument(request);
+    const resultSnapshot = snapshotQuoteResult(result);
+    verifyIntegrity(originalSnapshot, { result: resultSnapshot });
+    const original = taxQuoteRequestV1Schema.parse(originalSnapshot);
+    const parsed = readResult(resultSnapshot, "");
     if (!parsed) return { original, result: undefined };
     const evidence = quoteEvidenceSchema.safeParse(parsed.evidence);
     if (!evidence.success) return decodeRefusal(evidence.error, "/evidence");
@@ -445,7 +468,7 @@ export function checkedQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteR
     const assessments = collectAssessments(original.input, parsed.money);
     if ("kind" in assessments) return assessments;
     return verifyEvidenceMetadata(original, evidence.data, assessments) ?? { original, result: { ...parsed, evidence: evidence.data } };
-  });
+  } catch (error) { return decodeRefusal(error); }
 }
 
 /** Verify quote and evidence integrity before validating and reconciling a successful result. */

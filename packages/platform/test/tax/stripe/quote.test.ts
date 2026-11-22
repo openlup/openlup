@@ -51,6 +51,20 @@ describe("private tax calculation quote", () => {
     expect(client.calculations.listLineItems).not.toHaveBeenCalled();
   });
 
+  it("sends the tax classes from the verified request snapshot", async () => {
+    const f = setup();
+    f.marketPack.taxCodes.alternate = "txcd_999";
+    const original = f.request();
+    const lines = original.input.lines.map(line => ({ ...line, taxClass: "alternate" }));
+    Object.setPrototypeOf(lines, Object.create(Array.prototype, {
+      [Symbol.iterator]: { value: () => original.input.lines[Symbol.iterator]() },
+    }));
+    const result = await f.run({ ...original, input: { ...original.input, lines } });
+    assertSuccess(original, result);
+    expect(f.client.calculations.create.mock.calls[0][0].line_items.map(row => row.tax_code))
+      .toEqual(["txcd_101", "txcd_101"]);
+  });
+
   it("uses one snapshot per distinct nonzero sequence and preserves component-local states", async () => {
     const { input, request, client, run } = setup();
     input.money.adjustments = [
@@ -325,14 +339,16 @@ describe("private tax calculation quote", () => {
     expect(client.calculations.listLineItems).not.toHaveBeenCalled();
   });
 
-  it("pins the request during provider I/O and refuses a changed caller binding", async () => {
+  it("keeps the result bound to the verified request during provider I/O", async () => {
     const f = setup();
-    const original = { ...f.request() };
+    const original = f.request();
+    const caller = { ...original };
     f.client.calculations.create.mockImplementation(async params => {
-      original.key = "changed-evaluation";
+      caller.key = "changed-evaluation";
       return snapshot(params);
     });
-    expect(await f.run(original)).toMatchObject({ code: "tax_reference_conflict", field: "/evidence/requestKey" });
+    const result = assertSuccess(original, await f.run(caller));
+    expect(verifyTaxQuoteResult(caller, result)).toMatchObject({ code: "tax_reference_conflict", field: "/evidence/requestKey" });
   });
 
   it.each(["zero", "zero after discount", "handling", "ten discounts", "class", "origin", "partial second", "delivery facts"] as const)(

@@ -250,7 +250,7 @@ export function localRateTable(options: LocalRateTableOptionsV1): TaxCalculation
       return { kind, money, evidence, evidenceDigest: taxDigest("evidence", evidence) };
     }
     const result = input.purpose === "final" ? success("final") : success("estimate");
-    return verifyTaxQuoteResult(request, result) ?? result;
+    return verifyTaxQuoteResult(checked, result) ?? result;
   }
 
   return {
