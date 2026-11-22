@@ -1981,7 +1981,7 @@ ${extra}`, false,
   const pin = deferredPin(), statement = renderNativeDeferredTrigger(pin), long = "a".repeat(63);
   const forbidden = (entry = pin, name = entry.name, created = true) =>
     `deferred trigger ${entry.name} is pinned; only these statements may name ${name}: ${renderNativeDeferredTrigger(entry)}${created ? " " + deferredFunction.replace(";REVOKE", "; REVOKE") : ""} remove it, or rewrite it to exactly one of these`;
-  const unterminated = "reviewed replacement SQL requires terminated statements";
+  const unterminated = `reviewed native store cannot scan ${DEFERRED_SLOT.path}: reviewed replacement SQL requires terminated statements`;
   const unregistered = `deferred trigger ${pin.name} is not registered; remove it`;
   const successor = deferredPin({ relation: "public.catalog_sku_successors" });
   const renamed = deferredPin({ relation: "public.cat_renamed", function: "public.cat_trigger_fn()" });
