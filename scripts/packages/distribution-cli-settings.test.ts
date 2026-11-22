@@ -855,11 +855,11 @@ beforeAll(() => {
   const platform = join(directory, "node_modules/@openlup/platform");
   mkdirSync(platform, { recursive: true });
   mkdirSync(join(directory, "node_modules/.bin"), { recursive: true });
-  // Slowest local broker run for npm pack: 3.27 s.
+  // CI: combined test 9.36 s (run 44975261168); pack share ~4.7 s; bound 4x.
   const packed = JSON.parse(execFileSync("npm", ["pack", resolve("packages/platform"), "--ignore-scripts",
-    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8", timeout: 14_000 }));
-  // Slowest local broker run for tar extraction: 1.04 s.
-  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"], { timeout: 4_500 });
+    "--offline", "--json", "--pack-destination", directory], { encoding: "utf8", timeout: 19_000 }));
+  // CI: combined test 9.36 s (run 44975261168); extraction share ~1.5 s; bound 4x.
+  execFileSync("tar", ["-xzf", join(directory, packed[0].filename), "-C", platform, "--strip-components=1"], { timeout: 6_000 });
   for (const dependency of ["zod", "@openlup/core", "@openlup/outbox"]) {
     const target = join(directory, "node_modules", dependency);
     rmSync(target, { recursive: true, force: true });
@@ -873,11 +873,11 @@ beforeAll(() => {
           effect: { appliesTo: "New orders.", impact: "customer-promise", frozenOn: [] } } },
     } } };
   }`);
-}, 19_000); // Slowest local broker run for fixture setup: 4.31 s.
+}, 38_000); // CI: combined test 9.36 s (run 44975261168); setup carries most of that work; bound 4x.
 
 afterAll(async () => {
   if (packedSettingsDirectory) await rm(packedSettingsDirectory, { recursive: true, force: true });
-}, 2_250); // Slowest local broker run for cleanup: 0.53 s.
+}, 3_000); // CI: combined test 9.36 s (run 44975261168); scaled cleanup ~0.75 s; bound 4x.
 
 it("exchanges all five MCP tools and recovers from bad frames with the packed binary", () => {
   const { listing, results } = proveSettingsMcp(packedSettingsDirectory);
@@ -894,7 +894,7 @@ it("exchanges all five MCP tools and recovers from bad frames with the packed bi
     expect(validateOutput({ ...document, extra: true }).valid, tool.name).toBe(false);
     expect(validateOutput({ ...document, schemaVersion: undefined }).valid, tool.name).toBe(false);
   }
-}, 10_000); // Slowest local broker run for the MCP exchange and assertions: 2.26 s.
+}, 13_000); // CI: combined test 9.36 s (run 44975261168); MCP exchange share ~3.2 s; bound 4x.
 
 it("observes live app edits and load failures in a single MCP session without restart", async () => {
   const { directory, write } = fixture();
