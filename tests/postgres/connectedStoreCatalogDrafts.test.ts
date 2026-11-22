@@ -358,6 +358,42 @@ it("AC-2 checks admitted source receipt columns before casts or retained-row dec
   }
 });
 
+it.each(["source", "target"] as const)("rejects malformed %s capture structure before connecting or decoding rows", async side => {
+  const connect = vi.fn();
+  const owner = { connect } as unknown as Pool;
+  const undecodable = "invalid retained row for structural validation";
+  type OwnedTable = typeof packet.owned[number];
+  const malformedColumns: ((entry: OwnedTable) => void)[] = [
+    entry => { Object.assign(entry, { columns: null }); },
+    entry => { delete (entry as Partial<OwnedTable>).columns; },
+    entry => { Object.assign(entry, { columns: { 0: entry.columns[0], length: entry.columns.length } }); },
+    entry => { Object.assign(entry, { columns: [null, ...entry.columns.slice(1)] }); },
+    entry => { Object.assign(entry.columns[0]!, { type: 0 }); },
+  ];
+  for (const corrupt of malformedColumns) {
+    const source = structuredClone(packet);
+    const fresh = structuredClone(pristine);
+    source.compatible.tables[0]!.rows = [undecodable];
+    const selected = side === "source" ? source : fresh;
+    const installs = selected.owned.find(entry => entry.table === "catalog_definition_installs")!;
+    if (side === "target") {
+      // Also present a valid-shaped difference so the malformed target wins.
+      const firstColumn = source.owned.find(entry => entry.table === "catalog_definition_installs")!.columns[0]!;
+      firstColumn.name = "changed_column";
+    }
+    corrupt(installs);
+    const input = { owner, installation: journeySelection, packet: rehashCapture(source), freshTarget: rehashCapture(fresh) };
+    const decode = vi.spyOn(JSON, "parse");
+    try {
+      await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "invalid_input" });
+      expect(connect).not.toHaveBeenCalled();
+      expect(decode).not.toHaveBeenCalledWith(undecodable);
+    } finally {
+      decode.mockRestore();
+    }
+  }
+});
+
 const validator = "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)";
 
 it("U-2 reports schema_conflict before invoking a changed or missing receipt validator", async () => {

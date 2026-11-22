@@ -80,10 +80,10 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   targetOwner: Pool;
 }): Promise<ManagedIdentityMappingResult> {
   const source = structuredClone(input.source);
-  const packet = copyCapture(input.freshTarget);
-  validateCapturedRows(tables(packet));
+  const { capture: packet, tables: retained } = copyCapture(input.freshTarget);
+  admitCaptureTables(packet.compatible.catalogueId, retained);
+  validateCapturedRows(retained);
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  const validRow = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
   const onlyKeys = (row: Record<string, unknown>, keys: readonly string[]) =>
     Object.keys(row).sort().join("\0") === [...keys].sort().join("\0");
   const validIssuer = (value: unknown): value is string => {
@@ -333,11 +333,12 @@ export async function restoreConnectedNativeStore(input: {
   const profile = installation.generation === "qualified-admin" ? installation.roleMode
     : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
   const manifest = expectedManifest(installation);
-  const packet = copyCapture(input.packet, { profile, currentCatalogueId: manifest.objectInventorySha256 });
-  const fresh = copyCapture(input.freshTarget);
+  const { capture: packet, tables: source } = copyCapture(input.packet);
+  const { capture: fresh, tables: baseline } = copyCapture(input.freshTarget);
+  admitCaptureTables(packet.compatible.catalogueId, source, { profile, currentCatalogueId: manifest.objectInventorySha256 });
+  admitCaptureTables(fresh.compatible.catalogueId, baseline);
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
-  const source = tables(packet), baseline = tables(fresh);
   // Only the pinned predecessor shapes may omit the ledger. Include its empty
   // expectation in the target column check and census without rewriting the packet.
   if (!source.has(checkoutAttemptLedger)) {
@@ -581,18 +582,25 @@ export async function restoreConnectedNativeStore(input: {
   return result;
 }
 
-function copyCapture(input: ConnectedNativeStoreCapture,
-  source?: { profile: RestoreProfile; currentCatalogueId: string },
-): ConnectedNativeStoreCapture {
+function validRow(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function copyCapture(input: ConnectedNativeStoreCapture): {
+  capture: ConnectedNativeStoreCapture; tables: Map<TableName, Rows>;
+} {
   try {
     const copy = JSON.parse(JSON.stringify(input)) as ConnectedNativeStoreCapture;
+    if (!validRow(copy)) fail("invalid_input");
     const { sha256, ...body } = copy;
-    if (copy.format !== "openlup.native-retained-store.v1" || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
-    if (!copy.observation || Object.keys(copy.observation).sort().join("\0") !== "cluster\0database\0login\0snapshot"
+    if (copy.format !== "openlup.native-retained-store.v1" || typeof sha256 !== "string"
+      || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
+    if (!validRow(copy.observation) || Object.keys(copy.observation).sort().join("\0") !== "cluster\0database\0login\0snapshot"
       || Object.values(copy.observation).some(value => typeof value !== "string" || !value)) fail("invalid_input");
-    if (!Array.isArray(copy.outsideProfileCensus)) fail("invalid_input");
+    if (!Array.isArray(copy.emptyOutsideProfile) || copy.emptyOutsideProfile.some(value => typeof value !== "string" || !value)
+      || !Array.isArray(copy.outsideProfileCensus)) fail("invalid_input");
     for (const entry of copy.outsideProfileCensus) {
-      if (!entry || typeof entry !== "object" || Array.isArray(entry)
+      if (!validRow(entry)
         || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
         || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
         || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
@@ -603,20 +611,47 @@ function copyCapture(input: ConnectedNativeStoreCapture,
               : entry.relation === "public.catalog_attribute_projection" ? "rebuildable" : "unsupported-empty";
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
-    const all = tables(copy);
-    const catalogueId = copy.compatible.catalogueId;
-    const historical = source !== undefined && catalogueId !== source.currentCatalogueId;
-    if (historical && !admittedRestoreSourceInventories.some(inventory => inventory[source.profile] === catalogueId))
-      failSourceSchema();
-    const predatesLedger = source !== undefined && (catalogueId === beforePublicationCommands[source.profile]
-      || catalogueId === beforeCheckoutAttemptLedger[source.profile]);
-    const expected = predatesLedger ? connectedNativeStoreTables.filter(table => table !== checkoutAttemptLedger) : connectedNativeStoreTables;
-    if (all.size !== expected.length || expected.some(table => !all.has(table))) {
-      if (historical) failSourceSchema();
-      fail("invalid_input");
+    const compatible = copy.compatible;
+    if (!validRow(compatible) || compatible.format !== "openlup.compatible-rows.v1"
+      || typeof compatible.sourceId !== "string" || !compatible.sourceId
+      || typeof compatible.catalogueId !== "string" || !compatible.catalogueId
+      || typeof compatible.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(compatible.sha256)
+      || !Array.isArray(compatible.tables) || !Array.isArray(copy.owned)) fail("invalid_input");
+    const tables = new Map<TableName, Rows>();
+    for (const [entries, keyed] of [[compatible.tables, true], [copy.owned, false]] as const) {
+      for (const entry of entries) {
+        if (!validRow(entry) || typeof entry.table !== "string" || tables.has(entry.table)
+          || !Array.isArray(entry.columns) || !entry.columns.length
+          || !Array.isArray(entry.rows) || entry.rows.some(row => typeof row !== "string")) fail("invalid_input");
+        quoted(entry.table);
+        const names = new Set<string>();
+        for (const column of entry.columns) {
+          if (!validRow(column) || typeof column.name !== "string" || names.has(column.name)
+            || typeof column.type !== "string" || !column.type.trim()
+            || (keyed && typeof column.key !== "boolean")) fail("invalid_input");
+          quoted(column.name);
+          names.add(column.name);
+        }
+        tables.set(entry.table, entry);
+      }
     }
-    return copy;
+    return { capture: copy, tables };
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
+}
+
+function admitCaptureTables(catalogueId: string, tables: ReadonlyMap<TableName, Rows>,
+  source?: { profile: RestoreProfile; currentCatalogueId: string },
+): void {
+  const historical = source !== undefined && catalogueId !== source.currentCatalogueId;
+  if (historical && !admittedRestoreSourceInventories.some(inventory => inventory[source.profile] === catalogueId))
+    failSourceSchema();
+  const predatesLedger = source !== undefined && (catalogueId === beforePublicationCommands[source.profile]
+    || catalogueId === beforeCheckoutAttemptLedger[source.profile]);
+  const expected = predatesLedger ? connectedNativeStoreTables.filter(table => table !== checkoutAttemptLedger) : connectedNativeStoreTables;
+  if (tables.size !== expected.length || expected.some(table => !tables.has(table))) {
+    if (historical) failSourceSchema();
+    fail("invalid_input");
+  }
 }
 
 function assertSourceColumns(table: TableName, source: Rows["columns"], target: Rows["columns"], older: boolean): void {
@@ -631,8 +666,6 @@ function validateCapturedRows(tables: ReadonlyMap<TableName, Rows>): void {
   try {
     let count = 0, bytes = 0;
     for (const table of tables.values()) {
-      for (const column of table.columns) quoted(column.name);
-      if (!table.columns.length || new Set(table.columns.map(column => column.name)).size !== table.columns.length) fail("invalid_input");
       for (const row of table.rows) {
         const value = JSON.parse(row) as Record<string, unknown>;
         if (!value || Array.isArray(value) || Object.keys(value).sort().join("\0") !== table.columns.map(column => column.name).sort().join("\0")) fail("invalid_input");
@@ -662,11 +695,6 @@ async function validateInstallReceipts(client: PoolClient, receipts: readonly st
   if (refusal) throw Object.assign(new PostgresTransferError("target_conflict", "catalog_definition_installs"), { cause: refusal });
 }
 
-function tables(packet: ConnectedNativeStoreCapture): Map<TableName, Rows> {
-  const all: Rows[] = [...packet.compatible.tables, ...packet.owned];
-  if (new Set(all.map(table => table.table)).size !== all.length) fail("invalid_input");
-  return new Map<TableName, Rows>(all.map(table => [table.table, table]));
-}
 function expectedManifest(installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation) {
   const root = process.cwd(), raw = readPlatformMigrationManifest(root), catalog = readPlatformMigrations(root);
   if (!raw || catalog.errors.length || evaluatePlatformMigrationManifest({ manifest: raw, migrations: catalog.migrations }).length) fail("schema_conflict");
