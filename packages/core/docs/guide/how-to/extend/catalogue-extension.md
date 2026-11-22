@@ -124,6 +124,18 @@ Combination quantities additionally refuse `unit_factor_missing` until their
 installed definition declares an explicit exact factor.
 Check: `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`.
 
+The experimental publication rules contract includes
+`validateTypedSkuAmounts({ code, netContent }, evaluation?)` for the typed
+publication path. It receives the authored exact tuple and returns a boolean.
+When typed publication is enabled, this hook takes precedence over
+`validateSkuAmounts` for count and volume. A pack with only the gram hook must
+add the typed hook before publishing those quantities. A pack with neither
+hook adds no amount policy. Gram publication continues to use
+`validateSkuAmounts({ code, netGrams }, evaluation?)`.
+
+This app-side preparation keeps count and volume publication dormant. Keep
+using integral grams for publication on the current installation.
+
 ## Add axis
 
 Edit `pack.ts`: `dimensions: [{key: "finish", kind:

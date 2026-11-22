@@ -14,6 +14,7 @@ import { catalogPackIssues, catalogPackManifest, installCatalogDefinitions, cata
   catalogDraftPayloadV2Schema, catalogDraftPayloadV3Schema, validateCatalogDraftV2, createCatalogDraftHandler, withCatalogPublicationRules } from "../../src/catalog/index.js";
 import { artifact } from "./fixtures/publicationInput.js";
 import { catalogDraftV3ValidationPayload } from "../../src/catalog/draftV3Schemas.js";
+import { inspectCatalogPack } from "../../src/catalog/productTypeIssues.js";
 import type { CatalogRefusalFixture } from "../../src/catalog/testing/index.js";
 import type { CatalogPackInput, CatalogProductTypeRef, AttributeDefinition, CatalogAttributeInput, CatalogAttributeReferenceResolution } from "../../src/catalog/index.js";
 
@@ -38,6 +39,33 @@ describe("subscription profile pack conformance", () => {
     policyRef: { key: "stationery:policy", version: 1 }, policyDigest: "a".repeat(64),
   };
   const optedIn = { ...pack(), types: [], subscriptionProfiles: [ref], subscriptionProfileDefinitions: [profile] };
+
+  it.each([
+    [{ canonicalUnit: "openlup:piece", unscaled: "01", scale: 0 }, "quantity_invalid"],
+    [{ canonicalUnit: "openlup:piece", unscaled: "1" }, "quantity_invalid"],
+    [{ canonicalUnit: "openlup:piece", unscaled: "15", scale: 1 }, "quantity_fractional_count"],
+    [{ canonicalUnit: "openlup:ml", unscaled: "1", scale: 0 }, "quantity_cross_dimension"],
+    [{ canonicalUnit: "openlup:piece", unscaled: "9".repeat(41), scale: 1 }, "quantity_overflow"],
+    [{ canonicalUnit: "openlup:piece", unscaled: "1", scale: 13 }, "quantity_not_exactly_representable"],
+  ])("preserves typed factor diagnostics with and without profiles", (factor, quantityCause) => {
+    const type = pack().types[0]!;
+    const types = [{ ...type, units: [{ ...type.units[0], factor }] }];
+    const issue = { code: "definition_unit_factor_invalid", path: "/types/0/units/0/factor", quantityCause, fix: expect.any(String) };
+    for (const declaration of [pack(), optedIn]) expect(inspectCatalogPack({ ...declaration, types }, true).issues).toEqual([issue]);
+  });
+
+  it("keeps factorless and unused legacy units on the existing manifest path", () => {
+    const original = pack(), type = original.types[0]!;
+    const definition = { ...type, units: [...type.units, { code: "stationery:unused", dimension: "volume" as const, integral: false },
+      { code: "openlup:g", dimension: "mass" as const, integral: true }] };
+    const legacy = { ...original, types: [{ ...definition, netContentUnits: ["openlup:g"] }] };
+    const first = catalogPackManifest(legacy);
+    expect(catalogPackIssues(legacy)).toEqual([]);
+    expect(catalogPackManifest(legacy)).toEqual(first);
+    const selected = { ...legacy, types: [{ ...definition, netContentUnits: ["stationery:unused"] }] };
+    expect(inspectCatalogPack(selected, true).issues).toMatchObject([{ code: "definition_unit_factor_invalid", quantityCause: "quantity_unknown_unit" }]);
+    expect(catalogPackManifest(legacy)).toEqual(first);
+  });
 
   it("matches the legacy issue JSON generated at f8f436454", () => {
     const inputs = [

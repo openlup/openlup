@@ -1,3 +1,5 @@
+import type { CatalogQuantityCode } from "@openlup/core/catalog";
+
 /** Stable meanings shared by runtime admission and offline conformance.
  * @experimental
  */
@@ -30,4 +32,4 @@ export type CatalogConformanceCode =
 /** @experimental */
 export interface CatalogConformanceRule { severity: "error" | "warning"; rule: string; fix: string; recipe: string }
 /** @experimental */
-export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string; fix?: string }
+export interface CatalogDefinitionIssue { code: CatalogConformanceCode; path: string; fix?: string; quantityCause?: CatalogQuantityCode }
