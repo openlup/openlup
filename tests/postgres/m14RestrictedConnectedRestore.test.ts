@@ -319,6 +319,37 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
           await target.owner.query("UPDATE public.subscription_delivery_alignment_control SET mode='off' WHERE singleton");
         }
 
+        try {
+          const excluded = await root.query(`INSERT INTO public.fulfillment_stock_sync_cursors(source_key,status)
+            VALUES('restricted-restore-fixture','succeeded')`);
+          expect(excluded.rowCount).toBe(1);
+          const trace = traceRestore(target.owner);
+          await expect(restoreConnectedNativeStore({ ...input, owner: trace.traced })).rejects.toMatchObject({
+            code: "unsupported_table", table: "public.fulfillment_stock_sync_cursors",
+          });
+          expect(trace.statements).toContain('SELECT 1 FROM "public"."fulfillment_stock_sync_cursors" LIMIT 1');
+          expect(trace.writes()).toEqual([]);
+        } finally {
+          await root.query("DELETE FROM public.fulfillment_stock_sync_cursors WHERE source_key='restricted-restore-fixture'");
+        }
+
+        let triggerAdded = false;
+        const triggerRace = traceRestore(target.owner, async sql => {
+          if (triggerAdded || !sql.startsWith('LOCK TABLE "public".')) return;
+          await root.query(`CREATE TRIGGER retained_transfer_unapproved AFTER INSERT ON public.commerce_order_holds
+            FOR EACH ROW EXECUTE FUNCTION public.fulfillment_emit_shipment_exception_notification()`);
+          triggerAdded = true;
+        });
+        try {
+          await expect(restoreConnectedNativeStore({ ...input, owner: triggerRace.traced })).rejects.toMatchObject({
+            code: "insert_trigger_requires_owner", table: "commerce_order_holds",
+          });
+          expect(triggerAdded).toBe(true);
+          expect(triggerRace.writes()).toEqual([]);
+        } finally {
+          if (triggerAdded) await root.query("DROP TRIGGER retained_transfer_unapproved ON public.commerce_order_holds");
+        }
+
         const lineage = structuredClone(packet);
         const duties = lineage.compatible.tables.find(table => table.table === "invoicing_duties")!;
         Object.assign(duties.columns.find(column => column.key)!, { key: "yes" });
