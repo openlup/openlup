@@ -16,6 +16,8 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-lifecycle-${process.pid}`, password: randomUUID() });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Lifecycle proof needs PostgreSQL");
   pool = new Pool({ connectionString: container.connectionString });
+  // The issued package editor grants its entry point only when this role exists.
+  await pool.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
   const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as
     { baseline: { file: string }; forward: { file: string }[] };
   for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, "utf8"));

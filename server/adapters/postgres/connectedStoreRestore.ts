@@ -420,9 +420,10 @@ export async function restoreConnectedNativeStore(input: {
           await client.query("INSERT INTO public.subscription_price_policy_restore_capabilities VALUES (pg_catalog.pg_current_xact_id())");
         }
         const b = packet.compatible.tables.find(value => value.table === table);
-        // Classic subscriptions and their events use the locked owner path;
-        // the generic row importer deliberately refuses their binding triggers.
-        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "commerce_orders", "commerce_order_items", "outbox_events"].includes(table)) {
+        // The generic importer refuses binding triggers. The locked owner
+        // path runs them, including acceptance checks on renewal terms and operations.
+        if (b && !["clients", "subscriptions", "subscription_events", "subscription_cycles", "subscription_renewal_terms",
+          "subscription_renewal_operations", "commerce_orders", "commerce_order_items", "outbox_events"].includes(table)) {
           const { sha256: _old, ...payload } = { ...packet.compatible, catalogueId: manifest.objectInventorySha256,
             tables: [{ ...b, rows: parentOrder(table, b.rows) }] };
           const bounded: CompatiblePostgresPacket = { ...payload, sha256: digest(JSON.stringify(payload)) };
