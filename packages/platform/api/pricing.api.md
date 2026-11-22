@@ -1552,6 +1552,7 @@ export declare function createDbBackedCommerceQuoteSnapshotVerifier<Request, Res
 
 ```ts
 export * from "./contracts/index.js";
+export { quoteDigest } from "./quoteDigest.js";
 export { CommercePriceAuthorityError } from "./ports.js";
 export type { CommercePriceAuthorityPort } from "./ports.js";
 export { createCommercePriceAuthorityPort, createConcurrentCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";
@@ -2123,6 +2124,14 @@ export declare const quoteCodeRejectionDetailSchema: z.ZodDiscriminatedUnion<[z.
     code: z.ZodString;
     reason: z.ZodLiteral<"global_limit_reached">;
 }, z.core.$strict>], "reason">;
+```
+## dist/pricing/quoteDigest.d.ts
+
+```ts
+/** Hash the canonical, domain-tagged owner quote document.
+ * @experimental
+ */
+export declare function quoteDigest(dialect: "catalog.owner-quote.v0", document: unknown): string;
 ```
 ## dist/pricing/quotePorts.d.ts
 

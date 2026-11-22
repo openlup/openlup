@@ -869,6 +869,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     readCheckoutRecoveryReminderObservation: "function",
     cancelAbandonedCheckout: "function",
     cancelUnstartedPromotionCheckout: "function",
+    catalogAdmissionRefusal: "function",
     classifyCheckoutRecoveryTokenState: "function",
     createExpiredCheckoutRecoveryPolicy: "function",
     createManagedCommerceRuntimeOrderPort: "function",

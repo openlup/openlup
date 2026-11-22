@@ -214,6 +214,106 @@ export interface ShippingBindings {
 export declare function createShippingBindings(deps: ShippingBindingDependencies): ShippingBindings;
 export {};
 ```
+## dist/shipping/carrierRate.d.ts
+
+```ts
+import { z } from "zod";
+import type { CarrierRateCapabilities, CarrierRateOption, CarrierRateQuoteRequest, CarrierRateQuoteResult } from "./contracts/carrierRate.js";
+export declare const CARRIER_RATE_QUOTE_CONTRACT_VERSION: "shipping.carrier_rate.v1";
+export declare const CARRIER_RATE_REFUSAL_REASONS: readonly ["unsupported_country", "unsupported_currency", "invalid_address", "invalid_parcel", "multi_parcel_unsupported", "service_unsupported", "authentication_failed", "rate_limited", "provider_unavailable", "timeout", "provider_error"];
+export declare const carrierRateCapabilitiesSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"shipping.carrier_rate.v1">;
+    providerKind: z.ZodString;
+    multiParcel: z.ZodBoolean;
+    dimensionsRequired: z.ZodBoolean;
+    supportedOriginCountries: z.ZodUnion<readonly [z.ZodLiteral<"any">, z.ZodArray<z.ZodString>]>;
+    supportedDestinationCountries: z.ZodUnion<readonly [z.ZodLiteral<"any">, z.ZodArray<z.ZodString>]>;
+    supportedCurrencies: z.ZodArray<z.ZodString>;
+    deliveryKinds: z.ZodArray<z.ZodEnum<{
+        courier: "courier";
+        "parcel-locker": "parcel-locker";
+    }>>;
+    requiresCredentials: z.ZodBoolean;
+}, z.core.$strict>;
+export declare const carrierRateOptionSchema: z.ZodObject<{
+    carrierCode: z.ZodString;
+    serviceCode: z.ZodString;
+    serviceName: z.ZodString;
+    deliveryKind: z.ZodEnum<{
+        courier: "courier";
+        "parcel-locker": "parcel-locker";
+    }>;
+    amountMinor: z.ZodNumber;
+    currency: z.ZodString;
+    estimatedTransitDays: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        min: z.ZodNumber;
+        max: z.ZodNumber;
+    }, z.core.$strict>>>;
+    deliveryDateGuaranteed: z.ZodOptional<z.ZodBoolean>;
+    providerRateRef: z.ZodOptional<z.ZodString>;
+    expiresAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strict>;
+export declare const carrierRateQuoteResultSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    kind: z.ZodLiteral<"quoted">;
+    providerKind: z.ZodString;
+    currency: z.ZodString;
+    rates: z.ZodArray<z.ZodObject<{
+        carrierCode: z.ZodString;
+        serviceCode: z.ZodString;
+        serviceName: z.ZodString;
+        deliveryKind: z.ZodEnum<{
+            courier: "courier";
+            "parcel-locker": "parcel-locker";
+        }>;
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+        estimatedTransitDays: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+            min: z.ZodNumber;
+            max: z.ZodNumber;
+        }, z.core.$strict>>>;
+        deliveryDateGuaranteed: z.ZodOptional<z.ZodBoolean>;
+        providerRateRef: z.ZodOptional<z.ZodString>;
+        expiresAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strict>>;
+    providerShipmentRef: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"no_rates">;
+    providerKind: z.ZodString;
+    diagnosticCode: z.ZodString;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"refused">;
+    providerKind: z.ZodString;
+    reason: z.ZodEnum<{
+        invalid_address: "invalid_address";
+        unsupported_country: "unsupported_country";
+        unsupported_currency: "unsupported_currency";
+        invalid_parcel: "invalid_parcel";
+        multi_parcel_unsupported: "multi_parcel_unsupported";
+        service_unsupported: "service_unsupported";
+        authentication_failed: "authentication_failed";
+        rate_limited: "rate_limited";
+        provider_unavailable: "provider_unavailable";
+        timeout: "timeout";
+        provider_error: "provider_error";
+    }>;
+    retryable: z.ZodBoolean;
+    diagnosticCode: z.ZodString;
+    retryAfterSeconds: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>], "kind">;
+export declare function projectCarrierRateStaticCapabilities(capabilities: CarrierRateCapabilities, options?: {
+    readonly redactSupportedCurrencies?: boolean;
+}): CarrierRateCapabilities;
+/**
+ * Pure zero-I/O request validator against declared carrier capabilities.
+ * Returns a structured non-retryable refusal or null when the request may be dispatched.
+ */
+export declare function validateCarrierRateRequestAgainstCapabilities(request: CarrierRateQuoteRequest, capabilities: CarrierRateCapabilities): Extract<CarrierRateQuoteResult, {
+    kind: "refused";
+}> | null;
+/** Deterministic comparator: lowest integer minor-unit price, then carrierCode, then serviceCode. */
+export declare function sortCarrierRateOptions(rates: readonly CarrierRateOption[]): CarrierRateOption[];
+export declare function selectCheapestCarrierRate(rates: readonly CarrierRateOption[]): CarrierRateOption | null;
+```
 ## dist/shipping/contracts/address.d.ts
 
 ```ts
@@ -360,6 +460,87 @@ export interface CustomerAddressUpsertRequest {
 export interface CustomerAddressDeleteRequest {
     idempotencyKey: string;
     addressId: string;
+}
+```
+## dist/shipping/contracts/carrierRate.d.ts
+
+```ts
+import type { DeliveryKind } from "./delivery.js";
+export type CarrierRateQuoteContractVersion = "shipping.carrier_rate.v1";
+export interface CarrierRateAddress {
+    readonly countryCode: string;
+    readonly postalCode: string;
+    readonly stateOrProvince?: string;
+    readonly city?: string;
+    readonly residential?: boolean;
+}
+export interface CarrierRateParcel {
+    readonly weightGrams: number;
+    readonly lengthMm?: number;
+    readonly widthMm?: number;
+    readonly heightMm?: number;
+    readonly declaredValueMinor?: number;
+}
+export interface CarrierRateQuoteRequest {
+    readonly contractVersion: CarrierRateQuoteContractVersion;
+    readonly requestKey: string;
+    readonly origin: CarrierRateAddress;
+    readonly destination: CarrierRateAddress;
+    readonly parcels: readonly CarrierRateParcel[];
+    readonly currency: string;
+    readonly serviceFilter?: readonly string[];
+    readonly atTime?: string;
+    readonly signal?: AbortSignal;
+}
+export interface CarrierRateTransitEstimate {
+    readonly min: number;
+    readonly max: number;
+}
+export interface CarrierRateOption {
+    readonly carrierCode: string;
+    readonly serviceCode: string;
+    readonly serviceName: string;
+    readonly deliveryKind: DeliveryKind;
+    readonly amountMinor: number;
+    readonly currency: string;
+    readonly estimatedTransitDays?: CarrierRateTransitEstimate | null;
+    readonly deliveryDateGuaranteed?: boolean;
+    readonly providerRateRef?: string;
+    readonly expiresAt?: string | null;
+}
+export type CarrierRateRefusalReason = "unsupported_country" | "unsupported_currency" | "invalid_address" | "invalid_parcel" | "multi_parcel_unsupported" | "service_unsupported" | "authentication_failed" | "rate_limited" | "provider_unavailable" | "timeout" | "provider_error";
+export type CarrierRateQuoteResult = {
+    readonly kind: "quoted";
+    readonly providerKind: string;
+    readonly currency: string;
+    readonly rates: readonly CarrierRateOption[];
+    readonly providerShipmentRef?: string;
+} | {
+    readonly kind: "no_rates";
+    readonly providerKind: string;
+    readonly diagnosticCode: string;
+} | {
+    readonly kind: "refused";
+    readonly providerKind: string;
+    readonly reason: CarrierRateRefusalReason;
+    readonly retryable: boolean;
+    readonly diagnosticCode: string;
+    readonly retryAfterSeconds?: number;
+};
+export interface CarrierRateCapabilities {
+    readonly contractVersion: CarrierRateQuoteContractVersion;
+    readonly providerKind: string;
+    readonly multiParcel: boolean;
+    readonly dimensionsRequired: boolean;
+    readonly supportedOriginCountries: readonly string[] | "any";
+    readonly supportedDestinationCountries: readonly string[] | "any";
+    readonly supportedCurrencies: readonly string[];
+    readonly deliveryKinds: readonly DeliveryKind[];
+    readonly requiresCredentials: boolean;
+}
+export interface CarrierRateQuotePort {
+    readonly capabilities: CarrierRateCapabilities;
+    quoteRates(request: CarrierRateQuoteRequest): Promise<CarrierRateQuoteResult>;
 }
 ```
 ## dist/shipping/contracts/delivery.d.ts
@@ -867,6 +1048,8 @@ export declare const CUSTOMER_SAVED_ADDRESS_MIGRATIONS: readonly [{
 export { createPostgresCustomerPreferencePort, createPostgresCustomerDefaultsPort } from './postgresCustomerPreferences.js';
 export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
 export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
+export type { CarrierRateQuoteContractVersion, CarrierRateAddress, CarrierRateParcel, CarrierRateQuoteRequest, CarrierRateTransitEstimate, CarrierRateOption, CarrierRateRefusalReason, CarrierRateQuoteResult, CarrierRateCapabilities, CarrierRateQuotePort, } from "./contracts/carrierRate.js";
+export { CARRIER_RATE_QUOTE_CONTRACT_VERSION, CARRIER_RATE_REFUSAL_REASONS, carrierRateCapabilitiesSchema, carrierRateOptionSchema, carrierRateQuoteResultSchema, projectCarrierRateStaticCapabilities, validateCarrierRateRequestAgainstCapabilities, sortCarrierRateOptions, selectCheapestCarrierRate, } from "./carrierRate.js";
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 

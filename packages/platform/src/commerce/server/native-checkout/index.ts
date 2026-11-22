@@ -9,6 +9,7 @@ import { commerceIdempotencyKeySchema } from "../../contractPrimitives.js";
 import type { OrderDraftSummary } from "../../contracts/order.js";
 import { CommerceOrderDraftConflictError, CommerceOrderDraftInvalidResponseError, CommerceOrderDraftPersistenceError } from "../../errors.js";
 import { CommerceOrderDraftPriceChangedError, CommerceOrderDraftUnsupportedMoneyError } from "../../orderDraftErrors.js";
+import { catalogAdmissionRefusal } from "../catalogAdmissionRefusal.js";
 
 export interface NativeCheckoutQuery {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -104,6 +105,8 @@ export function createPostgresNativeCheckoutPersistence(
         response = result.rows[0]?.response;
       } catch (error) {
         if (error instanceof CommerceOrderDraftPersistenceError) throw error;
+        const reason = catalogAdmissionRefusal(error);
+        if (reason) throw new CommerceOrderDraftPersistenceError(reason, { reason });
         const { code, message } = (error && typeof error === "object" ? error : {}) as { code?: string; message?: string };
         if (code === "23505" || code === "40001") {
           throw new CommerceOrderDraftConflictError(undefined, { code });

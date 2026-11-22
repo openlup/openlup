@@ -57,6 +57,15 @@ describe("postgres commerce order journey", () => {
     );
   });
 
+  it("maps a closed catalogue before generic SQLSTATE and returns only the public reason", async () => {
+    const reason = "catalog_admission_quote_authority_required";
+    const ports = createPostgresCommerceOrderJourneyPorts(errorExecutor("23505", reason));
+    await expect(ports.orderDraftPort.createOrderDraft(request())).rejects.toMatchObject({
+      message: "Governed catalogue purchases are unavailable. Use a legacy offer or replay the original request.",
+      details: { reason },
+    });
+  });
+
   it("upserts and reads the same redacted resume projection", async () => {
     const executor = respondingExecutor({
       commerce_checkout_resume_upsert: resumeDraft(false),

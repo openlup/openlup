@@ -2,6 +2,7 @@ import type { PgQueryExecutor } from "../data/index.js";
 import type { CatalogAcceptedReferenceV2, CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import { z } from "./validation.js";
 import { catalogProductTypeRefSchema, catalogQuantitySchema } from "./productTypeSchemas.js";
+import { catalogAdmissionEvidenceSchema } from "./catalogAdmissionSchema.js";
 
 const id = z.guid().refine(value => value === value.toLowerCase());
 const revision = z.number().int().min(1).max(2_147_483_647);
@@ -24,7 +25,9 @@ export const catalogAcceptedReferenceV2Schema: z.ZodType<CatalogAcceptedReferenc
 
 /** @experimental */
 export const catalogAcceptanceV2Schema: z.ZodType<CatalogAcceptanceV2> = z.object({ schemaVersion: z.literal(2),
-  lines: z.array(catalogAcceptedReferenceV2Schema).min(1).max(100).refine(lines => new Set(lines.map(line => line.skuId)).size === lines.length && new Set(lines.map(line => line.skuCode)).size === lines.length) }).strict();
+  lines: z.array(catalogAcceptedReferenceV2Schema).min(1).max(100).refine(lines => new Set(lines.map(line => line.skuId)).size === lines.length && new Set(lines.map(line => line.skuCode)).size === lines.length),
+  admission: catalogAdmissionEvidenceSchema.optional(),
+}).strict();
 /** Verifies only supplied immutable identity. It neither infers a legacy binding nor acquires commerce locks.
  * @experimental
  */

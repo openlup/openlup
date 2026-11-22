@@ -458,7 +458,7 @@ async function main() {
 
   try {
     const password = "native-renewal-bench";
-    resource = await runPostgresContainer({ name: `native-renewal-bench-${process.pid}`, password });
+    resource = await runPostgresContainer({ name: `native-renewal-bench-${process.pid}`, password, durability: "default" });
     const ready = await waitForPostgresTcpReady(resource.connectionString);
     if (!ready) throw new Error("native renewal benchmark PostgreSQL unavailable");
 

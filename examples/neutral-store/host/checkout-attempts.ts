@@ -57,7 +57,14 @@ export async function admitCheckoutAttempt(check: CheckoutRateLimit, ...input: P
 export function createCheckoutAttemptBindings(settings: Settings, now: () => number = Date.now) {
   type Entry = { identity: string; at: number };
   const entries = new Map<string, Entry>();
+  const identityDigest = (email: string, requesterKey: string | undefined) =>
+    hash(JSON.stringify([email.trim().toLowerCase(), requesterKey]));
   return {
+    conflicts(commandKey: string, email: string, requesterKey: string | undefined): boolean {
+      const existing = entries.get(hash(commandKey));
+      return existing !== undefined && existing.at > now() - settings.retentionMs
+        && existing.identity !== identityDigest(email, requesterKey);
+    },
     bind(commandKey: string, email: string, requesterKey: string | undefined): Entry | null {
       const at = now();
       if (!Number.isFinite(at) || !commandKey || !email.trim() || !requesterKey || !hex(requesterKey)
@@ -65,7 +72,7 @@ export function createCheckoutAttemptBindings(settings: Settings, now: () => num
         || settings.retentionMs < settings.windowMs) return null;
       for (const [key, entry] of entries) if (entry.at <= at - settings.retentionMs) entries.delete(key);
       const key = hash(commandKey);
-      const identity = hash(JSON.stringify([email.trim().toLowerCase(), requesterKey]));
+      const identity = identityDigest(email, requesterKey);
       const existing = entries.get(key);
       if (existing) return existing.identity === identity ? existing : null;
       if (entries.size >= settings.maxEntries) return null;

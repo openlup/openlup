@@ -2383,6 +2383,16 @@ export interface TransactionalEmailPort<Locale extends string = string> {
     sendShipmentExceptionNotice(input: ShipmentExceptionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
 }
 ```
+## dist/commerce/server/catalogAdmissionRefusal.d.ts
+
+```ts
+declare const refusalCodes: readonly ["catalog_admission_quote_authority_required", "catalog_admission_evidence_binding_mismatch", "catalog_admission_quote_projection_moved", "catalog_publication_head_moved", "catalog_admission_membership_authority_unavailable", "catalog_admission_line_ineligible", "catalog_admission_price_context_required", "catalog_admission_fence_unavailable", "catalog_admission_roster_archived", "catalog_acceptance_receipt_mismatch", "catalog_acceptance_line_mismatch", "catalog_acceptance_immutable"];
+/** Read a safe admission refusal without copying upstream diagnostics.
+ * @experimental
+ */
+export declare function catalogAdmissionRefusal(error: unknown): typeof refusalCodes[number] | undefined;
+export {};
+```
 ## dist/commerce/server/checkoutCompensation.d.ts
 
 ```ts
@@ -5348,6 +5358,7 @@ export type { CheckoutRecoveryMethodHold } from './checkoutRecoveryPaymentHold.j
 export { createCheckoutInlineRecovery, checkoutInlineRecoveryTransitionKey, CheckoutInlineRecoveryError } from './checkoutInlineRecovery.js';
 export type { CheckoutInlineRecoveryRequest, CheckoutInlineRecoveryAdmission, CheckoutInlineRecoveryAttemptPort } from './checkoutInlineRecovery.js';
 export { installCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderSchedule, readCheckoutRecoveryReminderObservation } from "./checkoutRecoveryReminderSchedule.js";
+export { catalogAdmissionRefusal } from "./catalogAdmissionRefusal.js";
 ```
 ## dist/commerce/server/nativeExpiredCheckoutRecovery.d.ts
 

@@ -251,6 +251,11 @@
       "import": "./dist/shipping/contracts/index.js",
       "default": "./dist/shipping/contracts/index.js"
     },
+    "./shipping/testing": {
+      "types": "./dist/shipping/testing/index.d.ts",
+      "import": "./dist/shipping/testing/index.js",
+      "default": "./dist/shipping/testing/index.js"
+    },
     "./payments": {
       "types": "./dist/payments/index.d.ts",
       "import": "./dist/payments/index.js",

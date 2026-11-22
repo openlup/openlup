@@ -1,4 +1,5 @@
 export { CATALOG_DRAFT_MAX_BYTES, CATALOG_DRAFT_MAX_PAGE, canonicalCatalogDraftJson } from "./draft.js";
+export type { CatalogAdmissionInput, CatalogAdmissionPort } from "./admission.js";
 export type { CatalogDraftPayload, CatalogDraftCommand, CatalogDraftSummary, CatalogDraftRecord, CatalogDraftPage, CatalogDraftRefusal, CatalogDraftApplyResult, CatalogDraftGetQuery, CatalogDraftListQuery } from "./draft.js";
 export { CATALOG_FOUNDATION_CONTRACT_VERSION, CatalogSkuAuthorityError, isValidGtin, assertPrimaryUnitGtinAuthority, requireCurrentCatalogDocumentAuthority } from "./foundation.js";
 export type { CatalogDocumentRevisionRef, CatalogSkuIdentifier, CatalogSkuEnvelopeSelector, NeutralSkuEnvelopeV1, CatalogPriceContext, CatalogSkuAuthorityRefusal } from "./foundation.js";
