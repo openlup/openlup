@@ -370,10 +370,12 @@ catalogue, then seals both edges before final catalogue comparison. Pristine-row
 equality is a precondition inside the target transaction, not independent
 freshness evidence.
 Restore requires the target's exact current qualified inventory. An inventory
-mismatch refuses with `schema_conflict`. Upgrade the source to the target's exact
-migration level and qualified installation profile, then capture it again. The
-target rechecks the selected canonical catalogue and ledger. Its paths,
-checksums and positions follow the selected manifest.
+mismatch refuses with `schema_conflict`. Upgrade the source within its installed
+profile to the target's migration level, or provision a pristine target on the
+source's qualified profile and migration level. Then capture again. If no
+matching target can be provisioned, connected-store restore is unavailable for
+that pair. The target rechecks the selected canonical catalogue and ledger. Its
+paths, checksums and positions follow the selected manifest.
 Restore locks tables, uses the existing retained client/cycle routines and
 compatible-row admission,
 and restores exactly seven factory settings tables. It preserves deferred

@@ -7,5 +7,7 @@ and incomplete evidence while archive remains unavailable.
 
 Migration: connected-store restore admits only the target's current inventory.
 An earlier capture or a source whose column was dropped or retyped is refused
-with `schema_conflict`. Upgrade the source to the target's exact migration level
-and qualified installation profile, then capture it again.
+with `schema_conflict`. Upgrade the source within its installed profile to the
+target's migration level, or provision a pristine target on the source's
+qualified profile and migration level. Then capture again. If no matching
+target can be provisioned, connected-store restore is unavailable for that pair.
