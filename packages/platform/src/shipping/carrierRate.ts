@@ -23,10 +23,15 @@ export const CARRIER_RATE_REFUSAL_REASONS = [
   "provider_error",
 ] as const satisfies readonly CarrierRateRefusalReason[];
 
-const ISO_COUNTRY_PATTERN = /^[A-Z]{2}$/;
-const ISO_CURRENCY_PATTERN = /^[A-Z]{3}$/;
-const DIAGNOSTIC_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
-const PROVIDER_KIND_PATTERN = /^[a-z][a-z0-9_-]{1,47}$/;
+const ISO_COUNTRY_PATTERN = /^[A-Z]{2}$/u;
+const ISO_CURRENCY_PATTERN = /^[A-Z]{3}$/u;
+const DIAGNOSTIC_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,63}$/u;
+const PROVIDER_KIND_PATTERN = /^[a-z][a-z0-9_-]{1,47}$/u;
+const ISO_8601_TIMESTAMP_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
+
+const nonBlankString = (max: number) =>
+  z.string().max(max).refine((v) => v.trim().length > 0, "must be non-blank");
 
 const countryFilterSchema = z.union([
   z.literal("any"),
@@ -46,9 +51,9 @@ export const carrierRateCapabilitiesSchema = z.strictObject({
 });
 
 export const carrierRateOptionSchema = z.strictObject({
-  carrierCode: z.string().min(1).max(64),
-  serviceCode: z.string().min(1).max(128),
-  serviceName: z.string().min(1).max(160),
+  carrierCode: nonBlankString(64),
+  serviceCode: nonBlankString(128),
+  serviceName: nonBlankString(160),
   deliveryKind: z.enum(["courier", "parcel-locker"]),
   amountMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   currency: z.string().regex(ISO_CURRENCY_PATTERN),
@@ -61,9 +66,23 @@ export const carrierRateOptionSchema = z.strictObject({
     .nullable()
     .optional(),
   deliveryDateGuaranteed: z.boolean().optional(),
-  providerRateRef: z.string().min(1).max(160).optional(),
-  expiresAt: z.string().min(1).max(64).nullable().optional(),
+  providerRateRef: nonBlankString(160).optional(),
+  expiresAt: nonBlankString(64).nullable().optional(),
 });
+
+const refusedResultSchema = z
+  .strictObject({
+    kind: z.literal("refused"),
+    providerKind: z.string().regex(PROVIDER_KIND_PATTERN),
+    reason: z.enum(CARRIER_RATE_REFUSAL_REASONS),
+    retryable: z.boolean(),
+    diagnosticCode: z.string().regex(DIAGNOSTIC_CODE_PATTERN),
+    retryAfterSeconds: z.number().int().positive().max(86_400).optional(),
+  })
+  .refine(
+    (v) => v.retryAfterSeconds === undefined || v.retryable,
+    "retryAfterSeconds is only valid when retryable is true",
+  );
 
 export const carrierRateQuoteResultSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -71,21 +90,14 @@ export const carrierRateQuoteResultSchema = z.discriminatedUnion("kind", [
     providerKind: z.string().regex(PROVIDER_KIND_PATTERN),
     currency: z.string().regex(ISO_CURRENCY_PATTERN),
     rates: z.array(carrierRateOptionSchema).min(1),
-    providerShipmentRef: z.string().min(1).max(160).optional(),
+    providerShipmentRef: nonBlankString(160).optional(),
   }),
   z.strictObject({
     kind: z.literal("no_rates"),
     providerKind: z.string().regex(PROVIDER_KIND_PATTERN),
     diagnosticCode: z.string().regex(DIAGNOSTIC_CODE_PATTERN),
   }),
-  z.strictObject({
-    kind: z.literal("refused"),
-    providerKind: z.string().regex(PROVIDER_KIND_PATTERN),
-    reason: z.enum(CARRIER_RATE_REFUSAL_REASONS),
-    retryable: z.boolean(),
-    diagnosticCode: z.string().regex(DIAGNOSTIC_CODE_PATTERN),
-    retryAfterSeconds: z.number().int().positive().max(86_400).optional(),
-  }),
+  refusedResultSchema,
 ]);
 
 function asciiCompare(a: string, b: string): number {
@@ -125,6 +137,10 @@ function refused(
   return { kind: "refused", providerKind, reason, retryable: false, diagnosticCode };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * Pure zero-I/O request validator against declared carrier capabilities.
  * Returns a structured non-retryable refusal or null when the request may be dispatched.
@@ -134,18 +150,30 @@ export function validateCarrierRateRequestAgainstCapabilities(
   capabilities: CarrierRateCapabilities,
 ): Extract<CarrierRateQuoteResult, { kind: "refused" }> | null {
   const { providerKind } = capabilities;
+  if (!isRecord(request)) {
+    return refused(providerKind, "provider_error", "INVALID_REQUEST");
+  }
   if (request.contractVersion !== CARRIER_RATE_QUOTE_CONTRACT_VERSION) {
     return refused(providerKind, "provider_error", "UNSUPPORTED_CONTRACT_VERSION");
   }
-  if (!request.requestKey || request.requestKey.trim().length === 0) {
+  if (typeof request.requestKey !== "string" || request.requestKey.trim().length === 0) {
     return refused(providerKind, "invalid_address", "MISSING_REQUEST_KEY");
   }
-  if (!ISO_COUNTRY_PATTERN.test(request.origin.countryCode) || !request.origin.postalCode.trim()) {
+  if (
+    !isRecord(request.origin) ||
+    typeof request.origin.countryCode !== "string" ||
+    !ISO_COUNTRY_PATTERN.test(request.origin.countryCode) ||
+    typeof request.origin.postalCode !== "string" ||
+    request.origin.postalCode.trim().length === 0
+  ) {
     return refused(providerKind, "invalid_address", "INVALID_ORIGIN_ADDRESS");
   }
   if (
+    !isRecord(request.destination) ||
+    typeof request.destination.countryCode !== "string" ||
     !ISO_COUNTRY_PATTERN.test(request.destination.countryCode) ||
-    !request.destination.postalCode.trim()
+    typeof request.destination.postalCode !== "string" ||
+    request.destination.postalCode.trim().length === 0
   ) {
     return refused(providerKind, "invalid_address", "INVALID_DESTINATION_ADDRESS");
   }
@@ -161,7 +189,7 @@ export function validateCarrierRateRequestAgainstCapabilities(
   ) {
     return refused(providerKind, "unsupported_country", "UNSUPPORTED_DESTINATION_COUNTRY");
   }
-  if (!ISO_CURRENCY_PATTERN.test(request.currency)) {
+  if (typeof request.currency !== "string" || !ISO_CURRENCY_PATTERN.test(request.currency)) {
     return refused(providerKind, "unsupported_currency", "INVALID_CURRENCY");
   }
   if (
@@ -170,6 +198,24 @@ export function validateCarrierRateRequestAgainstCapabilities(
   ) {
     return refused(providerKind, "unsupported_currency", "UNSUPPORTED_CURRENCY");
   }
+  if (request.serviceFilter !== undefined) {
+    if (
+      !Array.isArray(request.serviceFilter) ||
+      request.serviceFilter.length === 0 ||
+      request.serviceFilter.some((s) => typeof s !== "string" || s.trim().length === 0)
+    ) {
+      return refused(providerKind, "service_unsupported", "INVALID_SERVICE_FILTER");
+    }
+  }
+  if (request.atTime !== undefined) {
+    if (
+      typeof request.atTime !== "string" ||
+      !ISO_8601_TIMESTAMP_PATTERN.test(request.atTime) ||
+      Number.isNaN(Date.parse(request.atTime))
+    ) {
+      return refused(providerKind, "provider_error", "INVALID_TIMESTAMP");
+    }
+  }
   if (!Array.isArray(request.parcels) || request.parcels.length === 0) {
     return refused(providerKind, "invalid_parcel", "EMPTY_PARCELS");
   }
@@ -177,12 +223,21 @@ export function validateCarrierRateRequestAgainstCapabilities(
     return refused(providerKind, "multi_parcel_unsupported", "MULTI_PARCEL_UNSUPPORTED");
   }
   for (const parcel of request.parcels) {
-    if (!Number.isSafeInteger(parcel.weightGrams) || parcel.weightGrams <= 0) {
+    if (!isRecord(parcel)) {
+      return refused(providerKind, "invalid_parcel", "INVALID_PARCEL");
+    }
+    if (
+      typeof parcel.weightGrams !== "number" ||
+      !Number.isSafeInteger(parcel.weightGrams) ||
+      parcel.weightGrams <= 0
+    ) {
       return refused(providerKind, "invalid_parcel", "INVALID_PARCEL_WEIGHT");
     }
     const dims = [parcel.lengthMm, parcel.widthMm, parcel.heightMm];
     const hasAnyDim = dims.some((d) => d !== undefined);
-    const hasAllValidDims = dims.every((d) => typeof d === "number" && Number.isSafeInteger(d) && d > 0);
+    const hasAllValidDims = dims.every(
+      (d) => typeof d === "number" && Number.isSafeInteger(d) && d > 0,
+    );
     if (capabilities.dimensionsRequired && !hasAllValidDims) {
       return refused(providerKind, "invalid_parcel", "PARCEL_DIMENSIONS_REQUIRED");
     }
@@ -191,7 +246,9 @@ export function validateCarrierRateRequestAgainstCapabilities(
     }
     if (
       parcel.declaredValueMinor !== undefined &&
-      (!Number.isSafeInteger(parcel.declaredValueMinor) || parcel.declaredValueMinor < 0)
+      (typeof parcel.declaredValueMinor !== "number" ||
+        !Number.isSafeInteger(parcel.declaredValueMinor) ||
+        parcel.declaredValueMinor < 0)
     ) {
       return refused(providerKind, "invalid_parcel", "INVALID_DECLARED_VALUE");
     }

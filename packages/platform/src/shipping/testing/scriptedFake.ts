@@ -22,7 +22,11 @@ export class ScriptedShippingRateTransportError extends Error {
   }
 }
 
-type RecordedFault = { readonly kind: ScriptedShippingRateOutcome<unknown>["kind"] };
+export interface RecordedShippingRateFault {
+  readonly kind: ScriptedShippingRateOutcome<unknown>["kind"] | "unscripted";
+  readonly status?: number;
+  readonly retryAfterSeconds?: number;
+}
 
 const outcomeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("success"), value: z.unknown() }).refine((v) => Object.hasOwn(v, "value"), "value required"),
@@ -32,17 +36,24 @@ const outcomeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("transport-error") }),
 ]);
 
-const authenticatedFaultLogs = new WeakMap<object, readonly RecordedFault[]>();
+const authenticatedFaultLogs = new WeakMap<object, readonly RecordedShippingRateFault[]>();
 
 /** Internal authenticated log reader. Caller-fabricated arrays cannot supply transport fault evidence. */
-export function readScriptedShippingRateFaultLog(handle: object): readonly RecordedFault[] {
+export function readScriptedShippingRateFaultLog(handle: object): readonly RecordedShippingRateFault[] {
   const log = authenticatedFaultLogs.get(handle);
   if (!log) throw new Error("SHIPPING_RATE_CONFORMANCE:invalid_fault_log");
-  return log.map((row) => ({ kind: row.kind }));
+  return log.map((row) => ({
+    kind: row.kind,
+    ...(row.status !== undefined ? { status: row.status } : {}),
+    ...(row.retryAfterSeconds !== undefined ? { retryAfterSeconds: row.retryAfterSeconds } : {}),
+  }));
 }
 
 export interface ScriptedShippingRateFake<Calls extends Record<string, unknown>> {
-  readonly calls: readonly { readonly call: keyof Calls; readonly kind: ScriptedShippingRateOutcome<unknown>["kind"] }[];
+  readonly calls: readonly {
+    readonly call: keyof Calls;
+    readonly kind: ScriptedShippingRateOutcome<unknown>["kind"] | "unscripted";
+  }[];
   enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedShippingRateOutcome<Calls[K]>[]): void;
   invoke<K extends keyof Calls>(call: K): Promise<Calls[K]>;
   assertDrained(): void;
@@ -51,12 +62,16 @@ export interface ScriptedShippingRateFake<Calls extends Record<string, unknown>>
 /** Per-operation FIFO transport fake. Inputs, credentials, and response bodies are never logged. */
 export function createScriptedShippingRateFake<Calls extends Record<string, unknown>>(): ScriptedShippingRateFake<Calls> {
   const queues = new Map<keyof Calls, ScriptedShippingRateOutcome<Calls[keyof Calls]>[]>();
-  const calls: { call: keyof Calls; kind: ScriptedShippingRateOutcome<unknown>["kind"] }[] = [];
+  const calls: {
+    call: keyof Calls;
+    kind: ScriptedShippingRateOutcome<unknown>["kind"] | "unscripted";
+  }[] = [];
+  const faults: RecordedShippingRateFault[] = [];
 
   return Object.freeze({
     get calls() {
       const snap = Object.freeze(calls.map((row) => Object.freeze({ ...row })));
-      authenticatedFaultLogs.set(snap, calls);
+      authenticatedFaultLogs.set(snap, faults);
       return snap;
     },
     enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedShippingRateOutcome<Calls[K]>[]): void {
@@ -70,8 +85,19 @@ export function createScriptedShippingRateFake<Calls extends Record<string, unkn
     },
     async invoke<K extends keyof Calls>(call: K): Promise<Calls[K]> {
       const outcome = queues.get(call)?.shift();
-      if (!outcome) throw new Error(`scripted_shipping_rate_transport:unscripted:${String(call)}`);
+      if (!outcome) {
+        calls.push({ call, kind: "unscripted" });
+        faults.push({ kind: "unscripted" });
+        throw new Error(`scripted_shipping_rate_transport:unscripted:${String(call)}`);
+      }
       calls.push({ call, kind: outcome.kind });
+      faults.push({
+        kind: outcome.kind,
+        ...(outcome.kind === "http-failure" ? { status: outcome.status } : {}),
+        ...(outcome.kind === "rate-limited-429" && outcome.retryAfterSeconds !== undefined
+          ? { retryAfterSeconds: outcome.retryAfterSeconds }
+          : {}),
+      });
       if (outcome.kind === "success") return outcome.value as Calls[K];
       if (outcome.kind === "http-failure" && outcome.response !== undefined) return outcome.response as Calls[K];
       if (outcome.kind === "rate-limited-429" && outcome.response !== undefined) return outcome.response as Calls[K];

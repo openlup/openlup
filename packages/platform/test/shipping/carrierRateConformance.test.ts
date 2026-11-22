@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CARRIER_RATE_QUOTE_CONTRACT_VERSION,
+  carrierRateQuoteResultSchema,
   projectCarrierRateStaticCapabilities,
   selectCheapestCarrierRate,
   sortCarrierRateOptions,
@@ -44,34 +45,62 @@ const BASE_REQUEST: CarrierRateQuoteRequest = {
   currency: "USD",
 };
 
-const CANARY_VALUE = "sensitive-canary-marker-one";
+const CANARY_VALUE = "sensitive-canary/marker+one";
 
 function createSyntheticCarrierHarness(
   outcome: ScriptedShippingRateOutcome<readonly CarrierRateOption[]>,
   overrides?: {
     readonly mutateResult?: (res: CarrierRateQuoteResult) => CarrierRateQuoteResult;
-    readonly skipPreValidation?: boolean;
+    readonly capabilities?: CarrierRateCapabilities;
+    readonly dropRetryAfter?: boolean;
     readonly forgeFaultLog?: boolean;
+    readonly swapFaultLogHandles?: boolean;
+    readonly throwObject?: unknown;
+    readonly returnRaw?: unknown;
   },
 ): ShippingRateScenarioHarness {
   const fake = createScriptedShippingRateFake<SyntheticCalls>();
   fake.enqueue("quote", outcome);
+  const caps = overrides?.capabilities ?? BASE_CAPABILITIES;
+
+  const swapFakeB = createScriptedShippingRateFake<SyntheticCalls>();
+  swapFakeB.enqueue("quote", { kind: "http-failure", status: 503 });
+  let faultLogReads = 0;
 
   const adapter: CarrierRateQuotePort = {
-    capabilities: BASE_CAPABILITIES,
+    capabilities: caps,
     async quoteRates(request): Promise<CarrierRateQuoteResult> {
-      if (!overrides?.skipPreValidation) {
-        const refusal = validateCarrierRateRequestAgainstCapabilities(request, BASE_CAPABILITIES);
-        if (refusal) return refusal;
+      const refusal = validateCarrierRateRequestAgainstCapabilities(request, caps);
+      if (refusal) return refusal;
+      if (overrides?.throwObject !== undefined) {
+        throw overrides.throwObject;
+      }
+      if (overrides?.returnRaw !== undefined) {
+        return overrides.returnRaw as CarrierRateQuoteResult;
+      }
+      if (overrides?.swapFaultLogHandles) {
+        // Pre-invoke swapFakeB only if not yet invoked; adapter itself never invokes `fake`.
+        try {
+          await swapFakeB.invoke("quote");
+        } catch {
+          // intentional
+        }
+        return {
+          kind: "refused",
+          providerKind: caps.providerKind,
+          reason: "provider_unavailable",
+          retryable: true,
+          diagnosticCode: "CARRIER_UNAVAILABLE",
+        };
       }
       try {
         const rates = await fake.invoke("quote");
         const result: CarrierRateQuoteResult =
           rates.length === 0
-            ? { kind: "no_rates", providerKind: BASE_CAPABILITIES.providerKind, diagnosticCode: "NO_ELIGIBLE_RATES" }
+            ? { kind: "no_rates", providerKind: caps.providerKind, diagnosticCode: "NO_ELIGIBLE_RATES" }
             : {
                 kind: "quoted",
-                providerKind: BASE_CAPABILITIES.providerKind,
+                providerKind: caps.providerKind,
                 currency: request.currency,
                 rates: sortCarrierRateOptions(rates),
                 providerShipmentRef: "shp_syn_001",
@@ -82,7 +111,7 @@ function createSyntheticCarrierHarness(
           if (error.kind === "timeout") {
             return {
               kind: "refused",
-              providerKind: BASE_CAPABILITIES.providerKind,
+              providerKind: caps.providerKind,
               reason: "timeout",
               retryable: true,
               diagnosticCode: "CARRIER_TIMEOUT",
@@ -91,11 +120,11 @@ function createSyntheticCarrierHarness(
           if (error.kind === "rate-limited-429") {
             return {
               kind: "refused",
-              providerKind: BASE_CAPABILITIES.providerKind,
+              providerKind: caps.providerKind,
               reason: "rate_limited",
               retryable: true,
               diagnosticCode: "CARRIER_RATE_LIMITED",
-              ...(error.retryAfterSeconds !== undefined
+              ...(!overrides?.dropRetryAfter && error.retryAfterSeconds !== undefined
                 ? { retryAfterSeconds: error.retryAfterSeconds }
                 : {}),
             };
@@ -103,7 +132,7 @@ function createSyntheticCarrierHarness(
           if (error.kind === "http-failure" && (error.status === 401 || error.status === 403)) {
             return {
               kind: "refused",
-              providerKind: BASE_CAPABILITIES.providerKind,
+              providerKind: caps.providerKind,
               reason: "authentication_failed",
               retryable: false,
               diagnosticCode: "CARRIER_AUTH_FAILED",
@@ -111,7 +140,7 @@ function createSyntheticCarrierHarness(
           }
           return {
             kind: "refused",
-            providerKind: BASE_CAPABILITIES.providerKind,
+            providerKind: caps.providerKind,
             reason: "provider_unavailable",
             retryable: true,
             diagnosticCode: "CARRIER_UNAVAILABLE",
@@ -119,7 +148,7 @@ function createSyntheticCarrierHarness(
         }
         return {
           kind: "refused",
-          providerKind: BASE_CAPABILITIES.providerKind,
+          providerKind: caps.providerKind,
           reason: "provider_error",
           retryable: false,
           diagnosticCode: "CARRIER_UNEXPECTED_ERROR",
@@ -131,8 +160,15 @@ function createSyntheticCarrierHarness(
   return {
     adapter,
     request: BASE_REQUEST,
-    readIoCount: () => fake.calls.length,
-    readFaultLog: () => (overrides?.forgeFaultLog ? [{ call: "quote", kind: outcome.kind }] : fake.calls),
+    readIoCount: () => (overrides?.swapFaultLogHandles ? swapFakeB.calls.length : fake.calls.length),
+    readFaultLog: () => {
+      if (overrides?.forgeFaultLog) return [{ call: "quote", kind: outcome.kind }];
+      if (overrides?.swapFaultLogHandles) {
+        faultLogReads += 1;
+        return faultLogReads === 1 ? fake.calls : swapFakeB.calls;
+      }
+      return fake.calls;
+    },
   };
 }
 
@@ -181,12 +217,14 @@ describe("CarrierRateQuotePort and @openlup/platform/shipping/testing", () => {
     const qual = evidence.qualifications[0]!;
     expect(qual.providerKind).toBe("synthetic_carrier");
     expect(qual.capabilityDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(qual.ledger.filter((e) => e.role === "zero-io-refusal").every((e) => e.ioDelta === 0)).toBe(true);
+    const refusals = qual.ledger.filter((e) => e.role === "zero-io-refusal");
+    expect(refusals.some((e) => e.scenario === "unsupported_origin_country")).toBe(true);
+    expect(refusals.every((e) => e.ioDelta === 0)).toBe(true);
     expect(qual.ledger.filter((e) => e.role === "transport-fault")).toHaveLength(5);
     expect(qual.ledger.filter((e) => e.role === "transport-fault").every((e) => e.faultLogDelta === 1)).toBe(true);
   });
 
-  it("sorts rates deterministically and selects the cheapest rate", () => {
+  it("sorts rates deterministically, selects cheapest, and validates request edge cases", () => {
     const rates: CarrierRateOption[] = [
       { carrierCode: "b", serviceCode: "STD", serviceName: "B Std", deliveryKind: "courier", amountMinor: 800, currency: "USD" },
       { carrierCode: "a", serviceCode: "STD", serviceName: "A Std", deliveryKind: "courier", amountMinor: 800, currency: "USD" },
@@ -205,9 +243,71 @@ describe("CarrierRateQuotePort and @openlup/platform/shipping/testing", () => {
     });
     expect(projected.supportedCurrencies).toEqual([]);
     expect(projected.supportedDestinationCountries).toEqual(["CA", "US"]);
+
+    // Boundary validation unit tests
+    expect(
+      validateCarrierRateRequestAgainstCapabilities(
+        { ...BASE_REQUEST, origin: { countryCode: "us", postalCode: "94107" } },
+        BASE_CAPABILITIES,
+      )?.reason,
+    ).toBe("invalid_address");
+    expect(
+      validateCarrierRateRequestAgainstCapabilities(
+        { ...BASE_REQUEST, destination: { countryCode: "US", postalCode: "   " } },
+        BASE_CAPABILITIES,
+      )?.reason,
+    ).toBe("invalid_address");
+    expect(
+      validateCarrierRateRequestAgainstCapabilities(
+        { ...BASE_REQUEST, parcels: [{ weightGrams: Number.NaN, lengthMm: 100, widthMm: 100, heightMm: 100 }] },
+        BASE_CAPABILITIES,
+      )?.reason,
+    ).toBe("invalid_parcel");
+    expect(
+      validateCarrierRateRequestAgainstCapabilities(
+        { ...BASE_REQUEST, parcels: [{ weightGrams: 12.5, lengthMm: 100, widthMm: 100, heightMm: 100 }] },
+        BASE_CAPABILITIES,
+      )?.reason,
+    ).toBe("invalid_parcel");
+    expect(
+      validateCarrierRateRequestAgainstCapabilities(
+        { ...BASE_REQUEST, parcels: [{ weightGrams: 100, lengthMm: 100 }] },
+        { ...BASE_CAPABILITIES, dimensionsRequired: false },
+      )?.reason,
+    ).toBe("invalid_parcel");
+    expect(
+      validateCarrierRateRequestAgainstCapabilities(
+        { ...BASE_REQUEST, serviceFilter: ["  "] },
+        BASE_CAPABILITIES,
+      )?.reason,
+    ).toBe("service_unsupported");
+    expect(
+      validateCarrierRateRequestAgainstCapabilities(
+        { ...BASE_REQUEST, atTime: "not-a-timestamp" },
+        BASE_CAPABILITIES,
+      )?.reason,
+    ).toBe("provider_error");
+    expect(
+      validateCarrierRateRequestAgainstCapabilities(
+        null as unknown as CarrierRateQuoteRequest,
+        BASE_CAPABILITIES,
+      )?.reason,
+    ).toBe("provider_error");
+
+    // Non-retryable refusal with retryAfterSeconds is rejected by strict schema.
+    expect(
+      carrierRateQuoteResultSchema.safeParse({
+        kind: "refused",
+        providerKind: "synthetic_carrier",
+        reason: "invalid_address",
+        retryable: false,
+        diagnosticCode: "BAD_ADDR",
+        retryAfterSeconds: 10,
+      }).success,
+    ).toBe(false);
   });
 
-  it("rejects Proxy adapters (negative control)", async () => {
+  it("rejects Proxy adapters and forged/swapped fault-log handles (negative controls)", async () => {
     const base = makeFullSubject();
     const proxied = {
       ...base,
@@ -219,10 +319,7 @@ describe("CarrierRateQuotePort and @openlup/platform/shipping/testing", () => {
     await expect(runShippingRateAdapterConformance([proxied])).rejects.toThrow(
       /SHIPPING_RATE_CONFORMANCE:proxy_rejected/,
     );
-  });
 
-  it("rejects forged fault-log handles in full mode (negative control)", async () => {
-    const base = makeFullSubject();
     const forged = {
       ...base,
       certification: {
@@ -234,9 +331,77 @@ describe("CarrierRateQuotePort and @openlup/platform/shipping/testing", () => {
     await expect(runShippingRateAdapterConformance([forged], { mode: "full" })).rejects.toThrow(
       /SHIPPING_RATE_CONFORMANCE:invalid_fault_log/,
     );
+
+    const swapped = {
+      ...base,
+      certification: {
+        ...base.certification,
+        http5xx: () =>
+          createSyntheticCarrierHarness(
+            { kind: "http-failure", status: 503 },
+            { swapFaultLogHandles: true },
+          ),
+      },
+    };
+    await expect(runShippingRateAdapterConformance([swapped], { mode: "full" })).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:fault_io_mismatch/,
+    );
   });
 
-  it("fails when zero-I/O refusal dispatches provider I/O (negative control)", async () => {
+  it("rejects fault-kind spoofing, wrong HTTP status, and dropped retryAfterSeconds (negative controls)", async () => {
+    const base = makeFullSubject();
+
+    const spoofedSuccess = {
+      ...base,
+      certification: {
+        ...base.certification,
+        http5xx: () =>
+          createSyntheticCarrierHarness(
+            { kind: "success", value: [] },
+            {
+              mutateResult: () => ({
+                kind: "refused",
+                providerKind: BASE_CAPABILITIES.providerKind,
+                reason: "provider_unavailable",
+                retryable: true,
+                diagnosticCode: "FAKE_5XX",
+              }),
+            },
+          ),
+      },
+    };
+    await expect(runShippingRateAdapterConformance([spoofedSuccess], { mode: "full" })).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:fault_kind_mismatch/,
+    );
+
+    const wrongStatus = {
+      ...base,
+      certification: {
+        ...base.certification,
+        http5xx: () => createSyntheticCarrierHarness({ kind: "http-failure", status: 404 }),
+      },
+    };
+    await expect(runShippingRateAdapterConformance([wrongStatus], { mode: "full" })).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:fault_kind_mismatch/,
+    );
+
+    const droppedRetryAfter = {
+      ...base,
+      certification: {
+        ...base.certification,
+        rateLimited429: () =>
+          createSyntheticCarrierHarness(
+            { kind: "rate-limited-429", retryAfterSeconds: 45 },
+            { dropRetryAfter: true },
+          ),
+      },
+    };
+    await expect(runShippingRateAdapterConformance([droppedRetryAfter], { mode: "full" })).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:retry_after_mismatch/,
+    );
+  });
+
+  it("fails on zero-I/O violations, currency/deliveryKind mismatch, and cross-harness capability drift", async () => {
     const base = makeFullSubject();
     const leaky = {
       ...base,
@@ -245,7 +410,7 @@ describe("CarrierRateQuotePort and @openlup/platform/shipping/testing", () => {
         const okRate: readonly CarrierRateOption[] = [
           { carrierCode: "a", serviceCode: "G", serviceName: "G", deliveryKind: "courier", amountMinor: 500, currency: "USD" },
         ];
-        fake.enqueue("quote", { kind: "success", value: okRate }, { kind: "success", value: okRate });
+        fake.enqueue("quote", { kind: "success", value: okRate });
         const adapter: CarrierRateQuotePort = {
           capabilities: BASE_CAPABILITIES,
           async quoteRates(request): Promise<CarrierRateQuoteResult> {
@@ -259,11 +424,52 @@ describe("CarrierRateQuotePort and @openlup/platform/shipping/testing", () => {
     await expect(runShippingRateAdapterConformance([leaky])).rejects.toThrow(
       /SHIPPING_RATE_CONFORMANCE:zero_io_violation/,
     );
+
+    const badCurrency = {
+      ...base,
+      happyQuote: () =>
+        createSyntheticCarrierHarness({
+          kind: "success",
+          value: [
+            { carrierCode: "alpha", serviceCode: "G", serviceName: "Ground", deliveryKind: "courier", amountMinor: 500, currency: "EUR" },
+          ],
+        }),
+    };
+    await expect(runShippingRateAdapterConformance([badCurrency])).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:rate_currency_mismatch/,
+    );
+
+    const undeclaredDelivery = {
+      ...base,
+      happyQuote: () =>
+        createSyntheticCarrierHarness({
+          kind: "success",
+          value: [
+            { carrierCode: "alpha", serviceCode: "L", serviceName: "Locker", deliveryKind: "parcel-locker", amountMinor: 500, currency: "USD" },
+          ],
+        }),
+    };
+    await expect(runShippingRateAdapterConformance([undeclaredDelivery])).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:undeclared_delivery_kind/,
+    );
+
+    const driftedHarness = {
+      ...base,
+      noRatesQuote: () =>
+        createSyntheticCarrierHarness(
+          { kind: "success", value: [] },
+          { capabilities: { ...BASE_CAPABILITIES, multiParcel: true } },
+        ),
+    };
+    await expect(runShippingRateAdapterConformance([driftedHarness])).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:capability_drift/,
+    );
   });
 
-  it("fails when a rate currency mismatches the request currency (negative control)", async () => {
+  it("detects raw, URL-encoded, and thrown-cause canary leaks and handles undefined/circular returns safely", async () => {
     const base = makeFullSubject();
-    const badCurrency = {
+
+    const encodedLeak = {
       ...base,
       happyQuote: () =>
         createSyntheticCarrierHarness({
@@ -272,42 +478,51 @@ describe("CarrierRateQuotePort and @openlup/platform/shipping/testing", () => {
             {
               carrierCode: "alpha",
               serviceCode: "GROUND",
-              serviceName: "Ground",
+              serviceName: `Ground ${encodeURIComponent(CANARY_VALUE).toLowerCase()}`,
               deliveryKind: "courier",
               amountMinor: 500,
-              currency: "EUR",
+              currency: "USD",
             },
           ],
         }),
     };
-    await expect(runShippingRateAdapterConformance([badCurrency])).rejects.toThrow(
-      /SHIPPING_RATE_CONFORMANCE:rate_currency_mismatch/,
+    await expect(runShippingRateAdapterConformance([encodedLeak])).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:secret_leak/,
     );
-  });
 
-  it("fails when a sensitive canary leaks into adapter output (negative control)", async () => {
-    const base = makeFullSubject();
-    const leakySecret = {
+    const causeLeak = {
       ...base,
       happyQuote: () =>
         createSyntheticCarrierHarness(
-          {
-            kind: "success",
-            value: [
-              {
-                carrierCode: "alpha",
-                serviceCode: "GROUND",
-                serviceName: `Ground ${CANARY_VALUE}`,
-                deliveryKind: "courier",
-                amountMinor: 500,
-                currency: "USD",
-              },
-            ],
-          },
+          { kind: "success", value: [] },
+          { throwObject: new Error("upstream failed", { cause: { token: CANARY_VALUE } }) },
         ),
     };
-    await expect(runShippingRateAdapterConformance([leakySecret])).rejects.toThrow(
+    await expect(runShippingRateAdapterConformance([causeLeak])).rejects.toThrow(
       /SHIPPING_RATE_CONFORMANCE:secret_leak/,
+    );
+
+    const plainThrownLeak = {
+      ...base,
+      happyQuote: () =>
+        createSyntheticCarrierHarness(
+          { kind: "success", value: [] },
+          { throwObject: { nested: [CANARY_VALUE] } },
+        ),
+    };
+    await expect(runShippingRateAdapterConformance([plainThrownLeak])).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:secret_leak/,
+    );
+
+    const circular: Record<string, unknown> = { kind: "quoted" };
+    circular.self = circular;
+    const circularReturn = {
+      ...base,
+      happyQuote: () =>
+        createSyntheticCarrierHarness({ kind: "success", value: [] }, { returnRaw: circular }),
+    };
+    await expect(runShippingRateAdapterConformance([circularReturn])).rejects.toThrow(
+      /SHIPPING_RATE_CONFORMANCE:invalid_result_shape/,
     );
   });
 });

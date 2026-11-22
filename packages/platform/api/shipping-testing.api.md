@@ -29,6 +29,7 @@ export interface ShippingRateAdapterTestSubject {
     readonly id: string;
     readonly happyQuote: () => ShippingRateScenarioHarness;
     readonly noRatesQuote: () => ShippingRateScenarioHarness;
+    readonly unsupportedOriginCountryRequest?: () => CarrierRateQuoteRequest;
     readonly unsupportedCountryRequest?: () => CarrierRateQuoteRequest;
     readonly unsupportedCurrencyRequest?: () => CarrierRateQuoteRequest;
     readonly sensitiveValues?: readonly string[];
@@ -95,15 +96,17 @@ export declare class ScriptedShippingRateTransportError extends Error {
         readonly retryAfterSeconds?: number;
     });
 }
-type RecordedFault = {
-    readonly kind: ScriptedShippingRateOutcome<unknown>["kind"];
-};
+export interface RecordedShippingRateFault {
+    readonly kind: ScriptedShippingRateOutcome<unknown>["kind"] | "unscripted";
+    readonly status?: number;
+    readonly retryAfterSeconds?: number;
+}
 /** Internal authenticated log reader. Caller-fabricated arrays cannot supply transport fault evidence. */
-export declare function readScriptedShippingRateFaultLog(handle: object): readonly RecordedFault[];
+export declare function readScriptedShippingRateFaultLog(handle: object): readonly RecordedShippingRateFault[];
 export interface ScriptedShippingRateFake<Calls extends Record<string, unknown>> {
     readonly calls: readonly {
         readonly call: keyof Calls;
-        readonly kind: ScriptedShippingRateOutcome<unknown>["kind"];
+        readonly kind: ScriptedShippingRateOutcome<unknown>["kind"] | "unscripted";
     }[];
     enqueue<K extends keyof Calls>(call: K, ...outcomes: ScriptedShippingRateOutcome<Calls[K]>[]): void;
     invoke<K extends keyof Calls>(call: K): Promise<Calls[K]>;
@@ -111,5 +114,4 @@ export interface ScriptedShippingRateFake<Calls extends Record<string, unknown>>
 }
 /** Per-operation FIFO transport fake. Inputs, credentials, and response bodies are never logged. */
 export declare function createScriptedShippingRateFake<Calls extends Record<string, unknown>>(): ScriptedShippingRateFake<Calls>;
-export {};
 ```

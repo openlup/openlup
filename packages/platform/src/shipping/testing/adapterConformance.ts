@@ -7,12 +7,16 @@ import {
   projectCarrierRateStaticCapabilities,
 } from "../carrierRate.js";
 import type {
+  CarrierRateCapabilities,
   CarrierRateQuotePort,
   CarrierRateQuoteRequest,
   CarrierRateQuoteResult,
   CarrierRateRefusalReason,
 } from "../contracts/carrierRate.js";
-import { readScriptedShippingRateFaultLog } from "./scriptedFake.js";
+import {
+  readScriptedShippingRateFaultLog,
+  type RecordedShippingRateFault,
+} from "./scriptedFake.js";
 
 export type ShippingRateTransportFaultScenario =
   | "http-5xx"
@@ -40,6 +44,7 @@ export interface ShippingRateAdapterTestSubject {
   readonly id: string;
   readonly happyQuote: () => ShippingRateScenarioHarness;
   readonly noRatesQuote: () => ShippingRateScenarioHarness;
+  readonly unsupportedOriginCountryRequest?: () => CarrierRateQuoteRequest;
   readonly unsupportedCountryRequest?: () => CarrierRateQuoteRequest;
   readonly unsupportedCurrencyRequest?: () => CarrierRateQuoteRequest;
   readonly sensitiveValues?: readonly string[];
@@ -71,6 +76,8 @@ export interface ShippingRateConformanceEvidence {
   readonly qualifications: readonly ShippingRateQualification[];
 }
 
+const FALLBACK_UNSUPPORTED_CURRENCIES = ["XTS", "JPY", "CHF", "KWD", "BHD", "UYU", "ISK", "CLP"] as const;
+
 function fail(code: string, message: string, location: string): never {
   throw new Error(
     `SHIPPING_RATE_CONFORMANCE:${code}. ${message} Recheck with runShippingRateAdapterConformance. Location: ${location}`,
@@ -78,9 +85,22 @@ function fail(code: string, message: string, location: string): never {
 }
 
 function rejectProxy(value: unknown, location: string): void {
-  if (typeof value === "object" && value !== null && types.isProxy(value)) {
-    fail("proxy_rejected", "Proxy subjects or adapters are forbidden in conformance certification.", location);
+  if ((typeof value === "object" && value !== null) || typeof value === "function") {
+    if (types.isProxy(value)) {
+      fail("proxy_rejected", "Proxy subjects, harnesses, adapters, or results are forbidden in conformance certification.", location);
+    }
   }
+}
+
+function containsSensitiveValue(text: string, sensitiveValues: readonly string[]): boolean {
+  const lower = text.toLowerCase();
+  for (const secret of sensitiveValues) {
+    if (secret.length < 4) continue;
+    if (text.includes(secret)) return true;
+    const encoded = encodeURIComponent(secret);
+    if (text.includes(encoded) || lower.includes(encoded.toLowerCase())) return true;
+  }
+  return false;
 }
 
 function assertNoSensitiveLeak(
@@ -89,31 +109,87 @@ function assertNoSensitiveLeak(
   location: string,
 ): void {
   if (!sensitiveValues || sensitiveValues.length === 0) return;
-  const serialized = typeof payload === "string" ? payload : JSON.stringify(payload);
-  for (const secret of sensitiveValues) {
-    if (secret.length < 4) continue;
-    const encoded = encodeURIComponent(secret);
-    if (serialized.includes(secret) || serialized.includes(encoded)) {
-      fail(
-        "secret_leak",
-        "A sensitive canary value appeared in adapter output or error diagnostics. Redact credentials and PII before returning.",
-        location,
-      );
+  const seen = new WeakSet<object>();
+
+  const walk = (value: unknown): void => {
+    if (value === null || value === undefined) return;
+    if (typeof value === "string") {
+      if (containsSensitiveValue(value, sensitiveValues)) {
+        fail(
+          "secret_leak",
+          "A sensitive canary value appeared in adapter output or error diagnostics. Redact credentials and PII before returning.",
+          location,
+        );
+      }
+      return;
     }
-  }
+    if (typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+
+    if (value instanceof Error) {
+      walk(value.name);
+      walk(value.message);
+      walk(value.stack);
+      if ("cause" in value) walk((value as Error & { cause?: unknown }).cause);
+    }
+
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key === "string") walk(key);
+      let propValue: unknown;
+      try {
+        propValue = Reflect.get(value, key);
+      } catch {
+        continue;
+      }
+      walk(propValue);
+    }
+  };
+
+  walk(payload);
 }
 
-function computeCapabilityDigest(adapter: CarrierRateQuotePort): string {
-  const staticProjection = projectCarrierRateStaticCapabilities(adapter.capabilities);
-  return createHash("sha256").update(JSON.stringify(staticProjection)).digest("hex");
+function snapshotCapabilities(adapter: CarrierRateQuotePort, location: string): {
+  readonly capabilities: CarrierRateCapabilities;
+  readonly digest: string;
+} {
+  rejectProxy(adapter, location);
+  rejectProxy(adapter.quoteRates, location);
+  const rawCaps = adapter.capabilities;
+  rejectProxy(rawCaps, location);
+  const parsed = carrierRateCapabilitiesSchema.safeParse(rawCaps);
+  if (!parsed.success) {
+    fail(
+      "invalid_capabilities",
+      `capabilities failed schema validation (${parsed.error.issues[0]?.path.join(".") || "$"}: ${parsed.error.issues[0]?.message ?? "invalid"}).`,
+      location,
+    );
+  }
+  const projected = projectCarrierRateStaticCapabilities(parsed.data);
+  const digest = createHash("sha256").update(JSON.stringify(projected)).digest("hex");
+  return { capabilities: parsed.data, digest };
+}
+
+function readValidIoCount(harness: ShippingRateScenarioHarness, location: string): number {
+  const count = harness.readIoCount();
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
+    fail("invalid_io_count", "readIoCount() must return a non-negative safe integer.", location);
+  }
+  return count;
 }
 
 function validateResult(
   result: unknown,
-  expectedProviderKind: string,
+  certifiedCaps: CarrierRateCapabilities,
   requestCurrency: string,
   location: string,
 ): CarrierRateQuoteResult {
+  rejectProxy(result, location);
   const parsed = carrierRateQuoteResultSchema.safeParse(result);
   if (!parsed.success) {
     fail(
@@ -122,10 +198,10 @@ function validateResult(
       location,
     );
   }
-  if (parsed.data.providerKind !== expectedProviderKind) {
+  if (parsed.data.providerKind !== certifiedCaps.providerKind) {
     fail(
       "provider_kind_mismatch",
-      `Expected providerKind "${expectedProviderKind}", received "${parsed.data.providerKind}".`,
+      `Expected providerKind "${certifiedCaps.providerKind}", received "${parsed.data.providerKind}".`,
       location,
     );
   }
@@ -145,41 +221,90 @@ function validateResult(
           location,
         );
       }
+      if (!certifiedCaps.deliveryKinds.includes(rate.deliveryKind)) {
+        fail(
+          "undeclared_delivery_kind",
+          `Rate option "${rate.serviceCode}" returned deliveryKind "${rate.deliveryKind}" which is not declared in capabilities.deliveryKinds.`,
+          location,
+        );
+      }
     }
   }
   return parsed.data;
 }
 
+function cloneRequestWithKey(request: CarrierRateQuoteRequest, suffix: string): CarrierRateQuoteRequest {
+  return {
+    ...request,
+    requestKey: `${request.requestKey}::${suffix}`,
+    origin: { ...request.origin },
+    destination: { ...request.destination },
+    parcels: request.parcels.map((p) => ({ ...p })),
+    ...(request.serviceFilter !== undefined ? { serviceFilter: [...request.serviceFilter] } : {}),
+  };
+}
+
+interface CheckedInvocation {
+  readonly result: CarrierRateQuoteResult;
+  readonly ioDelta: number;
+  readonly faultLogDelta: number | null;
+  readonly addedFaults: readonly RecordedShippingRateFault[];
+}
+
 async function invokeChecked(
   harness: ShippingRateScenarioHarness,
   request: CarrierRateQuoteRequest,
+  certifiedCaps: CarrierRateCapabilities,
+  certifiedDigest: string,
   sensitiveValues: readonly string[] | undefined,
   location: string,
-): Promise<{ result: CarrierRateQuoteResult; ioDelta: number; faultLogDelta: number | null }> {
+): Promise<CheckedInvocation> {
   rejectProxy(harness, location);
-  rejectProxy(harness.adapter, location);
-  const ioBefore = harness.readIoCount();
-  const faultBefore = harness.readFaultLog ? readScriptedShippingRateFaultLog(harness.readFaultLog()).length : null;
-  let rawResult: CarrierRateQuoteResult;
+  rejectProxy(harness.request, location);
+  rejectProxy(request, location);
+  const { capabilities: harnessCaps, digest: harnessDigest } = snapshotCapabilities(harness.adapter, location);
+  if (harnessCaps.providerKind !== certifiedCaps.providerKind || harnessDigest !== certifiedDigest) {
+    fail(
+      "capability_drift",
+      "Every scenario harness for a subject must expose identical capabilities and providerKind.",
+      location,
+    );
+  }
+
+  const ioBefore = readValidIoCount(harness, location);
+  // Pin one authenticated fault-log handle before invocation to prevent dual-handle forgery.
+  const faultHandle = harness.readFaultLog ? harness.readFaultLog() : null;
+  const faultBefore = faultHandle ? readScriptedShippingRateFaultLog(faultHandle).length : null;
+
+  let rawResult: unknown;
   try {
     rawResult = await harness.adapter.quoteRates(request);
   } catch (error) {
-    assertNoSensitiveLeak(error instanceof Error ? `${error.name}: ${error.message}` : String(error), sensitiveValues, location);
+    assertNoSensitiveLeak(error, sensitiveValues, location);
     fail("uncaught_throw", "quoteRates() threw an uncaught exception instead of returning a structured CarrierRateQuoteResult.", location);
   }
   assertNoSensitiveLeak(rawResult, sensitiveValues, location);
-  const result = validateResult(rawResult, harness.adapter.capabilities.providerKind, request.currency, location);
-  const ioDelta = harness.readIoCount() - ioBefore;
-  const faultLogDelta =
-    harness.readFaultLog && faultBefore !== null
-      ? readScriptedShippingRateFaultLog(harness.readFaultLog()).length - faultBefore
-      : null;
-  return { result, ioDelta, faultLogDelta };
+  const result = validateResult(rawResult, certifiedCaps, request.currency, location);
+
+  const ioAfter = readValidIoCount(harness, location);
+  const ioDelta = ioAfter - ioBefore;
+  if (ioDelta < 0) {
+    fail("negative_io_delta", "readIoCount() decreased during quoteRates() invocation.", location);
+  }
+
+  let faultLogDelta: number | null = null;
+  let addedFaults: readonly RecordedShippingRateFault[] = [];
+  if (faultHandle !== null && faultBefore !== null) {
+    const afterLog = readScriptedShippingRateFaultLog(faultHandle);
+    faultLogDelta = afterLog.length - faultBefore;
+    addedFaults = afterLog.slice(faultBefore);
+  }
+  return { result, ioDelta, faultLogDelta, addedFaults };
 }
 
 function assertZeroIoRefusal(
   scenario: string,
-  outcome: { result: CarrierRateQuoteResult; ioDelta: number; faultLogDelta: number | null },
+  outcome: CheckedInvocation,
   allowedReasons: readonly CarrierRateRefusalReason[],
   location: string,
   ledger: ShippingRateLedgerEntry[],
@@ -216,25 +341,30 @@ export async function runShippingRateAdapterConformance(
 
   for (const subject of subjects) {
     rejectProxy(subject, `subject:${subject?.id ?? "unknown"}`);
+    if (typeof subject.id !== "string" || subject.id.trim().length === 0) {
+      fail("invalid_subject_id", "Provide a non-empty opaque subject.id.", "subject");
+    }
+    assertNoSensitiveLeak(subject.id, subject.sensitiveValues, `subject:${subject.id}`);
     const ledger: ShippingRateLedgerEntry[] = [];
     const loc = (scenario: string) => `${subject.id}:${scenario}`;
 
     // 1. Validate capabilities & happy path
     const happyHarness = subject.happyQuote();
     rejectProxy(happyHarness, loc("happyQuote"));
-    rejectProxy(happyHarness.adapter, loc("happyQuote"));
-    const capsParsed = carrierRateCapabilitiesSchema.safeParse(happyHarness.adapter.capabilities);
-    if (!capsParsed.success) {
-      fail(
-        "invalid_capabilities",
-        `capabilities failed schema validation (${capsParsed.error.issues[0]?.path.join(".") || "$"}: ${capsParsed.error.issues[0]?.message ?? "invalid"}).`,
-        loc("capabilities"),
-      );
-    }
-    const caps = capsParsed.data;
-    const capabilityDigest = computeCapabilityDigest(happyHarness.adapter);
+    const { capabilities: caps, digest: capabilityDigest } = snapshotCapabilities(
+      happyHarness.adapter,
+      loc("capabilities"),
+    );
+    const baseRequest = cloneRequestWithKey(happyHarness.request, "base");
 
-    const happy = await invokeChecked(happyHarness, happyHarness.request, subject.sensitiveValues, loc("happyQuote"));
+    const happy = await invokeChecked(
+      happyHarness,
+      happyHarness.request,
+      caps,
+      capabilityDigest,
+      subject.sensitiveValues,
+      loc("happyQuote"),
+    );
     if (happy.result.kind !== "quoted") {
       fail("happy_not_quoted", `Expected kind "quoted" on happyQuote, observed "${happy.result.kind}".`, loc("happyQuote"));
     }
@@ -245,7 +375,14 @@ export async function runShippingRateAdapterConformance(
 
     // 2. No-rates witness
     const noRatesHarness = subject.noRatesQuote();
-    const noRates = await invokeChecked(noRatesHarness, noRatesHarness.request, subject.sensitiveValues, loc("noRatesQuote"));
+    const noRates = await invokeChecked(
+      noRatesHarness,
+      noRatesHarness.request,
+      caps,
+      capabilityDigest,
+      subject.sensitiveValues,
+      loc("noRatesQuote"),
+    );
     if (noRates.result.kind !== "no_rates") {
       fail("no_rates_mismatch", `Expected kind "no_rates" on noRatesQuote, observed "${noRates.result.kind}".`, loc("noRatesQuote"));
     }
@@ -254,86 +391,92 @@ export async function runShippingRateAdapterConformance(
     }
     ledger.push({ scenario: "noRatesQuote", role: "happy", ioDelta: noRates.ioDelta, faultLogDelta: noRates.faultLogDelta });
 
-    // 3. Zero-I/O refusals
-    const zeroWeightReq: CarrierRateQuoteRequest = {
-      ...happyHarness.request,
-      parcels: [{ ...(happyHarness.request.parcels[0] ?? { weightGrams: 100 }), weightGrams: 0 }],
+    // 3. Zero-I/O refusals (fresh harness & distinct requestKey per probe)
+    const runProbe = async (
+      scenario: string,
+      request: CarrierRateQuoteRequest,
+      allowedReasons: readonly CarrierRateRefusalReason[],
+    ): Promise<void> => {
+      const freshHarness = subject.happyQuote();
+      const outcome = await invokeChecked(
+        freshHarness,
+        request,
+        caps,
+        capabilityDigest,
+        subject.sensitiveValues,
+        loc(scenario),
+      );
+      assertZeroIoRefusal(scenario, outcome, allowedReasons, loc(scenario), ledger);
     };
-    assertZeroIoRefusal(
+
+    await runProbe(
       "zero_weight_parcel",
-      await invokeChecked(happyHarness, zeroWeightReq, subject.sensitiveValues, loc("zero_weight_parcel")),
+      {
+        ...cloneRequestWithKey(baseRequest, "zero-weight"),
+        parcels: [{ ...(baseRequest.parcels[0] ?? { weightGrams: 100 }), weightGrams: 0 }],
+      },
       ["invalid_parcel"],
-      loc("zero_weight_parcel"),
-      ledger,
     );
 
-    const emptyParcelsReq: CarrierRateQuoteRequest = { ...happyHarness.request, parcels: [] };
-    assertZeroIoRefusal(
+    await runProbe(
       "empty_parcels",
-      await invokeChecked(happyHarness, emptyParcelsReq, subject.sensitiveValues, loc("empty_parcels")),
+      { ...cloneRequestWithKey(baseRequest, "empty-parcels"), parcels: [] },
       ["invalid_parcel"],
-      loc("empty_parcels"),
-      ledger,
     );
 
-    if (!caps.multiParcel && happyHarness.request.parcels.length > 0) {
-      const firstParcel = happyHarness.request.parcels[0]!;
-      const multiParcelReq: CarrierRateQuoteRequest = {
-        ...happyHarness.request,
-        parcels: [firstParcel, firstParcel],
-      };
-      assertZeroIoRefusal(
+    if (!caps.multiParcel && baseRequest.parcels.length > 0) {
+      const firstParcel = baseRequest.parcels[0]!;
+      await runProbe(
         "multi_parcel_unsupported",
-        await invokeChecked(happyHarness, multiParcelReq, subject.sensitiveValues, loc("multi_parcel_unsupported")),
+        { ...cloneRequestWithKey(baseRequest, "multi-parcel"), parcels: [{ ...firstParcel }, { ...firstParcel }] },
         ["multi_parcel_unsupported"],
-        loc("multi_parcel_unsupported"),
-        ledger,
       );
     }
 
-    if (caps.dimensionsRequired && happyHarness.request.parcels.length > 0) {
-      const firstParcel = happyHarness.request.parcels[0]!;
-      const missingDimsReq: CarrierRateQuoteRequest = {
-        ...happyHarness.request,
-        parcels: [{ weightGrams: firstParcel.weightGrams }],
-      };
-      assertZeroIoRefusal(
+    if (caps.dimensionsRequired && baseRequest.parcels.length > 0) {
+      const firstParcel = baseRequest.parcels[0]!;
+      await runProbe(
         "dimensions_required",
-        await invokeChecked(happyHarness, missingDimsReq, subject.sensitiveValues, loc("dimensions_required")),
+        { ...cloneRequestWithKey(baseRequest, "missing-dims"), parcels: [{ weightGrams: firstParcel.weightGrams }] },
         ["invalid_parcel"],
-        loc("dimensions_required"),
-        ledger,
       );
+    }
+
+    if (caps.supportedOriginCountries !== "any") {
+      const req =
+        subject.unsupportedOriginCountryRequest?.() ?? {
+          ...cloneRequestWithKey(baseRequest, "unsupported-origin"),
+          origin: { ...baseRequest.origin, countryCode: caps.supportedOriginCountries.includes("AQ") ? "BV" : "AQ" },
+        };
+      await runProbe("unsupported_origin_country", req, ["unsupported_country"]);
     }
 
     if (caps.supportedDestinationCountries !== "any") {
       const req =
         subject.unsupportedCountryRequest?.() ?? {
-          ...happyHarness.request,
-          destination: { ...happyHarness.request.destination, countryCode: "AQ" },
+          ...cloneRequestWithKey(baseRequest, "unsupported-dest"),
+          destination: {
+            ...baseRequest.destination,
+            countryCode: caps.supportedDestinationCountries.includes("AQ") ? "BV" : "AQ",
+          },
         };
-      assertZeroIoRefusal(
-        "unsupported_country",
-        await invokeChecked(happyHarness, req, subject.sensitiveValues, loc("unsupported_country")),
-        ["unsupported_country"],
-        loc("unsupported_country"),
-        ledger,
-      );
+      await runProbe("unsupported_country", req, ["unsupported_country"]);
     }
 
     if (caps.supportedCurrencies.length > 0) {
-      const req =
-        subject.unsupportedCurrencyRequest?.() ?? {
-          ...happyHarness.request,
-          currency: caps.supportedCurrencies.includes("JPY") ? "CHF" : "JPY",
-        };
-      assertZeroIoRefusal(
-        "unsupported_currency",
-        await invokeChecked(happyHarness, req, subject.sensitiveValues, loc("unsupported_currency")),
-        ["unsupported_currency"],
-        loc("unsupported_currency"),
-        ledger,
-      );
+      let req = subject.unsupportedCurrencyRequest?.();
+      if (!req) {
+        const candidate = FALLBACK_UNSUPPORTED_CURRENCIES.find((c) => !caps.supportedCurrencies.includes(c));
+        if (!candidate) {
+          fail(
+            "unsupported_currency_probe_required",
+            "All fallback unsupported currencies are declared supported; supply subject.unsupportedCurrencyRequest().",
+            loc("unsupported_currency"),
+          );
+        }
+        req = { ...cloneRequestWithKey(baseRequest, "unsupported-currency"), currency: candidate };
+      }
+      await runProbe("unsupported_currency", req, ["unsupported_currency"]);
     }
 
     // 4. Full-mode authenticated transport fault certification
@@ -345,17 +488,97 @@ export async function runShippingRateAdapterConformance(
           loc("certification"),
         );
       }
+      rejectProxy(subject.certification, loc("certification"));
+
       const faultCases: readonly {
         readonly name: ShippingRateTransportFaultScenario;
         readonly factory: () => ShippingRateScenarioHarness;
         readonly reasons: readonly CarrierRateRefusalReason[];
         readonly retryable: boolean;
+        readonly verifyFault: (fault: RecordedShippingRateFault, result: Extract<CarrierRateQuoteResult, { kind: "refused" }>) => void;
       }[] = [
-        { name: "http-5xx", factory: subject.certification.http5xx, reasons: ["provider_unavailable"], retryable: true },
-        { name: "http-auth-failure", factory: subject.certification.httpAuthFailure, reasons: ["authentication_failed"], retryable: false },
-        { name: "rate-limited-429", factory: subject.certification.rateLimited429, reasons: ["rate_limited"], retryable: true },
-        { name: "timeout", factory: subject.certification.timeout, reasons: ["timeout"], retryable: true },
-        { name: "transport-error", factory: subject.certification.transportError, reasons: ["provider_unavailable", "timeout"], retryable: true },
+        {
+          name: "http-5xx",
+          factory: subject.certification.http5xx,
+          reasons: ["provider_unavailable"],
+          retryable: true,
+          verifyFault: (fault) => {
+            if (fault.kind !== "http-failure" || fault.status === undefined || fault.status < 500 || fault.status > 599) {
+              fail(
+                "fault_kind_mismatch",
+                `Scenario "http-5xx" must script an authenticated http-failure with status 500..599 (observed ${fault.kind}/${String(fault.status)}).`,
+                loc("http-5xx"),
+              );
+            }
+          },
+        },
+        {
+          name: "http-auth-failure",
+          factory: subject.certification.httpAuthFailure,
+          reasons: ["authentication_failed"],
+          retryable: false,
+          verifyFault: (fault) => {
+            if (fault.kind !== "http-failure" || (fault.status !== 401 && fault.status !== 403)) {
+              fail(
+                "fault_kind_mismatch",
+                `Scenario "http-auth-failure" must script an authenticated http-failure with status 401 or 403 (observed ${fault.kind}/${String(fault.status)}).`,
+                loc("http-auth-failure"),
+              );
+            }
+          },
+        },
+        {
+          name: "rate-limited-429",
+          factory: subject.certification.rateLimited429,
+          reasons: ["rate_limited"],
+          retryable: true,
+          verifyFault: (fault, result) => {
+            if (fault.kind !== "rate-limited-429" || fault.retryAfterSeconds === undefined) {
+              fail(
+                "fault_kind_mismatch",
+                `Scenario "rate-limited-429" must script an authenticated rate-limited-429 with positive retryAfterSeconds.`,
+                loc("rate-limited-429"),
+              );
+            }
+            if (result.retryAfterSeconds !== fault.retryAfterSeconds) {
+              fail(
+                "retry_after_mismatch",
+                `Adapter must preserve retryAfterSeconds=${fault.retryAfterSeconds} on HTTP 429 (observed ${String(result.retryAfterSeconds)}).`,
+                loc("rate-limited-429"),
+              );
+            }
+          },
+        },
+        {
+          name: "timeout",
+          factory: subject.certification.timeout,
+          reasons: ["timeout"],
+          retryable: true,
+          verifyFault: (fault) => {
+            if (fault.kind !== "timeout") {
+              fail(
+                "fault_kind_mismatch",
+                `Scenario "timeout" must script an authenticated timeout fault (observed ${fault.kind}).`,
+                loc("timeout"),
+              );
+            }
+          },
+        },
+        {
+          name: "transport-error",
+          factory: subject.certification.transportError,
+          reasons: ["provider_unavailable", "timeout"],
+          retryable: true,
+          verifyFault: (fault) => {
+            if (fault.kind !== "transport-error") {
+              fail(
+                "fault_kind_mismatch",
+                `Scenario "transport-error" must script an authenticated transport-error fault (observed ${fault.kind}).`,
+                loc("transport-error"),
+              );
+            }
+          },
+        },
       ];
 
       for (const tc of faultCases) {
@@ -363,12 +586,19 @@ export async function runShippingRateAdapterConformance(
         if (!harness.readFaultLog) {
           fail(
             "missing_fault_log_handle",
-            `mode: 'full' requires harness.readFaultLog() returning fake.calls from createScriptedShippingRateFake.`,
+            "mode: 'full' requires harness.readFaultLog() returning fake.calls from createScriptedShippingRateFake.",
             loc(tc.name),
           );
         }
-        const outcome = await invokeChecked(harness, harness.request, subject.sensitiveValues, loc(tc.name));
-        if (outcome.ioDelta !== 1 || outcome.faultLogDelta !== 1) {
+        const outcome = await invokeChecked(
+          harness,
+          harness.request,
+          caps,
+          capabilityDigest,
+          subject.sensitiveValues,
+          loc(tc.name),
+        );
+        if (outcome.ioDelta !== 1 || outcome.faultLogDelta !== 1 || outcome.addedFaults.length !== 1) {
           fail(
             "fault_io_mismatch",
             `Expected ioDelta === 1 and authenticated faultLogDelta === 1 on "${tc.name}", observed ioDelta=${outcome.ioDelta}, faultLogDelta=${String(outcome.faultLogDelta)}.`,
@@ -388,6 +618,7 @@ export async function runShippingRateAdapterConformance(
             loc(tc.name),
           );
         }
+        tc.verifyFault(outcome.addedFaults[0]!, outcome.result);
         ledger.push({ scenario: tc.name, role: "transport-fault", ioDelta: outcome.ioDelta, faultLogDelta: outcome.faultLogDelta });
       }
     }
