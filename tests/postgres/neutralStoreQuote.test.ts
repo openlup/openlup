@@ -295,9 +295,10 @@ for (const { configuration, multiSize } of [{ configuration: 'supplements', mult
         await refused('checkout.create',{...accepted,cart:{...cart,lines:[{...cart.lines[0],quantity:4}]}},'starter_command_conflict',key);
         await refused('payment.simulate',{orderRef:crypto.randomUUID(),token:made.value.token,outcome:'captured'},'starter_order_not_found');
         const corrupt=structuredClone(original);delete corrupt.quoteSnapshot.quote.context.starterRenewalTerms.linePricing[0].quoteLine;
-        await owner.query('UPDATE public.commerce_orders SET metadata=$2::jsonb WHERE id=$1',[made.value.orderRef,JSON.stringify(corrupt)]);
-        await refused('payment.simulate',{orderRef:made.value.orderRef,token:made.value.token,outcome:'captured'},'starter_quote_refresh_required');
-        await owner.query('UPDATE public.commerce_orders SET metadata=$2::jsonb WHERE id=$1',[made.value.orderRef,JSON.stringify(original)]);
+        const beforeMutation=await graph();
+        await assert.rejects(owner.query('UPDATE public.commerce_orders SET metadata=$2::jsonb WHERE id=$1',
+          [made.value.orderRef,JSON.stringify(corrupt)]),{ code:'55000',message:'catalog_acceptance_immutable' });
+        assert.deepEqual(await graph(),beforeMutation);
         const paid=(await call('payment.simulate',{orderRef:made.value.orderRef.toUpperCase(),token:made.value.token,outcome:'captured'})).body;
         assert.equal(paid.ok,true,paid.code);assert.equal(paid.value.status,'paid');assert.equal(paid.value.renewalAttachment,'complete');
         const attachment=(await owner.query('SELECT subscription_id,purchase_facts,completed_at FROM public.subscription_renewal_attachments WHERE order_id=$1',[made.value.orderRef])).rows[0];
