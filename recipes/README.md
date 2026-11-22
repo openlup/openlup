@@ -37,3 +37,4 @@ npx --no -- eslint recipes/
 See [index.json](index.json) for the machine-readable catalog:
 
 - [`payments/adyen`](payments/adyen/recipe.json) — **Exemplar** zero-SDK Adyen Checkout v71 recipe (Drop-in sessions + `recipes/payments/adyen/browser/csp.json`, bank redirect, unattended `ContAuth` recurring, async cancels, canonical HMAC-SHA256 webhook verification).
+- [`tax/avalara`](tax/avalara/recipe.json) — **Experimental** zero-SDK Avalara AvaTax REST v2 exclusive-tax recipe (`SalesOrder` quotes, `SalesInvoice` commits, `ReturnInvoice` partial/remainder reversals, `DocVoided` full voids, retail delivery fees, `compareTaxRecalculationProbe` support).
