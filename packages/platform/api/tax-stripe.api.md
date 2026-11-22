@@ -167,13 +167,18 @@ type Reservation = {
     requestDigest: string;
     send: Send;
 };
+/** Verified capture facts reserved for a tax sale.
+ * @beta
+ * @experimental
+ */
+export type StripeTaxCaptureBinding = {
+    ref: string;
+    currency: string;
+    payableMinor: number;
+    capturedAt: string;
+};
 export type SaleReservation = Reservation & {
-    capture: {
-        ref: string;
-        currency: string;
-        payableMinor: number;
-        capturedAt: string;
-    };
+    capture: StripeTaxCaptureBinding;
 };
 export type RefundReservation = Reservation & {
     /** Immutable verified refund and remaining balances captured when this reversal was reserved. */
@@ -188,10 +193,14 @@ export type RefundReservation = Reservation & {
         units: readonly Unit[];
     };
 };
-type RequestBinding = {
+/** Original reporting request and verified facts used to reserve the effect.
+ * @beta
+ * @experimental
+ */
+export type StripeTaxRequestBinding = {
     operation: "commit";
     request: TaxCommitRequestV1;
-    capture: SaleReservation["capture"];
+    capture: StripeTaxCaptureBinding;
 } | {
     operation: "reverse";
     request: TaxReverseRequestV1;
@@ -205,7 +214,7 @@ type RequestBinding = {
  * @beta
  * @experimental
  */
-export declare function makeStripeTaxRequestDigest(binding: RequestBinding): string;
+export declare function makeStripeTaxRequestDigest(binding: StripeTaxRequestBinding): string;
 export interface Effects {
     /** These callbacks read authoritative records. The host serializes sends and persists effects and local closes. */
     accepted(ref: TaxCommitRequestV1["calculationRef"]): Accepted | undefined;
@@ -225,6 +234,7 @@ export {};
 import type { TaxCalculationPortV1 } from "../contracts/index.js";
 import type { Client, Effects, StripeQuoteMarketPack } from "./effects.js";
 export { makeStripeTaxRequestDigest } from "./effects.js";
+export type { StripeTaxCaptureBinding, StripeTaxRequestBinding } from "./effects.js";
 /** Host-owned dependencies for one qualified account, mode, market and currency.
  * @beta
  * @experimental

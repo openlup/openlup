@@ -1,3 +1,4 @@
+import { taxDigest } from "../../src/tax/digest.js";
 import type { TaxCoverageInputV1, TaxCoverageV1, TaxQuoteInputV1 } from "../../src/tax/contracts/index.js";
 
 export const date = "2030-01-01T00:00:00.000Z";
@@ -95,4 +96,10 @@ export function localOptions() {
     rounding: "half_up_largest_remainder", calculationLifetimeMs: 10_000, validityWindowMs: 2_000,
     rules: [rateRule], registrations: [localRegistration],
   } as const;
+}
+
+// Bind the raw fixture so adapters reach class validation.
+export function withoutTaxClass(request: import("../../src/tax/contracts/index.js").TaxQuoteRequestV1) {
+  const input = { ...request.input, lines: [{ ...request.input.lines[0], taxClass: "" }, ...request.input.lines.slice(1)] };
+  return { ...request, input, inputDigest: taxDigest("input", input) };
 }

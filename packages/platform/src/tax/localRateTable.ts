@@ -9,11 +9,10 @@ import type {
 import { array, checked, invalid, object, oneOf, schema, variant } from "./contracts/decode.js";
 import { cellKey, compareCells, declarationKey, includesInstant } from "./contracts/identity.js";
 import {
-  instant, interval, moneyRef, rate, ref, scope, taxCloseInputV1Schema,
-  taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema, unsigned,
+  instant, interval, moneyRef, rate, ref, scope, taxCloseInputV1Schema, unsigned,
 } from "./contracts/schemas.js";
 import { reconcileTaxCoverage } from "./coverage.js";
-import { taxDigest, taxFiscalDigest, verifyTaxQuoteRequest, verifyTaxQuoteResult } from "./digest.js";
+import { checkedFiscalValidity, checkedQuoteRequest, taxDigest, taxFiscalDigest, verifyTaxQuoteResult } from "./digest.js";
 
 type Evidence = TaxCalculationEvidenceV1;
 type Cell = TaxQuoteInputV1["required"][number];
@@ -231,12 +230,12 @@ export function localRateTable(options: LocalRateTableOptionsV1): TaxCalculation
     if (typeof request !== "object" || request === null) {
       return refuse("tax_invalid_input", "", "Supply an ordinary quote request document.");
     }
-    const invalidRequest = verifyTaxQuoteRequest(request);
-    if (invalidRequest) {
-      return /^\/input\/(?:lines|delivery|required)\/\d+\/(?:target\/)?taxClass$/.test(invalidRequest.field)
-        ? refuse("tax_class_missing", invalidRequest.field, "Assign a valid tax class to the named component.") : invalidRequest;
+    const checked = checkedQuoteRequest(request);
+    if ("kind" in checked) {
+      return /^\/input\/(?:lines|delivery|required)\/\d+\/(?:target\/)?taxClass$/.test(checked.field)
+        ? refuse("tax_class_missing", checked.field, "Assign a valid tax class to the named component.") : checked;
     }
-    const { input, key, inputDigest } = taxQuoteRequestV1Schema.parse(request);
+    const { input, key, inputDigest } = checked;
     const mismatch = scopeMismatch(input);
     if (mismatch) return mismatch;
     const assessment = assess(input);
@@ -266,8 +265,9 @@ export function localRateTable(options: LocalRateTableOptionsV1): TaxCalculation
     },
     async readFiscalValidity(request) {
       try {
-        if (verifyTaxQuoteRequest(request)) return unavailable();
-        const { original, evidence, evidenceDigest, chargeAt, current } = taxFiscalValidityRequestV1Schema.parse(request);
+        const checked = checkedFiscalValidity(request);
+        if ("kind" in checked) return unavailable();
+        const { original, evidence, evidenceDigest, chargeAt, current } = checked;
         if (scopeMismatch(original.input) || scopeMismatch(current)) return unavailable();
         const [, originalTable, originalFacts] = evidence.calculationRef.split(".");
         if (!/^[a-f0-9]{64}$/.test(originalTable ?? "") || !/^[a-f0-9]{64}$/.test(originalFacts ?? "")

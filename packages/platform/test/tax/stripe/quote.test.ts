@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TaxQuoteRequestV1, TaxQuoteResultV1 } from "../../../src/tax/contracts/index.js";
-import { makeTaxQuoteRequest, verifyTaxQuoteResult } from "../../../src/tax/digest.js";
+import { makeTaxQuoteRequest, taxDigest, verifyTaxQuoteResult } from "../../../src/tax/digest.js";
 import { StripeQuoteReferenceConflict } from "../../../src/tax/stripe/client.js";
 import { quoteStripeTax } from "../../../src/tax/stripe/quote.js";
 import { date, later } from "../fixtures.js";
@@ -296,7 +296,9 @@ describe("private tax calculation quote", () => {
     const original = f.request();
     expect(await f.run({ ...original, inputDigest: "b".repeat(64) })).toMatchObject({ code: "tax_reference_conflict" });
     const inclusive = { ...original.input, money: { ...original.input.money, amountBasis: "inclusive" } };
-    expect(await f.run({ ...original, input: inclusive } as unknown as TaxQuoteRequestV1))
+    const changed = { ...original, input: inclusive } as unknown as TaxQuoteRequestV1;
+    expect(await f.run(changed)).toMatchObject({ code: "tax_reference_conflict", field: "/inputDigest" });
+    expect(await f.run({ ...changed, inputDigest: taxDigest("input", inclusive) }))
       .toMatchObject({ code: "tax_scope_mismatch", field: "/input/money/amountBasis" });
     expect(await f.run(makeTaxQuoteRequest(original.key, { ...original.input, scope: { ...original.input.scope, accountRef: "another" },
       coverage: { ...original.input.coverage, accountRef: "another" } }))).toMatchObject({ code: "tax_scope_mismatch" });

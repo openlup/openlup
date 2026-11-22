@@ -7,12 +7,14 @@ function compare(left: readonly string[], right: readonly string[]): number {
   return left.reduce((order, key, i) => order || (key === right[i] ? 0 : key < right[i] ? -1 : 1), 0);
 }
 
-function cellTuple(cell: Cell): readonly string[] {
+type CellIdentity = Pick<Cell, "jurisdiction" | "taxKind"> & { target: Pick<Cell["target"], "kind" | "key"> };
+
+function cellTuple(cell: CellIdentity): readonly string[] {
   return [cell.target.kind, cell.target.key, cell.jurisdiction, cell.taxKind];
 }
 
 export const cellKey = (cell: Cell): string => JSON.stringify(cellTuple(cell));
-export const compareCells = (left: Cell, right: Cell): number => compare(cellTuple(left), cellTuple(right));
+export const compareCells = (left: CellIdentity, right: CellIdentity): number => compare(cellTuple(left), cellTuple(right));
 
 export function sameCell(left: Cell, right: Cell): boolean {
   if (cellKey(left) !== cellKey(right) || left.level !== right.level || left.sourcing !== right.sourcing) return false;
