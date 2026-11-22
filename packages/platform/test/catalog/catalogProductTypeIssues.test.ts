@@ -20,8 +20,8 @@ describe("shared definition issues", () => {
     const input = { ...definition, units: [...definition.units, ...definition.units], netContentUnits: ["example:unknown"], dimensions: [{ key: "finish", kind: "choice", values: ["matte", "matte"] }] };
     const issues = catalogProductTypeIssues([input]);
     expect(issues).toEqual([
-      { code: "definition_duplicate_unit", path: "/0/units/1/code" },
-      { code: "definition_unknown_net_content_unit", path: "/0/netContentUnits/0" },
+      { code: "definition_duplicate_unit", path: "/0/units/1/code", fix: "Remove the duplicate unit code." },
+      { code: "definition_unknown_net_content_unit", path: "/0/netContentUnits/0", fix: "Declare the unit or remove its reference." },
       { code: "definition_duplicate_choice", path: "/0/dimensions/0/values/1" },
     ]);
     try { createCatalogProductTypeRegistry([input as CatalogProductTypeDefinition]); expect.fail("registry admitted invalid definition"); }
@@ -44,7 +44,7 @@ describe("shared definition issues", () => {
     [{ validatorRef: "unversioned" }, "definition_validator_ref_invalid", "/0/validatorRef"],
     [{ units: [{ ...definition.units[0], factor: { canonicalUnit: "openlup:g", unscaled: "1", scale: 0 } }] }, "definition_unit_factor_invalid", "/0/units/0/factor"],
   ])("reports admission fault %s", (change, code, path) => {
-    expect(catalogProductTypeIssues([{ ...definition, ...change }])).toContainEqual({ code, path });
+    expect(catalogProductTypeIssues([{ ...definition, ...change }])).toContainEqual(expect.objectContaining({ code, path }));
   });
   it("retains distinct duplicate, role and axis refusals", () => {
     expect(catalogProductTypeIssues([{ ...definition, taxClass: "standard" }])).toEqual([]);
@@ -81,11 +81,25 @@ it("keeps exact factor and declaration refusals at their original pack positions
     types: [{ ...definition, version: 2 }, { ...definition, units: [...definition.units, custom, ...definition.units],
       netContentUnits: [custom.code, "example:unknown", custom.code] }] };
   const { issues } = inspectCatalogPack(pack, true);
-  const expected = { code: "definition_unit_factor_invalid", path: "/types/1/units/1/factor", quantityCause: "quantity_unknown_unit", fix: expect.any(String) };
-  expect(issues).toEqual([expected,
-    { code: "definition_duplicate_unit", path: "/types/1/units/2/code" },
-    { code: "definition_duplicate_net_content_unit", path: "/types/1/netContentUnits/2" },
-    { code: "definition_unknown_net_content_unit", path: "/types/1/netContentUnits/1" },
-  ]);
-  expect(invalidCatalogPack(issues[0]!)).toMatchObject({ message: "invalid_catalog_pack", issue: expected });
+  const expected = [
+    { code: "definition_unit_factor_invalid", path: "/types/1/units/1/factor", quantityCause: "quantity_unknown_unit", fix: expect.any(String) },
+    { code: "definition_duplicate_unit", path: "/types/1/units/2/code", fix: "Remove the duplicate unit code." },
+    { code: "definition_duplicate_net_content_unit", path: "/types/1/netContentUnits/2", fix: "Remove the duplicate net-content unit." },
+    { code: "definition_unknown_net_content_unit", path: "/types/1/netContentUnits/1", fix: "Declare the unit or remove its reference." },
+  ];
+  expect(issues).toEqual(expected);
+  issues.forEach((issue, index) => {
+    expect(invalidCatalogPack(issue)).toMatchObject({ message: "invalid_catalog_pack", issue: expected[index] });
+  });
+});
+
+it.each(["openlup:piece", "openlup:l"])("refuses a factorless %s declared as mass for net content", code => {
+  const pack = { id: "example:item", namespace: "example", version: 1, openlupRange: "1.x", capabilities: {}, taxClasses: [],
+    types: [{ ...definition, version: 2 }, { ...definition, units: [...definition.units.filter(unit => unit.code !== code),
+      { code, dimension: "mass", integral: true }], netContentUnits: [code] }] };
+  const unitIndex = pack.types[1]!.units.length - 1;
+  expect(inspectCatalogPack(pack, true).issues).toEqual([{
+    code: "definition_unit_factor_invalid", path: `/types/1/units/${unitIndex}/factor`,
+    quantityCause: "quantity_cross_dimension", fix: expect.any(String),
+  }]);
 });

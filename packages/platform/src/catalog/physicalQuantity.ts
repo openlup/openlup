@@ -52,13 +52,17 @@ export function resolveTypedCatalogQuantity(input: unknown, definition: Definiti
   const authored: CatalogQuantity = { ...decimal(input), dimension: input.dimension, unit: input.unit };
   if (kind === "grossMass" && authored.dimension !== "mass") throw new CatalogQuantityError("quantity_cross_dimension");
   const declared = definition.units.filter(unit => unit.code === authored.unit);
-  if (declared.length > 1 || kind === "netContent" && definition.netContentUnits.filter(code => code === authored.unit).length > 1)
+  if (declared.length > 1)
     throw new UnqualifiedQuantityUnit("quantity_unknown_unit");
-  if (declared.length === 0 || kind === "netContent" && !definition.netContentUnits.includes(authored.unit))
-    throw new CatalogQuantityError("quantity_unknown_unit");
-  const selected = declared[0]!;
-  if (selected.dimension !== authored.dimension)
+  const selected = declared[0];
+  if (selected && selected.dimension !== authored.dimension)
     throw new CatalogQuantityError("quantity_cross_dimension");
+  if (kind === "netContent") {
+    const eligible = definition.netContentUnits.filter(code => code === authored.unit);
+    if (eligible.length > 1) throw new UnqualifiedQuantityUnit("quantity_unknown_unit");
+    if (eligible.length === 0) throw new CatalogQuantityError("quantity_unknown_unit");
+  }
+  if (!selected) throw new CatalogQuantityError("quantity_unknown_unit");
   let unit: CatalogQuantityUnit;
   try { unit = qualifyTypedCatalogUnit(selected); }
   catch (error) {

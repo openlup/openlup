@@ -206,10 +206,23 @@ export interface MixedProductRead {
 
 class MixedProductDocumentError extends CommerceQuoteCatalogReadError {
   readonly path: 'documentRevision' | 'documentRevision.digest';
+  readonly fix: string;
   constructor(code: 'catalog_document_schema_invalid' | 'catalog_document_digest_mismatch') {
     super(code);
     this.path = code === 'catalog_document_schema_invalid' ? 'documentRevision' : 'documentRevision.digest';
+    this.fix = code === 'catalog_document_schema_invalid'
+      ? 'Recover the admitted document and its revision.'
+      : 'Replay the original document bytes and digest.';
   }
+}
+
+function isMixedSibling(row: unknown): row is MixedProductRead['evidence']['siblings'][number] {
+  if (!isRecord(row) || typeof row.skuId !== 'string' || typeof row.sku !== 'string'
+    || !isRecord(row.primaryUnitGtin) || typeof row.primaryUnitGtin.issuer !== 'string' || typeof row.primaryUnitGtin.unitGtin !== 'string'
+    || !isRecord(row.issuingDraft) || typeof row.issuingDraft.draftId !== 'string'
+    || !Number.isSafeInteger(row.issuingDraft.revision) || typeof row.issuingDraft.commandKey !== 'string'
+    || typeof row.issuingDraft.fingerprint !== 'string') return false;
+  return typedPhysical({ netContent: row.netContent, issuer: row.primaryUnitGtin.issuer, unitGtin: row.primaryUnitGtin.unitGtin });
 }
 
 function verifyMixedProductDocument(value: unknown, schemaId: string, read: MixedProductRead,
@@ -228,7 +241,12 @@ function verifyMixedProductDocument(value: unknown, schemaId: string, read: Mixe
     if (error instanceof CommerceQuoteCatalogReadError) return invalid();
     throw error;
   }
-  const siblings = new Map(evidence.siblings.map(row => [row.skuId.toLowerCase(), row]));
+  if (!Array.isArray(evidence.siblings)) return invalid();
+  const siblings = new Map<string, MixedProductRead['evidence']['siblings'][number]>();
+  for (const row of evidence.siblings) {
+    if (!isMixedSibling(row)) return invalid();
+    siblings.set(row.skuId.toLowerCase(), row);
+  }
   if (siblings.size !== evidence.siblings.length || siblings.size === 0) invalid();
   const ids = new Set<string>(), codes = new Set<string>();
   for (const { skuId, sku, physical } of parsed.variants) {

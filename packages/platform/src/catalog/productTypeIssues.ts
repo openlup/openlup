@@ -1,6 +1,7 @@
 import { z } from "./validation.js";
-import { CatalogQuantityError, validateCatalogSubscriptionProfile, validateCatalogUnitFactor,
+import { CATALOG_QUANTITY_UNITS, CatalogQuantityError, validateCatalogSubscriptionProfile, validateCatalogUnitFactor,
   type CatalogSubscriptionProfileV1, type CatalogQuantityCode } from "@openlup/core/catalog";
+import { CATALOG_CONFORMANCE_RULES } from "./catalogConformance.js";
 import type { CatalogConformanceCode, CatalogDefinitionIssue } from "./contracts/catalogConformance.js";
 import type { CatalogProductTypeRef } from "./contracts/productTypes.js";
 import { qualifyTypedCatalogUnit } from "./physicalQuantity.js";
@@ -119,7 +120,9 @@ function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<
     const { validateContent, ...metadata } = input as Record<string, unknown>;
     if (typed && Array.isArray(metadata.units)) metadata.units.forEach((rawUnit, i) => {
       const unit = typedUnitSchema.safeParse(rawUnit);
-      if (!unit.success || unit.data.factor === undefined && (unit.data.dimension === "mass"
+      if (!unit.success) return;
+      const builtIn = CATALOG_QUANTITY_UNITS.some(({ code }) => code === unit.data.code);
+      if (unit.data.factor === undefined && !builtIn && (unit.data.dimension === "mass"
         || !Array.isArray(metadata.netContentUnits) || !metadata.netContentUnits.includes(unit.data.code))) return;
       try { qualifyTypedCatalogUnit(unit.data); }
       catch (error) {
@@ -147,8 +150,10 @@ function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<
     identities.add(identity);
     function duplicates(values: readonly string[], code: CatalogConformanceCode, path: PropertyKey[], suffix?: string): void {
       const seen = new Set<string>();
+      const fix = code === "definition_duplicate_unit" || code === "definition_duplicate_net_content_unit"
+        ? CATALOG_CONFORMANCE_RULES[code].fix : undefined;
       values.forEach((value, i) => {
-        if (seen.has(value)) add(code, [...base, ...path, i, ...(suffix ? [suffix] : [])]);
+        if (seen.has(value)) add(code, [...base, ...path, i, ...(suffix ? [suffix] : [])], fix);
         seen.add(value);
       });
     }
@@ -162,7 +167,10 @@ function inspectProductTypes(definitions: readonly unknown[], profileRefs?: Map<
       try { validateCatalogUnitFactor({ ...unit, factor }); }
       catch { add("definition_unit_factor_invalid", [...base, "units", i, "factor"]); }
     });
-    definition.netContentUnits.forEach((code, i) => { if (!units.has(code)) add("definition_unknown_net_content_unit", [...base, "netContentUnits", i]); });
+    definition.netContentUnits.forEach((code, i) => {
+      if (!units.has(code)) add("definition_unknown_net_content_unit", [...base, "netContentUnits", i],
+        CATALOG_CONFORMANCE_RULES.definition_unknown_net_content_unit.fix);
+    });
     let netDimensions = 0;
     definition.dimensions.forEach((dimension, i) => {
       if (dimension.kind === "choice") duplicates(dimension.values, "definition_duplicate_choice", ["dimensions", i, "values"]);

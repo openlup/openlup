@@ -317,8 +317,14 @@ const badEvidence: Record<string, (fixture: Fixture) => void> = {
   revision: ({ mixed }) => { mixed.evidence.documentRevisionId = 'other'; },
   id: ({ mixed }) => { mixed.evidence.siblings[0]!.skuId = 'other'; },
   code: ({ mixed }) => { mixed.evidence.siblings[0]!.sku = 'OTHER'; },
-  duplicateId: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, sku: 'OTHER' }]; },
-  duplicateCode: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, skuId: 'other' }]; },
+  duplicateId: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]! }]; },
+  duplicateCode: ({ sibling, document, documentRevision, mixed }) => {
+    const skuId = 'f0000000-0000-4000-8000-000000000003';
+    document.variants.push({ ...sibling, skuId });
+    mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, skuId }];
+    mixed.evidence.documentDigest = documentRevision.digest = documentDigest(document);
+  },
+  malformedRow: ({ mixed }) => { Reflect.deleteProperty(mixed.evidence.siblings[0]!, 'skuId'); },
   missing: ({ mixed }) => { mixed.evidence.siblings = []; },
   extra: ({ mixed }) => { mixed.evidence.siblings = [...mixed.evidence.siblings, { ...mixed.evidence.siblings[0]!, skuId: 'other', sku: 'OTHER' }]; },
   term: ({ mixed }) => { mixed.evidence.siblings[0]!.netContent.unscaled = '295735295626'; },
@@ -333,7 +339,8 @@ for (const [name, mutate] of Object.entries(badEvidence)) test(`quote and sized 
   const fixture = documentFixture();
   mutate(fixture);
   const { document, envelope, mixed, quote, sized } = fixture;
-  const refusal = { code: 'catalog_document_schema_invalid', path: 'documentRevision' };
+  const refusal = { code: 'catalog_document_schema_invalid', path: 'documentRevision',
+    fix: 'Recover the admitted document and its revision.' };
   await assert.rejects(quote(document, envelope, mixed), refusal);
   assert.throws(() => sized(document, mixed), refusal);
 });
@@ -341,7 +348,8 @@ for (const [name, mutate] of Object.entries(badEvidence)) test(`quote and sized 
 test('both readers preserve their legacy refusal order and verify the original mixed digest first', async () => {
   const { gram, gramDocument, sibling, document, documentRevision, envelope, mixed, quote, sized } = documentFixture();
   Object.assign(sibling.physical, { extra: true });
-  const digestRefusal = { code: 'catalog_document_digest_mismatch', path: 'documentRevision.digest' };
+  const digestRefusal = { code: 'catalog_document_digest_mismatch', path: 'documentRevision.digest',
+    fix: 'Replay the original document bytes and digest.' };
   await assert.rejects(quote(document, envelope, mixed), digestRefusal);
   assert.throws(() => sized(document, mixed), digestRefusal);
   const malformed = { ...gramDocument, variants: [{ ...gram, demandPerUnit: 0 }] };

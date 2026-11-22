@@ -83,6 +83,7 @@ it("refuses a Core-valid 41-digit result from a 40-digit authored coefficient", 
 
 it.each([
   [ml("01"), null, false, "catalog_publication_net_content_invalid", "/operations/4/sku/netContent", "quantity_invalid"],
+  [volume("openlup:piece"), null, false, "catalog_publication_net_content_invalid", "/operations/4/sku/netContent", "quantity_cross_dimension"],
   [count(halfPiece.code, "2"), null, false, "catalog_publication_quantity_definition_unqualified", "definition.units", "quantity_fractional_count"],
   [ml(), null, true, "catalog_publication_gross_mass_required", "/operations/4/sku/grossMass", undefined],
   [ml(), ml(), true, "catalog_publication_gross_mass_invalid", "/operations/4/sku/grossMass", "quantity_cross_dimension"],
