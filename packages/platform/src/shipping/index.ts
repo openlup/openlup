@@ -43,3 +43,26 @@ export const CUSTOMER_SAVED_ADDRESS_MIGRATIONS = [{ id: '20261110190000_customer
 export { createPostgresCustomerPreferencePort, createPostgresCustomerDefaultsPort } from './postgresCustomerPreferences.js';
 export { createCustomerPreferenceSchemas, type CustomerPreferencePolicy } from './customerPreferenceSchemas.js';
 export { createCustomerPaymentPreferencesHandler, createCustomerDeliveryPreferencesHandler, type CustomerPreferenceHandlerOptions } from './customerPreferenceHandlers.js';
+export type {
+  CarrierRateQuoteContractVersion,
+  CarrierRateAddress,
+  CarrierRateParcel,
+  CarrierRateQuoteRequest,
+  CarrierRateTransitEstimate,
+  CarrierRateOption,
+  CarrierRateRefusalReason,
+  CarrierRateQuoteResult,
+  CarrierRateCapabilities,
+  CarrierRateQuotePort,
+} from "./contracts/carrierRate.js";
+export {
+  CARRIER_RATE_QUOTE_CONTRACT_VERSION,
+  CARRIER_RATE_REFUSAL_REASONS,
+  carrierRateCapabilitiesSchema,
+  carrierRateOptionSchema,
+  carrierRateQuoteResultSchema,
+  projectCarrierRateStaticCapabilities,
+  validateCarrierRateRequestAgainstCapabilities,
+  sortCarrierRateOptions,
+  selectCheapestCarrierRate,
+} from "./carrierRate.js";
