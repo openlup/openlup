@@ -474,12 +474,13 @@ Restore the ledger before enabling checkout under the same limit and identity
 policy. Restore treats the ledger as empty for pinned predecessor installations
 that predate it. Restore also accepts packets from the pinned installation
 profiles immediately before governed catalogue lifecycle. Those packets and
-current packets must include the ledger. Restored attempts age on their
-original timestamps. Admission prunes rows at the retention cutoff on each
-call. Idle databases keep bounded rows
-until the next call or an owner cleanup. For managed same-schema transfer use
-the bounded `@openlup/platform/portability` utility. The managed-to-native
-legacy projection refuses populated limiter relations outside its finite profile.
+current packets must include the ledger. Restore also accepts profile-free
+packets from the pinned inventories immediately before subscription profile
+receipts. Restored attempts age on their original timestamps. Admission prunes
+rows at the retention cutoff on each call. Idle databases keep bounded rows until
+the next call or an owner cleanup. For managed same-schema transfer use the
+bounded `@openlup/platform/portability` utility. The managed-to-native legacy
+projection refuses populated limiter relations outside its finite profile.
 
 The forward starts with an empty ledger. The table owner can inspect or clean
 it up. The routine runs with owner rights and grants only routine EXECUTE to
@@ -499,6 +500,19 @@ inserts immutable versions on a pristine target; normal UPDATE and DELETE remain
 refused by the definition trigger. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for explicit
 install executors, readiness observations and the unbound write guard.
+
+The native [subscription profile forward](../../db/platform/migrations/20261124230000_subscription_profiles.sql)
+adds owner-only receipts. Each key and version belongs to the first pack that
+installed its declaration. An identical declaration can be reused by a later
+pack. PostgreSQL binds the identity and SHA-256 digest to the stored bytes.
+The installer owns canonical form and the existing native cadence guards
+still govern subscription writes.
+
+Connected-store capture refuses a store that has subscription profile receipts
+with `subscription_profile_receipts_unsupported`. This check runs in the
+validated read-only snapshot before row collection or size checks. A store with
+reference-only catalogue receipts can still transfer. Wait for connected-store
+restore support for subscription profile receipts (RS-1).
 
 Managed-to-native retained transfer initializes only absent product `type_key`
 and `type_version` fields to NULL. Supplied values, including explicit NULLs,

@@ -19,6 +19,10 @@ const beforeGovernedLifecycle: Record<Mode, string> = {
   "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
   "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
 };
+const beforeSubscriptionProfiles: Record<Mode, string> = {
+  "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
+  "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
+};
 const groups = ["anon", "authenticated", "service_role", "platform_acquisition_owner",
   "platform_acquisition_runtime", "openlup_retained_import_owner"];
 
@@ -179,7 +183,9 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await expect(fixture.runner.status()).rejects.toThrow("outside_role_has_host_authority");
     } finally { await closePostgres(fixture.container, fixture.pools); }
   }, postgresSetupTimeoutMs);
-  it(`restores a connected native graph through ${shape}-shaped ${mode} admission`, async () => {
+  const sourceInventories = shape === "neon"
+    ? [beforeGovernedLifecycle[mode], beforeSubscriptionProfiles[mode]] : [undefined];
+  it.each(sourceInventories)(`restores a connected native graph through ${shape}-shaped ${mode} admission with source pin %s`, async (sourceCatalogueId) => {
     if (!await dockerAvailable()) throw new Error("Restricted restore requires disposable PostgreSQL 16");
     let source: Installed | undefined, target: Installed | undefined;
     try {
@@ -188,8 +194,6 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead')");
       await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
-      // Cover current and predecessor inventories for each restricted role mode.
-      const sourceCatalogueId = shape === "neon" ? beforeGovernedLifecycle[mode] : source.inventory;
       const packet = await capture(source, "restricted-source", sourceCatalogueId);
       const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
