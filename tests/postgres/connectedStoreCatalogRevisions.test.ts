@@ -562,6 +562,14 @@ it("refuses a previously admitted separate-migrator inventory even if rows have 
   });
 }, 105_000);
 
+it("refuses the immediate predecessor inventory even with current rows", async () => {
+  // Separate-migrator inventory before accepted-reference columns were added.
+  const predecessor = "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638";
+  await expect(restore(target.owner, repin(packet, predecessor))).rejects.toMatchObject({
+    code: "schema_conflict", remedy: "upgrade the source, then capture",
+  });
+}, 105_000);
+
 it("transfers same-SKU governed bindings and preserves legacy NULL facts", async () => {
   if (!(await source.owner.query("SELECT 1 FROM public.platform_human_principals WHERE principal_id=$1", [actorId])).rowCount)
     await installPublicationActors(source.owner);

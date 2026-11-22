@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
+import { qualifiedPostgresStartupOptions } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { catalogAcceptanceV2Schema, nativeCatalogPublication } from "@openlup/platform/catalog";
+import { createPostgresDestinationPort } from "@openlup/platform/commerce/server/destinations";
+import { createNativeRenewalCodec, createPostgresRenewalStore } from "@openlup/platform/subscriptions";
 import type { CatalogAcceptanceV2 } from "@openlup/core/catalog";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -7,7 +11,7 @@ import { fixture, graph, insertGraph, installPublicationActors, json, transactio
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs,
   type PostgresContainer } from "../helpers/postgresContainer.js";
 
-let container: PostgresContainer, pool: Pool, first: Graph, withdrawn: Graph;
+let container: PostgresContainer, pool: Pool, installer: Pool, runtime: Pool, first: Graph, withdrawn: Graph;
 let acceptance: CatalogAcceptanceV2;
 const data = fixture();
 const refusal = (message: string) => ({ message });
@@ -16,11 +20,20 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `catalog-lifecycle-${process.pid}`, password: randomUUID() });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Lifecycle proof needs PostgreSQL");
   pool = new Pool({ connectionString: container.connectionString });
-  // The issued package editor grants its entry point only when this role exists.
-  await pool.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
-  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as
-    { baseline: { file: string }; forward: { file: string }[] };
-  for (const unit of [manifest.baseline, ...manifest.forward]) await pool.query(readFileSync(unit.file, "utf8"));
+  const selection = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres",
+    migrationLogin: "postgres", runtimeLogin: "catalog_runtime", restoreLogin: "catalog_restore" } as const;
+  const password = randomUUID();
+  for (const login of [selection.runtimeLogin, selection.restoreLogin]) await pool.query(`CREATE ROLE ${login}
+    LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+  installer = new Pool({ connectionString: container.connectionString, options: qualifiedPostgresStartupOptions(selection) });
+  await createPostgresMigrationRunner({ connectionString: container.connectionString }, { installation: selection, poolFactory: () => installer }).apply();
+  const runtimeUrl = new URL(container.connectionString);
+  runtimeUrl.username = selection.runtimeLogin;
+  runtimeUrl.password = password;
+  runtime = new Pool({ connectionString: runtimeUrl.toString() });
+  expect((await runtime.query(`SELECT current_user,pg_has_role(current_user,'service_role','USAGE') AS inherits`)).rows)
+    .toEqual([{ current_user: selection.runtimeLogin, inherits: true }]);
+  await pool.query("INSERT INTO public.commerce_settings(key,value_text) VALUES('subscription_minimum_base_units','1') ON CONFLICT(key) DO UPDATE SET value_text='1'");
   await installPublicationActors(pool);
   await transaction(pool, async db => {
     first = await graph(db, data, null, true, { lifecycle: "active" });
@@ -34,10 +47,10 @@ beforeAll(async () => {
     skuRevisionId: first.skuRevisionId, publicationHead: first.head, typeRef: product.type,
     definitionDigest: product.definitionDigest, optionDigest: facts.optionDigest, netContent: facts.netContent }] };
 }, postgresSetupTimeoutMs);
-afterAll(() => closePostgres(container, pool), postgresTeardownTimeoutMs);
+afterAll(() => closePostgres(container, [pool, installer, runtime].filter(Boolean)), postgresTeardownTimeoutMs);
 
-async function committed(work: (db: PoolClient) => Promise<void>, error?: string) {
-  const db = await pool.connect();
+async function committed(work: (db: PoolClient) => Promise<void>, error?: string, connection = pool) {
+  const db = await connection.connect();
   try {
     await db.query("BEGIN");
     await work(db);
@@ -90,6 +103,35 @@ it("validates the issuing roster after withdrawal and rejects altered identity",
     { netContent: { ...acceptance.lines[0]!.netContent, unscaled: "111" } }]) {
     await expect(check({ ...acceptance, lines: [{ ...acceptance.lines[0]!, ...wrong }] }))
       .rejects.toMatchObject(refusal("catalog_accepted_reference_mismatch"));
+  }
+});
+
+it("refuses open wire shapes, repeated SKU identities or codes and out-of-range rosters", async () => {
+  const line = acceptance.lines[0]!;
+  const oversized = Array.from({ length: 101 }, (_, i) => ({ ...line, skuId: randomUUID(), skuCode: `sku-${i}` }));
+  const invalid = [
+    { ...acceptance, extra: true },
+    { ...acceptance, lines: [] },
+    { ...acceptance, lines: oversized },
+    { ...acceptance, lines: [line, { ...line, skuCode: "other-sku" }] },
+    { ...acceptance, lines: [line, { ...line, skuId: randomUUID() }] },
+  ];
+  expect(catalogAcceptanceV2Schema.parse(acceptance)).toEqual(acceptance);
+  expect(catalogAcceptanceV2Schema.safeParse({ ...acceptance, lines: oversized.slice(0, 100) }).success).toBe(true);
+  for (const value of invalid) {
+    expect(catalogAcceptanceV2Schema.safeParse(value).success).toBe(false);
+    const error: unknown = await runtime.query("SELECT public.catalog_acceptance_assert_v2($1)", [json(value)]).catch((cause: unknown) => cause);
+    expect(error).toMatchObject({ message: "catalog_acceptance_invalid", hint: expect.stringContaining("1 to 100") });
+    expect(nativeCatalogPublication.catalogPublicationAdmissionRefusal(error)).toMatchObject({
+      reason: "catalog_acceptance_invalid", message: expect.stringContaining("1 to 100"),
+    });
+  }
+  for (const value of [{ ...line, extra: true },
+    { ...line, publicationHead: { ...line.publicationHead, extra: true } },
+    { ...line, typeRef: { ...line.typeRef, extra: true } }]) {
+    expect(catalogAcceptanceV2Schema.safeParse({ ...acceptance, lines: [value] }).success).toBe(false);
+    await expect(runtime.query("SELECT public.catalog_accepted_reference_assert_v2($1)", [json(value)]))
+      .rejects.toMatchObject({ message: "catalog_accepted_reference_invalid", hint: expect.stringContaining("supported fields") });
   }
 });
 
@@ -177,6 +219,13 @@ it.each(["event then preview", "preview then event", "missing", "wrong quantity"
       await committed(async db => {
         await db.query("UPDATE public.subscription_events SET catalog_acceptance=NULL WHERE id=$1", [event]);
       }, "catalog_acceptance_immutable");
+      await committed(async db => {
+        await db.query(`UPDATE public.subscription_quote_previews
+          SET status='previewed',accepted_event_id=NULL,accepted_at=NULL,accepted_idempotency_key=NULL WHERE id=$1`, [preview]);
+      }, "catalog_acceptance_line_mismatch");
+      await committed(async db => {
+        await db.query("DELETE FROM public.subscription_quote_previews WHERE id=$1", [preview]);
+      }, "catalog_acceptance_line_mismatch");
     }
   });
 
@@ -312,6 +361,39 @@ it("refuses empty, illegible and filtered census results", async () => {
   });
 });
 
+it("reports missing SKU, contradictory pending order and owner-filtered census as unknown or unavailable", async () => {
+  await rolledBack(async db => {
+    const result = await db.query("SELECT public.catalog_bound_obligations_v2($1) AS census", [randomUUID()]);
+    expect(result.rows[0]!.census).toMatchObject({ outcome: "unknown", reason: "catalog_obligation_evidence_unknown" });
+  });
+  await rolledBack(async db => {
+    const owner = await subscription(db);
+    const cycle = (await db.query(`INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status)
+      VALUES($1,now(),'payment_pending') RETURNING id`, [owner.id])).rows[0]!.id;
+    const order = await obligationOrder(db, owner.client, "pending_payment");
+    await db.query("UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1", [order, cycle]);
+    await db.query("INSERT INTO public.subscription_activations(order_id,client_id,cadence_days,declare_idempotency_key) VALUES($1,$2,28,$3)",
+      [order, owner.client, randomUUID()]);
+    expect(await obligations(db)).toMatchObject({ outcome: "unknown", reason: "catalog_obligation_evidence_unknown" });
+  });
+  await rolledBack(async db => {
+    const role = "catalogue_filtered_owner";
+    await db.query(`CREATE ROLE ${role} NOLOGIN`);
+    // Isolate the row_security_active conjunct from the relation-owner check.
+    const commands = await db.query<{ sql: string }>(`SELECT format('ALTER TABLE public.%I OWNER TO %I',relname,$1::text) AS sql
+      FROM pg_class WHERE relnamespace='public'::regnamespace AND relkind IN ('r','p')`, [role]);
+    for (const { sql } of commands.rows) await db.query(sql);
+    await db.query(`GRANT USAGE ON SCHEMA public TO ${role}`);
+    await db.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO ${role}`);
+    await db.query(`SET LOCAL ROLE ${role}`);
+    expect(await obligations(db)).toMatchObject({ outcome: "complete" });
+    await db.query("ALTER TABLE public.subscription_lines ENABLE ROW LEVEL SECURITY");
+    await db.query("ALTER TABLE public.subscription_lines FORCE ROW LEVEL SECURITY");
+    expect((await db.query("SELECT row_security_active('public.subscription_lines'::regclass) AS active")).rows).toEqual([{ active: true }]);
+    expect(await obligations(db)).toMatchObject({ outcome: "unavailable", reason: "catalog_obligation_evidence_unavailable" });
+  });
+});
+
 it("rejects a foreign-SKU template binding and leaves legacy lines nullable", async () => {
   await rolledBack(async db => {
     const owner = await subscription(db), other = fixture();
@@ -327,23 +409,43 @@ it("rejects a foreign-SKU template binding and leaves legacy lines nullable", as
   });
 });
 
-it("replays the stored acceptance after reopening without changing frozen v1 bytes", async () => {
-  const { createNativeRenewalCodec, createPostgresRenewalStore } = await import("@openlup/platform/subscriptions");
-  const codec = createNativeRenewalCodec();
+const codec = createNativeRenewalCodec();
+async function acceptedPurchase(options: { scheduledAt?: string; graduation?: boolean; issued?: CatalogAcceptanceV2 } = {}) {
+  const issued = options.issued ?? acceptance;
+  const reference = issued.lines[0]!;
   const at = new Date(Date.now() - 1000).toISOString();
-  const scheduleAt = at.replace("Z", "000Z");
-  const lines = [{ lineOrdinal: 1, sku: first.facts.code, quantity: 1, unitAmountMinor: 100 }];
+  const scheduledAt = options.scheduledAt ?? at;
+  const scheduleAt = scheduledAt.replace("Z", "000Z");
+  const lines = [{ lineOrdinal: 1, sku: reference.skuCode, quantity: 1, unitAmountMinor: 100 }];
   const originalTerms = { templateId: "fixture", shippingAmountMinor: 0, acquisitionRef: null };
-  const purchase = { ...originalTerms, currency: "XXX", stockSourceKey: "fixture", settlementChannelKey: "sandbox", lines,
+  const starterPack = { schemaVersion: "1", basisTemplateVersion: 1, starterIntervalDays: 28,
+    delivery2: { discountBps: 0, discountMinor: 0, basisSubtotalMinor: 100 },
+    graduation: { cadenceDays: 30, lines: [{ sku: reference.skuCode, qty: 3, sortOrder: 0, isAddon: false,
+      quoteLine: { unitPriceGross: { amountMinor: 100 }, lineSubtotalGross: { amountMinor: 300 } } }] } };
+  const retained = options.graduation ? { renewalTerms: { version: "native.renewal-terms.v1",
+    shippingTerms: { version: "shipping-threshold.v1", currency: "XXX", flatMinor: 0, freeThresholdMinor: 0 },
+    minimumPayableMinor: 1, normalCadenceDays: [30], starterPack } } : {};
+  const purchase = { ...originalTerms, ...retained, currency: "XXX", stockSourceKey: "fixture", settlementChannelKey: "sandbox", lines,
     unattendedChargeAuthorizedAt: at, authorizationRef: "fixture", payerAccountRef: null, methodRef: "fixture", methodEvidenceRef: "fixture" };
   const owner = await transaction(pool, async db => {
     const owner = await subscription(db, "cancelled");
-    await db.query("UPDATE public.subscriptions SET status='active',next_cycle_at=$2 WHERE id=$1", [owner.id, at]);
+    const list = randomUUID();
+    await db.query("INSERT INTO public.price_lists(id,name,region_code,currency,valid_from) VALUES($1,'Edit proof','ZZ','XXX','2026-01-01')", [list]);
+    await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor,valid_from) VALUES($1,$2,'any',100,'2026-01-01')",
+      [list, reference.skuId]);
+    await db.query("UPDATE public.subscriptions SET status='active',next_cycle_at=$2,currency_code='XXX',price_list_id=$3 WHERE id=$1",
+      [owner.id, scheduledAt, list]);
     await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code)
-      VALUES($1,$2,1,0,100,'XXX')`, [owner.id, data.skuId]);
-    const order = await obligationOrder(db, owner.client, "paid");
-    await receipt(db, order, first.facts.code);
-    await bindOrder(db, order);
+      VALUES($1,$2,1,0,100,'XXX')`, [owner.id, reference.skuId]);
+    const order = await obligationOrder(db, owner.client, "paid", reference.skuId);
+    await receipt(db, order, reference.skuCode);
+    await call(db, "catalog_attach_order_acceptance", [order, issued, `receipt:${order}`, { [reference.skuCode]: 1 }]);
+    const activationCycleId = randomUUID();
+    await db.query(`INSERT INTO public.subscription_cycles(id,subscription_id,scheduled_at,status)
+      VALUES($1,$2,$3::timestamptz-interval '28 days','paid')`, [activationCycleId, owner.id, scheduledAt]);
+    await db.query("UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1", [order, activationCycleId]);
+    if (options.graduation) await db.query(`INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status)
+      VALUES($1,$2::timestamptz-interval '14 days','paid')`, [owner.id, scheduledAt]);
     await db.query(`INSERT INTO public.subscription_activations(order_id,client_id,subscription_id,state,cadence_days,activated_at,
       payment_fingerprint,activation_idempotency_key,declare_idempotency_key) VALUES($1,$2,$3,'active',28,$4,$5,$6,$7)`,
     [order, owner.client, owner.id, at, "1".repeat(64), `activate:${order}`, `declare:${order}`]);
@@ -352,17 +454,25 @@ it("replays the stored acceptance after reopening without changing frozen v1 byt
     const attach = () => db.query("SELECT public.subscription_complete_renewal_attachment($1) AS result", [order]);
     expect((await attach()).rows).toEqual([{ result: { subscriptionId: owner.id, replayed: false } }]);
     expect((await attach()).rows).toEqual([{ result: { subscriptionId: owner.id, replayed: true } }]);
+    if (options.graduation) await db.query("UPDATE public.subscription_renewal_terms SET next_cycle_number=2 WHERE subscription_id=$1", [owner.id]);
     expect((await db.query("SELECT catalog_sku_revision_id FROM public.subscription_lines WHERE subscription_id=$1", [owner.id])).rows)
-      .toEqual([{ catalog_sku_revision_id: first.skuRevisionId }]);
+      .toEqual([{ catalog_sku_revision_id: reference.skuRevisionId }]);
     expect((await db.query("SELECT public.subscription_renewal_purchase_terms($1) AS result", [owner.id])).rows)
-      .toEqual([{ result: originalTerms }]);
-    return owner;
+      .toEqual([{ result: { ...originalTerms, ...retained } }]);
+    return { ...owner, order, activationCycleId };
   });
+  return { ...owner, schedule: { subscriptionId: owner.id, scheduledAt: scheduleAt, scheduledInstant: Date.parse(scheduledAt) },
+    lines, originalTerms, at, scheduleAt };
+}
+
+it("replays the stored acceptance after reopening without changing frozen v1 bytes", async () => {
+  const owner = await acceptedPurchase();
+  const { schedule, lines, originalTerms, scheduleAt } = owner;
   const snapshot = codec.freeze({ subscription_id: owner.id, client_id: owner.client, cadence_days: 28, template_version: 1,
     currency_code: "XXX", stock_source_key: "fixture", settlement_channel_key: "sandbox", authorization_ref: "fixture",
-    unattended_charge_authorized_at: scheduleAt, scheduled_at: scheduleAt, next_cycle_number: 1, activation_cycle_id: randomUUID(),
+    unattended_charge_authorized_at: scheduleAt, scheduled_at: scheduleAt, next_cycle_number: 1, activation_cycle_id: owner.activationCycleId,
     activation_cycle_paid: true, paid_cycle_count: 1, purchase_facts: originalTerms, lines },
-  { subscriptionId: owner.id, scheduledAt: scheduleAt, scheduledInstant: Date.parse(at) });
+  schedule);
   const input = { snapshot, workerId: "fixture", now: new Date().toISOString() };
   const firstRead = await createPostgresRenewalStore(pool, codec).claimDue(input);
   expect(firstRead).toMatchObject({ acquired: true, replayed: false, catalogAcceptance: acceptance, cycleSnapshot: snapshot });
@@ -422,7 +532,7 @@ it.each(["customer", "other customer", "service"] as const)("checks deferred edi
       has_function_privilege(current_user,'public.catalog_customer_edit_acceptance_assert(uuid)','EXECUTE') AS runs_assertion`);
     expect(grants.rows[0]!.runs_assertion).toBe(false);
     if (login !== "service") expect(grants.rows[0]!.reads_events).toBe(false);
-  });
+  }, login === "other customer" ? "subscription_edit_forbidden" : undefined);
   if (login === "service") await committed(async db => {
     await assumeEditor(db, true);
     await db.query("SAVEPOINT direct_invocation");
@@ -432,6 +542,235 @@ it.each(["customer", "other customer", "service"] as const)("checks deferred edi
   });
   await committed(async db => {
     await db.query("UPDATE public.subscription_edit_quotes SET proposed_lines=jsonb_set(proposed_lines,'{0,quantity}','2') WHERE accepted_event_id=$1", [id]);
-    await assumeEditor(db, true);
-  }, "catalog_acceptance_line_mismatch");
+    await assumeEditor(db, login !== "other customer");
+  }, login === "other customer" ? "subscription_edit_forbidden" : "catalog_acceptance_line_mismatch");
+  if (login === "customer") {
+    await committed(async db => {
+      await db.query("UPDATE public.subscription_edit_quotes SET status='previewed',accepted_event_id=NULL,accepted_at=NULL WHERE accepted_event_id=$1", [id]);
+      await assumeEditor(db, true);
+    }, "catalog_acceptance_line_mismatch");
+    await committed(async db => {
+      await db.query("DELETE FROM public.subscription_edit_quotes WHERE accepted_event_id=$1", [id]);
+      await assumeEditor(db, true);
+    }, "catalog_acceptance_line_mismatch");
+  }
+});
+
+const money = (amountMinor: number) => ({ amountMinor, currency: "XXX" });
+async function call(db: Pool | PoolClient, name: string, values: unknown[]) {
+  const args = values.map((_, index) => `$${index + 1}`).join(",");
+  return (await db.query(`SELECT public.${name}(${args}) AS result`, values)).rows[0]!.result;
+}
+
+it("attaches acceptance to a persisted draft order through the service grant", async () => {
+  const order = randomUUID();
+  await transaction(runtime, async db => {
+    await db.query("INSERT INTO public.commerce_orders(id,status,currency_code,total_amount_minor) VALUES($1,'cancelled','XXX',0)", [order]);
+    await receipt(db, order, first.facts.code);
+    await call(db, "catalog_attach_order_acceptance", [order, acceptance, `receipt:${order}`, { [first.facts.code]: 1 }]);
+  });
+  expect((await pool.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [order])).rows)
+    .toEqual([{ catalog_acceptance: acceptance }]);
+});
+
+it.each(["service_role", "catalog_runtime"])("claims, prepares and updates accepted commerce under %s", async role => {
+  const owner = await acceptedPurchase();
+  const db = await runtime.connect();
+  try {
+    if (role === "service_role") await db.query("SET ROLE service_role");
+    expect((await db.query("SELECT current_user")).rows).toEqual([{ current_user: role }]);
+    await db.query("BEGIN");
+    const store = createPostgresRenewalStore(db, codec);
+    const snapshot = await store.buildCycleSnapshots(owner.schedule);
+    const claim = await store.claimDue({ snapshot, workerId: role, now: new Date().toISOString() });
+    expect(claim).toMatchObject({ acquired: true, catalogAcceptance: acceptance });
+    expect((await db.query(`SELECT catalog_acceptance,catalog_acceptance_fingerprint FROM public.subscription_renewal_operations
+      WHERE id=$1`, [claim.operationId])).rows).toEqual([{
+      catalog_acceptance: acceptance, catalog_acceptance_fingerprint: snapshot.frozenFingerprint,
+    }]);
+    await db.query("COMMIT");
+
+    await db.query("BEGIN");
+    await db.query("INSERT INTO public.fulfillment_inventory_reservations(renewal_operation_id,operation_fingerprint,source_key,expires_at) VALUES($1,$2,'fixture',now()+interval '10 minutes')",
+      [claim.operationId, snapshot.frozenFingerprint]);
+    await db.query("UPDATE public.subscription_renewal_operations SET state='reserved' WHERE id=$1", [claim.operationId]);
+    const prepared = await call(db, "commerce_prepare_subscription_renewal", [claim.operationId, claim.claimToken, new Date().toISOString()]);
+    await db.query("COMMIT");
+    expect((await db.query("SELECT catalog_acceptance FROM public.commerce_orders WHERE id=$1", [prepared.orderId])).rows)
+      .toEqual([{ catalog_acceptance: acceptance }]);
+
+    await db.query("BEGIN");
+    expect((await db.query("UPDATE public.commerce_orders SET status='cancelled' WHERE id=$1", [owner.order])).rowCount).toBe(1);
+    expect((await db.query("UPDATE public.commerce_order_draft_receipts SET response_payload=response_payload||'{\"reconciled\":true}' WHERE order_id=$1", [owner.order])).rowCount).toBe(1);
+    await db.query("COMMIT");
+
+    await db.query("BEGIN");
+    await db.query(`UPDATE public.commerce_order_draft_receipts SET response_payload=jsonb_set(
+      response_payload,'{orderDraft,quoteSnapshot,quote,lines,0,quantity}','2') WHERE order_id=$1`, [owner.order]);
+    await expect(db.query("COMMIT")).rejects.toMatchObject(refusal("catalog_acceptance_line_mismatch"));
+  } finally {
+    await db.query("ROLLBACK");
+    await db.query("RESET ROLE");
+    db.release();
+  }
+});
+
+it("transitions an accepted order through the authenticated pause owner", async () => {
+  const owner = await transaction(pool, async db => {
+    const owner = await subscription(db, "active");
+    const order = await obligationOrder(db, owner.client, "pending_payment");
+    await receipt(db, order, first.facts.code);
+    await bindOrder(db, order);
+    const cycle = (await db.query(`INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status)
+      VALUES($1,now(),'payment_pending') RETURNING id`, [owner.id])).rows[0]!.id;
+    await db.query("UPDATE public.commerce_orders SET subscription_cycle_id=$2 WHERE id=$1", [order, cycle]);
+    return { ...owner, order };
+  });
+  await transaction(runtime, async db => {
+    await db.query("SET LOCAL ROLE authenticated");
+    await db.query("SELECT set_config('request.jwt.claims',$1,true)", [json({ sub: owner.principal, role: "authenticated" })]);
+    const result = await call(db, "customer_subscription_pause_as_actor", [owner.id, randomUUID(), "indefinite", null]);
+    expect(result.subscriptionAction).toMatchObject({ status: "applied", subscriptionStatus: "paused" });
+  });
+  expect((await pool.query("SELECT status,catalog_acceptance FROM public.commerce_orders WHERE id=$1", [owner.order])).rows)
+    .toEqual([{ status: "cancelled", catalog_acceptance: acceptance }]);
+});
+
+async function previewedEdit(db: Pool | PoolClient, owner: Awaited<ReturnType<typeof acceptedPurchase>>,
+  kind: "package" | "exact" | "sized", now: string, supplied?: CatalogAcceptanceV2) {
+  const reference = (supplied ?? acceptance).lines[0]!;
+  const key = randomUUID(), quoteHash = "d".repeat(64);
+  const action = kind === "package" ? "update_package_template" : kind === "exact" ? "update_plan_length" : "resize_bundle";
+  const item = { variantId: reference.skuId, qty: 2 };
+  const line = { ...item, isAddon: false, quoteLine: { sku: reference.skuCode, quantity: item.qty,
+    unitPriceGross: money(100), lineSubtotalGross: money(200) } };
+  const constraint = { kind: "plan_days", value: 30 };
+  let request: Record<string, unknown> = { action, acceptedQuoteHash: quoteHash, expectedTemplateVersion: 1, planDays: 30 };
+  let snapshot: Record<string, unknown> = { lines: [line], cadenceDays: 30, compositionConstraint: constraint };
+  let totals = {};
+  if (kind === "package") {
+    request = { ...request, base: [item], addons: [] };
+    snapshot = { baseLines: [line], addonLines: [], compositionConstraint: constraint };
+    totals = { currentRecurringPrice: money(100), newRecurringPrice: money(200), delta: money(100) };
+  } else if (kind === "sized") {
+    request = { ...request, resizeLever: { kind: "subscription.sized.parcel", value: { optInToSized: true } } };
+    snapshot = { ...snapshot, optInFacts: { admitted: true }, subjectFacts: {} };
+  }
+  await call(db, "subscription_quote_preview_record", [owner.principal, owner.client, owner.id, action, quoteHash, 1,
+    new Date(Date.parse(now) + 900_000), request, snapshot, totals, now]);
+  const args = [owner.principal, owner.client, key, owner.id];
+  const payload = { ...snapshot, ...request, ...totals, request, catalogAcceptance: supplied };
+  if (kind === "package") return call(db, "subscription_package_edit_apply", [...args, payload, now]);
+  if (kind === "exact") return call(db, "subscription_line_edit_apply", [...args, action, payload, now]);
+  return call(db, "subscription_sized_edit_apply", [...args, payload, now]);
+}
+
+async function retainedAcceptance(owner: string) {
+  return (await pool.query(`SELECT t.catalog_acceptance,l.catalog_sku_revision_id FROM public.subscription_renewal_terms t
+    JOIN public.subscription_lines l USING (subscription_id) WHERE t.subscription_id=$1`, [owner])).rows;
+}
+
+const editableSchedule = () => new Date(Date.now() + 7 * 86_400_000).toISOString();
+const beforeEdit = () => new Date(Date.now() - 1000).toISOString();
+
+it("clears retained acceptance on an unaccepted package rewrite before the next claim", async () => {
+  const owner = await acceptedPurchase({ scheduledAt: editableSchedule() });
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: acceptance, catalog_sku_revision_id: first.skuRevisionId }]);
+  expect(await previewedEdit(runtime, owner, "package", beforeEdit())).toMatchObject({ status: "applied", templateVersion: 2 });
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: null, catalog_sku_revision_id: null }]);
+  const store = createPostgresRenewalStore(runtime, codec);
+  const snapshot = await store.buildCycleSnapshots(owner.schedule);
+  expect(snapshot.templateSnapshot.lines).toMatchObject([{ quantity: 2 }]);
+  const claim = await store.claimDue({ snapshot, workerId: "package", now: owner.schedule.scheduledAt });
+  expect(claim).toMatchObject({ acquired: true });
+  expect(claim).not.toHaveProperty("catalogAcceptance");
+});
+
+it("clears retained acceptance during full graduation before the next claim", async () => {
+  const owner = await acceptedPurchase({ graduation: true });
+  await createPostgresDestinationPort(runtime).registerOrder({ idempotencyKey: `destination:${owner.order}`,
+    orderId: owner.order, now: owner.at,
+    address: { recipientName: "Synthetic recipient", line1: "Synthetic street 1", city: "Fixture", postalCode: "00000", country: "ZZ" } });
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: acceptance, catalog_sku_revision_id: first.skuRevisionId }]);
+  const store = createPostgresRenewalStore(runtime, codec, work => transaction(runtime, work));
+  const snapshot = await store.buildCycleSnapshots(owner.schedule);
+  expect(snapshot.templateSnapshot).toMatchObject({ version: 2, cadenceDays: 30, lines: [{ quantity: 3 }] });
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: null, catalog_sku_revision_id: null }]);
+  const claim = await store.claimDue({ snapshot, workerId: "graduation", now: new Date().toISOString() });
+  expect(claim).toMatchObject({ acquired: true });
+  expect(claim).not.toHaveProperty("catalogAcceptance");
+});
+
+it.each(["package", "exact"] as const)("binds the accepted revision in the %s owner", async kind => {
+  const owner = await acceptedPurchase({ scheduledAt: editableSchedule() });
+  const result = await previewedEdit(runtime, owner, kind, beforeEdit(), acceptance);
+  expect(result).toMatchObject({ status: "applied" });
+  expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [result.eventId])).rows)
+    .toEqual([{ catalog_acceptance: acceptance }]);
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: acceptance, catalog_sku_revision_id: first.skuRevisionId }]);
+});
+
+async function activeEditPurchase() {
+  const ids = fixture();
+  const issued = await transaction(pool, async db => {
+    const current = await graph(db, ids, null, true, { lifecycle: "active", subscriptionEligible: true });
+    await insertGraph(db, current);
+    const facts = current.facts as Graph["facts"] & { optionDigest: string };
+    const product = current.product as Graph["product"] & { definitionDigest: string };
+    return { schemaVersion: 2, lines: [{ schemaVersion: 2, skuId: ids.skuId, skuCode: facts.code,
+      skuRevisionId: current.skuRevisionId, publicationHead: current.head, typeRef: product.type,
+      definitionDigest: product.definitionDigest, optionDigest: facts.optionDigest, netContent: facts.netContent }] } satisfies CatalogAcceptanceV2;
+  });
+  const owner = await acceptedPurchase({ scheduledAt: editableSchedule(), issued });
+  return { ...owner, issued, skuId: ids.skuId };
+}
+
+it("binds the accepted revision in the sized owner", async () => {
+  const owner = await activeEditPurchase();
+  const result = await previewedEdit(runtime, owner, "sized", beforeEdit(), owner.issued);
+  expect(result).toMatchObject({ status: "applied" });
+  expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [result.eventId])).rows)
+    .toEqual([{ catalog_acceptance: owner.issued }]);
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: owner.issued,
+    catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
+});
+
+it("binds the accepted revision in the classic command owner", async () => {
+  const owner = await activeEditPurchase();
+  const request = { expectedTemplateVersion: 1, cadenceDays: 30, coreLines: [{ variantId: owner.skuId, qty: 2 }],
+    compositionConstraint: {}, catalogAcceptance: owner.issued };
+  const args = [owner.principal, owner.client, randomUUID(), owner.id, "update_bundle"];
+  const preview = await call(runtime, "subscription_command_preview", [...args, request, beforeEdit()]);
+  expect(preview, JSON.stringify(preview)).toMatchObject({ status: "previewed" });
+  const result = await call(runtime, "subscription_command_apply", [...args, { ...request, acceptedQuoteHash: preview.quoteHash }, beforeEdit(), null]);
+  expect(result).toMatchObject({ status: "applied" });
+  expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [result.eventId])).rows)
+    .toEqual([{ catalog_acceptance: owner.issued }]);
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: owner.issued,
+    catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
+});
+
+it("attaches acceptance to a customer quote through the service owner and binds it in authenticated apply", async () => {
+  const owner = await activeEditPurchase();
+  const args = [owner.id, randomUUID(), [{ variantId: owner.skuId, qty: 1 }], [], {}, 30, 1];
+  async function customer(kind: "preview" | "apply", values: unknown[]) {
+    return transaction(runtime, async db => {
+      await db.query("SET LOCAL ROLE authenticated");
+      await db.query("SELECT set_config('request.jwt.claims',$1,true)", [json({ sub: owner.principal, role: "authenticated" })]);
+      return call(db, `customer_subscription_${kind}_bundle_as_actor`, values.map(value => Array.isArray(value) ? json(value) : value));
+    });
+  }
+  const preview = await customer("preview", args);
+  expect(preview.preview).toMatchObject({ canApply: true, quoteHash: expect.any(String) });
+  const quote = (await pool.query("SELECT id FROM public.subscription_edit_quotes WHERE subscription_id=$1 AND quote_hash=$2",
+    [owner.id, preview.preview.quoteHash])).rows[0]!.id;
+  await call(runtime, "catalog_attach_edit_quote_acceptance", [quote, owner.issued]);
+  expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_edit_quotes WHERE id=$1", [quote])).rows)
+    .toEqual([{ catalog_acceptance: owner.issued }]);
+  const result = await customer("apply", [owner.id, args[1], preview.preview.quoteHash, ...args.slice(2)]);
+  expect(result.subscriptionAction).toMatchObject({ status: "applied" });
+  expect((await pool.query("SELECT catalog_acceptance FROM public.subscription_events WHERE id=$1", [result.subscriptionAction.eventId])).rows)
+    .toEqual([{ catalog_acceptance: owner.issued }]);
+  expect(await retainedAcceptance(owner.id)).toEqual([{ catalog_acceptance: owner.issued,
+    catalog_sku_revision_id: owner.issued.lines[0].skuRevisionId }]);
 });
