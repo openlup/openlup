@@ -117,7 +117,11 @@ export function mapShipBobStatus(
   if (shipmentEx) return shipmentEx;
 
   // 3. Topic-level exceptions & cancellations outrank normal progress.
-  if (topic === "order_shipment_onhold" || topic === "order_shipment_exception") {
+  if (
+    topic === "order_shipment_onhold" ||
+    topic === "order_shipment_on_hold" ||
+    topic === "order_shipment_exception"
+  ) {
     return { canonicalStatus: "exception", eventKind: "parcel.exception", recovery: "manual" };
   }
   if (
@@ -130,7 +134,11 @@ export function mapShipBobStatus(
   }
 
   // 4. Normal shipment progress (delivered / in-transit).
-  if (shipment === "DELIVERED") {
+  if (
+    shipment === "DELIVERED" ||
+    topic === "order_shipment_delivered" ||
+    topic === "order_delivered"
+  ) {
     return { canonicalStatus: "delivered", eventKind: "order.delivered", recovery: null };
   }
   if (
@@ -144,9 +152,6 @@ export function mapShipBobStatus(
   }
 
   // 5. Topic-level normal progress.
-  if (topic === "order_shipment_delivered") {
-    return { canonicalStatus: "delivered", eventKind: "order.delivered", recovery: null };
-  }
   if (topic === "order_shipped") {
     return { canonicalStatus: "in_transit", eventKind: "order.shipped", recovery: null };
   }
@@ -605,15 +610,17 @@ export function createShipBobWebhookVerifier(
             (entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"),
           )
         : [];
-      const aggregateShipmentStatus = resolveShipBobAggregateShipmentStatus(
-        rawShipments.map((s) => ({
+      const topLevelShipmentStatus =
+        typeof data["shipment_status"] === "string" && data["shipment_status"].trim()
+          ? data["shipment_status"].trim()
+          : null;
+      const shipmentCandidates: { readonly status?: string | null }[] = [
+        ...(topLevelShipmentStatus ? [{ status: topLevelShipmentStatus }] : []),
+        ...rawShipments.map((s) => ({
           status: typeof s["status"] === "string" ? s["status"] : null,
         })),
-      );
-      const shipmentStatus =
-        (typeof data["shipment_status"] === "string" && data["shipment_status"].trim()) ||
-        aggregateShipmentStatus ||
-        null;
+      ];
+      const shipmentStatus = resolveShipBobAggregateShipmentStatus(shipmentCandidates);
 
       const mapped = mapShipBobStatus(orderStatus, shipmentStatus, topicRaw);
       if (!mapped) {

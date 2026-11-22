@@ -355,11 +355,15 @@ function normalizeShipmentRecord(raw: unknown): ShipBobShipmentRecord | null {
 function normalizeOrderRecord(raw: unknown): ShipBobOrderRecord | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
+  const parsedStringId =
+    typeof obj["id"] === "string" && /^[0-9]{1,20}$/u.test(obj["id"].trim())
+      ? Number(obj["id"].trim())
+      : null;
   const id =
     typeof obj["id"] === "number" && Number.isSafeInteger(obj["id"]) && obj["id"] >= 0
       ? obj["id"]
-      : typeof obj["id"] === "string" && /^[0-9]{1,20}$/u.test(obj["id"].trim())
-        ? Number(obj["id"].trim())
+      : parsedStringId !== null && Number.isSafeInteger(parsedStringId) && parsedStringId >= 0
+        ? parsedStringId
         : null;
   const referenceId = typeof obj["reference_id"] === "string" ? obj["reference_id"].trim() : undefined;
   const status = typeof obj["status"] === "string" ? obj["status"].trim() : "";
@@ -388,14 +392,14 @@ function normalizeOrderRecord(raw: unknown): ShipBobOrderRecord | null {
   };
 }
 
-function extractArrayItems(payload: unknown): readonly unknown[] {
+function extractArrayItems(payload: unknown): readonly unknown[] | null {
   if (Array.isArray(payload)) return payload;
   if (payload && typeof payload === "object") {
     const obj = payload as Record<string, unknown>;
     if (Array.isArray(obj["items"])) return obj["items"];
     if (Array.isArray(obj["data"])) return obj["data"];
   }
-  return [];
+  return null;
 }
 
 /**
@@ -508,7 +512,7 @@ export function createShipBobHttpClient(options: ShipBobHttpClientOptions): Ship
       if (!response.ok) {
         const status = response.status;
         await response.body?.cancel().catch(() => undefined);
-        const uncertainStatus = status === 409 || status === 429 || status >= 500;
+        const uncertainStatus = status === 408 || status === 409 || status === 429 || status >= 500;
         throw new ShipBobTransportError({
           code: `shipbob_http_${status}`,
           status,
@@ -595,7 +599,18 @@ export function createShipBobHttpClient(options: ShipBobHttpClientOptions): Ship
         pathAndQuery: "/1.0/order",
         body: payload,
       });
-      return normalizeOrderRecord(result.payload);
+      const normalized = normalizeOrderRecord(result.payload);
+      if (!normalized) {
+        throw new ShipBobTransportError({
+          code: "shipbob_malformed_response",
+          status: result.status,
+          retryable: true,
+          submissionAttempted: true,
+          mayHaveSucceeded: true,
+          responseBodyRead: true,
+        });
+      }
+      return normalized;
     },
 
     async getOrder(orderId: string): Promise<ShipBobOrderRecord | null> {
@@ -622,14 +637,17 @@ export function createShipBobHttpClient(options: ShipBobHttpClientOptions): Ship
         return null;
       }
       const items = extractArrayItems(result.payload);
-      if (items.length === 0) {
+      if (items === null) {
         return normalizeOrderRecord(result.payload);
       }
+      let firstValid: ShipBobOrderRecord | null = null;
       for (const item of items) {
         const normalized = normalizeOrderRecord(item);
-        if (normalized) return normalized;
+        if (!normalized) continue;
+        if (normalized.reference_id === safeRefId) return normalized;
+        if (firstValid === null) firstValid = normalized;
       }
-      return null;
+      return firstValid;
     },
 
     async cancelOrder(orderId: string): Promise<{ readonly cancelled: true }> {
@@ -673,7 +691,18 @@ export function createShipBobHttpClient(options: ShipBobHttpClientOptions): Ship
         method: "GET",
         pathAndQuery: `/1.0/order?${query.toString()}`,
       });
-      return extractArrayItems(result.payload)
+      const rawOrders = extractArrayItems(result.payload);
+      if (rawOrders === null) {
+        throw new ShipBobTransportError({
+          code: "shipbob_malformed_response",
+          status: result.status,
+          retryable: true,
+          submissionAttempted: true,
+          mayHaveSucceeded: false,
+          responseBodyRead: true,
+        });
+      }
+      return rawOrders
         .map((entry) => normalizeOrderRecord(entry))
         .filter((entry): entry is ShipBobOrderRecord => entry !== null);
     },
@@ -706,6 +735,16 @@ export function createShipBobHttpClient(options: ShipBobHttpClientOptions): Ship
         pathAndQuery: `/1.0/inventory?${query.toString()}`,
       });
       const rawItems = extractArrayItems(result.payload);
+      if (rawItems === null) {
+        throw new ShipBobTransportError({
+          code: "shipbob_malformed_response",
+          status: result.status,
+          retryable: true,
+          submissionAttempted: true,
+          mayHaveSucceeded: false,
+          responseBodyRead: true,
+        });
+      }
       const items: ShipBobInventoryItem[] = [];
       for (const entry of rawItems) {
         if (!entry || typeof entry !== "object") continue;

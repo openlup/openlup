@@ -21,6 +21,7 @@ import {
   SHIPBOB_ORIGINS,
   SHIPBOB_PROVIDER_REF,
   ShipBobTransportError,
+  computeStandardWebhookSignature,
   createShipBobFulfillmentAdapter,
   createShipBobHttpClient,
   createShipBobWebhookVerifier,
@@ -1970,5 +1971,216 @@ describe("recipes/fulfillment/shipbob — protocol, Standard Webhooks & security
       retryable: false,
     });
     expect(inventoryCalls).toBe(callsBeforeMovements);
+  });
+
+  it("hardens malformed 2xx createOrder/listOrders/listInventory responses, HTTP 408, negative/NaN stock counts, and webhook precedence + v2025 dotted topics", async () => {
+    // 1. Empty or structurally malformed 2xx POST /1.0/order -> throws shipbob_malformed_response & adapter returns+caches unknown (never accepted)
+    let createHttpCalls = 0;
+    const malformedHttpClient = createShipBobHttpClient({
+      environment: "sandbox",
+      token: FIXTURE_SENSITIVE_CANARIES.patToken,
+      fetchImpl: async (urlString) => {
+        const u = new URL(urlString);
+        if (u.pathname === "/1.0/order" && !u.search) {
+          createHttpCalls += 1;
+          return new Response("", { status: 200 });
+        }
+        return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+      },
+    });
+    const malformedAdapter = createShipBobFulfillmentAdapter({
+      client: malformedHttpClient,
+      webhookSigningSecrets: [FIXTURE_WEBHOOK_SECRET_PRIMARY],
+      clock: () => FIXTURE_NOW_ISO,
+      selected: true,
+      ready: true,
+    });
+    const reqMalformed = buildDispatchRequest({
+      requestKey: "req_sb_malformed_200",
+      fulfillmentRef: "ful_sb_malformed_200",
+      parcelRef: "SB-MALFORMED-200",
+    });
+    const preparedMalformed = await malformedAdapter.dispatch.prepare(reqMalformed);
+    expect(preparedMalformed.kind).toBe("prepared");
+    if (preparedMalformed.kind !== "prepared") throw new Error("expected prepared");
+    const firstDispatch = await malformedAdapter.dispatch.dispatch(reqMalformed, preparedMalformed.evidence);
+    expect(firstDispatch).toMatchObject({
+      kind: "unknown",
+      effectMayHaveSucceeded: true,
+      error: { code: "shipbob_malformed_response", mayHaveSucceeded: true },
+    });
+    // Replay returns cached unknown at 0 additional HTTP calls
+    const replayDispatch = await malformedAdapter.dispatch.dispatch(reqMalformed, preparedMalformed.evidence);
+    expect(replayDispatch.kind).toBe("unknown");
+    expect(createHttpCalls).toBe(1);
+
+    // Defensive adapter guard: mismatched reference_id from injected structural client -> unknown (never accepted)
+    const mismatchedAdapter = createShipBobFulfillmentAdapter({
+      client: {
+        createOrder: async () => ({
+          id: 999111,
+          reference_id: "SB-WRONG-REF",
+          status: "Processing",
+          shipments: [],
+        }),
+        getOrder: async () => null,
+        getOrderByReferenceId: async () => null,
+        cancelOrder: async () => ({ cancelled: true }),
+        listOrders: async () => [],
+        listInventory: async () => [],
+      },
+      webhookSigningSecrets: [FIXTURE_WEBHOOK_SECRET_PRIMARY],
+      clock: () => FIXTURE_NOW_ISO,
+      selected: true,
+      ready: true,
+    });
+    const reqMismatch = buildDispatchRequest({
+      requestKey: "req_sb_ref_mismatch",
+      fulfillmentRef: "ful_sb_ref_mismatch",
+      parcelRef: "SB-EXPECTED-REF",
+    });
+    const prepMismatch = await mismatchedAdapter.dispatch.prepare(reqMismatch);
+    expect(prepMismatch.kind).toBe("prepared");
+    if (prepMismatch.kind !== "prepared") throw new Error("expected prepared");
+    expect(await mismatchedAdapter.dispatch.dispatch(reqMismatch, prepMismatch.evidence)).toMatchObject({
+      kind: "unknown",
+      effectMayHaveSucceeded: true,
+      error: { code: "shipbob_malformed_response" },
+    });
+
+    // 2. Non-array / empty 2xx listOrders & listInventory MUST fail with shipbob_malformed_response (never coerce to [])
+    const badPage = await malformedAdapter.reconciliation!.readPage({ page: 0, size: 10 });
+    expect(badPage).toMatchObject({
+      kind: "failed",
+      refusal: { reason: "io_failure", phase: "readback", retryable: true },
+      error: { code: "shipbob_malformed_response" },
+    });
+    await expect(malformedAdapter.stockSync!.getStock()).rejects.toMatchObject({
+      reason: "io_failure",
+      phase: "sync",
+      code: "shipbob_malformed_response",
+    });
+
+    // 3. HTTP 408 on mutating createOrder classified as uncertain (mayHaveSucceeded: true, retryable: true)
+    const http408Client = createShipBobHttpClient({
+      environment: "sandbox",
+      token: FIXTURE_SENSITIVE_CANARIES.patToken,
+      fetchImpl: async () => new Response("timeout", { status: 408 }),
+    });
+    await expect(
+      http408Client.createOrder({
+        reference_id: "SB-408",
+        order_number: "ORD-408",
+        shipping_method: "Standard",
+        recipient: {
+          name: "Test",
+          address: { address1: "1 Main", city: "Austin", country: "US", zip_code: "78701" },
+        },
+        products: [{ reference_id: "SKU-1", quantity: 1 }],
+      }),
+    ).rejects.toMatchObject({
+      code: "shipbob_http_408",
+      retryable: true,
+      mayHaveSucceeded: true,
+    });
+
+    // 4. StockSync sanitizes negative, NaN, and forSale > total quantities
+    const dirtyStockAdapter = createShipBobFulfillmentAdapter({
+      client: {
+        createOrder: async () => null,
+        getOrder: async () => null,
+        getOrderByReferenceId: async () => null,
+        cancelOrder: async () => ({ cancelled: true }),
+        listOrders: async () => [],
+        listInventory: async () => [
+          {
+            sku: "SKU-NEG",
+            total_on_hand_quantity: -5,
+            total_fulfillable_quantity: Number.NaN,
+            total_committed_quantity: 0,
+            total_awaiting_quantity: 0,
+            last_updated_date: null,
+          },
+          {
+            sku: "SKU-EXCEED",
+            total_on_hand_quantity: 4,
+            total_fulfillable_quantity: 10,
+            total_committed_quantity: 0,
+            total_awaiting_quantity: 0,
+            last_updated_date: FIXTURE_NOW_ISO,
+          },
+        ],
+      },
+      webhookSigningSecrets: [FIXTURE_WEBHOOK_SECRET_PRIMARY],
+      clock: () => FIXTURE_NOW_ISO,
+      selected: true,
+      ready: true,
+    });
+    const sanitized = await dirtyStockAdapter.stockSync!.getStock();
+    expect(sanitized[0]).toMatchObject({
+      skuRef: "SKU-NEG",
+      totalQuantity: 0,
+      forSaleQuantity: 0,
+      reservedOrUnavailableQuantity: 0,
+    });
+    expect(sanitized[1]).toMatchObject({
+      skuRef: "SKU-EXCEED",
+      totalQuantity: 10,
+      forSaleQuantity: 10,
+      reservedOrUnavailableQuantity: 0,
+    });
+
+    // 5. Webhook top-level shipment_status:"Delivered" MUST NOT mask DeliveryException in shipments[],
+    //    and v2025 dotted topics order.shipment.on_hold & order.delivered map accurately.
+    const verifier = createShipBobWebhookVerifier({
+      webhookSigningSecrets: [FIXTURE_WEBHOOK_SECRET_PRIMARY],
+    });
+
+    const maskedExceptionBody = Buffer.from(
+      JSON.stringify({
+        topic: "order_shipment_delivered",
+        data: {
+          id: 901001,
+          reference_id: "SB-MASK-01",
+          status: "Processing",
+          shipment_status: "Delivered",
+          last_updated_at: FIXTURE_NOW_ISO,
+          shipments: [{ id: 1, status: "DeliveryException" }],
+        },
+      }),
+      "utf8",
+    );
+    const tsSec = String(Math.floor(Date.parse(FIXTURE_NOW_ISO) / 1000));
+    const maskedSig = computeStandardWebhookSignature(
+      "msg_masked_ex",
+      tsSec,
+      maskedExceptionBody,
+      FIXTURE_WEBHOOK_SECRET_PRIMARY,
+    );
+    const maskedRes = await verifier.verifyAndNormalize({
+      rawBody: maskedExceptionBody,
+      headers: {
+        "webhook-id": "msg_masked_ex",
+        "webhook-timestamp": tsSec,
+        "webhook-signature": maskedSig,
+      },
+      receivedAt: FIXTURE_NOW_ISO,
+    });
+    expect(maskedRes.kind).toBe("verified");
+    if (maskedRes.kind !== "verified") throw new Error("expected verified");
+    expect(maskedRes.observation.fact.canonicalStatus).toBe("exception");
+    expect(maskedRes.observation.intake?.recovery).toBe("delivery_only");
+
+    // v2025 dotted topics: order.shipment.on_hold + InTransit -> exception (manual); order.delivered + Completed -> delivered
+    expect(mapShipBobStatus("Processing", "InTransit", "order.shipment.on_hold")).toEqual({
+      canonicalStatus: "exception",
+      eventKind: "parcel.exception",
+      recovery: "manual",
+    });
+    expect(mapShipBobStatus("Completed", "Completed", "order.delivered")).toEqual({
+      canonicalStatus: "delivered",
+      eventKind: "order.delivered",
+      recovery: null,
+    });
   });
 });

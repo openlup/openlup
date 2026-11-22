@@ -544,8 +544,28 @@ export function createShipBobFulfillmentAdapter(
 
       try {
         const created = await options.client.createOrder(prepared.command);
+        if (
+          !created ||
+          (created.reference_id !== undefined && created.reference_id !== prepared.referenceId)
+        ) {
+          const malformedResult: FulfillmentDispatchResult = {
+            kind: "unknown",
+            effectMayHaveSucceeded: true,
+            refusal: { reason: "io_failure", phase: "dispatch", retryable: true },
+            error: {
+              code: "shipbob_malformed_response",
+              status: null,
+              retryable: true,
+              mayHaveSucceeded: true,
+              submissionAttempted: true,
+              responseBodyRead: true,
+            },
+          };
+          boundedSet(retainedOutcomes, evidence.commandFingerprint, malformedResult, MAX_OUTCOME_ENTRIES);
+          return cloneResult(malformedResult);
+        }
         const externalRef =
-          created?.id !== null && created?.id !== undefined
+          created.id !== null && created.id !== undefined
             ? String(created.id)
             : prepared.referenceId;
         const receiptKey = `shipbob:receipt:${externalRef}`;
@@ -765,8 +785,19 @@ export function createShipBobFulfillmentAdapter(
           if (!skuRef) {
             results.push({ kind: "rejected", itemIndex, reason: "invalid_sku_ref" });
           } else {
-            const totalQuantity = item.total_on_hand_quantity;
-            const forSaleQuantity = item.total_fulfillable_quantity;
+            const onHand =
+              typeof item.total_on_hand_quantity === "number" &&
+              Number.isSafeInteger(item.total_on_hand_quantity) &&
+              item.total_on_hand_quantity >= 0
+                ? item.total_on_hand_quantity
+                : 0;
+            const forSaleQuantity =
+              typeof item.total_fulfillable_quantity === "number" &&
+              Number.isSafeInteger(item.total_fulfillable_quantity) &&
+              item.total_fulfillable_quantity >= 0
+                ? item.total_fulfillable_quantity
+                : 0;
+            const totalQuantity = Math.max(onHand, forSaleQuantity);
             const reservedOrUnavailableQuantity = Math.max(0, totalQuantity - forSaleQuantity);
             const sourceRevision = safeRfc3339(item.last_updated_date);
             results.push({
