@@ -20,6 +20,7 @@ declare class ParseError extends Error {
     readonly code: TaxRefusalCode;
     constructor(message: string, field: string, code: TaxRefusalCode);
 }
+export declare const exclusiveTaxRemedy = "Use the existing inclusive quote path for inclusive-tax quotes. This port version calculates exclusive tax.";
 export declare function invalid(field: string, remedy?: string, code?: TaxRefusalCode): never;
 export declare function object<R extends Fields, O extends Fields = Record<never, never>>(required: R, optional?: O): Decode<Decoded<R> & Partial<Decoded<O>>>;
 export declare function variant<T>(key: string, cases: Record<string, Decode<T>>): Decode<T>;
@@ -254,7 +255,9 @@ export type TaxQuoteInputV1 = Readonly<{
     scope: TaxScopeV1;
     market: string;
     currency: string;
-    money: CatalogueMoneyV2Input;
+    money: CatalogueMoneyV2Input & {
+        readonly amountBasis: "exclusive";
+    };
     purpose: "final" | "estimate";
     taxDate: string;
     destination: Destination;
@@ -271,6 +274,22 @@ export type TaxQuoteRequestV1 = Readonly<{
     inputDigest: string;
     input: TaxQuoteInputV1;
 }>;
+/**
+ * Hash digests as lowercase SHA-256 hex over the UTF-8 bytes of
+ * `canonicalCatalogDraftJson([tag, payload])` from `@openlup/platform/catalog/contracts`.
+ * Use these tags and payloads.
+ *
+ * - `platform.tax.input.v1` binds the quote input, with required cells and
+ *   declarations sorted by identity as in `makeTaxQuoteRequest`.
+ * - `platform.tax.coverage.v1` binds `coverage.vector` as returned by `reconcileTaxCoverage`.
+ * - `platform.tax.resolution.v1` binds each tax row's `resolution`.
+ * - `platform.tax.fiscal.v1` binds `{ scope, destinationDigest, shipFromRef,
+ *   policyRevision, classMapRevision, coverage, tax, fees }`. Use the coverage
+ *   vector for `coverage`, the tax rows with `resolutionDigest` and
+ *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
+ *   This payload excludes the calculation ref, times and expiry.
+ * - `platform.tax.evidence.v1` binds this whole evidence object.
+ */
 export type TaxCalculationEvidenceV1 = Readonly<{
     scope: TaxScopeV1;
     calculationRef: string;
@@ -384,7 +403,7 @@ export type TaxCapabilitiesV1 = Readonly<{
     scope: TaxScopeV1;
     markets: List<string>;
     currencies: List<string>;
-    bases: List<CatalogueMoneyV2Input["amountBasis"]>;
+    bases: List<"exclusive">;
     sourcing: List<Sourcing>;
     evidence: Readonly<{
         lines: boolean;

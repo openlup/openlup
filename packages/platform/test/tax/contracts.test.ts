@@ -7,15 +7,28 @@ import {
   taxCalculationEvidenceV1Schema, taxCloseInputV1Schema, taxCommitRequestV1Schema, taxCoverageV1Schema,
   taxFiscalValidityRequestV1Schema, taxQuoteRequestV1Schema, taxReverseRequestV1Schema,
 } from "../../src/tax/contracts/index.js";
-import type { TaxCalculationEvidenceV1, TaxQuoteResultV1 } from "../../src/tax/contracts/index.js";
+import type { TaxCalculationEvidenceV1, TaxQuoteRequestV1, TaxQuoteResultV1 } from "../../src/tax/contracts/index.js";
 import { active, cell, coverage, date, digest, later, quote, registered, scope, taxable } from "./fixtures.js";
 
 function refuses(run: () => unknown, field: string): void {
   expect(run).toThrow(expect.objectContaining({ field }));
 }
 
-function taggedDigest(tag: "coverage" | "evidence", value: unknown): string {
+function taggedDigest(tag: "input" | "coverage" | "evidence" | "fiscal" | "resolution", value: unknown): string {
   return createHash("sha256").update(canonicalCatalogDraftJson(["platform.tax." + tag + ".v1", value])).digest("hex");
+}
+
+function fiscalHash(evidence: TaxCalculationEvidenceV1): string {
+  const { scope, destinationDigest, shipFromRef, policyRevision, classMapRevision, coverage, positions } = evidence;
+  return taggedDigest("fiscal", {
+    scope, destinationDigest, shipFromRef, policyRevision, classMapRevision, coverage: coverage.vector,
+    tax: positions.tax.map(({ resolutionDigest: _digest, providerLineRef: _provider, ...row }) => row),
+    fees: positions.fees,
+  });
+}
+
+function bindFiscal(evidence: TaxCalculationEvidenceV1): TaxCalculationEvidenceV1 {
+  return { ...evidence, fiscalDigest: fiscalHash(evidence) };
 }
 
 describe("tax document decoders", () => {
@@ -115,7 +128,8 @@ describe("tax document decoders", () => {
     scope, taxDate: date, coverage: request.input.coverage, required: input.required,
     observations: input.required.map(cell => ({ cell, registration: active, treatment: taxable, assessedMinor: 0 })),
   });
-  const receipt: TaxCalculationEvidenceV1 = {
+  const resolution = { assignmentRef: "assignment-a", policyRevision: "policy-a", sourceRef: "table-a", effective: { from: date } };
+  const receipt = bindFiscal({
     scope, calculationRef: "calculation-a", status: "final", calculatedAt: date, expiresAt: later,
     taxDate: date, destinationDigest: digest, shipFromRef: request.input.shipFromRef, inputDigest: request.inputDigest,
     policyRevision: request.input.policyRevision, classMapRevision: request.input.classMapRevision,
@@ -125,18 +139,19 @@ describe("tax document decoders", () => {
       refundRule: { ref: "fee-rule", revision: "revision-a" },
     }], tax: [{
       positionRef: "position-a", cell: cell(), ratePercent: "8.125000", taxabilityReason: "standard", ruleRef: "rule-a",
-      resolution: { assignmentRef: "assignment-a", policyRevision: "policy-a", sourceRef: "table-a", effective: { from: date } },
-      resolutionDigest: digest,
+      resolution, resolutionDigest: taggedDigest("resolution", resolution), providerLineRef: "provider-line-a",
     }] },
-  };
+  });
 
-  const money = calculateCatalogueMoneyV2({ ...request.input.money, fees: [{ feeKey: "fee-a", amountMinor: 5 }] }, {
+  const localMoney = (input = request.input.money, jurisdictionRef = "district-a", rateDecimal = "8.125000",
+    fees = [{ feeKey: "fee-a", amountMinor: 5 }]) => calculateCatalogueMoneyV2({ ...input, fees }, {
     kind: "local",
-    components: planCatalogueMoneyV2(request.input.money).components.map(({ ref }) => ({
+    components: planCatalogueMoneyV2(input).components.map(({ ref }) => ({
       ref, rates: ref.kind === "merchandise" && ref.lineKey === "item-z"
-        ? [{ positionRef: "position-a", jurisdictionRef: "district-a", rateDecimal: "8.125" }] : [],
+        ? [{ positionRef: "position-a", jurisdictionRef, rateDecimal }] : [],
     })),
   });
+  const money = localMoney();
   const successful = (evidence = receipt) => ({
     kind: "final" as const, money, evidence: { ...evidence, status: "final" as const }, evidenceDigest: taggedDigest("evidence", evidence),
   });
@@ -226,19 +241,147 @@ describe("tax document decoders", () => {
     const result = successful();
     const { tax, fees } = receipt.positions;
     for (const [positions, field] of [
-      [{ tax: [], fees }, "/evidence/positions/tax"],
+      [{ tax: [], fees }, "/money/components/0/initial/taxPositions/0/positionRef"],
       [{ tax: [...tax, tax[0]], fees }, "/evidence/positions/tax/1"],
-      [{ tax: [...tax, { ...tax[0], positionRef: "orphan" }], fees }, "/evidence/positions/tax"],
-      [{ tax, fees: [] }, "/evidence/positions/fees"],
+      [{ tax: [...tax, { ...tax[0], positionRef: "orphan" }], fees }, "/evidence/positions/tax/1/positionRef"],
+      [{ tax, fees: [] }, "/money/fees/0/feeKey"],
       [{ tax, fees: [...fees, fees[0]] }, "/evidence/positions/fees/1"],
     ] as const) {
-      expect(verifyTaxQuoteResult(request, successful({ ...receipt, positions }))).toMatchObject({
+      expect(verifyTaxQuoteResult(request, successful(bindFiscal({ ...receipt, positions })))).toMatchObject({
         code: "tax_breakdown_incomplete", field,
       });
     }
-    expect(verifyTaxQuoteResult(request, { ...result, money: { ...money, fees: [] } })).toMatchObject({
-      code: "tax_breakdown_incomplete", field: "/evidence/positions/fees",
+    expect(verifyTaxQuoteResult(request, { ...result, money: localMoney(request.input.money, "district-a", "8.125000", []) })).toMatchObject({
+      code: "tax_breakdown_incomplete", field: "/evidence/positions/fees/0/feeKey",
     });
+    const zeroMoney = localMoney(request.input.money, "district-a", "0");
+    const zero = bindFiscal({ ...receipt, positions: { ...receipt.positions, tax: [] } });
+    expect(verifyTaxQuoteResult(request, { ...successful(zero), money: zeroMoney })).toMatchObject({
+      code: "tax_breakdown_incomplete", field: "/money/components/0/initial/taxPositions/0/positionRef",
+    });
+  });
+
+  it("recomputes money against the original plan and names the first different field", () => {
+    const sources = request.input.money.sources.map(row => row.lineKey === "item-z" ? { ...row, unitBasisMinor: 1_000 } : row);
+    const repriced = localMoney({ ...request.input.money, sources });
+    expect(repriced.payableMinor).toBeGreaterThan(money.payableMinor);
+    const result = successful();
+    expect(verifyTaxQuoteResult(request, { ...result, money: repriced })).toMatchObject({
+      code: "tax_breakdown_incomplete", field: "/money/components/0/initial/amountMinor",
+    });
+    const [first, ...components] = money.components;
+    const [allocation, ...allocations] = first.allocations;
+    const altered = { ...first, allocations: [{ ...allocation, netReductionMinor: 0 }, ...allocations] };
+    expect(verifyTaxQuoteResult(request, { ...result, money: { ...money, components: [altered, ...components] } })).toMatchObject({
+      code: "tax_breakdown_incomplete", field: "/money/components/0/allocations/0/netReductionMinor",
+    });
+    expect(verifyTaxQuoteResult(request, { ...result, money: { ...money, netTotal: 1 } })).toMatchObject({
+      code: "tax_breakdown_incomplete", field: "/money/netTotal",
+    });
+    expect(verifyTaxQuoteResult(request, { ...result, money: { ...money, payableMinor: 1 } })).toMatchObject({
+      code: "tax_breakdown_incomplete", field: "/money/payableMinor",
+    });
+  });
+
+  it("refuses a genuine inclusive result with positive tax and no money positions", () => {
+    const inclusive = { ...request.input.money, amountBasis: "inclusive" as const };
+    const inclusiveResult = calculateCatalogueMoneyV2(inclusive, {
+      kind: "inclusive", components: planCatalogueMoneyV2(inclusive).components
+        .filter(({ ref }) => ref.kind === "merchandise").map(({ ref }) => ({ ref, rateBps: 2_000 })),
+    });
+    expect(inclusiveResult.taxTotal).toBeGreaterThan(0);
+    expect(inclusiveResult.components.every(row => row.final.taxPositions.length === 0)).toBe(true);
+    for (const skip of [false, true]) {
+      const declarations = skip ? request.input.coverage.declarations.map(declaration => ({
+        ...declaration, status: "not_registered_acknowledged" as const, acknowledgementRef: "ack-a",
+      })) : request.input.coverage.declarations;
+      const input = { ...request.input, money: inclusive, coverage: { ...request.input.coverage, declarations } };
+      const requestWithInclusiveMoney = { key: request.key, input, inputDigest: taggedDigest("input", input) };
+      const coverage = skip ? reconcileTaxCoverage({
+        scope, taxDate: date, required: input.required, coverage: input.coverage,
+        observations: input.required.map(cell => ({ cell, registration: { ...active, state: "inactive" } })),
+      }) : receipt.coverage;
+      if (skip) expect(coverage).toMatchObject({ kind: "resolved", posting: "skip" });
+      const evidence = bindFiscal({
+        ...receipt, coverage: { vector: coverage.vector, digest: coverage.digest }, inputDigest: requestWithInclusiveMoney.inputDigest,
+        positions: { tax: [], fees: [] },
+      });
+      const refusal = {
+        code: "tax_scope_mismatch", field: "/input/money/amountBasis", remedy: expect.stringContaining("existing inclusive quote path"),
+      };
+      expect(taxQuoteRequestV1Schema.safeParse(requestWithInclusiveMoney)).toMatchObject({
+        success: false, error: { code: refusal.code, field: refusal.field, message: refusal.remedy },
+      });
+      const typed = requestWithInclusiveMoney as unknown as TaxQuoteRequestV1;
+      expect(verifyTaxQuoteRequest(typed)).toMatchObject(refusal);
+      expect(verifyTaxQuoteResult(typed, { ...successful(evidence), money: inclusiveResult })).toMatchObject(refusal);
+    }
+    expect(verifyTaxQuoteResult(request, { ...successful(), money: inclusiveResult })).toMatchObject({
+      code: "tax_scope_mismatch", field: "/money/amountBasis",
+    });
+  });
+
+  it("binds jurisdiction and rate on every position and rejects positive tax on exempt or out-of-scope cells", () => {
+    const result = successful();
+    expect(verifyTaxQuoteResult(request, { ...result, money: localMoney(request.input.money, "other-district") })).toMatchObject({
+      code: "tax_breakdown_incomplete", field: "/evidence/positions/tax/0/cell/jurisdiction",
+    });
+    const [position] = receipt.positions.tax;
+    const { ratePercent: _rate, ...withoutRate } = position;
+    for (const tax of [[{ ...position, ratePercent: "8.125" }], [withoutRate]]) {
+      const altered = bindFiscal({ ...receipt, positions: { ...receipt.positions, tax } });
+      expect(verifyTaxQuoteResult(request, successful(altered))).toMatchObject({
+        code: "tax_breakdown_incomplete", field: "/evidence/positions/tax/0/ratePercent",
+      });
+    }
+    for (const outOfScope of [false, true]) {
+      const declarations = request.input.coverage.declarations.map(declaration =>
+        outOfScope && declaration.jurisdiction === position.cell.jurisdiction && declaration.taxKind === position.cell.taxKind
+          ? { ...declaration, status: "not_registered_acknowledged" as const, acknowledgementRef: "ack-a" } : declaration);
+      const original = makeTaxQuoteRequest("coverage-check", { ...request.input, coverage: { ...request.input.coverage, declarations } });
+      const coverage = reconcileTaxCoverage({
+        scope, taxDate: date, required: original.input.required, coverage: original.input.coverage,
+        observations: original.input.required.map(cell => {
+          if (cell.jurisdiction !== position.cell.jurisdiction || cell.taxKind !== position.cell.taxKind) {
+            return { cell, registration: active, treatment: taxable, assessedMinor: 0 };
+          }
+          return outOfScope ? { cell, registration: { ...active, state: "inactive" } }
+            : { cell, registration: active, treatment: { ...taxable, kind: "exempt" }, assessedMinor: 0 };
+        }),
+      });
+      const covered = bindFiscal({
+        ...receipt, inputDigest: original.inputDigest, coverage: { vector: coverage.vector, digest: coverage.digest },
+      });
+      expect(verifyTaxQuoteResult(original, successful(covered))).toMatchObject({
+        code: "tax_breakdown_incomplete", field: "/money/components/0/initial/taxPositions/0/taxMinor",
+      });
+      const zeroTax = bindFiscal({ ...covered, positions: { ...covered.positions, tax: [{ ...position, ratePercent: "0" }] } });
+      expect(verifyTaxQuoteResult(original, { ...successful(zeroTax), money: localMoney(request.input.money, "district-a", "0") }))
+        .toBeUndefined();
+    }
+  });
+
+  it("recomputes fiscal and resolution digests even if the outer evidence digest is refreshed", () => {
+    const tax = receipt.positions.tax[0];
+    for (const [evidence, field] of [
+      [{ ...receipt, fiscalDigest: digest }, "/evidence/fiscalDigest"],
+      [{ ...receipt, positions: { ...receipt.positions, tax: [{ ...tax, resolutionDigest: digest }] } },
+        "/evidence/positions/tax/0/resolutionDigest"],
+      [bindFiscal({
+        ...receipt, positions: { ...receipt.positions, tax: [{ ...tax, resolution: { ...tax.resolution, sourceRef: "different-source" } }] },
+      }), "/evidence/positions/tax/0/resolutionDigest"],
+    ] as const) {
+      const result = successful(evidence);
+      const refusal = { code: "tax_reference_conflict", field };
+      expect(verifyTaxQuoteResult(request, result)).toMatchObject(refusal);
+      expect(verifyTaxQuoteRequest({ ...fiscal, evidence, evidenceDigest: result.evidenceDigest })).toMatchObject(refusal);
+    }
+    const lifecycle = {
+      ...receipt, calculationRef: "another-calculation", calculatedAt: later, expiresAt: "2030-03-01T00:00:00.000Z",
+      positions: { ...receipt.positions, tax: [{ ...tax, providerLineRef: "another-line" }] },
+    };
+    expect(fiscalHash(lifecycle)).toBe(receipt.fiscalDigest);
+    expect(verifyTaxQuoteResult(request, successful(lifecycle))).toBeUndefined();
   });
 
   it("validates close, commit and reversal envelopes", () => {

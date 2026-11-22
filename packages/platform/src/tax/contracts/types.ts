@@ -36,11 +36,27 @@ type CoverageEvidence = Readonly<{ vector: List<CoverageRow>; digest: string }>;
 export type TaxCoverageResultV1 = CoverageEvidence & (
   Readonly<{ kind: "resolved"; posting: "required" | "skip" }> | TaxRefusal | TaxUnavailable);
 
-export type TaxQuoteInputV1 = Readonly<{ scope: TaxScopeV1; market: string; currency: string; money: CatalogueMoneyV2Input;
+export type TaxQuoteInputV1 = Readonly<{ scope: TaxScopeV1; market: string; currency: string; money: CatalogueMoneyV2Input & { readonly amountBasis: "exclusive" };
   purpose: "final" | "estimate"; taxDate: string; destination: Destination; shipFromRef: string;
   policyRevision: string; classMapRevision: string; lines: List<Line>; delivery: List<Delivery>;
   required: List<Cell>; coverage: TaxCoverageV1 }>;
 export type TaxQuoteRequestV1 = Readonly<{ key: string; inputDigest: string; input: TaxQuoteInputV1 }>;
+/**
+ * Hash digests as lowercase SHA-256 hex over the UTF-8 bytes of
+ * `canonicalCatalogDraftJson([tag, payload])` from `@openlup/platform/catalog/contracts`.
+ * Use these tags and payloads.
+ *
+ * - `platform.tax.input.v1` binds the quote input, with required cells and
+ *   declarations sorted by identity as in `makeTaxQuoteRequest`.
+ * - `platform.tax.coverage.v1` binds `coverage.vector` as returned by `reconcileTaxCoverage`.
+ * - `platform.tax.resolution.v1` binds each tax row's `resolution`.
+ * - `platform.tax.fiscal.v1` binds `{ scope, destinationDigest, shipFromRef,
+ *   policyRevision, classMapRevision, coverage, tax, fees }`. Use the coverage
+ *   vector for `coverage`, the tax rows with `resolutionDigest` and
+ *   `providerLineRef` omitted for `tax`, and the fee rows for `fees`.
+ *   This payload excludes the calculation ref, times and expiry.
+ * - `platform.tax.evidence.v1` binds this whole evidence object.
+ */
 export type TaxCalculationEvidenceV1 = Readonly<{
   scope: TaxScopeV1; calculationRef: string; status: "final" | "estimate"; calculatedAt: string;
   expiresAt: string; taxDate: string; destinationDigest: string; shipFromRef: string; inputDigest: string;
@@ -76,7 +92,7 @@ export type TaxReverseRequestV1 = Readonly<{ scope: TaxScopeV1; originalRef: str
 export type TaxReverseResultV1 = Readonly<{ kind: "reversed"; providerReversalRef: string; positions: List<Delta> }>
   | TaxRefusal | TaxUnavailable;
 export type TaxCapabilitiesV1 = Readonly<{ scope: TaxScopeV1; markets: List<string>; currencies: List<string>;
-  bases: List<CatalogueMoneyV2Input["amountBasis"]>; sourcing: List<Sourcing>;
+  bases: List<"exclusive">; sourcing: List<Sourcing>;
   evidence: Readonly<{ lines: boolean; delivery: boolean; fees: boolean }>;
   registrations: "effective_intervals" | "unsupported"; validity: "read_only" | "unsupported";
   calculationLifetimeMs: number; posting: "provider" | "unsupported"; reversals: List<"full" | "lines" | "amount">;

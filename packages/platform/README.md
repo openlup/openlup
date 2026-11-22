@@ -3191,7 +3191,7 @@ application retains its existing national rules and callers unchanged.
 ## Tax calculation
 
 Choose a tax adapter in application composition and supply one merchant coverage
-document. Use `./tax/contracts` for the browser-safe port and document decoders.
+document. This version calculates exclusive tax. Use `./tax/contracts` for the browser-safe port and document decoders.
 Use `./tax` to prepare and verify requests and reconcile coverage. Call
 `verifyTaxQuoteRequest` for quotes and decoded fiscal-validity requests and
 `verifyTaxQuoteResult` before using successful results. For the evidence digest,

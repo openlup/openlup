@@ -7,6 +7,8 @@ class ParseError extends Error {
   constructor(message: string, readonly field: string, readonly code: TaxRefusalCode) { super(message); }
 }
 
+export const exclusiveTaxRemedy = "Use the existing inclusive quote path for inclusive-tax quotes. This port version calculates exclusive tax.";
+
 export function invalid(
   field: string, remedy = "Supply the documented value at this field.", code: TaxRefusalCode = "tax_invalid_input",
 ): never {

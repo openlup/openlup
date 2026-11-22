@@ -46,7 +46,7 @@ export declare function taxDigest(tag: DigestTag, payload: unknown): string;
 export declare function makeTaxQuoteRequest(key: string, input: TaxQuoteInputV1): TaxQuoteRequestV1;
 /** Verify the quote digest or, for fiscal validity, its original quote and bound evidence. Returns a refusal on failure. */
 export declare function verifyTaxQuoteRequest(request: TaxQuoteRequestV1 | TaxFiscalValidityRequestV1): TaxRefusal | undefined;
-/** Verify a successful quote's evidence and money-position references. Returns a refusal on failure. */
+/** Recompute a successful quote's money and verify every evidence binding. Returns a refusal on failure. */
 export declare function verifyTaxQuoteResult(request: TaxQuoteRequestV1, result: TaxQuoteResultV1): TaxRefusal | undefined;
 export {};
 ```

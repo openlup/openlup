@@ -1,5 +1,5 @@
 import { CatalogueMoneyV2Error, isCatalogueMoneyV2RateDecimal, planCatalogueMoneyV2 } from "@openlup/core/pricing";
-import { array, checked, invalid, object, oneOf, schema, unique, variant } from "./decode.js";
+import { array, checked, exclusiveTaxRemedy, invalid, object, oneOf, schema, unique, variant } from "./decode.js";
 import type { Decode, Schema } from "./decode.js";
 import { cellKey, compareCells, compareDeclarations, declarationKey, includesInstant, sameCell } from "./identity.js";
 import type {
@@ -85,7 +85,10 @@ const adjustmentTarget = (value: unknown, field: string): { lineKeys: string[] }
   typeof value === "object" && value !== null && Object.hasOwn(value, "lineKeys")
     ? object({ lineKeys: array(moneyRef, 256) })(value, field) : object({ bucketKey: moneyRef })(value, field);
 const moneyFields = object({
-  amountBasis: oneOf("inclusive", "exclusive"),
+  amountBasis(value: unknown, field: string) {
+    if (value === "inclusive") invalid(field, exclusiveTaxRemedy, "tax_scope_mismatch");
+    return oneOf("exclusive")(value, field);
+  },
   sources: array(object({ lineKey: moneyRef, sourceOrdinal: unsigned, quantity: unsigned, unitBasisMinor: unsigned }), 256),
   delivery: array(object({ bucketKey: moneyRef, deliveryKind: oneOf("shipping", "handling"), amountMinor: unsigned }), 256),
   adjustments: array(object({ adjustmentRef: moneyRef, sequence: unsigned, amountMinor: unsigned, target: adjustmentTarget }), 256),
@@ -204,6 +207,7 @@ function evidence(value: unknown, field: string): TaxCalculationEvidenceV1 {
       || row.registration?.state !== "inactive" || row.treatment?.kind === "taxable")) {
       invalid(path + "/decision", "Supply an acknowledgement and inactive registration for an out-of-scope cell.");
     }
+    if (row.decision === "out_of_scope" && row.cell.target.kind !== "fee") cells.set(cellKey(row.cell), row.cell);
     if (row.decision !== "in_scope_taxed" && row.decision !== "in_scope_exempt") return;
     const treatmentKind = row.decision === "in_scope_taxed" ? "taxable" : "exempt";
     if (row.declaration?.status !== "registered" || row.registration?.state !== "active" || row.treatment?.kind !== treatmentKind) {
@@ -217,7 +221,7 @@ function evidence(value: unknown, field: string): TaxCalculationEvidenceV1 {
   parsed.positions.tax.forEach((item, index) => {
     const bound = cells.get(cellKey(item.cell));
     const path = field + "/positions/tax/" + index;
-    if (!bound || !sameCell(bound, item.cell)) invalid(path + "/cell", "Bind the position to an in-scope tax cell.");
+    if (!bound || !sameCell(bound, item.cell)) invalid(path + "/cell", "Bind the position to a resolved tax cell.");
     if (!includesInstant(item.resolution.effective, parsed.taxDate)) {
       invalid(path + "/resolution/effective", "Supply a rule resolution effective on the tax date.");
     }
