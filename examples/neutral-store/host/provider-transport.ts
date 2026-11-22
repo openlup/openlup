@@ -81,24 +81,54 @@ export function oneAttempt(wire: Http['makeRequest'] = oneRequest): Http {
   };
 }
 
-type Rejection = { code: string; field: string; remedy: string };
-function taxRejection(operation: string, error: ProviderSdk.errors.StripeError): Rejection {
+const taxRemedies = {
+  tax_invalid_input: {
+    '/input/destination/address': 'Supply a supported address.',
+    '/input/taxDate': 'Supply a whole-second instant within the calculation window.',
+    '/postedAt': 'Use a supported posting instant.',
+    '/providerRequest': 'Check the documented inputs for this operation.',
+  },
+  tax_reference_conflict: {
+    '/key': 'Reconcile the original request and reference.',
+    '/transactionRef': 'Reconcile the original request and reference.',
+    '/reversalRef': 'Reconcile the original request and reference.',
+  },
+  tax_calculation_expired: { '/calculationRef': 'Reconcile the original obligation.' },
+  tax_calculation_unusable: {
+    '/calculationRef': 'Re-obtain the original reference in the bound account.',
+    '/originalRef': 'Re-obtain the original reference in the bound account.',
+    '/transaction/id': 'Re-obtain the original reference in the bound account.',
+  },
+} as const;
+type TaxCode = keyof typeof taxRemedies;
+
+export function fixedTaxRemedy(code: string, field: string): string | undefined {
+  if (!Object.hasOwn(taxRemedies, code)) return undefined;
+  const fields: Readonly<Record<string, string>> = taxRemedies[code as TaxCode];
+  return Object.hasOwn(fields, field) ? fields[field] : undefined;
+}
+
+export class TaxProviderRejection extends Error {
+  readonly code: TaxCode;
+  readonly field: string;
+  constructor(code: TaxCode, field: string) {
+    super(fixedTaxRemedy(code, field) ?? integrityRefusal);
+    this.name = 'TaxProviderRejection';
+    this.code = code;
+    this.field = field;
+  }
+}
+
+function taxRejection(operation: string, error: ProviderSdk.errors.StripeError) {
   const { code, param, statusCode, rawType } = error;
-  if (statusCode === 404 || code === 'resource_missing') return {
-    code: 'tax_calculation_unusable', field: operation === 'commit' || operation.startsWith('calculation') ? '/calculationRef'
-      : operation === 'reverse' ? '/originalRef' : '/transaction/id', remedy: 'Re-obtain the original reference in the bound account.',
-  };
-  if (code === 'tax_calculation_expired') return { code: 'tax_calculation_expired', field: '/calculationRef', remedy: 'Reconcile the original obligation.' };
-  if (rawType === 'idempotency_error' || code === 'reference_already_exists') return {
-    code: 'tax_reference_conflict', field: rawType === 'idempotency_error' ? '/key' : operation === 'reverse' ? '/reversalRef' : '/transactionRef',
-    remedy: 'Reconcile the original request and reference.',
-  };
-  const [field, remedy] = code === 'customer_tax_location_invalid'
-    ? ['/input/destination/address', 'Supply a supported address.']
-    : param === 'tax_date' ? ['/input/taxDate', 'Supply a whole-second instant within the calculation window.']
-    : param === 'posted_at' ? ['/postedAt', 'Use a supported posting instant.']
-    : ['/providerRequest', 'Check the documented inputs for this operation.'];
-  return { code: 'tax_invalid_input', field: field!, remedy: remedy! };
+  if (statusCode === 404 || code === 'resource_missing') return new TaxProviderRejection('tax_calculation_unusable',
+    operation === 'commit' || operation.startsWith('calculation') ? '/calculationRef'
+      : operation === 'reverse' ? '/originalRef' : '/transaction/id');
+  if (code === 'tax_calculation_expired') return new TaxProviderRejection('tax_calculation_expired', '/calculationRef');
+  if (rawType === 'idempotency_error' || code === 'reference_already_exists') return new TaxProviderRejection('tax_reference_conflict',
+    rawType === 'idempotency_error' ? '/key' : operation === 'reverse' ? '/reversalRef' : '/transactionRef');
+  return new TaxProviderRejection('tax_invalid_input', code === 'customer_tax_location_invalid' ? '/input/destination/address'
+    : param === 'tax_date' ? '/input/taxDate' : param === 'posted_at' ? '/postedAt' : '/providerRequest');
 }
 
 export async function openTestProvider(
@@ -123,7 +153,7 @@ export async function openTestProvider(
 
   const salt = randomBytes(32);
   const hash = (value: string) => createHash('sha256').update(salt).update(value).digest('hex');
-  const bindings = new Map<string, { request: unknown; sentAt: number; succeeded: boolean }>();
+  const bindings = new Map<string, { request: unknown; sentAt: number; before: number; succeeded: boolean }>();
   async function call<T>(kind: 'card' | 'tax', operation: string, invoke: () => Promise<T>,
     mutation?: { key: string; reference: string; parameters: unknown; before?: number }): Promise<T> {
     let binding;
@@ -133,13 +163,15 @@ export async function openTestProvider(
       const fingerprint = { kind, operation, reference, parameters };
       binding = bindings.get(key);
       const time = now();
+      if (before !== undefined && !Number.isFinite(before)) throw new Error(integrityRefusal);
+      const cutoff = before ?? Infinity;
       if (binding) {
-        if (!isDeepStrictEqual(binding.request, fingerprint) || !binding.succeeded
-          || time >= Math.min(before ?? Infinity, binding.sentAt + replayLimit)) throw new Error(integrityRefusal);
+        if (!isDeepStrictEqual(binding.request, fingerprint) || !binding.succeeded || cutoff > binding.before
+          || time >= Math.min(cutoff, binding.before, binding.sentAt + replayLimit)) throw new Error(integrityRefusal);
         record({ operation, key: hash(key), reference: hash(reference), replayAgeMs: time - binding.sentAt });
       } else {
-        if (before !== undefined && time >= before) throw new Error(integrityRefusal);
-        binding = { request: structuredClone(fingerprint), sentAt: time, succeeded: false };
+        if (time >= cutoff) throw new Error(integrityRefusal);
+        binding = { request: structuredClone(fingerprint), sentAt: time, before: cutoff, succeeded: false };
         bindings.set(key, binding);
       }
       evidence = { operation, key: hash(key), reference: hash(reference) };
@@ -154,36 +186,37 @@ export async function openTestProvider(
         if (kind === 'card') throw new CardRejection(declineCode(error.code));
         const refusal = taxRejection(operation, error);
         if (evidence && refusal.code === 'tax_reference_conflict') record({ ...evidence, effect: 'unknown' });
-        throw Object.assign(new Error(refusal.remedy), { name: 'TaxProviderRejection', field: refusal.field, code: refusal.code });
+        throw refusal;
       }
       if (evidence) record({ ...evidence, effect: 'unknown' });
       throw new ProviderUnavailable();
     }
   }
 
-  const write = <T>(kind: 'card' | 'tax', operation: string, reference: string, parameters: unknown, options: WriteOptions,
-    invoke: () => Promise<T>, before?: number) => call(kind, operation, invoke,
-      { key: options.idempotencyKey, reference, parameters, ...(before === undefined ? {} : { before }) });
+  const write = <T>(kind: 'card' | 'tax', operation: string, reference: string | undefined, parameters: unknown,
+    { idempotencyKey }: WriteOptions, invoke: (options: WriteOptions) => Promise<T>, before?: number) =>
+    call(kind, operation, () => invoke({ idempotencyKey }),
+      { key: idempotencyKey, reference: reference ?? idempotencyKey, parameters, ...(before === undefined ? {} : { before }) });
   const card = Object.freeze({
     customer: (parameters: ProviderSdk.CustomerCreateParams, options: WriteOptions) =>
-      write('card', 'customer', options.idempotencyKey, parameters, options, () => sdk.customers.create(parameters, options)),
+      write('card', 'customer', undefined, parameters, options, bound => sdk.customers.create(parameters, bound)),
     create: (parameters: ProviderSdk.PaymentIntentCreateParams, options: WriteOptions) =>
-      write('card', 'intent', options.idempotencyKey, parameters, options, () => sdk.paymentIntents.create(parameters, options)),
+      write('card', 'intent', undefined, parameters, options, bound => sdk.paymentIntents.create(parameters, bound)),
     confirm: (id: string, parameters: ProviderSdk.PaymentIntentConfirmParams, options: WriteOptions) =>
-      write('card', 'confirm', id, parameters, options, () => sdk.paymentIntents.confirm(id, parameters, options)),
+      write('card', 'confirm', id, parameters, options, bound => sdk.paymentIntents.confirm(id, parameters, bound)),
     retrieve: (id: string, timeout = deadline) =>
       call('card', 'retrieve', () => sdk.paymentIntents.retrieve(id, { expand: ['latest_charge'] }, { timeout })),
     capture: (id: string, options: WriteOptions, before: number) =>
-      write('card', 'capture', id, { amount_to_capture: 1000 }, options, () => sdk.paymentIntents.capture(id, { amount_to_capture: 1000 }, options), before),
+      write('card', 'capture', id, { amount_to_capture: 1000 }, options, bound => sdk.paymentIntents.capture(id, { amount_to_capture: 1000 }, bound), before),
     cancel: (id: string, options: WriteOptions) =>
-      write('card', 'cancel', id, {}, options, () => sdk.paymentIntents.cancel(id, {}, options)),
+      write('card', 'cancel', id, {}, options, bound => sdk.paymentIntents.cancel(id, {}, bound)),
     charges: (id: string) => call('card', 'charges', () => sdk.charges.list({ payment_intent: id, limit: 100 })),
   });
   const tax = Object.freeze({
     scope,
     calculations: Object.freeze({
       create: (params: ProviderSdk.Tax.CalculationCreateParams, options: WriteOptions) =>
-        write('tax', 'calculation', options.idempotencyKey, params, options, () => sdk.tax.calculations.create(params, options)),
+        write('tax', 'calculation', params.line_items[0]?.reference, params, options, bound => sdk.tax.calculations.create(params, bound)),
       retrieve: (id: string) => call('tax', 'calculationRead', () => sdk.tax.calculations.retrieve(id, { expand: ['shipping_cost.tax_breakdown'] })),
       listLineItems: (id: string, params: ProviderSdk.Tax.CalculationListLineItemsParams) =>
         call('tax', 'calculationLines', () => sdk.tax.calculations.listLineItems(id, params)),
@@ -192,9 +225,9 @@ export async function openTestProvider(
       call('tax', 'registrations', () => sdk.tax.registrations.list(params)) }),
     transactions: Object.freeze({
       createFromCalculation: (params: ProviderSdk.Tax.TransactionCreateFromCalculationParams, options: WriteOptions, before?: number) =>
-        write('tax', 'commit', params.reference, params, options, () => sdk.tax.transactions.createFromCalculation(params, options), before),
+        write('tax', 'commit', params.reference, params, options, bound => sdk.tax.transactions.createFromCalculation(params, bound), before),
       createReversal: (params: ProviderSdk.Tax.TransactionCreateReversalParams, options: WriteOptions, before?: number) =>
-        write('tax', 'reverse', params.reference, params, options, () => sdk.tax.transactions.createReversal(params, options), before),
+        write('tax', 'reverse', params.reference, params, options, bound => sdk.tax.transactions.createReversal(params, bound), before),
       retrieve: (id: string) => call('tax', 'transactionRead', () => sdk.tax.transactions.retrieve(id)),
       listLineItems: (id: string, params: ProviderSdk.Tax.TransactionListLineItemsParams) =>
         call('tax', 'transactionLines', () => sdk.tax.transactions.listLineItems(id, params)),

@@ -43,17 +43,36 @@ the default database-less UI host cannot satisfy it. See [proof](docs/proof.md).
 
 ## Qualify a provider test account
 
-The qualification command is available in a locked candidate application
-extracted with `--mode candidate --provider-qualification enabled`. Use the
-candidate's exact package manifest and the lock generated for that option, then
-run `npm ci` in the extracted application.
-
-In an interactive terminal, configure a named variable with a private 1Password
-reference for the test account's secret key. Use the expected test account ID
-and the variable name in:
+The qualification command is available in a locked candidate application. It
+requires Node 24.21.0, npm 11.19.0, and the 1Password CLI (`op` on your PATH).
+Run these commands from a clean OpenLup source checkout at the candidate
+revision. The adjacent upgrade check needs an earlier published package set.
 
 ```sh
-npm run provider:qualify -- --run --test-mode --account <id> --key-env <name>
+npm ci
+candidate_dir="$(mktemp -d)"
+version="$(node -p "require('./packages/core/package.json').version")"
+revision="$(git rev-parse HEAD)"
+npm --prefix . run packages:check -- --out "$candidate_dir/packs" --release-set "$version"
+manifest="$candidate_dir/packs/packages-manifest.json"
+receipt="$candidate_dir/candidate-upgrade.json"
+node --experimental-strip-types scripts/packages/exact-set-qualification.mjs \
+  "openlup-core-v$version" "$revision" "$receipt" --candidate "$manifest"
+cd "${receipt}.applications/1/application"
+npm ci
+```
+
+The producer uses the exact pack manifest and generates the opt-in lock at
+`${receipt}.applications/1/input/package-lock.json`. It passes those inputs
+to the extractor with `--mode candidate --provider-qualification enabled`.
+Keep the pack directory available for `npm ci`.
+
+In an interactive terminal, configure the named variable with a private
+1Password reference for the test account's secret key. Set `ACCOUNT_ID` to
+the expected test account ID and `KEY_ENV` to the variable's name.
+
+```sh
+npm run provider:qualify -- --run --test-mode --account "$ACCOUNT_ID" --key-env "$KEY_ENV"
 ```
 
 Open the local link when prompted and complete the provider challenge within
