@@ -1672,8 +1672,8 @@ authority. Review evidence grants no merge, release, settings or credential righ
    amend the specification before continuing. For a trivial fix, a few lines
    in the task record can serve as the specification.
 
-   Include each of the following records whenever its condition applies, even
-   in a short specification.
+   The specification also records simplicity and DX impact. Each record applies
+   whenever its condition holds, even in a short specification.
 
    Before adding a mechanism (table, trigger, lock, version or dialect, scanner,
    wrapper, setting, test harness or process step), record the current requirement
