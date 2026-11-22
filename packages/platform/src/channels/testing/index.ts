@@ -186,7 +186,9 @@ function assertNoLeak(payload: unknown, sensitive: readonly string[] | undefined
     if (Array.isArray(v)) { for (const i of v) walk(i); return; }
     for (const k of Reflect.ownKeys(v)) {
       if (typeof k === "string") walk(k);
-      try { walk(Reflect.get(v, k)); } catch { /* ignore */ }
+      let prop: unknown;
+      try { prop = Reflect.get(v, k); } catch { continue; }
+      walk(prop);
     }
   };
   walk(payload);
