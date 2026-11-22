@@ -56,6 +56,8 @@ export interface CatalogActiveSkuEnvelopeListQuery extends CatalogSkuEnvelopeLis
 
 export interface CatalogSkuEnvelopePage {
   items: NeutralSkuEnvelopeV1[];
+  /** Selected SKU codes that require a typed quantity reader. */
+  quantityRefusals?: { skuCode: string; code: "quantity_requires_v2" }[];
   nextCursor: string | null;
 }
 

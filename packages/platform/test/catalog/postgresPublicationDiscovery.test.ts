@@ -176,6 +176,16 @@ it("sets the owner transaction mode first and maps refusal values separately fro
   expect(installed.assess).toHaveBeenCalledTimes(1);
 });
 
+it("refuses a requested typed SKU locally and preserves the gram sibling's full assessment", async () => {
+  const typedCode = "article-50ml";
+  const { lane } = owner(batch([subject, { skuCode: typedCode, refusal: "quantity_requires_v2" }]));
+  const assess = vi.fn(() => []);
+  expect(await readPostgresCatalogActivationReadiness(lane, { registry, assess }, { ...readiness, skuCodes: [sku.code, typedCode] }))
+    .toEqual({ protocol: "governed", headDigest: digest, items: [readyItems[0],
+      { ...readyItems[1], skuCode: typedCode, reasons: ["quantity_requires_v2"] }] });
+  expect(assess).toHaveBeenCalledExactlyOnceWith({ product, sku, evidence });
+});
+
 it("rejects misaligned or uncertified batches", async () => {
   for (const bad of [
     batch([absentItem, subject]), batch([subject, absentItem], "b".repeat(64)), batch([subject]), batch([subject, absentItem, absentItem]),

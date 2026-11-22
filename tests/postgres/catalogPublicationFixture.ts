@@ -7,6 +7,16 @@ export const hash = (text: string) => createHash("sha256").update(text).digest("
 export const catalogueReadGrant = "db/platform/migrations/20261124180000_catalogue_read_grant.sql";
 export const cataloguePublicationAuthority = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
 export const membershipSignature = "public.catalog_offer_memberships_page(text,jsonb,integer,text)";
+export const catalogQuantityCharacterization = [
+  { grams: 1, tuple: null, quote: true },
+  { grams: 2147483647, tuple: null, quote: true },
+  { grams: 120, tuple: ["mass", "openlup:g", 100], quote: true },
+  { grams: 100, tuple: ["mass", "openlup:g", 120], quote: true },
+  { grams: 100, tuple: ["volume", "openlup:ml", 50], quote: true },
+  { grams: 0, tuple: ["volume", "openlup:ml", 50], quote: false },
+  { grams: -1, tuple: null, quote: false },
+] as const;
+export const quantityReaderFixture2099 = "ALTER TABLE public.catalog_sku_revisions ADD COLUMN net_content_storage text";
 export const readinessSignature = "public.catalog_publication_activation_readiness(text[],text)";
 
 // These isolated SQL suites install individual forwards without the production runner.

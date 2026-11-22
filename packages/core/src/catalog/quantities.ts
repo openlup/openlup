@@ -106,3 +106,31 @@ export function convertCatalogQuantity(input: CatalogQuantity, target: string, u
   // Preserve exact canonical decimal strings at the Core boundary.
   return parseCatalogQuantity(result, units);
 }
+
+/** Decode the exact fields carried on the quantity read wire.
+ * @experimental
+ */
+export function decodeCatalogReadQuantity(input: unknown, units?: readonly CatalogQuantityUnit[]): CatalogQuantity {
+  if (!input || typeof input !== "object" || Array.isArray(input)
+    || Object.keys(input).some(key => !["dimension", "unscaled", "scale", "unit"].includes(key))) fail("quantity_invalid");
+  return canonicalizeCatalogQuantity(input as CatalogQuantity, units);
+}
+
+/** Return exact mass in grams for a numeric transport.
+ * @experimental
+ */
+export function exactCatalogMassGrams(input: unknown, units?: readonly CatalogQuantityUnit[]): number | null {
+  try {
+    const { dimension, unscaled, scale } = decodeCatalogReadQuantity(input, units);
+    if (dimension !== "mass") return null;
+    const grams = Number(`${unscaled}e-${scale}`);
+    // Compare the transport decimal with the exact canonical coefficient and exponent.
+    const digits = unscaled.replace(/0+$/u, "");
+    const exponent = unscaled.length - scale - 1;
+    const mantissa = digits.length === 1 ? digits : `${digits[0]}.${digits.slice(1)}`;
+    return grams.toExponential() === `${mantissa}e${exponent < 0 ? "" : "+"}${exponent}` ? grams : null;
+  } catch (error) {
+    if (!(error instanceof CatalogQuantityError)) throw error;
+    return null;
+  }
+}

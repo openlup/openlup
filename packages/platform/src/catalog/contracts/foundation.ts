@@ -28,6 +28,7 @@ export interface CatalogPriceContext {
 
 /** Refusal vocabulary shared by managed and portable catalog readers. */
 export type CatalogSkuAuthorityRefusal =
+  | "quantity_requires_v2"
   | "catalog_sku_authority_sku_absent"
   | "catalog_sku_authority_product_absent"
   | "catalog_sku_authority_primary_sku_invalid"
@@ -39,9 +40,12 @@ export type CatalogSkuAuthorityRefusal =
   | "catalog_sku_identifier_authority_invalid";
 
 export class CatalogSkuAuthorityError extends Error {
-  constructor(readonly code: CatalogSkuAuthorityRefusal) {
+  declare readonly skuCode?: string;
+
+  constructor(readonly code: CatalogSkuAuthorityRefusal, skuCode?: string) {
     super(code);
     this.name = "CatalogSkuAuthorityError";
+    if (skuCode !== undefined) this.skuCode = skuCode;
   }
 }
 

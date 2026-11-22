@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Pool, type QueryConfig } from "pg";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createPostgresCatalogPublicationReads } from "../../server/adapters/postgres/catalogPublicationReads.js";
-import { actorId, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
+import { actorId, catalogQuantityCharacterization, decisionReceipt, decisionRow, documentRow, fixture, graph, insertGraph, installPublicationActors, invalidReceiptResults, json, transaction, malformedPublicationPackets, sealedPublicationRemedy } from "./catalogPublicationFixture.js";
 import { PostgresTransferError } from "@openlup/platform/portability";
 import type { ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
@@ -46,6 +46,13 @@ beforeAll(async () => {
         `document:${index}:${revision}`, String(revision).repeat(64), at]);
     }
     await source.owner.query("UPDATE public.catalog_products SET current_document_revision_id=$2 WHERE id=$1", [product, latest[index]]);
+  }
+  for (const [index, { grams, tuple }] of catalogQuantityCharacterization.entries()) {
+    await source.owner.query(`INSERT INTO public.catalog_skus(product_id,sku,title,net_weight_g,
+      net_content_dimension,net_content_unit,net_content_unscaled,net_content_scale)
+      VALUES ($1,$2,'Legacy quantity',$3,$4,$5,$6,$7)`, [
+      products[0], `QUANTITY-LEGACY-${index}`, grams, tuple?.[0] ?? null, tuple?.[1] ?? null, tuple?.[2] ?? null, tuple ? 0 : null,
+    ]);
   }
   packet = await captureStoreJourney(source.owner, "catalog-document-source");
 }, postgresSetupTimeoutMs);

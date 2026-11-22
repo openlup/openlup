@@ -1361,13 +1361,14 @@ export declare function loadCatalogRules(artifact: Uint8Array, evaluation?: Cata
 ## dist/catalog/catalogSkuEnvelope.d.ts
 
 ```ts
-import type { PublicCatalogSkuEnvelopeReadPort } from "./readPorts.js";
+import type { CatalogSkuEnvelopeListQuery, CatalogSkuEnvelopePage, PublicCatalogSkuEnvelopeReadPort } from "./readPorts.js";
 import type { PgQueryExecutor } from "../data/index.js";
 /**
  * Portable W2a envelope reader. It reads only product/SKU/revision references
  * and neutral identifiers; application document content never crosses this seam.
  */
 export declare function createPostgresCatalogSkuEnvelopeReadPort(executor: PgQueryExecutor): PublicCatalogSkuEnvelopeReadPort;
+export declare function listPostgresQuoteSkuEnvelopes(executor: PgQueryExecutor, query: CatalogSkuEnvelopeListQuery, requestedSkuCodes: readonly string[]): Promise<CatalogSkuEnvelopePage>;
 ```
 ## dist/catalog/commerceQuoteCatalogRead.d.ts
 
@@ -2691,10 +2692,11 @@ export interface CatalogPriceContext {
     atTime: string;
 }
 /** Refusal vocabulary shared by managed and portable catalog readers. */
-export type CatalogSkuAuthorityRefusal = "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
+export type CatalogSkuAuthorityRefusal = "quantity_requires_v2" | "catalog_sku_authority_sku_absent" | "catalog_sku_authority_product_absent" | "catalog_sku_authority_primary_sku_invalid" | "catalog_sku_authority_selector_ambiguous" | "catalog_sku_authority_current_document_absent" | "catalog_sku_authority_current_document_invalid" | "catalog_sku_identifier_authority_absent" | "catalog_sku_identifier_authority_ambiguous" | "catalog_sku_identifier_authority_invalid";
 export declare class CatalogSkuAuthorityError extends Error {
     readonly code: CatalogSkuAuthorityRefusal;
-    constructor(code: CatalogSkuAuthorityRefusal);
+    readonly skuCode?: string;
+    constructor(code: CatalogSkuAuthorityRefusal, skuCode?: string);
 }
 /** Accepts only GS1 GTIN-8/12/13/14 values with a valid modulo-10 check digit. */
 export declare function isValidGtin(value: string): boolean;
@@ -5063,6 +5065,11 @@ export interface CatalogActiveSkuEnvelopeListQuery extends CatalogSkuEnvelopeLis
 }
 export interface CatalogSkuEnvelopePage {
     items: NeutralSkuEnvelopeV1[];
+    /** Selected SKU codes that require a typed quantity reader. */
+    quantityRefusals?: {
+        skuCode: string;
+        code: "quantity_requires_v2";
+    }[];
     nextCursor: string | null;
 }
 ```

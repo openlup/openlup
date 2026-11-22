@@ -3,15 +3,16 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { PLATFORM_BASELINE_FILE, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { qualifiedCatalogueStorageSelectSql, renderNativeStoreSettingsOwnerWindow, NATIVE_SUCCESSOR_TABLE_SQL, assertNativeStoreForward, expectedReplacedFunctionAttrs, readReviewedForwardRegistry, renderNativeDeferredTrigger, renderQualifiedSecurityDefiner, nativeStoreFunctionDefinitions, nativeStoreAddedForeignKeys, nativeStoreCreatedTable, nativeStoreTriggerDefinition, sqlSha256, sqlStatements, type NativeDeferredTrigger, type NativeStoreSlot, type ReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 // The static native-store class is a first gate for ordinary mistakes. This test is the
 // truth for function identity, attributes and ACLs: it applies a forward to a real
 // database and compares what PostgreSQL itself reports with the slot's lists.
-type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements">;
+type CatalogSlot = Pick<NativeStoreSlot, "createdFunctions" | "replacedFunctions" | "grantOnlyFunctions" | "qualifiedCatalogueStorageSelect" | "settingsOnlyFunctions" | "ownerWindowRole" | "purposeCheck" | "insertSelectTables" | "absorptionCensusTables" | "checkSupersets" | "uniqueSupersets" | "droppedIndexes" | "createdViews" | "createdTriggers" | "existingTableStatements">;
 // PostgreSQL creates its own objects below this OID; every object a forward adds is at or above it.
 const FIRST_USER_OID = 16384;
+const catalogueAuthorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
 // The floor is typed as oid, so every comparison with it resolves to pg_catalog's own oid >= oid and oid < oid. A bare integer
 // would resolve to an operator for (oid, integer), which a forward can create in pg_catalog to hide the objects it adds.
 const OID_FLOOR = `${FIRST_USER_OID}::pg_catalog.oid`;
@@ -408,7 +409,18 @@ async function assertSlotCatalog(db: PoolClient, slot: CatalogSlot, before: Snap
       if ((await db.query("SELECT pg_get_indexdef($1::regclass) AS definition", [name])).rows[0].definition !== index!.definition) fail(`listed index ${name} differs from its pinned CREATE`);
     } finally { await db.query("ROLLBACK TO SAVEPOINT pinned_index"); }
   }
-  for (const old of before.relations) if (!replacedUniqueIndexes.has(old.oid) && !droppedIndexes.has(old.oid) && JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(old)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
+  const storageAcl = slot.qualifiedCatalogueStorageSelect && (await db.query(`SELECT
+    EXISTS (SELECT 1 FROM pg_roles WHERE rolname='openlup_catalog_publication')
+    AND EXISTS (SELECT 1 FROM ONLY public.platform_schema_migrations WHERE catalog_path=$1 AND sha256=$2) AS present`,
+  [catalogueAuthorityPath, sqlSha256(readFileSync(catalogueAuthorityPath))])).rows[0]?.present === true;
+  for (const old of before.relations) {
+    if (replacedUniqueIndexes.has(old.oid) || droppedIndexes.has(old.oid)) continue;
+    const prior = old.columnAcls as [string, string][] | null;
+    const expected = storageAcl && old.name === "public.catalog_sku_revisions"
+      ? { ...old, columnAcls: [...prior ?? [], ["net_content_storage", `{openlup_catalog_publication=r/${old.owner}}`]] }
+      : old;
+    if (JSON.stringify(currentRelations.get(old.oid)) !== JSON.stringify(expected)) fail(`existing relation ${old.name} changed its owner, ACL, row security, options or column ACLs`);
+  }
   const clientReferences = new Set((await db.query(`SELECT DISTINCT conrelid::int AS oid FROM pg_constraint
     WHERE contype='f' AND confrelid=to_regclass('public.clients')`)).rows.map(row => Number(row.oid)));
   const censusSeen = new Set<string>();
@@ -1122,7 +1134,7 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
 
   const qualifiedSignature = "public.catalog_price_setup_region_code()";
   const qualifiedSearchPath = "pg_catalog, pg_temp";
-  const authorityPath = "db/platform/migrations/q2_20261123192500_catalog_publication_authority.sql";
+  const authorityPath = catalogueAuthorityPath;
   const authorityHash = sqlSha256(readFileSync(authorityPath));
   const authorityLedger = "CREATE TABLE public.platform_schema_migrations (catalog_path text PRIMARY KEY, sha256 text NOT NULL, position integer NOT NULL UNIQUE);";
   const authorityRow = `INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ('${authorityPath}', '${authorityHash}', 0);`;
@@ -1138,6 +1150,24 @@ export function registerNativeStoreForwardCatalog({ serviceRole }: { serviceRole
     ...storageSlot,
     replacedFunctions: [{ signature: qualifiedSignature, beforeSha256: sqlSha256(securityPreimage), searchPath: qualifiedSearchPath, qualifiedSecurityDefiner: true }],
   };
+  const storageSelectSlot: CatalogSlot = { replacedFunctions: [], createdFunctions: [], grantOnlyFunctions: [], qualifiedCatalogueStorageSelect: true };
+  const storageSelectTable = "CREATE TABLE public.catalog_sku_revisions (digest text);";
+  const storageSelectForward = `ALTER TABLE public.catalog_sku_revisions ADD COLUMN net_content_storage text;
+${qualifiedCatalogueStorageSelectSql}`;
+  it.each(["qualified", "unpinned", "role absent", "wrong hash"])("admits only the qualified storage ACL (%s)", async mode => {
+    await checkForward(pool, storageSelectSlot, storageSelectForward, false, `${authorityLedger}
+      ${storageSelectTable}
+      ${mode === "role absent" ? "" : "CREATE ROLE openlup_catalog_publication;"}
+      ${mode === "qualified" || mode === "role absent" ? authorityRow : mode === "wrong hash" ? authorityRow.replace(authorityHash, "0".repeat(64)) : ""}`);
+  });
+  it.each(["GRANT SELECT ON public.catalog_sku_revisions TO openlup_catalog_publication;",
+    "GRANT UPDATE(net_content_storage) ON public.catalog_sku_revisions TO openlup_catalog_publication;",
+    "GRANT SELECT(net_content_storage) ON public.catalog_sku_revisions TO openlup_catalog_publication WITH GRANT OPTION;",
+    "GRANT SELECT(digest) ON public.catalog_sku_revisions TO openlup_catalog_publication;"])("rejects extra storage ACL %s", async extra => {
+    await expect(checkForward(pool, storageSelectSlot, `${storageSelectForward}
+${extra}`, false,
+      `${authorityLedger}${authorityRow}${storageSelectTable}CREATE ROLE openlup_catalog_publication;`)).rejects.toThrow(/column ACLs/u);
+  });
   it("preserves installed SECURITY INVOKER without the qualified authority row", async () => {
     await checkForward(pool, securitySlot, securityForward, false, nativeSecuritySetup);
   });

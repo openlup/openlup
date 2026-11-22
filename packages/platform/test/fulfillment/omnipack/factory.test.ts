@@ -1214,3 +1214,23 @@ it("allowlists boolean dispatch facts at the durable sink and preserves absent e
   const facts = { ...base, error: { ...base.error, submissionAttempted: false, responseBodyRead: false } };
   expect(dispatchResult(dispatchResult(facts))).toEqual(facts);
 });
+
+it("registers exact independent gross mass and refuses count or inexact mass before provider I/O", async () => {
+  const valid = { dimension: "mass" as const, unit: "openlup:kg", unscaled: "35", scale: 2 };
+  for (const [grossMass, expected] of [[valid, 350],
+    [{ ...valid, dimension: "count", unit: "openlup:piece" }, null],
+    [{ ...valid, unit: "openlup:g", unscaled: "9007199254740993", scale: 0 }, null],
+    [null, null],
+  ] as const) {
+    const f = fixture(undefined, { typedProduct: { resolvePushMetadata: async sku => ({
+      sku, ean: "0000000000012", title: "Example", productGroup: "Example", pack: { lengthMm: 1, widthMm: 2, heightMm: 3, grossMass },
+    }) } });
+    if (expected === null) {
+      await expect(f.adapter.productSync.ensureProduct("SKU-A")).rejects.toMatchObject({ reason: "malformed", code: "invalid_pack_weight", field: "pack.grossMass" });
+      expect(f.fetchImpl).not.toHaveBeenCalled();
+    } else {
+      await expect(f.adapter.productSync.ensureProduct("SKU-A")).resolves.toEqual({ replayed: false });
+      expect(JSON.parse(String(f.fetchImpl.mock.calls[0]![1]?.body))).toMatchObject({ dimensions: { weight: expected } });
+    }
+  }
+});

@@ -235,7 +235,7 @@ function reconcileManagedCustomization(
   return { path, bytes };
 }
 
-export const starterDisplayFiles = ["host/paid-mail.ts", "client/pages/account.ts", "browser/acquisition.spec.ts"] as const;
+export const starterDisplayFiles = ["host/paid-mail.ts", "host/editor-mail.ts", "client/pages/account.ts", "browser/acquisition.spec.ts"] as const;
 
 export function reconcileDisplayCustomization(
   app: string, predecessor: string, applyRefused: () => Parameters<typeof assertUpgradeConflict>[0],

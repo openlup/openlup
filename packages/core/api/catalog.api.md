@@ -104,4 +104,12 @@ export declare function canonicalizeCatalogQuantity(input: CatalogQuantity, unit
 export declare function compareCatalogQuantities(left: CatalogQuantity, right: CatalogQuantity, units?: readonly CatalogQuantityUnit[]): -1 | 0 | 1;
 /** @experimental */
 export declare function convertCatalogQuantity(input: CatalogQuantity, target: string, units?: readonly CatalogQuantityUnit[]): CatalogQuantity;
+/** Decode the exact fields carried on the quantity read wire.
+ * @experimental
+ */
+export declare function decodeCatalogReadQuantity(input: unknown, units?: readonly CatalogQuantityUnit[]): CatalogQuantity;
+/** Return exact mass in grams for a numeric transport.
+ * @experimental
+ */
+export declare function exactCatalogMassGrams(input: unknown, units?: readonly CatalogQuantityUnit[]): number | null;
 ```

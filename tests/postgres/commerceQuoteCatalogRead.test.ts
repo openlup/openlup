@@ -3,7 +3,9 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import type { CommerceQuoteCatalogReadRefusalCode } from "@openlup/platform/pricing";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { createQuoteCatalogFixture, digest, documentFor, seed } from "./commerceQuoteCatalogFixture.js";
+import { catalogQuantityCharacterization, quantityReaderFixture2099 } from "./catalogPublicationFixture.js";
+import { sizedHostPorts } from "../../examples/neutral-store/host/editor-ports.js";
+import { config, createQuoteCatalogFixture, digest, documentFor, seed } from "./commerceQuoteCatalogFixture.js";
 
 let fixture: Awaited<ReturnType<typeof createQuoteCatalogFixture>>;
 const extra = seed.skus[500]!;
@@ -264,4 +266,75 @@ it.each([
   ["catalog_sku_identifier_authority_invalid", "catalog_primary_trade_item_invalid"],
 ] as const)("maps the existing authority error %s to %s", async (source, target) => {
   await refusal(make({ query: async () => { throw new fixture.catalog.CatalogSkuAuthorityError(source); } }), target);
+});
+
+it("characterizes unmarked mass and incidental typed tuples through the qualified runtime", async () => {
+  const sku = seed.skus[0]!;
+  const [baseline] = (await make().listQuoteCatalogItems()).filter(item => item.skuCode === sku.sku);
+  try {
+    for (const { grams, tuple, quote } of catalogQuantityCharacterization) {
+      await fixture.owner.query(`UPDATE public.catalog_skus SET net_weight_g=$2,net_content_dimension=$3,
+        net_content_unit=$4,net_content_unscaled=$5,net_content_scale=$6 WHERE id=$1`,
+      [sku.id, grams, tuple?.[0] ?? null, tuple?.[1] ?? null, tuple?.[2] ?? null, tuple ? 0 : null]);
+      if (quote) expect((await make().listQuoteCatalogItems()).find(item => item.skuCode === sku.sku)).toEqual({ ...baseline, netWeightG: grams });
+      else await refusal(make(), "catalog_authority_unavailable");
+    }
+  } finally {
+    await fixture.owner.query(`UPDATE public.catalog_skus
+      SET net_weight_g=1,net_content_dimension=NULL,net_content_unscaled=NULL,net_content_unit=NULL,net_content_scale=NULL WHERE id=$1`, [sku.id]);
+  }
+});
+
+it("skips typed ranges before V1 bounds and refuses a typed cart line through the real quote port", async () => {
+  const survivor = seed.skus.slice(0, 500).filter(sku => sku.sellable_standalone).sort((a, b) => b.id.localeCompare(a.id))[0]!;
+  const typed = seed.skus.slice(0, 500).filter(sku => sku.id !== survivor.id && sku.sellable_standalone)[0]!;
+  const lead = seed.skus.slice(0, 500).filter(sku => sku.id < survivor.id).length;
+  expect(lead).toBeGreaterThan(100);
+  // 20990101000000_catalog_quantity_reader_fixture. Native issuance and its guard join in PR 2.
+  await fixture.owner.query("ALTER TABLE public.catalog_skus DISABLE TRIGGER catalog_skus_publication_facts_admitted");
+  try {
+    await fixture.owner.query(`UPDATE public.catalog_skus SET publication_facts='{"quantityVersion":2}' WHERE id<>$1`, [survivor.id]);
+    expect(await make().listQuoteCatalogItems()).toHaveLength(500);
+    await fixture.owner.query(quantityReaderFixture2099);
+    await fixture.owner.query("UPDATE public.catalog_products SET primary_sku_id=NULL WHERE id=$1", [typed.product_id]);
+    await fixture.owner.query("UPDATE public.catalog_skus SET product_id=$2 WHERE id=$1", [typed.id, survivor.product_id]);
+    const envelopes = fixture.catalog.createPostgresCatalogSkuEnvelopeReadPort(fixture.executor);
+    expect.soft(await envelopes.listSkuEnvelopes({ cursor: null, limit: 1 })).toMatchObject({ items: [{ sku: { code: survivor.sku } }], nextCursor: null });
+    expect.soft(await envelopes.listActiveSkuEnvelopes({ cursor: null, limit: 1, skuCodes: [typed.sku, survivor.sku] }))
+      .toMatchObject({ items: [{ sku: { code: survivor.sku } }], quantityRefusals: [{ code: "quantity_requires_v2", skuCode: typed.sku }], nextCursor: null });
+    await expect.soft(envelopes.getSkuEnvelopeById(typed.id)).rejects.toMatchObject({ code: "quantity_requires_v2", skuCode: typed.sku });
+    await expect.soft(envelopes.getSkuEnvelope({ kind: "sku_code", skuCode: typed.sku })).rejects.toMatchObject({ code: "quantity_requires_v2", skuCode: typed.sku });
+    const read = make(fixture.executor, 1);
+    await expect.soft(read.listQuoteCatalogItems()).resolves.toMatchObject([{ skuCode: survivor.sku }]);
+    const tax = { included: true as const, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Fixture" };
+    const quote = fixture.pricing.createDbBackedCommerceQuotePort({
+      quoteCatalogReadPort: read, isStrictD1Quote: false, taxProfile: tax, supportedTaxProfiles: [tax], currency: "XXX", regionCode: "ZZ",
+      pricingResolverPort: { resolvePrice: async ({ variantId, mode }) => ({ variantId, mode, priceEntryId: "fixture-price",
+        priceListId: "fixture-list", amountKind: "gross", unitPriceMinor: 125, matchedMinQty: 1, resolvedAt: "2099-01-01T12:00:00Z" }) },
+      hasPromotionCodePort: false, lineContext: () => ({}), quoteContext: request => () => ({ mode: request.mode, promoCodes: request.promoCodes }),
+      resolveAutomaticQuotePromotions: async () => ({ discounts: [], codeRejections: [] }),
+      applyPromotionCodesV2: async input => ({ discounts: input.discounts, codeRejections: [], codeRejectionDetails: [] }),
+    });
+    const request = { mode: "one_time" as const, promoCodes: [], lines: [{ sku: survivor.sku, quantity: 2 }] };
+    await expect.soft(quote.createServerAuthoritativeQuote(request)).resolves.toMatchObject({ quote: { totalGross: { amountMinor: 250 } } });
+    const withSku = (sku: string) => ({ ...request, lines: [...request.lines, { sku, quantity: 1 }] });
+    await expect.soft(quote.createServerAuthoritativeQuote(withSku(typed.sku))).rejects.toMatchObject({ code: "quantity_requires_v2", skuCode: typed.sku });
+    await expect.soft(quote.createServerAuthoritativeQuote(withSku("missing"))).rejects.toMatchObject({ code: "UNKNOWN_SKU" });
+    const sizedConfig = { ...config, subscriptionEditing: { ...config.subscriptionEditing,
+      catalogue: config.subscriptionEditing.catalogue.filter(item => item.sku === typed.sku) } };
+    const sized = sizedHostPorts(sizedConfig, () => "2099-01-01T12:00:00Z", fixture.executor);
+    await expect.soft(sized.readCatalog(fixture.executor, { subscriptionId: typed.id, clientId: typed.id,
+      binding: "sized.v1", templateVersion: 1, cadenceDays: 28, compositionConstraint: null, nextCycleAt: null,
+      paidCycleCount: 0, marker: null, lines: [], graduationLines: [] })).resolves.toEqual([]);
+    const earlier = seed.skus.find(sku => sku.id < survivor.id && sku.id !== typed.id && sku.id !== extra.id)!;
+    await fixture.owner.query("UPDATE public.catalog_skus SET publication_facts=NULL WHERE id=$1", [earlier.id]);
+    expect.soft(await envelopes.listSkuEnvelopes({ cursor: null, limit: 1 })).toMatchObject({ items: [{ sku: { id: earlier.id } }], nextCursor: earlier.id });
+    expect.soft(await envelopes.listSkuEnvelopes({ cursor: earlier.id, limit: 1 })).toMatchObject({ items: [{ sku: { id: survivor.id } }], nextCursor: null });
+  } finally {
+    await fixture.owner.query("UPDATE public.catalog_skus SET product_id=$2 WHERE id=$1", [typed.id, typed.product_id]);
+    await fixture.owner.query("UPDATE public.catalog_products SET primary_sku_id=$2 WHERE id=$1", [typed.product_id, typed.id]);
+    await fixture.owner.query(`UPDATE public.catalog_skus SET publication_facts=NULL;
+      ALTER TABLE public.catalog_skus ENABLE TRIGGER catalog_skus_publication_facts_admitted;
+      ALTER TABLE public.catalog_sku_revisions DROP COLUMN IF EXISTS net_content_storage`);
+  }
 });

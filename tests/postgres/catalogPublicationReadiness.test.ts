@@ -8,7 +8,7 @@ import { canonicalCatalogDraftJson, type CatalogDraftPayloadV3 } from "@openlup/
 import type { PgQueryExecutor } from "@openlup/platform/data";
 import { closePostgres, runPostgresContainer, waitForPostgresTcpReady, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { actorId, authoredPublicationDocument, fixture, graph, hash, insertGraph, installCatalogueReadGrants, installPublicationActors, json,
-  publicFunctionGrants, readinessSignature as entry, stageProductRows, transaction } from "./catalogPublicationFixture.js";
+  publicFunctionGrants, quantityReaderFixture2099, readinessSignature as entry, stageProductRows, transaction } from "./catalogPublicationFixture.js";
 
 const forward = "db/platform/migrations/20261124140000_catalog_publication_readiness.sql";
 const readinessSql = "SELECT public.catalog_publication_activation_readiness($1::text[],$2) AS result";
@@ -111,6 +111,36 @@ const evidenceOf = (issue: Awaited<ReturnType<typeof seed>>) => ({ head: issue.h
   skuRevision: { skuId: issue.skuId, revisionId: issue.skuRevisionId, revision: 1, digest: hash(json(issue.facts)) } });
 const absent = (skuCode: string) => ({ skuCode, skuId: null, logisticsRef: null, evidence: null, ready: false, reasons: ["sku_not_materialized"] });
 const intrinsic = ["logistics_reference_missing", "unit_gtin_missing", "catalog_publication_gross_mass_required"];
+
+it("returns complete readiness beside a typed request on the same product", async () => {
+  await rolledBack(async db => {
+    await db.query(quantityReaderFixture2099);
+    const gram = await seed(db);
+    const digest = await headDigest(db);
+    const wire = await direct(db, [gram.facts.code], digest);
+    const typedCode = "typed-readiness-sibling";
+    await db.query(`INSERT INTO public.catalog_skus (product_id,sku,title,publication_facts)
+      VALUES($1,$2,'Typed fixture','{"quantityVersion":2}')`, [gram.productId, typedCode]);
+    // 2099 fixture wire. PR 2 supplies sealed evidence and the owner SQL for item refusals.
+    const typed = (await db.query(`SELECT jsonb_build_object('skuCode',sku,'refusal','quantity_requires_v2') AS item
+      FROM public.catalog_skus WHERE product_id=$1 AND sku=$2 AND publication_facts->'quantityVersion'='2'::jsonb`,
+    [gram.productId, typedCode])).rows[0]!.item;
+    wire.value.items.push(typed);
+    const assess = vi.fn(() => ["fixture_rule"]);
+    const transactions: Lane = { run: work => work({ query: async sql => ({
+      rows: sql.startsWith("SET TRANSACTION") ? [] : [{ result: wire }],
+    }) }) };
+    expect(await read({ registry, assess }, [gram.facts.code, typedCode], digest, transactions)).toEqual({
+      protocol: "governed", headDigest: digest, items: [
+        { ...absent(gram.facts.code), skuId: gram.skuId, evidence: evidenceOf(gram), reasons: [
+          ...intrinsic, "price_readiness_missing", "offer_membership_missing", "fixture_rule",
+        ] },
+        { ...absent(typedCode), reasons: ["quantity_requires_v2"] },
+      ],
+    });
+    expect(assess).toHaveBeenCalledTimes(1);
+  });
+});
 
 it("refuses a legacy catalogue and orphan publication markers before any subject work", async () => {
   expect(await read(none, ["legacy-code"], "a".repeat(64))).toEqual({ outcome: "unsupported", reason: "catalog_publication_not_adopted" });

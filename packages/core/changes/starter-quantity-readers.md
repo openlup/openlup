@@ -1,0 +1,14 @@
+### Decode exact physical quantities
+
+The experimental catalogue decoder validates typed read payloads with Core's
+unit and factor rules. The numeric mass helper returns grams when the
+transport can carry the exact decimal.
+
+### Upgrade sized subscription and renewal mail readers
+
+The managed upgrade replaces pristine `host/editor-ports.ts` and
+`host/editor-mail.ts` with the target starter files. If either file has local
+edits, move adopter policy into an owned file or reconcile its edits against
+the target. Replan and apply before starting the upgraded app. The starter
+refuses startup during an incomplete upgrade. Existing gram-only installs
+need no new setting or SQL step for these readers.

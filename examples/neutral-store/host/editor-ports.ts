@@ -87,7 +87,7 @@ export function sizedHostPorts(config: StoreConfig, now: () => string, connectio
       product.current_document_revision_id,revision.document_payload,revision.digest FROM public.catalog_skus sku
       JOIN public.catalog_products product ON product.id=sku.product_id
       JOIN public.catalog_product_document_revisions revision ON revision.id=product.current_document_revision_id
-      WHERE sku.id=ANY($1::uuid[]) ORDER BY sku.id`, [ids])).rows;
+      WHERE sku.id=ANY($1::uuid[]) AND sku.publication_facts->'quantityVersion' IS DISTINCT FROM '2'::jsonb ORDER BY sku.id`, [ids])).rows;
     const stock = await createPostgresStockAvailability(db, { sourceKey: `starter-demo:${config.id}`,now })
       .readInstalled(rows.map(row => String(row.sku)));
     return rows.map((row): SizedCatalogFact => {

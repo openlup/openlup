@@ -167,6 +167,12 @@ export function createCommerceQuoteHandler<Request extends CreateQuoteRequest, R
         return;
       }
       if (error instanceof CommerceQuoteCatalogReadError) {
+        if (error.code === "quantity_requires_v2") {
+          sendBffError(res, "BAD_REQUEST", "SKU requires a V2 quantity quote", {
+            details: { reason: error.code, skuCode: error.skuCode },
+          });
+          return;
+        }
         sendBffError(res, "UPSTREAM_UNAVAILABLE", "Commerce catalog is unavailable", {
           details: { reason: "catalog_unavailable", refusalCode: error.code },
         });

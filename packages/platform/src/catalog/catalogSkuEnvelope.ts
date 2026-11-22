@@ -5,6 +5,7 @@ import {
   type NeutralSkuEnvelopeV1,
 } from "./foundationSchemas.js";
 import { parseCatalogActiveSkuSelection } from "./activeSkuSelection.js";
+import { catalogTypedQuantitySql } from "./catalogTypedQuantitySql.js";
 import type {
   CatalogActiveSkuEnvelopeListQuery,
   CatalogSkuEnvelopeListQuery,
@@ -16,9 +17,11 @@ import {
   mapPostgresCatalogSkuEnvelope,
   readPostgresCatalogSkuIdentifiers,
   requirePostgresCatalogSkuEnvelopeRow,
+  requireV1CatalogSkuQuantity,
   type PostgresCatalogSkuEnvelopeRow,
 } from "./catalogSkuEnvelopeMapper.js";
 
+const TYPED_QUANTITY_SQL = catalogTypedQuantitySql("sku.publication_facts");
 const ENVELOPE_COLUMNS_SQL = `
     product.id AS product_id,
     product.slug AS product_slug,
@@ -28,6 +31,7 @@ const ENVELOPE_COLUMNS_SQL = `
     sku.product_id AS sku_product_id,
     sku.sku AS sku_code,
     sku.net_weight_g AS net_content_unscaled,
+    ${TYPED_QUANTITY_SQL} AS quantity_requires_v2,
     sku.status AS sku_status,
     sku.sellable_standalone AS sellable_one_time,
     sku.sellable_in_subscription AS sellable_subscription,
@@ -50,20 +54,34 @@ const SKU_ENVELOPE_FROM_SQL = `
     ON revision.id = product.current_document_revision_id`;
 
 const LIST_ENVELOPES_SQL = `${SKU_ENVELOPE_FROM_SQL}
-  WHERE ($1::uuid IS NULL OR sku.id > $1::uuid)
+  WHERE NOT ${TYPED_QUANTITY_SQL}
+    AND ($1::uuid IS NULL OR sku.id > $1::uuid)
   ORDER BY sku.id
   LIMIT $2::integer`;
 
+const ACTIVE_SKU_FILTER = `sku.status = 'active'
+  AND (sku.sellable_standalone OR sku.sellable_in_subscription)`;
 const LIST_ACTIVE_ENVELOPES_SQL = `${SKU_ENVELOPE_FROM_SQL}
-  WHERE sku.status = 'active'
-    AND (sku.sellable_standalone OR sku.sellable_in_subscription)
+  WHERE ${ACTIVE_SKU_FILTER}
+    AND NOT ${TYPED_QUANTITY_SQL}
     AND ($3::text[] IS NULL OR sku.sku = ANY($3::text[]))
     AND ($1::uuid IS NULL OR sku.id > $1::uuid)
   ORDER BY sku.id
   LIMIT $2::integer`;
 
+// The indexed code lookup shares the page snapshot and never uses the V1 limit.
+const activeEnvelopesWithRefusalsSql = (quote: boolean) => `
+  (${LIST_ACTIVE_ENVELOPES_SQL})
+  UNION ALL
+  (${SKU_ENVELOPE_FROM_SQL}
+   WHERE ${ACTIVE_SKU_FILTER} AND ${TYPED_QUANTITY_SQL}
+     AND sku.sku = ANY($${quote ? 4 : 3}::text[])
+     AND ${quote ? "product.status = 'active'" : "($1::uuid IS NULL OR sku.id > $1::uuid)"})
+  ORDER BY sku_id`;
+
 const LIST_PUBLIC_ACTIVE_ENVELOPES_SQL = `${SKU_ENVELOPE_FROM_SQL}
   WHERE sku.status = 'active'
+    AND NOT ${TYPED_QUANTITY_SQL}
     AND ($1::uuid IS NULL OR sku.id > $1::uuid)
   ORDER BY sku.id
   LIMIT $2::integer`;
@@ -71,6 +89,7 @@ const LIST_PUBLIC_ACTIVE_ENVELOPES_SQL = `${SKU_ENVELOPE_FROM_SQL}
 const LIST_PUBLIC_ACTIVE_PRODUCT_ENVELOPES_SQL = `${SKU_ENVELOPE_FROM_SQL}
   WHERE sku.product_id = $1::uuid
     AND sku.status = 'active'
+    AND NOT ${TYPED_QUANTITY_SQL}
     AND ($2::uuid IS NULL OR sku.id > $2::uuid)
   ORDER BY sku.id
   LIMIT $3::integer`;
@@ -106,7 +125,8 @@ export function createPostgresCatalogSkuEnvelopeReadPort(
 
     async listActiveSkuEnvelopes(query: CatalogActiveSkuEnvelopeListQuery): Promise<CatalogSkuEnvelopePage> {
       const skuCodes = parseCatalogActiveSkuSelection(query.skuCodes);
-      return listEnvelopes(executor, query, LIST_ACTIVE_ENVELOPES_SQL, [], [skuCodes ?? null]);
+      return listEnvelopes(executor, query, skuCodes ? activeEnvelopesWithRefusalsSql(false) : LIST_ACTIVE_ENVELOPES_SQL,
+        [], [skuCodes ?? null]);
     },
 
     async listPublicActiveSkuEnvelopes(query: CatalogSkuEnvelopeListQuery): Promise<CatalogSkuEnvelopePage> {
@@ -135,6 +155,7 @@ export function createPostgresCatalogSkuEnvelopeReadPort(
           ? "catalog_sku_authority_sku_absent"
           : "catalog_sku_authority_product_absent",
       );
+      requireV1CatalogSkuQuantity(row);
       requirePostgresCatalogSkuEnvelopeRow(
         row,
         parsed.kind === "primary_product_slug"
@@ -156,11 +177,22 @@ export function createPostgresCatalogSkuEnvelopeReadPort(
         await readRows(executor, DETAIL_ENVELOPE_BY_ID_SQL, [skuId]),
         "catalog_sku_authority_sku_absent",
       );
+      requireV1CatalogSkuQuantity(row);
       requirePostgresCatalogSkuEnvelopeRow(row, "catalog_sku_authority_current_document_invalid");
       const identifiers = await readPostgresCatalogSkuIdentifiers(executor, [row.sku_id]);
       return mapPostgresCatalogSkuEnvelope(row, identifiers.get(row.sku_id) ?? []);
     },
   };
+}
+
+export function listPostgresQuoteSkuEnvelopes(
+  executor: PgQueryExecutor,
+  query: CatalogSkuEnvelopeListQuery,
+  requestedSkuCodes: readonly string[],
+): Promise<CatalogSkuEnvelopePage> {
+  const lookup = query.cursor === null && requestedSkuCodes.length !== 0;
+  return listEnvelopes(executor, query, lookup ? activeEnvelopesWithRefusalsSql(true) : LIST_ACTIVE_ENVELOPES_SQL,
+    [], lookup ? [null, requestedSkuCodes] : [null], lookup);
 }
 
 async function listEnvelopes(
@@ -169,20 +201,27 @@ async function listEnvelopes(
   sql: string,
   prefixValues: unknown[] = [],
   suffixValues: unknown[] = [],
+  includeAllRefusals = false,
 ): Promise<CatalogSkuEnvelopePage> {
   const rows = await readRows(
     executor,
     sql,
     [...prefixValues, query.cursor, checkedLimit(query.limit) + 1, ...suffixValues],
   );
-  const pageRows = rows.slice(0, query.limit).map((row) => {
+  const v1Rows = rows.filter(row => row.quantity_requires_v2 !== true);
+  const pageRows = v1Rows.slice(0, query.limit).map((row) => {
     requirePostgresCatalogSkuEnvelopeRow(row, "catalog_sku_authority_current_document_invalid");
     return row;
   });
   const identifiers = await readPostgresCatalogSkuIdentifiers(executor, pageRows.map((row) => row.sku_id));
+  const nextCursor = v1Rows.length > query.limit ? pageRows.at(-1)?.sku_id ?? null : null;
+  const quantityRefusals = rows.flatMap(row => row.quantity_requires_v2 === true && row.sku_code && row.sku_id
+    && (includeAllRefusals || nextCursor === null || row.sku_id <= nextCursor)
+    ? [{ skuCode: row.sku_code, code: "quantity_requires_v2" as const }] : []);
   return {
     items: pageRows.map((row) => mapPostgresCatalogSkuEnvelope(row, identifiers.get(row.sku_id) ?? [])),
-    nextCursor: rows.length > query.limit ? pageRows[pageRows.length - 1]?.sku_id ?? null : null,
+    nextCursor,
+    ...(quantityRefusals.length ? { quantityRefusals } : {}),
   };
 }
 

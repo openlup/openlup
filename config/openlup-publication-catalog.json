@@ -5522,6 +5522,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/catalog/catalogTypedQuantitySql.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/catalog/combinationOptions.ts",
       "class": "public-output"
     },
@@ -8414,6 +8418,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/seo/productLdV2.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/seo/serializeJsonLd.ts",
       "class": "public-output"
     },
@@ -10135,6 +10143,10 @@
     },
     {
       "path": "packages/platform/test/catalog/sellableBundleHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/catalog/typedQuantityParity.test.ts",
       "class": "public-output"
     },
     {

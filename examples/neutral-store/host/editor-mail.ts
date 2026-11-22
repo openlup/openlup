@@ -30,8 +30,9 @@ export function composeSizedPaidEmailNote(db: SubscriptionQueryExecutor,config: 
         lines };
     },
     async readExactPhysicalSize(id) {
-      const row = (await db.query('SELECT id,sku,net_weight_g FROM public.catalog_skus WHERE id=$1::uuid',[id])).rows[0];
-      return row ? { id: String(row.id),sku: String(row.sku),physicalSize: Number(row.net_weight_g) } : null;
+      const row = (await db.query(`SELECT sku.id,sku.sku,sku.net_weight_g,sku.publication_facts->'quantityVersion' AS quantity_version
+        FROM public.catalog_skus sku WHERE sku.id=$1::uuid`,[id])).rows[0];
+      return row && row.quantity_version !== 2 ? { id: String(row.id),sku: String(row.sku),physicalSize: Number(row.net_weight_g) } : null;
     } });
   return async (orderId,locale,signal) => {
     const facts = await project(orderId,signal);

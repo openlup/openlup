@@ -572,6 +572,38 @@ describe("grant-only existing functions", () => {
   });
 });
 
+describe("qualified catalogue storage SELECT", () => {
+  const sql = `DO $$ BEGIN
+${roleGuard}${ledgerGuard}  THEN
+    EXECUTE 'GRANT SELECT (net_content_storage) ON TABLE public.catalog_sku_revisions TO openlup_catalog_publication;';
+  END IF;
+END; $$;`;
+  function admit(text: string, declared = true) {
+    const value = registry();
+    const path = "db/platform/migrations/20990101000000_catalogue_storage.sql";
+    value.nativeStoreForwardClass!.slots = [{ row: "catalogue-storage", path, replacedFunctions: [],
+      createdFunctions: [], grantOnlyFunctions: [], dataStatements: [], ...(declared ? { qualifiedCatalogueStorageSelect: true } : {}) }];
+    bind(value, 0, text);
+    return assertNativeStoreForward(value, path, Buffer.from(text), [{ path: PLATFORM_BASELINE_FILE, bytes: before }]);
+  }
+  it("admits exactly the guarded column SELECT", () => expect(() => admit(sql)).not.toThrow());
+  it.each([
+    ["without a slot", sql, false],
+    ["without the guard", sql.replace(ledgerGuard, "")],
+    ["with a wrong hash", sql.replace(authoritySha256, "0".repeat(64))],
+    ["with a role substitution", sql.replaceAll(catalogueReadRole, "service_role")],
+    ["with table-wide SELECT", sql.replace(" (net_content_storage)", "")],
+    ["with an extra column", sql.replace("net_content_storage", "net_content_storage, digest")],
+    ["with a write privilege", sql.replace("GRANT SELECT", "GRANT UPDATE")],
+    ["with grant option", sql.replace("TO openlup_catalog_publication;", "TO openlup_catalog_publication WITH GRANT OPTION;")],
+    ["with a duplicate", `${sql}
+${sql}`],
+    ["with no grant", ""],
+  ] as const)("refuses storage SELECT %s", (_label, text, declared) => {
+    expect(() => admit(text, declared)).toThrow(/reviewed native store/u);
+  });
+});
+
 describe("the sole conditional role rule", () => {
   it.each([
     ["old function lookup", "    AND pg_catalog.to_regprocedure('public.catalog_publication_bind_live_write()') IS NOT NULL\n"],

@@ -167,6 +167,20 @@ it("commits the sealed plan, refuses revocation after issuance and replays witho
     .toEqual([{ event_type: "catalog.publication.committed" }]);
 });
 
+it.each([1, 2147483647])("characterizes Prepare, Approve and Publish of factorless %i grams", async grams => {
+  const data = authored(80 + Number(grams === 1));
+  data.payload.skus[0]!.netContent!.unscaled = String(grams);
+  await save(data, 1);
+  const command = await prepare(data, 1, null);
+  const api = native(), who = (await api.authorize(actor))!;
+  expect(await api.execute(command.approve, who)).toMatchObject({ outcome: "committed" });
+  expect(await api.execute(command.publish, who)).toMatchObject({ outcome: "committed" });
+  expect((await pool.query(`SELECT net_weight_g, net_content_unscaled::text, net_content_scale, net_content_unit
+    FROM public.catalog_skus WHERE id=$1`, [data.skuId])).rows).toEqual([{
+    net_weight_g: grams, net_content_unscaled: String(grams), net_content_scale: 0, net_content_unit: "openlup:g",
+  }]);
+});
+
 it("lets a new compensation issue equal business facts while retaining unchanged SKU revisions", async () => {
   const data = authored(2);
   const secondary = { scheme: "gs1:gtin", issuer: "example", value: "4006381333931", packagingLevel: "unit" as const };

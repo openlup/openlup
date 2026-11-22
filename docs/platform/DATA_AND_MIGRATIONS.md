@@ -2486,6 +2486,13 @@ The slot's pinned `searchPath` must match the tightened list. The PostgreSQL
 catalog preserves owner and ACL. Issued contents, positions and the sealed-prefix
 rule stay fixed.
 
+One native slot may declare `qualifiedCatalogueStorageSelect: true` for the
+qualified live comparator. Its forward must contain exactly one guarded
+`GRANT SELECT (net_content_storage) ON TABLE public.catalog_sku_revisions TO openlup_catalog_publication`.
+The grant requires the publication role and the exact qualified authority
+ledger path and digest. The PostgreSQL catalogue witness permits only that
+column ACL delta, without grant option. This control adds no migration.
+
 A replacement keeps the native function header under the rules above.
 The `qualifiedSecurityDefiner: true` entry requires the rendered ledger-guarded
 `ALTER FUNCTION` block immediately after the replacement, so qualified
