@@ -31,27 +31,20 @@ const beforeCheckoutAttemptLedger = {
   "installer-managed": "955596b9524fa304df1240b3e170d920c1ba27aefc366fb436c78bf7abb326b5",
   "operator-provisioned": "443cb07abc88ad43dd3c712310b31204f242b50793fc40d0a5e5ba8765995017",
 } satisfies Record<keyof typeof beforePublicationCommands, string>;
-type RestoreProfile = keyof typeof beforePublicationCommands;
-// Append immediately preceding main inventories when a forward preserves
-// every captured row shape. The two older pins retain their existing conversions.
-const admittedRestoreSourceInventories: readonly Record<RestoreProfile, string>[] = [
-  beforePublicationCommands,
-  beforeCheckoutAttemptLedger,
-  // Main after the checkout attempt ledger (#980).
-  {
-    bootstrap: "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20",
-    separate: "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385",
-    "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
-    "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
-  },
-  // Main after governed catalogue lifecycle (#982).
-  {
-    "bootstrap": "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c",
-    "separate": "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638",
-    "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
-    "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
-  },
-];
+// Sealed installation inventories immediately before governed catalogue lifecycle.
+const beforeGovernedLifecycle = {
+  bootstrap: "25bc3a527c27eb205c60b26e388d475bc8532638e66537438e60659a77214f20",
+  separate: "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385",
+  "installer-managed": "37df11b3df727367715dcabaff16e366fac0477c8a09167d3f180e31746b82c4",
+  "operator-provisioned": "4c05ab3d6ed00157305853bdfd272469feabc03c6528aab3d6eec7a7e7a2d8ac",
+} satisfies Record<keyof typeof beforePublicationCommands, string>;
+// Sealed installation inventories immediately before subscription profiles.
+const beforeSubscriptionProfiles = {
+  bootstrap: "ec9028a590334948606d160362e9363c50793284548c2b9c092a71632234724c",
+  separate: "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638",
+  "installer-managed": "02c68db9202830bd08f574130d3a3de19345a4050b8879d3338824b379474195",
+  "operator-provisioned": "a05e24a7dcdc6cb4394907be818520a33fa89e9a269a7c01853cd656ecfcf91b",
+} satisfies Record<keyof typeof beforePublicationCommands, string>;
 const checkoutAttemptLedger = "commerce_checkout_attempt_ledger";
 const settings = ["fulfillment_provider_archetypes", "sales_channels", "commerce_settings", "client_absorption_policy",
   "platform_job_controls", "subscriber_retention_activation_watermarks", "subscription_delivery_alignment_control",
@@ -87,10 +80,11 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   targetOwner: Pool;
 }): Promise<ManagedIdentityMappingResult> {
   const source = structuredClone(input.source);
-  const { capture: packet, tables: retained } = copyCapture(input.freshTarget);
-  admitCaptureTables(packet.compatible.catalogueId, retained);
-  validateCapturedRows(retained);
+  const packet = copyCapture(input.freshTarget);
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validRow = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
+  const onlyKeys = (row: Record<string, unknown>, keys: readonly string[]) =>
+    Object.keys(row).sort().join("\0") === [...keys].sort().join("\0");
   const validIssuer = (value: unknown): value is string => {
     if (typeof value !== "string") return false;
     try {
@@ -130,7 +124,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   const linkedPrincipals = new Set<string>();
   for (const row of source.clients) {
     if (!validRow(row) || typeof row.id !== "string" || !uuid.test(row.id) || clientIds.has(row.id.toLowerCase())
-      || !hasExactKeys(row, ["id", "created_at", "updated_at", "email", "first_name", "last_name", "phone", "country",
+      || !onlyKeys(row, ["id", "created_at", "updated_at", "email", "first_name", "last_name", "phone", "country",
         "lifecycle_stage", "acquisition_source", "external_ref", "metadata", "preferences", "auth_user_id", "identity_kind", "marketing_contact_id"])
       || row.identity_kind !== "customer" || row.marketing_contact_id !== null
       || !validRow(row.preferences) || Object.keys(row.preferences).length !== 0) fail("invalid_input");
@@ -151,7 +145,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   const operatorIds = new Set<string>();
   for (const row of source.adminUsers) {
     if (!validRow(row) || typeof row.id !== "string" || !uuid.test(row.id) || operatorIds.has(row.id.toLowerCase())
-      || !hasExactKeys(row, ["id", "email", "created_at", "role", "is_machine_actor", "membership_state", "membership_provenance",
+      || !onlyKeys(row, ["id", "email", "created_at", "role", "is_machine_actor", "membership_state", "membership_provenance",
         "membership_accepted_at", "membership_revoked_at", "membership_revoked_by", "membership_revocation_reason"])
       || row.is_machine_actor !== false || typeof row.email !== "string" || !row.email) fail("invalid_input");
     operatorIds.add(row.id.toLowerCase());
@@ -168,7 +162,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   for (const row of source.revokeAudit) {
     if (!validRow(row) || row.action !== "revoke" || typeof row.id !== "string" || !uuid.test(row.id)
       || typeof row.actor_admin_id !== "string"
-      || !hasExactKeys(row, ["id", "actor_admin_id", "actor_email", "actor_kind", "action", "source", "entity_type",
+      || !onlyKeys(row, ["id", "actor_admin_id", "actor_email", "actor_kind", "action", "source", "entity_type",
         "entity_id", "target_admin_id", "target_email", "old_value", "new_value", "occurred_at", "idempotency_key", "request_id"])
       || typeof row.target_admin_id !== "string" || !operatorIds.has(row.actor_admin_id.toLowerCase())
       || !operatorIds.has(row.target_admin_id.toLowerCase()) || !validRow(row.old_value) || !validRow(row.new_value)) fail("invalid_input");
@@ -177,8 +171,8 @@ export async function mapManagedIdentityForConnectedRestore(input: {
     const oldValue = row.old_value, newValue = row.new_value;
     if (auditedTargets.has(targetId) || row.actor_kind !== "human" || row.entity_type !== "admin_user_membership"
       || row.entity_id !== row.target_admin_id || target.membership_state !== "revoked"
-      || !hasExactKeys(oldValue, ["membershipState", "role"])
-      || !hasExactKeys(newValue, Object.hasOwn(newValue, "revocationReason")
+      || !onlyKeys(oldValue, ["membershipState", "role"])
+      || !onlyKeys(newValue, Object.hasOwn(newValue, "revocationReason")
         ? ["membershipState", "revokedAt", "revokedBy", "revocationReason"] : ["membershipState", "revokedAt", "revokedBy"])
       || oldValue.membershipState !== "active" || oldValue.role !== target.role
       || newValue.membershipState !== "revoked" || newValue.revokedAt !== target.membership_revoked_at
@@ -202,7 +196,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
   const erasedPrincipalIds = new Set<string>();
   for (const row of source.erasures) {
     if (!validRow(row) || row.contract_version !== "identity.erasure.v1"
-      || !hasExactKeys(row, ["erasure_id", "idempotency_key", "client_id", "principal_id", "actor_principal_id",
+      || !onlyKeys(row, ["erasure_id", "idempotency_key", "client_id", "principal_id", "actor_principal_id",
         "contract_version", "contributor_versions", "dispositions", "retained_obligations", "completed_at"])
       || row.client_id !== null && (typeof row.client_id !== "string" || !clientIds.has(row.client_id.toLowerCase()))
       || typeof row.actor_principal_id !== "string" || !operatorIds.has(row.actor_principal_id.toLowerCase())) fail("invalid_input");
@@ -245,7 +239,7 @@ export async function mapManagedIdentityForConnectedRestore(input: {
     const columns = held.columns.map(column => column.name);
     const rows: string[] = [];
     for (const value of values) {
-      if (!hasExactKeys(value, columns)) fail("invalid_input");
+      if (Object.keys(value).sort().join("\0") !== [...columns].sort().join("\0")) fail("invalid_input");
       let result: { rows: { value: string }[] };
       try {
         result = await input.targetOwner.query<{ value: string }>(
@@ -333,33 +327,19 @@ export async function restoreConnectedNativeStore(input: {
   packet: ConnectedNativeStoreCapture;
   freshTarget: ConnectedNativeStoreCapture;
 }): Promise<{ captureSha256: string; replayed: boolean; neutralizedHistoricalHoldNotifications: number }> {
-  const { capture: packet, tables: source } = copyCapture(input.packet);
-  const { capture: fresh, tables: baseline } = copyCapture(input.freshTarget);
   const installation = structuredClone(input.installation);
-  if (!installation || (installation.generation !== "qualified-v2" && installation.generation !== "qualified-admin")) fail("invalid_input");
-  if (installation.generation === "qualified-v2" && !installation.restoreLogin) fail("invalid_input");
   if (installation.generation === "qualified-admin") assertQualifiedAdminPostgresSelection(installation);
   const profile = installation.generation === "qualified-admin" ? installation.roleMode
     : installation.migrationLogin === installation.bootstrapLogin ? "bootstrap" : "separate";
-  const manifest = expectedManifest(installation);
-  admitCaptureTables(packet.compatible.catalogueId, source, { profile, currentCatalogueId: manifest.objectInventorySha256 });
-  admitCaptureTables(fresh.compatible.catalogueId, baseline);
+  const packet = copyCapture(input.packet, profile), fresh = copyCapture(input.freshTarget);
   if (packet.observation.cluster === fresh.observation.cluster
     && packet.observation.database === fresh.observation.database) fail("invalid_input");
+  const source = tables(packet), baseline = tables(fresh);
   // Only the pinned predecessor shapes may omit the ledger. Include its empty
   // expectation in the target column check and census without rewriting the packet.
   if (!source.has(checkoutAttemptLedger)) {
     source.set(checkoutAttemptLedger, { ...baseline.get(checkoutAttemptLedger)!, rows: [] });
   }
-  const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
-  if (fresh.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
-  // Refuse changed captured shapes before reading any retained row, even
-  // when a malformed row would otherwise prevent opening the target session.
-  for (const table of connectedNativeStoreTables) {
-    assertSourceColumns(table, source.get(table)!.columns, baseline.get(table)!.columns, older);
-  }
-  validateCapturedRows(source);
-  validateCapturedRows(baseline);
   try {
     requireDecodedPublication(decodePublicationPacket({
       publications: source.get("catalog_publications")!.rows, skuRevisions: source.get("catalog_sku_revisions")!.rows,
@@ -375,7 +355,7 @@ export async function restoreConnectedNativeStore(input: {
   try {
     await client.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [migrationLock]);
     locked = true;
-    await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    await client.query("BEGIN");
     await client.query("SET LOCAL TimeZone = 'UTC'");
     const facts = (await client.query<{ cluster: string; database: string; login: string; xid: string; mode: string }>(`SELECT
       ${connectedStoreClusterIdentitySql} AS cluster,
@@ -383,24 +363,25 @@ export async function restoreConnectedNativeStore(input: {
       pg_catalog.pg_current_xact_id()::pg_catalog.text AS xid,pg_catalog.current_setting('session_replication_role') AS mode`)).rows[0]!;
     if (facts.mode !== "origin" || facts.cluster !== fresh.observation.cluster || facts.database !== fresh.observation.database
       || facts.login !== fresh.observation.login || facts.login !== installation.migrationLogin) fail("invalid_input");
+    const manifest = expectedManifest(installation);
     const expectedLedger = [manifest.baseline, ...manifest.forward];
+    const older = packet.compatible.catalogueId === beforePublicationCommands[profile];
+    if (fresh.compatible.catalogueId !== manifest.objectInventorySha256
+      || !older && packet.compatible.catalogueId !== beforeCheckoutAttemptLedger[profile]
+        && packet.compatible.catalogueId !== beforeGovernedLifecycle[profile]
+        && packet.compatible.catalogueId !== beforeSubscriptionProfiles[profile]
+        && packet.compatible.catalogueId !== manifest.objectInventorySha256) fail("schema_conflict");
     const ledger = await client.query<{ catalog_path: string; sha256: string; position: number }>(
       "SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position");
     if (ledger.rows.length !== expectedLedger.length
       || JSON.stringify(ledger.rows) !== JSON.stringify(expectedLedger.map((unit, position) => ({ catalog_path: unit.file, sha256: unit.sha256, position })))) fail("schema_conflict");
     const ledgerBefore = (await client.query<{ value: string }>("SELECT pg_catalog.to_jsonb(m)::pg_catalog.text AS value FROM public.platform_schema_migrations m ORDER BY position")).rows;
-    const verifyInventory = async () => {
-      const live = await catalogPayload(client, installation);
-      if (digest(live) !== manifest.objectInventorySha256) fail("schema_conflict");
-      return live;
-    };
     // The restricted migrator has ADMIN but no inherited owner access at rest.
     // Observe its sealed graph first, then open only the already-admitted
     // acquisition owner privilege inside this transaction for census/locks.
-    const inventory = installation.generation === "qualified-admin" ? await verifyInventory() : undefined;
+    const inventory = installation.generation === "qualified-admin" ? await catalogPayload(client, installation) : undefined;
+    if (inventory !== undefined && digest(inventory) !== manifest.objectInventorySha256) fail("schema_conflict");
     if (installation.generation === "qualified-admin") await openRestrictedOwnerWindow(client, installation);
-    // Use the install lock before taking receipt-table locks used by replay.
-    await client.query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('openlup:catalog-definitions', 0))");
     const keyIdentity = await client.query("SELECT tableoid::pg_catalog.text,ctid::pg_catalog.text,xmin::pg_catalog.text FROM acquisition_private.installation_key");
     // Lock the whole public/app census, including excluded tables. Unknown data
     // cannot appear during import, and no observer sees intermediate rows.
@@ -410,22 +391,24 @@ export async function restoreConnectedNativeStore(input: {
       AND c.relkind IN ('r','p') ORDER BY n.nspname,c.relname`)).rows;
     for (const relation of relations) await client.query(`LOCK TABLE ${quoted(relation.schema)}.${quoted(relation.table)} IN SHARE ROW EXCLUSIVE MODE`);
     // Inspect definitions after table locks, before any retained-data mutation.
-    const lockedInventory = inventory ?? await verifyInventory();
-    let identifierColumns: Rows["columns"] | undefined;
+    const lockedInventory = inventory ?? await catalogPayload(client, installation);
+    if (digest(lockedInventory) !== manifest.objectInventorySha256) fail("schema_conflict");
     for (const table of connectedNativeStoreTables) {
       const actual = (await client.query<{ name: string; type: string }>(`SELECT a.attname AS name,
         pg_catalog.format_type(a.atttypid,a.atttypmod) AS type FROM pg_catalog.pg_attribute a
         WHERE a.attrelid=$1::pg_catalog.regclass AND a.attnum>0 AND NOT a.attisdropped
         AND a.attgenerated='' AND a.attidentity='' ORDER BY a.attnum`, [`public.${table}`])).rows;
-      assertSourceColumns(table, source.get(table)!.columns, actual, older);
-      if (older && table === "catalog_sku_identifiers") identifierColumns = actual;
-    }
-    await validateInstallReceipts(client, source.get("catalog_definition_installs")!.rows);
-    if (identifierColumns) {
-      const table = "catalog_sku_identifiers";
-      const { rows } = await client.query<{ row: string }>(`SELECT (value::jsonb || '{"scheme":null}'::jsonb)::text AS row
-        FROM unnest($1::text[]) AS retained(value)`, [source.get(table)!.rows]);
-      source.set(table, { table, columns: identifierColumns, rows: rows.map(row => row.row) });
+      const stored = source.get(table)!;
+      const convert = older && table === "catalog_sku_identifiers";
+      const expected = convert ? actual.slice(0, -1) : actual;
+      if (JSON.stringify(expected) !== JSON.stringify(stored.columns.map(({ name, type }) => ({ name, type }))))
+        fail("schema_conflict", table);
+      if (convert) {
+        if (actual.at(-1)?.name !== "scheme" || actual.at(-1)?.type !== "text") fail("schema_conflict", table);
+        const { rows } = await client.query<{ row: string }>(`SELECT (value::jsonb || '{"scheme":null}'::jsonb)::text AS row
+          FROM unnest($1::text[]) AS retained(value)`, [stored.rows]);
+        source.set(table, { table, columns: actual, rows: rows.map(row => row.row) });
+      }
     }
     await assertInsertTriggers(client);
     await assertOutsideEmpty(client, relations);
@@ -589,33 +572,17 @@ export async function restoreConnectedNativeStore(input: {
   return result;
 }
 
-function validRow(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function hasExactKeys(value: object, expected: readonly string[]): boolean {
-  const keys = Object.keys(value).sort();
-  if (keys.length !== expected.length) return false;
-  const sortedExpected = [...expected].sort();
-  return keys.every((name, index) => name === sortedExpected[index]);
-}
-
-function copyCapture(input: ConnectedNativeStoreCapture): {
-  capture: ConnectedNativeStoreCapture; tables: Map<TableName, Rows>;
-} {
+function copyCapture(input: ConnectedNativeStoreCapture, sourceProfile?: keyof typeof beforePublicationCommands): ConnectedNativeStoreCapture {
   try {
     const copy = JSON.parse(JSON.stringify(input)) as ConnectedNativeStoreCapture;
-    if (!validRow(copy)) fail("invalid_input");
     const { sha256, ...body } = copy;
-    if (copy.format !== "openlup.native-retained-store.v1" || typeof sha256 !== "string"
-      || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
-    if (!validRow(copy.observation) || !hasExactKeys(copy.observation, ["cluster", "database", "login", "snapshot"])
+    if (copy.format !== "openlup.native-retained-store.v1" || digest(JSON.stringify(body)) !== sha256) fail("invalid_input");
+    if (!copy.observation || Object.keys(copy.observation).sort().join("\0") !== "cluster\0database\0login\0snapshot"
       || Object.values(copy.observation).some(value => typeof value !== "string" || !value)) fail("invalid_input");
-    if (!Array.isArray(copy.emptyOutsideProfile) || copy.emptyOutsideProfile.some(value => typeof value !== "string" || !value)
-      || !Array.isArray(copy.outsideProfileCensus)) fail("invalid_input");
+    if (!Array.isArray(copy.outsideProfileCensus)) fail("invalid_input");
     for (const entry of copy.outsideProfileCensus) {
-      if (!validRow(entry)
-        || !hasExactKeys(entry, ["disposition", "owner", "relation", "rows"])
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)
+        || Object.keys(entry).sort().join("\0") !== "disposition\0owner\0relation\0rows"
         || typeof entry.relation !== "string" || !entry.relation || typeof entry.owner !== "string" || !entry.owner
         || typeof entry.rows !== "string" || !entry.rows || /[^0-9]/.test(entry.rows)) fail("invalid_input");
       const disposition = entry.relation === "acquisition_private.installation_key" ? "new-target-installation-key"
@@ -625,89 +592,32 @@ function copyCapture(input: ConnectedNativeStoreCapture): {
               : entry.relation === "public.catalog_attribute_projection" ? "rebuildable" : "unsupported-empty";
       if (entry.disposition !== disposition || disposition === "unsupported-empty" && entry.rows !== "0") fail("invalid_input");
     }
-    const compatible = copy.compatible;
-    if (!validRow(compatible) || compatible.format !== "openlup.compatible-rows.v1"
-      || typeof compatible.sourceId !== "string" || !compatible.sourceId
-      || typeof compatible.catalogueId !== "string" || !compatible.catalogueId
-      || typeof compatible.sha256 !== "string" || !/^[a-f0-9]{64}$/u.test(compatible.sha256)
-      || !Array.isArray(compatible.tables) || !Array.isArray(copy.owned)) fail("invalid_input");
-    const tables = new Map<TableName, Rows>();
-    for (const entry of [...compatible.tables, ...copy.owned]) {
-      if (!validRow(entry) || typeof entry.table !== "string" || tables.has(entry.table)
-        || !Array.isArray(entry.columns) || !entry.columns.length
-        || !Array.isArray(entry.rows) || entry.rows.some(row => typeof row !== "string")) fail("invalid_input");
-      quoted(entry.table);
-      const names = new Set<string>();
-      for (const column of entry.columns) {
-        if (!validRow(column) || typeof column.name !== "string" || names.has(column.name)
-          || typeof column.type !== "string" || !column.type.trim()) fail("invalid_input");
-        quoted(column.name);
-        names.add(column.name);
-      }
-      tables.set(entry.table, entry);
-    }
-    if (compatible.tables.some(entry => entry.columns.some(column => typeof column.key !== "boolean"))) fail("invalid_input");
-    return { capture: copy, tables };
-  } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
-}
-
-function admitCaptureTables(catalogueId: string, tables: ReadonlyMap<TableName, Rows>,
-  source?: { profile: RestoreProfile; currentCatalogueId: string },
-): void {
-  const historical = source !== undefined && catalogueId !== source.currentCatalogueId;
-  if (historical && !admittedRestoreSourceInventories.some(inventory => inventory[source.profile] === catalogueId))
-    failSourceSchema();
-  const predatesLedger = source !== undefined && (catalogueId === beforePublicationCommands[source.profile]
-    || catalogueId === beforeCheckoutAttemptLedger[source.profile]);
-  const expected = predatesLedger ? connectedNativeStoreTables.filter(table => table !== checkoutAttemptLedger) : connectedNativeStoreTables;
-  if (tables.size !== expected.length || expected.some(table => !tables.has(table))) {
-    if (historical) failSourceSchema();
-    fail("invalid_input");
-  }
-}
-
-function assertSourceColumns(table: TableName, source: Rows["columns"], target: Rows["columns"], older: boolean): void {
-  const convert = older && table === "catalog_sku_identifiers";
-  if (convert && (target.at(-1)?.name !== "scheme" || target.at(-1)?.type !== "text")) fail("schema_conflict", table);
-  const expected = convert ? target.slice(0, -1) : target;
-  if (expected.length !== source.length
-    || expected.some(({ name, type }, index) => source[index]?.name !== name || source[index]?.type !== type)) failSourceSchema(table);
-}
-
-function validateCapturedRows(tables: ReadonlyMap<TableName, Rows>): void {
-  try {
+    const all = tables(copy);
+    const catalogueId = copy.compatible.catalogueId;
+    const predatesLedger = sourceProfile !== undefined && (catalogueId === beforePublicationCommands[sourceProfile]
+      || catalogueId === beforeCheckoutAttemptLedger[sourceProfile]);
+    const expected = predatesLedger ? connectedNativeStoreTables.filter(table => table !== checkoutAttemptLedger) : connectedNativeStoreTables;
+    if (all.size !== expected.length || expected.some(table => !all.has(table))) fail("invalid_input");
     let count = 0, bytes = 0;
-    for (const table of tables.values()) {
-      const columnNames = table.columns.map(column => column.name);
+    for (const table of all.values()) {
+      for (const column of table.columns) quoted(column.name);
+      if (!table.columns.length || new Set(table.columns.map(column => column.name)).size !== table.columns.length) fail("invalid_input");
       for (const row of table.rows) {
-        const value: unknown = JSON.parse(row);
-        if (!validRow(value) || !hasExactKeys(value, columnNames)) fail("invalid_input");
+        const value = JSON.parse(row) as Record<string, unknown>;
+        if (!value || Array.isArray(value) || Object.keys(value).sort().join("\0") !== table.columns.map(column => column.name).sort().join("\0")) fail("invalid_input");
         count++; bytes += Buffer.byteLength(row);
       }
     }
     if (count > 10000 || bytes > 64 * 1024 * 1024) fail("limit_exceeded");
+    return copy;
   } catch (error) { if (error instanceof PostgresTransferError) throw error; fail("invalid_input"); }
 }
 
-async function validateInstallReceipts(client: PoolClient, receipts: readonly string[]): Promise<void> {
-  let refusal: string | undefined;
-  try {
-    const { rows } = await client.query(`SELECT 1
-      FROM pg_catalog.unnest($1::text[]) AS incoming(receipt_row)
-      CROSS JOIN LATERAL pg_catalog.jsonb_populate_record(NULL::public.catalog_definition_installs, incoming.receipt_row::jsonb) AS installed
-      WHERE NOT public.catalog_definition_install_profile_manifest_matches(
-        installed.pack_id, installed.pack_version, installed.manifest_digest, installed.receipt)
-      LIMIT 1`, [receipts]);
-    if (rows.length) refusal = "catalog_profile_install_manifest_mismatch";
-  } catch (error) {
-    const sqlError = error as { code?: string; message?: string };
-    if (sqlError.code !== "22023" || (sqlError.message !== "definition_profile_invalid"
-      && sqlError.message !== "cadence_kind_unsupported")) throw error;
-    refusal = sqlError.message;
-  }
-  if (refusal) throw Object.assign(new PostgresTransferError("target_conflict", "catalog_definition_installs"), { cause: refusal });
+function tables(packet: ConnectedNativeStoreCapture): Map<TableName, Rows> {
+  const all: Rows[] = [...packet.compatible.tables, ...packet.owned];
+  if (new Set(all.map(table => table.table)).size !== all.length) fail("invalid_input");
+  return new Map<TableName, Rows>(all.map(table => [table.table, table]));
 }
-
 function expectedManifest(installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation) {
   const root = process.cwd(), raw = readPlatformMigrationManifest(root), catalog = readPlatformMigrations(root);
   if (!raw || catalog.errors.length || evaluatePlatformMigrationManifest({ manifest: raw, migrations: catalog.migrations }).length) fail("schema_conflict");
@@ -718,15 +628,9 @@ function expectedManifest(installation: QualifiedPostgresInstallation | Qualifie
     });
 }
 function catalogPayload(client: PoolClient, installation: QualifiedPostgresInstallation | QualifiedAdminPostgresInstallation): Promise<string> {
-  const payload = installation.generation === "qualified-admin"
+  return installation.generation === "qualified-admin"
     ? qualifiedAdminPostgresCatalogPayload(client, installation, migrationLock)
     : qualifiedPostgresCatalogPayload(client, installation, migrationLock);
-  return payload.catch((error: unknown) => {
-    if (error instanceof Error && /^(qualified PostgreSQL installation refused|qualified-admin PostgreSQL refused): /u.test(error.message)) {
-      fail("schema_conflict");
-    }
-    throw error;
-  });
 }
 async function openRestrictedOwnerWindow(client: PoolClient, installation: QualifiedAdminPostgresInstallation): Promise<void> {
   const migrator = JSON.stringify(installation.migrationLogin);
@@ -759,14 +663,7 @@ async function insert(client: PoolClient, table: Rows, row: string): Promise<voi
   const capturedSubject=table.table==='subscription_events'||table.table==='commerce_order_operations';
   const prior=capturedSubject?(await client.query("SELECT current_setting('app.communication_retained_copy',true) AS value")).rows[0]?.value:undefined;
   if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy','on',true)");
-  await client.query(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM pg_catalog.jsonb_populate_record(NULL::${name},$1::jsonb) ON CONFLICT DO NOTHING`, [row])
-    .catch((error: unknown) => {
-      if (table.table === "catalog_definition_installs" && error instanceof Error && "code" in error && error.code === "22023"
-        && ["definition_profile_invalid", "cadence_kind_unsupported", "catalog_profile_install_manifest_mismatch"].includes(error.message)) {
-        throw Object.assign(new PostgresTransferError("target_conflict", table.table), { cause: error.message });
-      }
-      throw error;
-    });
+  await client.query(`INSERT INTO ${name} (${columns}) SELECT ${columns} FROM pg_catalog.jsonb_populate_record(NULL::${name},$1::jsonb) ON CONFLICT DO NOTHING`, [row]);
   if(capturedSubject) await client.query("SELECT set_config('app.communication_retained_copy',$1,true)",[prior??'']);
   if ((await client.query(`SELECT 1 FROM ${connectedStoreRowSource(table.table, table.columns)} t WHERE pg_catalog.to_jsonb(t)=$1::jsonb`, [row])).rows.length !== 1) fail("target_conflict", table.table);
 }
@@ -815,7 +712,6 @@ async function assertInsertTriggers(client: PoolClient): Promise<void> {
     // Publication guards validate restored facts and the complete ledger. The
     // live-write binding triggers are scoped to the dedicated publication login.
     catalog_products: ["catalog_products_publication_pointer_fence", "catalog_publication_live_write", "catalog_products_lifecycle_projection_final"],
-    catalog_definition_installs: ["catalog_definition_install_profile_immutable"],
     catalog_skus: ["catalog_skus_publication_facts_admitted", "catalog_publication_live_write", "catalog_skus_lifecycle_write_fence"],
     catalog_sku_identifiers: ["catalog_publication_live_write"],
     catalog_product_document_revisions: ["catalog_publication_live_write"],
@@ -899,11 +795,6 @@ function quoted(value: string): string {
   return `"${value}"`;
 }
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
-function failSourceSchema(table?: string): never {
-  const error = new PostgresTransferError("schema_conflict", table);
-  const remedy = "upgrade the source, then capture";
-  throw Object.assign(error, { message: `${error.message}: ${remedy}`, remedy });
-}
 function fail(code: "invalid_input" | "schema_conflict" | "target_conflict" | "unsupported_table" | "limit_exceeded" | "insert_trigger_requires_owner", table?: string): never {
   throw new PostgresTransferError(code, table);
 }

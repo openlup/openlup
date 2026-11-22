@@ -500,6 +500,13 @@ refused by the definition trigger. See the
 [package catalogue owner](../../packages/platform/README.md#catalog) for explicit
 install executors, readiness observations and the unbound write guard.
 
+Stores holding subscription profile install receipts remain outside the current
+connected-store transfer profile. Capture refuses with
+`subscription_profile_receipts_unsupported`. Wait for the later connected-store
+restore change that supports these receipts before capturing the store. Captures
+without profile receipts from the pinned installations immediately before the
+subscription profile forward can restore into the new qualified target.
+
 Managed-to-native retained transfer initializes only absent product `type_key`
 and `type_version` fields to NULL. Supplied values, including explicit NULLs,
 are preserved; the generic missing-column refusal still applies to every other
@@ -621,12 +628,6 @@ managed internals, source roles/grants or `platform_schema_migrations`. Source
 and target transaction capabilities remain host-owned; an opaque catalogue label
 does not prove that an installation is compatible. Identical typed rows replay,
 and changed retained rows refuse rather than becoming business status updates.
-
-Connected restore keeps an append-only list of admitted source inventories.
-A forward that changes the qualified inventory appends the preceding main
-inventory when every captured row shape is compatible without conversion.
-If the source shape differs, restore reports `schema_conflict` with the
-remedy “upgrade the source, then capture.”
 
 The [handover witness](../../tests/postgres/runM14EffectHandover.ts)
 takes its final finite connected-table graph and application's complete private
@@ -1018,23 +1019,18 @@ transactions and exact-prefix/replay behavior remain.
 
 The [subscription profile forward](../../db/platform/migrations/20261124230000_subscription_profiles.sql)
 adds canonical declarations and digests to native definition-install receipts.
-Installation and connected restore share the existing definition lock.
-Profile-bearing inserts require `READ COMMITTED` so contenders observe the
-first committed declaration. Each profile-bearing receipt retains the canonical
-pack manifest and marks its SHA-256 with `profiles-v1:`. That digest requires
-both the manifest bytes and the matching declaration list. The receipt trigger
-verifies this binding and each profile identity, and refuses updates or deletes
-of profile-bearing receipts. Reference-only receipts retain their original
-digest format and contents.
+Installation uses the existing definition lock. Profile-bearing installs
+require `READ COMMITTED` so contenders observe the first committed declaration.
+Each profile-bearing receipt retains the canonical pack manifest and marks its
+SHA-256 with `profiles-v1:`. Before any writes, the installer verifies the
+manifest bytes, digest and matching profile definitions and references. A
+trigger refuses updates or deletes of profile-bearing receipts. Reference-only
+receipts retain their original digest format and contents.
 
-The exact-key lookup uses the existing migration owner. Its result contains
-the profile and policy identities. Connected restore compares the captured source and target columns before
-decoding retained rows. It verifies the live inventory and columns before SQL
-casts, then runs the same receipt validator as installation. The validator
-checks canonical bytes, digests and matching profile references and
-declarations in both directions. Insert guards
-run in an explicit `READ COMMITTED` transaction.
-There is no data backfill. See [Install subscription profiles](../../packages/platform/README.md#install-subscription-profiles).
+The exact-key lookup uses the existing migration owner and returns the profile
+and policy identities. There is no data backfill. See
+[Install subscription profiles](../../packages/platform/README.md#install-subscription-profiles).
+
 
 ### Sealed native catalog publication history
 

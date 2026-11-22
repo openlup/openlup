@@ -1337,6 +1337,10 @@ At a day-based boundary, supply the installed identity and declaration to
 returns a whole-day projection when every supplied owner offers the choice.
 The native write guards enforce the limits of the installed database.
 
+Connected-store capture refuses stores with profile-bearing install receipts
+with `subscription_profile_receipts_unsupported`. Wait for the later
+connected-store restore change that supports these receipts before capturing.
+
 ### Read governed offer memberships
 
 Install the complete PostgreSQL catalogue through

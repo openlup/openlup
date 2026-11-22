@@ -183,6 +183,15 @@ export async function captureConnectedNativeStore(input: {
         source: { withSnapshot: work => work(db) }, sourceId, catalogueId,
         tables: compatible, maximumRows, maximumBytes,
       });
+      const profileReceipts = await db.query(`SELECT 1 FROM public.catalog_definition_installs
+        WHERE manifest_digest LIKE 'profiles-v1:%'
+          OR receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
+        LIMIT 1`);
+      if (profileReceipts.rows.length) {
+        throw Object.assign(new PostgresTransferError("subscription_profile_receipts_unsupported", "catalog_definition_installs"), {
+          remedy: "Subscription profile install receipts are outside the current connected-store transfer profile. Wait for the later connected-store restore change that supports these receipts before capturing this store.",
+        });
+      }
       const relations = (await db.query<{ schema: string; table: string; owner: string }>(`SELECT n.nspname AS schema,c.relname AS table,
         pg_catalog.pg_get_userbyid(c.relowner) AS owner
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace

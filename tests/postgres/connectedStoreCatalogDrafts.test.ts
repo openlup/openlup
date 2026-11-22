@@ -1,9 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { canonicalCatalogSubscriptionProfileJson } from "@openlup/core/catalog";
-import type { Pool, PoolClient } from "pg";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { canonicalCatalogDraftJson, installCatalogDefinitions, readInstalledCatalogSubscriptionProfile, withCatalogPublicationRules, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canonicalCatalogDraftJson, installCatalogDefinitions, withCatalogPublicationRules, type CatalogDraftPublicationStoredApplyResult as CatalogDraftApplyResult,
   type CatalogDraftPublicationStoredCommand as CatalogDraftCommand, type CatalogDraftPayloadV2, type CatalogDraftPayloadV3 } from "@openlup/platform/catalog";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
 import { captureStoreJourney, journeyCensus, journeyRpc, journeySelection, storeJourneyResources,
@@ -13,57 +11,15 @@ const artifact = readFileSync(new URL("../../examples/neutral-store/owned/catalo
 
 const relations = ["catalog_draft_heads", "catalog_draft_revisions", "catalog_draft_command_receipts", "catalog_draft_sku_reservations",
   "catalog_type_versions", "catalog_definition_installs", "catalog_tax_classes", "catalog_skus", "catalog_products"] as const;
-const profile = { key: "example:transfer-profile", version: 1, allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days: 28 }],
-  policyRef: { key: "example:transfer-policy", version: 1 }, policyDigest: "a".repeat(64) } as const;
 const packs = [1, 2].map(version => withCatalogPublicationRules({ id: "example:transfer", namespace: "example", version, openlupRange: "0.44.x", capabilities: { publish: false },
   types: [{ key: "example:transfer-item", version, units: [{ code: "openlup:piece", dimension: "count" as const, integral: true }],
-    netContentUnits: ["openlup:piece"], dimensions: [], validateContent: () => [],
-    ...(version === 2 && { subscriptionProfileRef: { key: profile.key, version: profile.version } }) }],
-  ...(version === 2 && { subscriptionProfiles: [{ key: profile.key, version: profile.version }], subscriptionProfileDefinitions: [profile] }),
+    netContentUnits: ["openlup:piece"], dimensions: [], validateContent: () => [] }],
   taxClasses: [{ key: "example:transfer-standard" }] }, () => Buffer.from(artifact)));
 const resources = storeJourneyResources();
 let source: JourneyInstallation, target: JourneyInstallation;
 let before: Awaited<ReturnType<typeof journeyCensus>>, restored: typeof before;
-let packet: Awaited<ReturnType<typeof captureStoreJourney>>, pristine: typeof packet;
+let packet: Awaited<ReturnType<typeof captureStoreJourney>>;
 let commands: { canonicalCommand: string; fingerprint: string; actorId: string; result: CatalogDraftApplyResult }[];
-
-async function traceRestore(owner: Pool, check: () => Promise<void>): Promise<string[]> {
-  let statements: string[] = [];
-  let stopTracing = () => {};
-  const trace = (client: PoolClient) => {
-    const query = vi.spyOn(client, "query");
-    stopTracing = () => {
-      statements = query.mock.calls.flatMap(([sql]) => typeof sql === "string" ? [sql] : []);
-      query.mockRestore();
-    };
-  };
-  owner.once("acquire", trace);
-  try { await check(); }
-  finally {
-    owner.removeListener("acquire", trace);
-    stopTracing();
-  }
-  return statements;
-}
-
-function expectNoWrites(statements: string[]): void {
-  expect(statements.filter(sql => /^(INSERT|UPDATE|DELETE|GRANT|REVOKE|ALTER)\b/iu.test(sql.trim()))).toEqual([]);
-}
-
-async function withChangedInstallReceipts(change: (row: string) => string): Promise<typeof packet> {
-  const corrupted = structuredClone(packet);
-  const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
-  // Match capture's exact PostgreSQL row encoding after changing the proof fields.
-  const { rows } = await source.owner.query<{ value: string }>(
-    "SELECT payload::jsonb::text AS value FROM unnest($1::text[]) AS input(payload)", [installs.rows.map(change)]);
-  installs.rows = rows.map(row => row.value);
-  return rehashCapture(corrupted);
-}
-
-function rehashCapture(capture: typeof packet): typeof packet {
-  const { sha256: _old, ...body } = capture;
-  return { ...body, sha256: createHash("sha256").update(JSON.stringify(body)).digest("hex") };
-}
 
 beforeAll(async () => {
   source = await resources.installation("catalog-draft-source");
@@ -160,7 +116,7 @@ beforeAll(async () => {
     (sku_id,publication_revision,attribute_key,definition_version,value_ordinal,value_kind,text_value)
     VALUES($1,17,'example:stale',1,0,'text','stale-projection-must-not-travel')`, [liveId]);
   target = await resources.installation("catalog-draft-target");
-  pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
+  const pristine = await captureStoreJourney(target.owner, "pristine:catalog-drafts");
   before = await journeyCensus(source.owner);
   expect(before.catalog_attribute_projection).toHaveLength(1);
   // The whole target census must match retained authority with an empty projection.
@@ -183,43 +139,6 @@ beforeAll(async () => {
   expect(before.catalog_draft_revisions).toHaveLength(12);
   expect(before.catalog_draft_command_receipts).toHaveLength(12);
   expect(before.catalog_draft_sku_reservations).toHaveLength(4);
-  // The owner normally inherits REPEATABLE READ on this target.
-  await target.owner.query("ALTER DATABASE postgres SET default_transaction_isolation TO 'repeatable read'");
-  await target.owner.query("SET default_transaction_isolation TO 'repeatable read'");
-  expect((await target.owner.query("SHOW transaction_isolation")).rows).toEqual([{ transaction_isolation: "repeatable read" }]);
-  const pristineCensus = await journeyCensus(target.owner);
-  for (const rewriteManifest of [false, true]) {
-    const corrupted = await withChangedInstallReceipts(row => {
-      const value = JSON.parse(row);
-      if (!value.receipt.subscriptionProfileDefinitions) return row;
-      const changed = { ...profile, policyDigest: "b".repeat(64) };
-      value.receipt.subscriptionProfileDefinitions = [{
-        ...changed, profileDigest: createHash("sha256").update(canonicalCatalogSubscriptionProfileJson(changed)).digest("hex"),
-      }];
-      if (rewriteManifest) value.receipt.canonicalManifest = canonicalCatalogDraftJson({
-        ...JSON.parse(value.receipt.canonicalManifest),
-        subscriptionProfileDefinitions: value.receipt.subscriptionProfileDefinitions,
-      });
-      return JSON.stringify(value);
-    });
-    const statements = await traceRestore(target.owner, async () => {
-      await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet: corrupted, freshTarget: pristine }))
-        .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: "catalog_profile_install_manifest_mismatch" });
-    });
-    expect(statements).toContainEqual(expect.stringContaining("catalog_definition_install_profile_manifest_matches"));
-    expectNoWrites(statements);
-    expect(await journeyCensus(target.owner)).toEqual(pristineCensus);
-  }
-  const reinstall = await target.owner.connect();
-  try {
-    await reinstall.query("BEGIN ISOLATION LEVEL READ COMMITTED");
-    const { installedAt: _sourceTime, ...original } = await installCatalogDefinitions(source.owner, packs[1]);
-    const receipt = await installCatalogDefinitions(reinstall, packs[1]);
-    expect(receipt).toMatchObject(original);
-    expect(await installCatalogDefinitions(reinstall, packs[1])).toEqual(receipt);
-  } finally {
-    try { await reinstall.query("ROLLBACK"); } finally { reinstall.release(); }
-  }
   expect(await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
     .toEqual({ captureSha256: packet.sha256, replayed: false, neutralizedHistoricalHoldNotifications: 0 });
   expect(packet.outsideProfileCensus.find(entry => entry.relation === "public.catalog_attribute_projection"))
@@ -229,8 +148,6 @@ beforeAll(async () => {
   expect([...packet.compatible.tables, ...packet.owned].some(entry => String(entry.table) === "catalog_attribute_projection")).toBe(false);
   expect((await target.owner.query("SELECT * FROM public.catalog_attribute_projection")).rows).toEqual([]);
   expect((await restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine })).replayed).toBe(true);
-  expect(await readInstalledCatalogSubscriptionProfile(target.owner, profile))
-    .toEqual(await readInstalledCatalogSubscriptionProfile(source.owner, profile));
   expect((await target.owner.query("SELECT * FROM public.catalog_attribute_projection")).rows).toEqual([]);
   restored = await journeyCensus(target.owner);
 }, postgresSetupTimeoutMs);
@@ -238,212 +155,9 @@ afterAll(async () => {
   try {
     // One whole-census comparison covers restore and every command replay,
     // including no extra live products, SKUs, prices or other effects.
-    if (restored) expect(await journeyCensus(target.owner)).toEqual(before);
+    if (target && before) expect(await journeyCensus(target.owner)).toEqual(before);
   } finally { await resources.close(); }
 }, postgresTeardownTimeoutMs);
-
-it("U-1 refuses stripped profile evidence under the original digest before writes and preserves legacy receipts", async () => {
-  const destination = await resources.installation("catalog-receipt-presence-target");
-  const freshTarget = await captureStoreJourney(destination.owner, "pristine:catalog-receipt-presence");
-  const original = await journeyCensus(destination.owner);
-  for (const removeManifest of [true, false]) {
-    const corrupted = await withChangedInstallReceipts(row => {
-      const value = JSON.parse(row);
-      if (!value.receipt.subscriptionProfileDefinitions) return row;
-      expect(value.receipt.canonicalManifest).toEqual(expect.any(String));
-      if (removeManifest) delete value.receipt.canonicalManifest;
-      delete value.receipt.subscriptionProfileDefinitions;
-      return JSON.stringify(value);
-    });
-    const statements = await traceRestore(destination.owner, async () => {
-      await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet: corrupted, freshTarget }))
-        .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: "catalog_profile_install_manifest_mismatch" });
-    });
-    expectNoWrites(statements);
-    const profileRow = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!.rows.find(row => JSON.parse(row).pack_version === 2);
-    expect(profileRow).toBeDefined();
-    await expect(destination.owner.query(`INSERT INTO public.catalog_definition_installs
-      SELECT * FROM jsonb_populate_record(NULL::public.catalog_definition_installs, $1::jsonb)`, [profileRow]))
-      .rejects.toMatchObject({ code: "22023", message: "catalog_profile_install_manifest_mismatch" });
-    expect(await journeyCensus(destination.owner)).toEqual(original);
-  }
-  await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet, freshTarget }))
-    .resolves.toMatchObject({ replayed: false });
-  expect((await journeyCensus(destination.owner)).catalog_definition_installs).toEqual(before.catalog_definition_installs);
-  for (const pack of packs) {
-    expect(await installCatalogDefinitions(destination.owner, pack)).toEqual(await installCatalogDefinitions(source.owner, pack));
-  }
-}, postgresSetupTimeoutMs);
-
-it("C-2 rejects a noncanonical profile manifest even when its digest matches", async () => {
-  const destination = await resources.installation("catalog-canonical-manifest-target");
-  const freshTarget = await captureStoreJourney(destination.owner, "pristine:catalog-canonical-manifest");
-  const original = await journeyCensus(destination.owner);
-  const corrupted = await withChangedInstallReceipts(row => {
-    const value = JSON.parse(row);
-    if (!value.receipt.subscriptionProfileDefinitions) return row;
-    value.receipt.canonicalManifest = ` ${value.receipt.canonicalManifest}`;
-    const digest = `profiles-v1:${createHash("sha256").update(value.receipt.canonicalManifest).digest("hex")}`;
-    value.manifest_digest = digest;
-    value.receipt.manifestDigest = digest;
-    return JSON.stringify(value);
-  });
-  const statements = await traceRestore(destination.owner, async () => {
-    await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet: corrupted, freshTarget }))
-      .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: "catalog_profile_install_manifest_mismatch" });
-  });
-  expectNoWrites(statements);
-  expect(await journeyCensus(destination.owner)).toEqual(original);
-}, postgresSetupTimeoutMs);
-
-it("AC-1 uses the same bidirectional profile reference check on install and restore", async () => {
-  const destination = await resources.installation("catalog-profile-reference-target");
-  const freshTarget = await captureStoreJourney(destination.owner, "pristine:catalog-profile-reference");
-  const original = await journeyCensus(destination.owner);
-  const pack = packs[1]!;
-  const receipt = await installCatalogDefinitions(source.owner, pack);
-  const manifest = JSON.parse(receipt.canonicalManifest!);
-  const types = before.catalog_type_versions!.map(row => JSON.parse(row))
-    .filter(row => row.version === pack.version).map(row => ({ canonicalDefinition: canonicalCatalogDraftJson(row.definition) }));
-  const taxClasses = pack.taxClasses.map(({ key }) => ({ key, label: key }));
-  for (const subscriptionProfiles of [[], [...manifest.subscriptionProfiles, { key: "example:undeclared", version: 1 }]]) {
-    const canonicalManifest = canonicalCatalogDraftJson({ ...manifest, subscriptionProfiles });
-    const manifestDigest = `profiles-v1:${createHash("sha256").update(canonicalManifest).digest("hex")}`;
-    const corrupted = await withChangedInstallReceipts(row => {
-      const value = JSON.parse(row);
-      if (!value.receipt.subscriptionProfileDefinitions) return row;
-      value.receipt = { ...value.receipt, canonicalManifest, manifestDigest };
-      value.manifest_digest = manifestDigest;
-      return JSON.stringify(value);
-    });
-    const refusal = "catalog_profile_install_manifest_mismatch";
-    await expect(destination.owner.query("SELECT public.catalog_definition_install($1,$2,$3)", [
-      pack.id, pack.version, { manifest: canonicalManifest, types, taxClasses },
-    ])).rejects.toMatchObject({ code: "22023", message: refusal });
-    const statements = await traceRestore(destination.owner, async () => {
-      await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet: corrupted, freshTarget }))
-        .rejects.toMatchObject({ code: "target_conflict", table: "catalog_definition_installs", cause: refusal });
-    });
-    expectNoWrites(statements);
-    expect(await journeyCensus(destination.owner)).toEqual(original);
-  }
-  await expect(restoreConnectedNativeStore({ owner: destination.owner, installation: journeySelection, packet, freshTarget }))
-    .resolves.toMatchObject({ replayed: false });
-  expect(await installCatalogDefinitions(destination.owner, pack)).toEqual(receipt);
-}, postgresSetupTimeoutMs);
-
-it("AC-2 checks admitted source receipt columns before casts or retained-row decoding", async () => {
-  for (const fault of ["type", "name"]) {
-    const corrupted = structuredClone(packet);
-    const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
-    if (fault === "type") {
-      installs.columns = installs.columns.map(column => column.name === "pack_version" ? { ...column, type: "text" } : column);
-      installs.rows = installs.rows.map(row => JSON.stringify({ ...JSON.parse(row), pack_version: "nonnumeric" }));
-    } else {
-      installs.columns = installs.columns.map(column => column.name === "manifest_digest" ? { ...column, name: "renamed_digest" } : column);
-      installs.rows = installs.rows.map(row => {
-        const { manifest_digest, ...value } = JSON.parse(row);
-        return JSON.stringify({ ...value, renamed_digest: manifest_digest });
-      });
-      // An unrelated undecodable retained row must not mask the shape refusal.
-      corrupted.owned.find(entry => entry.table === "catalog_tax_classes")!.rows = ["invalid JSON"];
-    }
-    const statements = await traceRestore(target.owner, async () => {
-      await expect(restoreConnectedNativeStore({
-        owner: target.owner, installation: journeySelection, packet: rehashCapture(corrupted), freshTarget: pristine,
-      })).rejects.toMatchObject({ code: "schema_conflict", table: "catalog_definition_installs", remedy: "upgrade the source, then capture" });
-    });
-    expect(statements).not.toContainEqual(expect.stringContaining("WHERE NOT public.catalog_definition_install_profile_manifest_matches"));
-    expectNoWrites(statements);
-  }
-});
-
-it.each(["source", "target"] as const)("rejects malformed %s capture structure before connecting or decoding rows", async side => {
-  const connect = vi.fn();
-  const owner = { connect } as unknown as Pool;
-  const undecodable = "invalid retained row for structural validation";
-  type OwnedTable = typeof packet.owned[number];
-  const malformedColumns: ((entry: OwnedTable) => void)[] = [
-    entry => { Object.assign(entry, { columns: null }); },
-    entry => { delete (entry as Partial<OwnedTable>).columns; },
-    entry => { Object.assign(entry, { columns: { 0: entry.columns[0], length: entry.columns.length } }); },
-    entry => { Object.assign(entry, { columns: [null, ...entry.columns.slice(1)] }); },
-    entry => { Object.assign(entry.columns[0]!, { type: 0 }); },
-  ];
-  for (const corrupt of malformedColumns) {
-    const source = structuredClone(packet);
-    const fresh = structuredClone(pristine);
-    source.compatible.tables[0]!.rows = [undecodable];
-    const selected = side === "source" ? source : fresh;
-    const installs = selected.owned.find(entry => entry.table === "catalog_definition_installs")!;
-    if (side === "target") {
-      // Also present a valid-shaped difference so the malformed target wins.
-      const firstColumn = source.owned.find(entry => entry.table === "catalog_definition_installs")!.columns[0]!;
-      firstColumn.name = "changed_column";
-    }
-    corrupt(installs);
-    const input = { owner, installation: journeySelection, packet: rehashCapture(source), freshTarget: rehashCapture(fresh) };
-    const decode = vi.spyOn(JSON, "parse");
-    try {
-      await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "invalid_input" });
-      expect(connect).not.toHaveBeenCalled();
-      expect(decode).not.toHaveBeenCalledWith(undecodable);
-    } finally {
-      decode.mockRestore();
-    }
-  }
-});
-
-it("AH-1 rejects a single NUL-separated observation key before shapes, row decoding or connection", async () => {
-  const connect = vi.fn();
-  const owner = { connect } as unknown as Pool;
-  const undecodable = "invalid retained row for observation validation";
-  const corrupted = structuredClone(packet);
-  Object.assign(corrupted, { observation: { ["cluster\0database\0login\0snapshot"]: "synthetic" } });
-  // The malformed observation must win over a well-formed shape mismatch.
-  const installs = corrupted.owned.find(entry => entry.table === "catalog_definition_installs")!;
-  installs.columns[0]!.name = "changed_column";
-  corrupted.compatible.tables[0]!.rows = [undecodable];
-  const input = { owner, installation: journeySelection, packet: rehashCapture(corrupted), freshTarget: pristine };
-  const decode = vi.spyOn(JSON, "parse");
-  try {
-    await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "invalid_input" });
-    expect(decode).not.toHaveBeenCalledWith(undecodable);
-    expect(connect).not.toHaveBeenCalled();
-  } finally {
-    decode.mockRestore();
-  }
-});
-
-const validator = "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)";
-
-it("U-2 reports schema_conflict before invoking a changed or missing receipt validator", async () => {
-  const { rows } = await target.owner.query<{ definition: string }>("SELECT pg_get_functiondef($1::regprocedure) AS definition", [validator]);
-  const expectSchemaConflictWithoutValidation = async () => {
-    const statements = await traceRestore(target.owner, async () => {
-      await expect(restoreConnectedNativeStore({ owner: target.owner, installation: journeySelection, packet, freshTarget: pristine }))
-        .rejects.toMatchObject({ code: "schema_conflict" });
-    });
-    expect(statements).not.toContainEqual(expect.stringContaining("WHERE NOT public.catalog_definition_install_profile_manifest_matches"));
-    expectNoWrites(statements);
-  };
-  await target.owner.query(`CREATE OR REPLACE FUNCTION public.catalog_definition_install_profile_manifest_matches(
-    p_pack_id text, p_pack_version integer, p_digest text, p_receipt jsonb
-  ) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-    BEGIN RAISE EXCEPTION 'unexpected_receipt_validator_execution'; END;
-  $$`);
-  try {
-    await expectSchemaConflictWithoutValidation();
-  } finally { await target.owner.query(rows[0].definition); }
-
-  await target.owner.query(`ALTER FUNCTION ${validator} RENAME TO synthetic_hidden_receipt_validator`);
-  try {
-    await expectSchemaConflictWithoutValidation();
-  } finally {
-    await target.owner.query(`ALTER FUNCTION public.synthetic_hidden_receipt_validator(text,integer,text,jsonb)
-      RENAME TO catalog_definition_install_profile_manifest_matches`);
-  }
-}, postgresSetupTimeoutMs);
 
 describe.each(relations)("%s", relation => {
   // 52 s rounds up 4x the 12,998 ms hosted case in Published Tree CI 43695486286:

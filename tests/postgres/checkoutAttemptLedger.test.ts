@@ -1,3 +1,4 @@
+import { installCatalogDefinitions } from "@openlup/platform/catalog";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
@@ -236,44 +237,66 @@ it("restores the pre-ledger packet shape with an empty ledger and requires it in
   expect(await restore(old)).toMatchObject({ captureSha256: old.sha256, replayed: true });
 }, 105_000);
 
-it("restores a capture from checkout-ledger main and gives the upgrade remedy for changed row shapes", async () => {
-  const checkoutForward = "db/platform/migrations/20261124200000_checkout_attempt_ledger.sql";
-  const baseInventory = "b80abf637c8f3f6f854fcac09c88c6b9774857f93c41f0f94664e20f7e62b385";
+it("restores and replays a real capture from before the subscription profiles forward", async () => {
+  const profileForward = "db/platform/migrations/20261124230000_subscription_profiles.sql";
+  const baseInventory = "1feea98acf1cd7cdf1de399cdf8ab8c9ff6a30cec67168a274428f05f4722638";
   const root = process.cwd();
   const manifest = readPlatformMigrationManifest(root) as PlatformMigrationManifest;
   if (manifest.schemaVersion !== 3) throw new Error("Expected all three installation histories");
-  const excluded = new Set<string>();
   for (const plan of [manifest, manifest.qualified, manifest.qualifiedAdmin]) {
-    const end = plan.forward.findIndex(({ file }) => file === checkoutForward);
-    expect(end).toBeGreaterThan(-1);
-    for (const { file } of plan.forward.splice(end + 1)) excluded.add(file);
+    expect(plan.forward.pop()?.file).toBe(profileForward);
   }
   manifest.qualified.objectInventorySha256.separateMigrator.withRestore = baseInventory;
   const { migrations, errors } = readPlatformMigrations(root);
-  const source = await resources.installation("checkout-ledger-main-source", {
+  const source = await resources.installation("before-profiles-source", {
     readManifest: () => manifest,
-    readMigrations: () => ({ migrations: migrations.filter(({ file }) => !excluded.has(file)), errors }),
+    readMigrations: () => ({ migrations: migrations.filter(({ file }) => file !== profileForward), errors }),
+  });
+  const receipt = await installCatalogDefinitions(source.owner, {
+    id: "example:reference-only", namespace: "example", version: 1, openlupRange: "1.x",
+    capabilities: {}, types: [], taxClasses: [], subscriptionProfiles: [{ key: "example:monthly", version: 1 }],
   });
   expect(await attempt(source.runtime)).toEqual(allowed);
   const savedLedger = await ledgerRows(source.owner);
-  const packet = await captureStoreJourney(source.owner, "checkout-ledger-main-source", baseInventory);
-  const targets = await resources.targetTemplate("checkout-ledger-main-target");
+  const packet = await captureStoreJourney(source.owner, "before-profiles-source", baseInventory);
+  const capturedReceipts = packet.owned.find(entry => entry.table === "catalog_definition_installs")!.rows;
+  expect(capturedReceipts.map(row => JSON.parse(row).receipt)).toEqual([receipt]);
+  const targets = await resources.targetTemplate("profiles-target");
   const target = await targets.nextTarget();
-  const freshTarget = await captureStoreJourney(target.owner, "checkout-ledger-main-target");
-  const restore = (retained: typeof packet) => restoreConnectedNativeStore({
-    owner: target.owner, installation: journeySelection, packet: retained, freshTarget,
+  const freshTarget = await captureStoreJourney(target.owner, "profiles-target");
+  const restore = () => restoreConnectedNativeStore({
+    owner: target.owner, installation: journeySelection, packet, freshTarget,
   });
 
-  await source.owner.query(`ALTER TABLE ${table} ADD COLUMN synthetic_shape_change text`);
-  const changed = await captureStoreJourney(source.owner, "checkout-ledger-changed-shape", baseInventory);
-  await expect(restore(changed)).rejects.toMatchObject({
-    code: "schema_conflict", table: "commerce_checkout_attempt_ledger", remedy: "upgrade the source, then capture",
-  });
-  expect(await ledgerRows(target.owner)).toEqual([]);
-
-  expect(await restore(packet)).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
-  const ledger = packet.compatible.tables.find(entry => entry.table === "commerce_checkout_attempt_ledger")!;
-  expect(ledger.rows).toHaveLength(1);
+  expect(await restore()).toMatchObject({ replayed: false, captureSha256: packet.sha256 });
   expect(await ledgerRows(target.owner)).toEqual(savedLedger);
-  expect(await restore(packet)).toMatchObject({ replayed: true });
+  const after = await captureStoreJourney(target.owner, "profiles-target-after");
+  expect(after.owned.find(entry => entry.table === "catalog_definition_installs")!.rows).toEqual(capturedReceipts);
+  expect(await restore()).toMatchObject({ replayed: true, captureSha256: packet.sha256 });
+}, 105_000);
+
+it("refuses connected capture after installing a subscription profile receipt", async () => {
+  const pack = {
+    id: "example:profile-capture", namespace: "example", version: 1, openlupRange: "1.x",
+    capabilities: {}, types: [], taxClasses: [], subscriptionProfiles: [{ key: "example:monthly", version: 1 }],
+  };
+  const capture = () => captureStoreJourney(native.owner, "profile-receipt-source");
+  const reference = await installCatalogDefinitions(native.owner, pack);
+  expect(reference).not.toHaveProperty("subscriptionProfileDefinitions");
+  const before = await capture();
+  expect(before.owned.find(entry => entry.table === "catalog_definition_installs")!.rows.map(row => JSON.parse(row).receipt))
+    .toContainEqual(reference);
+  const profile = await installCatalogDefinitions(native.owner, {
+    ...pack, version: 2, subscriptionProfileDefinitions: [{
+      ...pack.subscriptionProfiles[0]!, allowedCadences: [{ schemaVersion: 1, kind: "fixed_days", days: 28 }],
+      policyRef: { key: "example:policy", version: 1 }, policyDigest: digest("monthly policy"),
+    }],
+  });
+  expect(profile.subscriptionProfileDefinitions).toHaveLength(1);
+  await expect(capture()).rejects.toMatchObject({
+    name: "PostgresTransferError",
+    code: "subscription_profile_receipts_unsupported",
+    table: "catalog_definition_installs",
+    remedy: expect.stringContaining("outside the current connected-store transfer profile"),
+  });
 }, 105_000);

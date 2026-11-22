@@ -192,27 +192,27 @@ Check availability: `npx --no -- openlup catalogue project --trusted-packs ./own
 
 ## Subscription profile
 
-In `pack.ts`, add the key and version to `subscriptionProfiles` and use the
-same `subscriptionProfileRef` on the product type. Add the matching
-`subscriptionProfileDefinitions` entry with these fields.
+In `pack.ts`, list the key and version in `subscriptionProfiles`, use the same
+`subscriptionProfileRef` on the product type, and add its declaration to
+`subscriptionProfileDefinitions`.
 
-- `key` and `version` identify the declaration.
 - `allowedCadences` lists distinct choices such as
-  `{ schemaVersion: 1, kind: "fixed_days", days: 28 }`. Choose whole days from
-  1 to 3660. `calendar_months` is reserved and v1 returns `cadence_kind_unsupported`.
-- `maxFixedDays` optionally narrows the profile. A value of 120 makes a
-  121-day choice unavailable even when every offer includes it.
-- `policyRef` names the policy key and version. `policyDigest` pins the policy
+  `{ schemaVersion: 1, kind: "fixed_days", days: 28 }`. Use whole days from 1 to
+  3660. Version 1 refuses `calendar_months` with `cadence_kind_unsupported`.
+- `maxFixedDays` optionally caps the choices.
+- `policyRef` names the policy key and version. `policyDigest` pins its
   artifact with a lowercase SHA-256 hex digest.
 
 Run `npx --no -- openlup catalogue project --trusted-packs ./owned/catalogue/catalogue.ts --json`
-to check declaration shape and references. The native install command records
-the canonical profile digest in its receipt. Install a higher version for any
-change to the declaration. Supply the installed identity and declared profile
-to the selector, which checks the declared choices against those of the store,
-SKU, offer and command. The installed native guard enforces its cadence limit
-at write time. Issued facts, accepted subscriptions and demand calculation
-have separate owners and require their own composition.
+to check the declaration. The installer records its digest in the receipt.
+Install a higher version to change the declaration. Pass the installed identity
+and declaration to the selector, which intersects the declared choices from
+the profile, store, SKU, offer and command. The native guard enforces its limit
+at write time.
+
+Capture refuses stores with profile receipts using
+`subscription_profile_receipts_unsupported`. Wait for connected restore to
+support these receipts before transferring the store.
 
 ## Upgrade a definition
 

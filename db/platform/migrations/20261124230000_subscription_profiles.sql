@@ -9,7 +9,7 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog,
   LIMIT 1
 $$;
 
--- The original pack bytes and digest bind the profile list in install and restore.
+-- The original pack bytes and digest bind the profile list at installation.
 CREATE FUNCTION public.catalog_definition_install_profile_manifest_matches(
   p_pack_id text, p_pack_version integer, p_digest text, p_receipt jsonb
 ) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
@@ -27,12 +27,6 @@ DECLARE
   profile_key_pattern CONSTANT text := '^[a-z][a-z0-9.-]*:[a-z][a-z0-9._-]*$';
   digest_pattern CONSTANT text := '^[0-9a-f]{64}$';
 BEGIN
-  -- The digest spelling distinguishes issued legacy receipts even if both
-  -- profile fields have been removed from a retained receipt.
-  IF p_digest ~ '^[0-9a-f]{64}$' THEN
-    RETURN p_receipt->>'manifestDigest' IS NOT DISTINCT FROM p_digest
-      AND NOT (p_receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']);
-  END IF;
   IF jsonb_typeof(p_receipt->'canonicalManifest') IS DISTINCT FROM 'string'
     OR jsonb_typeof(p_receipt->'subscriptionProfileDefinitions') IS DISTINCT FROM 'array'
     OR p_receipt->>'manifestDigest' IS DISTINCT FROM p_digest
@@ -115,37 +109,13 @@ $$;
 
 CREATE FUNCTION public.catalog_definition_install_profile_immutable()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE
-  profiles jsonb := NEW.receipt->'subscriptionProfileDefinitions';
-  profile jsonb;
-  installed jsonb;
 BEGIN
-  IF TG_OP <> 'INSERT' THEN
-    IF OLD.manifest_digest LIKE 'profiles-v1:%' OR NEW.manifest_digest LIKE 'profiles-v1:%'
-      OR OLD.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
-      OR NEW.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest'] THEN
-      RAISE EXCEPTION 'catalog_definition_install_profile_immutable' USING ERRCODE = '55000';
-    END IF;
-    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
-    RETURN NEW;
+  IF OLD.manifest_digest LIKE 'profiles-v1:%' OR NEW.manifest_digest LIKE 'profiles-v1:%'
+    OR OLD.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest']
+    OR NEW.receipt ?| ARRAY['subscriptionProfileDefinitions', 'canonicalManifest'] THEN
+    RAISE EXCEPTION 'catalog_definition_install_profile_immutable' USING ERRCODE = '55000';
   END IF;
-  IF NOT public.catalog_definition_install_profile_manifest_matches(NEW.pack_id, NEW.pack_version, NEW.manifest_digest, NEW.receipt) THEN
-    RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
-  END IF;
-  IF profiles IS NULL THEN RETURN NEW; END IF;
-
-  -- Every profile receipt writer, including connected restore, shares the
-  -- install lock and observes its predecessor in a fresh statement snapshot.
-  IF current_setting('transaction_isolation') <> 'read committed' THEN
-    RAISE EXCEPTION 'catalog_profile_install_requires_read_committed' USING ERRCODE = '25000';
-  END IF;
-  PERFORM pg_advisory_xact_lock(hashtextextended('openlup:catalog-definitions', 0));
-  FOR profile IN SELECT value FROM jsonb_array_elements(profiles) LOOP
-    installed := public.catalog_subscription_profile_identity(profile->>'key', (profile->>'version')::integer);
-    IF installed IS NOT NULL AND installed->'profileDigest' IS DISTINCT FROM profile->'profileDigest' THEN
-      RAISE EXCEPTION 'catalog_profile_install_refuses_redefinition' USING ERRCODE = '23505';
-    END IF;
-  END LOOP;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
 END;
 $$;
@@ -154,7 +124,7 @@ REVOKE ALL ON FUNCTION public.catalog_subscription_profile_identity(text,integer
 REVOKE ALL ON FUNCTION public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.catalog_definition_install_profile_immutable() FROM PUBLIC;
 CREATE TRIGGER catalog_definition_install_profile_immutable
-  BEFORE INSERT OR UPDATE OR DELETE ON public.catalog_definition_installs
+  BEFORE UPDATE OR DELETE ON public.catalog_definition_installs
   FOR EACH ROW EXECUTE FUNCTION public.catalog_definition_install_profile_immutable();
 
 CREATE OR REPLACE FUNCTION public.catalog_definition_install(p_pack_id text, p_pack_version integer, p_manifest jsonb)
@@ -170,6 +140,8 @@ DECLARE
   v_existing public.catalog_type_versions%ROWTYPE;
   v_receipt jsonb;
   v_profiles jsonb := v_manifest->'subscriptionProfileDefinitions';
+  v_profile jsonb;
+  v_installed_profile jsonb;
 BEGIN
   IF v_manifest->>'id' IS DISTINCT FROM p_pack_id
     OR (v_manifest->>'version')::integer IS DISTINCT FROM p_pack_version
@@ -189,10 +161,23 @@ BEGIN
     RETURN v_install.receipt;
   END IF;
   IF v_profiles IS NOT NULL THEN
-    -- The receipt guard validates the declarations before any type or tax-class writes.
     v_receipt := jsonb_build_object('packId', p_pack_id, 'packVersion', p_pack_version,
       'manifestDigest', v_digest, 'installedAt', clock_timestamp(), 'types', v_manifest->'types',
       'canonicalManifest', p_manifest->>'manifest', 'subscriptionProfileDefinitions', v_profiles);
+    IF NOT public.catalog_definition_install_profile_manifest_matches(p_pack_id, p_pack_version, v_digest, v_receipt) THEN
+      RAISE EXCEPTION 'catalog_profile_install_manifest_mismatch' USING ERRCODE = '22023';
+    END IF;
+    -- The catalogue lock is already held. Observe any committed predecessor
+    -- before allowing this install to record a new profile identity.
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+      RAISE EXCEPTION 'catalog_profile_install_requires_read_committed' USING ERRCODE = '25000';
+    END IF;
+    FOR v_profile IN SELECT value FROM jsonb_array_elements(v_profiles) LOOP
+      v_installed_profile := public.catalog_subscription_profile_identity(v_profile->>'key', (v_profile->>'version')::integer);
+      IF v_installed_profile IS NOT NULL AND v_installed_profile->'profileDigest' IS DISTINCT FROM v_profile->'profileDigest' THEN
+        RAISE EXCEPTION 'catalog_profile_install_refuses_redefinition' USING ERRCODE = '23505';
+      END IF;
+    END LOOP;
     INSERT INTO public.catalog_definition_installs(pack_id, pack_version, manifest_digest, receipt)
       VALUES (p_pack_id, p_pack_version, v_digest, v_receipt);
   END IF;

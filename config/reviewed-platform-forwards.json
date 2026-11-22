@@ -6474,7 +6474,7 @@
           {
             "name": "catalog_definition_install_profile_immutable",
             "table": "public.catalog_definition_installs",
-            "sha256": "512c5f2c4b1f2d9074275e3d87812fb2ce72a1246ae0ae5610972ff9887c74a9"
+            "sha256": "0f8d2edfecb524541918b56bfa9b50dbf8b48cf92d671409a4a72b3a9aba9fc8"
           }
         ]
       }
@@ -9394,12 +9394,12 @@
     },
     {
       "path": "db/platform/migrations/20261124230000_subscription_profiles.sql",
-      "sha256": "a8ba0299060299f0ea844a149c126bba2dbfa7c9a5d3f5c0ffafc448a0dae47d",
+      "sha256": "ff51b8cf06004553177a4076ba3378a1794fbdbc76d55c47967caf70eba17f92",
       "functions": [
         {
           "signature": "public.catalog_definition_install(text,integer,jsonb)",
           "beforeSha256": "262ae3ebfab451783831b9e5b6ee9a38ab24103605a8b6d382daf69a9b7fc4d2",
-          "afterSha256": "ef75cee92531df17d6c0835e0902dabc24eb4f2a6ce6ebab4e5c599107bd8ff6"
+          "afterSha256": "f0e015a4abe3e08a676c78f1bdee6bba24c612a9df7af3eb194936f7596cb70b"
         },
         {
           "signature": "public.catalog_subscription_profile_identity(text,integer)",
@@ -9409,12 +9409,12 @@
         {
           "signature": "public.catalog_definition_install_profile_manifest_matches(text,integer,text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "61527e72db6b4f582d05976ed575573ef719e97325fa4195408f3e172c9b2e2c"
+          "afterSha256": "6d8eb1d2cc63ec85ee5b0f65742048723fd1ee6c823e8dd4f5f131ef2bc7261f"
         },
         {
           "signature": "public.catalog_definition_install_profile_immutable()",
           "beforeSha256": null,
-          "afterSha256": "adea00bb7b650f1212d1b219894b4b2f349d8e47b81b93a7fe9afb4a1dff53ac"
+          "afterSha256": "7ddfdfd87f875d5b9a0e174d0846450609ac67277dd1266172c5209256533d80"
         }
       ]
     }

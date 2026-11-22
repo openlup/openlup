@@ -6,3 +6,6 @@ Exact reinstall recovers the original receipt. To change installed metadata,
 declare a new profile version. Use the subscription cadence selector with the
 choices from each offer owner. Installation checks the documented 1–3660
 range. The installed native guards enforce their limits at write time.
+
+Connected-store capture refuses stores that hold profile-bearing install
+receipts until connected restore supports those receipts.
