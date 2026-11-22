@@ -1,11 +1,12 @@
 import type { Pool } from "pg";
 import { expect, it, vi } from "vitest";
-import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../../scripts/platform-migration-manifest.js";
+import * as manifests from "../../../scripts/platform-migration-manifest.js";
 import { sealConnectedCapture } from "../../../tests/postgres/connectedStoreHistoricalPacket.fixture.js";
+import { connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "./connectedStoreCapture.js";
 import { connectedStoreSourceShape, restoreConnectedNativeStore } from "./connectedStoreRestore.js";
 
 it("routes qualified source inventories and refuses unknown inventories before connecting", async () => {
-  const manifest = readPlatformMigrationManifest(process.cwd()) as PlatformMigrationManifest | null;
+  const manifest = manifests.readPlatformMigrationManifest(process.cwd()) as manifests.PlatformMigrationManifest | null;
   if (manifest?.schemaVersion !== 3) throw new Error("Qualified installation inventories required");
   const qualified = manifest.qualified.objectInventorySha256;
   const admin = manifest.qualifiedAdmin.objectInventorySha256;
@@ -47,24 +48,90 @@ it("routes qualified source inventories and refuses unknown inventories before c
     for (const { shape, inventories } of predecessors) {
       const id = inventories[profile];
       expect(connectedStoreSourceShape(profile, id, current), `${profile}: ${id}`).toBe(shape);
+      for (const other of Object.keys(inventories) as (keyof typeof inventories)[]) {
+        if (other !== profile) expect(connectedStoreSourceShape(other, id, currentInventories[other])).toBe("unsupported");
+      }
     }
     expect(connectedStoreSourceShape(profile, current, current), profile).toBe("current");
     expect(connectedStoreSourceShape(profile, unknownId, current), profile).toBe("unsupported");
   }
 
-  const packet = sealConnectedCapture({
-    format: "openlup.native-retained-store.v1",
-    compatible: { format: "openlup.compatible-rows.v1", sourceId: "unknown-inventory", catalogueId: unknownId, tables: [], sha256: "" },
-    observation: { cluster: "source", database: "store", login: "postgres", snapshot: "1" },
-    outsideProfileCensus: [], emptyOutsideProfile: [], owned: [], sha256: "",
-  });
+  const packet = blankCapture("source", unknownId);
+  packet.owned = packet.owned.filter(table => String(table.table) !== "commerce_checkout_attempt_ledger");
   const connect = vi.fn();
   await expect(restoreConnectedNativeStore({
-    owner: { connect } as unknown as Pool,
-    installation: { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: "postgres",
-      runtimeLogin: "store_runtime", restoreLogin: "store_restore" },
-    packet,
-    freshTarget: packet,
+    owner: { connect } as unknown as Pool, installation,
+    packet: sealConnectedCapture(packet), freshTarget: blankCapture("target", currentInventories.bootstrap),
   })).rejects.toMatchObject({ code: "schema_conflict", remedy: "upgrade the source, then capture" });
+  expect(connect).not.toHaveBeenCalled();
+});
+
+const installation = { generation: "qualified-v2", roleMode: "installer-managed", bootstrapLogin: "postgres", migrationLogin: "postgres",
+  runtimeLogin: "store_runtime", restoreLogin: "store_restore" } as const;
+function blankCapture(cluster: string, catalogueId: string) {
+  return sealConnectedCapture({
+    format: "openlup.native-retained-store.v1",
+    compatible: { format: "openlup.compatible-rows.v1", sourceId: "synthetic-restore", catalogueId, tables: [], sha256: "" },
+    observation: { cluster, database: "store", login: "postgres", snapshot: "1" },
+    outsideProfileCensus: [], emptyOutsideProfile: [], sha256: "",
+    owned: connectedNativeStoreTables.map(table => ({
+      table, columns: [{ name: "id", type: "text" }], rows: [],
+    })) as ConnectedNativeStoreCapture["owned"],
+  });
+}
+
+it("ranks unconditional packet defects across both captures without connecting", async () => {
+  const manifest = manifests.readPlatformMigrationManifest(process.cwd()) as manifests.PlatformMigrationManifest;
+  const pin = manifests.selectPlatformMigrationManifest(manifest, "qualified-v2", { migrationIsBootstrap: true, hasRestore: true }).objectInventorySha256;
+  const connect = vi.fn();
+  const check = async (mutate: (packet: ConnectedNativeStoreCapture, fresh: ConnectedNativeStoreCapture) => void, code: string) => {
+    for (const reverse of [false, true]) {
+      const packet = blankCapture("source", pin), fresh = blankCapture("target", pin);
+      mutate(packet, fresh);
+      if (reverse) for (const capture of [packet, fresh]) {
+        capture.owned.reverse();
+        capture.owned.forEach(table => table.rows.reverse());
+      }
+      await expect(restoreConnectedNativeStore({ owner: { connect } as unknown as Pool, installation,
+        packet: sealConnectedCapture(packet), freshTarget: sealConnectedCapture(fresh),
+      })).rejects.toMatchObject({ code });
+    }
+  };
+  const oversized = (capture: ConnectedNativeStoreCapture) => {
+    capture.owned.find(table => table.table === "catalog_products")!.rows = Array<string>(10001).fill('{"id":"synthetic"}');
+  };
+  const sized = (capture: ConnectedNativeStoreCapture) => {
+    const table = capture.owned.find(table => String(table.table) === "subscriptions")!;
+    table.columns = [{ name: "configured_offer_version", type: "text" }];
+    table.rows = ['{"configured_offer_version":"sized.v1"}'];
+  };
+  const corruptPublication = (capture: ConnectedNativeStoreCapture) => {
+    const table = capture.owned.find(table => table.table === "catalog_publications")!;
+    table.columns = [{ name: "canonical_state", type: "text" }];
+    table.rows = [JSON.stringify({ canonical_state: " invalid canonical bytes " })];
+  };
+  await check((source, target) => {
+    source.compatible.catalogueId = "f".repeat(64);
+    target.owned[0]!.columns[0]!.name = "bad-column";
+  }, "invalid_input");
+  await check((source, target) => {
+    oversized(source);
+    target.owned[0]!.rows.push('{"wrong":"key"}');
+  }, "invalid_input");
+  await check((source, target) => { source.compatible.catalogueId = "f".repeat(64); oversized(target); }, "schema_conflict");
+  await check((source, target) => { sized(source); oversized(target); }, "limit_exceeded");
+  await check(source => { sized(source); corruptPublication(source); }, "unsupported_table");
+  await check(corruptPublication, "target_conflict");
+  await check(sized, "unsupported_table");
+  await check(oversized, "limit_exceeded");
+
+  const badManifest = vi.spyOn(manifests, "readPlatformMigrationManifest").mockImplementation(() => { throw new SyntaxError(); });
+  try {
+    await expect(restoreConnectedNativeStore({ owner: { connect } as unknown as Pool,
+      installation: { ...installation, runtimeLogin: "postgres" }, packet: blankCapture("source", pin), freshTarget: blankCapture("target", pin),
+    })).rejects.toMatchObject({ code: "invalid_input" });
+    await check((_source, target) => { target.owned[0]!.columns.length = 0; }, "invalid_input");
+    await check(() => {}, "schema_conflict");
+  } finally { badManifest.mockRestore(); }
   expect(connect).not.toHaveBeenCalled();
 });

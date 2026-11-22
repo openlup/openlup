@@ -97,7 +97,7 @@ it("preserves unknown-trigger refusal and rejects channel source outbox rows wit
       } } as unknown as Pool;
       await expect(restoreConnectedNativeStore({ ...input, owner: observedOwner, packet: withOutboxRow(packet, row.value) }))
         .rejects.toMatchObject({ code: "unsupported_table", table: "outbox_events" });
-      expect(insertedClient).toBe(true);
+      expect(insertedClient).toBe(false);
       expect(attemptedProtectedInsert).toBe(false);
       const ordinary = await target.owner.connect();
       try {

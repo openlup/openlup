@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
 import { expect, it } from "vitest";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { captureConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreCapture.js";
+import { createHash } from "node:crypto";
+import { captureConnectedNativeStore, connectedNativeStoreTables, type ConnectedNativeStoreCapture } from "../../server/adapters/postgres/connectedStoreCapture.js";
 import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
-import { projectHistoricalCapture } from "./connectedStoreHistoricalPacket.fixture.js";
+import { projectHistoricalCapture, sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedAdminPostgresStartupOptions, type QualifiedAdminPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { closePostgres, dockerAvailable, postgresSetupTimeoutMs, runPostgresContainer,
@@ -167,6 +168,75 @@ for (const outside of ["grantor", "member"] as const) {
   }, postgresSetupTimeoutMs);
 }
 
+function traceRestore(owner: Pool, hook?: (sql: string) => void | Promise<void>) {
+  const statements: string[] = [];
+  const traced = { async connect() {
+    const client = await owner.connect();
+    return {
+      async query(sql: string | QueryConfig, values?: unknown[]) {
+        const text = typeof sql === "string" ? sql : sql.text;
+        statements.push(text);
+        await hook?.(text);
+        return typeof sql === "string" ? client.query(sql, values) : client.query(sql);
+      },
+      release: (destroy?: boolean) => client.release(destroy),
+    };
+  } } as unknown as Pool;
+  const writes = () => statements.filter(sql => /^\s*(GRANT|INSERT|UPDATE|DELETE)\b/iu.test(sql)
+    || /public\.(client_import_retained_row|subscription_cycle_import_retained_row)\(/u.test(sql));
+  const expectAdmittedBeforeGrant = () => {
+    const grant = statements.findIndex(sql => sql.startsWith("GRANT "));
+    expect(grant).toBeGreaterThan(0);
+    const locked = statements.slice(0, grant);
+    for (const table of [...connectedNativeStoreTables, "platform_schema_migrations"]) {
+      expect(locked).toContain(`LOCK TABLE "public"."${table}" IN SHARE ROW EXCLUSIVE MODE`);
+    }
+    expect(locked.some(sql => sql.includes("to_jsonb(t)::pg_catalog.text"))).toBe(true);
+    expect(locked.some(sql => sql.includes('"customer_identity_challenges" LIMIT 1'))).toBe(true);
+    expect(statements.filter(sql => sql.startsWith("GRANT "))).toHaveLength(2);
+  };
+  return { traced, statements, writes, expectAdmittedBeforeGrant };
+}
+function sealOuter(packet: ConnectedNativeStoreCapture) {
+  const { sha256: _hash, ...body } = packet;
+  packet.sha256 = createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  return packet;
+}
+
+function genericDefects(packet: ConnectedNativeStoreCapture) {
+  const mutate = (change: (copy: ConnectedNativeStoreCapture, columns: ConnectedNativeStoreCapture["compatible"]["tables"][number]["columns"]) => void) => {
+    const copy = structuredClone(packet);
+    change(copy, copy.compatible.tables.find(table => table.table === "subscription_pause_windows")!.columns);
+    return sealConnectedCapture(copy);
+  };
+  return [
+    { packet: mutate((_copy, columns) => { columns.find(column => !column.key)!.key = true; }), code: "schema_conflict" },
+    { packet: mutate((_copy, columns) => {
+      const { key, name, type } = columns[0]!;
+      columns[0] = { key, name, type };
+    }), code: "schema_conflict" },
+    { packet: mutate((_copy, columns) => { Object.assign(columns[0]!, { extra: true }); }), code: "schema_conflict" },
+    { packet: mutate(copy => { copy.compatible.sourceId = String.fromCharCode(1); }), code: "invalid_input" },
+    { packet: mutate((_copy, columns) => { Object.assign(columns[0]!, { key: "yes" }); }), code: "invalid_input" },
+  ];
+}
+
+async function writeLineage(owner: Pool) {
+  const root = "10000000-0000-4000-8000-000000000002", child = "10000000-0000-4000-8000-000000000003";
+  const db = await owner.connect();
+  try {
+    await db.query("BEGIN");
+    await db.query(`INSERT INTO public.commerce_orders(id,client_id,total_amount_minor,currency_code,recovery_root_order_id,recreated_from_order_id)
+      SELECT $1, id, 100, 'XXX', NULL, NULL FROM public.clients`, [root]);
+    await db.query(`INSERT INTO public.commerce_orders(id,client_id,total_amount_minor,currency_code,recovery_root_order_id,recreated_from_order_id)
+      SELECT $1, id, 100, 'XXX', $2, $2 FROM public.clients`, [child, root]);
+    await db.query(`INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor)
+      SELECT id,1,1,100,100 FROM public.commerce_orders`);
+    await db.query("COMMIT");
+  } catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
+  return (pool: Pool, cycled: boolean) => pool.query("UPDATE public.commerce_orders SET recreated_from_order_id=$2 WHERE id=$1", [root, cycled ? child : null]);
+}
+
 for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-managed", "operator-provisioned"] as const) {
   it(`admits ${shape}-shaped ${mode} control-plane roles before installation`, async () => {
     if (!await dockerAvailable()) throw new Error("Restricted admission requires disposable PostgreSQL 16");
@@ -189,8 +259,15 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('restricted@example.invalid','lead')");
       await source.owner.query(`INSERT INTO public.outbox_events(aggregate_type,aggregate_id,event_type,idempotency_key,payload)
         VALUES('synthetic','10000000-0000-4000-8000-000000000001','synthetic.retained','restricted-ordinary-outbox','{}')`);
+      const cycle = shape === "rds" ? await writeLineage(source.owner) : undefined;
       // Cover current and predecessor inventories for each restricted role mode.
       const current = await capture(source, "restricted-source");
+      let cyclePacket: ConnectedNativeStoreCapture | undefined;
+      if (cycle) {
+        await cycle(source.owner, true);
+        cyclePacket = await capture(source, "restricted-cycle");
+        await cycle(source.owner, false);
+      }
       const packet = shape === "neon" ? await projectHistoricalCapture(source.owner, current, beforeGovernedLifecycle[mode]) : current;
       const freshTarget = await capture(target, "restricted-target");
       expect((await source.runner.status()).pending).toEqual([]);
@@ -202,13 +279,76 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
       await target.pools[0]!.query(`REVOKE ${provider} FROM restore_r`);
       const beforeKey = await keyIdentity(target);
       const input = { owner: target.owner, installation: target.selection, packet, freshTarget };
+      const refuse = async (code: string, edited: Partial<typeof input> = {}) => {
+        const trace = traceRestore(target!.owner);
+        await expect(restoreConnectedNativeStore({ ...input, ...edited, owner: trace.traced })).rejects.toMatchObject({ code });
+        expect(trace.writes()).toEqual([]);
+      };
+      const baselineCases = [false, true].map(reverse => {
+        const copy = structuredClone(freshTarget);
+        const revision = copy.owned.find(data => data.table === "catalog_product_document_revisions")!;
+        revision.columns.push({ name: "disallowed_column", type: "jsonb" });
+        if (reverse) { copy.owned.reverse(); revision.columns.reverse(); }
+        return sealConnectedCapture(copy);
+      });
+      const genericCases = genericDefects(packet);
+      for (const defect of genericCases) await refuse(defect.code, { packet: defect.packet });
+      if (cyclePacket) await refuse("target_conflict", { packet: cyclePacket });
+      const channelPacket = structuredClone(packet);
+      const outbox = channelPacket.compatible.tables.find(table => table.table === "outbox_events")!;
+      outbox.rows[0] = JSON.stringify({ ...JSON.parse(outbox.rows[0]!), event_type: "channel.purchase-line.v1" });
+      await refuse("unsupported_table", { packet: sealConnectedCapture(channelPacket) });
+      await refuse("invalid_input", { freshTarget: packet });
       await target.owner.query("INSERT INTO public.commerce_settings(key,value_minor) VALUES('transfer_conflict',1)");
-      await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({ code: "target_conflict" });
+      await refuse("target_conflict");
+      for (const baseline of baselineCases) await refuse("schema_conflict", { freshTarget: baseline });
       await target.owner.query("DELETE FROM public.commerce_settings WHERE key='transfer_conflict'");
       expect((await target.runner.status()).pending).toEqual([]);
-      expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
+
+      const nativeRefusal = structuredClone(packet);
+      const invalidOutbox = nativeRefusal.compatible.tables.find(table => table.table === "outbox_events")!;
+      invalidOutbox.rows[0] = JSON.stringify({ ...JSON.parse(invalidOutbox.rows[0]!), status: "invalid-fixture-status" });
+      const rollback = traceRestore(target.owner);
+      await expect(restoreConnectedNativeStore({
+        ...input, packet: sealConnectedCapture(nativeRefusal), owner: rollback.traced,
+      })).rejects.toMatchObject({ code: "target_conflict" });
+      rollback.expectAdmittedBeforeGrant();
+      expect(rollback.statements.some(sql => sql.includes("public.client_import_retained_row("))).toBe(true);
+      expect(rollback.statements).toContain("ROLLBACK");
+      expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([]);
+      expect((await target.runner.status()).pending).toEqual([]);
+      expect(await keyIdentity(target)).toEqual(beforeKey);
+
+      for (const [sourceDigest, targetDigest] of [[true, false], [false, true], [true, true]]) {
+        const changed = (capture: ConnectedNativeStoreCapture, inner: boolean) => {
+          const copy = structuredClone(capture);
+          if (inner) copy.compatible.sha256 = "ignored inner checksum";
+          return sealOuter(copy);
+        };
+        const trace = traceRestore(target.owner);
+        const result = await restoreConnectedNativeStore({ ...input, owner: trace.traced,
+          packet: changed(packet, sourceDigest), freshTarget: changed(freshTarget, targetDigest),
+        });
+        expect(result.replayed).toBe(!sourceDigest || targetDigest);
+        trace.expectAdmittedBeforeGrant();
+      }
       expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
-      expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
+      for (const edited of [
+        ...genericCases.map(defect => ({ packet: defect.packet })), ...baselineCases.map(baseline => ({ freshTarget: baseline })),
+      ]) {
+        const trace = traceRestore(target.owner);
+        expect((await restoreConnectedNativeStore({ ...input, ...edited, owner: trace.traced })).replayed).toBe(true);
+        trace.expectAdmittedBeforeGrant();
+        const firstGrant = trace.statements.findIndex(sql => sql.startsWith("GRANT "));
+        expect(trace.statements.slice(0, firstGrant).some(sql => sql.includes("public.catalog_publication_assert_issued"))).toBe(true);
+      }
+      if (cycle && cyclePacket) {
+        await cycle(target.owner, true);
+        const trace = traceRestore(target.owner);
+        expect((await restoreConnectedNativeStore({ ...input, packet: cyclePacket, owner: trace.traced })).replayed).toBe(true);
+        trace.expectAdmittedBeforeGrant();
+        await cycle(target.owner, false);
+      }
       expect((await target.owner.query("SELECT event_type FROM public.outbox_events")).rows).toEqual([{ event_type: "synthetic.retained" }]);
       if (shape === "neon" && mode === "installer-managed") {
         // A separate administrator changes the ledger after the first exact
@@ -217,29 +357,34 @@ for (const shape of ["neon", "rds"] as const) for (const mode of ["installer-man
         const original = (await root.query<{ sha256: string }>(
           "SELECT sha256 FROM public.platform_schema_migrations WHERE position=0")).rows[0]!.sha256;
         const changed = `${original[0] === "f" ? "e" : "f"}${original.slice(1)}`;
-        let raced = false, closed = false;
-        const racingOwner = { async connect() {
-          const client = await target!.owner.connect();
-          return {
-            async query(sql: string | QueryConfig, values?: unknown[]) {
-              const text = typeof sql === "string" ? sql : sql.text;
-              if (!raced && text.includes('LOCK TABLE "public"."platform_schema_migrations"')) {
-                await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [changed]);
-                raced = true;
-              }
-              const result = typeof sql === "string" ? await client.query(sql, values) : await client.query(sql);
-              if (text.startsWith("REVOKE platform_acquisition_owner")) closed = true;
-              return result;
-            },
-            release: (destroy?: boolean) => client.release(destroy),
-          };
-        } } as unknown as Pool;
+        let raced = false;
+        const trace = traceRestore(target.owner, async sql => {
+          if (!raced && sql.includes('LOCK TABLE "public"."platform_schema_migrations"')) {
+            await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [changed]);
+            raced = true;
+          }
+        });
         try {
-          await expect(restoreConnectedNativeStore({ ...input, owner: racingOwner })).rejects.toMatchObject({ code: "schema_conflict" });
+          await expect(restoreConnectedNativeStore({ ...input, owner: trace.traced })).rejects.toMatchObject({ code: "schema_conflict" });
           expect(raced).toBe(true);
-          expect(closed).toBe(true);
+          expect(trace.writes()).toEqual([]);
+          expect((await target.owner.query("SELECT email FROM public.clients")).rows).toEqual([{ email: "restricted@example.invalid" }]);
         } finally {
           await root.query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=0", [original]);
+        }
+        let changedSchema = false;
+        const ddl = traceRestore(target.owner, async sql => {
+          if (!changedSchema && sql.includes('LOCK TABLE "public"."subscription_pause_windows"')) {
+            await root.query("ALTER TABLE public.subscription_pause_windows ADD COLUMN restore_race_probe text");
+            changedSchema = true;
+          }
+        });
+        try {
+          await expect(restoreConnectedNativeStore({ ...input, owner: ddl.traced })).rejects.toMatchObject({ code: "schema_conflict" });
+          expect(changedSchema).toBe(true);
+          expect(ddl.writes()).toEqual([]);
+        } finally {
+          if (changedSchema) await root.query("ALTER TABLE public.subscription_pause_windows DROP COLUMN restore_race_probe");
         }
         expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
       }

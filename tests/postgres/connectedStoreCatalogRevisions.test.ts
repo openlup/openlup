@@ -353,6 +353,14 @@ it("restores reordered sealed history and recovers the original publication afte
     code: "target_conflict", cause: { reason: "publication_revision_invalid",
       path: "catalog_sku_revisions.0.id", message: sealedPublicationRemedy },
   });
+  const wrongDigest = structuredClone(captured);
+  const issued = wrongDigest.owned.find(table => table.table === "catalog_publications")!;
+  issued.rows[0] = JSON.stringify({ ...JSON.parse(issued.rows[0]!), digest: "0".repeat(64) });
+  rehash(wrongDigest);
+  await expect(restore(disconnectedOwner, wrongDigest)).rejects.toMatchObject({
+    ...manifestRefusal, cause: { ...manifestRefusal.cause,
+      message: nativeCatalogPublication.publicationRemedy("catalog_publication_manifest_invalid") },
+  });
   expect(connect).not.toHaveBeenCalled();
 
   const tampered = structuredClone(captured);

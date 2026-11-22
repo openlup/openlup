@@ -1,13 +1,15 @@
-import { randomUUID } from "node:crypto";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { captureCompatiblePostgresRows, PostgresTransferError, type CompatiblePostgresSnapshot } from "@openlup/platform/portability";
+import type { QueryConfig } from "pg";
 import { expect, it } from "vitest";
 import {
   captureConnectedNativeStore, connectedStoreClusterIdentitySql, connectedStoreRowSource, type ConnectedNativeStoreCapture,
 } from "../../server/adapters/postgres/connectedStoreCapture.js";
-import { restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { connectedStoreSourceShape, restoreConnectedNativeStore } from "../../server/adapters/postgres/connectedStoreRestore.js";
+import { qualifiedPostgresCatalogPayload } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { readPlatformMigrationManifest, type PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { postgresSetupTimeoutMs } from "../helpers/postgresContainer.js";
 import { sealConnectedCapture } from "./connectedStoreHistoricalPacket.fixture.js";
@@ -186,3 +188,158 @@ it.each(histories.map((history, index) => ({ history, profile: profiles[index], 
     }
   }, postgresSetupTimeoutMs,
 );
+
+// Both code revisions run this same witness. The first run writes the actual
+// source capture, and the second run consumes its unchanged bytes.
+const parityProfiles = [
+  { history: histories[0], profile: "bootstrap", shape: "beforePublicationCommands" },
+  { history: histories[1], profile: "separate", shape: "beforeCheckoutAttemptLedger" },
+  { history: histories[3], profile: "admin-operator", shape: "beforeAcceptedReferences" },
+] as const;
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+const evidenceDigest = (value: unknown) => sha256(JSON.stringify(value));
+
+async function retainedTargetState(store: Store) {
+  const key = (await store.owner.query("SELECT tableoid::text,ctid::text,xmin::text FROM acquisition_private.installation_key")).rows;
+  expect(key).toHaveLength(1);
+  const ledger = (await store.owner.query(`SELECT pg_catalog.to_jsonb(m)::text AS value
+    FROM public.platform_schema_migrations m ORDER BY position`)).rows.map(({ value }) => value);
+  const roles = (await store.owner.query(`SELECT pg_get_userbyid(roleid) AS role,pg_get_userbyid(member) AS member,
+      pg_get_userbyid(grantor) AS grantor,admin_option,inherit_option,set_option
+    FROM pg_catalog.pg_auth_members ORDER BY 1,2,3,4,5,6`)).rows;
+  return { key, ledger, roles };
+}
+
+it.each(parityProfiles)("compares real PostgreSQL 16 restore bytes for $shape", async ({ history, profile, shape }) => {
+  const started = performance.now();
+  const root = mkdtempSync(join(tmpdir(), "connected-restore-parity-"));
+  const stores: Store[] = [];
+  const install = async (label: string, prefix?: string) => {
+    const store = await installAccountMutations(profile, false, label, prefix);
+    stores.push(store);
+    return store;
+  };
+  const writer = process.env.OPENLUP_RESTORE_PARITY_WRITE;
+  const reader = process.env.OPENLUP_RESTORE_PARITY_READ;
+  const lockMs: number[] = [];
+  let peakHeap = process.memoryUsage().heapUsed;
+  try {
+    const target = await install("restore-parity-target");
+    const fresh = await capture(target, "parity-target", true);
+    let bytes: string;
+    if (reader) {
+      bytes = readFileSync(join(reader, shape + ".json"), "utf8");
+    } else {
+      historicalRoot(root, history);
+      const source = await install("restore-parity-source", root);
+      const version = (await source.owner.query("SHOW server_version_num")).rows[0]!.server_version_num;
+      expect(Number(version)).toBeGreaterThanOrEqual(160000);
+      expect(Number(version)).toBeLessThan(170000);
+      await seed(source, history);
+      bytes = JSON.stringify(await capturePredecessor(source, fresh, history));
+      if (writer) writeFileSync(join(writer, shape + ".json"), bytes, { mode: 0o600, flag: "wx" });
+    }
+    const packet = JSON.parse(bytes) as ConnectedNativeStoreCapture;
+    const before = await retainedTargetState(target);
+    if (target.installation.generation === "legacy") throw new Error("Qualified restore target required");
+    // Sample the worker heap and measure the public lock window using the
+    // adapter's ordinary connection path.
+    const owner = { async connect() {
+      const client = await target.migrator.connect();
+      let lockStarted: number | undefined;
+      return {
+        async query(sql: string | QueryConfig, values?: unknown[]) {
+          const text = typeof sql === "string" ? sql : sql.text;
+          const result = typeof sql === "string" ? await client.query(sql, values) : await client.query(sql);
+          peakHeap = Math.max(peakHeap, process.memoryUsage().heapUsed);
+          if (text.startsWith('LOCK TABLE "public".')) lockStarted ??= performance.now();
+          if (text === "COMMIT" && lockStarted !== undefined) lockMs.push(performance.now() - lockStarted);
+          return result;
+        },
+        release: (destroy?: boolean) => client.release(destroy),
+      };
+    } } as unknown as typeof target.migrator;
+    const input = { owner, installation: target.installation, packet, freshTarget: fresh };
+    const expected = { captureSha256: packet.sha256, neutralizedHistoricalHoldNotifications: 0 };
+    expect(await restoreConnectedNativeStore(input)).toEqual({ ...expected, replayed: false });
+    const imported = await retainedTargetState(target);
+    const importedRows = carriedRows(await capture(target, "parity-restored")).map(data => [data.table, [...data.rows].sort()]);
+    expect(await restoreConnectedNativeStore(input)).toEqual({ ...expected, replayed: true });
+    const replayed = await retainedTargetState(target);
+    const replayedRows = carriedRows(await capture(target, "parity-replayed")).map(data => [data.table, [...data.rows].sort()]);
+    expect(replayedRows).toEqual(importedRows);
+    expect(imported).toEqual(before);
+    expect(replayed).toEqual(before);
+    expect(JSON.stringify(packet)).toBe(bytes);
+    const expectedLedger = packet.compatible.tables.find(data => data.table === ledger)?.rows ?? [];
+    expect(importedRows.find(([table]) => table === ledger)?.[1]).toEqual([...expectedLedger].sort());
+    const evidence = JSON.stringify({
+      shape, profile, sortedRows: evidenceDigest(importedRows), replayedRows: evidenceDigest(replayedRows),
+      inputBytes: Buffer.byteLength(bytes), inputDigest: sha256(bytes), captureDigest: packet.sha256,
+      checkoutLedger: evidenceDigest(expectedLedger),
+      target: [before, imported, replayed].map(state => ({
+        migrationLedger: evidenceDigest(state.ledger), keyTuple: evidenceDigest(state.key), roleEdges: evidenceDigest(state.roles),
+      })),
+      elapsedMs: Math.round(performance.now() - started), peakHeapBytes: peakHeap, publicLockMs: lockMs.map(Math.round),
+    });
+    const output = process.env.OPENLUP_RESTORE_PARITY_EVIDENCE;
+    if (output) appendFileSync(output, evidence + "\n", { mode: 0o600 });
+    else console.info("RESTORE_PARITY " + evidence);
+  } finally {
+    try { await Promise.all(stores.map(store => store.close())); }
+    finally { rmSync(root, { recursive: true, force: true }); }
+  }
+}, postgresSetupTimeoutMs);
+
+it.each(["bootstrap", "separate"] as const)("exercises a qualified-v2-only inventory append for %s", async profile => {
+  const stores: Store[] = [];
+  try {
+    const source = await installAccountMutations(profile, false, "same-shape-source");
+    stores.push(source);
+    const target = await installAccountMutations(profile, false, "same-shape-target");
+    stores.push(target);
+    if (source.installation.generation !== "qualified-v2" || target.installation.generation !== "qualified-v2") {
+      throw new Error("Qualified-v2 restore targets required");
+    }
+    await source.owner.query("INSERT INTO public.clients(email,lifecycle_stage) VALUES('same-shape@example.invalid','lead')");
+    const original = await capture(source, "original");
+    // Reverse the existing qualified-v2 catalogue read grant on a disposable
+    // source. This changes its observed pin and leaves row descriptors intact.
+    await source.migrator.query(`REVOKE EXECUTE ON FUNCTION public.catalog_offer_memberships_page(text,jsonb,integer,text),
+      public.catalog_publication_activation_readiness(text[],text) FROM openlup_catalog_publication`);
+    const lock = "openlup:public-platform-migrations:v1", db = await source.migrator.connect();
+    let pin: string;
+    try {
+      await db.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lock]);
+      pin = sha256(await qualifiedPostgresCatalogPayload(db, source.installation, lock));
+    } finally {
+      try { await db.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lock]); }
+      finally { db.release(); }
+    }
+    const predecessor = await capture(source, "predecessor");
+    expect(carriedRows(predecessor)).toEqual(carriedRows(original));
+    expect(pin).not.toBe(original.compatible.catalogueId);
+    predecessor.compatible.catalogueId = pin;
+    const packet = sealConnectedCapture(predecessor);
+    const freshTarget = await capture(target, "same-shape-target", true);
+    expect(carriedRows(packet).map(row => [row.table, row.columns]))
+      .toEqual(carriedRows(freshTarget).map(row => [row.table, row.columns]));
+    const input = { owner: target.migrator, installation: target.installation, freshTarget, packet };
+    const replay = process.env.OPENLUP_RESTORE_APPEND_MODE === "appended";
+    expect(connectedStoreSourceShape(profile, pin, target.inventory)).toBe(replay ? "current" : "unsupported");
+    const other = profile === "bootstrap" ? "separate" : "bootstrap";
+    expect(connectedStoreSourceShape(other, pin, target.inventory)).toBe("unsupported");
+    if (replay) {
+      expect((await restoreConnectedNativeStore(input)).replayed).toBe(false);
+      expect((await restoreConnectedNativeStore(input)).replayed).toBe(true);
+      expect(carriedRows(await capture(target, "same-shape-restored"))).toEqual(carriedRows(packet));
+    } else {
+      await expect(restoreConnectedNativeStore(input)).rejects.toMatchObject({
+        code: "schema_conflict", remedy: "upgrade the source, then capture",
+      });
+      expect(carriedRows(await capture(target, "same-shape-pristine"))).toEqual(carriedRows(freshTarget));
+    }
+    const output = process.env.OPENLUP_RESTORE_APPEND_EVIDENCE;
+    if (output) appendFileSync(output, JSON.stringify({ profile, pin, replay }) + "\n", { mode: 0o600 });
+  } finally { await Promise.all(stores.map(store => store.close())); }
+}, postgresSetupTimeoutMs);
