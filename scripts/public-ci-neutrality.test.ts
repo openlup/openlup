@@ -4,6 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { addReleaseSection } from "./packages/release-bump.ts";
 import { allowedPaymentAdapterWords, allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, seededIntroductions, storeTermCounts, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
@@ -954,24 +955,30 @@ describe("tax adapter neutrality allowance", () => {
   const vendor = ["str", "ipe"].join("");
   const subpath = `tax/${vendor}`;
   const report = `api/tax-${vendor}.api.md`;
+  const snapshot = `packages/platform/${report}`;
   const source = `packages/platform/src/${subpath}/index.ts`;
   const test = `packages/platform/test/${subpath}/factory.test.ts`;
   const catalogue = "config/openlup-publication-catalog.json";
   const manifest = "packages/platform/package.json";
   const gates = "packages/platform/release-gates.json";
   const fragment = "packages/platform/changes/tax-adapter.md";
+  const fragmentText = `- Adds the experimental \`@openlup/platform/${subpath}\` adapter.\n`;
+  const snapshotText = `# ./${subpath} API declaration snapshot\n\n## dist/${subpath}/index.d.ts\n`;
+  const exportTargets = { types: `./dist/${subpath}/index.d.ts`, import: `./dist/${subpath}/index.js`, default: `./dist/${subpath}/index.js` };
+  const gate = {
+    packageSmokeEvidence: [`test/${subpath}/factory.test.ts`],
+    entrypoint: `dist/${subpath}/index.d.ts`,
+    snapshot: report,
+  };
   const catalogueRows = (...paths: string[]) => JSON.stringify({ publicPaths: paths.map(path => ({ path })) });
   const approved: [string, string][] = [
     [source, `export { quoteTax } from "../../${subpath}/quoteTax.js";`],
     [test, `import { quoteTax } from "../../../src/${subpath}/index.js";`],
-    [catalogue, catalogueRows(source, test, `packages/platform/${report}`)],
-    [manifest, JSON.stringify({ exports: { [`./${subpath}`]: `./dist/${subpath}/index.js` } })],
-    [gates, JSON.stringify({ packageSurface: { [`./${subpath}`]: {
-      packageSmokeEvidence: [`test/${subpath}/factory.test.ts`],
-      entrypoint: `dist/${subpath}/index.d.ts`,
-      snapshot: report,
-    } } })],
-    [fragment, `Adds the experimental \`@openlup/platform/${subpath}\` adapter.`],
+    [catalogue, catalogueRows(source, test, snapshot)],
+    [manifest, JSON.stringify({ exports: { [`./${subpath}`]: exportTargets } })],
+    [gates, JSON.stringify({ packageSurface: { [`./${subpath}`]: gate } })],
+    [snapshot, snapshotText],
+    [fragment, fragmentText],
   ];
   const scan = (files: [string, string][]) => scanSnapshots(new Map(
     files.map(([path, contents]) => [path, Buffer.from(contents)]),
@@ -992,18 +999,81 @@ describe("tax adapter neutrality allowance", () => {
     ])));
   });
 
+  it("admits registration tokens only in the exact export and gate fields", () => {
+    expect(scan([
+      [manifest, JSON.stringify({
+        exports: {
+          [`./${subpath}`]: { ...exportTargets, note: `./dist/${subpath}/unrelated.js` },
+          [`./docs/${subpath}`]: "./dist/docs/index.js",
+        },
+        description: `See https://example.invalid/${subpath}.`,
+      }, null, 2)],
+      [gates, JSON.stringify({
+        packageSurface: {
+          [`./${subpath}`]: { ...gate, note: `test/${subpath}/unrelated.test.ts` },
+          [`./docs/${subpath}`]: { entrypoint: "dist/docs/index.d.ts" },
+        },
+        straySnapshot: report,
+      }, null, 2)],
+    ])).toEqual({
+      [hash(manifest)]: { "ui-13": 3 },
+      [hash(gates)]: { "ui-13": 3 },
+    });
+  });
+
+  it("keeps literal prose counted when a registration uses JSON escapes", () => {
+    const escaped = `\\u0073${vendor.slice(1)}`;
+    expect(scan([
+      [manifest, JSON.stringify({
+        description: "Provider prose",
+        exports: { [`./${subpath}`]: exportTargets },
+      }).replaceAll(vendor, escaped).replace("Provider prose", vendor)],
+      [gates, JSON.stringify({
+        packageSurface: { [`./${subpath}`]: { ...gate, snapshot: "Report path" } },
+        description: vendor,
+      }).replace("Report path", `api/tax-${escaped}.api.md`)],
+    ])).toEqual({
+      [hash(manifest)]: { "ui-13": 1 },
+      [hash(gates)]: { "ui-13": 1 },
+    });
+  });
+
+  it("keeps exact adapter tokens admissible when the release notes assemble a fragment", () => {
+    const changelog = "packages/platform/CHANGELOG.md";
+    const assembled = addReleaseSection(changelog, "# Changelog\n\n## [Unreleased]\n\n", "7.0.0", "release", [
+      { path: fragment, contents: fragmentText },
+    ]);
+    const files: [string, string][] = [
+      [changelog, assembled],
+      ["packages/core/CHANGELOG.md", fragmentText],
+      ["packages/core/docs/guide/upgrade/v7-0-0.md", `### \`${snapshot}\`\n\n${fragmentText}`],
+    ];
+    expect(assembled).toContain(fragmentText);
+    expect(scan(files)).toEqual({});
+    expect(scan(files.map(([path, contents]) => [path, `${contents}\nUses ${vendor}.\n`])))
+      .toEqual(Object.fromEntries(files.map(([path]) => [hash(path), { "ui-13": 1 }])));
+  });
+
+  it("uses the payment subpath boundaries", () => {
+    expect(scan([[source, `.${subpath}\n${subpath}.js\n`]])).toEqual({});
+  });
+
   it("keeps lookalikes, other casing, and tokens outside their approved paths counted", () => {
-    const lookalikes = [`pre-${subpath}`, `${subpath}-extra`, `${subpath}.json`, `tax/${vendor.toUpperCase()}`];
+    const lookalikes = [`pre-${subpath}`, `${subpath}-extra`, `tax/${vendor.toUpperCase()}`];
     const wrongReports = [`api/pre-tax-${vendor}.api.md`, `${report}.bak`, `api/tax-${vendor.toUpperCase()}.api.md`];
     const outside = [
       "packages/platform/src/tax/index.ts", "packages/platform/test/tax/factory.test.ts",
       source.replace(vendor, `${vendor}-extra`), test.replace(vendor, vendor.toUpperCase()),
-      "packages/platform/test/packageBoundary.test.ts", "packages/platform/CHANGELOG.md",
+      "packages/platform/test/packageBoundary.test.ts", "packages/core/docs/guide/upgrade/README.md",
       "packages/platform/changes/nested/tax-adapter.md", "packages/core/changes/tax-adapter.md",
     ];
     expect(scan([
       [source, lookalikes.join("\n")],
-      [gates, wrongReports.join("\n")],
+      [gates, JSON.stringify({ packageSurface: { [`./${subpath}`]: {
+        snapshot: wrongReports[0],
+        entrypoint: wrongReports[1],
+        packageSmokeEvidence: [wrongReports[2]],
+      } } })],
       [catalogue, catalogueRows(`docs/${subpath}/index.ts`, `docs/${report}`, `packages/platform/src/${subpath}/${vendor}.ts`)],
       [manifest, report],
       [fragment, report],

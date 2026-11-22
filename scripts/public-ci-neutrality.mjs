@@ -167,21 +167,57 @@ const paymentAdapterCarriers = new Set([
   // owner-approved via #526/#585 (2026-11-07)
   "packages/platform/AGENTS.md",
 ]);
-const paymentAdapterSubpath = new RegExp(`(?<![\\w-])payments/(?:${paymentAdapterNames.join("|")})(?![\\w-])`, "g");
+const adapterSubpathToken = (family, names) => new RegExp(`(?<![\\w-])${family}/(?:${names.join("|")})(?![\\w-])`, "g");
+const paymentAdapterSubpath = adapterSubpathToken("payments", paymentAdapterNames);
 const paymentAdapterReport = new RegExp(`(?<![\\w.-])payments-(?:${paymentAdapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
 
 // Owner-approved tax adapter scope (CONTRIBUTING.md, Package, policy and release
 // checks). Only complete path tokens for the first payment provider affect ui-13.
 const taxAdapterName = paymentAdapterNames[0];
-const taxAdapterTree = `packages/platform/(?:src|test)/tax/${taxAdapterName}/`;
+const taxSubpath = `tax/${taxAdapterName}`;
+const taxExport = `./${taxSubpath}`;
+const taxAdapterTree = `packages/platform/(?:src|test)/${taxSubpath}/`;
 const taxAdapterPaths = new RegExp(`^${taxAdapterTree}`);
-const taxAdapterSubpath = new RegExp(`(?<![\\w.-])tax/${taxAdapterName}(?![\\w-]|\\.[\\w.-])`, "g");
-const taxAdapterReportName = `api/tax-${taxAdapterName}\\.api\\.md`;
-const taxAdapterReport = new RegExp(`(?<![\\w./-])${taxAdapterReportName}(?![\\w./-])`, "g");
-const taxAdapterCarriers = new Set(["packages/platform/package.json", "packages/platform/release-gates.json"]);
+const taxAdapterSubpath = adapterSubpathToken("tax", [taxAdapterName]);
+const taxReportName = `tax-${taxAdapterName}.api.md`;
+const taxReportPath = `api/${taxReportName}`;
+const taxReportPattern = taxReportName.replaceAll(".", "\\.");
+const taxAdapterReport = new RegExp(`(?<![\\w.-])${taxReportPattern}(?![\\w./-])`, "g");
+const platformManifest = "packages/platform/package.json";
+const taxAdapterCarriers = new Set([platformManifest, "packages/platform/release-gates.json"]);
 const taxAdapterCatalogueToken = new RegExp(
-  `"path"\\s*:\\s*"(?:${taxAdapterTree}(?=[^"\\r\\n]+")|packages/platform/${taxAdapterReportName}(?="))`, "g",
+  `"path"\\s*:\\s*"(?:${taxAdapterTree}(?=[^"\\r\\n]+")|packages/platform/api/${taxReportPattern}(?="))`, "g",
 );
+
+function taxRegistrationText(path, contents) {
+  let carrier;
+  try {
+    // Mask escapes before parsing so a decoded spelling cannot deduct a
+    // literal provider occurrence elsewhere in the file.
+    carrier = JSON.parse(contents.replace(/\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})/g, "\uFFFD"));
+  } catch {
+    return "";
+  }
+  const manifest = path === platformManifest;
+  const entries = manifest ? carrier?.exports : carrier?.packageSurface;
+  if (!record(entries) || !Object.hasOwn(entries, taxExport)) return "";
+  const entry = entries[taxExport];
+  const tokens = [taxExport];
+  const addPaths = (values, prefix) => {
+    for (const value of values) {
+      if (typeof value === "string" && value.startsWith(prefix) && value.length > prefix.length) tokens.push(prefix);
+    }
+  };
+  if (manifest) {
+    const targets = record(entry) ? [entry.types, entry.import, entry.default] : [entry];
+    addPaths(targets, `./dist/${taxSubpath}/`);
+  } else if (record(entry)) {
+    addPaths([entry.entrypoint], `dist/${taxSubpath}/`);
+    if (entry.snapshot === taxReportPath) tokens.push(taxReportPath);
+    if (Array.isArray(entry.packageSmokeEvidence)) addPaths(entry.packageSmokeEvidence, `test/${taxSubpath}/`);
+  }
+  return tokens.join("\n");
+}
 
 export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   if (category === "ui-8") {
@@ -221,12 +257,15 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   }
   const tokens = adapterCarrierTokens(path, contents, paymentAdapterCarriers, paymentAdapterSubpath, paymentAdapterReport);
   const paymentCount = tokens?.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0) ?? 0;
-  if (category !== "ui-13" || releaseAdapterTokenCarrier.test(path)) return paymentCount;
-  if (taxAdapterPaths.test(path)) return paymentCount + [...contents.matchAll(taxAdapterSubpath)].length;
+  if (category !== "ui-13") return paymentCount;
+  if (taxAdapterPaths.test(path) || path === `packages/platform/${taxReportPath}`) {
+    return paymentCount + [...contents.matchAll(taxAdapterSubpath)].length;
+  }
   if (path === "config/openlup-publication-catalog.json") {
     return paymentCount + [...contents.matchAll(taxAdapterCatalogueToken)].length;
   }
-  const taxTokens = adapterCarrierTokens(path, contents, taxAdapterCarriers, taxAdapterSubpath, taxAdapterReport);
+  const taxText = taxAdapterCarriers.has(path) ? taxRegistrationText(path, contents) : contents;
+  const taxTokens = adapterCarrierTokens(path, taxText, taxAdapterCarriers, taxAdapterSubpath, taxAdapterReport);
   return paymentCount + (taxTokens?.length ?? 0);
 }
 
