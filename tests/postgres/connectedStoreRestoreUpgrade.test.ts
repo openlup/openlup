@@ -113,7 +113,7 @@ async function capturePredecessor(store: Store, fresh: ConnectedNativeStoreCaptu
     const compatible = await captureCompatiblePostgresRows({
       source: { withSnapshot: work => work(db) }, sourceId: "predecessor", catalogueId: store.inventory, tables: compatibleTables, ...limits,
     });
-    const owned = [];
+    const owned: ConnectedNativeStoreCapture["owned"] = [];
     for (const table of ownedTables) {
       const columns = (await db.query<{ name: string; type: string }>(`SELECT attname AS name,format_type(atttypid,atttypmod) AS type
         FROM pg_attribute WHERE attrelid=$1::regclass AND attnum>0 AND NOT attisdropped ORDER BY attnum`, [`public.${table}`])).rows;
