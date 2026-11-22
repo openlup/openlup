@@ -325,7 +325,9 @@ export async function qualifyTax(provider: VerifiedTestProvider, witness: Witnes
   } });
   const request = makeTaxQuoteRequest(ref, input);
   const result = await port.quote(request);
-  if (result.kind !== 'final') throw new Error(result.kind === 'unavailable' ? reportTaxUnavailable(result) : taxAdvice(result.code));
+  if (result.kind === 'unavailable') throw new Error(reportTaxUnavailable(result));
+  if (result.kind === 'refused') throw new Error(taxAdvice(result.code));
+  if (result.kind !== 'final') throw new Error(taxRefusal);
   effects.accepted = { request, result, closed: false };
   verify(result.money.feeTotal === 0);
   const { evidence, evidenceDigest } = result;
